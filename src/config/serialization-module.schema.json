@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$id": "https://schemas.sitecoreai.dev/v1/serialization-module.schema.json",
+  "title": "SitecoreAI Serialization Module",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["namespace"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "namespace": { "type": "string" },
+    "description": { "type": "string" },
+    "references": { "type": "array", "items": { "type": "string" } },
+    "items": { "$ref": "#/definitions/ModuleItems" },
+    "roles": { "type": "array", "items": { "$ref": "#/definitions/RolePredicate" } },
+    "users": { "type": "array", "items": { "$ref": "#/definitions/UserPredicate" } },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "definitions": {
+    "ModuleItems": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "includes": { "type": "array", "items": { "$ref": "#/definitions/ModuleInclude" } },
+        "excludedFields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FieldFilter" }
+        }
+      }
+    },
+    "ModuleInclude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path"],
+      "properties": {
+        "name": { "type": "string" },
+        "database": { "type": "string" },
+        "path": { "type": "string" },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "SingleItem",
+            "ItemAndChildren",
+            "DescendantsOnly",
+            "ItemAndDescendants",
+            "singleItem",
+            "itemAndChildren",
+            "descendantsOnly",
+            "itemAndDescendants"
+          ]
+        },
+        "allowedPushOperations": {
+          "type": "string",
+          "enum": [
+            "CreateOnly",
+            "CreateAndUpdate",
+            "CreateUpdateAndDelete",
+            "createOnly",
+            "createAndUpdate",
+            "createUpdateAndDelete"
+          ]
+        },
+        "maxRelativePathLength": { "type": "integer", "format": "int32", "minimum": 1 },
+        "rules": { "type": "array", "items": { "$ref": "#/definitions/ModuleRule" } }
+      }
+    },
+    "ModuleRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string" },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Ignored",
+            "SingleItem",
+            "ItemAndChildren",
+            "ItemAndDescendants",
+            "ignored",
+            "singleItem",
+            "itemAndChildren",
+            "itemAndDescendants"
+          ]
+        },
+        "allowedPushOperations": {
+          "type": "string",
+          "enum": [
+            "CreateOnly",
+            "CreateAndUpdate",
+            "CreateUpdateAndDelete",
+            "createOnly",
+            "createAndUpdate",
+            "createUpdateAndDelete"
+          ]
+        },
+        "alias": { "type": "string" }
+      }
+    },
+    "FieldFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fieldId": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "RolePredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "pattern"],
+      "properties": {
+        "domain": { "type": "string" },
+        "pattern": { "type": "string" }
+      }
+    },
+    "UserPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "pattern"],
+      "properties": {
+        "domain": { "type": "string" },
+        "pattern": { "type": "string" }
+      }
+    }
+  }
+}

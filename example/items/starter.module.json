@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.sitecoreai.dev/v1/serialization-module.schema.json",
+  "namespace": "demo-registry",
+  "items": {
+    "path": "demo-registry",
+    "includes": [
+      {
+        "name": "DefaultRenderingHost",
+        "path": "/sitecore/system/Settings/Services/Rendering Hosts/Default",
+        "scope": "singleItem"
+      }
+    ]
+  }
+}

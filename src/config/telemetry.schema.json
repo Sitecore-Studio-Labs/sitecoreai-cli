@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$id": "https://schemas.sitecoreai.dev/v1/telemetry.schema.json",
+  "title": "SitecoreAI CLI Telemetry Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "nonce", "event", "command", "v", "ci"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "nonce": { "type": "string" },
+    "event": {
+      "type": "string",
+      "enum": ["command_start", "command_success", "command_error"]
+    },
+    "command": { "type": "string" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "error": { "type": "boolean" },
+    "v": { "type": "string" },
+    "ci": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schemas.sitecoreai.dev/v1/sitecoreai.cli.json",
+  "modules": ["./example/items/**/*.module.json"],
+  "serialization": {
+    "defaultMaxRelativeItemPathLength": 100,
+    "defaultModuleRelativeSerializationPath": "items",
+    "removeOrphansForRoles": true,
+    "removeOrphansForUsers": true,
+    "continueOnItemFailure": false,
+    "excludedFields": []
+  },
+  "settings": {
+    "telemetryEnabled": true,
+    "cacheAuthenticationToken": true,
+    "versionComparisonEnabled": true,
+    "apiClientTimeoutInMinutes": 5
+  },
+  "defaultEnvProfile": "example",
+  "envProfiles": {
+    "example": {
+      "deployToken": "",
+      "deployTokenExpiresIn": 86174,
+      "deployTokenLastUpdated": "",
+      "organizationId": "",
+      "projectId": "",
+      "environmentId": "",
+      "environmentType": "cm",
+      "host": "{your-sitecore-instance}.sitecorecloud.io"
+    }
+  }
+}

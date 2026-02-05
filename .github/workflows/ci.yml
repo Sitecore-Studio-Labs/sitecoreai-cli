@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: [npm, pnpm, yarn, bun]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        if: matrix.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup bun
+        if: matrix.package-manager == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Enable Corepack
+        if: matrix.package-manager == 'pnpm' || matrix.package-manager == 'yarn'
+        run: corepack enable
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ matrix.package-manager }}" = "npm" ]; then
+            npm install
+          elif [ "${{ matrix.package-manager }}" = "pnpm" ]; then
+            pnpm install --no-frozen-lockfile
+          elif [ "${{ matrix.package-manager }}" = "yarn" ]; then
+            yarn install --no-immutable
+          else
+            bun install
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+  headless-cli:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        env:
+          HUSKY: 0
+        run: npm ci
+
+      - name: Non-TTY CLI test
+        run: npm run test -- tests/unit/cli/cli-headless.test.ts

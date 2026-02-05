@@ -1,0 +1,57 @@
+{
+  "name": "sitecoreai-deploy-sync-cli",
+  "description": "Agent configuration and skill inventory for the SitecoreAI Deploy & Sync CLI.",
+  "skillsPath": "skills",
+  "docs": {
+    "agents": "AGENTS.md",
+    "agentCi": "AGENT_CI.md",
+    "skillsIndex": "skills/README.md"
+  },
+  "skills": [
+    {
+      "id": "config-bootstrap",
+      "path": "skills/config-bootstrap/SKILL.md",
+      "summary": "Create and validate sitecoreai.cli.json."
+    },
+    {
+      "id": "environment-setup",
+      "path": "skills/environment-setup/SKILL.md",
+      "summary": "Authentication and environment setup."
+    },
+    {
+      "id": "serialization-ops",
+      "path": "skills/serialization-ops/SKILL.md",
+      "summary": "Serialization pull/push/diff/validate/watch."
+    },
+    {
+      "id": "deploy-ops",
+      "path": "skills/deploy-ops/SKILL.md",
+      "summary": "Deploy API operations."
+    },
+    {
+      "id": "agent-mode",
+      "path": "skills/agent-mode/SKILL.md",
+      "summary": "Non-interactive and CI usage defaults."
+    },
+    {
+      "id": "troubleshooting",
+      "path": "skills/troubleshooting/SKILL.md",
+      "summary": "Diagnose common CLI errors."
+    },
+    {
+      "id": "ci-smoke-test",
+      "path": "skills/ci-smoke-test/SKILL.md",
+      "summary": "Run the CLI smoke test in CI."
+    },
+    {
+      "id": "redaction-logs",
+      "path": "skills/redaction-logs/SKILL.md",
+      "summary": "Logging, JSON output, and redaction guidance."
+    },
+    {
+      "id": "release-workflow",
+      "path": "skills/release-workflow/SKILL.md",
+      "summary": "Changesets and release steps."
+    }
+  ]
+}

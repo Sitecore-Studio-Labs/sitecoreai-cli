@@ -1,0 +1,143 @@
+import type { EnvironmentConfiguration, RootConfigurationFile } from "./types";
+
+const toBoolean = (value?: string): boolean | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+};
+
+const normalizeEnvKey = (name: string): string =>
+  name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const getEnvOverride = (
+  envName: string,
+  key: string,
+  includeGlobal: boolean
+): string | undefined => {
+  const scopedKey = `SITECOREAI_ENV_${normalizeEnvKey(envName)}_${key}`;
+  const scopedValue = process.env[scopedKey];
+  if (scopedValue && scopedValue.trim().length > 0) {
+    return scopedValue.trim();
+  }
+  if (!includeGlobal) {
+    return undefined;
+  }
+  const globalKey = `SITECOREAI_${key}`;
+  const globalValue = process.env[globalKey];
+  if (globalValue && globalValue.trim().length > 0) {
+    return globalValue.trim();
+  }
+  return undefined;
+};
+
+export const applyEnvOverrides = (
+  envName: string,
+  env: EnvironmentConfiguration,
+  includeGlobal: boolean
+): EnvironmentConfiguration => {
+  const overrides: Partial<EnvironmentConfiguration> = {};
+  const allowWrite = toBoolean(getEnvOverride(envName, "ALLOW_WRITE", includeGlobal));
+  if (allowWrite !== undefined) {
+    overrides.allowWrite = allowWrite;
+  }
+  const useClientCredentials = toBoolean(
+    getEnvOverride(envName, "USE_CLIENT_CREDENTIALS", includeGlobal)
+  );
+  if (useClientCredentials !== undefined) {
+    overrides.useClientCredentials = useClientCredentials;
+  }
+
+  const host = getEnvOverride(envName, "CM_HOST", includeGlobal);
+  if (host !== undefined) {
+    overrides.host = host;
+  }
+  const authority = getEnvOverride(envName, "AUTHORITY", includeGlobal);
+  if (authority !== undefined) {
+    overrides.authority = authority;
+  }
+  const audience = getEnvOverride(envName, "AUDIENCE", includeGlobal);
+  if (audience !== undefined) {
+    overrides.audience = audience;
+  }
+  const clientId = getEnvOverride(envName, "CLIENT_ID", includeGlobal);
+  if (clientId !== undefined) {
+    overrides.clientId = clientId;
+  }
+  const clientSecret = getEnvOverride(envName, "CLIENT_SECRET", includeGlobal);
+  if (clientSecret !== undefined) {
+    overrides.clientSecret = clientSecret;
+  }
+  const deployToken = getEnvOverride(envName, "DEPLOY_TOKEN", includeGlobal);
+  if (deployToken !== undefined) {
+    overrides.deployToken = deployToken;
+  }
+  const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
+  if (organizationId !== undefined) {
+    overrides.organizationId = organizationId;
+  }
+  const tenantId = getEnvOverride(envName, "TENANT_ID", includeGlobal);
+  if (tenantId !== undefined) {
+    overrides.tenantId = tenantId;
+  }
+  const projectId = getEnvOverride(envName, "PROJECT_ID", includeGlobal);
+  if (projectId !== undefined) {
+    overrides.projectId = projectId;
+  }
+  const environmentId = getEnvOverride(envName, "ENVIRONMENT_ID", includeGlobal);
+  if (environmentId !== undefined) {
+    overrides.environmentId = environmentId;
+  }
+  const environmentType = getEnvOverride(envName, "ENVIRONMENT_TYPE", includeGlobal);
+  if (environmentType !== undefined) {
+    const normalized = environmentType.trim().toLowerCase();
+    if (normalized === "cm" || normalized === "eh") {
+      overrides.environmentType = normalized as EnvironmentConfiguration["environmentType"];
+    }
+  }
+
+  return { ...env, ...overrides };
+};
+
+const stripAuthenticationTokens = (env: EnvironmentConfiguration): EnvironmentConfiguration => {
+  const sanitized = { ...env };
+  delete sanitized.accessToken;
+  delete sanitized.refreshToken;
+  delete sanitized.refreshTokenParameters;
+  delete sanitized.expiresIn;
+  delete sanitized.lastUpdated;
+  delete sanitized.deployToken;
+  delete sanitized.clientSecret;
+  return sanitized;
+};
+
+const stripAuthenticationTokensFromProfiles = (
+  envProfiles: Record<string, EnvironmentConfiguration>
+): Record<string, EnvironmentConfiguration> =>
+  Object.fromEntries(
+    Object.entries(envProfiles).map(([name, env]) => [name, stripAuthenticationTokens(env)])
+  );
+
+export const stripAuthenticationTokensFromConfig = (
+  config: RootConfigurationFile
+): RootConfigurationFile => {
+  if (!config.envProfiles) {
+    return config;
+  }
+  const sanitizedProfiles = stripAuthenticationTokensFromProfiles(config.envProfiles);
+  return {
+    ...config,
+    envProfiles: sanitizedProfiles,
+  };
+};

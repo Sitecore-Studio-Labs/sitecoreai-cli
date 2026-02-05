@@ -1,0 +1,97 @@
+{
+  "name": "@sitecoreai-demo/sitecoreai-deploy-and-sync",
+  "version": "0.0.1",
+  "description": "SitecoreAI Deploy & Sync CLI for serialization and deployment workflows",
+  "license": "MIT",
+  "type": "commonjs",
+  "author": "Liz Nelson <liz.nelson@sitecore.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync"
+  },
+  "homepage": "https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync",
+  "bugs": {
+    "url": "https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync/issues"
+  },
+  "bin": {
+    "sitecoreai-deploy-sync": "bin/sitecoreai-deploy-sync",
+    "scai": "bin/sitecoreai-deploy-sync"
+  },
+  "main": "dist/cli.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "AGENTS.md",
+    "README.md",
+    "package.json",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias",
+    "changeset": "changeset",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "dev": "tsx -r tsconfig-paths/register src/cli.ts",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prepack": "npm run build",
+    "prepare": "husky",
+    "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && changeset publish",
+    "smoke": "npm run build && node -e \"const { spawnSync } = require('node:child_process'); const path = require('node:path'); const cliPath = path.join('dist', 'cli.js'); const runs = [[cliPath, '--help'], [cliPath, 'telemetry', 'status', '--json']]; for (const args of runs) { const result = spawnSync(process.execPath, args, { stdio: 'ignore' }); if (result.status !== 0) { throw new Error('smoke failed: ' + args.join(' ')); } }\"",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "version": "changeset version"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,cjs,mjs}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "ajv": "^8.17.1",
+    "ajv-draft-04": "^1.0.0",
+    "ajv-formats": "^3.0.1",
+    "commander": "^12.1.0",
+    "consola": "^3.4.2",
+    "dotenv": "^17.2.3",
+    "fast-glob": "^3.3.3",
+    "keytar": "^7.9.0",
+    "ora": "^9.1.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8",
+    "@eslint/js": "^9.39.2",
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.10.2",
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^9.35.0",
+    "globals": "^15.15.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.6.2",
+    "tsc-alias": "^1.8.16",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite-tsconfig-paths": "^4.3.2",
+    "vitest": "^4.0.18"
+  }
+}

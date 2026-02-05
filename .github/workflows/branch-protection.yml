@@ -1,0 +1,32 @@
+name: Branch Protection Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  administration: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify main branch protection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/main/protection"
+          status=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$api")
+          if [ "$status" != "200" ]; then
+            echo "Branch protection is not enabled or token lacks permission. HTTP $status"
+            cat response.json || true
+            exit 1
+          fi
+          echo "Branch protection detected for main."

@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$id": "https://schemas.sitecoreai.dev/v1/sitecoreai.cli.json",
+  "title": "SitecoreAI CLI Root Configuration",
+  "type": "object",
+  "description": "Defines the Sitecore AI CLI root configuration",
+  "additionalProperties": false,
+  "required": ["modules"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "defaultEnvProfile": {
+      "type": "string",
+      "description": "Default environment profile to fetch or push data to"
+    },
+    "envProfiles": {
+      "type": "object",
+      "description": "Named environment profiles used by this CLI",
+      "additionalProperties": {
+        "$ref": "#/definitions/EnvironmentConfiguration"
+      }
+    },
+    "modules": {
+      "type": "array",
+      "description": "Sitecore module file resolution globs",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "serialization": {
+      "description": "Global item serialization default settings",
+      "oneOf": [{ "$ref": "#/definitions/SerializationRootConfiguration" }]
+    },
+    "settings": {
+      "description": "Cli settings",
+      "oneOf": [{ "$ref": "#/definitions/Settings" }]
+    }
+  },
+  "definitions": {
+    "SerializationRootConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultMaxRelativeItemPathLength": {
+          "type": "integer",
+          "description": "Max relative item path length to serialize before considering path too long (and requiring aliasing to shorten).\nOverridable on a per-module basis; this is the default when it is unspecified.",
+          "format": "int32",
+          "default": 120
+        },
+        "defaultModuleRelativeSerializationPath": {
+          "type": "string",
+          "description": "The default relative physical path from a module file where serialized items for that module will be stored.\nFor example given module /c/foo/bar.module.json, and default '/serialization/items' path,\nthe serialized items for bar would be stored at /c/foo/bar/serialization/items.\nPrefix the path with ~/ for a root configuration relative path instead of a module-relative path.\nUse '$(module)' to insert the module name when using a root relative path.\nOverridable on a per-module basis; this is the default when it is unspecified.",
+          "default": "serialization"
+        },
+        "removeOrphansForRoles": {
+          "type": "boolean",
+          "description": "Specifies remove orphans functionality for roles serialization",
+          "default": true
+        },
+        "removeOrphansForUsers": {
+          "type": "boolean",
+          "description": "Specifies remove orphans functionality for users serialization",
+          "default": true
+        },
+        "continueOnItemFailure": {
+          "type": "boolean",
+          "description": "Specifies behavior when item synchronization fails",
+          "default": false
+        },
+        "excludedFields": {
+          "type": "array",
+          "description": "Configure base fields filter",
+          "items": { "$ref": "#/definitions/FieldFilter" }
+        }
+      }
+    },
+    "FieldFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fieldId": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "Settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "telemetryEnabled": {
+          "type": "boolean",
+          "description": "Determines if telemetry is enabled in cli.",
+          "default": false
+        },
+        "cacheAuthenticationToken": {
+          "type": "boolean",
+          "description": "Determines if the CLI should cache CM access/refresh tokens in the OS keychain.",
+          "default": true
+        },
+        "versionComparisonEnabled": {
+          "type": "boolean",
+          "description": "Determines if CLI\\SMS version comparison is enabled.",
+          "default": true
+        },
+        "apiClientTimeoutInMinutes": {
+          "type": "integer",
+          "description": "Determines timeout for Sitecore Api client.",
+          "format": "int32",
+          "minimum": 1,
+          "maximum": 60,
+          "default": 5
+        }
+      }
+    },
+    "EnvironmentConfiguration": {
+      "type": "object",
+      "description": "Configures a named Sitecore environment profile",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Optional display name for the environment" },
+        "ref": { "type": "string", "description": "Name of the environment to inherit from" },
+        "organizationId": { "type": "string", "description": "Sitecore organization ID" },
+        "tenantId": { "type": "string", "description": "Sitecore tenant ID" },
+        "projectId": { "type": "string", "description": "Sitecore project ID" },
+        "environmentId": { "type": "string", "description": "Sitecore environment ID" },
+        "environmentType": {
+          "type": "string",
+          "description": "Environment type (cm or eh)",
+          "enum": ["cm", "eh"]
+        },
+        "allowWrite": {
+          "type": "boolean",
+          "description": "Whether writing data to this endpoint is allowed (i.e. to prevent accidental writes to production)"
+        },
+        "host": {
+          "type": "string",
+          "description": "Base URL to the Sitecore instance to connect to (i.e. http://{my-sitecore-instance}.sitecorecloud.io)",
+          "format": "uri",
+          "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "description": "Base URL to SitecoreAI identity authority (e.g. https://auth.sitecorecloud.io)",
+          "format": "uri",
+          "minLength": 1
+        },
+        "useClientCredentials": {
+          "type": ["boolean", "null"],
+          "description": "If true, use client credentials (client ID and secret) instead of interactive device login. Recommended for CI."
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "OAuth access token for this endpoint. Cached in the OS keychain when enabled."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "OAuth refresh token for this endpoint. Cached in the OS keychain when enabled."
+        },
+        "refreshTokenParameters": {
+          "type": "object",
+          "description": "OAuth refresh parameters for this endpoint (set manually if needed)",
+          "additionalProperties": { "type": "string" }
+        },
+        "expiresIn": {
+          "type": ["integer", "null"],
+          "description": "Preserves access token lifetime. Set during the login operation. Related to LastUpdated property. System use only.",
+          "format": "int32"
+        },
+        "lastUpdated": {
+          "type": ["null", "string"],
+          "description": "Preserve date and time when environment was updated. System use only.",
+          "format": "date-time"
+        },
+        "deployToken": {
+          "type": "string",
+          "description": "SitecoreAI access token (Deploy + CM/admin scopes). Cached in the OS keychain."
+        },
+        "deployTokenExpiresIn": {
+          "type": ["integer", "null"],
+          "description": "Deploy token lifetime in seconds",
+          "format": "int32"
+        },
+        "deployTokenLastUpdated": {
+          "type": ["null", "string"],
+          "description": "Last time the deploy token was updated",
+          "format": "date-time"
+        },
+        "editingHostEnvironmentIds": {
+          "type": "array",
+          "description": "Editing host environment IDs associated with this CM environment",
+          "items": { "type": "string" }
+        },
+        "clientId": { "type": "string", "description": "OAuth client ID for this endpoint" },
+        "clientSecret": {
+          "type": "string",
+          "description": "OAuth client secret for this endpoint (when useClientCredentials is true). Prefer environment variables."
+        },
+        "variables": {
+          "type": "object",
+          "description": "Defines variables that are specific to this environment. Variables defined here override any definitions in the root configuration for this environment.",
+          "additionalProperties": { "type": "string" }
+        },
+        "audience": {
+          "type": "string",
+          "description": "The unique identifier of the audience for an issued token"
+        }
+      }
+    }
+  }
+}

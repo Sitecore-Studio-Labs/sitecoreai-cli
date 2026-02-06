@@ -1,6 +1,6 @@
 {
   "name": "@sitecoreai-demo/sitecoreai-deploy-and-sync",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "SitecoreAI Deploy & Sync CLI for serialization and deployment workflows",
   "license": "MIT",
   "type": "commonjs",

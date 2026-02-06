@@ -7,7 +7,7 @@ type ShellEnvSnapshot = Record<string, string | undefined>;
 
 type RunCli = (
   argv: string[],
-  options?: { baseEnv?: ShellEnvSnapshot; skipBanner?: boolean }
+  options?: { baseEnv?: ShellEnvSnapshot; skipBanner?: boolean; shellMode?: boolean }
 ) => Promise<void>;
 
 const parseShellArgs = (input: string): string[] => {

@@ -7,11 +7,11 @@ import { createLogoutCommand } from "../../../src/commands/logout";
 import { createConfigCommand } from "../../../src/commands/config";
 import { createTelemetryCommand } from "../../../src/commands/telemetry";
 
-const getOptionLongs = (cmd: { options: Array<{ long?: string | undefined }> }): string[] =>
+const getOptionLongs = (cmd: { options: ReadonlyArray<{ long?: string | undefined }> }): string[] =>
   cmd.options.map((opt) => opt.long).filter((value): value is string => Boolean(value));
 
 const expectOptions = (
-  cmd: { options: Array<{ long?: string | undefined }> },
+  cmd: { options: ReadonlyArray<{ long?: string | undefined }> },
   expected: string[]
 ) => {
   const actual = [...new Set(getOptionLongs(cmd))].sort();
@@ -102,6 +102,7 @@ describe("top-level commands", () => {
       "--organization",
       "--project",
       "--environment",
+      "--skip-deploy-lookup",
       "--wizard",
       "--deploy-token",
       "--client-id",

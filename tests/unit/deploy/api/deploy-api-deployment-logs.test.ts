@@ -34,9 +34,7 @@ describe("deployment logs api", () => {
   });
 
   it("falls back to status message when detail is missing", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ message: "nope" }), { status: 403 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 403 }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchDeploymentLogs("dep-1", "token")).rejects.toThrow(
       "Deploy API request failed (403)"

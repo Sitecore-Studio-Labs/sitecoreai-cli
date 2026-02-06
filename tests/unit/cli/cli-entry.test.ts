@@ -29,6 +29,7 @@ vi.mock("../../../src/shared/logger", () => ({
       return this.jsonEnabled;
     }
     json = jsonSpy;
+    info = vi.fn();
     error = vi.fn();
     warn = vi.fn();
     verbose = vi.fn();
@@ -76,6 +77,20 @@ vi.mock("../../../src/shared/telemetry", () => ({
 vi.mock("../../../src/shared/style", () => ({
   showBanner: vi.fn(),
 }));
+const configMocks = vi.hoisted(() => ({
+  readRootConfigurationFile: vi.fn(),
+  readRootConfiguration: vi.fn(),
+}));
+vi.mock("../../../src/config", () => configMocks);
+const keychainMocks = vi.hoisted(() => ({
+  getDeployToken: vi.fn(),
+}));
+vi.mock("../../../src/shared/keychain", () => keychainMocks);
+const taskMocks = vi.hoisted(() => ({
+  runInit: vi.fn(),
+  runDeployToken: vi.fn(),
+}));
+vi.mock("../../../src/serialization/tasks", () => taskMocks);
 
 describe("cli entrypoint", () => {
   const originalArgv = process.argv;
@@ -93,7 +108,26 @@ describe("cli entrypoint", () => {
     jsonSpy.mockClear();
     loggerState.last = undefined;
     process.env = { ...originalEnv };
+    delete process.env.SITECOREAI_AUTO_WIZARD;
+    delete process.env.SITECOREAI_NON_INTERACTIVE;
+    process.env.SITECOREAI_AUTO_WIZARD = "1";
     setTty(true);
+    configMocks.readRootConfigurationFile.mockClear();
+    configMocks.readRootConfiguration.mockClear();
+    keychainMocks.getDeployToken.mockClear();
+    taskMocks.runInit.mockClear();
+    taskMocks.runDeployToken.mockClear();
+    configMocks.readRootConfigurationFile.mockReturnValue({
+      rootPath: "/tmp/sitecoreai.cli.json",
+      rootDir: "/tmp",
+      config: { envProfiles: { demo: {} }, defaultEnvProfile: "demo" },
+    });
+    configMocks.readRootConfiguration.mockReturnValue({
+      environments: { demo: {} },
+    });
+    keychainMocks.getDeployToken.mockResolvedValue("token");
+    taskMocks.runInit.mockResolvedValue(undefined);
+    taskMocks.runDeployToken.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -247,5 +281,87 @@ describe("cli entrypoint", () => {
     expect(history.ensureHistoryFile).toHaveBeenCalled();
     expect(history.recordHistory).toHaveBeenCalled();
     expect(telemetry.recordTelemetry).toHaveBeenCalled();
+  });
+
+  it("runs init wizard when config is missing", async () => {
+    process.argv = ["node", "scai", "status"];
+    vi.resetModules();
+    configMocks.readRootConfigurationFile.mockImplementation(() => {
+      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+    });
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(configMocks.readRootConfigurationFile).toHaveBeenCalled();
+    expect(taskMocks.runInit).toHaveBeenCalledWith(expect.objectContaining({ wizard: true }));
+  });
+
+  it("runs init wizard when config is invalid", async () => {
+    process.argv = ["node", "scai", "status"];
+    vi.resetModules();
+    const { createCliError } = await import("../../../src/shared/errors");
+    configMocks.readRootConfigurationFile.mockImplementation(() => {
+      throw createCliError(
+        "Invalid configuration file at /tmp/sitecoreai.cli.json.",
+        "CONFIG_INVALID"
+      );
+    });
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(taskMocks.runInit).toHaveBeenCalledWith(expect.objectContaining({ wizard: true }));
+  });
+
+  it("runs init wizard when no command is provided", async () => {
+    process.argv = ["node", "scai"];
+    vi.resetModules();
+    configMocks.readRootConfigurationFile.mockImplementation(() => {
+      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+    });
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(taskMocks.runInit).toHaveBeenCalledWith(expect.objectContaining({ wizard: true }));
+  });
+
+  it("runs login when deploy token is missing", async () => {
+    process.argv = ["node", "scai", "status"];
+    vi.resetModules();
+    keychainMocks.getDeployToken.mockResolvedValue(undefined);
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(taskMocks.runDeployToken).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "demo" })
+    );
+  });
+
+  it("runs login when deploy token is expired", async () => {
+    process.argv = ["node", "scai", "status"];
+    vi.resetModules();
+    configMocks.readRootConfiguration.mockReturnValue({
+      environments: {
+        demo: {
+          deployTokenExpiresIn: 1,
+          deployTokenLastUpdated: new Date(Date.now() - 2_000).toISOString(),
+        },
+      },
+    });
+    keychainMocks.getDeployToken.mockResolvedValue("token");
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(taskMocks.runDeployToken).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "demo" })
+    );
+  });
+
+  it("skips auto-wizard in non-interactive mode", async () => {
+    process.argv = ["node", "scai", "status"];
+    setTty(false);
+    process.env.SITECOREAI_NON_INTERACTIVE = "1";
+    vi.resetModules();
+    configMocks.readRootConfigurationFile.mockImplementation(() => {
+      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+    });
+    await import("../../../src/cli");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(taskMocks.runInit).not.toHaveBeenCalled();
+    expect(loggerState.last?.warn).toHaveBeenCalled();
   });
 });

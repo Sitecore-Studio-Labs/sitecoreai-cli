@@ -46,6 +46,50 @@ export const parseJsonIfPossible = async (response: Response): Promise<unknown> 
   }
 };
 
+export const extractErrorMessage = (body: unknown): string | undefined => {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+  const record = body as Record<string, unknown>;
+  const candidates = [record.detail, record.message, record.title, record.error];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  if (Array.isArray(record.errors)) {
+    const parts = record.errors
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (entry && typeof entry === "object") {
+          const entryRecord = entry as Record<string, unknown>;
+          const entryMessage = entryRecord.message ?? entryRecord.detail ?? entryRecord.error;
+          if (typeof entryMessage === "string") {
+            return entryMessage;
+          }
+        }
+        return undefined;
+      })
+      .filter((value): value is string => Boolean(value));
+    if (parts.length > 0) {
+      return parts.join("; ");
+    }
+  }
+  if (record.errors && typeof record.errors === "object" && !Array.isArray(record.errors)) {
+    try {
+      return JSON.stringify(record.errors);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
 type SpinnerHandle = { succeed: () => void; fail: () => void; stop: () => void };
 
 const activeSpinners = new Set<SpinnerHandle>();
@@ -179,12 +223,7 @@ export const deployRequest = async <T>(
   if (!response.ok) {
     spinner?.fail();
     const body = await parseJsonIfPossible(response);
-    const message =
-      typeof body === "string"
-        ? body
-        : body && typeof body === "object" && "detail" in body
-          ? String((body as { detail?: string }).detail)
-          : undefined;
+    const message = extractErrorMessage(body);
     const sanitized = message ? redactSecrets(message) : undefined;
     throw createCliError(
       sanitized ?? `Deploy API request failed (${response.status})`,

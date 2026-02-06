@@ -117,6 +117,49 @@ describe("runDeployToken", () => {
     logSpy.mockRestore();
   });
 
+  it("uses the selected environment client id for client credentials", async () => {
+    readRootConfigurationFile.mockReturnValue({
+      config: { envProfiles: { demo: {}, other: { clientId: "wrong" } } },
+    } as RootConfigurationFile);
+    readRootConfiguration.mockReturnValue({
+      environments: { demo: { clientId: "right", clientSecret: "secret" } },
+    });
+    requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
+
+    const { runDeployToken } =
+      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    await runDeployToken({ environmentName: "demo", useClientCredentials: true });
+
+    expect(requestClientCredentialsToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "right", clientSecret: "secret" }),
+      undefined
+    );
+    expect(promptSecret).not.toHaveBeenCalled();
+  });
+
+  it("persists the client id for client credentials", async () => {
+    readRootConfigurationFile.mockReturnValue({
+      config: { envProfiles: { demo: {} } },
+    } as RootConfigurationFile);
+    readRootConfiguration.mockReturnValue({
+      environments: { demo: { clientId: "client-123", clientSecret: "secret" } },
+    });
+    requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
+
+    const { runDeployToken } =
+      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    await runDeployToken({ environmentName: "demo", useClientCredentials: true });
+
+    expect(writeRootConfigurationFile).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        envProfiles: {
+          demo: expect.objectContaining({ clientId: "client-123" }),
+        },
+      })
+    );
+  });
+
   it("runs device login when requested and logs user instructions", async () => {
     requestDeviceAuthorization.mockResolvedValue({
       deviceCode: "device",

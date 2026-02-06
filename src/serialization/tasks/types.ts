@@ -67,6 +67,7 @@ export type ConnectOptions = CommonOptions & {
   host?: string;
   ref?: string;
   allowWrite?: boolean;
+  skipDeployLookup?: boolean;
   organizationId?: string;
   tenantId?: string;
   organization?: string;

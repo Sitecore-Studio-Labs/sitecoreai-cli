@@ -2,21 +2,27 @@ import { describe, expect, it, vi, beforeAll, beforeEach } from "vitest";
 
 const fetchOrganization = vi.fn();
 const fetchProjects = vi.fn();
+const fetchProject = vi.fn();
 const fetchProjectEnvironments = vi.fn();
 const fetchEnvironment = vi.fn();
+const createProjectEnvironment = vi.fn();
 const resolveHostFromEnvironment = vi.fn();
 
 vi.mock("../../../../../src/deploy/api", () => ({
   fetchOrganization: (...args: unknown[]) => fetchOrganization(...args),
   fetchProjects: (...args: unknown[]) => fetchProjects(...args),
+  fetchProject: (...args: unknown[]) => fetchProject(...args),
   fetchProjectEnvironments: (...args: unknown[]) => fetchProjectEnvironments(...args),
   fetchEnvironment: (...args: unknown[]) => fetchEnvironment(...args),
+  createProjectEnvironment: (...args: unknown[]) => createProjectEnvironment(...args),
   resolveHostFromEnvironment: (...args: unknown[]) => resolveHostFromEnvironment(...args),
 }));
 
 const promptText = vi.fn();
+const promptConfirm = vi.fn();
 vi.mock("../../../../../src/shared/prompt", () => ({
   promptText: (...args: unknown[]) => promptText(...args),
+  promptConfirm: (...args: unknown[]) => promptConfirm(...args),
 }));
 
 describe("resolveDeployLookup", () => {
@@ -58,6 +64,7 @@ describe("resolveDeployLookup", () => {
       { id: "env-cm", name: "CM", environmentType: "cm", tenantId: "tenant-1" },
       { id: "env-eh", name: "EH", environmentType: "eh" },
     ]);
+    fetchProject.mockResolvedValue({ id: "proj-1", repositoryId: "repo-1" });
     resolveHostFromEnvironment.mockReturnValue("https://cm.host");
 
     const updated = {};
@@ -96,6 +103,7 @@ describe("resolveDeployLookup", () => {
       { id: "env-cm-2", name: "CM Two", environmentType: "cm" },
       { id: "env-eh", name: "EH", environmentType: "eh" },
     ]);
+    fetchProject.mockResolvedValue({ id: "proj-2", repositoryId: "repo-2" });
     resolveHostFromEnvironment.mockReturnValue("https://cm.host");
     promptText.mockResolvedValueOnce("2").mockResolvedValueOnce("1");
 
@@ -133,6 +141,7 @@ describe("resolveDeployLookup", () => {
     fetchProjectEnvironments.mockResolvedValue([
       { id: "env-xp", name: "XP", environmentType: "xp" },
     ]);
+    fetchProject.mockResolvedValue({ id: "proj-1", repositoryId: "repo-1" });
     resolveHostFromEnvironment.mockReturnValue("https://computed.host");
 
     const updated = {};
@@ -268,5 +277,83 @@ describe("resolveDeployLookup", () => {
         logger: { info: vi.fn(), warn: vi.fn() },
       })
     ).rejects.toThrow("Environment ID is required for environment-scoped credentials.");
+  });
+
+  it("creates a combined environment when CM-only is rejected", async () => {
+    fetchOrganization.mockResolvedValue({ id: "org-1", tenantId: "tenant-1" });
+    fetchProjects.mockResolvedValue([{ id: "proj-1", name: "Project One" }]);
+    fetchProject.mockResolvedValue({ id: "proj-1", repositoryId: "repo-1" });
+    fetchProjectEnvironments
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "env-new", name: "Env", environmentType: "combined" }]);
+    createProjectEnvironment.mockResolvedValue({
+      id: "env-new",
+      name: "Env",
+      environmentType: "combined",
+      tenantId: "tenant-1",
+    });
+    resolveHostFromEnvironment.mockReturnValue("https://combined.host");
+    promptConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    promptText.mockResolvedValueOnce("Env").mockResolvedValueOnce("nonprod");
+
+    const updated = {};
+    const result = await resolveDeployLookup({
+      options: {},
+      runWizard: true,
+      deployToken: "token",
+      updated,
+      existing: {},
+      baseEnv: {},
+      host: undefined,
+      projectSelection: "proj-1",
+      environmentSelection: undefined,
+      logger: { info: vi.fn(), warn: vi.fn() },
+    });
+
+    expect(createProjectEnvironment).toHaveBeenCalledWith({ accessToken: "token" }, "proj-1", {
+      name: "Env",
+      tenantType: 0,
+      type: "combined",
+    });
+    expect(result.host).toBe("https://combined.host");
+  });
+
+  it("prompts for an environment ID when project lacks a repository", async () => {
+    fetchOrganization.mockResolvedValue({ id: "org-1", tenantId: "tenant-1" });
+    fetchProjects.mockResolvedValue([{ id: "proj-1", name: "Project One" }]);
+    fetchProject.mockResolvedValue({ id: "proj-1" });
+    fetchProjectEnvironments.mockResolvedValue([]);
+    fetchEnvironment.mockResolvedValue({
+      id: "env-2",
+      projectId: "proj-2",
+      tenantId: "tenant-2",
+      environmentType: "cm",
+    });
+    resolveHostFromEnvironment.mockReturnValue("https://env.host");
+    promptConfirm.mockResolvedValue(false);
+    promptText.mockResolvedValue("env-2");
+
+    const updated = {};
+    const result = await resolveDeployLookup({
+      options: {},
+      runWizard: true,
+      deployToken: "token",
+      updated,
+      existing: {},
+      baseEnv: {},
+      host: undefined,
+      projectSelection: "proj-1",
+      environmentSelection: undefined,
+      logger: { info: vi.fn(), warn: vi.fn() },
+    });
+
+    expect(fetchEnvironment).toHaveBeenCalledWith({ accessToken: "token" }, "env-2");
+    expect(updated).toMatchObject({
+      environmentId: "env-2",
+      projectId: "proj-2",
+      tenantId: "tenant-2",
+      environmentType: "cm",
+    });
+    expect(result.host).toBe("https://env.host");
   });
 });

@@ -16,6 +16,12 @@ export const createInitCommand = (): Command => {
     .addOption(new Option("--ref <name>", "Reference an existing environment for auth"))
     .addOption(new Option("--allow-write", "Allow write operations for this environment"))
     .addOption(new Option("--wizard", "Run the interactive setup wizard"))
+    .addOption(
+      new Option(
+        "--skip-deploy-lookup",
+        "Skip Deploy API lookups and prompt for the CM host directly"
+      )
+    )
     .addOption(new Option("--organization-id <id>", "Sitecore organization ID"))
     .addOption(new Option("--tenant-id <id>", "Sitecore tenant ID"))
     .addOption(new Option("--organization <name>", "Organization name or ID (Deploy API)"))

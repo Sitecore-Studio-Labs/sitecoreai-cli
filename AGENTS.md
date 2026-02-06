@@ -24,6 +24,8 @@ Configure an environment:
 npm run dev -- init --environment-name demo --cm https://<cm-host>
 ```
 
+Use `--skip-deploy-lookup` to avoid Deploy API lookups and prompt for the CM host.
+
 Check configured environments:
 
 ```
@@ -45,6 +47,12 @@ npm run dev -- deploy projects list
 npm run dev -- deploy environments list --project <id-or-name> --type cm
 ```
 
+Interactive shell (TTY only):
+
+```
+npm run dev -- shell
+```
+
 ## Authentication Notes
 
 - Deploy API uses `deployToken` (stored per environment).
@@ -56,3 +64,4 @@ npm run dev -- deploy environments list --project <id-or-name> --type cm
 
 - Writes require `allowWrite: true` in the environment config.
 - Use `--what-if` on serialization commands to preview changes.
+- In CI/non-TTY, prefer `--non-interactive` and set `SITECOREAI_AUTO_WIZARD=0`.

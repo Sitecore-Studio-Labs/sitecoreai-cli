@@ -1,4 +1,4 @@
-import { parseJsonIfPossible } from "./common";
+import { extractErrorMessage, parseJsonIfPossible } from "./common";
 
 const DEFAULT_DEPLOY_MONITORING_BASE = "https://xmcloud-monitoring-api.sitecorecloud.io";
 
@@ -16,12 +16,7 @@ export const fetchDeploymentLogs = async (
   });
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
-    const message =
-      typeof body === "string"
-        ? body
-        : body && typeof body === "object" && "detail" in body
-          ? String((body as { detail?: string }).detail)
-          : undefined;
+    const message = extractErrorMessage(body);
     throw new Error(message ?? `Deploy API request failed (${response.status})`);
   }
   return (await parseJsonIfPossible(response)) as unknown;

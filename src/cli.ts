@@ -10,6 +10,7 @@ import { createDeployCommand } from "./commands/deploy";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
+import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
 import { showBanner } from "./shared/style";
 import { Logger } from "./shared/logger";
@@ -25,85 +26,235 @@ import { redactSecrets } from "./shared/redact";
 import { toCliError, withHint } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
+import { readRootConfiguration, readRootConfigurationFile } from "./config";
+import { runDeployToken, runInit } from "./serialization/tasks";
+import { getDeployToken } from "./shared/keychain";
 
-const program = new Command();
+type AutoWizardNeed =
+  | { kind: "init"; envName?: string; hint: string }
+  | { kind: "login"; envName: string; hint: string };
 
-program
-  .name("scai")
-  .description("SitecoreAI Deploy & Sync CLI for serialization and deploy workflows")
-  .version(packageJson.version, "-V, --version", "Display the CLI version");
+const toBoolean = (value?: string): boolean | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+};
 
-program.addCommand(createConfigCommand());
-program.addCommand(createDeployCommand());
-program.addCommand(createHistoryCommand());
-program.addCommand(createInitCommand());
-program.addCommand(createLoginCommand());
-program.addCommand(createLogoutCommand());
-program.addCommand(createSerializationCommand());
-program.addCommand(createStatusCommand());
-program.addCommand(createTelemetryCommand());
+type DeployTokenTiming = {
+  deployTokenExpiresIn?: number | null;
+  deployTokenLastUpdated?: string | null;
+};
 
-program.showHelpAfterError(true);
-program.showSuggestionAfterError(true);
+const isDeployTokenExpired = (env?: DeployTokenTiming): boolean => {
+  if (!env?.deployTokenExpiresIn || !env.deployTokenLastUpdated) {
+    return false;
+  }
+  const lastUpdated = Date.parse(env.deployTokenLastUpdated);
+  if (Number.isNaN(lastUpdated)) {
+    return false;
+  }
+  return Date.now() >= lastUpdated + env.deployTokenExpiresIn * 1000;
+};
 
-const argv = normalizeArgs(process.argv);
-const args = argv.slice(2);
-const command = args.join(" ") || "(no command)";
-const telemetryCommand = formatTelemetryCommand(args);
-const configPath = resolveConfigPathFromArgs(argv);
-const telemetryConfigPath = configPath ?? process.cwd();
-const startTime = Date.now();
-setTelemetryVersion(packageJson.version);
-const outputOptions = resolveOutputOptionsFromArgs(argv);
-const nonInteractive = args.includes("--non-interactive");
-if (nonInteractive || !process.stdin.isTTY || !process.stdout.isTTY) {
-  process.env.SITECOREAI_NON_INTERACTIVE = "1";
-}
-if (outputOptions.quiet) {
-  process.env.SITECOREAI_QUIET = "1";
-}
-if (outputOptions.json) {
-  process.env.SITECOREAI_JSON = "1";
-}
-if (args.includes("--trace") || args.includes("-t")) {
-  process.env.SITECOREAI_TRACE_HTTP = "1";
-}
-showBanner(packageJson.version);
+const resolveEnvironmentNameFromArgs = (args: string[]): string | undefined => {
+  const index = args.findIndex((arg) => arg === "--environment-name" || arg === "-n");
+  if (index >= 0 && args[index + 1]) {
+    return args[index + 1];
+  }
+  const inline = args.find((arg) => arg.startsWith("--environment-name=") || arg.startsWith("-n="));
+  if (inline) {
+    return inline.split("=").slice(1).join("=");
+  }
+  return undefined;
+};
 
-const run = async (): Promise<void> => {
-  await ensureTelemetryConsent(telemetryConfigPath);
-  void Promise.resolve(ensureHistoryFile()).catch(() => {});
-  void Promise.resolve(
-    recordHistory({
-      event: "start",
-      command,
-      args,
-      cwd: process.cwd(),
-    })
-  ).catch(() => {});
-  void Promise.resolve(
-    recordTelemetry({
-      event: "command_start",
-      command: telemetryCommand,
-      args,
-      configPath: telemetryConfigPath,
-    })
-  ).catch(() => {});
+const shouldSkipAutoWizard = (args: string[]): boolean => {
+  if (toBoolean(process.env.SITECOREAI_AUTO_WIZARD) === false) {
+    return true;
+  }
+  if (args.some((arg) => ["--help", "-h", "--version", "-V"].includes(arg))) {
+    return true;
+  }
+  const commandName = args[0];
+  if (["init", "login", "logout", "telemetry", "config", "history"].includes(commandName)) {
+    return true;
+  }
+  return false;
+};
 
-  await program.parseAsync(argv);
-  await recordHistory({
-    event: "success",
-    command,
-    args,
-    cwd: process.cwd(),
-  });
-  await recordTelemetry({
-    event: "command_success",
-    command: telemetryCommand,
-    args,
-    durationMs: Date.now() - startTime,
-    configPath: telemetryConfigPath,
-  });
+const resolveAutoWizardNeed = async (
+  args: string[],
+  configBasePath: string
+): Promise<AutoWizardNeed | null> => {
+  const envFromArgs = resolveEnvironmentNameFromArgs(args);
+  let configFile: ReturnType<typeof readRootConfigurationFile> | null = null;
+  try {
+    configFile = readRootConfigurationFile(configBasePath);
+  } catch (error) {
+    const cliError = toCliError(error);
+    if (cliError.code === "CONFIG_NOT_FOUND") {
+      return {
+        kind: "init",
+        envName: envFromArgs,
+        hint: "Run 'scai init' to create a configuration file.",
+      };
+    }
+    if (cliError.code === "CONFIG_INVALID") {
+      return {
+        kind: "init",
+        envName: envFromArgs,
+        hint: "Run 'scai init' to repair the configuration file.",
+      };
+    }
+    return null;
+  }
+
+  const envProfiles = configFile.config.envProfiles ?? {};
+  const envNames = Object.keys(envProfiles);
+  if (envNames.length === 0) {
+    return {
+      kind: "init",
+      envName: envFromArgs,
+      hint: "Run 'scai init' to configure an environment.",
+    };
+  }
+
+  const envName =
+    envFromArgs ??
+    configFile.config.defaultEnvProfile ??
+    (envNames.length === 1 ? envNames[0] : undefined);
+  if (!envName || !envProfiles[envName]) {
+    return {
+      kind: "init",
+      envName,
+      hint: "Run 'scai init' to configure an environment.",
+    };
+  }
+
+  let resolvedEnv: DeployTokenTiming | undefined;
+  try {
+    const root = readRootConfiguration(configBasePath, envName);
+    resolvedEnv = root.environments[envName] ?? envProfiles[envName];
+  } catch (error) {
+    const cliError = toCliError(error);
+    if (cliError.code === "CONFIG_INVALID") {
+      return {
+        kind: "init",
+        envName,
+        hint: "Run 'scai init' to repair the configuration file.",
+      };
+    }
+    return null;
+  }
+
+  if (process.env.SITECOREAI_DEPLOY_TOKEN) {
+    return null;
+  }
+  const deployToken = await getDeployToken(envName);
+  const tokenExpired = isDeployTokenExpired(resolvedEnv);
+  if (!deployToken || tokenExpired) {
+    return {
+      kind: "login",
+      envName,
+      hint: `Run 'scai login -n ${envName}' to authenticate.`,
+    };
+  }
+
+  return null;
+};
+
+type RunCliOptions = {
+  baseEnv?: Record<string, string | undefined>;
+  skipBanner?: boolean;
+  shellMode?: boolean;
+};
+
+type RunCli = (argv: string[], options?: RunCliOptions) => Promise<void>;
+
+const applyBaseEnv = (snapshot?: Record<string, string | undefined>): void => {
+  if (!snapshot) {
+    return;
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+};
+
+const runAutoWizardIfNeeded = async (
+  args: string[],
+  configPath: string | undefined,
+  outputOptions: ReturnType<typeof resolveOutputOptionsFromArgs>
+): Promise<void> => {
+  if (shouldSkipAutoWizard(args)) {
+    return;
+  }
+  const configBasePath = configPath ?? process.cwd();
+  const need = await resolveAutoWizardNeed(args, configBasePath);
+  if (!need) {
+    return;
+  }
+  const logger = new Logger(
+    false,
+    false,
+    Boolean(outputOptions.json),
+    Boolean(outputOptions.quiet),
+    outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
+  );
+  const isInteractive =
+    process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
+  if (!isInteractive || outputOptions.json || outputOptions.quiet) {
+    logger.warn(`Auto-setup skipped. ${need.hint}`);
+    return;
+  }
+  if (need.kind === "init") {
+    logger.info("Launching setup wizard to configure SitecoreAI.", "cyan");
+    await runInit({
+      config: configBasePath,
+      environmentName: need.envName,
+      wizard: true,
+    });
+    return;
+  }
+  logger.info(`Authenticating environment '${need.envName}'.`, "cyan");
+  await runDeployToken({ config: configBasePath, environmentName: need.envName });
+};
+
+const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): Command => {
+  const program = new Command();
+  program
+    .name("scai")
+    .description("SitecoreAI Deploy & Sync CLI for serialization and deploy workflows")
+    .version(packageJson.version, "-V, --version", "Display the CLI version");
+
+  program.addCommand(createConfigCommand());
+  program.addCommand(createDeployCommand());
+  program.addCommand(createHistoryCommand());
+  program.addCommand(createInitCommand());
+  program.addCommand(createLoginCommand());
+  program.addCommand(createLogoutCommand());
+  program.addCommand(createSerializationCommand());
+  program.addCommand(createStatusCommand());
+  program.addCommand(createTelemetryCommand());
+  program.addCommand(createShellCommand(runCli));
+
+  program.showHelpAfterError(true);
+  program.showSuggestionAfterError(true);
+  if (options.shellMode) {
+    program.exitOverride();
+  }
+  return program;
 };
 
 const guessHint = (message: string): string | undefined => {
@@ -137,55 +288,138 @@ const guessHint = (message: string): string | undefined => {
   return undefined;
 };
 
-run().catch((error) => {
-  void Promise.resolve(
-    recordHistory({
-      event: "error",
+const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
+  const argv = normalizeArgs(inputArgv);
+  const args = argv.slice(2);
+  const command = args.join(" ") || "(no command)";
+  const telemetryCommand = formatTelemetryCommand(args);
+  const configPath = resolveConfigPathFromArgs(argv);
+  const telemetryConfigPath = configPath ?? process.cwd();
+  const startTime = Date.now();
+  setTelemetryVersion(packageJson.version);
+  const outputOptions = resolveOutputOptionsFromArgs(argv);
+
+  applyBaseEnv(options.baseEnv);
+  const nonInteractive = args.includes("--non-interactive");
+  if (nonInteractive || !process.stdin.isTTY || !process.stdout.isTTY) {
+    process.env.SITECOREAI_NON_INTERACTIVE = "1";
+  }
+  if (outputOptions.quiet) {
+    process.env.SITECOREAI_QUIET = "1";
+  }
+  if (outputOptions.json) {
+    process.env.SITECOREAI_JSON = "1";
+  }
+  if (args.includes("--trace") || args.includes("-t")) {
+    process.env.SITECOREAI_TRACE_HTTP = "1";
+  }
+  if (!options.skipBanner) {
+    showBanner(packageJson.version);
+  }
+
+  const program = createProgram(runCli, { shellMode: options.shellMode });
+  try {
+    await runAutoWizardIfNeeded(args, configPath, outputOptions);
+    await ensureTelemetryConsent(telemetryConfigPath);
+    void Promise.resolve(ensureHistoryFile()).catch(() => {});
+    void Promise.resolve(
+      recordHistory({
+        event: "start",
+        command,
+        args,
+        cwd: process.cwd(),
+      })
+    ).catch(() => {});
+    void Promise.resolve(
+      recordTelemetry({
+        event: "command_start",
+        command: telemetryCommand,
+        args,
+        configPath: telemetryConfigPath,
+      })
+    ).catch(() => {});
+
+    await program.parseAsync(argv);
+    await recordHistory({
+      event: "success",
       command,
       args,
       cwd: process.cwd(),
-      error: error instanceof Error ? error.message : String(error),
-    })
-  ).catch(() => {});
-  void Promise.resolve(
-    recordTelemetry({
-      event: "command_error",
+    });
+    await recordTelemetry({
+      event: "command_success",
       command: telemetryCommand,
       args,
       durationMs: Date.now() - startTime,
-      error: error instanceof Error ? error.message : String(error),
       configPath: telemetryConfigPath,
-    })
-  ).catch(() => {});
-  const baseLogger = new Logger(
-    false,
-    false,
-    Boolean(outputOptions.json),
-    Boolean(outputOptions.quiet),
-    outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
-  );
-  const cliError = toCliError(error);
-  const redactedMessage = redactSecrets(cliError.message);
-  const hint = cliError.hint ?? guessHint(redactedMessage);
-  const finalError = hint ? withHint(cliError, hint) : cliError;
-  if (baseLogger.isJson()) {
-    baseLogger.json({
-      message: redactedMessage,
-      code: finalError.code,
-      hint: finalError.hint,
-      details: finalError.details,
-      exitCode: finalError.exitCode,
     });
-  } else {
-    baseLogger.error(redactedMessage);
-    if (finalError.details && finalError.details.length > 0) {
-      for (const detail of finalError.details) {
-        baseLogger.verbose(`  - ${detail}`);
+  } catch (error) {
+    if (
+      options.shellMode &&
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      error.code.startsWith("commander.")
+    ) {
+      if (error.code === "commander.unknownCommand") {
+        console.log("Unknown command. Available commands:\n");
+        program.outputHelp();
+      }
+      process.exitCode = 0;
+      return;
+    }
+    void Promise.resolve(
+      recordHistory({
+        event: "error",
+        command,
+        args,
+        cwd: process.cwd(),
+        error: error instanceof Error ? error.message : String(error),
+      })
+    ).catch(() => {});
+    void Promise.resolve(
+      recordTelemetry({
+        event: "command_error",
+        command: telemetryCommand,
+        args,
+        durationMs: Date.now() - startTime,
+        error: error instanceof Error ? error.message : String(error),
+        configPath: telemetryConfigPath,
+      })
+    ).catch(() => {});
+    const baseLogger = new Logger(
+      false,
+      false,
+      Boolean(outputOptions.json),
+      Boolean(outputOptions.quiet),
+      outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
+    );
+    const cliError = toCliError(error);
+    const redactedMessage = redactSecrets(cliError.message);
+    const hint = cliError.hint ?? guessHint(redactedMessage);
+    const finalError = hint ? withHint(cliError, hint) : cliError;
+    if (baseLogger.isJson()) {
+      baseLogger.json({
+        message: redactedMessage,
+        code: finalError.code,
+        hint: finalError.hint,
+        details: finalError.details,
+        exitCode: finalError.exitCode,
+      });
+    } else {
+      baseLogger.error(redactedMessage);
+      if (finalError.details && finalError.details.length > 0) {
+        for (const detail of finalError.details) {
+          baseLogger.verbose(`  - ${detail}`);
+        }
+      }
+      if (finalError.hint) {
+        baseLogger.warn(`Hint: ${finalError.hint}`);
       }
     }
-    if (finalError.hint) {
-      baseLogger.warn(`Hint: ${finalError.hint}`);
-    }
+    process.exitCode = finalError.exitCode;
   }
-  process.exitCode = finalError.exitCode;
-});
+};
+
+void runCli(process.argv);

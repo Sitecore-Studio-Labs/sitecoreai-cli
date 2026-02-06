@@ -34,6 +34,13 @@ scai init --wizard
 ```
 
 Running `init` without flags defaults to the wizard. Provide flags to skip prompts.
+Use `--skip-deploy-lookup` to avoid Deploy API lookups and just enter the CM host.
+
+Auto-setup on startup:
+
+- When you run a command and no config or auth token is found, the CLI launches the init/login wizard.
+- In non-interactive/CI mode, it skips auto-setup and prints a hint instead.
+- Disable auto-setup with `SITECOREAI_AUTO_WIZARD=0`.
 
 Check configured environments:
 
@@ -69,6 +76,8 @@ scai deploy deployments source --id <deploymentId> --directory ./my-app
 
 For non-interactive usage, authentication flows, and CM vs Editing Host guidance, see
 [`AGENT_CI.md`](./AGENT_CI.md).
+
+Future enhancements: see [`ROADMAP.md`](./ROADMAP.md).
 
 Agent metadata and skills:
 

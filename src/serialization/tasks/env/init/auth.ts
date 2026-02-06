@@ -30,6 +30,7 @@ type ResolveDeployAuthResult = {
   loginAuthority: string;
   loginClientId?: string;
   wantsClientCredentials: boolean;
+  shouldPersistClientId: boolean;
 };
 
 export const resolveDeployAuth = async (
@@ -77,6 +78,9 @@ export const resolveDeployAuth = async (
   } else if (!loginClientId) {
     loginClientId = clientCredentialsClientId ?? "";
   }
+  const shouldPersistClientId = wantsClientCredentials
+    ? Boolean(loginClientId)
+    : Boolean(options.clientId);
   if (needsDeployToken && wantsClientCredentials && !loginClientId) {
     if (!isInteractive) {
       throw createCliError("Client ID is required for client credentials.", "INPUT_INVALID", {
@@ -174,5 +178,6 @@ export const resolveDeployAuth = async (
     loginAuthority,
     loginClientId,
     wantsClientCredentials,
+    shouldPersistClientId,
   };
 };

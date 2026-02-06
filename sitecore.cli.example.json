@@ -15,17 +15,53 @@
     "versionComparisonEnabled": true,
     "apiClientTimeoutInMinutes": 5
   },
-  "defaultEnvProfile": "example",
+  "defaultEnvProfile": "client-credentials",
   "envProfiles": {
-    "example": {
-      "deployToken": "",
-      "deployTokenExpiresIn": 86174,
-      "deployTokenLastUpdated": "",
+    "client-credentials": {
+      "host": "{your-sitecore-instance}.sitecorecloud.io",
+      "environmentType": "cm",
+      "allowWrite": false,
       "organizationId": "",
+      "tenantId": "",
       "projectId": "",
       "environmentId": "",
+      "editingHostEnvironmentIds": [],
+      "authority": "https://auth.sitecorecloud.io",
+      "audience": "https://api.sitecorecloud.io",
+      "clientId": "{client-id}",
+      "clientSecret": "{client-secret}",
+      "useClientCredentials": true,
+      "cacheAuthenticationToken": true,
+      "variables": {
+        "EXAMPLE_VARIABLE": "value"
+      }
+    },
+    "deploy-login": {
+      "host": "{your-sitecore-instance}.sitecorecloud.io",
       "environmentType": "cm",
-      "host": "{your-sitecore-instance}.sitecorecloud.io"
+      "allowWrite": false,
+      "organizationId": "",
+      "tenantId": "",
+      "projectId": "",
+      "environmentId": "",
+      "editingHostEnvironmentIds": [],
+      "authority": "https://auth.sitecorecloud.io",
+      "audience": "https://api.sitecorecloud.io",
+      "accessToken": "{cached-in-keychain}",
+      "refreshToken": "{cached-in-keychain}",
+      "refreshTokenParameters": {
+        "grant_type": "refresh_token",
+        "scope": "openid profile email"
+      },
+      "expiresIn": null,
+      "lastUpdated": null,
+      "deployToken": "{cached-in-keychain}",
+      "deployTokenExpiresIn": null,
+      "deployTokenLastUpdated": null,
+      "cacheAuthenticationToken": true,
+      "variables": {
+        "EXAMPLE_VARIABLE": "value"
+      }
     }
   }
 }

@@ -126,6 +126,7 @@ describe("init task runner", () => {
     });
     const config = JSON.parse(await fs.readFile(path.join(rootDir, "sitecoreai.cli.json"), "utf8"));
     expect(config.envProfiles.demo).toBeDefined();
+    expect(config.envProfiles.demo.clientId).toBe("client-id");
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
@@ -159,6 +160,20 @@ describe("init task runner", () => {
     });
     Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
+    await fs.rm(rootDir, { recursive: true, force: true });
+  });
+
+  it("does not persist the default device client id", async () => {
+    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-init-"));
+    await fs.writeFile(path.join(rootDir, "module.module.json"), "{}", "utf8");
+    const tasks = await import("../../../../src/serialization/tasks");
+    await tasks.runInit({
+      config: rootDir,
+      environmentName: "demo",
+      host: "https://cm.example",
+    });
+    const config = JSON.parse(await fs.readFile(path.join(rootDir, "sitecoreai.cli.json"), "utf8"));
+    expect(config.envProfiles.demo.clientId).toBeUndefined();
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 });

@@ -1,14 +1,18 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", () => ({
-  DEFAULT_DEPLOY_API_BASE: "https://xmclouddeploy-api.sitecorecloud.io",
-  DEFAULT_MONITORING_API_BASE: "https://xmcloud-monitoring-api.sitecorecloud.io",
-  deployRequest: vi.fn().mockResolvedValue({}),
-  parseJsonIfPossible: vi.fn().mockResolvedValue({ ok: true }),
-  withOrganizationHeaders: vi.fn((id?: string) =>
-    id ? { "x-organization-id": id, "x-org-id": id } : undefined
-  ),
-}));
+vi.mock("../../../../src/deploy/api/common", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/deploy/api/common")>();
+  return {
+    ...actual,
+    DEFAULT_DEPLOY_API_BASE: "https://xmclouddeploy-api.sitecorecloud.io",
+    DEFAULT_MONITORING_API_BASE: "https://xmcloud-monitoring-api.sitecorecloud.io",
+    deployRequest: vi.fn().mockResolvedValue({}),
+    parseJsonIfPossible: vi.fn().mockResolvedValue({ ok: true }),
+    withOrganizationHeaders: vi.fn((id?: string) =>
+      id ? { "x-organization-id": id, "x-org-id": id } : undefined
+    ),
+  };
+});
 
 let common: typeof import("../../../../src/deploy/api/common");
 let api: typeof import("../../../../src/deploy/api/logs");
@@ -81,7 +85,7 @@ describe("logs api", () => {
   it("fetchLogFile falls back to status message on unknown errors", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("bad", { status: 403 }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.mocked(common.parseJsonIfPossible).mockResolvedValueOnce({ message: "nope" });
+    vi.mocked(common.parseJsonIfPossible).mockResolvedValueOnce({ errors: [] });
 
     await expect(
       api.fetchLogFile({ accessToken: "token" }, "env-1", "app.log", true)

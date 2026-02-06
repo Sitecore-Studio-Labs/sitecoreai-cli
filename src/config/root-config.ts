@@ -18,7 +18,16 @@ export const readRootConfigurationFile = (
 ): { rootPath: string; rootDir: string; config: RootConfigurationFile } => {
   const rootPath = resolveRootConfigurationPath(configPath);
   const rootDir = path.dirname(rootPath);
-  const rootJson = readJsonFile<RootConfigurationFile>(rootPath);
+  let rootJson: RootConfigurationFile;
+  try {
+    rootJson = readJsonFile<RootConfigurationFile>(rootPath);
+  } catch (error) {
+    const details = error instanceof Error && error.message ? [error.message] : undefined;
+    throw createCliError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
+      hint: "Fix the configuration or re-run 'scai init' to regenerate it.",
+      details,
+    });
+  }
   const valid = validateRootConfig(rootJson);
   if (!valid) {
     const details = validateRootConfig.errors

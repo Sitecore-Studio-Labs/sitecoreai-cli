@@ -3,6 +3,7 @@ import {
   DeployApiClientOptions,
   DeployQueryValueList,
   deployRequest,
+  extractErrorMessage,
   parseJsonIfPossible,
   withOrganizationHeaders,
 } from "./common";
@@ -96,12 +97,7 @@ export const uploadDeploymentSource = async (
 
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
-    const message =
-      typeof body === "string"
-        ? body
-        : body && typeof body === "object" && "detail" in body
-          ? String((body as { detail?: string }).detail)
-          : undefined;
+    const message = extractErrorMessage(body);
     throw createCliError(
       message ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"

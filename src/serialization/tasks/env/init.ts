@@ -8,7 +8,7 @@ import { assertValidHost } from "@/shared/validate";
 import { resolveTargetPath, writeConfigTemplate } from "@/shared/config-template";
 import { setDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptText } from "@/shared/prompt";
-import { createCliError } from "@/shared/errors";
+import { createCliError, toCliError } from "@/shared/errors";
 import { applyIfDefined, inputError, toLogger } from "../shared";
 import type { ConnectOptions } from "../types";
 import { resolveDeployAuth } from "./init/auth";
@@ -63,7 +63,33 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     writeConfigTemplate(targetPath);
     logger.info(`Created ${targetPath}`, "green");
   }
-  const rootConfigFile = readRootConfigurationFile(configPath);
+  let rootConfigFile: ReturnType<typeof readRootConfigurationFile>;
+  try {
+    rootConfigFile = readRootConfigurationFile(configPath);
+  } catch (error) {
+    const cliError = toCliError(error);
+    if (cliError.code === "CONFIG_INVALID" && runWizard && isInteractive) {
+      const recreate = await promptConfirm(
+        `Configuration file at ${targetPath} is invalid. Recreate it?`,
+        false
+      );
+      if (!recreate) {
+        logger.info("Init cancelled. No changes were made.");
+        return;
+      }
+      if (fsSync.existsSync(targetPath)) {
+        const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+        const backupPath = `${targetPath}.invalid-${timestamp}`;
+        fsSync.renameSync(targetPath, backupPath);
+        logger.warn(`Backed up invalid config to ${backupPath}`);
+      }
+      writeConfigTemplate(targetPath);
+      logger.info(`Recreated ${targetPath}`, "green");
+      rootConfigFile = readRootConfigurationFile(configPath);
+    } else {
+      throw error;
+    }
+  }
   const envProfiles = rootConfigFile.config.envProfiles ?? {};
   let root = readRootConfiguration(configPath, envName);
   let existing = envProfiles[envName] ?? {};
@@ -151,8 +177,13 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   let host = options.cm ?? options.host ?? existing.host;
   let projectSelection = options.project;
   let environmentSelection = options.environment;
+  const skipDeployLookup =
+    Boolean(options.skipDeployLookup) || process.env.SITECOREAI_SKIP_DEPLOY_LOOKUP === "1";
   let needsDeployLookup = Boolean(options.organization || projectSelection || environmentSelection);
-  if (runWizard && !needsDeployLookup) {
+  if (skipDeployLookup) {
+    needsDeployLookup = false;
+  }
+  if (runWizard && !needsDeployLookup && !skipDeployLookup) {
     needsDeployLookup = true;
   }
   let needsDeployToken =
@@ -176,6 +207,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   const loginAuthority = auth.loginAuthority;
   const loginClientId = auth.loginClientId;
   const wantsClientCredentials = auth.wantsClientCredentials;
+  const shouldPersistClientId = auth.shouldPersistClientId;
 
   if (needsDeployLookup) {
     const lookup = await resolveDeployLookup({
@@ -214,8 +246,12 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   if (!updated.authority) {
     updated.authority = loginAuthority;
   }
-  if (!updated.clientId && loginClientId) {
-    updated.clientId = loginClientId;
+  if (loginClientId) {
+    if (wantsClientCredentials) {
+      updated.clientId = loginClientId;
+    } else if (!updated.clientId && shouldPersistClientId) {
+      updated.clientId = loginClientId;
+    }
   }
   applyIfDefined(updated, "ref", options.ref);
   if (options.allowWrite !== undefined) {

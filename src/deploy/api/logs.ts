@@ -2,6 +2,7 @@ import {
   DEFAULT_MONITORING_API_BASE,
   DeployApiClientOptions,
   deployRequest,
+  extractErrorMessage,
   parseJsonIfPossible,
   withOrganizationHeaders,
 } from "./common";
@@ -44,12 +45,7 @@ export const fetchLogFile = async (
   });
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
-    const message =
-      typeof body === "string"
-        ? body
-        : body && typeof body === "object" && "detail" in body
-          ? String((body as { detail?: string }).detail)
-          : undefined;
+    const message = extractErrorMessage(body);
     throw new Error(message ?? `Deploy API request failed (${response.status})`);
   }
   const contentType = response.headers.get("content-type") ?? undefined;

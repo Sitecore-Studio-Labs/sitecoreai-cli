@@ -41,13 +41,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   const deviceDefaultClientId =
     options.clientId ?? process.env.SITECOREAI_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID;
   const clientCredentialsDefaultClientId =
-    options.clientId ??
-    baseEnv.clientId ??
-    process.env.SITECOREAI_CLIENT_ID ??
-    Object.values(envProfiles)
-      .map((env) => env.clientId)
-      .find((value): value is string => Boolean(value)) ??
-    DEFAULT_PUBLIC_CLIENT_ID;
+    options.clientId ?? baseEnv.clientId ?? process.env.SITECOREAI_CLIENT_ID;
   let wantsClientCredentials = Boolean(
     options.useClientCredentials || baseEnv.useClientCredentials
   );
@@ -161,6 +155,9 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     deployTokenExpiresIn: token.expiresIn ?? null,
     deployTokenLastUpdated: new Date().toISOString(),
   };
+  if (wantsClientCredentials && clientId) {
+    updated.clientId = clientId;
+  }
   envProfiles[envName] = updated;
   rootConfigFile.config.envProfiles = envProfiles;
   writeRootConfigurationFile(configPath, rootConfigFile.config);

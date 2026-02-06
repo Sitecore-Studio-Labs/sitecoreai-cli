@@ -1,11 +1,15 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", () => ({
-  DEFAULT_DEPLOY_API_BASE: "https://xmclouddeploy-api.sitecorecloud.io",
-  deployRequest: vi.fn().mockResolvedValue({}),
-  parseJsonIfPossible: vi.fn().mockResolvedValue({ ok: true }),
-  withOrganizationHeaders: vi.fn(() => undefined),
-}));
+vi.mock("../../../../src/deploy/api/common", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/deploy/api/common")>();
+  return {
+    ...actual,
+    DEFAULT_DEPLOY_API_BASE: "https://xmclouddeploy-api.sitecorecloud.io",
+    deployRequest: vi.fn().mockResolvedValue({}),
+    parseJsonIfPossible: vi.fn().mockResolvedValue({ ok: true }),
+    withOrganizationHeaders: vi.fn(() => undefined),
+  };
+});
 
 let common: typeof import("../../../../src/deploy/api/common");
 let api: typeof import("../../../../src/deploy/api/deployments");
@@ -135,7 +139,7 @@ describe("deployments api", () => {
   it("uploadDeploymentSource falls back to status message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("bad", { status: 403 }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.mocked(common.parseJsonIfPossible).mockResolvedValueOnce({ message: "nope" });
+    vi.mocked(common.parseJsonIfPossible).mockResolvedValueOnce({ errors: [] });
     await expect(
       api.uploadDeploymentSource({ accessToken: "token" }, "dep-1", Buffer.from("zip"))
     ).rejects.toThrow("Deploy API request failed (403)");

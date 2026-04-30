@@ -60,10 +60,13 @@ export {
 // Compiler ----------------------------------------------------------------
 export {
   compileComponentTemplateRecipe,
+  compileContentItemRecipe,
   compileContentTemplateRecipe,
   compilePageDesignRecipe,
   compilePartialDesignRecipe,
   compileRecipe,
+  compileRecipeSet,
+  TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   type CompileContext,
 } from "./compile";
 

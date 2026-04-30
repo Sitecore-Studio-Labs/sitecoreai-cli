@@ -26,7 +26,7 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "./ir/operations";
-import { defaultPolicyForRecipe } from "./policy";
+import { defaultPolicyForRecipe, policyFor } from "./policy";
 import {
   COMPOSITION_FIELDS,
   DEFAULT_DEVICE_ID,
@@ -43,6 +43,9 @@ import {
 import {
   type ComponentTemplateRecipe,
   ComponentTemplateRecipeSchema,
+  type ContentFieldValue,
+  type ContentItemRecipe,
+  ContentItemRecipeSchema,
   type ContentTemplateRecipe,
   ContentTemplateRecipeSchema,
   type FieldDefinition,
@@ -93,6 +96,13 @@ export interface CompileContext {
    * orchestrator pipeline-step provides at runtime.
    */
   pageDesignsRoot?: string;
+  /**
+   * Phase 4: required for `ContentItemRecipe` compilation. Where shared
+   * content items land — typically `/sitecore/content/<tenant>/<site>/Data`
+   * or a sub-bucket for SXA sites. ContentItemRecipes encode `kind: "shared"`
+   * datasource targets referenced from partial / page design layouts.
+   */
+  contentItemsRoot?: string;
 }
 
 const PARAMS_SECTION_NAME = "Parameters";
@@ -291,19 +301,19 @@ export function compilePartialDesignRecipe(
 /**
  * Compile a `PageDesignRecipe` to an Operation IR.
  *
- * Emits up to four ops:
+ * Emits up to three ops:
  *   1. `CreateItem` for the page-design item (SXA Page Design template)
  *   2. `SetField(PartialDesigns)` — pipe-separated GUID list of partials
  *   3. `SetField(__Renderings)` — only when recipe.layout is non-empty
- *   4. `SetField(TemplatesMapping)` on the Page Designs root — one op
- *      per recipe; the executor merges contributions from sibling page
- *      designs in the same push (read-modify-write on the URL-string).
  *
- * The Page Designs root is a tenant-existing item, not created by any
- * recipe. The op references it via `PAGE_DESIGNS_ROOT_REF_KEY` — the
- * orchestrator pipeline-step seeds `crossRecipeRefs[<that-key>] =
- * context.pageDesignsRoot` at execute time, and the executor's
- * pre-seed step resolves it to the actual Sitecore itemId.
+ * The recipe's `appliesTo` contributions to the Page Designs root's
+ * `TemplatesMapping` field are NOT emitted here — that field is
+ * cross-recipe (every page design contributes a slice) and a per-recipe
+ * `kind: "string"` write would full-replace under the executor's write
+ * semantics, with each page design overwriting its siblings. Use
+ * `compileRecipeSet` (below) to compile a coherent set of recipes —
+ * it aggregates `appliesTo` contributions across every page-design
+ * recipe in the set into one combined IR.
  */
 export function compilePageDesignRecipe(
   input: PageDesignRecipe,
@@ -370,21 +380,91 @@ export function compilePageDesignRecipe(
     }
   }
 
-  if (recipe.appliesTo.length > 0) {
-    const designGuid = itemRefKey;
-    const mapping = encodeTemplatesMapping(
-      recipe.appliesTo.map((tplHandle) => ({
-        templateGuid: templateId(tplHandle),
-        designGuid,
-      }))
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
+}
+
+/**
+ * Compile a `ContentItemRecipe` to an Operation IR.
+ *
+ * Emits one `CreateItem` for the content item plus one `SetField` per
+ * field value. The item's `templateOf` resolves via `templateId(templateType)`
+ * — the corresponding `ContentTemplateRecipe` (or `ComponentTemplateRecipe`)
+ * must ship in the same set so the executor's captured-itemId map carries
+ * its server-assigned GUID at apply time. The cross-recipe validator
+ * (`validateRecipeSet`) catches missing template references before push.
+ *
+ * Field values dispatch on `shape` to one of the encoders below. Most
+ * shapes encode at compile time to a `kind: "string"` value (Sitecore's
+ * stored representation is always a string); `reference` shapes emit
+ * `kind: "ref-recipe-list"` so the executor substitutes captured itemIds
+ * at apply time.
+ *
+ * Phase 4 v1 limitations:
+ *  - `link-internal` is deferred — the wire format is XML wrapping a
+ *    refKey-resolved GUID, which requires a new RefValue kind. Authors
+ *    should use `reference` (with a single-element `refs` array) for
+ *    Droplink/Reference fields, or `link-external` for external URLs.
+ *  - `image.mediaPath` is treated as an opaque path — no media-item
+ *    upload. Sitecore renders the field if a media library item exists
+ *    at that path; otherwise the field is empty until media seeding
+ *    lands in Phase 5+.
+ */
+export function compileContentItemRecipe(
+  input: ContentItemRecipe,
+  context: CompileContext
+): OperationIr {
+  const recipe = ContentItemRecipeSchema.parse(input);
+  if (!context.contentItemsRoot) {
+    throw new Error(
+      `compileContentItemRecipe requires context.contentItemsRoot; tenant-side path missing for recipe ${recipe.handle}`
     );
+  }
+
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const itemRefKey = contentItemId(recipe.handle);
+  const itemPath = joinPath(context.contentItemsRoot, recipe.name);
+  const templateRefKey = templateId(recipe.templateType);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `content-item:${recipe.handle}`,
+    id: itemRefKey,
+    path: itemPath,
+    parent: { kind: "ref-path", value: context.contentItemsRoot },
+    // String GUID — the executor treats this as a refKey when it matches a
+    // captured-itemId entry (the ContentTemplateRecipe / ComponentTemplateRecipe
+    // for `recipe.templateType` registers `templateId(handle)` at apply
+    // time), else as a literal Sitecore template GUID.
+    templateOf: templateRefKey,
+    name: recipe.name,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  for (const [fieldName, fieldValue] of Object.entries(recipe.fields)) {
+    const value = encodeContentFieldValue(fieldValue, recipe.handle);
+    if (value === null) continue;
+    const fieldGuid = fieldId(recipe.templateType, fieldName);
     operations.push({
       op: "SetField",
       policy,
-      label: `templates-mapping:${recipe.handle}`,
-      itemRefKey: PAGE_DESIGNS_ROOT_REF_KEY,
-      fieldId: COMPOSITION_FIELDS.TEMPLATES_MAPPING,
-      value: { kind: "string", value: mapping },
+      label: `content-item-field:${recipe.handle}:${fieldName}`,
+      itemRefKey,
+      fieldId: fieldGuid,
+      // Versioned: content-item field values are language/version-scoped.
+      // Default language/version are filled in by versionedField helper —
+      // duplicating its shape here so the SetField op carries them.
+      language: DEFAULT_LANGUAGE,
+      version: DEFAULT_VERSION,
+      value,
     } satisfies SetFieldOp);
   }
 
@@ -393,6 +473,191 @@ export function compilePageDesignRecipe(
     recipeHandle: recipe.handle,
     operations,
   });
+}
+
+/**
+ * Format a recipe `date` (ISO `YYYY-MM-DD`) or `datetime` (ISO 8601 with
+ * timezone) into Sitecore's stored format `yyyyMMddTHHmmssZ`.
+ */
+const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`ContentFieldValue ${kind}: '${iso}' is not a valid ISO date`);
+  }
+  if (kind === "date") {
+    // Date-only — pin to UTC midnight to keep the output deterministic
+    // regardless of host timezone.
+    const isoDateOnly = iso.includes("T") ? iso.slice(0, 10) : iso;
+    return `${isoDateOnly.replace(/-/g, "")}T000000Z`;
+  }
+  // Datetime: yyyyMMddTHHmmssZ in UTC.
+  const yyyy = parsed.getUTCFullYear().toString().padStart(4, "0");
+  const MM = (parsed.getUTCMonth() + 1).toString().padStart(2, "0");
+  const dd = parsed.getUTCDate().toString().padStart(2, "0");
+  const HH = parsed.getUTCHours().toString().padStart(2, "0");
+  const mm = parsed.getUTCMinutes().toString().padStart(2, "0");
+  const ss = parsed.getUTCSeconds().toString().padStart(2, "0");
+  return `${yyyy}${MM}${dd}T${HH}${mm}${ss}Z`;
+};
+
+/**
+ * Sitecore image-field XML. Phase 4 v1 emits `mediapath` only — see
+ * `compileContentItemRecipe` JSDoc for the media-item upload caveat.
+ */
+const encodeImageXml = (img: {
+  mediaPath: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}): string => {
+  const attrs: string[] = [`mediapath="${escapeXmlAttr(img.mediaPath)}"`];
+  if (img.alt !== undefined) attrs.push(`alt="${escapeXmlAttr(img.alt)}"`);
+  if (img.width !== undefined) attrs.push(`width="${img.width}"`);
+  if (img.height !== undefined) attrs.push(`height="${img.height}"`);
+  return `<image ${attrs.join(" ")} />`;
+};
+
+/**
+ * Sitecore General Link XML for an external URL (`linktype="external"`).
+ */
+const encodeExternalLinkXml = (link: {
+  href: string;
+  text?: string;
+  target?: string;
+  title?: string;
+}): string => {
+  const attrs: string[] = [`linktype="external"`, `url="${escapeXmlAttr(link.href)}"`];
+  if (link.text !== undefined) attrs.push(`text="${escapeXmlAttr(link.text)}"`);
+  if (link.target !== undefined) attrs.push(`target="${escapeXmlAttr(link.target)}"`);
+  if (link.title !== undefined) attrs.push(`title="${escapeXmlAttr(link.title)}"`);
+  return `<link ${attrs.join(" ")} />`;
+};
+
+const escapeXmlAttr = (s: string): string =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+/**
+ * Encode one ContentFieldValue to a RefValue. Returns null when the
+ * shape is deferred (e.g. `link-internal` in Phase 4 v1) — the caller
+ * skips emitting a SetField op for it. Throws on truly invalid input.
+ */
+const encodeContentFieldValue = (
+  value: ContentFieldValue,
+  recipeHandle: string
+): RefValue | null => {
+  switch (value.shape) {
+    case "text":
+    case "richText":
+    case "enum":
+      return { kind: "string", value: value.value };
+    case "boolean":
+      return { kind: "bool", value: value.value };
+    case "number":
+    case "integer":
+      return { kind: "number", value: value.value };
+    case "date":
+    case "datetime":
+      return { kind: "string", value: toSitecoreDate(value.value, value.shape) };
+    case "image":
+      return { kind: "string", value: encodeImageXml(value) };
+    case "link-external":
+      return { kind: "string", value: encodeExternalLinkXml(value) };
+    case "link-internal":
+      // Deferred: General Link XML wrapping a refKey-resolved GUID needs
+      // a new RefValue kind. Recipe authors targeting Phase 4 should use
+      // `reference` (single-element refs[]) for Droplink-shaped fields.
+      throw new Error(
+        `ContentItemRecipe '${recipeHandle}': link-internal is deferred to Phase 5. ` +
+          `Use 'reference' shape with a single-element refs[] for Droplink/Reference fields, ` +
+          `or 'link-external' with an absolute URL for now.`
+      );
+    case "reference":
+      return {
+        kind: "ref-recipe-list",
+        refKeys: value.refs.map((handle) => contentItemId(handle)),
+      };
+  }
+};
+
+/**
+ * Stable handle for the synthetic IR `compileRecipeSet` emits to write
+ * the cross-recipe `TemplatesMapping` aggregate. Not a real recipe — the
+ * leading double-underscore signals "compiler-synthesized" and avoids
+ * collision with any author-defined handle (recipe handles match
+ * `[a-z][a-z0-9-]*@\d+`, so a leading underscore is unrepresentable).
+ */
+export const TEMPLATES_MAPPING_AGGREGATE_HANDLE = "__templates-mapping__";
+
+/**
+ * Compile a coherent set of recipes to a list of Operation IRs.
+ *
+ * Returns one IR per recipe (via `compileRecipe`), plus, when any
+ * `PageDesignRecipe` in the set declares `appliesTo`, a final synthetic
+ * IR whose only op is the combined `SetField(TemplatesMapping)` write
+ * on the Page Designs root.
+ *
+ * The TemplatesMapping field is cross-recipe by nature — every page
+ * design contributes one entry per applies-to template, and the field
+ * stores the union. Aggregating at compile time keeps the executor
+ * untouched (one full-replace write of the union) and gives reviewers
+ * a single combined op to inspect rather than N piecewise overwrites.
+ *
+ * Entries are sorted by `templateGuid` for deterministic output — the
+ * IR is the comparable artifact, so order must not depend on input
+ * recipe order. Within a single applies-to template, "last design
+ * wins" is enforced by sorting (later entries with the same key
+ * overwrite earlier ones), but that's a pathological config the
+ * cross-recipe validator should already flag.
+ */
+export function compileRecipeSet(
+  recipes: readonly Recipe[],
+  context: CompileContext
+): OperationIr[] {
+  const irs: OperationIr[] = recipes.map((recipe) => compileRecipe(recipe, context));
+
+  const entries: { templateGuid: string; designGuid: string }[] = [];
+  for (const recipe of recipes) {
+    if (recipe.kind !== "page-design") continue;
+    if (recipe.appliesTo.length === 0) continue;
+    const designGuid = pageDesignId(recipe.handle);
+    for (const tplHandle of recipe.appliesTo) {
+      entries.push({ templateGuid: templateId(tplHandle), designGuid });
+    }
+  }
+
+  if (entries.length === 0) {
+    return irs;
+  }
+
+  entries.sort((a, b) =>
+    a.templateGuid === b.templateGuid
+      ? a.designGuid.localeCompare(b.designGuid)
+      : a.templateGuid.localeCompare(b.templateGuid)
+  );
+
+  const aggregateOp: SetFieldOp = {
+    op: "SetField",
+    policy: policyFor("composition-structure"),
+    label: "templates-mapping:aggregate",
+    itemRefKey: PAGE_DESIGNS_ROOT_REF_KEY,
+    fieldId: COMPOSITION_FIELDS.TEMPLATES_MAPPING,
+    value: { kind: "string", value: encodeTemplatesMapping(entries) },
+  };
+
+  irs.push(
+    OperationIrSchema.parse({
+      schemaVersion: "1",
+      recipeHandle: TEMPLATES_MAPPING_AGGREGATE_HANDLE,
+      operations: [aggregateOp],
+    })
+  );
+
+  return irs;
 }
 
 /** Front-door dispatcher — accepts any registered recipe kind. */
@@ -404,9 +669,7 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
     case "content-template":
       return compileContentTemplateRecipe(recipe, context);
     case "content-item":
-      throw new Error(
-        `ContentItemRecipe compilation is not yet implemented (lands in Phase 4 alongside the field-value encoders). Recipe handle: ${recipe.handle}`
-      );
+      return compileContentItemRecipe(recipe, context);
     case "partial-design":
       return compilePartialDesignRecipe(recipe, context);
     case "page-design":

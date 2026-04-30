@@ -13,11 +13,9 @@ import {
 } from "../../../src/recipe/compile";
 import {
   contentItemId,
-  PAGE_DESIGNS_ROOT_REF_KEY,
   pageDesignId,
   partialDesignId,
   renderingId,
-  templateId,
 } from "../../../src/recipe/guids";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
@@ -109,8 +107,10 @@ describe("compilePartialDesignRecipe — article-byline@1 (no datasource + param
 describe("compilePageDesignRecipe — default-page-design@1 (partials only, no own layout)", () => {
   const ir = compilePageDesignRecipe(defaultPageDesignRecipe, CONTEXT);
 
-  it("emits three ops: CreateItem + SetField(PartialDesigns) + SetField(TemplatesMapping)", () => {
-    expect(ir.operations).toHaveLength(3);
+  it("emits two ops: CreateItem + SetField(PartialDesigns)", () => {
+    // TemplatesMapping is a cross-recipe aggregate — emitted by compileRecipeSet,
+    // not compilePageDesignRecipe. See composition-compile-set.test.ts.
+    expect(ir.operations).toHaveLength(2);
   });
 
   it("does NOT emit a SetField(__Renderings) when the recipe has no own layout", () => {
@@ -119,6 +119,13 @@ describe("compilePageDesignRecipe — default-page-design@1 (partials only, no o
         op.op === "SetField" && op.label === "page-design-layout:default-page-design@1"
     );
     expect(layoutOp).toBeUndefined();
+  });
+
+  it("does NOT emit a per-recipe SetField(TemplatesMapping)", () => {
+    const mappingOp = ir.operations.find(
+      (op) => op.op === "SetField" && op.label?.startsWith("templates-mapping:")
+    );
+    expect(mappingOp).toBeUndefined();
   });
 
   it("CreateItem uses the SXA page-design template and lands under the page-designs root", () => {
@@ -136,28 +143,13 @@ describe("compilePageDesignRecipe — default-page-design@1 (partials only, no o
       refKeys: [partialDesignId("standard-header@1"), partialDesignId("standard-footer@1")],
     });
   });
-
-  it("SetField(TemplatesMapping) targets the page-designs-root refKey with the URL-encoded mapping", () => {
-    const setMapping = findSetField(ir.operations, "templates-mapping:default-page-design@1");
-    expect(setMapping.itemRefKey).toBe(PAGE_DESIGNS_ROOT_REF_KEY);
-    expect(setMapping.fieldId).toBe(COMPOSITION_FIELDS.TEMPLATES_MAPPING);
-    if (setMapping.value.kind === "string") {
-      // home-page@1 → default-page-design@1 — both GUIDs URL-encoded curly-uppercase.
-      expect(setMapping.value.value).toContain(
-        encodeURIComponent(`{${templateId("home-page@1").toUpperCase()}}`)
-      );
-      expect(setMapping.value.value).toContain(
-        encodeURIComponent(`{${pageDesignId("default-page-design@1").toUpperCase()}}`)
-      );
-    }
-  });
 });
 
 describe("compilePageDesignRecipe — landing-design@1 (own layout in addition to partials)", () => {
   const ir = compilePageDesignRecipe(landingDesignRecipe, CONTEXT);
 
-  it("emits four ops: CreateItem + PartialDesigns + own __Renderings + TemplatesMapping", () => {
-    expect(ir.operations).toHaveLength(4);
+  it("emits three ops: CreateItem + PartialDesigns + own __Renderings", () => {
+    expect(ir.operations).toHaveLength(3);
   });
 
   it("emits a SetField(__Renderings) for the design-level cta-banner@1 placement", () => {
@@ -183,8 +175,8 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
 describe("compilePageDesignRecipe — article-design@1 (three partials, no own layout)", () => {
   const ir = compilePageDesignRecipe(articleDesignRecipe, CONTEXT);
 
-  it("emits three ops (no own layout to write)", () => {
-    expect(ir.operations).toHaveLength(3);
+  it("emits two ops (no own layout to write; templates-mapping is cross-recipe)", () => {
+    expect(ir.operations).toHaveLength(2);
   });
 
   it("PartialDesigns refKeys preserve render order [header, byline, footer]", () => {
@@ -197,18 +189,6 @@ describe("compilePageDesignRecipe — article-design@1 (three partials, no own l
         partialDesignId("standard-footer@1"),
       ],
     });
-  });
-
-  it("TemplatesMapping maps article-page@1 to article-design@1", () => {
-    const mapping = findSetField(ir.operations, "templates-mapping:article-design@1");
-    if (mapping.value.kind === "string") {
-      expect(mapping.value.value).toContain(
-        encodeURIComponent(`{${templateId("article-page@1").toUpperCase()}}`)
-      );
-      expect(mapping.value.value).toContain(
-        encodeURIComponent(`{${pageDesignId("article-design@1").toUpperCase()}}`)
-      );
-    }
   });
 });
 

@@ -37,10 +37,13 @@ describe("public recipe API surface", () => {
     "sitecoreFieldTypeLabel",
     // Compiler
     "compileComponentTemplateRecipe",
+    "compileContentItemRecipe",
     "compileContentTemplateRecipe",
     "compilePartialDesignRecipe",
     "compilePageDesignRecipe",
     "compileRecipe",
+    "compileRecipeSet",
+    "TEMPLATES_MAPPING_AGGREGATE_HANDLE",
     // Layout primitives
     "emitLayoutXml",
     "encodeTemplatesMapping",

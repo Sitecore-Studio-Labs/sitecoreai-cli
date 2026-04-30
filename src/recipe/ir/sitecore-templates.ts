@@ -35,18 +35,23 @@ export const SITECORE_TEMPLATES = {
    * SXA partial-design semantics: their layout XML is composed into
    * page designs via the `PartialDesigns` field.
    *
-   * Sandbox-pending — verify against `xmc-lizsitecore088b-...` at
-   * Phase 4 Milestone F before Phase 4 ships to a real tenant.
+   * Verified against sandbox tenant (`xmc-lizsitecore088b-...`) on
+   * 2026-04-30 via Authoring API introspection — the template lives at
+   * `/sitecore/templates/Foundation/JSS Experience Accelerator/Presentation/Partial Design`.
    */
-  PARTIAL_DESIGN: "1a8a8186-e75d-4d35-9ef4-dec384f5946a",
+  PARTIAL_DESIGN: "fd2059fd-6043-4dfe-8c04-e2437ce87634",
   /**
    * SXA Page Design item template. Items conforming to this carry the
    * `PartialDesigns` field (pipe-separated GUIDs) and may carry their
    * own layout XML.
    *
-   * Sandbox-pending — verify at Phase 4 Milestone F.
+   * Verified against sandbox tenant on 2026-04-30 via Authoring API
+   * introspection — `/sitecore/templates/Foundation/JSS Experience
+   * Accelerator/Presentation/Page Design`. The earlier documented value
+   * `1105b8f8-1d40-4278-98ff-4e8b5b262af7` was wrong (close but
+   * incorrect on the last 24 chars).
    */
-  PAGE_DESIGN: "1105b8f8-1d40-4278-98ff-4e8b5b262af7",
+  PAGE_DESIGN: "1105b8f8-1e00-426b-bf1f-c840742d827b",
 } as const;
 
 /**
@@ -102,13 +107,22 @@ export const LAYOUT_FIELDS = {
  * SXA-specific fields on partial-design and page-design items, plus the
  * Page Designs root's templates-to-designs mapping field.
  *
- * Sandbox-pending — verify at Phase 4 Milestone F.
+ * Verified against sandbox tenant (`xmc-lizsitecore088b-...`) on
+ * 2026-04-30 via Authoring API introspection — both prior documented
+ * values were wrong:
+ *   PARTIAL_DESIGNS:  was 1f57aae2-da42-49d7-bfaa-b4c4d8398eb4
+ *   TEMPLATES_MAPPING: was 1aa90e5a-4f5b-43c9-b78b-d28a5beae65a
+ *
+ * `PartialDesigns` is defined on the SXA Page Design template's base
+ * inheritance chain (section "Designing"); `TemplatesMapping` is
+ * defined on the "Page Designs" folder template (the parent item that
+ * owns the field, not on individual page-design items).
  */
 export const COMPOSITION_FIELDS = {
   /** On a Page Design item: pipe-separated GUIDs of partial designs to inject. */
-  PARTIAL_DESIGNS: "1f57aae2-da42-49d7-bfaa-b4c4d8398eb4",
+  PARTIAL_DESIGNS: "0966b999-0d0e-4278-acc9-9da69d461fe6",
   /** On the Page Designs root: URL-encoded {tplGuid}={designGuid}&… mapping. */
-  TEMPLATES_MAPPING: "1aa90e5a-4f5b-43c9-b78b-d28a5beae65a",
+  TEMPLATES_MAPPING: "ba1f60d6-3deb-40cc-bb61-eec772279ee1",
 } as const;
 
 /**

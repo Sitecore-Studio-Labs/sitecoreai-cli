@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# Stop hook: commit whatever the session changed so parallel agent sessions
+# can't clobber work via `git stash`. Commits land on the current branch
+# (typically the per-session branch created by branch-create.sh). Never
+# pushes, never amends — pure local safety net.
+#
+# Also releases the checkout lock created by SessionStart so the next session
+# can start in this checkout.
+#
+# Tags the commit based on whether `pnpm run check` passes:
+#   [auto-save]       — typecheck + lint + unit tests all green
+#   [auto-save-dirty] — one or more checks failed (work still preserved)
+#
+# Appends a session summary to the commit message body:
+#   - files changed count
+#   - insertions/deletions
+#   - check status
+#
+# Preservation > gating: we always commit, even on failure. CI is the gate
+# at merge time; this hook surfaces broken session commits on review
+# without destroying work.
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo '.')"
+LOCK_FILE=".claude/session-checkout.lock"
+
+release_lock() {
+  rm -f "$LOCK_FILE" 2>/dev/null || true
+}
+trap release_lock EXIT
+
+if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+  exit 0
+fi
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+TAG="[auto-save]"
+CHECK_STATUS="skipped"
+
+# Run checks only when the project is installed and has a `check` script.
+# Hook must never block the session, so failures here just mark the commit.
+if [ -d node_modules ] && [ -f package.json ] && grep -q '"check"' package.json; then
+  if pnpm run --silent check >/dev/null 2>&1; then
+    CHECK_STATUS="passed"
+  else
+    TAG="[auto-save-dirty]"
+    CHECK_STATUS="failed"
+  fi
+fi
+
+# Build session summary for the commit body.
+DIFF_STAT=$(git diff --cached --stat --stat-width=60 2>/dev/null || git diff --stat --stat-width=60 2>/dev/null || echo "  (stat unavailable)")
+SHORTSTAT=$(git diff --shortstat 2>/dev/null || echo "")
+FILES_CHANGED=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
+UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
+
+git add -A
+
+COMMIT_MSG=$(cat <<EOF
+${TAG} session end on ${BRANCH} at ${TIMESTAMP}
+
+Session summary:
+  check: ${CHECK_STATUS}
+  files changed: ${FILES_CHANGED} modified, ${UNTRACKED} new
+  ${SHORTSTAT}
+EOF
+)
+
+git commit -m "$COMMIT_MSG" \
+  --no-verify --no-gpg-sign >/dev/null 2>&1 || true

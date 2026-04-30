@@ -40,3 +40,9 @@ sitecoreai-cli-*.tgz
 
 # Telemetry
 /telemetry.schema.json
+
+# Agent harness — per-user permission allowlist + session lock + worktrees
+.claude/settings.local.json
+.claude/session-checkout.lock
+.claude/session-checkout.lock.stale-*
+.claude/worktrees/

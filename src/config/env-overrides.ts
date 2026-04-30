@@ -83,6 +83,25 @@ export const applyEnvOverrides = (
   if (deployToken !== undefined) {
     overrides.deployToken = deployToken;
   }
+  // CM/admin access token override — useful when keychain storage is
+  // unreliable (e.g. headless CI, sandboxed shells) or for one-off
+  // debugging. Read by `getAccessToken` in serialization/sitecore-api/auth.ts
+  // before falling through to client-credentials.
+  const accessToken = getEnvOverride(envName, "ACCESS_TOKEN", includeGlobal);
+  if (accessToken !== undefined) {
+    overrides.accessToken = accessToken;
+  }
+  // Recipe parent paths — read by `resolveRecipeRoots` in
+  // src/recipe/tasks/shared.ts when --templates-root / --renderings-root
+  // CLI flags are absent.
+  const templatesRoot = getEnvOverride(envName, "TEMPLATES_ROOT", includeGlobal);
+  if (templatesRoot !== undefined) {
+    overrides.templatesRoot = templatesRoot;
+  }
+  const renderingsRoot = getEnvOverride(envName, "RENDERINGS_ROOT", includeGlobal);
+  if (renderingsRoot !== undefined) {
+    overrides.renderingsRoot = renderingsRoot;
+  }
   const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
   if (organizationId !== undefined) {
     overrides.organizationId = organizationId;

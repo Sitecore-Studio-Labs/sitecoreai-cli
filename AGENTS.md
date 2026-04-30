@@ -39,6 +39,21 @@ npm run dev -- serialization pull --environment-name demo
 npm run dev -- serialization push --environment-name demo
 ```
 
+Push declarative recipes (templates + renderings) — fully non-interactive,
+JSON-streamable, idempotent across re-pushes, best-effort rollback on partial
+failure:
+
+```
+npm run dev -- recipe push --environment-name demo --json --what-if
+npm run dev -- recipe push --environment-name demo --json --allow-write
+```
+
+Recipes are discovered via the `recipes` glob in `sitecoreai.cli.json`
+(default: `recipes/**/*.recipe.ts`). Pass `--input <file>` to push a
+single recipe explicitly. Telemetry events for the recipe path are
+opt-in via the project-wide consent flow and never include recipe
+contents, GUIDs, or environment identifiers.
+
 Deploy API examples:
 
 ```

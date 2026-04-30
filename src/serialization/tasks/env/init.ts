@@ -1,3 +1,10 @@
+// TODO(recipe-init): when the wizard runs in a non-default project layout,
+// auto-detect `*.recipe.ts` files and offer to set the `recipes` glob in
+// sitecoreai.cli.json accordingly. Today the default config template ships
+// `recipes: ["recipes/**/*.recipe.ts"]`; users with recipes elsewhere edit
+// the file by hand. Worth adding once orchestrator-mediated installs land
+// (Phase 3) — until then, agent-mediated installs control the layout.
+
 import fsSync from "node:fs";
 import {
   readRootConfiguration,

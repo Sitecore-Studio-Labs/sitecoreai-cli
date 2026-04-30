@@ -6,6 +6,7 @@ export const SCHEMA_BASE_URL = "https://schemas.sitecoreai.dev/v1";
 export const DEFAULT_CONFIG = {
   $schema: `${SCHEMA_BASE_URL}/sitecoreai.cli.json`,
   modules: ["./**/*.module.json"],
+  recipes: ["recipes/**/*.recipe.ts"],
   serialization: {
     defaultMaxRelativeItemPathLength: 120,
     defaultModuleRelativeSerializationPath: "serialization",

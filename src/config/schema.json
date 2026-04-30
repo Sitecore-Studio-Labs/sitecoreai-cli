@@ -25,6 +25,11 @@
       "minItems": 1,
       "items": { "type": "string" }
     },
+    "recipes": {
+      "type": "array",
+      "description": "Globs locating .recipe.ts / .recipe.json files for `scai recipe compile|plan|push`. Defaults to `recipes/**/*.recipe.ts` if unset.",
+      "items": { "type": "string" }
+    },
     "serialization": {
       "description": "Global item serialization default settings",
       "oneOf": [{ "$ref": "#/definitions/SerializationRootConfiguration" }]
@@ -200,6 +205,14 @@
         "audience": {
           "type": "string",
           "description": "The unique identifier of the audience for an issued token"
+        },
+        "templatesRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates template items (e.g. /sitecore/templates/Project/<site>/Components). Tenant-specific. Used as fallback when --templates-root is not passed."
+        },
+        "renderingsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates rendering items (e.g. /sitecore/layout/Renderings/Project/<site>). Tenant-specific. Used as fallback when --renderings-root is not passed."
         }
       }
     }

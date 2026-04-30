@@ -79,6 +79,29 @@ describe("telemetry and shared helpers", () => {
     expect(telemetry.formatTelemetryCommand(["--config", "x"])).toBe("(no command)");
   });
 
+  it("recipe commands telemetry-flatten to bare positional tokens (no recipe paths/env names leak)", async () => {
+    const telemetry = await import("../../../src/shared/telemetry");
+    expect(
+      telemetry.formatTelemetryCommand([
+        "recipe",
+        "push",
+        "--input",
+        "./recipes/cta-button.recipe.ts",
+        "--environment-name",
+        "my-tenant",
+        "--allow-write",
+      ])
+    ).toBe("recipe push");
+    expect(
+      telemetry.formatTelemetryCommand([
+        "recipe",
+        "compile",
+        "-i",
+        "./recipes/secret-internal-handle.recipe.ts",
+      ])
+    ).toBe("recipe compile");
+  });
+
   it("returns undefined when no config flag is provided", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
     expect(telemetry.resolveConfigPathFromArgs(["--json"])).toBeUndefined();

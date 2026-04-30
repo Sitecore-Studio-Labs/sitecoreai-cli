@@ -3,6 +3,7 @@ import path from "node:path";
 import { createCliError } from "../shared/errors";
 import {
   DEFAULT_ENVIRONMENT,
+  DEFAULT_RECIPES_GLOBS,
   DEFAULT_SERIALIZATION,
   DEFAULT_SETTINGS,
   EnvironmentConfiguration,
@@ -92,6 +93,7 @@ export const readRootConfiguration = (
     environments: envWithOverrides,
     physicalPath: rootPath,
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
+    recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,
   };
 };
 

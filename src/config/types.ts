@@ -43,6 +43,21 @@ export type EnvironmentConfiguration = {
   audience?: string;
   ref?: string;
   cacheAuthenticationToken?: boolean;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * template items. Tenant-specific because each site has its own
+   * `/sitecore/templates/Project/<site>/Components` location.
+   *
+   * Used as fallback when the CLI flag `--templates-root` is not passed.
+   */
+  templatesRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * rendering items. Tenant-specific.
+   *
+   * Used as fallback when the CLI flag `--renderings-root` is not passed.
+   */
+  renderingsRoot?: string;
 };
 
 export type RootConfiguration = {
@@ -52,6 +67,13 @@ export type RootConfiguration = {
   environments: Record<string, EnvironmentConfiguration>;
   physicalPath: string;
   defaultEnvironment: string;
+  /**
+   * Globs (relative to the project root) that locate `.recipe.ts` /
+   * `.recipe.json` files for `scai recipe compile|plan|push`. When the
+   * commands run without `--input`, they fall back to this glob set.
+   * Defaults to `["recipes/**\/*.recipe.ts"]` if unset.
+   */
+  recipes: string[];
 };
 
 export type RootConfigurationFile = {
@@ -61,6 +83,8 @@ export type RootConfigurationFile = {
   settings?: Partial<Settings>;
   envProfiles?: Record<string, EnvironmentConfiguration>;
   defaultEnvProfile?: string;
+  /** Globs locating recipe files. See `RootConfiguration.recipes`. */
+  recipes?: string[];
   [key: string]: unknown;
 };
 
@@ -103,3 +127,5 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const DEFAULT_ENVIRONMENT = "default";
+
+export const DEFAULT_RECIPES_GLOBS: string[] = ["recipes/**/*.recipe.ts"];

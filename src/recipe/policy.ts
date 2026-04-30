@@ -17,14 +17,22 @@ import type { Recipe } from "./schema/recipe";
 
 /**
  * The kind of op being emitted. Phase 1 only has `template-structure`
- * ops; Phase 3+ adds `datasource-item` and `page-item`.
+ * ops; Phase 3+ adds `datasource-item` and `page-item`. Phase 4 adds
+ * `composition-structure` for partials and page designs (registry-owned
+ * compositional artifacts, like component templates — `CreateAndUpdate`).
  */
-export type OpPurpose = "template-structure" | "datasource-item" | "page-item";
+export type OpPurpose =
+  | "template-structure"
+  | "composition-structure"
+  | "datasource-item"
+  | "page-item";
 
 const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   "component-template": "template-structure",
   "content-template": "template-structure",
   "content-item": "datasource-item",
+  "partial-design": "composition-structure",
+  "page-design": "composition-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];
@@ -36,6 +44,7 @@ export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_
 export const policyFor = (purpose: OpPurpose): PushPolicy => {
   switch (purpose) {
     case "template-structure":
+    case "composition-structure":
       return "CreateAndUpdate";
     case "datasource-item":
     case "page-item":

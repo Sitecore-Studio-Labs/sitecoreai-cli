@@ -5,11 +5,14 @@ import {
   fieldId,
   NAMESPACE_CONTENT_ITEM,
   NAMESPACE_PAGE_DESIGN,
+  NAMESPACE_PARTIAL_DESIGN,
   NAMESPACE_RENDERING,
   NAMESPACE_ROOT,
   NAMESPACE_SITE_BRANCH,
   NAMESPACE_TEMPLATE,
+  pageDesignId,
   paramsTemplateId,
+  partialDesignId,
   renderingId,
   sectionId,
   standardValuesId,
@@ -24,9 +27,33 @@ describe("recipe guids — namespace constants are frozen", () => {
   it("kind-namespaces are pinned to their derived values", () => {
     expect(NAMESPACE_TEMPLATE).toBe("8cdd8258-7af2-5b4c-b9e9-1ec13c9aa589");
     expect(NAMESPACE_RENDERING).toBe("415fee2b-be60-589c-ba7c-df0308759b7e");
+    expect(NAMESPACE_PARTIAL_DESIGN).toBe("90066657-83e4-5cc5-83e2-f70e4dc62ed6");
     expect(NAMESPACE_PAGE_DESIGN).toBe("80443570-27d0-5729-be73-19a6a5827ab9");
     expect(NAMESPACE_SITE_BRANCH).toBe("ed6269d1-ac7c-53b7-aa23-b3edd92f3886");
     expect(NAMESPACE_CONTENT_ITEM).toBe("d798f8c5-24ee-55c4-afe0-f387a998521f");
+  });
+});
+
+describe("recipe guids — partial-design and page-design derivation is deterministic", () => {
+  it("partial-design ids are stable for a given handle", () => {
+    expect(partialDesignId("standard-header@1")).toBe("f5d69b31-7f02-5a1d-a317-5819af0494e4");
+    expect(partialDesignId("standard-footer@1")).toBe("093951aa-02b5-5fe4-a7e1-126dabb1b3d9");
+    expect(partialDesignId("article-byline@1")).toBe("1ca498c3-d2e5-5fd2-a25a-9f683af6195d");
+  });
+
+  it("page-design ids are stable for a given handle", () => {
+    expect(pageDesignId("default-page-design@1")).toBe("357bedb4-54b0-5716-a64b-f1aa253e6500");
+    expect(pageDesignId("landing-design@1")).toBe("35218c5c-b317-515d-9e55-81d0290804c3");
+    expect(pageDesignId("article-design@1")).toBe("8aa27e13-c88c-5e20-bce2-75c268e012fc");
+  });
+
+  it("partial-design ids and page-design ids are namespaced separately", () => {
+    expect(partialDesignId("standard-header@1")).not.toBe(pageDesignId("standard-header@1"));
+  });
+
+  it("composition-kind ids are namespaced separately from template ids", () => {
+    expect(partialDesignId("standard-header@1")).not.toBe(templateId("standard-header@1"));
+    expect(pageDesignId("landing-design@1")).not.toBe(templateId("landing-design@1"));
   });
 });
 

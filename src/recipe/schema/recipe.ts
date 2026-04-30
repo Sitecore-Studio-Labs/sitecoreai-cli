@@ -351,6 +351,132 @@ export const ContentItemRecipeSchema = z.object({
 export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
 
 /**
+ * One rendering placed into a placeholder, with its variant, parameters,
+ * and datasource binding. The Phase 4 compiler emits each ComponentPlacement
+ * as one `<r>` element in Sitecore's layout XML.
+ *
+ * The single shape used by anything that holds layout — `PartialDesignRecipe`,
+ * `PageDesignRecipe`, and (when Phase 3 lands) `PageRecipe`. The
+ * `componentHandle` resolves to a `ComponentTemplateRecipe`'s rendering
+ * GUID via `renderingId(handle)`.
+ *
+ * `datasourceRef` distinguishes how the rendering gets its content:
+ *
+ *   shared  — points at a `ContentItemRecipe` by handle (catalog-shipped
+ *             reusable content like `site-logo-content@1`).
+ *   scoped  — page-local content at `<page>/<slot>`. Used by `PageRecipe`;
+ *             `PartialDesignRecipe` and `PageDesignRecipe` typically don't
+ *             use this kind, but the shared schema accepts it.
+ *   none    — config-driven rendering with no datasource (rare).
+ */
+export const ComponentPlacementSchema = z.object({
+  /** Handle of a `ComponentTemplateRecipe`. */
+  componentHandle: z.string().regex(HANDLE_PATTERN, {
+    message: "componentHandle must match `<kebab-name>@<major>`",
+  }),
+  /** SXA Rendering Variant name. Defaults to the component's first variant. */
+  variant: z.string().optional(),
+  /** Rendering Parameters (URL-encoded into the placement's params blob). */
+  params: z.record(z.string(), z.string()).optional(),
+  /** How the rendering's content is bound. Omit for `kind: "none"` semantics. */
+  datasourceRef: z
+    .discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("shared"),
+        /** Handle of a `ContentItemRecipe`. */
+        handle: z.string().regex(HANDLE_PATTERN),
+      }),
+      z.object({
+        kind: z.literal("scoped"),
+        /** Slot path within the host item, e.g. `/main/0`. */
+        slot: z.string().min(1),
+      }),
+      z.object({ kind: z.literal("none") }),
+    ])
+    .optional(),
+});
+
+export type ComponentPlacement = z.infer<typeof ComponentPlacementSchema>;
+
+/**
+ * Layout block keyed by placeholder. Each placeholder holds an ordered
+ * array of `ComponentPlacement`s — render order is array order.
+ */
+export const LayoutSchema = z.object({
+  placeholders: z.record(z.string(), z.array(ComponentPlacementSchema)).default({}),
+});
+
+export type Layout = z.infer<typeof LayoutSchema>;
+
+/**
+ * A reusable layout chunk — header, footer, sidebar, byline. Lives at
+ * `/sitecore/.../Presentation/Partial Designs/<name>` on a tenant. Linked
+ * by 1..n `PageDesignRecipe`s. Owns its own placeholders and pre-placed
+ * renderings; the compiler emits the same layout XML form pages use.
+ *
+ * Identity: `partialDesignId(handle)` derives the deterministic GUID from
+ * the recipe handle.
+ */
+export const PartialDesignRecipeSchema = z.object({
+  kind: z.literal("partial-design"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. standard-header@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /** Defaults to the partial-design icon if omitted. */
+  icon: z.string().optional(),
+  /** Placeholders this partial holds, with their pre-placed renderings. */
+  layout: LayoutSchema,
+});
+
+export type PartialDesignRecipe = z.infer<typeof PartialDesignRecipeSchema>;
+
+/**
+ * Maps page templates to a layout. Lives at
+ * `/sitecore/.../Presentation/Page Designs/<name>` on a tenant. Establishes
+ * the templates-to-design mapping (the Sitecore SXA Page Designs root
+ * field), lists which partial designs wrap content, and optionally adds
+ * its own pre-placed renderings.
+ *
+ * Identity: `pageDesignId(handle)` derives the deterministic GUID from
+ * the recipe handle.
+ */
+export const PageDesignRecipeSchema = z.object({
+  kind: z.literal("page-design"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. landing-design@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  /**
+   * Page template handles this design applies to. Compiler builds the
+   * URL-string templates-to-designs mapping field on the Sitecore Page
+   * Designs root from this list, resolved via `templateId(handle)`.
+   */
+  appliesTo: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
+  /**
+   * Partials linked into this design, in render order. Compiler emits the
+   * pipe-separated GUID list on the design's `PartialDesigns` field,
+   * resolved via `partialDesignId(handle)`.
+   */
+  partials: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
+  /**
+   * Optional own layout — for designs that add page-design-level
+   * placements beyond just wrapping partials. Most designs leave this
+   * empty because the page itself owns its content placements.
+   */
+  layout: LayoutSchema.optional(),
+});
+
+export type PageDesignRecipe = z.infer<typeof PageDesignRecipeSchema>;
+
+/**
  * Discriminated union of recipe kinds. Compilers and validators can accept
  * `Recipe` and dispatch on `kind`.
  */
@@ -358,6 +484,8 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   ContentItemRecipeSchema,
+  PartialDesignRecipeSchema,
+  PageDesignRecipeSchema,
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;

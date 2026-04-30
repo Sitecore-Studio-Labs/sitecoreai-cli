@@ -11,11 +11,12 @@ import { v5 as uuidv5 } from "uuid";
  *
  *   DNS                      RFC 4122 DNS namespace
  *     └── NAMESPACE_ROOT     uuidv5(DNS, "registry.sitecoreai.dev")
- *           ├── TEMPLATE       uuidv5(ROOT, "template")
- *           ├── RENDERING      uuidv5(ROOT, "rendering")
- *           ├── PAGE_DESIGN    uuidv5(ROOT, "page-design")
- *           ├── SITE_BRANCH    uuidv5(ROOT, "site-branch")
- *           └── CONTENT_ITEM   uuidv5(ROOT, "content-item")
+ *           ├── TEMPLATE         uuidv5(ROOT, "template")
+ *           ├── RENDERING        uuidv5(ROOT, "rendering")
+ *           ├── PARTIAL_DESIGN   uuidv5(ROOT, "partial-design")
+ *           ├── PAGE_DESIGN      uuidv5(ROOT, "page-design")
+ *           ├── SITE_BRANCH      uuidv5(ROOT, "site-branch")
+ *           └── CONTENT_ITEM     uuidv5(ROOT, "content-item")
  *
  * The `handle` of a recipe (e.g. `cta-button@1`) is load-bearing forever:
  * a different handle = a different template. Versioning is pinned;
@@ -34,6 +35,7 @@ export const NAMESPACE_ROOT = "d6c28e9f-21f3-56ee-ada3-f2a947c3d475";
 
 export const NAMESPACE_TEMPLATE = uuidv5("template", NAMESPACE_ROOT);
 export const NAMESPACE_RENDERING = uuidv5("rendering", NAMESPACE_ROOT);
+export const NAMESPACE_PARTIAL_DESIGN = uuidv5("partial-design", NAMESPACE_ROOT);
 export const NAMESPACE_PAGE_DESIGN = uuidv5("page-design", NAMESPACE_ROOT);
 export const NAMESPACE_SITE_BRANCH = uuidv5("site-branch", NAMESPACE_ROOT);
 export const NAMESPACE_CONTENT_ITEM = uuidv5("content-item", NAMESPACE_ROOT);
@@ -47,6 +49,8 @@ export const renderingId = (handle: string): string => uuidv5(handle, NAMESPACE_
 
 export const paramsTemplateId = (handle: string): string =>
   uuidv5(`${handle}::params`, NAMESPACE_TEMPLATE);
+
+export const partialDesignId = (handle: string): string => uuidv5(handle, NAMESPACE_PARTIAL_DESIGN);
 
 export const pageDesignId = (handle: string): string => uuidv5(handle, NAMESPACE_PAGE_DESIGN);
 

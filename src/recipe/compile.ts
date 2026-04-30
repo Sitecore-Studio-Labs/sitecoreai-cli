@@ -198,6 +198,11 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       throw new Error(
         `ContentItemRecipe compilation is not yet implemented (lands in Phase 4 alongside the field-value encoders). Recipe handle: ${recipe.handle}`
       );
+    case "partial-design":
+    case "page-design":
+      throw new Error(
+        `${recipe.kind} compilation is not yet implemented (Phase 4 Milestone C-D — IR ops, layout XML emitter, templates-to-designs URL-string encoder). Recipe handle: ${recipe.handle}`
+      );
   }
 }
 

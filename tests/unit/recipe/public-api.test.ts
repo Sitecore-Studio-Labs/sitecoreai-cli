@@ -13,12 +13,16 @@ import * as recipe from "../../../src/recipe";
 describe("public recipe API surface", () => {
   const REQUIRED_EXPORTS = [
     // Recipe author surface
+    "ComponentPlacementSchema",
     "ComponentTemplateRecipeSchema",
     "ContentFieldValueSchema",
     "ContentItemRecipeSchema",
     "ContentTemplateRecipeSchema",
     "FieldDefinitionSchema",
+    "LayoutSchema",
+    "PageDesignRecipeSchema",
     "ParamDefinitionSchema",
+    "PartialDesignRecipeSchema",
     "PlaceholderDefinitionSchema",
     "RecipeSchema",
     "RenderingDefinitionSchema",
@@ -44,8 +48,12 @@ describe("public recipe API surface", () => {
     "variantId",
     "variantsFolderId",
     "contentItemId",
+    "partialDesignId",
+    "pageDesignId",
     "NAMESPACE_ROOT",
     "NAMESPACE_CONTENT_ITEM",
+    "NAMESPACE_PARTIAL_DESIGN",
+    "NAMESPACE_PAGE_DESIGN",
     // Operation IR
     "OperationSchema",
     "OperationIrSchema",

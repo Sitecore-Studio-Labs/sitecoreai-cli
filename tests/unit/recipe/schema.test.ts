@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  ComponentPlacementSchema,
   ComponentTemplateRecipeSchema,
   ContentItemRecipeSchema,
+  PageDesignRecipeSchema,
+  PartialDesignRecipeSchema,
   RecipeSchema,
   SitecoreFieldAugmentSchema,
 } from "../../../src/recipe/schema/recipe";
@@ -199,6 +202,166 @@ describe("ContentItemRecipe Zod schema", () => {
   });
 });
 
+describe("ComponentPlacement Zod schema", () => {
+  it("accepts a minimal placement (only componentHandle)", () => {
+    const result = ComponentPlacementSchema.safeParse({ componentHandle: "hero@1" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts variant + params + shared datasourceRef", () => {
+    const result = ComponentPlacementSchema.safeParse({
+      componentHandle: "hero@1",
+      variant: "default",
+      params: { Size: "lg" },
+      datasourceRef: { kind: "shared", handle: "hero-content@1" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts scoped datasourceRef with a slot path", () => {
+    const result = ComponentPlacementSchema.safeParse({
+      componentHandle: "card-grid@1",
+      datasourceRef: { kind: "scoped", slot: "/main/0" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts kind: 'none' (no datasource)", () => {
+    const result = ComponentPlacementSchema.safeParse({
+      componentHandle: "config-only@1",
+      datasourceRef: { kind: "none" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a componentHandle without major-version suffix", () => {
+    const result = ComponentPlacementSchema.safeParse({ componentHandle: "hero" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unknown datasourceRef kind", () => {
+    const result = ComponentPlacementSchema.safeParse({
+      componentHandle: "hero@1",
+      datasourceRef: { kind: "magic", value: "x" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects shared datasourceRef with malformed handle", () => {
+    const result = ComponentPlacementSchema.safeParse({
+      componentHandle: "hero@1",
+      datasourceRef: { kind: "shared", handle: "no-major" },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("PartialDesignRecipe Zod schema", () => {
+  const minimalPartial = {
+    kind: "partial-design" as const,
+    schemaVersion: "1" as const,
+    handle: "standard-header@1",
+    name: "StandardHeader",
+    displayName: "Standard Header",
+    layout: {
+      placeholders: {
+        "/header": [{ componentHandle: "site-logo@1" }],
+      },
+    },
+  };
+
+  it("accepts a typical partial-design recipe", () => {
+    const result = PartialDesignRecipeSchema.safeParse(minimalPartial);
+    expect(result.success).toBe(true);
+  });
+
+  it("defaults layout.placeholders to {} when omitted", () => {
+    const result = PartialDesignRecipeSchema.safeParse({
+      ...minimalPartial,
+      layout: {},
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.layout.placeholders).toEqual({});
+    }
+  });
+
+  it("requires the layout block", () => {
+    const rest = { ...minimalPartial } as Partial<typeof minimalPartial>;
+    delete rest.layout;
+    const result = PartialDesignRecipeSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a handle without major-version suffix", () => {
+    const result = PartialDesignRecipeSchema.safeParse({
+      ...minimalPartial,
+      handle: "standard-header",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("PageDesignRecipe Zod schema", () => {
+  const minimalDesign = {
+    kind: "page-design" as const,
+    schemaVersion: "1" as const,
+    handle: "default-page-design@1",
+    name: "DefaultPageDesign",
+    displayName: "Default Page Design",
+    appliesTo: ["home-page@1"],
+    partials: ["standard-header@1", "standard-footer@1"],
+  };
+
+  it("accepts a typical page-design recipe (no own layout)", () => {
+    const result = PageDesignRecipeSchema.safeParse(minimalDesign);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an own layout block", () => {
+    const result = PageDesignRecipeSchema.safeParse({
+      ...minimalDesign,
+      layout: {
+        placeholders: {
+          "/page-design-cta": [{ componentHandle: "cta-banner@1" }],
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("defaults appliesTo and partials to empty arrays when omitted", () => {
+    const result = PageDesignRecipeSchema.safeParse({
+      kind: "page-design",
+      schemaVersion: "1",
+      handle: "blank@1",
+      name: "Blank",
+      displayName: "Blank",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.appliesTo).toEqual([]);
+      expect(result.data.partials).toEqual([]);
+    }
+  });
+
+  it("rejects a malformed page-template handle in appliesTo", () => {
+    const result = PageDesignRecipeSchema.safeParse({
+      ...minimalDesign,
+      appliesTo: ["home-page"],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a malformed partial handle in partials", () => {
+    const result = PageDesignRecipeSchema.safeParse({
+      ...minimalDesign,
+      partials: ["standard-header"],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("Recipe discriminated union", () => {
   it("dispatches on kind: content-item", () => {
     const result = RecipeSchema.safeParse({
@@ -212,6 +375,35 @@ describe("Recipe discriminated union", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.kind).toBe("content-item");
+    }
+  });
+
+  it("dispatches on kind: partial-design", () => {
+    const result = RecipeSchema.safeParse({
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "x@1",
+      name: "X",
+      displayName: "X",
+      layout: { placeholders: {} },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("partial-design");
+    }
+  });
+
+  it("dispatches on kind: page-design", () => {
+    const result = RecipeSchema.safeParse({
+      kind: "page-design",
+      schemaVersion: "1",
+      handle: "x@1",
+      name: "X",
+      displayName: "X",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("page-design");
     }
   });
 });

@@ -6,6 +6,7 @@ import { createDeploySourceControlCommand } from "./source-control";
 import { createDeployDeploymentsCommand } from "./deployments";
 import { createDeployLogsCommand } from "./logs";
 import { createDeployEditingHostCommand } from "./editing-host";
+import { createDeploySiteCommand } from "./site";
 
 export const createDeployCommand = (): Command => {
   const command = new Command("deploy").description("XM Cloud Deploy API commands");
@@ -16,11 +17,12 @@ export const createDeployCommand = (): Command => {
   command.addCommand(createDeployLogsCommand());
   command.addCommand(createDeployOrganizationsCommand());
   command.addCommand(createDeployProjectsCommand());
+  command.addCommand(createDeploySiteCommand());
   command.addCommand(createDeploySourceControlCommand());
 
   command.addHelpText(
     "after",
-    '\nExamples:\n  $ scai deploy projects list\n  $ scai deploy environments list --project "My Project" --type cm\n'
+    '\nExamples:\n  $ scai deploy projects list\n  $ scai deploy environments list --project "My Project" --type cm\n  $ scai deploy site list --environment-name myenv --hostnames\n'
   );
 
   return command;

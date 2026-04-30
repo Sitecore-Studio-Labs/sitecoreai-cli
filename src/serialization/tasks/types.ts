@@ -86,6 +86,15 @@ export type DeployBaseOptions = CommonOptions & {
   whatIf?: boolean;
 };
 
+export type DeploySiteListOptions = DeployBaseOptions & {
+  /** Walk each site's Site Grouping items to surface declared
+   *  hostnames. Off by default — adds an N+1 round trip per site. */
+  hostnames?: boolean;
+  /** Override the content root walked. Default `/sitecore/content`.
+   *  Useful for tests or non-standard installations. */
+  contentRoot?: string;
+};
+
 export type DeployLogsOptions = DeployEnvironmentOptions & {
   latest?: boolean;
 };

@@ -8,11 +8,15 @@ import type { PartialDesignRecipe } from "../../src/recipe/schema/recipe";
  * Three component placements in `/article-meta`:
  *
  *   author-avatar@1   no datasource (config-driven via params)
- *   author-info@1     datasource: scoped (page-local; the article's author info)
+ *   author-info@1     datasource: shared content `byline-author-content@1`
  *   read-time@1       no datasource
  *
- * Mixes `kind: "scoped"` (page-local content per article) with `kind: "none"`
- * (renderings whose configuration comes from rendering parameters only).
+ * Mixes `kind: "shared"` (a registry-shipped reusable content item) with
+ * `kind: "none"` (renderings whose configuration comes from rendering
+ * parameters only). Partials don't use `kind: "scoped"` because they
+ * have no host page to resolve page-local refs against — that's a
+ * `PageRecipe` concern (Phase 5).
+ *
  * The `params` blob on the avatar exercises rendering-parameter pinning.
  */
 export const articleBylineRecipe = {
@@ -33,7 +37,7 @@ export const articleBylineRecipe = {
         },
         {
           componentHandle: "author-info@1",
-          datasourceRef: { kind: "scoped", slot: "/article-meta/author" },
+          datasourceRef: { kind: "shared", handle: "byline-author-content@1" },
         },
         {
           componentHandle: "read-time@1",

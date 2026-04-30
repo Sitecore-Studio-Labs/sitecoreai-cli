@@ -58,6 +58,17 @@ export const siteBranchId = (handle: string): string => uuidv5(handle, NAMESPACE
 
 export const contentItemId = (handle: string): string => uuidv5(handle, NAMESPACE_CONTENT_ITEM);
 
+/**
+ * Stable refKey for the SXA Page Designs root item (the tenant-existing
+ * item that holds the `TemplatesMapping` field). The orchestrator
+ * pipeline-step seeds `crossRecipeRefs[<this>] = pageDesignsRoot` at
+ * execute time so SetField ops targeting the mapping resolve correctly.
+ *
+ * Not a Sitecore concept — purely a refKey our IR uses to coordinate
+ * with the executor's pre-seed mechanism.
+ */
+export const PAGE_DESIGNS_ROOT_REF_KEY = uuidv5("page-designs-root", NAMESPACE_ROOT);
+
 /** Sections are scoped under their template; the seed is `section:<name>`. */
 export const sectionId = (handle: string, sectionName: string): string =>
   uuidv5(`section:${sectionName}`, templateId(handle));

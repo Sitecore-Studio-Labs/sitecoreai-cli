@@ -30,6 +30,23 @@ export const SITECORE_TEMPLATES = {
    * Definition template once the GUID is sandbox-validated.
    */
   FOLDER: "a87a00b1-e6db-45ab-8b54-636fec3b5523",
+  /**
+   * SXA Partial Design item template. Items conforming to this carry
+   * SXA partial-design semantics: their layout XML is composed into
+   * page designs via the `PartialDesigns` field.
+   *
+   * Sandbox-pending — verify against `xmc-lizsitecore088b-...` at
+   * Phase 4 Milestone F before Phase 4 ships to a real tenant.
+   */
+  PARTIAL_DESIGN: "1a8a8186-e75d-4d35-9ef4-dec384f5946a",
+  /**
+   * SXA Page Design item template. Items conforming to this carry the
+   * `PartialDesigns` field (pipe-separated GUIDs) and may carry their
+   * own layout XML.
+   *
+   * Sandbox-pending — verify at Phase 4 Milestone F.
+   */
+  PAGE_DESIGN: "1105b8f8-1d40-4278-98ff-4e8b5b262af7",
 } as const;
 
 /**
@@ -65,6 +82,40 @@ export const TEMPLATE_FIELD_FIELDS = {
   SOURCE: "1eb8ae32-e190-44a6-968d-ed904c794ebf",
   TITLE: "19a69332-a23e-4e70-8d16-b2640cb24cc8",
 } as const;
+
+/**
+ * Sitecore layout fields. `__Renderings` carries the shared layout
+ * (applies across all language versions); `__Final Renderings` carries
+ * the per-version final layout. Recipe-emitted partial designs and page
+ * designs write their layout XML to `__Renderings` (shared, since these
+ * are reusable design artifacts that don't vary per language version).
+ *
+ * Phase 4 page placements (PageRecipe, deferred) will write to
+ * `__Final Renderings` so authors can override per-version.
+ */
+export const LAYOUT_FIELDS = {
+  RENDERINGS: "f1a1fe9e-a60c-4ddb-a3a0-bb5b29fe732e",
+  FINAL_RENDERINGS: "04bf00db-f5fb-41f7-8ab7-22408372a981",
+} as const;
+
+/**
+ * SXA-specific fields on partial-design and page-design items, plus the
+ * Page Designs root's templates-to-designs mapping field.
+ *
+ * Sandbox-pending — verify at Phase 4 Milestone F.
+ */
+export const COMPOSITION_FIELDS = {
+  /** On a Page Design item: pipe-separated GUIDs of partial designs to inject. */
+  PARTIAL_DESIGNS: "1f57aae2-da42-49d7-bfaa-b4c4d8398eb4",
+  /** On the Page Designs root: URL-encoded {tplGuid}={designGuid}&… mapping. */
+  TEMPLATES_MAPPING: "1aa90e5a-4f5b-43c9-b78b-d28a5beae65a",
+} as const;
+
+/**
+ * Sitecore Default Device — the device GUID layout XML wraps with.
+ * `<r><d id="{DEFAULT_DEVICE}">…<r .../>…</d></r>`.
+ */
+export const DEFAULT_DEVICE_ID = "fe5d7fdf-89c0-4d99-9aa3-b5fbd009c9f3";
 
 /** Rendering-definition shared fields on a Rendering item. */
 export const RENDERING_FIELDS = {

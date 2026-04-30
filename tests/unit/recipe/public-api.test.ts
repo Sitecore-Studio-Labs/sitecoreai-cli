@@ -38,7 +38,12 @@ describe("public recipe API surface", () => {
     // Compiler
     "compileComponentTemplateRecipe",
     "compileContentTemplateRecipe",
+    "compilePartialDesignRecipe",
+    "compilePageDesignRecipe",
     "compileRecipe",
+    // Layout primitives
+    "emitLayoutXml",
+    "encodeTemplatesMapping",
     // GUID derivation (subset — the most-used ones)
     "templateId",
     "renderingId",
@@ -50,6 +55,7 @@ describe("public recipe API surface", () => {
     "contentItemId",
     "partialDesignId",
     "pageDesignId",
+    "PAGE_DESIGNS_ROOT_REF_KEY",
     "NAMESPACE_ROOT",
     "NAMESPACE_CONTENT_ITEM",
     "NAMESPACE_PARTIAL_DESIGN",
@@ -70,7 +76,10 @@ describe("public recipe API surface", () => {
     "SYSTEM_FIELDS",
     "RENDERING_FIELDS",
     "TEMPLATE_FIELD_FIELDS",
+    "LAYOUT_FIELDS",
+    "COMPOSITION_FIELDS",
     "DEFAULT_ICON",
+    "DEFAULT_DEVICE_ID",
     "DEFAULT_LANGUAGE",
     "DEFAULT_VERSION",
     // Planner / executor

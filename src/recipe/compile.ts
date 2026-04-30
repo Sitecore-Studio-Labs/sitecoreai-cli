@@ -1,8 +1,12 @@
 import {
+  contentItemId,
   fieldId,
+  PAGE_DESIGNS_ROOT_REF_KEY,
+  pageDesignId,
   paramsFieldId,
   paramsSectionId,
   paramsTemplateId,
+  partialDesignId,
   renderingId,
   sectionId,
   standardValuesId,
@@ -24,9 +28,12 @@ import {
 } from "./ir/operations";
 import { defaultPolicyForRecipe } from "./policy";
 import {
+  COMPOSITION_FIELDS,
+  DEFAULT_DEVICE_ID,
   DEFAULT_ICON,
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
+  LAYOUT_FIELDS,
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
@@ -39,7 +46,11 @@ import {
   type ContentTemplateRecipe,
   ContentTemplateRecipeSchema,
   type FieldDefinition,
+  type PageDesignRecipe,
+  PageDesignRecipeSchema,
   type ParamDefinition,
+  type PartialDesignRecipe,
+  PartialDesignRecipeSchema,
   type Recipe,
   RecipeSchema,
 } from "./schema/recipe";
@@ -49,6 +60,8 @@ import {
   sitecoreFieldTypeLabel,
 } from "./schema/field-types";
 import { renderSourceFields, sourceFieldsNeedHandleResolution } from "./schema/source-fields";
+import { emitLayoutXml } from "./layout/emit";
+import { encodeTemplatesMapping } from "./layout/templates-mapping";
 
 /**
  * Where a recipe's items land in the Sitecore content tree. Tenant-side
@@ -61,6 +74,25 @@ export interface CompileContext {
   templatesRoot: string;
   /** e.g. `/sitecore/layout/Renderings/Project/<site>`. */
   renderingsRoot: string;
+  /**
+   * Phase 4: required for `PartialDesignRecipe` compilation. Where the
+   * partial-design items land — typically
+   * `/sitecore/content/<site>/Presentation/Partial Designs`.
+   * Optional in the type so Phase 1 callers don't have to set it; the
+   * partial-design compiler errors with a clear message if absent.
+   */
+  partialDesignsRoot?: string;
+  /**
+   * Phase 4: required for `PageDesignRecipe` compilation. Where the
+   * page-design items land — typically
+   * `/sitecore/content/<site>/Presentation/Page Designs`.
+   *
+   * The page-design compiler also emits a SetField op writing
+   * `TemplatesMapping` on this root item itself. The executor resolves
+   * the root item's GUID via a pre-seeded `crossRecipeRefs` entry the
+   * orchestrator pipeline-step provides at runtime.
+   */
+  pageDesignsRoot?: string;
 }
 
 const PARAMS_SECTION_NAME = "Parameters";
@@ -186,6 +218,183 @@ export function compileContentTemplateRecipe(
   });
 }
 
+/**
+ * Compile a `PartialDesignRecipe` to an Operation IR.
+ *
+ * Emits two ops:
+ *   1. `CreateItem` for the partial-design item (SXA Partial Design template)
+ *   2. `SetField` writing the layout XML to `__Renderings` (shared layout)
+ *
+ * The compiler resolves component / content-item handles in the layout
+ * to deterministic GUIDs at compile time — no executor-side handle
+ * resolution required for the layout body. (Page-template handles in
+ * `appliesTo` and partial handles in `partials[]` on `PageDesignRecipe`
+ * resolve the same way.)
+ */
+export function compilePartialDesignRecipe(
+  input: PartialDesignRecipe,
+  context: CompileContext
+): OperationIr {
+  const recipe = PartialDesignRecipeSchema.parse(input);
+  if (!context.partialDesignsRoot) {
+    throw new Error(
+      `compilePartialDesignRecipe requires context.partialDesignsRoot; tenant-side path missing for recipe ${recipe.handle}`
+    );
+  }
+
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const itemRefKey = partialDesignId(recipe.handle);
+  const itemPath = joinPath(context.partialDesignsRoot, recipe.name);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `partial-design:${recipe.handle}`,
+    id: itemRefKey,
+    path: itemPath,
+    parent: { kind: "ref-path", value: context.partialDesignsRoot },
+    templateOf: SITECORE_TEMPLATES.PARTIAL_DESIGN,
+    name: recipe.name,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: recipe.icon ?? DEFAULT_ICON }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  const layoutXml = emitLayoutXml(recipe.layout, {
+    parentItemId: itemRefKey,
+    deviceId: DEFAULT_DEVICE_ID,
+    renderingIdFor: renderingId,
+    contentItemIdFor: contentItemId,
+    allowScoped: false,
+  });
+
+  if (layoutXml.length > 0) {
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `partial-design-layout:${recipe.handle}`,
+      itemRefKey,
+      fieldId: LAYOUT_FIELDS.RENDERINGS,
+      value: { kind: "string", value: layoutXml },
+    } satisfies SetFieldOp);
+  }
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
+}
+
+/**
+ * Compile a `PageDesignRecipe` to an Operation IR.
+ *
+ * Emits up to four ops:
+ *   1. `CreateItem` for the page-design item (SXA Page Design template)
+ *   2. `SetField(PartialDesigns)` — pipe-separated GUID list of partials
+ *   3. `SetField(__Renderings)` — only when recipe.layout is non-empty
+ *   4. `SetField(TemplatesMapping)` on the Page Designs root — one op
+ *      per recipe; the executor merges contributions from sibling page
+ *      designs in the same push (read-modify-write on the URL-string).
+ *
+ * The Page Designs root is a tenant-existing item, not created by any
+ * recipe. The op references it via `PAGE_DESIGNS_ROOT_REF_KEY` — the
+ * orchestrator pipeline-step seeds `crossRecipeRefs[<that-key>] =
+ * context.pageDesignsRoot` at execute time, and the executor's
+ * pre-seed step resolves it to the actual Sitecore itemId.
+ */
+export function compilePageDesignRecipe(
+  input: PageDesignRecipe,
+  context: CompileContext
+): OperationIr {
+  const recipe = PageDesignRecipeSchema.parse(input);
+  if (!context.pageDesignsRoot) {
+    throw new Error(
+      `compilePageDesignRecipe requires context.pageDesignsRoot; tenant-side path missing for recipe ${recipe.handle}`
+    );
+  }
+
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const itemRefKey = pageDesignId(recipe.handle);
+  const itemPath = joinPath(context.pageDesignsRoot, recipe.name);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `page-design:${recipe.handle}`,
+    id: itemRefKey,
+    path: itemPath,
+    parent: { kind: "ref-path", value: context.pageDesignsRoot },
+    templateOf: SITECORE_TEMPLATES.PAGE_DESIGN,
+    name: recipe.name,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: recipe.icon ?? DEFAULT_ICON }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  if (recipe.partials.length > 0) {
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `page-design-partials:${recipe.handle}`,
+      itemRefKey,
+      fieldId: COMPOSITION_FIELDS.PARTIAL_DESIGNS,
+      value: {
+        kind: "ref-recipe-list",
+        refKeys: recipe.partials.map((handle) => partialDesignId(handle)),
+      },
+    } satisfies SetFieldOp);
+  }
+
+  if (recipe.layout && Object.keys(recipe.layout.placeholders).length > 0) {
+    const layoutXml = emitLayoutXml(recipe.layout, {
+      parentItemId: itemRefKey,
+      deviceId: DEFAULT_DEVICE_ID,
+      renderingIdFor: renderingId,
+      contentItemIdFor: contentItemId,
+      allowScoped: false,
+    });
+    if (layoutXml.length > 0) {
+      operations.push({
+        op: "SetField",
+        policy,
+        label: `page-design-layout:${recipe.handle}`,
+        itemRefKey,
+        fieldId: LAYOUT_FIELDS.RENDERINGS,
+        value: { kind: "string", value: layoutXml },
+      } satisfies SetFieldOp);
+    }
+  }
+
+  if (recipe.appliesTo.length > 0) {
+    const designGuid = itemRefKey;
+    const mapping = encodeTemplatesMapping(
+      recipe.appliesTo.map((tplHandle) => ({
+        templateGuid: templateId(tplHandle),
+        designGuid,
+      }))
+    );
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `templates-mapping:${recipe.handle}`,
+      itemRefKey: PAGE_DESIGNS_ROOT_REF_KEY,
+      fieldId: COMPOSITION_FIELDS.TEMPLATES_MAPPING,
+      value: { kind: "string", value: mapping },
+    } satisfies SetFieldOp);
+  }
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
+}
+
 /** Front-door dispatcher — accepts any registered recipe kind. */
 export function compileRecipe(input: Recipe, context: CompileContext): OperationIr {
   const recipe = RecipeSchema.parse(input);
@@ -199,10 +408,9 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
         `ContentItemRecipe compilation is not yet implemented (lands in Phase 4 alongside the field-value encoders). Recipe handle: ${recipe.handle}`
       );
     case "partial-design":
+      return compilePartialDesignRecipe(recipe, context);
     case "page-design":
-      throw new Error(
-        `${recipe.kind} compilation is not yet implemented (Phase 4 Milestone C-D — IR ops, layout XML emitter, templates-to-designs URL-string encoder). Recipe handle: ${recipe.handle}`
-      );
+      return compilePageDesignRecipe(recipe, context);
   }
 }
 

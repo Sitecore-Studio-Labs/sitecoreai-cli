@@ -61,9 +61,16 @@ export {
 export {
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
+  compilePageDesignRecipe,
+  compilePartialDesignRecipe,
   compileRecipe,
   type CompileContext,
 } from "./compile";
+
+export { emitLayoutXml } from "./layout/emit";
+export type { ComponentPlacementInput, LayoutEmitContext, LayoutInput } from "./layout/emit";
+
+export { encodeTemplatesMapping, type TemplatesMappingEntry } from "./layout/templates-mapping";
 
 // GUID derivation ---------------------------------------------------------
 export {
@@ -74,6 +81,7 @@ export {
   NAMESPACE_ROOT,
   NAMESPACE_SITE_BRANCH,
   NAMESPACE_TEMPLATE,
+  PAGE_DESIGNS_ROOT_REF_KEY,
   contentItemId,
   datasourceId,
   fieldId,
@@ -114,9 +122,12 @@ export {
 } from "./ir/operations";
 
 export {
+  COMPOSITION_FIELDS,
+  DEFAULT_DEVICE_ID,
   DEFAULT_ICON,
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
+  LAYOUT_FIELDS,
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,

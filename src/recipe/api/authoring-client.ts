@@ -103,7 +103,9 @@ mutation($input: UpdateItemInput!) {
 
 const DELETE_ITEM_MUTATION = `
 mutation($input: DeleteItemInput!) {
-  deleteItem(input: $input)
+  deleteItem(input: $input) {
+    successful
+  }
 }`;
 
 type RemoteItemNode = {
@@ -136,14 +138,16 @@ const toRemoteItem = (node: RemoteItemNode): RemoteItem => ({
   parentId: node.parent?.itemId ?? "",
   templateId: node.template?.templateId ?? "",
   // The Authoring API returns `field.name` as the field's display name
-  // (e.g. "__Icon", "componentName"). Drift detection keys off the field's
-  // GUID, which lives at `field.templateField.templateFieldId`. Sitecore
-  // normalizes those GUIDs without dashes, so re-format to canonical
-  // 8-4-4-4-12 form to match the recipe's lowercase-with-dashes IDs.
+  // (e.g. "__Icon", "componentName"). Drift detection prefers the recipe
+  // op's `fieldName` when present (recipe-created fields whose GUIDs the
+  // tenant doesn't recognize); else falls back to the field's GUID at
+  // `field.templateField.templateFieldId`. Sitecore normalizes those GUIDs
+  // without dashes, so re-format to canonical 8-4-4-4-12.
   fields: node.fields.nodes
     .filter((field) => field.templateField?.templateFieldId)
     .map((field) => ({
       fieldId: dashifyGuid(field.templateField!.templateFieldId),
+      name: field.name,
       value: field.value,
     })),
 });
@@ -156,7 +160,12 @@ const dashifyGuid = (guid: string): string => {
 
 const toAuthoringFieldsInput = (fields: FieldValue[]): Array<{ name: string; value: string }> =>
   fields.map((field) => ({
-    name: field.fieldId,
+    // Sitecore's `FieldValueInput.name` accepts a field name OR id. For
+    // recipe-created fields, the IR's `fieldId` is only a uuidv5 refKey
+    // (the tenant's server-assigned GUID is different) — fall through to
+    // `fieldName`, which Sitecore resolves against the item's template.
+    // For system fields without a `fieldName`, the literal GUID works.
+    name: field.fieldName ?? field.fieldId,
     value: renderRefValue(field.value),
   }));
 
@@ -261,11 +270,27 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     },
 
     async deleteItem(selector: ItemSelector): Promise<void> {
-      const input: { itemId?: string; path?: string } = {};
+      // `permanently: true` skips the recycle bin — rollback and integration
+      // cleanup both want full removal. Default-false would leave items
+      // discoverable by path under /sitecore/content/Recycle Bin.
+      const input: {
+        itemId?: string;
+        path?: string;
+        permanently: boolean;
+      } = { permanently: true };
       if (selector.itemId) input.itemId = selector.itemId;
       else if (selector.path) input.path = selector.path;
       else throw new Error("deleteItem requires either path or itemId.");
-      await runAuthoringGraphQL(environment, DELETE_ITEM_MUTATION, { input }, request);
+      const data = await runAuthoringGraphQL<{
+        deleteItem: { successful: boolean } | null;
+      }>(environment, DELETE_ITEM_MUTATION, { input }, request);
+      if (!data.deleteItem?.successful) {
+        throw new Error(
+          `deleteItem returned successful: ${data.deleteItem?.successful} for ${
+            selector.itemId ?? selector.path ?? "(no selector)"
+          }`
+        );
+      }
     },
   };
 };

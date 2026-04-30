@@ -70,6 +70,23 @@ export type RefValue = z.infer<typeof RefValueSchema>;
 
 export const FieldValueSchema = z.object({
   fieldId: GUID,
+  /**
+   * Optional human-readable field name (e.g. "Body"). When present, the
+   * authoring client uses this as the mutation's field selector and the
+   * planner uses it for diff matching against `RemoteFieldValue.name`.
+   *
+   * Required for fields on RECIPE-CREATED templates: Sitecore assigns
+   * server-side itemIds to Template Field items, so the recipe-derived
+   * `fieldId(handle, name)` is just an internal refKey — the tenant has
+   * a different GUID for the same field. Sitecore's `FieldValueInput.name`
+   * accepts either a name or an ID, but only IDs that exist on the tenant
+   * resolve. Field names always resolve against the item's template.
+   *
+   * Omit for SYSTEM fields (e.g. `__Display Name`, `__Renderings`,
+   * `TemplatesMapping`) — those GUIDs are real Sitecore built-ins and
+   * resolve directly.
+   */
+  fieldName: z.string().min(1).optional(),
   /** Omit for shared fields; default `en` for versioned fields. */
   language: z.string().optional(),
   /** Omit for shared fields; default `1` for versioned fields. */
@@ -122,6 +139,12 @@ export const SetFieldOpSchema = z.object({
   /** RefKey of the target item — resolves to Sitecore itemId at execute time. */
   itemRefKey: GUID,
   fieldId: GUID,
+  /**
+   * Optional human-readable field name. See `FieldValueSchema.fieldName`
+   * — required for fields on recipe-created templates, omit for system
+   * fields whose GUIDs are Sitecore built-ins.
+   */
+  fieldName: z.string().min(1).optional(),
   language: z.string().optional(),
   version: z.number().int().positive().optional(),
   value: RefValueSchema,

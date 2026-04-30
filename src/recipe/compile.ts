@@ -459,6 +459,11 @@ export function compileContentItemRecipe(
       label: `content-item-field:${recipe.handle}:${fieldName}`,
       itemRefKey,
       fieldId: fieldGuid,
+      // Recipe-created field — Sitecore assigns its own GUID to the
+      // Template Field item, so fieldGuid is only an IR-internal refKey.
+      // The mutation needs the human-readable name; planner uses it for
+      // diff matching against the remote item's field-by-name.
+      fieldName,
       // Versioned: content-item field values are language/version-scoped.
       // Default language/version are filled in by versionedField helper —
       // duplicating its shape here so the SetField op carries them.

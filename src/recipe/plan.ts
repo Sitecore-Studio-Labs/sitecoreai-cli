@@ -99,19 +99,28 @@ export interface PlanOptions {
 const lookupField = (
   remote: RemoteItem,
   fieldId: string,
-  language?: string,
-  version?: number
+  fieldName: string | undefined,
+  language: string | undefined,
+  version: number | undefined
 ): RemoteFieldValue | undefined =>
-  remote.fields.find(
-    (f) =>
-      f.fieldId.toLowerCase() === fieldId.toLowerCase() &&
+  remote.fields.find((f) => {
+    // Match by name when the IR carries one — recipe-created field GUIDs
+    // are IR-internal refKeys that don't match the tenant's actual GUIDs,
+    // so name is the only reliable selector. Else match by GUID (system
+    // fields' GUIDs are real Sitecore built-ins).
+    const idMatches = fieldName
+      ? f.name === fieldName
+      : f.fieldId.toLowerCase() === fieldId.toLowerCase();
+    return (
+      idMatches &&
       // Sitecore Authoring GraphQL doesn't return per-field language/version
       // on the basic `Item.fields` query — `f.language`/`f.version` are
       // typically undefined. Match only when the recipe's filter is also
       // undefined or when the API DID return them (custom integrations).
       (language === undefined || f.language === undefined || f.language === language) &&
       (version === undefined || f.version === undefined || f.version === version)
-  );
+    );
+  });
 
 /** Resolve every recipe-ref / source-prefix in a field value list. */
 const resolveAll = (
@@ -132,7 +141,13 @@ const computeFieldDrift = (
   for (const field of desired) {
     const resolvedValue: RefValue = resolveRecipeRefs(field.value, capturedItemIds);
     const want = renderRefValue(resolvedValue);
-    const found = lookupField(remote, field.fieldId, field.language, field.version);
+    const found = lookupField(
+      remote,
+      field.fieldId,
+      field.fieldName,
+      field.language,
+      field.version
+    );
     if (!found) {
       drift.push({
         fieldId: field.fieldId,
@@ -362,6 +377,7 @@ const planUpdateOp = (
 const setFieldDesired = (op: SetFieldOp): FieldValue[] => [
   {
     fieldId: op.fieldId,
+    fieldName: op.fieldName,
     language: op.language,
     version: op.version,
     value: op.value,

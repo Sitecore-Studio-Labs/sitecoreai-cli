@@ -183,7 +183,11 @@ describe("createAuthoringClient — getItem", () => {
       parentId: "00000000-0000-0000-0000-000000000aaa",
       templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
       fields: [
-        { fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", value: "Office/32x32/document.png" },
+        {
+          fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318",
+          name: "__Icon",
+          value: "Office/32x32/document.png",
+        },
       ],
     });
   });
@@ -217,7 +221,7 @@ describe("createAuthoringClient — getItem", () => {
     const client = createAuthoringClient({ environment: baseEnv });
     const remote = await client.getItem({ itemId: "11111111-1111-1111-1111-111111111111" });
     expect(remote?.fields).toEqual([
-      { fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", value: "icon" },
+      { fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", name: "__Icon", value: "icon" },
     ]);
   });
 });
@@ -307,18 +311,67 @@ describe("createAuthoringClient — mutations", () => {
     });
   });
 
-  it("deleteItem sends the itemId in the input variable to deleteItem mutation", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { deleteItem: true } }));
+  it("updateItem prefers fieldName over fieldId in the mutation input when both are present", async () => {
+    // Recipe-created fields carry a uuidv5 fieldId for IR refKey purposes
+    // and a human-readable fieldName for the mutation. The tenant's actual
+    // field GUID is server-assigned, so the recipe-derived GUID would never
+    // resolve — name is the only reliable selector.
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: { updateItem: { item: { itemId: "22222222-2222-2222-2222-222222222222" } } },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await client.updateItem({
+      itemId: "22222222-2222-2222-2222-222222222222",
+      fields: [
+        {
+          fieldId: "c8a15ad2-8107-5cdd-a248-8c94eff1488e",
+          fieldName: "Body",
+          value: { kind: "string", value: "Hello" },
+        },
+      ],
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables.input.fields).toEqual([{ name: "Body", value: "Hello" }]);
+  });
+
+  it("deleteItem sends the itemId + permanently=true and selects { successful }", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { deleteItem: { successful: true } } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createAuthoringClient({ environment: baseEnv });
     await client.deleteItem({ itemId: "11111111-1111-1111-1111-111111111111" });
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.query).toContain("deleteItem");
+    // The mutation needs a subselection on DeleteItemPayload — the bare
+    // `deleteItem(input)` form fails Sitecore's leaf-selection check.
+    expect(body.query).toContain("successful");
     expect(body.variables).toEqual({
-      input: { itemId: "11111111-1111-1111-1111-111111111111" },
+      input: {
+        itemId: "11111111-1111-1111-1111-111111111111",
+        // Permanently bypasses the recycle bin so deleted items don't keep
+        // occupying their original path under Recycle Bin.
+        permanently: true,
+      },
     });
+  });
+
+  it("deleteItem throws when the mutation reports successful: false", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { deleteItem: { successful: false } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.deleteItem({ itemId: "11111111-1111-1111-1111-111111111111" })
+    ).rejects.toThrow(/successful: false/);
   });
 });
 
@@ -382,7 +435,7 @@ describe("createAuthoringClient — getChildren", () => {
     expect(children[0]).toMatchObject({
       name: "child-1",
       path: "/sitecore/templates/parent/child-1",
-      fields: [{ fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", value: "v1" }],
+      fields: [{ fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", name: "Title", value: "v1" }],
     });
     expect(children[1]).toMatchObject({ name: "child-2", fields: [] });
   });

@@ -18,6 +18,15 @@ import type { FieldValue } from "../ir/operations";
 
 export interface RemoteFieldValue {
   fieldId: string;
+  /**
+   * Field name as defined on the template (e.g. `Body`, `__Display Name`).
+   * Real `getItem` responses always carry this; optional in the type so
+   * that test mocks aren't forced to populate it for fieldId-only
+   * scenarios. The planner prefers name-based matching when the IR's
+   * SetField op carries a `fieldName` (recipe-created fields whose
+   * recipe-derived GUID is only an IR-internal refKey).
+   */
+  name?: string;
   /** Sitecore returns the raw stored value (string), regardless of field type. */
   value: string;
   /** Versioned fields carry these; shared fields do not. */

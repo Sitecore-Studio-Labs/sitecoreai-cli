@@ -47,16 +47,24 @@ export interface RollbackOptions {
 const findPriorValue = (
   snapshot: RemoteItem | null | undefined,
   fieldId: string,
+  fieldName: string | undefined,
   language?: string,
   version?: number
 ): string | null => {
   if (!snapshot) return null;
-  const found = snapshot.fields.find(
-    (f) =>
-      f.fieldId.toLowerCase() === fieldId.toLowerCase() &&
+  // Match by name when the IR carries one — recipe-created fields don't
+  // share GUIDs between the IR (uuidv5 refKey) and the tenant (server-
+  // assigned). Else match by fieldId (system fields, real Sitecore GUIDs).
+  const found = snapshot.fields.find((f) => {
+    const idMatches = fieldName
+      ? f.name === fieldName
+      : f.fieldId.toLowerCase() === fieldId.toLowerCase();
+    return (
+      idMatches &&
       (language === undefined || f.language === language) &&
       (version === undefined || f.version === version)
-  );
+    );
+  });
   return found ? found.value : null;
 };
 
@@ -95,9 +103,16 @@ export const inverseOf = (
 
   // updateItem: each touched field reverts to its prior snapshot value.
   const priorFields: FieldValue[] = action.mutation.input.fields.map((field) => {
-    const prior = findPriorValue(action.snapshot, field.fieldId, field.language, field.version);
+    const prior = findPriorValue(
+      action.snapshot,
+      field.fieldId,
+      field.fieldName,
+      field.language,
+      field.version
+    );
     return {
       fieldId: field.fieldId,
+      fieldName: field.fieldName,
       language: field.language,
       version: field.version,
       value: { kind: "string", value: prior ?? "" },

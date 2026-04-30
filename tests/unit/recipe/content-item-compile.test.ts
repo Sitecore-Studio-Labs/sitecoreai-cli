@@ -80,6 +80,19 @@ describe("compileContentItemRecipe — IR shape", () => {
     expect(setTitle.itemRefKey).toBe(contentItemId("test-content@1"));
   });
 
+  it("SetField carries fieldName so the mutation resolves by name on the tenant", () => {
+    // Recipe-derived fieldId is just an IR refKey — Sitecore assigns its
+    // own GUID to the Template Field item, so the mutation can't resolve
+    // by GUID. fieldName ('Body') is the recipe-stable name on the
+    // template; Sitecore resolves it directly against the item's template.
+    const ir = compileContentItemRecipe(
+      buildRecipe({ Body: { shape: "text", value: "Hi" } }),
+      CONTEXT
+    );
+    const setBody = findSet(ir.operations, "Body", "test-content@1");
+    expect(setBody.fieldName).toBe("Body");
+  });
+
   it("throws when contentItemsRoot is missing", () => {
     expect(() =>
       compileContentItemRecipe(buildRecipe({}), {

@@ -58,6 +58,32 @@ export type EnvironmentConfiguration = {
    * Used as fallback when the CLI flag `--renderings-root` is not passed.
    */
   renderingsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * partial-design items (Phase 4). Typically
+   * `/sitecore/content/<site>/Presentation/Partial Designs`.
+   *
+   * Optional — only `PartialDesignRecipe` compilation requires it.
+   */
+  partialDesignsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * page-design items (Phase 4). Typically
+   * `/sitecore/content/<site>/Presentation/Page Designs`.
+   *
+   * Optional — only `PageDesignRecipe` compilation requires it. Also
+   * used by `runRecipePush` to seed `crossRecipeRefs` so the cross-
+   * recipe `TemplatesMapping` aggregate op can resolve its target.
+   */
+  pageDesignsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * shared content items (Phase 4). Typically
+   * `/sitecore/content/<site>/Data` or a sub-bucket.
+   *
+   * Optional — only `ContentItemRecipe` compilation requires it.
+   */
+  contentItemsRoot?: string;
 };
 
 export type RootConfiguration = {

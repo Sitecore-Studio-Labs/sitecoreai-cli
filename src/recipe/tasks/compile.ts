@@ -33,6 +33,13 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     environment,
     envName ?? "(no environment)"
   );
+  // Phase 4 composition roots — optional. The per-recipe compile fns
+  // throw with their own clear messages when a partial-design /
+  // page-design / content-item recipe is in play but the corresponding
+  // root is missing.
+  const partialDesignsRoot = options.partialDesignsRoot ?? environment?.partialDesignsRoot;
+  const pageDesignsRoot = options.pageDesignsRoot ?? environment?.pageDesignsRoot;
+  const contentItemsRoot = options.contentItemsRoot ?? environment?.contentItemsRoot;
 
   const { files, source } = await resolveRecipeInputs(options, root);
 
@@ -54,6 +61,9 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     const ir = compileRecipe(recipe, {
       templatesRoot,
       renderingsRoot,
+      partialDesignsRoot,
+      pageDesignsRoot,
+      contentItemsRoot,
     });
 
     const outputPath =

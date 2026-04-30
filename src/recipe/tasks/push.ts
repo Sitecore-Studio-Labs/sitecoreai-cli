@@ -1,8 +1,10 @@
 import path from "node:path";
-import { compileRecipe } from "../compile";
+import { compileRecipeSet } from "../compile";
+import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
 import type { OperationIr } from "../ir/operations";
+import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
   resolveRecipeInputs,
@@ -40,6 +42,15 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     tenant.environment,
     tenant.envName
   );
+  // Phase 4 composition roots — optional at the envProfile level. The
+  // per-recipe compile fns throw with their own clear messages if a
+  // partial-design / page-design / content-item recipe is in the set
+  // but the corresponding root is unset. CLI flag overrides match the
+  // templatesRoot / renderingsRoot pattern.
+  const partialDesignsRoot = options.partialDesignsRoot ?? tenant.environment.partialDesignsRoot;
+  const pageDesignsRoot = options.pageDesignsRoot ?? tenant.environment.pageDesignsRoot;
+  const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
+
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
   const allEvents: Array<{ recipe: string; event: ExecutionEvent }> = [];
@@ -50,25 +61,53 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // own ops don't produce (e.g. accordion-block's
   // `insertOptions: ["accordion-item@1"]` references accordion-item's
   // template, which lives in a different recipe's IR).
-  const irs = await Promise.all(
-    files.map(async (file): Promise<{ file: string; ir: OperationIr }> => {
-      const ext = path.extname(file).toLowerCase();
-      const ir =
-        ext === ".json" && file.endsWith(".ir.json")
-          ? await loadIr(file)
-          : compileRecipe(await loadRecipe(file), {
-              templatesRoot,
-              renderingsRoot,
-            });
-      return { file, ir };
-    })
-  );
+  //
+  // Phase 4: recipe-source files compile through `compileRecipeSet` so
+  // cross-recipe `TemplatesMapping` contributions (every PageDesignRecipe
+  // contributes one entry per `appliesTo` template) aggregate into a
+  // single synthetic IR. Pre-compiled `.ir.json` inputs load directly —
+  // the aggregate-IR opportunity is gone for those, but the executor
+  // still applies whatever's there.
+  const recipeFiles: string[] = [];
+  const irFiles: string[] = [];
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (ext === ".json" && file.endsWith(".ir.json")) {
+      irFiles.push(file);
+    } else {
+      recipeFiles.push(file);
+    }
+  }
+  const recipes: Recipe[] = await Promise.all(recipeFiles.map((f) => loadRecipe(f)));
+  const compiled: OperationIr[] = compileRecipeSet(recipes, {
+    templatesRoot,
+    renderingsRoot,
+    partialDesignsRoot,
+    pageDesignsRoot,
+    contentItemsRoot,
+  });
+  const loadedIrs: OperationIr[] = await Promise.all(irFiles.map((f) => loadIr(f)));
+  const irs: { ir: OperationIr }[] = [
+    ...compiled.map((ir) => ({ ir })),
+    ...loadedIrs.map((ir) => ({ ir })),
+  ];
 
   const crossRecipeRefs = new Map<string, string>();
   for (const { ir } of irs) {
     for (const op of ir.operations) {
       if (op.op === "CreateItem") crossRecipeRefs.set(op.id, op.path);
     }
+  }
+  // Seed the synthetic Page Designs root refKey so the cross-recipe
+  // `TemplatesMapping` aggregate op (emitted by `compileRecipeSet` when
+  // any page design declares `appliesTo`) resolves its target. The
+  // executor walks the path and stores the captured itemId in
+  // `capturedItemIds` before applying the SetField op. Skip the seed
+  // when `pageDesignsRoot` isn't set — without page designs in the
+  // set, the aggregate IR isn't emitted and the seed wouldn't be used
+  // anyway.
+  if (pageDesignsRoot) {
+    crossRecipeRefs.set(PAGE_DESIGNS_ROOT_REF_KEY, pageDesignsRoot);
   }
 
   for (const { ir } of irs) {

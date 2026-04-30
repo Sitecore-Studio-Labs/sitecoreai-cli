@@ -102,6 +102,21 @@ export const applyEnvOverrides = (
   if (renderingsRoot !== undefined) {
     overrides.renderingsRoot = renderingsRoot;
   }
+  // Phase 4 composition roots — read by `runRecipePush` to wire
+  // `CompileContext.{partialDesignsRoot, pageDesignsRoot, contentItemsRoot}`
+  // and to seed `crossRecipeRefs[PAGE_DESIGNS_ROOT_REF_KEY]`.
+  const partialDesignsRoot = getEnvOverride(envName, "PARTIAL_DESIGNS_ROOT", includeGlobal);
+  if (partialDesignsRoot !== undefined) {
+    overrides.partialDesignsRoot = partialDesignsRoot;
+  }
+  const pageDesignsRoot = getEnvOverride(envName, "PAGE_DESIGNS_ROOT", includeGlobal);
+  if (pageDesignsRoot !== undefined) {
+    overrides.pageDesignsRoot = pageDesignsRoot;
+  }
+  const contentItemsRoot = getEnvOverride(envName, "CONTENT_ITEMS_ROOT", includeGlobal);
+  if (contentItemsRoot !== undefined) {
+    overrides.contentItemsRoot = contentItemsRoot;
+  }
   const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
   if (organizationId !== undefined) {
     overrides.organizationId = organizationId;

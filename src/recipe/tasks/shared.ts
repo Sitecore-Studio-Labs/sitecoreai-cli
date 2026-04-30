@@ -38,6 +38,12 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
   renderingsRoot?: string;
+  /** Override `partialDesignsRoot` from the env profile (Phase 4). */
+  partialDesignsRoot?: string;
+  /** Override `pageDesignsRoot` from the env profile (Phase 4). */
+  pageDesignsRoot?: string;
+  /** Override `contentItemsRoot` from the env profile (Phase 4). */
+  contentItemsRoot?: string;
   /**
    * Active env profile to source `templatesRoot` / `renderingsRoot`
    * defaults from when the flags are not passed. Required for compile
@@ -63,6 +69,12 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
   renderingsRoot?: string;
+  /** Override `partialDesignsRoot` from the env profile (Phase 4). */
+  partialDesignsRoot?: string;
+  /** Override `pageDesignsRoot` from the env profile (Phase 4). */
+  pageDesignsRoot?: string;
+  /** Override `contentItemsRoot` from the env profile (Phase 4). */
+  contentItemsRoot?: string;
   whatIf?: boolean;
   allowWrite?: boolean;
 }

@@ -22,9 +22,12 @@ const addRequiredInputOption = (command: Command, label: string): Command =>
 const addOutputOption = (command: Command): Command =>
   command.addOption(new Option("-o, --output <path>", "Path to write the output file"));
 
-// Both flags are optional. Falls back to envProfiles[<name>].templatesRoot
-// / .renderingsRoot in sitecoreai.cli.json. resolveRecipeRoots() throws
-// `INPUT_INVALID` with a config-shape hint if neither source is set.
+// All flags are optional. Each falls back to the matching field on
+// envProfiles[<name>] in sitecoreai.cli.json. resolveRecipeRoots() throws
+// `INPUT_INVALID` for the two required ones (templatesRoot, renderingsRoot)
+// when neither source is set; the Phase 4 composition roots are optional
+// and only surface errors when their corresponding recipe kinds are
+// being compiled.
 const addRecipeRootOptions = (command: Command): Command =>
   command
     .addOption(
@@ -37,6 +40,24 @@ const addRecipeRootOptions = (command: Command): Command =>
       new Option(
         "--renderings-root <path>",
         "Sitecore parent path for rendering items. Falls back to envProfiles[<name>].renderingsRoot."
+      )
+    )
+    .addOption(
+      new Option(
+        "--partial-designs-root <path>",
+        "Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot."
+      )
+    )
+    .addOption(
+      new Option(
+        "--page-designs-root <path>",
+        "Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot."
+      )
+    )
+    .addOption(
+      new Option(
+        "--content-items-root <path>",
+        "Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot."
       )
     );
 

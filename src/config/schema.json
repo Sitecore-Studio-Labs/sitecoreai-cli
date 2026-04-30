@@ -213,6 +213,18 @@
         "renderingsRoot": {
           "type": "string",
           "description": "Sitecore parent path under which `scai recipe compile|push` creates rendering items (e.g. /sitecore/layout/Renderings/Project/<site>). Tenant-specific. Used as fallback when --renderings-root is not passed."
+        },
+        "partialDesignsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates partial-design items (e.g. /sitecore/content/<site>/Presentation/Partial Designs). Required for PartialDesignRecipe compilation."
+        },
+        "pageDesignsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates page-design items (e.g. /sitecore/content/<site>/Presentation/Page Designs). Required for PageDesignRecipe compilation; also seeds crossRecipeRefs for the cross-recipe TemplatesMapping aggregate."
+        },
+        "contentItemsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates shared content items (e.g. /sitecore/content/<site>/Data). Required for ContentItemRecipe compilation."
         }
       }
     }

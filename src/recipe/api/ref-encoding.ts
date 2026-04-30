@@ -1,5 +1,5 @@
 import type { RefValue } from "../ir/operations";
-import { parseSourceConvention, renderSourceConvention } from "../schema/source-convention";
+import { renderSourceFields } from "../schema/source-fields";
 
 /**
  * Render a typed `RefValue` to the canonical Sitecore string form.
@@ -28,7 +28,7 @@ export const renderRefValue = (value: RefValue): string => {
       return value.values.map(toCurly).join("|");
     case "ref-recipe":
     case "ref-recipe-list":
-    case "ref-source-prefix":
+    case "ref-source-fields":
       throw new Error(
         `Unresolved ${value.kind} cannot be rendered — call resolveRecipeRefs first.`
       );
@@ -81,26 +81,32 @@ export const resolveRecipeRefs = (
       }
       return { kind: "ref-guid-list", values: guids };
     }
-    case "ref-source-prefix": {
-      // Source-convention with recipe-handle references. Parse + render
-      // using the captured map; recipe handles map to refKeys via
-      // `templateId(handle)`, which the planner registered when the
-      // referenced template's CreateItem op completed.
-      const parsed = parseSourceConvention(value.raw);
-      const rendered = renderSourceConvention(parsed, (handle) => {
-        // The compiler used `templateId(handle)` as the refKey for any
-        // template-referencing source. We can't import that here without
-        // a cycle; the planner provides a resolver that knows the map.
-        const refKey = templateIdForHandle(handle);
-        const itemId = capturedItemIds.get(refKey);
-        if (!itemId) {
-          throw new Error(
-            `ref-source-prefix references handle '${handle}' (refKey ${refKey}); not yet in captured map.`
-          );
+    case "ref-source-fields": {
+      // Structured source fields with recipe-handle references in
+      // `sourceTypes`. Resolve each handle to its captured Sitecore
+      // itemId, then render. Recipe handles map to refKeys via
+      // `templateId(handle)`, which the planner registers when the
+      // referenced template's CreateItem op completes.
+      const rendered = renderSourceFields(
+        {
+          sourceTypes: value.sourceTypes,
+          sourceQuery: value.sourceQuery,
+          sourceScope: value.sourceScope,
+        },
+        (handle) => {
+          const refKey = templateIdForHandle(handle);
+          const itemId = capturedItemIds.get(refKey);
+          if (!itemId) {
+            throw new Error(
+              `ref-source-fields references handle '${handle}' (refKey ${refKey}); not yet in captured map.`
+            );
+          }
+          return itemId;
         }
-        return itemId;
-      });
-      return { kind: "string", value: rendered };
+      );
+      // sourceTypes is non-empty in this branch (IR validation), so
+      // renderSourceFields always returns a string.
+      return { kind: "string", value: rendered as string };
     }
     default:
       return value;

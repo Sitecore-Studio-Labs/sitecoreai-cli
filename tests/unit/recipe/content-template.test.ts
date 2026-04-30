@@ -143,8 +143,8 @@ describe("compileRecipe — dispatcher", () => {
   });
 });
 
-describe("source prefix resolution", () => {
-  const compileWithSource = (source: string) =>
+describe("structured source field resolution", () => {
+  const compileWithSitecore = (sitecore: Record<string, unknown>) =>
     compileContentTemplateRecipe(
       {
         kind: "content-template",
@@ -157,54 +157,58 @@ describe("source prefix resolution", () => {
             name: "Picker",
             shape: "reference",
             multiple: true,
-            sitecore: { type: "treelist", source },
+            sitecore: { type: "treelist", ...sitecore },
           },
         ],
       },
       CONTEXT
     );
 
-  const sourceField = (ir: ReturnType<typeof compileWithSource>) => {
+  const sourceField = (ir: ReturnType<typeof compileWithSitecore>) => {
     const fieldOp = ir.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name === "Picker"
     );
     return findField(fieldOp!, TEMPLATE_FIELD_FIELDS.SOURCE);
   };
 
-  it("passes `query:...` through verbatim", () => {
-    const ir = compileWithSource("query:$site/*[@@name='Data']");
+  it("standalone sourceQuery → string with `query:<query>` shorthand", () => {
+    const ir = compileWithSitecore({ sourceQuery: "$site/*[@@name='Data']" });
     expect(sourceField(ir)?.value).toEqual({
       kind: "string",
       value: "query:$site/*[@@name='Data']",
     });
   });
 
-  it("emits ref-source-prefix for `template:<handle>` (executor resolves to IncludeTemplatesForSelection={guid})", () => {
-    const ir = compileWithSource("template:accordion-item@1");
+  it("emits ref-source-fields for sourceTypes with one handle (executor resolves to IncludeTemplatesForSelection={guid})", () => {
+    const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1"] });
     expect(sourceField(ir)?.value).toEqual({
-      kind: "ref-source-prefix",
-      raw: "template:accordion-item@1",
+      kind: "ref-source-fields",
+      sourceTypes: ["accordion-item@1"],
     });
   });
 
-  it("emits ref-source-prefix for `templates:<h1>,<h2>` (executor resolves at apply time)", () => {
-    const ir = compileWithSource("templates:accordion-item@1,rich-text-block@1");
+  it("emits ref-source-fields for sourceTypes with multiple handles (executor resolves at apply time)", () => {
+    const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1", "rich-text-block@1"] });
     expect(sourceField(ir)?.value).toEqual({
-      kind: "ref-source-prefix",
-      raw: "templates:accordion-item@1,rich-text-block@1",
+      kind: "ref-source-fields",
+      sourceTypes: ["accordion-item@1", "rich-text-block@1"],
     });
   });
 
-  it("emits ref-source-prefix for `datasource:<q>&template:<h>` (executor resolves DataSource + IncludeTemplatesForSelection)", () => {
-    const ir = compileWithSource("datasource:/sitecore/content/Library&template:accordion-item@1");
+  it("emits ref-source-fields combining sourceScope + sourceTypes (executor resolves DataSource + IncludeTemplatesForSelection)", () => {
+    const ir = compileWithSitecore({
+      sourceScope: "/sitecore/content/Library",
+      sourceTypes: ["accordion-item@1"],
+    });
     expect(sourceField(ir)?.value).toEqual({
-      kind: "ref-source-prefix",
-      raw: "datasource:/sitecore/content/Library&template:accordion-item@1",
+      kind: "ref-source-fields",
+      sourceTypes: ["accordion-item@1"],
+      sourceScope: "/sitecore/content/Library",
     });
   });
 
-  it("passes unknown prefixes through verbatim", () => {
-    const ir = compileWithSource("/sitecore/content/Tags");
+  it("passes sourceRaw through verbatim as a plain string", () => {
+    const ir = compileWithSitecore({ sourceRaw: "/sitecore/content/Tags" });
     expect(sourceField(ir)?.value).toEqual({
       kind: "string",
       value: "/sitecore/content/Tags",

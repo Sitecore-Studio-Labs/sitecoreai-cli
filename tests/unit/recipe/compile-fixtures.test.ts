@@ -140,13 +140,13 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     expect(ir.operations).toHaveLength(19);
 
     // The Items field's source references a recipe handle, so the compiler
-    // emits ref-source-prefix and the executor renders with captured itemIds.
+    // emits ref-source-fields and the executor renders with captured itemIds.
     const itemsField = ir.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name === "Items"
     );
     expect(findField(itemsField!, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual({
-      kind: "ref-source-prefix",
-      raw: "template:accordion-item@1",
+      kind: "ref-source-fields",
+      sourceTypes: ["accordion-item@1"],
     });
 
     // insertOptions emits a SetField on the standard-values item carrying
@@ -180,10 +180,10 @@ describe("compile fixtures — cross-recipe deterministic ID linkage", () => {
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name === "Items"
     );
     const sourceValue = findField(itemsField!, TEMPLATE_FIELD_FIELDS.SOURCE)?.value;
-    if (sourceValue?.kind !== "ref-source-prefix") {
-      throw new Error("expected ref-source-prefix");
+    if (sourceValue?.kind !== "ref-source-fields") {
+      throw new Error("expected ref-source-fields");
     }
-    expect(sourceValue.raw).toContain("accordion-item@1");
+    expect(sourceValue.sourceTypes).toContain("accordion-item@1");
   });
 
   it("accordion-block's insertOptions refKeys match accordion-item's templateId refKey", () => {

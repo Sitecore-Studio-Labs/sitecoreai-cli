@@ -70,7 +70,7 @@ export interface ExecuteOptions {
    * produced by OTHER recipes in the same workspace. The executor
    * walks this map at start, calls `getItem({path})` for each entry,
    * and if found seeds `capturedItemIds` so the planner can resolve
-   * `ref-recipe` / `ref-recipe-list` / `ref-source-prefix` values
+   * `ref-recipe` / `ref-recipe-list` / `ref-source-fields` values
    * pointing at items the current recipe doesn't itself produce
    * (e.g. accordion-block's `insertOptions: ["accordion-item@1"]`).
    *

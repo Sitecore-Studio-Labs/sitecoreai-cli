@@ -48,6 +48,7 @@ import {
   type SitecoreFieldType,
   sitecoreFieldTypeLabel,
 } from "./schema/field-types";
+import { renderSourceFields, sourceFieldsNeedHandleResolution } from "./schema/source-fields";
 
 /**
  * Where a recipe's items land in the Sitecore content tree. Tenant-side
@@ -537,28 +538,40 @@ function resolveSitecoreType(field: FieldDefinition | ParamDefinition): Sitecore
 /**
  * Resolve a recipe field's `Source` value to a Sitecore-encoded string.
  *
- * For source-convention prefixes that reference recipe handles
- * (`template:<h>`, `templates:<h1>,<h2>`, `datasource:<q>&template:<h>`),
- * the result depends on the resolved Sitecore itemId. We can't compute
- * the wire string at compile time — emit `ref-source-prefix` and the
- * executor renders with the captured-itemId resolver.
+ * When `sourceTypes` references recipe handles, the wire string depends
+ * on the resolved Sitecore itemIds — we can't render at compile time, so
+ * we emit `ref-source-fields` and the executor finishes the job with the
+ * captured-itemId resolver.
  *
- * For non-recipe-referencing sources (`query:...`, raw passthrough,
- * `datasource:<q>` without template), we render at compile time as a
- * plain string.
+ * Sources without handle references (`sourceRaw`, or `sourceQuery` /
+ * `sourceScope` alone) render at compile time as a plain string.
  */
 function resolveFieldSource(
   field: FieldDefinition | ParamDefinition,
   type: SitecoreFieldType
 ): RefValue | undefined {
-  if (field.sitecore?.source !== undefined) {
-    const raw = field.sitecore.source;
-    const referencesRecipeHandles =
-      raw.startsWith("template:") || raw.startsWith("templates:") || raw.includes("&template:");
-    if (referencesRecipeHandles) {
-      return { kind: "ref-source-prefix", raw };
+  const sc = field.sitecore;
+  if (sc) {
+    const fields = {
+      sourceTypes: sc.sourceTypes,
+      sourceQuery: sc.sourceQuery,
+      sourceScope: sc.sourceScope,
+      sourceRaw: sc.sourceRaw,
+    };
+    if (sourceFieldsNeedHandleResolution(fields)) {
+      return {
+        kind: "ref-source-fields",
+        sourceTypes: sc.sourceTypes!,
+        sourceQuery: sc.sourceQuery,
+        sourceScope: sc.sourceScope,
+      };
     }
-    return { kind: "string", value: raw };
+    const rendered = renderSourceFields(fields, () => {
+      throw new Error("compile-time render should not need handle resolution");
+    });
+    if (rendered !== undefined) {
+      return { kind: "string", value: rendered };
+    }
   }
   if (type === "droplist" && field.values && field.values.length > 0) {
     return { kind: "string", value: field.values.join("|") };

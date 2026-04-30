@@ -48,12 +48,18 @@ export const RefValueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
   z.object({ kind: z.literal("query"), value: NON_EMPTY }),
   /**
-   * Source-convention prefix that references one or more recipe handles
-   * (`template:<h>`, `templates:<h1>,<h2>`, `datasource:<q>&template:<h>`).
-   * Resolution requires the captured-itemId map; rendered by the executor
-   * just before dispatching the field write.
+   * Structured source fields whose `sourceTypes` reference one or more
+   * recipe handles. Resolution requires the captured-itemId map; rendered
+   * by the executor (via `renderSourceFields`) just before dispatching
+   * the field write. Mirrors the `SitecoreFieldAugment` source surface
+   * minus `sourceRaw` (raw is always rendered at compile time).
    */
-  z.object({ kind: z.literal("ref-source-prefix"), raw: NON_EMPTY }),
+  z.object({
+    kind: z.literal("ref-source-fields"),
+    sourceTypes: z.array(NON_EMPTY).min(1),
+    sourceQuery: z.string().optional(),
+    sourceScope: z.string().optional(),
+  }),
   z.object({
     kind: z.literal("url-string-map"),
     entries: z.record(z.string(), z.string()),

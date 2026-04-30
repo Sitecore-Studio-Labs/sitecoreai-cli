@@ -134,12 +134,12 @@ export type {
 // Reference encoding (RefValue → canonical Sitecore string) -------------
 export { renderRefValue } from "./api/ref-encoding";
 
-// Source convention parser (recipe `sitecore.source` prefixes) ----------
+// Source fields (recipe `sitecore.sourceTypes/Query/Scope/Raw`) ---------
 export {
-  parseSourceConvention,
-  renderSourceConvention,
-  type SourceConvention,
-} from "./schema/source-convention";
+  renderSourceFields,
+  sourceFieldsNeedHandleResolution,
+  type SourceFields,
+} from "./schema/source-fields";
 
 // Policy assignment (Phase 3+ extension point) --------------------------
 export {

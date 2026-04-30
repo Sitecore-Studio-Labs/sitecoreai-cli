@@ -40,40 +40,72 @@ import { FieldShapeSchema, SitecoreFieldTypeSchema } from "./field-types";
 
 const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
 
-/** Sitecore-side override on a field or param. Defaults apply when omitted. */
-export const SitecoreFieldAugmentSchema = z.object({
-  /** Override the default shape→Sitecore type mapping. */
-  type: SitecoreFieldTypeSchema.optional(),
-  /**
-   * Sitecore "Source" field. The compiler recognizes a few prefix conventions
-   * for cross-recipe references; everything else is passed through verbatim:
-   *
-   *   `query:...`             — Sitecore Query, passed through.
-   *   `template:<handle>`     — Restrict picker to items of the given recipe
-   *                             handle. Compiler resolves the handle to its
-   *                             deterministic template GUID and emits
-   *                             `IncludeTemplatesForSelection={guid}`.
-   *   `templates:<h1>,<h2>`   — Multiple template handles, comma-separated.
-   *   `datasource:<query>&template:<handle>`
-   *                           — Combine root scope (DataSource) with template
-   *                             restriction.
-   *   <anything else>         — Raw Sitecore Source string, passed through.
-   */
-  source: z.string().optional(),
-  /** Author-facing hint surfaced in the CMS. */
-  hint: z.string().optional(),
-  /** Required marker (translates to a Sitecore validation rule). */
-  required: z.boolean().optional(),
-  /** Default value via the template's __Standard Values item. */
-  defaultValue: z.string().optional(),
-  /** Ordinal within the section/params block; auto-assigned 100/200/… if omitted. */
-  sortOrder: z.number().int().optional(),
-  /**
-   * Section name to group this field under (only meaningful for `fields`,
-   * not `params`/`variants`). Defaults to "Content".
-   */
-  section: z.string().optional(),
-});
+/**
+ * Sitecore-side override on a field or param. Defaults apply when omitted.
+ *
+ * The picker-scope concept (Sitecore's `Source` field) is expressed as
+ * three composable structured fields rather than a stringly-typed
+ * mini-language. They combine: e.g. `sourceScope` + `sourceTypes` becomes
+ * `DataSource=<path>&IncludeTemplatesForSelection={GUID},...` on emit.
+ *
+ *   sourceTypes   — "picker filter": only items of these recipe handles.
+ *   sourceQuery   — "where to look": a Sitecore Query (e.g. `$site/...`).
+ *   sourceScope   — "where to look": a fixed content-tree path.
+ *   sourceRaw     — escape hatch; verbatim Source string (mutually exclusive
+ *                   with the structured fields).
+ */
+export const SitecoreFieldAugmentSchema = z
+  .object({
+    /** Override the default shape→Sitecore type mapping. */
+    type: SitecoreFieldTypeSchema.optional(),
+    /**
+     * Picker filter: restrict to items conforming to one of these recipe
+     * handles. Compiler resolves each handle to its deterministic template
+     * GUID and emits `IncludeTemplatesForSelection={GUID},{GUID}`.
+     */
+    sourceTypes: z.array(z.string()).optional(),
+    /**
+     * Where to look: a Sitecore Query (e.g. `$site/*[@@name='Data']`).
+     * Standalone, becomes the entire Source as `query:<query>` (the
+     * shorthand Sitecore evaluates directly for Droplist-style fields).
+     * Combined with `sourceTypes`, becomes `DataSource=query:<query>&...`.
+     */
+    sourceQuery: z.string().optional(),
+    /**
+     * Where to look: a fixed Sitecore content-tree path. Emitted as
+     * `DataSource=<path>`, alone or combined with `sourceTypes`.
+     */
+    sourceScope: z.string().optional(),
+    /**
+     * Escape hatch: verbatim Source string. Mutually exclusive with the
+     * structured fields above. Use when you need a Source form that
+     * doesn't fit the structured surface (e.g. a bare path Treelist
+     * source like `/sitecore/content/Tags`).
+     */
+    sourceRaw: z.string().optional(),
+    /** Author-facing hint surfaced in the CMS. */
+    hint: z.string().optional(),
+    /** Required marker (translates to a Sitecore validation rule). */
+    required: z.boolean().optional(),
+    /** Default value via the template's __Standard Values item. */
+    defaultValue: z.string().optional(),
+    /** Ordinal within the section/params block; auto-assigned 100/200/… if omitted. */
+    sortOrder: z.number().int().optional(),
+    /**
+     * Section name to group this field under (only meaningful for `fields`,
+     * not `params`/`variants`). Defaults to "Content".
+     */
+    section: z.string().optional(),
+  })
+  .refine(
+    (v) =>
+      v.sourceRaw === undefined ||
+      (v.sourceTypes === undefined && v.sourceQuery === undefined && v.sourceScope === undefined),
+    {
+      message: "sourceRaw is mutually exclusive with sourceTypes/sourceQuery/sourceScope",
+      path: ["sourceRaw"],
+    }
+  );
 
 export type SitecoreFieldAugment = z.infer<typeof SitecoreFieldAugmentSchema>;
 
@@ -186,7 +218,7 @@ export type ComponentTemplateRecipe = z.infer<typeof ComponentTemplateRecipeSche
  * A content-only template. Has fields but no rendering — exists as a data
  * shape referenced by other recipes via:
  *
- *   - A `reference` field with `sitecore.source: "template:<handle>"`
+ *   - A `reference` field with `sitecore.sourceTypes: ["<handle>"]`
  *     (related-items pattern: items live wherever, picker filters by template)
  *   - `insertOptions: ["<handle>"]` on a parent recipe (child-item pattern:
  *     items live as children of the parent's datasource)

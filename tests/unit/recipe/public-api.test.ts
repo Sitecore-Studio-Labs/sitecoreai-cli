@@ -66,9 +66,9 @@ describe("public recipe API surface", () => {
     "executeIr",
     // Reference encoding
     "renderRefValue",
-    // Source convention
-    "parseSourceConvention",
-    "renderSourceConvention",
+    // Source fields
+    "renderSourceFields",
+    "sourceFieldsNeedHandleResolution",
     // Policy
     "defaultPolicyForRecipe",
     "policyFor",

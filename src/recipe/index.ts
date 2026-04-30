@@ -15,6 +15,8 @@
 // Recipe author surface ---------------------------------------------------
 export {
   ComponentTemplateRecipeSchema,
+  ContentFieldValueSchema,
+  ContentItemRecipeSchema,
   ContentTemplateRecipeSchema,
   FieldDefinitionSchema,
   ParamDefinitionSchema,
@@ -24,6 +26,8 @@ export {
   RenderingVariantDefinitionSchema,
   SitecoreFieldAugmentSchema,
   type ComponentTemplateRecipe,
+  type ContentFieldValue,
+  type ContentItemRecipe,
   type ContentTemplateRecipe,
   type FieldDefinition,
   type ParamDefinition,
@@ -55,11 +59,13 @@ export {
 
 // GUID derivation ---------------------------------------------------------
 export {
+  NAMESPACE_CONTENT_ITEM,
   NAMESPACE_PAGE_DESIGN,
   NAMESPACE_RENDERING,
   NAMESPACE_ROOT,
   NAMESPACE_SITE_BRANCH,
   NAMESPACE_TEMPLATE,
+  contentItemId,
   datasourceId,
   fieldId,
   pageDesignId,

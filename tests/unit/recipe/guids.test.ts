@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   _deriveNamespaceRoot,
+  contentItemId,
   fieldId,
+  NAMESPACE_CONTENT_ITEM,
   NAMESPACE_PAGE_DESIGN,
   NAMESPACE_RENDERING,
   NAMESPACE_ROOT,
@@ -24,6 +26,23 @@ describe("recipe guids — namespace constants are frozen", () => {
     expect(NAMESPACE_RENDERING).toBe("415fee2b-be60-589c-ba7c-df0308759b7e");
     expect(NAMESPACE_PAGE_DESIGN).toBe("80443570-27d0-5729-be73-19a6a5827ab9");
     expect(NAMESPACE_SITE_BRANCH).toBe("ed6269d1-ac7c-53b7-aa23-b3edd92f3886");
+    expect(NAMESPACE_CONTENT_ITEM).toBe("d798f8c5-24ee-55c4-afe0-f387a998521f");
+  });
+});
+
+describe("recipe guids — content-item derivation is deterministic", () => {
+  it("content-item ids are stable for a given handle", () => {
+    expect(contentItemId("site-logo-content@1")).toBe("bdd465b4-58a9-5f50-8c87-cf61d50b3965");
+    expect(contentItemId("primary-nav-content@1")).toBe("70ecf4d2-92ba-54d9-bb49-c517e44a741f");
+  });
+
+  it("content-item ids are namespaced separately from template ids", () => {
+    expect(contentItemId("site-logo-content@1")).not.toBe(templateId("site-logo-content@1"));
+  });
+
+  it("different content-item handles yield different ids", () => {
+    expect(contentItemId("site-logo-content@1")).not.toBe(contentItemId("site-logo-content@2"));
+    expect(contentItemId("site-logo-content@1")).not.toBe(contentItemId("primary-nav-content@1"));
   });
 });
 

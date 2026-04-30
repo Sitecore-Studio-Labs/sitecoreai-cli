@@ -24,6 +24,7 @@ export type OpPurpose = "template-structure" | "datasource-item" | "page-item";
 const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   "component-template": "template-structure",
   "content-template": "template-structure",
+  "content-item": "datasource-item",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

@@ -14,6 +14,8 @@ describe("public recipe API surface", () => {
   const REQUIRED_EXPORTS = [
     // Recipe author surface
     "ComponentTemplateRecipeSchema",
+    "ContentFieldValueSchema",
+    "ContentItemRecipeSchema",
     "ContentTemplateRecipeSchema",
     "FieldDefinitionSchema",
     "ParamDefinitionSchema",
@@ -41,7 +43,9 @@ describe("public recipe API surface", () => {
     "paramsTemplateId",
     "variantId",
     "variantsFolderId",
+    "contentItemId",
     "NAMESPACE_ROOT",
+    "NAMESPACE_CONTENT_ITEM",
     // Operation IR
     "OperationSchema",
     "OperationIrSchema",

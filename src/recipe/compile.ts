@@ -186,13 +186,19 @@ export function compileContentTemplateRecipe(
   });
 }
 
-/** Front-door dispatcher — accepts either kind of recipe. */
+/** Front-door dispatcher — accepts any registered recipe kind. */
 export function compileRecipe(input: Recipe, context: CompileContext): OperationIr {
   const recipe = RecipeSchema.parse(input);
-  if (recipe.kind === "component-template") {
-    return compileComponentTemplateRecipe(recipe, context);
+  switch (recipe.kind) {
+    case "component-template":
+      return compileComponentTemplateRecipe(recipe, context);
+    case "content-template":
+      return compileContentTemplateRecipe(recipe, context);
+    case "content-item":
+      throw new Error(
+        `ContentItemRecipe compilation is not yet implemented (lands in Phase 4 alongside the field-value encoders). Recipe handle: ${recipe.handle}`
+      );
   }
-  return compileContentTemplateRecipe(recipe, context);
 }
 
 interface DatasourceTemplateInput {

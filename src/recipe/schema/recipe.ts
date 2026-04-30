@@ -250,12 +250,114 @@ export const ContentTemplateRecipeSchema = z.object({
 export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
 
 /**
+ * A single field value on a `ContentItemRecipe`. Tagged on `shape` so the
+ * Phase 4 compiler can dispatch each value to the right Sitecore wire
+ * encoder (image XML, link XML, pipe-separated GUID list, …) without
+ * cross-recipe shape lookup at parse time.
+ *
+ * Shapes mirror `FieldShape` from `field-types.ts`, with `link` split
+ * into `link-external` / `link-internal` and `reference` lifted to
+ * always-array (`refs: string[]`) — both differences reflect that the
+ * value-level form encodes the stored representation, not the abstract
+ * field shape on the template.
+ *
+ * Cross-recipe handle references (`link-internal.ref`, `reference.refs`)
+ * resolve via the same `templateId(handle)` / `contentItemId(handle)`
+ * derivation the rest of the recipe surface uses.
+ */
+export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
+  z.object({ shape: z.literal("text"), value: z.string() }),
+  z.object({ shape: z.literal("richText"), value: z.string() }),
+  z.object({ shape: z.literal("boolean"), value: z.boolean() }),
+  z.object({ shape: z.literal("number"), value: z.number() }),
+  z.object({ shape: z.literal("integer"), value: z.number().int() }),
+  /** ISO 8601 date (`YYYY-MM-DD`) — compiler converts to Sitecore's wire format. */
+  z.object({ shape: z.literal("date"), value: z.string() }),
+  /** ISO 8601 datetime (`YYYY-MM-DDTHH:mm:ssZ`). */
+  z.object({ shape: z.literal("datetime"), value: z.string() }),
+  /** One of the enum's declared values, by name. */
+  z.object({ shape: z.literal("enum"), value: z.string() }),
+  z.object({
+    shape: z.literal("image"),
+    /** Sitecore media-library path. Compiler emits the image XML form. */
+    mediaPath: z.string().min(1),
+    alt: z.string().optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+  }),
+  z.object({
+    shape: z.literal("link-external"),
+    href: z.string().min(1),
+    text: z.string().optional(),
+    target: z.string().optional(),
+    title: z.string().optional(),
+  }),
+  z.object({
+    shape: z.literal("link-internal"),
+    /** Recipe handle (page or content item). Compiler resolves to a GUID. */
+    ref: z.string().min(1),
+    text: z.string().optional(),
+    target: z.string().optional(),
+  }),
+  z.object({
+    shape: z.literal("reference"),
+    /**
+     * One or more recipe handles. Always an array, even for single-ref
+     * fields — the value-level shape doesn't depend on whether the
+     * template field is `multiple: true`. Compiler emits one GUID
+     * (single-ref fields) or pipe-separated GUIDs (Treelist/Multilist).
+     */
+    refs: z.array(z.string().min(1)),
+  }),
+]);
+
+export type ContentFieldValue = z.infer<typeof ContentFieldValueSchema>;
+
+/**
+ * A concrete content item — one Sitecore item conforming to a content
+ * template, populated with the recipe's field values. The Phase 4
+ * companion to `ContentTemplateRecipe`: templates declare shape, content
+ * items declare instance.
+ *
+ * Used as the `kind: "shared"` datasource target for `PartialDesignRecipe`
+ * and `PageDesignRecipe` placements (e.g. `site-logo-content@1`,
+ * `primary-nav-content@1`). The handle is load-bearing — `contentItemId`
+ * derives the deterministic Sitecore GUID from it.
+ *
+ * Field-shape ↔ template-shape validation is deferred to the Phase 4
+ * compiler (it requires cross-recipe lookup; Zod can't enforce it alone).
+ */
+export const ContentItemRecipeSchema = z.object({
+  kind: z.literal("content-item"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. site-logo-content@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /**
+   * Handle of the content (or component) template this item conforms to.
+   * Compiler resolves via `templateId(handle)` to set the item's
+   * Template-Of GUID.
+   */
+  templateType: z.string().regex(HANDLE_PATTERN, {
+    message: "templateType must match `<kebab-name>@<major>`, e.g. nav-link@1",
+  }),
+  /** Field values keyed by field name on the template. */
+  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+});
+
+export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
+
+/**
  * Discriminated union of recipe kinds. Compilers and validators can accept
  * `Recipe` and dispatch on `kind`.
  */
 export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
+  ContentItemRecipeSchema,
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;

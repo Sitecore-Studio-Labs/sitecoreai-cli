@@ -95,6 +95,11 @@ describe("public recipe API surface", () => {
     "policyFor",
     "policyForOp",
     "purposeForRecipe",
+    // Cross-recipe validation
+    "validateRecipeSet",
+    "validateRecipeSetOrThrow",
+    "isValid",
+    "formatValidationErrors",
   ] as const;
 
   it.each(REQUIRED_EXPORTS)("exports %s", (name) => {

@@ -176,3 +176,16 @@ export {
   purposeForRecipe,
   type OpPurpose,
 } from "./policy";
+
+// Cross-recipe validation -----------------------------------------------
+export {
+  formatValidationErrors,
+  isValid,
+  validateRecipeSet,
+  validateRecipeSetOrThrow,
+  type CyclicReference,
+  type DuplicateHandle,
+  type RecipeKind,
+  type UnresolvedHandle,
+  type ValidationResult,
+} from "./validate";

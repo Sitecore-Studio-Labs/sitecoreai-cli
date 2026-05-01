@@ -9,6 +9,7 @@ import {
   partialDesignId,
   renderingId,
   sectionId,
+  siteId,
   standardValuesId,
   templateId,
   variantId,
@@ -16,6 +17,7 @@ import {
 } from "./guids";
 import {
   type CreateItemOp,
+  type CreateSiteFromTemplateOp,
   type FieldValue,
   type Operation,
   type OperationIr,
@@ -57,6 +59,8 @@ import {
   PartialDesignRecipeSchema,
   type Recipe,
   RecipeSchema,
+  type SiteRecipe,
+  SiteRecipeSchema,
   type SiteTemplateRecipe,
   SiteTemplateRecipeSchema,
 } from "./schema/recipe";
@@ -845,16 +849,88 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
     case "site-template":
       return compileSiteTemplateRecipe(recipe, context);
     case "site":
-      // Site instances are async via the Sites API (createSite returns a
-      // JobResponse, not the affected site). The IR ops + executor
-      // dispatch land in composition-recipes-site-branches.md Milestone D
-      // alongside the Sites API integration. Schema + cross-recipe
-      // validation are in place today (this commit + the validator
-      // extension); the executor seam is the next chunk.
-      throw new Error(
-        `SiteRecipe compilation is not yet implemented (composition-recipes-site-branches.md Milestone D). Recipe handle: ${recipe.handle}`
-      );
+      return compileSiteRecipe(recipe, context);
   }
+}
+
+/**
+ * Compile a `SiteRecipe` to an Operation IR.
+ *
+ * Phase 5 Milestone E — emits a single `CreateSiteFromTemplate` op
+ * that the executor dispatches through the Sites API. The
+ * `SiteTemplateRecipe` it references is identified via deterministic
+ * `templateId(siteTemplate)`; the executor resolves that refKey to
+ * the SiteTemplate's actual Sitecore itemId via cross-recipe ref
+ * pre-seeding (push.ts walks every recipe's `CreateItem` ops and
+ * seeds `crossRecipeRefs[refKey] = path`, then the executor's
+ * `seedCrossRecipeRefs` calls `getItem({path})` once per push to
+ * populate `capturedItemIds`).
+ *
+ * **Validates** (compile-time, not zod-level):
+ *   - Exactly one of `collectionId` / `collectionName` is present.
+ *
+ * **Deferred to Milestone E follow-up:**
+ *   - Dictionary overrides as SetField ops with `latePath`. Targets
+ *     are items at `<collectionPath>/<siteName>/Dictionary/<phrase>`,
+ *     materialised by SXA's Site Wizard during the createSite apply.
+ *     Compile-time path composition needs the collection's content-tree
+ *     name; for `collectionName` (new) that's the value itself, but for
+ *     `collectionId` (existing) it requires a Sites API lookup at push
+ *     time. Operator-supplied `collectionPath` on the SiteRecipe schema
+ *     would resolve this; tracked.
+ *   - Taxonomy overrides as a mix of SetField (existing tags) and
+ *     CreateItem (new tags). Same late-resolution issue plus the SXA
+ *     taxonomy convention is still under sandbox investigation.
+ */
+export function compileSiteRecipe(
+  input: SiteRecipe,
+  _context: CompileContext
+): OperationIr {
+  const recipe = SiteRecipeSchema.parse(input);
+
+  const hasCollectionId = recipe.collectionId !== undefined;
+  const hasCollectionName = recipe.collectionName !== undefined;
+  if (hasCollectionId === hasCollectionName) {
+    throw new Error(
+      `SiteRecipe '${recipe.handle}' must specify exactly one of collectionId / collectionName, not ${hasCollectionId ? "both" : "neither"}.`
+    );
+  }
+
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const siteRefKey = siteId(recipe.handle);
+  const templateRefKey = templateId(recipe.siteTemplate);
+
+  const operations: Operation[] = [
+    {
+      op: "CreateSiteFromTemplate",
+      policy,
+      label: `site:${recipe.handle}`,
+      siteRefKey,
+      siteName: recipe.name,
+      ...(recipe.displayName !== undefined && { displayName: recipe.displayName }),
+      ...(recipe.description !== undefined && { description: recipe.description }),
+      language: recipe.language,
+      ...(recipe.languages !== undefined && { additionalLanguages: recipe.languages }),
+      ...(recipe.siteGrouping?.hostName !== undefined && {
+        hostName: recipe.siteGrouping.hostName,
+      }),
+      templateRefKey,
+      ...(recipe.collectionId !== undefined && { collectionId: recipe.collectionId }),
+      ...(recipe.collectionName !== undefined && { collectionName: recipe.collectionName }),
+      ...(recipe.collectionDisplayName !== undefined && {
+        collectionDisplayName: recipe.collectionDisplayName,
+      }),
+      ...(recipe.collectionDescription !== undefined && {
+        collectionDescription: recipe.collectionDescription,
+      }),
+    } satisfies CreateSiteFromTemplateOp,
+  ];
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
 }
 
 interface DatasourceTemplateInput {

@@ -76,6 +76,7 @@ export {
   compilePartialDesignRecipe,
   compileRecipe,
   compileRecipeSet,
+  compileSiteRecipe,
   compileSiteTemplateRecipe,
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   type CompileContext,

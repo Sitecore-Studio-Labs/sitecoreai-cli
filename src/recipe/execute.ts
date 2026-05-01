@@ -1,4 +1,5 @@
 import type { AuthoringApiClient } from "./api/client";
+import type { SitesApiClient } from "./api/sites-client";
 import type { OperationIr } from "./ir/operations";
 import {
   buildAction,
@@ -80,10 +81,56 @@ export interface ExecuteOptions {
    * land, or order recipes topologically.
    */
   crossRecipeRefs?: ReadonlyMap<string, string>;
+  /**
+   * Sites API client — required when the IR contains
+   * `CreateSiteFromTemplate` ops. Recipe sets without SiteRecipes can
+   * pass undefined; site ops without a client produce an `error`
+   * action at plan time and don't dispatch.
+   */
+  sitesClient?: SitesApiClient;
 }
+
+/**
+ * Wait for an async Sites API job (createSite, deleteSite, etc.) to
+ * reach a terminal state. The Sites API's `getJobStatus` returns
+ * a Job whose `state` field carries the lifecycle ("Initial",
+ * "Running", "Done", "Failed"). Poll with linear backoff until
+ * terminal or until we exceed a generous wall-clock budget.
+ *
+ * Site creation is typically a few seconds on warm tenants, but cold
+ * tenants and content-tree-heavy SiteTemplates can take significantly
+ * longer. The 90s budget covers worst-case sandbox cold-starts; in
+ * production we'd surface a slow-job event so operators see progress.
+ */
+const SITES_JOB_POLL_BUDGET_MS = 90_000;
+const SITES_JOB_POLL_INTERVAL_MS = 1_000;
+
+const awaitSitesJob = async (
+  sitesClient: SitesApiClient,
+  jobHandle: string
+): Promise<void> => {
+  const deadline = Date.now() + SITES_JOB_POLL_BUDGET_MS;
+  while (Date.now() < deadline) {
+    const job = await sitesClient.getJobStatus(jobHandle);
+    const state = (job as { state?: string }).state ?? "";
+    if (state === "Done" || state === "Completed" || state === "Succeeded") {
+      return;
+    }
+    if (state === "Failed" || state === "Errored") {
+      throw new Error(
+        `Sites API job ${jobHandle} reported terminal state '${state}'.`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, SITES_JOB_POLL_INTERVAL_MS));
+  }
+  throw new Error(
+    `Sites API job ${jobHandle} did not finish within ${SITES_JOB_POLL_BUDGET_MS}ms.`
+  );
+};
 
 const dispatchMutation = async (
   client: AuthoringApiClient,
+  sitesClient: SitesApiClient | undefined,
   action: PlannedAction,
   capturedItemIds: Map<string, string>
 ): Promise<void> => {
@@ -94,8 +141,42 @@ const dispatchMutation = async (
     if (action.operation.op === "CreateItem") {
       capturedItemIds.set(action.operation.id, result.itemId);
     }
-  } else {
+    return;
+  }
+  if (action.mutation.kind === "updateItem") {
     await client.updateItem(action.mutation.input);
+    return;
+  }
+  // createSite: dispatch through Sites API, await the async job, then
+  // look up the materialised site by name to capture its itemId so
+  // subsequent SetField overrides (dictionary, taxonomy) targeting
+  // items under the site can resolve via late-path seeding.
+  if (!sitesClient) {
+    throw new Error(
+      "createSite mutation requires a SitesApiClient — none threaded into the executor."
+    );
+  }
+  const { input, siteRefKey } = action.mutation;
+  const jobResponse = await sitesClient.createSite(input);
+  const jobHandle = (jobResponse as { handle?: string; jobHandle?: string }).handle
+    ?? (jobResponse as { jobHandle?: string }).jobHandle;
+  if (!jobHandle) {
+    throw new Error(
+      `createSite for '${input.siteName}' returned a JobResponse with no handle: ${JSON.stringify(jobResponse)}`
+    );
+  }
+  await awaitSitesJob(sitesClient, jobHandle);
+  // Re-list and capture the new site's itemId. The Sites API doesn't
+  // return the materialised site object from createSite directly —
+  // listSites is the canonical way to get the assigned id.
+  const sites = await sitesClient.listSites();
+  const created = sites.find((s) => s.name === input.siteName);
+  if (created?.id) {
+    capturedItemIds.set(siteRefKey, created.id);
+  } else {
+    throw new Error(
+      `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`
+    );
   }
 };
 
@@ -174,6 +255,7 @@ export const executeIr = async (
     const plan = await buildPlan(ir, client, {
       emit: options.emit,
       capturedItemIds,
+      sitesClient: options.sitesClient,
     });
     return { plan, summary: plan.summary, aborted: false };
   }
@@ -192,7 +274,7 @@ export const executeIr = async (
 
     let action: PlannedAction;
     try {
-      action = await buildAction(index, op, client, capturedItemIds);
+      action = await buildAction(index, op, client, capturedItemIds, options.sitesClient);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = { index, operation: op, status: "error", reason: message };
@@ -212,7 +294,7 @@ export const executeIr = async (
 
     options.emit?.({ kind: "apply-start", action });
     try {
-      await dispatchMutation(client, action, capturedItemIds);
+      await dispatchMutation(client, options.sitesClient, action, capturedItemIds);
       applied.push(action);
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {

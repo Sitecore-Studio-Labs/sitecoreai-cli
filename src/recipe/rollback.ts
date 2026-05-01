@@ -101,6 +101,16 @@ export const inverseOf = (
     return { kind: "deleteItem", itemId };
   }
 
+  if (action.mutation.kind === "createSite") {
+    // Site rollback is intentionally warn-only. The Sites API's
+    // `deleteSite` cascades through pages, settings, media, datasources,
+    // presentation, dictionaries, components, variants, and page designs
+    // — destructive enough that an automatic rollback during a
+    // half-failed push could remove operator content. Operators delete
+    // sites explicitly; the recipe pipeline doesn't.
+    return null;
+  }
+
   // updateItem: each touched field reverts to its prior snapshot value.
   const priorFields: FieldValue[] = action.mutation.input.fields.map((field) => {
     const prior = findPriorValue(

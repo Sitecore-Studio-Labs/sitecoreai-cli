@@ -250,19 +250,12 @@ export const CreateSiteFromTemplateOpSchema = z.object({
   collectionDescription: z.string().optional(),
 });
 
-/**
- * NOTE — `CreateSiteFromTemplateOpSchema` is intentionally NOT yet
- * a member of this discriminated union. Adding it ripples into every
- * switch over `op.op` (planner, executor, rollback, push aggregator).
- * Phase 5 Milestone E lands those wirings together with the schema
- * change; until then the op type is exported and reserved but the
- * compiler doesn't emit it and the executor doesn't handle it.
- */
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
   SetBaseTemplatesOpSchema,
   SetStandardValuesOpSchema,
+  CreateSiteFromTemplateOpSchema,
 ]);
 
 export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;

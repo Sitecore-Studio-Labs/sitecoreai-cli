@@ -1,5 +1,6 @@
 import type {
   CreateItemOp,
+  CreateSiteFromTemplateOp,
   FieldValue,
   Operation,
   OperationIr,
@@ -19,6 +20,7 @@ import type {
   RemoteItem,
   UpdateItemInput,
 } from "./api/client";
+import type { NewSiteInput, SitesApiClient } from "./api/sites-client";
 
 /**
  * `scai recipe plan` and `scai recipe push` share this read-then-diff path:
@@ -57,7 +59,18 @@ export interface PlannedAction {
   /** Snapshot of the mutation the executor will/would dispatch. */
   mutation?:
     | { kind: "createItem"; input: CreateItemInput }
-    | { kind: "updateItem"; input: UpdateItemInput };
+    | { kind: "updateItem"; input: UpdateItemInput }
+    | {
+        kind: "createSite";
+        input: NewSiteInput;
+        /**
+         * RefKey of the site item — the executor stores the
+         * server-assigned site itemId here in `capturedItemIds` so
+         * subsequent SetField ops scoped to the site (dictionary
+         * overrides etc.) can resolve.
+         */
+        siteRefKey: string;
+      };
   /**
    * Pre-mutation remote state captured during plan-time read. `null` means
    * the target item did not exist at plan time. Used by rollback to
@@ -94,6 +107,13 @@ export interface PlanOptions {
    * during plan-mode produce `skip` actions.
    */
   capturedItemIds?: Map<string, string>;
+  /**
+   * Sites API client — only consulted when an IR contains
+   * `CreateSiteFromTemplate` ops. Recipe sets that don't include
+   * SiteRecipes don't need a sites client; passing undefined is fine
+   * and yields an `error` action only if a site op is encountered.
+   */
+  sitesClient?: SitesApiClient;
 }
 
 const lookupField = (
@@ -411,6 +431,11 @@ const lookupSelector = (
   if (op.op === "CreateItem") {
     return { path: op.path };
   }
+  if (op.op === "CreateSiteFromTemplate") {
+    // Site idempotency lookup goes through SitesApiClient.listSites, not
+    // Authoring API getItem; planCreateSite handles the lookup itself.
+    return null;
+  }
   const refKey =
     op.op === "SetField" || op.op === "SetBaseTemplates" ? op.itemRefKey : op.templateRefKey;
   const itemId = capturedItemIds.get(refKey);
@@ -431,8 +456,27 @@ export const buildAction = async (
   index: number,
   op: Operation,
   client: AuthoringApiClient,
-  capturedItemIds: Map<string, string>
+  capturedItemIds: Map<string, string>,
+  sitesClient?: SitesApiClient
 ): Promise<PlannedAction> => {
+  // Late-path resolution: SetField ops whose target is materialised
+  // mid-push (e.g. dictionary phrases under a CreateSiteFromTemplate)
+  // carry an optional `latePath`. If the op's itemRefKey isn't yet in
+  // the captured map AND a latePath is set, do an on-demand getItem
+  // lookup to seed the map BEFORE lookupSelector runs. Without this,
+  // lookupSelector sees no captured itemId and the SetField skips
+  // with "not yet captured/created" — even though the item exists.
+  if (
+    op.op === "SetField" &&
+    op.latePath &&
+    !capturedItemIds.has(op.itemRefKey)
+  ) {
+    const lateRemote = await client.getItem({ path: op.latePath });
+    if (lateRemote) {
+      capturedItemIds.set(op.itemRefKey, lateRemote.itemId);
+    }
+  }
+
   const selector = lookupSelector(op, capturedItemIds);
   const remote = selector ? await client.getItem(selector) : null;
   if (op.op === "CreateItem" && remote) {
@@ -453,7 +497,7 @@ export const buildAction = async (
     }
   }
 
-  const action = (() => {
+  const action = await (async (): Promise<PlannedAction> => {
     switch (op.op) {
       case "CreateItem":
         return planCreateItem(op, remote, index, capturedItemIds);
@@ -487,9 +531,92 @@ export const buildAction = async (
           remote,
           capturedItemIds
         );
+      case "CreateSiteFromTemplate":
+        return planCreateSite(index, op, capturedItemIds, sitesClient);
     }
   })();
   return { ...action, snapshot: remote };
+};
+
+/**
+ * Plan a `CreateSiteFromTemplate` op. Idempotency lookup goes through
+ * `SitesApiClient.listSites` (filter by name) — the Sites API doesn't
+ * resolve site instances by Sitecore content-tree path the way Authoring
+ * API does for items.
+ *
+ * Outcomes:
+ *   - sitesClient missing → status: error (executor was not threaded one)
+ *   - templateRefKey not yet captured → status: skip (the SiteTemplate
+ *     hasn't been pushed; cross-recipe ref pre-seeding will pick it up
+ *     on the next push)
+ *   - site already exists with the same name → status: skip; capture
+ *     the existing site's itemId so subsequent SetField overrides resolve
+ *   - site doesn't exist → status: create; mutation `createSite` carries
+ *     a fully-resolved NewSiteInput plus the op's siteRefKey
+ *
+ * "Already exists with a different template" is NOT detected here —
+ * Sites API doesn't expose a clean way to read a site's template
+ * back. If a same-named site references a different template, the
+ * push silently treats it as "skip"; operators must delete and re-push
+ * to switch templates. Tracked as a follow-up.
+ */
+const planCreateSite = async (
+  index: number,
+  op: CreateSiteFromTemplateOp,
+  capturedItemIds: Map<string, string>,
+  sitesClient: SitesApiClient | undefined
+): Promise<PlannedAction> => {
+  if (!sitesClient) {
+    return {
+      index,
+      operation: op,
+      status: "error",
+      reason:
+        "CreateSiteFromTemplate requires a SitesApiClient — none was provided to the executor.",
+    };
+  }
+  const templateId = capturedItemIds.get(op.templateRefKey);
+  if (!templateId) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `siteTemplate refKey ${op.templateRefKey} not yet captured (push the SiteTemplate first or via cross-recipe ref).`,
+    };
+  }
+  const sites = await sitesClient.listSites();
+  const existing = sites.find((s) => s.name === op.siteName);
+  if (existing?.id) {
+    capturedItemIds.set(op.siteRefKey, existing.id);
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Site '${op.siteName}' already exists.`,
+    };
+  }
+  const input: NewSiteInput = {
+    siteName: op.siteName,
+    templateId,
+    language: op.language,
+    ...(op.displayName !== undefined && { displayName: op.displayName }),
+    ...(op.description !== undefined && { description: op.description }),
+    ...(op.hostName !== undefined && { hostName: op.hostName }),
+    ...(op.collectionId !== undefined && { collectionId: op.collectionId }),
+    ...(op.collectionName !== undefined && { collectionName: op.collectionName }),
+    ...(op.collectionDisplayName !== undefined && {
+      collectionDisplayName: op.collectionDisplayName,
+    }),
+    ...(op.collectionDescription !== undefined && {
+      collectionDescription: op.collectionDescription,
+    }),
+  };
+  return {
+    index,
+    operation: op,
+    status: "create",
+    mutation: { kind: "createSite", input, siteRefKey: op.siteRefKey },
+  };
 };
 
 export const buildPlan = async (
@@ -506,7 +633,7 @@ export const buildPlan = async (
     options.emit?.({ kind: "op-start", index, operation: op });
     let action: PlannedAction;
     try {
-      action = await buildAction(index, op, client, capturedItemIds);
+      action = await buildAction(index, op, client, capturedItemIds, options.sitesClient);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = {

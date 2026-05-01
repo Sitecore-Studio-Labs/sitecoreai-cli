@@ -1,4 +1,6 @@
 import path from "node:path";
+import { getAccessToken } from "../api/auth";
+import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
 import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
 import { loadIr, loadRecipe } from "../io";
@@ -110,11 +112,30 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     crossRecipeRefs.set(PAGE_DESIGNS_ROOT_REF_KEY, pageDesignsRoot);
   }
 
+  // Lazy-build a SitesApiClient only when an IR in the set needs one
+  // (i.e. carries a CreateSiteFromTemplate op). Component / partial /
+  // page-design / content-item recipes never reach Sites API — keep
+  // their push paths free of unnecessary token mints.
+  let sitesClient: SitesApiClient | undefined;
+  const hasSiteOp = irs.some(({ ir }) =>
+    ir.operations.some((op) => op.op === "CreateSiteFromTemplate")
+  );
+  if (hasSiteOp) {
+    const accessToken = await getAccessToken(tenant.environment);
+    if (!accessToken) {
+      throw new Error(
+        `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai login' or set client credentials, then retry.`
+      );
+    }
+    sitesClient = createSitesApiClient({ accessToken });
+  }
+
   for (const { ir } of irs) {
     const result = await executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
       emit: (event) => allEvents.push({ recipe: ir.recipeHandle, event }),
       crossRecipeRefs,
+      sitesClient,
     });
     results.push(result);
 

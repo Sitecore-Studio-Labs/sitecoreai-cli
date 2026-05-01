@@ -53,17 +53,27 @@ export const SITECORE_TEMPLATES = {
    */
   PAGE_DESIGN: "1105b8f8-1e00-426b-bf1f-c840742d827b",
   /**
-   * SXA Site Template item template. The reusable brand-shape definition
-   * that `SiteRecipe`s instantiate via the Sites API `createSite` flow.
+   * SXA "Solution template" — what the SXA Site Wizard treats as a
+   * Site Template. New sites are cloned from items conforming to this
+   * template; the Sites API `createSite` flow references one by ID.
    *
-   * Sandbox-pending — verify against `xmc-lizsitecore088b-...` at
-   * composition-recipes-site-branches.md Milestone C-extra (the
-   * sandbox-introspection follow-up before site-template push works
-   * against a real tenant). Schema + compiler dispatch land first
-   * (this commit); the GUID + structural-metadata field IDs need a
-   * F.1.c-style introspection round.
+   * Verified against sandbox tenant on 2026-05-01 via Authoring API
+   * introspection. Built-in SXA Solution Templates live under
+   * `/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Templates`
+   * (e.g. "Empty Site"). Recipe-emitted SiteTemplates land in the same
+   * area or a tenant-specific Scaffolding/Templates folder.
+   *
+   * Note: this template's fields (Site Modules, Tenant Modules, Name,
+   * Description, Content, etc. — see SITE_TEMPLATE_FIELDS below) are
+   * about MODULE composition, not direct page-template / page-design
+   * lists. SXA's brand-shape model is module-based: a Solution template
+   * lists modules, and modules carry the actual brand structure. Our
+   * SiteTemplateRecipe schema (pageTemplates, pageDesigns,
+   * insertOptionsMatrix, templatesToDesigns, dictionary, taxonomy) does
+   * NOT map 1:1 to this — see the design-gap note in
+   * `compileSiteTemplateRecipe`'s JSDoc.
    */
-  SITE_TEMPLATE: "00000000-0000-0000-0000-000000000000",
+  SITE_TEMPLATE: "1b2dfd3b-f2f2-4f40-a75c-f6c2490919c4",
 } as const;
 
 /**
@@ -113,6 +123,49 @@ export const TEMPLATE_FIELD_FIELDS = {
 export const LAYOUT_FIELDS = {
   RENDERINGS: "f1a1fe9e-a60c-4ddb-a3a0-bb5b29fe732e",
   FINAL_RENDERINGS: "04bf00db-f5fb-41f7-8ab7-22408372a981",
+} as const;
+
+/**
+ * Field GUIDs on the SXA `Solution template` (= Site Template) item.
+ * Verified against sandbox on 2026-05-01 by inspecting the built-in
+ * "Empty Site" template at `/sitecore/system/Settings/Foundation/JSS
+ * Experience Accelerator/Scaffolding/Templates/Empty Site`.
+ *
+ * `SITE_MODULES` / `TENANT_MODULES` carry pipe-separated GUIDs of
+ * *Module* items — the SXA model is "templates list modules; modules
+ * hold the brand structure." Our `SiteTemplateRecipe` schema doesn't
+ * model SXA modules yet; mapping is open work (see
+ * `compileSiteTemplateRecipe` JSDoc).
+ *
+ * `BUILT_IN_TEMPLATE` is `"1"` on the SXA-shipped templates and `"0"`
+ * on tenant-authored ones. Recipe-emitted templates set it to `"0"`.
+ *
+ * `CONTENT` is a JSON description of what the template includes
+ * ("Pages: Home", "Components: SXA", etc.) — mostly for the Sites API
+ * UI's preview pane. Recipes can leave it empty without breaking
+ * createSite.
+ */
+export const SITE_TEMPLATE_FIELDS = {
+  SITE_MODULES: "c262443b-653d-461d-96c8-7cfaa0ef2b2d",
+  TENANT_MODULES: "41ac536a-923a-43f9-ac87-f3993f638125",
+  NAME: "82e64b52-0b8a-4a38-8c78-530c5493814e",
+  DESCRIPTION: "9f437e68-a84d-48ae-8ce1-a3e26c0b5e64",
+  ENABLED: "0d21f818-1938-4cd8-b0a8-a44f73d69367",
+  BUILT_IN_TEMPLATE: "a13aae24-a295-4cc3-b188-dfa59e2172a9",
+  CONTENT: "da855368-e5f2-4932-ae55-7f8b08a5a205",
+} as const;
+
+/**
+ * Per-site `SiteTemplate` field on a Headless Site item — points at
+ * the SXA Site Template (Solution template) item the site was cloned
+ * from. Captured on the sandbox in 2026-05-01 introspection.
+ */
+export const SITE_FIELDS = {
+  SITE_TEMPLATE: "e2bf3c8d-a12e-45f4-98d6-a37f13bcf375",
+  MODULES: "1230d2cb-4948-4d43-8a3b-b39978f6f1b3",
+  NAME: "85a7501a-86d9-4243-9075-0b727c3a6db4",
+  SITE_MEDIA_LIBRARY: "33d9005e-1f71-415f-b107-53b965c3b037",
+  SITEMAP_MEDIA_ITEMS: "2b2fe9fd-78a6-40eb-b9f9-28409d8d3700",
 } as const;
 
 /**

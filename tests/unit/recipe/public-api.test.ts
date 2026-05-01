@@ -87,6 +87,8 @@ describe("public recipe API surface", () => {
     "TEMPLATE_FIELD_FIELDS",
     "LAYOUT_FIELDS",
     "COMPOSITION_FIELDS",
+    "SITE_FIELDS",
+    "SITE_TEMPLATE_FIELDS",
     "DEFAULT_ICON",
     "DEFAULT_DEVICE_ID",
     "DEFAULT_LANGUAGE",

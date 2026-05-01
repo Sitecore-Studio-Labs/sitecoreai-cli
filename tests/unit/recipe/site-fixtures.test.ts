@@ -8,8 +8,12 @@ import {
   compileSiteTemplateRecipe,
 } from "../../../src/recipe/compile";
 import { templateId } from "../../../src/recipe/guids";
-import type { CreateItemOp } from "../../../src/recipe/ir/operations";
-import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
+import type { CreateItemOp, SetFieldOp } from "../../../src/recipe/ir/operations";
+import {
+  SITECORE_TEMPLATES,
+  SITE_TEMPLATE_FIELDS,
+  SYSTEM_FIELDS,
+} from "../../../src/recipe/ir/sitecore-templates";
 import {
   RecipeSchema,
   SiteRecipeSchema,
@@ -121,12 +125,17 @@ const COMPILE_CONTEXT: CompileContext = {
   siteTemplatesRoot: "/sitecore/templates/Project/Demo",
 };
 
+const findSet = (ir: ReturnType<typeof compileSiteTemplateRecipe>, label: string): SetFieldOp =>
+  ir.operations.find((op): op is SetFieldOp => op.op === "SetField" && op.label === label)!;
+
 describe("compileSiteTemplateRecipe", () => {
-  it("emits exactly one CreateItem op for the SiteTemplate shell", () => {
+  it("emits CreateItem + SetField ops for the SXA Solution-template fields", () => {
     const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
     expect(ir.recipeHandle).toBe("ccl-brand-template@1");
-    expect(ir.operations).toHaveLength(1);
+    // CreateItem + Name + Description + Enabled + Built-in template = 5
+    expect(ir.operations).toHaveLength(5);
     expect(ir.operations[0].op).toBe("CreateItem");
+    expect(ir.operations.filter((op) => op.op === "SetField")).toHaveLength(4);
   });
 
   it("CreateItem identity uses templateId(handle) — site templates are regular template items", () => {
@@ -145,10 +154,12 @@ describe("compileSiteTemplateRecipe", () => {
     });
   });
 
-  it("CreateItem templateOf is the (sandbox-pending) SXA SiteTemplate GUID", () => {
+  it("CreateItem templateOf is the SXA Solution template GUID (sandbox-verified)", () => {
     const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
     const create = ir.operations[0] as CreateItemOp;
     expect(create.templateOf).toBe(SITECORE_TEMPLATES.SITE_TEMPLATE);
+    // The actual GUID — same one verified via introspection 2026-05-01.
+    expect(create.templateOf).toBe("1b2dfd3b-f2f2-4f40-a75c-f6c2490919c4");
   });
 
   it("CreateItem carries DisplayName + Icon as initial fields", () => {
@@ -159,6 +170,44 @@ describe("compileSiteTemplateRecipe", () => {
       kind: "string",
       value: "Click Click Launch Brand Template",
     });
+  });
+
+  it("emits SetField on Solution-template's `Name` field with the recipe's displayName", () => {
+    const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    const nameOp = findSet(ir, "site-template-name:ccl-brand-template@1");
+    expect(nameOp.fieldId).toBe(SITE_TEMPLATE_FIELDS.NAME);
+    expect(nameOp.value).toEqual({
+      kind: "string",
+      value: "Click Click Launch Brand Template",
+    });
+  });
+
+  it("emits SetField on Description when recipe.description is set", () => {
+    const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    const descOp = findSet(ir, "site-template-description:ccl-brand-template@1");
+    expect(descOp.fieldId).toBe(SITE_TEMPLATE_FIELDS.DESCRIPTION);
+    expect(descOp.value.kind).toBe("string");
+  });
+
+  it("omits the Description SetField when recipe.description is unset", () => {
+    const { description: _omit, ...withoutDesc } = cclBrandTemplateRecipe;
+    void _omit;
+    const ir = compileSiteTemplateRecipe(withoutDesc, COMPILE_CONTEXT);
+    const descOp = ir.operations.find(
+      (op) => op.op === "SetField" && op.label.startsWith("site-template-description:")
+    );
+    expect(descOp).toBeUndefined();
+  });
+
+  it("marks the template as Enabled='1' and Built-in='0' (recipe-authored, not SXA-shipped)", () => {
+    const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    const enabledOp = findSet(ir, "site-template-enabled:ccl-brand-template@1");
+    expect(enabledOp.fieldId).toBe(SITE_TEMPLATE_FIELDS.ENABLED);
+    expect(enabledOp.value).toEqual({ kind: "string", value: "1" });
+
+    const builtinOp = findSet(ir, "site-template-builtin:ccl-brand-template@1");
+    expect(builtinOp.fieldId).toBe(SITE_TEMPLATE_FIELDS.BUILT_IN_TEMPLATE);
+    expect(builtinOp.value).toEqual({ kind: "string", value: "0" });
   });
 
   it("throws a clear error when siteTemplatesRoot is missing", () => {

@@ -76,6 +76,7 @@ export {
   compilePartialDesignRecipe,
   compileRecipe,
   compileRecipeSet,
+  compileSiteTemplateRecipe,
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   type CompileContext,
 } from "./compile";
@@ -198,6 +199,7 @@ export {
   validateRecipeSetOrThrow,
   type CyclicReference,
   type DuplicateHandle,
+  type FieldShapeError,
   type RecipeKind,
   type UnresolvedHandle,
   type ValidationResult,

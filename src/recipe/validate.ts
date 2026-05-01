@@ -45,6 +45,8 @@ const COMPONENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template"];
 const CONTENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["content-template"];
 const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
 const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
+const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
+const SITE_TEMPLATE_KINDS: readonly RecipeKind[] = ["site-template"];
 const ANY_KINDS: readonly RecipeKind[] = [
   "component-template",
   "content-template",
@@ -81,16 +83,34 @@ export interface CyclicReference {
   cycle: readonly string[];
 }
 
+/**
+ * A field-shape constraint that Zod can't enforce. Today this is the
+ * `SiteRecipe` collectionId XOR collectionName presence check — the
+ * Zod schema can't carry a `.refine()` because `RecipeSchema` is a
+ * discriminated union, and discriminated unions reject `ZodEffects`
+ * members. Cross-field constraints land here instead.
+ */
+export interface FieldShapeError {
+  /** Handle of the recipe with the bad shape. */
+  fromRecipe: string;
+  /** Dotted path to the field(s) involved. */
+  fromField: string;
+  /** Operator-readable explanation. */
+  message: string;
+}
+
 export interface ValidationResult {
   unresolvedHandles: UnresolvedHandle[];
   duplicateHandles: DuplicateHandle[];
   cycles: CyclicReference[];
+  fieldShapeErrors: FieldShapeError[];
 }
 
 export const isValid = (result: ValidationResult): boolean =>
   result.unresolvedHandles.length === 0 &&
   result.duplicateHandles.length === 0 &&
-  result.cycles.length === 0;
+  result.cycles.length === 0 &&
+  result.fieldShapeErrors.length === 0;
 
 /**
  * Render a `ValidationResult` as a multi-line, human-readable error
@@ -112,6 +132,9 @@ export function formatValidationErrors(result: ValidationResult): string {
     lines.push(
       `${err.fromRecipe} → ${err.fromField}: '${err.handle}' is invalid (${found}; expected one of: ${err.expectedKinds.join(", ")}).`
     );
+  }
+  for (const err of result.fieldShapeErrors) {
+    lines.push(`${err.fromRecipe} → ${err.fromField}: ${err.message}`);
   }
   return lines.join("\n");
 }
@@ -137,6 +160,7 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
   }
 
   const unresolved: UnresolvedHandle[] = [];
+  const fieldShapeErrors: FieldShapeError[] = [];
 
   const checkRef = (
     fromRecipe: string,
@@ -268,12 +292,85 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
           }
         }
         break;
+      case "site-template":
+        recipe.pageTemplates.forEach((handle, idx) => {
+          checkRef(recipe.handle, `pageTemplates.${idx}`, handle, CONTENT_TEMPLATE_KINDS);
+        });
+        recipe.pageDesigns.forEach((handle, idx) => {
+          checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
+        });
+        if (recipe.insertOptionsMatrix) {
+          for (const [parentHandle, allowedChildren] of Object.entries(
+            recipe.insertOptionsMatrix
+          )) {
+            // The KEY is itself a page-template handle. Validate it too —
+            // a typo in the key would silently never apply at apply time.
+            checkRef(
+              recipe.handle,
+              `insertOptionsMatrix.${parentHandle}`,
+              parentHandle,
+              CONTENT_TEMPLATE_KINDS
+            );
+            allowedChildren.forEach((childHandle, idx) => {
+              checkRef(
+                recipe.handle,
+                `insertOptionsMatrix.${parentHandle}.${idx}`,
+                childHandle,
+                CONTENT_TEMPLATE_KINDS
+              );
+            });
+          }
+        }
+        if (recipe.templatesToDesigns) {
+          for (const [templateHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
+            checkRef(
+              recipe.handle,
+              `templatesToDesigns.${templateHandle} (key)`,
+              templateHandle,
+              CONTENT_TEMPLATE_KINDS
+            );
+            checkRef(
+              recipe.handle,
+              `templatesToDesigns.${templateHandle}`,
+              designHandle,
+              PAGE_DESIGN_KINDS
+            );
+          }
+        }
+        break;
+      case "site":
+        checkRef(recipe.handle, "siteTemplate", recipe.siteTemplate, SITE_TEMPLATE_KINDS);
+        if (recipe.initialHome !== undefined) {
+          // PageRecipe doesn't exist yet — accept any kind. When
+          // PageRecipe lands, narrow this to PAGE_RECIPE_KINDS.
+          checkRef(recipe.handle, "initialHome", recipe.initialHome, ANY_KINDS);
+        }
+        // Cross-field shape: SiteRecipe must specify exactly one of
+        // collectionId or collectionName. The Zod schema can't enforce
+        // it (discriminated union members can't carry refines), so the
+        // constraint lives here.
+        if (recipe.collectionId && recipe.collectionName) {
+          fieldShapeErrors.push({
+            fromRecipe: recipe.handle,
+            fromField: "collectionId, collectionName",
+            message:
+              "collectionId and collectionName are mutually exclusive — provide one, not both",
+          });
+        }
+        if (!recipe.collectionId && !recipe.collectionName) {
+          fieldShapeErrors.push({
+            fromRecipe: recipe.handle,
+            fromField: "collectionId, collectionName",
+            message: "either collectionId (existing) or collectionName (new) must be provided",
+          });
+        }
+        break;
     }
   }
 
   const cycles = detectInsertOptionsCycles(index, recipes);
 
-  return { unresolvedHandles: unresolved, duplicateHandles, cycles };
+  return { unresolvedHandles: unresolved, duplicateHandles, cycles, fieldShapeErrors };
 }
 
 /**

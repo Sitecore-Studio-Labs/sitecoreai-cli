@@ -56,6 +56,8 @@ import {
   PartialDesignRecipeSchema,
   type Recipe,
   RecipeSchema,
+  type SiteTemplateRecipe,
+  SiteTemplateRecipeSchema,
 } from "./schema/recipe";
 import {
   defaultSitecoreFieldType,
@@ -103,6 +105,14 @@ export interface CompileContext {
    * datasource targets referenced from partial / page design layouts.
    */
   contentItemsRoot?: string;
+  /**
+   * Phase 5: required for `SiteTemplateRecipe` compilation. Where SXA
+   * Site Template items land — typically `/sitecore/templates/Project/<brand>`
+   * or a sub-folder for module groupings. Site templates are reusable
+   * brand-shape definitions; `SiteRecipe` instances reference one via
+   * `siteTemplate` and the Sites API instantiates it.
+   */
+  siteTemplatesRoot?: string;
 }
 
 const PARAMS_SECTION_NAME = "Parameters";
@@ -673,6 +683,90 @@ export function compileRecipeSet(
   return irs;
 }
 
+/**
+ * Compile a `SiteTemplateRecipe` to an Operation IR.
+ *
+ * Phase 5 Milestone C scaffolding — emits the SiteTemplate item itself
+ * (CreateItem under `siteTemplatesRoot` with system fields). The
+ * structural-metadata SetField ops (page templates list, page designs
+ * list, templates-to-designs mapping, insert-options matrix, dictionary
+ * structure, taxonomy structure) are deferred to **Milestone C-extra**
+ * because they need sandbox introspection of the SXA Site Template
+ * base-template + field GUIDs (mirroring how F.1.c verified the
+ * partial-design / page-design GUIDs). Until that introspection lands,
+ * pushing a SiteTemplateRecipe creates the item shell but won't carry
+ * the brand-shape fields.
+ *
+ * What's still TODO (each tied to a Sandbox-pending sandbox introspection):
+ *   - SITECORE_TEMPLATES.SITE_TEMPLATE — actual GUID
+ *   - PageTemplates field GUID + value encoding (likely pipe-separated GUIDs)
+ *   - PageDesigns field GUID + value encoding
+ *   - TemplatesToDesigns field GUID + value encoding (likely URL-string
+ *     property bag, parallel to TemplatesMapping on the Page Designs root)
+ *   - InsertOptionsMatrix — probably authored by setting __Masters on
+ *     each parent page template's standard values, not a single field
+ *     on the site template; needs structural validation
+ *   - Dictionary structure — child items under <SiteTemplate>/Dictionary
+ *   - Taxonomy structure — child items under <SiteTemplate>/Taxonomy
+ *
+ * Identity: `templateId(handle)` derives the SiteTemplate's deterministic
+ * GUID. (Site templates are regular Sitecore template items, so they
+ * use the template namespace.)
+ */
+export function compileSiteTemplateRecipe(
+  input: SiteTemplateRecipe,
+  context: CompileContext
+): OperationIr {
+  const recipe = SiteTemplateRecipeSchema.parse(input);
+  if (!context.siteTemplatesRoot) {
+    throw new Error(
+      `compileSiteTemplateRecipe requires context.siteTemplatesRoot; tenant-side path missing for recipe ${recipe.handle}`
+    );
+  }
+
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const itemRefKey = templateId(recipe.handle);
+  const itemPath = joinPath(context.siteTemplatesRoot, recipe.name);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `site-template:${recipe.handle}`,
+    id: itemRefKey,
+    path: itemPath,
+    parent: { kind: "ref-path", value: context.siteTemplatesRoot },
+    templateOf: SITECORE_TEMPLATES.SITE_TEMPLATE,
+    name: recipe.name,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: recipe.icon ?? DEFAULT_ICON }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  // TODO (Milestone C-extra, sandbox introspection):
+  //   - SetField for the PageTemplates list (recipe.pageTemplates resolved
+  //     via templateId(handle) → curly-uppercase pipe-separated GUIDs)
+  //   - SetField for the PageDesigns list (recipe.pageDesigns resolved
+  //     via pageDesignId(handle) → same encoding)
+  //   - SetField for TemplatesToDesigns mapping (URL-string property
+  //     bag, parallel to TemplatesMapping on the Page Designs root)
+  //   - InsertOptionsMatrix per-parent-template __Masters writes
+  //   - CreateItem ops for dictionary phrases under <SiteTemplate>/Dictionary
+  //   - CreateItem ops for taxonomy roots + tags under <SiteTemplate>/Taxonomy
+  //
+  // Each of these needs the corresponding SXA field GUID, which we
+  // don't have introspected yet. The schema parse + the validator
+  // already catch typos in the cross-recipe handle refs; this is the
+  // wire-format work.
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
+}
+
 /** Front-door dispatcher — accepts any registered recipe kind. */
 export function compileRecipe(input: Recipe, context: CompileContext): OperationIr {
   const recipe = RecipeSchema.parse(input);
@@ -688,15 +782,14 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
     case "page-design":
       return compilePageDesignRecipe(recipe, context);
     case "site-template":
-      // Schemas + worked examples shipped in commit 17512b3 (composition
-      // Phase 5 A+B). Compiler dispatch is the next milestone (C); until
-      // it lands, throw with a clear pointer rather than silently no-op.
-      throw new Error(
-        `SiteTemplateRecipe compilation is not yet implemented (composition-recipes-site-branches.md Milestone C). Recipe handle: ${recipe.handle}`
-      );
+      return compileSiteTemplateRecipe(recipe, context);
     case "site":
-      // Same as site-template — schemas shipped, compiler + Sites API
-      // executor wiring is composition-recipes-site-branches.md Milestone D.
+      // Site instances are async via the Sites API (createSite returns a
+      // JobResponse, not the affected site). The IR ops + executor
+      // dispatch land in composition-recipes-site-branches.md Milestone D
+      // alongside the Sites API integration. Schema + cross-recipe
+      // validation are in place today (this commit + the validator
+      // extension); the executor seam is the next chunk.
       throw new Error(
         `SiteRecipe compilation is not yet implemented (composition-recipes-site-branches.md Milestone D). Recipe handle: ${recipe.handle}`
       );

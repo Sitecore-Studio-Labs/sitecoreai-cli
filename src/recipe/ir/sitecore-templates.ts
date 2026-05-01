@@ -52,6 +52,18 @@ export const SITECORE_TEMPLATES = {
    * incorrect on the last 24 chars).
    */
   PAGE_DESIGN: "1105b8f8-1e00-426b-bf1f-c840742d827b",
+  /**
+   * SXA Site Template item template. The reusable brand-shape definition
+   * that `SiteRecipe`s instantiate via the Sites API `createSite` flow.
+   *
+   * Sandbox-pending — verify against `xmc-lizsitecore088b-...` at
+   * composition-recipes-site-branches.md Milestone C-extra (the
+   * sandbox-introspection follow-up before site-template push works
+   * against a real tenant). Schema + compiler dispatch land first
+   * (this commit); the GUID + structural-metadata field IDs need a
+   * F.1.c-style introspection round.
+   */
+  SITE_TEMPLATE: "00000000-0000-0000-0000-000000000000",
 } as const;
 
 /**

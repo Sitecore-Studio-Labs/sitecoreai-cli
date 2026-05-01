@@ -48,6 +48,7 @@ describe("public recipe API surface", () => {
     "compilePageDesignRecipe",
     "compileRecipe",
     "compileRecipeSet",
+    "compileSiteTemplateRecipe",
     "TEMPLATES_MAPPING_AGGREGATE_HANDLE",
     // Layout primitives
     "emitLayoutXml",

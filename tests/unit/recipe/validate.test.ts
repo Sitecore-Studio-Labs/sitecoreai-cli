@@ -106,7 +106,14 @@ describe("validateRecipeSet — happy path", () => {
   });
 
   it("isValid returns false when any error category is non-empty", () => {
-    expect(isValid({ unresolvedHandles: [], duplicateHandles: [], cycles: [] })).toBe(true);
+    expect(
+      isValid({
+        unresolvedHandles: [],
+        duplicateHandles: [],
+        cycles: [],
+        fieldShapeErrors: [],
+      })
+    ).toBe(true);
     expect(
       isValid({
         unresolvedHandles: [
@@ -120,6 +127,21 @@ describe("validateRecipeSet — happy path", () => {
         ],
         duplicateHandles: [],
         cycles: [],
+        fieldShapeErrors: [],
+      })
+    ).toBe(false);
+    expect(
+      isValid({
+        unresolvedHandles: [],
+        duplicateHandles: [],
+        cycles: [],
+        fieldShapeErrors: [
+          {
+            fromRecipe: "site-x@1",
+            fromField: "collectionId, collectionName",
+            message: "either collectionId or collectionName must be provided",
+          },
+        ],
       })
     ).toBe(false);
   });
@@ -434,5 +456,224 @@ describe("validateRecipeSetOrThrow", () => {
         headerPartial, // references missing site-logo@1, site-logo-content@1
       ])
     ).toThrow(/Recipe set validation failed/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 Milestone C: SiteTemplateRecipe + SiteRecipe validation
+// ---------------------------------------------------------------------------
+
+const homePageTemplateForSites: Recipe = {
+  kind: "content-template",
+  schemaVersion: "1",
+  handle: "home-page@1",
+  name: "HomePage",
+  displayName: "Home Page",
+  fields: [],
+};
+
+const articlePageTemplate: Recipe = {
+  kind: "content-template",
+  schemaVersion: "1",
+  handle: "article-page@1",
+  name: "ArticlePage",
+  displayName: "Article Page",
+  fields: [],
+};
+
+const defaultPageDesign: Recipe = {
+  kind: "page-design",
+  schemaVersion: "1",
+  handle: "default-page-design@1",
+  name: "DefaultPageDesign",
+  displayName: "Default Page Design",
+  appliesTo: [],
+  partials: [],
+};
+
+const articleDesign: Recipe = {
+  kind: "page-design",
+  schemaVersion: "1",
+  handle: "article-design@1",
+  name: "ArticleDesign",
+  displayName: "Article Design",
+  appliesTo: [],
+  partials: [],
+};
+
+const cclBrand: Recipe = {
+  kind: "site-template",
+  schemaVersion: "1",
+  handle: "ccl-brand@1",
+  name: "CclBrand",
+  displayName: "CCL Brand",
+  pageTemplates: ["home-page@1", "article-page@1"],
+  pageDesigns: ["default-page-design@1", "article-design@1"],
+  insertOptionsMatrix: {
+    "home-page@1": ["article-page@1"],
+  },
+  templatesToDesigns: {
+    "home-page@1": "default-page-design@1",
+    "article-page@1": "article-design@1",
+  },
+};
+
+const SITE_TEMPLATE_DEPS: readonly Recipe[] = [
+  homePageTemplateForSites,
+  articlePageTemplate,
+  defaultPageDesign,
+  articleDesign,
+];
+
+describe("validateRecipeSet — SiteTemplateRecipe references", () => {
+  it("accepts a fully-resolved site template", () => {
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand]);
+    expect(isValid(result)).toBe(true);
+  });
+
+  it("flags a pageTemplates entry that doesn't resolve", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      { ...cclBrand, pageTemplates: ["home-page@1", "missing-template@1"] },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "ccl-brand@1",
+      fromField: "pageTemplates.1",
+      handle: "missing-template@1",
+      expectedKinds: ["content-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags a pageDesigns entry that resolves to the wrong kind", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      { ...cclBrand, pageDesigns: ["home-page@1"] }, // home-page is a content-template, not page-design
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "ccl-brand@1",
+      fromField: "pageDesigns.0",
+      handle: "home-page@1",
+      expectedKinds: ["page-design"],
+      actualKind: "content-template",
+    });
+  });
+
+  it("flags an insertOptionsMatrix child that doesn't resolve", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      {
+        ...cclBrand,
+        insertOptionsMatrix: { "home-page@1": ["missing-child@1"] },
+      },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "ccl-brand@1",
+      fromField: "insertOptionsMatrix.home-page@1.0",
+      handle: "missing-child@1",
+      expectedKinds: ["content-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags a templatesToDesigns mapping where the design doesn't resolve", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      {
+        ...cclBrand,
+        templatesToDesigns: { "home-page@1": "missing-design@1" },
+      },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "ccl-brand@1",
+      fromField: "templatesToDesigns.home-page@1",
+      handle: "missing-design@1",
+      expectedKinds: ["page-design"],
+      actualKind: undefined,
+    });
+  });
+});
+
+describe("validateRecipeSet — SiteRecipe references", () => {
+  const siteWithCollectionName = {
+    kind: "site",
+    schemaVersion: "1",
+    handle: "solterra@1",
+    name: "Solterra",
+    displayName: "Solterra",
+    siteTemplate: "ccl-brand@1",
+    language: "en",
+    collectionName: "Brand A",
+  } as const satisfies Recipe;
+
+  it("accepts a SiteRecipe whose siteTemplate resolves", () => {
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand, siteWithCollectionName]);
+    expect(isValid(result)).toBe(true);
+  });
+
+  it("flags a missing siteTemplate", () => {
+    const result = validateRecipeSet([siteWithCollectionName]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "solterra@1",
+      fromField: "siteTemplate",
+      handle: "ccl-brand@1",
+      expectedKinds: ["site-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags a siteTemplate that resolves to the wrong kind", () => {
+    const result = validateRecipeSet([
+      homePageTemplateForSites,
+      { ...siteWithCollectionName, siteTemplate: "home-page@1" },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "solterra@1",
+      fromField: "siteTemplate",
+      handle: "home-page@1",
+      expectedKinds: ["site-template"],
+      actualKind: "content-template",
+    });
+  });
+
+  it("XOR error: rejects a SiteRecipe with both collectionId AND collectionName", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      cclBrand,
+      { ...siteWithCollectionName, collectionId: "abc-123" },
+    ]);
+    expect(result.fieldShapeErrors).toContainEqual({
+      fromRecipe: "solterra@1",
+      fromField: "collectionId, collectionName",
+      message: "collectionId and collectionName are mutually exclusive — provide one, not both",
+    });
+    expect(isValid(result)).toBe(false);
+  });
+
+  it("XOR error: rejects a SiteRecipe with neither collectionId NOR collectionName", () => {
+    const { collectionName: _omit, ...siteSansCollection } = siteWithCollectionName;
+    void _omit;
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      cclBrand,
+      siteSansCollection as Recipe,
+    ]);
+    expect(result.fieldShapeErrors).toContainEqual({
+      fromRecipe: "solterra@1",
+      fromField: "collectionId, collectionName",
+      message: "either collectionId (existing) or collectionName (new) must be provided",
+    });
+    expect(isValid(result)).toBe(false);
+  });
+
+  it("formatValidationErrors surfaces field-shape errors in the report", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      cclBrand,
+      { ...siteWithCollectionName, collectionId: "abc", collectionName: "B" },
+    ]);
+    const formatted = formatValidationErrors(result);
+    expect(formatted).toContain("solterra@1 → collectionId, collectionName:");
+    expect(formatted).toContain("mutually exclusive");
   });
 });

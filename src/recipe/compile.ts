@@ -687,6 +687,19 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compilePartialDesignRecipe(recipe, context);
     case "page-design":
       return compilePageDesignRecipe(recipe, context);
+    case "site-template":
+      // Schemas + worked examples shipped in commit 17512b3 (composition
+      // Phase 5 A+B). Compiler dispatch is the next milestone (C); until
+      // it lands, throw with a clear pointer rather than silently no-op.
+      throw new Error(
+        `SiteTemplateRecipe compilation is not yet implemented (composition-recipes-site-branches.md Milestone C). Recipe handle: ${recipe.handle}`
+      );
+    case "site":
+      // Same as site-template — schemas shipped, compiler + Sites API
+      // executor wiring is composition-recipes-site-branches.md Milestone D.
+      throw new Error(
+        `SiteRecipe compilation is not yet implemented (composition-recipes-site-branches.md Milestone D). Recipe handle: ${recipe.handle}`
+      );
   }
 }
 

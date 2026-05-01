@@ -477,6 +477,250 @@ export const PageDesignRecipeSchema = z.object({
 export type PageDesignRecipe = z.infer<typeof PageDesignRecipeSchema>;
 
 /**
+ * Default dictionary entry on a `SiteTemplateRecipe`. Every entry the
+ * template declares becomes a Sitecore dictionary phrase with the
+ * supplied default value. Sites instancing the template can override
+ * the value per-phrase via `SiteRecipe.dictionaryOverrides`; phrases
+ * not overridden read the template default.
+ */
+export const SiteTemplateDictionaryEntrySchema = z.object({
+  /** Phrase key — the dictionary item's name. Stable across overrides. */
+  phrase: z.string().min(1),
+  /** Default value (the translated string for the template's primary language). */
+  defaultValue: z.string(),
+});
+
+export type SiteTemplateDictionaryEntry = z.infer<typeof SiteTemplateDictionaryEntrySchema>;
+
+/**
+ * Default taxonomy bucket on a `SiteTemplateRecipe`. Each bucket has a
+ * root folder name (e.g. "Content Types") and a list of tag names that
+ * become the default children. Sites can override the tag list
+ * per-root via `SiteRecipe.taxonomyOverrides`.
+ */
+export const SiteTemplateTaxonomyEntrySchema = z.object({
+  root: z.string().min(1),
+  /** Default tag names under this root. Empty list means "create the root, no tags". */
+  defaultTags: z.array(z.string().min(1)).default([]),
+});
+
+export type SiteTemplateTaxonomyEntry = z.infer<typeof SiteTemplateTaxonomyEntrySchema>;
+
+/**
+ * A `SiteTemplateRecipe` defines a reusable brand/site shape — page
+ * templates, designs, partials (transitively), insert-options matrix,
+ * templates-to-designs mapping, dictionary structure, and taxonomy
+ * structure. The Sitecore SXA "site template" the registry's catalog
+ * ships as a single artifact.
+ *
+ * Many `SiteRecipe`s can reference one `SiteTemplateRecipe`. A
+ * customer with three brands has three Sites instancing one Template;
+ * that's the multi-brand demo pattern this kind enables.
+ *
+ * Identity: `templateId(handle)` derives the GUID — site templates
+ * are regular Sitecore template items under `/sitecore/templates/Project/<Module>`,
+ * not Sites-API-managed instances. Compile path goes through
+ * Authoring GraphQL, not the Sites API.
+ *
+ * Cross-recipe handle resolution: `pageTemplates` and
+ * `insertOptionsMatrix.*` resolve to `ContentTemplateRecipe` handles;
+ * `pageDesigns` and `templatesToDesigns.*` values resolve to
+ * `PageDesignRecipe` handles. The cross-recipe validator
+ * (`validateRecipeSet`) catches missing handles before push.
+ */
+export const SiteTemplateRecipeSchema = z.object({
+  kind: z.literal("site-template"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. ccl-brand-template@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  /**
+   * Page-template handles this brand offers (resolve to
+   * `ContentTemplateRecipe`). The site's content tree allows pages
+   * conforming to any of these.
+   */
+  pageTemplates: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
+  /**
+   * Insert-options matrix — keyed by parent page-template handle,
+   * value is the list of child page-template handles allowed under it.
+   * Drives Sitecore's "Insert Options" UI for content authors.
+   * Empty / omitted means no constraints (any page template can have
+   * any other page template as a child).
+   */
+  insertOptionsMatrix: z
+    .record(z.string().regex(HANDLE_PATTERN), z.array(z.string().regex(HANDLE_PATTERN)))
+    .optional(),
+  /**
+   * Page-design handles this brand offers (resolve to
+   * `PageDesignRecipe`). Authors pick from these when creating a page
+   * unless `templatesToDesigns` provides a default for the page's
+   * template.
+   */
+  pageDesigns: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
+  /**
+   * Default templates-to-designs mapping — keyed by page-template
+   * handle, value is the default page-design handle. Sites can
+   * override per-template at the SXA Page Designs root level
+   * (which scai's `compileRecipeSet` aggregates from
+   * `PageDesignRecipe.appliesTo`).
+   */
+  templatesToDesigns: z
+    .record(z.string().regex(HANDLE_PATTERN), z.string().regex(HANDLE_PATTERN))
+    .optional(),
+  /**
+   * Default dictionary phrases. Sites can override values per-phrase;
+   * unoverridden phrases use the template default.
+   */
+  dictionary: z.array(SiteTemplateDictionaryEntrySchema).optional(),
+  /**
+   * Default taxonomy structure. Sites can override tag lists per-root.
+   */
+  taxonomy: z.array(SiteTemplateTaxonomyEntrySchema).optional(),
+});
+
+export type SiteTemplateRecipe = z.infer<typeof SiteTemplateRecipeSchema>;
+
+/**
+ * Site grouping — hostname + language binding. The Sitecore Sites API
+ * `NewSiteInput.hostName` field receives `hostName`; multi-host
+ * setups are configured via separate Site Hosts after creation
+ * (Sites API has its own hosts surface for that, not modelled here).
+ */
+export const SiteGroupingSchema = z.object({
+  /**
+   * Hostname this site responds to (e.g. `solterra.example.com`).
+   * Optional — Sites API defaults to `*` (matches any host) when
+   * omitted. Tenants with one site per environment can leave this
+   * blank; multi-brand tenants set it explicitly.
+   */
+  hostName: z.string().min(1).optional(),
+  /**
+   * Language ISO code for this grouping. Defaults to the site's
+   * primary `language` if not set; provided here for forward-compat
+   * with multi-language groupings (e.g. one site responds to
+   * `en.example.com` and `de.example.com`).
+   */
+  language: z.string().min(2).optional(),
+  /**
+   * Optional target host for hostname rewrites — used when the site
+   * lives behind a CDN/proxy that maps a public hostname to an
+   * internal one. SXA's `targetHostName` field; rarely set.
+   */
+  targetHostName: z.string().min(1).optional(),
+});
+
+export type SiteGrouping = z.infer<typeof SiteGroupingSchema>;
+
+/**
+ * A `SiteRecipe` instances a `SiteTemplateRecipe` at a specific path
+ * with a specific hostname and language. Customers with multiple
+ * brands ship multiple SiteRecipes pointing at the same template;
+ * each gets its own hostname, content tree, taxonomy values, and
+ * dictionary overrides.
+ *
+ * Identity: `siteId(handle)` derives a stable refKey for IR purposes.
+ * The actual Sitecore site itemId is server-assigned by the Sites API
+ * `createSite` mutation (which runs as a job — callers poll
+ * `getJobStatus` until the site is materialised).
+ *
+ * Compile path: `SiteRecipe` execution goes through the Sites API
+ * (`src/sites/api/`), not Authoring GraphQL. The compiler emits a
+ * `CreateSiteFromTemplate` IR op that the executor dispatches to
+ * Sites API; site-grouping fields, dictionary overrides, and
+ * taxonomy overrides land via subsequent ops on the resulting site.
+ *
+ * Cross-recipe handle resolution: `siteTemplate` resolves to a
+ * `SiteTemplateRecipe`; `initialHome` (when present) resolves to a
+ * `PageRecipe` (Phase 6+ — schema accepts the handle now, executor
+ * support lands later).
+ */
+export const SiteRecipeSchema = z.object({
+  kind: z.literal("site"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. solterra-co@1",
+  }),
+  /**
+   * Sitecore site item Name (becomes the `siteName` on Sites API
+   * `NewSiteInput`). Distinct from `handle` — handle is the recipe
+   * identity, name is what Sitecore stores.
+   */
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /**
+   * The `SiteTemplateRecipe` this site instances. Compiler resolves
+   * to the template's Sitecore itemId (which Sites API
+   * `NewSiteInput.templateId` requires) via `templateId(handle)` +
+   * captured-itemId map at execute time.
+   */
+  siteTemplate: z.string().regex(HANDLE_PATTERN, {
+    message:
+      "siteTemplate must reference a SiteTemplateRecipe by handle, e.g. ccl-brand-template@1",
+  }),
+  /**
+   * Primary language ISO code (e.g. `en`, `da`, `fr-CA`). Must be
+   * available on the environment — recipe push adds it via
+   * Sites API `addLanguage` if not already present.
+   */
+  language: z.string().min(2),
+  /**
+   * Additional supported languages on this site. Each must be
+   * available on the environment (recipe push adds missing ones).
+   */
+  languages: z.array(z.string().min(2)).optional(),
+  /**
+   * Existing site collection ID to place the site in. Mutually
+   * exclusive with `collectionName` (cross-field constraint enforced
+   * by the compiler, not Zod — the discriminated union can't carry
+   * refinements). Look up via `listCollections`.
+   */
+  collectionId: z.string().min(1).optional(),
+  /**
+   * Name of a NEW collection to create alongside the site. Mutually
+   * exclusive with `collectionId`. Exactly one of these must be
+   * provided — compiler validates.
+   */
+  collectionName: z.string().min(1).optional(),
+  /** Display name for the new collection (only when `collectionName` is set). */
+  collectionDisplayName: z.string().min(1).optional(),
+  /** Description for the new collection (only when `collectionName` is set). */
+  collectionDescription: z.string().optional(),
+  /**
+   * Site grouping — hostname binding. Sites API uses
+   * `NewSiteInput.hostName` for the primary host; multi-host setups
+   * use the separate Site Hosts surface.
+   */
+  siteGrouping: SiteGroupingSchema.optional(),
+  /**
+   * Per-phrase override for dictionary values declared on the
+   * `SiteTemplateRecipe.dictionary`. Keys are phrase names; values
+   * replace the template default. Phrases not in this map use the
+   * template default.
+   */
+  dictionaryOverrides: z.record(z.string().min(1), z.string()).optional(),
+  /**
+   * Per-root override for taxonomy default tags. Keys are taxonomy
+   * root names declared on the template; values replace the
+   * template's default tag list for that root.
+   */
+  taxonomyOverrides: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
+  /**
+   * Optional initial home page — a `PageRecipe` handle. Phase 6+
+   * concern; schema accepts the handle now so SiteRecipes can
+   * declare it; the executor will materialise it once page-recipe
+   * execution lands.
+   */
+  initialHome: z.string().regex(HANDLE_PATTERN).optional(),
+});
+
+export type SiteRecipe = z.infer<typeof SiteRecipeSchema>;
+
+/**
  * Discriminated union of recipe kinds. Compilers and validators can accept
  * `Recipe` and dispatch on `kind`.
  */
@@ -486,6 +730,8 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   ContentItemRecipeSchema,
   PartialDesignRecipeSchema,
   PageDesignRecipeSchema,
+  SiteTemplateRecipeSchema,
+  SiteRecipeSchema,
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;

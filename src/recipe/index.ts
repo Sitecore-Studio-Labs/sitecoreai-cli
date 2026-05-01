@@ -28,6 +28,11 @@ export {
   RecipeSchema,
   RenderingDefinitionSchema,
   RenderingVariantDefinitionSchema,
+  SiteGroupingSchema,
+  SiteRecipeSchema,
+  SiteTemplateDictionaryEntrySchema,
+  SiteTemplateRecipeSchema,
+  SiteTemplateTaxonomyEntrySchema,
   SitecoreFieldAugmentSchema,
   type ComponentPlacement,
   type ComponentTemplateRecipe,
@@ -43,6 +48,11 @@ export {
   type Recipe,
   type RenderingDefinition,
   type RenderingVariantDefinition,
+  type SiteGrouping,
+  type SiteRecipe,
+  type SiteTemplateDictionaryEntry,
+  type SiteTemplateRecipe,
+  type SiteTemplateTaxonomyEntry,
   type SitecoreFieldAugment,
 } from "./schema/recipe";
 

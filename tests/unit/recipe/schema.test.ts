@@ -6,6 +6,8 @@ import {
   PageDesignRecipeSchema,
   PartialDesignRecipeSchema,
   RecipeSchema,
+  SiteRecipeSchema,
+  SiteTemplateRecipeSchema,
   SitecoreFieldAugmentSchema,
 } from "../../../src/recipe/schema/recipe";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
@@ -405,5 +407,240 @@ describe("Recipe discriminated union", () => {
     if (result.success) {
       expect(result.data.kind).toBe("page-design");
     }
+  });
+
+  it("dispatches on kind: site-template", () => {
+    const result = RecipeSchema.safeParse({
+      kind: "site-template",
+      schemaVersion: "1",
+      handle: "x@1",
+      name: "X",
+      displayName: "X",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("site-template");
+    }
+  });
+
+  it("dispatches on kind: site", () => {
+    const result = RecipeSchema.safeParse({
+      kind: "site",
+      schemaVersion: "1",
+      handle: "x@1",
+      name: "X",
+      displayName: "X",
+      siteTemplate: "y@1",
+      language: "en",
+      collectionName: "Brand A",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("site");
+    }
+  });
+});
+
+const baseSiteTemplate = {
+  kind: "site-template" as const,
+  schemaVersion: "1" as const,
+  handle: "ccl-brand-template@1",
+  name: "ClickClickLaunchBrand",
+  displayName: "Click Click Launch Brand Template",
+};
+
+describe("SiteTemplateRecipe Zod schema", () => {
+  it("accepts the minimum shape (just kind + handle + name + displayName)", () => {
+    const result = SiteTemplateRecipeSchema.safeParse(baseSiteTemplate);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Default arrays initialised
+      expect(result.data.pageTemplates).toEqual([]);
+      expect(result.data.pageDesigns).toEqual([]);
+    }
+  });
+
+  it("accepts a full template with all optional sections", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      description: "Reusable click-click-launch brand template",
+      pageTemplates: ["home-page@1", "article-page@1", "landing-page@1"],
+      insertOptionsMatrix: {
+        "home-page@1": ["article-page@1", "landing-page@1"],
+        "article-page@1": ["article-page@1"],
+      },
+      pageDesigns: ["default-page-design@1", "landing-design@1"],
+      templatesToDesigns: {
+        "home-page@1": "default-page-design@1",
+        "landing-page@1": "landing-design@1",
+      },
+      dictionary: [
+        { phrase: "ContactUs", defaultValue: "Contact Us" },
+        { phrase: "ReadMore", defaultValue: "Read more" },
+      ],
+      taxonomy: [{ root: "Content Types", defaultTags: ["Article", "Landing"] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a handle without a major-version suffix", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      handle: "ccl-brand-template",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a pageTemplates entry that doesn't match HANDLE_PATTERN", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      pageTemplates: ["home-page@1", "Bad Handle"],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an insertOptionsMatrix value that contains a malformed handle", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      insertOptionsMatrix: {
+        "home-page@1": ["article-page@1", "no-version"],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a templatesToDesigns key that isn't a handle", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      templatesToDesigns: { "Not A Handle": "default-page-design@1" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a dictionary entry missing `phrase`", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      dictionary: [{ defaultValue: "Read more" }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+const baseSite = {
+  kind: "site" as const,
+  schemaVersion: "1" as const,
+  handle: "solterra-co@1",
+  name: "SolterraCo",
+  displayName: "Solterra & Co",
+  siteTemplate: "ccl-brand-template@1",
+  language: "en",
+  collectionName: "Click Click Launch",
+};
+
+describe("SiteRecipe Zod schema", () => {
+  it("accepts the minimum shape (handle + name + displayName + siteTemplate + language + collectionName)", () => {
+    const result = SiteRecipeSchema.safeParse(baseSite);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a fully-specified site with overrides + grouping", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      description: "Solterra brand site",
+      languages: ["en", "da"],
+      siteGrouping: {
+        hostName: "solterra.example.com",
+        language: "en",
+      },
+      dictionaryOverrides: {
+        ContactUs: "Get in touch with Solterra",
+      },
+      taxonomyOverrides: {
+        "Content Types": ["Article", "Landing", "Audio"],
+      },
+      initialHome: "solterra-home@1",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an existing collectionId instead of collectionName", () => {
+    const withoutCollectionName: Omit<typeof baseSite, "collectionName"> & {
+      collectionName?: string;
+    } = { ...baseSite };
+    delete withoutCollectionName.collectionName;
+    const result = SiteRecipeSchema.safeParse({
+      ...withoutCollectionName,
+      collectionId: "5aae1eeaea2440bf96f11f43da82c77b",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a malformed handle", () => {
+    const result = SiteRecipeSchema.safeParse({ ...baseSite, handle: "no-version" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a malformed siteTemplate handle", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      siteTemplate: "ccl-brand-template",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a language shorter than 2 chars", () => {
+    const result = SiteRecipeSchema.safeParse({ ...baseSite, language: "x" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a malformed initialHome handle", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      initialHome: "not-a-handle",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts dictionaryOverrides with arbitrary string values", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      dictionaryOverrides: { ContactUs: "" },
+    });
+    // Empty string is allowed — overriding a phrase with empty is valid
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects taxonomyOverrides with empty tag strings", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      taxonomyOverrides: { "Content Types": ["Article", ""] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // The plan calls collectionId / collectionName mutually exclusive AND
+  // exactly-one-required. Zod's discriminated-union member can't carry
+  // refinements (would break the union), so the cross-field constraint is
+  // enforced at compile time, not by the schema. Schema parse accepts:
+  //   - both together (compiler would reject)
+  //   - neither (compiler would reject)
+  // These tests pin the parse-level behaviour; the compile path enforces
+  // the XOR (Phase 4 follow-up — `compileSiteRecipe`).
+  it("schema accepts both collectionId AND collectionName (compiler enforces XOR)", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      collectionId: "abc",
+      // baseSite already has collectionName
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("schema accepts neither collectionId NOR collectionName (compiler enforces presence)", () => {
+    const withoutCollectionName: Omit<typeof baseSite, "collectionName"> & {
+      collectionName?: string;
+    } = { ...baseSite };
+    delete withoutCollectionName.collectionName;
+    const result = SiteRecipeSchema.safeParse(withoutCollectionName);
+    expect(result.success).toBe(true);
   });
 });

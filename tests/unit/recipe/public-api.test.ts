@@ -27,6 +27,11 @@ describe("public recipe API surface", () => {
     "RecipeSchema",
     "RenderingDefinitionSchema",
     "RenderingVariantDefinitionSchema",
+    "SiteGroupingSchema",
+    "SiteRecipeSchema",
+    "SiteTemplateDictionaryEntrySchema",
+    "SiteTemplateRecipeSchema",
+    "SiteTemplateTaxonomyEntrySchema",
     "SitecoreFieldAugmentSchema",
     // Field types / shapes
     "FIELD_SHAPES",

@@ -33,6 +33,17 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   "content-item": "datasource-item",
   "partial-design": "composition-structure",
   "page-design": "composition-structure",
+  // Site templates are registry-owned brand definitions — the template
+  // item itself + its structural metadata (insert options, designs, etc.)
+  // are template-structure-shaped. Compiler implementation lands in
+  // composition-recipes-site-branches.md Milestone C.
+  "site-template": "composition-structure",
+  // Site instances are operator-driven — the site item is created via
+  // Sites API and its grouping / overrides are operator overrides on
+  // top of the template defaults. Treat as composition-structure for
+  // policy purposes; per-op CreateOnly vs CreateAndUpdate gets
+  // refined when the executor lands (Milestone D).
+  site: "composition-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

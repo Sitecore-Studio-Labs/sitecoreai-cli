@@ -494,53 +494,30 @@ describe("recipe composition — sandbox round-trip", () => {
   );
 
   /**
-   * Test 5 — re-push converges within two cycles (idempotency).
+   * Test 5 — idempotent re-push (one-cycle convergence).
    *
-   * **Known partial-design layout normalization** (F.2.c finding):
-   * Sitecore's SXA Partial Design template normalizes incoming
-   * `__Renderings` writes via its layout-deltas pipeline on the FIRST
-   * write — canonical XML in, delta-form XML stored. The second push
-   * reads the delta back, compares to canonical, sees drift, and
-   * re-writes. After that second write Sitecore stops re-encoding (the
-   * read-back round-trips canonical), so the THIRD push converges with
-   * zero drift.
+   * Phase 5 fix: scai's `emitLayoutXml` now emits SXA delta form for
+   * partial-design layouts (the wire shape Sitecore stores after its
+   * first-write normalization). With both partial designs and page
+   * designs producing the round-trip-canonical output, the second push
+   * sees zero drift and skips every op.
    *
-   * Documented in orchestrator `plans/sitecore-relationships.md`
-   * (Phase 4 partial-design layout-deltas section). Phase 5 follow-up:
-   * teach the emitter to write delta form so the very first push
-   * round-trips byte-for-byte.
-   *
-   * Asserts:
-   *   - second push: zero create, update count ≤ partial-design count
-   *     (the documented one-time normalization drift), skip count > 0
-   *   - third push: full convergence — zero create, zero update
+   * Asserts: second push is a full skip — zero create, zero update,
+   * zero error, every op resolves to skip.
    */
   it(
-    "re-push converges within two cycles (partial-design layout normalization)",
+    "re-push is fully idempotent — zero mutations on push 2",
     async () => {
-      const partialDesignCount = fixtures.recipes.filter((r) => r.kind === "partial-design").length;
-
       const second = await pushRecipeSet("second");
+
+      console.log(`  second-push summary: ${JSON.stringify(second.summary)}`);
       expect(second.aborted).toBe(false);
       expect(second.summary.error).toBe(0);
       expect(second.summary.create).toBe(0);
-      // Second-push update count is at most one per partial-design
-      // recipe — the canonical-vs-delta drift. Anything larger is a
-      // real idempotency regression somewhere else.
-      expect(second.summary.update).toBeLessThanOrEqual(partialDesignCount);
+      expect(second.summary.update).toBe(0);
       expect(second.summary.skip).toBeGreaterThan(0);
-
-      const third = await pushRecipeSet("third");
-      expect(third.aborted).toBe(false);
-      expect(third.summary.error).toBe(0);
-      expect(third.summary.create).toBe(0);
-      // Third push converges — Sitecore's normalization stabilizes after
-      // the second write. Zero drift here means the system is idempotent
-      // after at most one rewrite cycle.
-      expect(third.summary.update).toBe(0);
     },
-    // Two push runs back-to-back; double the single-push budget.
-    PUSH_TIMEOUT_MS * 2
+    PUSH_TIMEOUT_MS
   );
 
   /**

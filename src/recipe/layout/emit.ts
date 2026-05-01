@@ -67,6 +67,22 @@ export interface LayoutEmitContext {
    * `PageRecipe` compilation when scoped refs become meaningful.
    */
   allowScoped: boolean;
+  /**
+   * Wire form for the emitted XML.
+   *
+   * - `"canonical"` (default) — `<r xmlns:xsd=… xmlns:xsi=…><d><r id placeh
+   *   ds par uid /></d></r>`. What our recipe inputs naturally describe.
+   *   Page Design items round-trip this byte-for-byte.
+   *
+   * - `"delta"` — SXA Partial Design wire form: `<r xmlns:p xmlns:s
+   *   p:p="1"><d><p:da name="l"/><r uid p:before|p:after s:placeh s:ds
+   *   s:id s:par /></d></r>`. The Partial Design Layout pipeline
+   *   normalizes canonical input INTO this form on first write, so
+   *   emitting it directly means the first push round-trips and
+   *   converges in one cycle. Page Design layouts must NOT use this
+   *   mode (they preserve canonical and would diverge).
+   */
+  mode?: "canonical" | "delta";
 }
 
 const formatGuidCurly = (guid: string): string => `{${guid.toUpperCase()}}`;
@@ -87,67 +103,161 @@ const placementUid = (
 ): string => uuidv5(`placement:${placeholderKey}:${index}:${componentHandle}`, parentItemId);
 
 /**
+ * Compiled view of a single placement, ready for either canonical or
+ * delta serialization. Computed once per placement so the two emitters
+ * share resolution + escaping logic.
+ */
+interface ResolvedPlacement {
+  renderingId: string;
+  uid: string;
+  placeholderKey: string;
+  /** Already-escaped `ds="…"` fragment, or empty string if no datasource. */
+  dsAttr: string;
+  /** Already-escaped + URL-encoded params string (no leading attr name). */
+  parValue: string;
+}
+
+const resolvePlacement = (
+  placement: ComponentPlacementInput,
+  placeholderKey: string,
+  index: number,
+  ctx: LayoutEmitContext
+): ResolvedPlacement => {
+  const renderingId = formatGuidCurly(ctx.renderingIdFor(placement.componentHandle));
+  const uid = formatGuidCurly(
+    placementUid(ctx.parentItemId, placeholderKey, index, placement.componentHandle)
+  );
+
+  let dsAttr = "";
+  if (placement.datasourceRef !== undefined) {
+    switch (placement.datasourceRef.kind) {
+      case "shared":
+        dsAttr = ` ds="${formatGuidCurly(ctx.contentItemIdFor(placement.datasourceRef.handle))}"`;
+        break;
+      case "scoped":
+        if (!ctx.allowScoped) {
+          throw new Error(
+            `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`
+          );
+        }
+        // Scoped resolution is a Phase 5 concern (PageRecipe). Emit
+        // an explicit local-* sentinel so any premature execution
+        // fails loudly with a recognizable marker.
+        dsAttr = ` ds="local:${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
+        break;
+      case "none":
+        // No ds attribute — rendering is config-driven via params.
+        break;
+    }
+  }
+
+  const allParams: Record<string, string> = { ...(placement.params ?? {}) };
+  if (placement.variant !== undefined) {
+    // SXA Rendering Variant selection rides as the FieldNames
+    // rendering parameter — this is the SXA convention.
+    allParams.FieldNames = placement.variant;
+  }
+  const parValue = Object.keys(allParams).length > 0 ? encodeParams(allParams) : "";
+
+  return { renderingId, uid, placeholderKey, dsAttr, parValue };
+};
+
+/**
  * Emit the layout XML for a `Layout` block. Returns an empty string
  * when the layout has no placements — caller decides whether to write
  * an empty `__Renderings` field or skip it.
+ *
+ * Mode selection (see `LayoutEmitContext.mode` JSDoc):
+ *  - `"canonical"` (default) — what page-design items round-trip cleanly.
+ *  - `"delta"` — SXA partial-design wire form so first push converges.
  *
  * Throws when a `kind: "scoped"` datasourceRef appears and
  * `ctx.allowScoped` is false — partial designs and page designs reject
  * scoped refs because they lack a host page.
  */
 export function emitLayoutXml(layout: LayoutInput, ctx: LayoutEmitContext): string {
-  const elements: string[] = [];
-
-  for (const [placeholderKey, placements] of Object.entries(layout.placeholders)) {
-    placements.forEach((placement, idx) => {
-      const renderingId = formatGuidCurly(ctx.renderingIdFor(placement.componentHandle));
-      const uid = formatGuidCurly(
-        placementUid(ctx.parentItemId, placeholderKey, idx, placement.componentHandle)
-      );
-
-      let dsAttr = "";
-      if (placement.datasourceRef !== undefined) {
-        switch (placement.datasourceRef.kind) {
-          case "shared":
-            dsAttr = ` ds="${formatGuidCurly(ctx.contentItemIdFor(placement.datasourceRef.handle))}"`;
-            break;
-          case "scoped":
-            if (!ctx.allowScoped) {
-              throw new Error(
-                `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`
-              );
-            }
-            // Scoped resolution is a Phase 5 concern (PageRecipe). Emit
-            // an explicit local-* sentinel so any premature execution
-            // fails loudly with a recognizable marker.
-            dsAttr = ` ds="local:${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
-            break;
-          case "none":
-            // No ds attribute — rendering is config-driven via params.
-            break;
-        }
-      }
-
-      const allParams: Record<string, string> = { ...(placement.params ?? {}) };
-      if (placement.variant !== undefined) {
-        // SXA Rendering Variant selection rides as the FieldNames
-        // rendering parameter — this is the SXA convention.
-        allParams.FieldNames = placement.variant;
-      }
-      const parAttr =
-        Object.keys(allParams).length > 0
-          ? ` par="${escapeXmlAttribute(encodeParams(allParams))}"`
-          : "";
-
-      elements.push(
-        `<r id="${renderingId}" placeh="${escapeXmlAttribute(placeholderKey)}"${dsAttr}${parAttr} uid="${uid}" />`
-      );
-    });
-  }
-
-  if (elements.length === 0) {
+  const placeholderEntries = Object.entries(layout.placeholders).filter(
+    ([, placements]) => placements.length > 0
+  );
+  if (placeholderEntries.length === 0) {
     return "";
   }
 
-  return `<r xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
+  if ((ctx.mode ?? "canonical") === "delta") {
+    return emitDelta(placeholderEntries, ctx);
+  }
+  return emitCanonical(placeholderEntries, ctx);
 }
+
+const emitCanonical = (
+  placeholderEntries: ReadonlyArray<[string, readonly ComponentPlacementInput[]]>,
+  ctx: LayoutEmitContext
+): string => {
+  const elements: string[] = [];
+  for (const [placeholderKey, placements] of placeholderEntries) {
+    placements.forEach((placement, idx) => {
+      const r = resolvePlacement(placement, placeholderKey, idx, ctx);
+      const parAttr = r.parValue ? ` par="${escapeXmlAttribute(r.parValue)}"` : "";
+      elements.push(
+        `<r id="${r.renderingId}" placeh="${escapeXmlAttribute(r.placeholderKey)}"${r.dsAttr}${parAttr} uid="${r.uid}" />`
+      );
+    });
+  }
+  return `<r xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
+};
+
+/**
+ * Emit SXA Partial Design delta form. Per-placeholder anchor sequence:
+ *  - First placement in a placeholder: `p:before="*"` (insert before all)
+ *  - Last placement (when there are 2+ placements): `p:after="*[1=2]"`
+ *    (sentinel: position after a non-matching XPath = "at the end")
+ *  - Middle placements: `p:after="r[@uid='<previous-uid-in-placeholder>']"`
+ *
+ * Single-placement placeholders only emit `p:before="*"`. Across
+ * placeholders, anchor sequences are independent — each placeholder's
+ * placements form their own first/middle/last sequence in the order
+ * the recipe declares them. Attribute names get the `s:` prefix
+ * (`s:placeh`, `s:ds`, `s:id`, `s:par`); `uid` stays unprefixed; and
+ * `s:par=""` is always present (canonical form omits empty `par`).
+ */
+const emitDelta = (
+  placeholderEntries: ReadonlyArray<[string, readonly ComponentPlacementInput[]]>,
+  ctx: LayoutEmitContext
+): string => {
+  const elements: string[] = [`<p:da name="l" />`];
+  for (const [placeholderKey, placements] of placeholderEntries) {
+    let prevUid: string | null = null;
+    placements.forEach((placement, idx) => {
+      const r = resolvePlacement(placement, placeholderKey, idx, ctx);
+      const isFirst = idx === 0;
+      const isLast = idx === placements.length - 1;
+
+      let anchorAttr: string;
+      if (isFirst) {
+        anchorAttr = ` p:before="*"`;
+      } else if (isLast) {
+        anchorAttr = ` p:after="*[1=2]"`;
+      } else if (prevUid) {
+        // Middle: reference the previous sibling's uid (without curlies in
+        // the XPath — Sitecore writes them bare in the `r[@uid='…']` form).
+        anchorAttr = ` p:after="r[@uid='${escapeXmlAttribute(prevUid)}']"`;
+      } else {
+        // Defensive — shouldn't be reachable since prevUid is set after idx 0.
+        anchorAttr = ` p:after="*[1=2]"`;
+      }
+
+      // Convert canonical `ds="…"` → namespaced `s:ds="…"`. The dsAttr
+      // string already includes a leading space + `ds=` prefix, so we
+      // splice the `s:` prefix in.
+      const sDsAttr = r.dsAttr ? r.dsAttr.replace(/^ ds=/, " s:ds=") : "";
+      // s:par is always emitted in delta form (canonical omits empty par).
+      const sParAttr = ` s:par="${escapeXmlAttribute(r.parValue)}"`;
+
+      elements.push(
+        `<r uid="${r.uid}"${anchorAttr} s:placeh="${escapeXmlAttribute(r.placeholderKey)}"${sDsAttr} s:id="${r.renderingId}"${sParAttr} />`
+      );
+      prevUid = r.uid;
+    });
+  }
+  return `<r xmlns:p="p" xmlns:s="s" p:p="1"><d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
+};

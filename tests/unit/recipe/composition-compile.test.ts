@@ -45,6 +45,35 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(ir.operations).toHaveLength(2);
   });
 
+  it("layout XML uses SXA delta form (first push converges in one cycle)", () => {
+    // Phase 5 fix — the SXA Partial Design Layout pipeline normalizes
+    // canonical input into delta form on first write. Emitting delta
+    // directly means push #1 round-trips without server-side rewrite.
+    // See plans/sitecore-relationships.md (orchestrator) "Phase 4
+    // sandbox findings" for the wire-format spec.
+    const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
+    if (setLayout.value.kind !== "string") throw new Error("expected string");
+    const xml = setLayout.value.value;
+
+    expect(xml).toContain('xmlns:p="p"');
+    expect(xml).toContain('xmlns:s="s"');
+    expect(xml).toContain('p:p="1"');
+    expect(xml).toContain('<p:da name="l" />');
+    // Three placements: first p:before="*", middle p:after="r[@uid='…']",
+    // last p:after="*[1=2]" sentinel.
+    expect(xml).toContain('p:before="*"');
+    expect(xml).toContain('p:after="r[@uid=');
+    expect(xml).toContain('p:after="*[1=2]"');
+    // Namespaced attribute names + always-present empty s:par.
+    expect(xml).toContain("s:placeh=");
+    expect(xml).toContain("s:ds=");
+    expect(xml).toContain("s:id=");
+    expect(xml).toContain('s:par=""');
+    // Canonical xsd/xsi namespaces must NOT appear in delta form.
+    expect(xml).not.toContain("xmlns:xsd");
+    expect(xml).not.toContain("xmlns:xsi");
+  });
+
   it("CreateItem points the partial-design item under the partial-designs root with the SXA partial-design template", () => {
     const create = findCreate(ir.operations, "partial-design:standard-header@1");
     expect(create.id).toBe(partialDesignId("standard-header@1"));
@@ -161,6 +190,20 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
         `{${contentItemId("landing-cta-content@1").toUpperCase()}}`
       );
     }
+  });
+
+  it("page-design layout uses canonical form (NOT delta) — page designs round-trip canonical byte-for-byte", () => {
+    const layout = findSetField(ir.operations, "page-design-layout:landing-design@1");
+    if (layout.value.kind !== "string") throw new Error("expected string");
+    const xml = layout.value.value;
+    // Canonical signatures.
+    expect(xml).toContain('xmlns:xsd="http://www.w3.org/2001/XMLSchema"');
+    expect(xml).toContain('xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"');
+    // Delta-form signatures must be absent.
+    expect(xml).not.toContain('xmlns:p="p"');
+    expect(xml).not.toContain("<p:da");
+    expect(xml).not.toContain("p:before");
+    expect(xml).not.toContain("s:placeh");
   });
 
   it("partials list has only standard-footer@1 (landing skips the header)", () => {

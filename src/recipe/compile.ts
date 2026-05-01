@@ -278,6 +278,11 @@ export function compilePartialDesignRecipe(
     renderingIdFor: renderingId,
     contentItemIdFor: contentItemId,
     allowScoped: false,
+    // SXA Partial Design's Layout pipeline normalizes canonical input
+    // into delta form on first write — emit delta directly so first
+    // push converges in one cycle (commit 6404024 documented the
+    // two-cycle workaround; this is its Phase 5 follow-up).
+    mode: "delta",
   });
 
   if (layoutXml.length > 0) {
@@ -367,6 +372,9 @@ export function compilePageDesignRecipe(
       renderingIdFor: renderingId,
       contentItemIdFor: contentItemId,
       allowScoped: false,
+      // Page Design preserves canonical input on read-back — keep emitting
+      // canonical so the layout XML round-trips byte-for-byte.
+      mode: "canonical",
     });
     if (layoutXml.length > 0) {
       operations.push({

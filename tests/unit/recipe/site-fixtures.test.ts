@@ -228,11 +228,9 @@ describe("compileSiteTemplateRecipe", () => {
   it("compileRecipe dispatcher routes kind: site through compileSiteRecipe (Milestone E)", () => {
     const ir = compileRecipe(solterraCoRecipe, COMPILE_CONTEXT);
     expect(ir.recipeHandle).toBe(solterraCoRecipe.handle);
-    // Phase 5 Milestone E v1: a SiteRecipe compiles to exactly one
-    // CreateSiteFromTemplate op. Dictionary/taxonomy override SetField
-    // emission is the v2 follow-up — deferred until the collection-path
-    // resolution at compile time is settled.
-    expect(ir.operations).toHaveLength(1);
+    // Phase 5 Milestone E v2: a SiteRecipe compiles to exactly one
+    // CreateSiteFromTemplate op followed by N SetField ops (one per
+    // dictionary override). Taxonomy emission is still deferred to v3.
     expect(ir.operations[0].op).toBe("CreateSiteFromTemplate");
   });
 });

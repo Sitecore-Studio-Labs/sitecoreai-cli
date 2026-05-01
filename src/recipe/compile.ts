@@ -1,5 +1,6 @@
 import {
   contentItemId,
+  dictionaryPhraseId,
   fieldId,
   PAGE_DESIGNS_ROOT_REF_KEY,
   pageDesignId,
@@ -35,6 +36,7 @@ import {
   DEFAULT_ICON,
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
+  DICTIONARY_ENTRY_FIELDS,
   LAYOUT_FIELDS,
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
@@ -869,23 +871,30 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
  * **Validates** (compile-time, not zod-level):
  *   - Exactly one of `collectionId` / `collectionName` is present.
  *
- * **Deferred to Milestone E follow-up:**
- *   - Dictionary overrides as SetField ops with `latePath`. Targets
- *     are items at `<collectionPath>/<siteName>/Dictionary/<phrase>`,
- *     materialised by SXA's Site Wizard during the createSite apply.
- *     Compile-time path composition needs the collection's content-tree
- *     name; for `collectionName` (new) that's the value itself, but for
- *     `collectionId` (existing) it requires a Sites API lookup at push
- *     time. Operator-supplied `collectionPath` on the SiteRecipe schema
- *     would resolve this; tracked.
+ * **Override emission (Milestone E v2):**
+ *   - Dictionary overrides emit one `SetField` op per phrase, targeting
+ *     `<collectionPath>/<siteName>/Dictionary/<phrase>`. Each op carries a
+ *     `latePath` so the executor's pre-switch lookup seeds the captured
+ *     itemId after `CreateSiteFromTemplate` materialises the site's
+ *     content tree (SXA's Site Wizard creates the Dictionary folder +
+ *     phrase items mid-push).
+ *   - Path composition needs the collection's content-tree path. The
+ *     compiler resolves it in this priority:
+ *       1. `recipe.collectionPath` (operator-supplied — explicit truth)
+ *       2. `/sitecore/content/<collectionName>` when only collectionName
+ *          is set (SXA default; new collections land at this path)
+ *     For `collectionId` callers without `collectionPath`, the compiler
+ *     CAN'T derive the path (would need a Sites API lookup at compile
+ *     time, which the compiler doesn't do). Override emission is
+ *     skipped silently — the site still gets created; operators add
+ *     `collectionPath` when they want overrides applied.
+ *
+ * **Still deferred (E v3+):**
  *   - Taxonomy overrides as a mix of SetField (existing tags) and
- *     CreateItem (new tags). Same late-resolution issue plus the SXA
- *     taxonomy convention is still under sandbox investigation.
+ *     CreateItem (new tags). The SXA taxonomy convention is still under
+ *     sandbox investigation; defer until verified.
  */
-export function compileSiteRecipe(
-  input: SiteRecipe,
-  _context: CompileContext
-): OperationIr {
+export function compileSiteRecipe(input: SiteRecipe, _context: CompileContext): OperationIr {
   const recipe = SiteRecipeSchema.parse(input);
 
   const hasCollectionId = recipe.collectionId !== undefined;
@@ -926,12 +935,51 @@ export function compileSiteRecipe(
     } satisfies CreateSiteFromTemplateOp,
   ];
 
+  // Resolve the site's content-tree path for late-path composition on
+  // dictionary override ops. See docstring for resolution priority.
+  const sitePath = resolveSiteContentTreePath(recipe);
+  if (sitePath && recipe.dictionaryOverrides) {
+    for (const [phrase, value] of Object.entries(recipe.dictionaryOverrides)) {
+      operations.push({
+        op: "SetField",
+        policy,
+        label: `dictionary-override:${recipe.handle}/${phrase}`,
+        itemRefKey: dictionaryPhraseId(recipe.handle, phrase),
+        fieldId: DICTIONARY_ENTRY_FIELDS.PHRASE,
+        value: { kind: "string", value },
+        latePath: `${sitePath}/Dictionary/${phrase}`,
+      } satisfies SetFieldOp);
+    }
+  }
+
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: recipe.handle,
     operations,
   });
 }
+
+/**
+ * Resolve the Sitecore content-tree path of a SiteRecipe's site item.
+ * Returns `undefined` when no path can be derived — the caller should
+ * skip override emission rather than guess.
+ *
+ *   1. operator-supplied `recipe.collectionPath` (always wins)
+ *   2. `/sitecore/content/<collectionName>` when only collectionName is set
+ *   3. `undefined` for collectionId-only without collectionPath
+ *
+ * The trailing `/` is trimmed defensively from operator input.
+ */
+const resolveSiteContentTreePath = (recipe: SiteRecipe): string | undefined => {
+  if (recipe.collectionPath) {
+    const trimmed = recipe.collectionPath.replace(/\/+$/, "");
+    return `${trimmed}/${recipe.name}`;
+  }
+  if (recipe.collectionName) {
+    return `/sitecore/content/${recipe.collectionName}/${recipe.name}`;
+  }
+  return undefined;
+};
 
 interface DatasourceTemplateInput {
   handle: string;

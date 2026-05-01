@@ -691,6 +691,22 @@ export const SiteRecipeSchema = z.object({
   /** Description for the new collection (only when `collectionName` is set). */
   collectionDescription: z.string().optional(),
   /**
+   * Sitecore content-tree path of the collection, used to compose
+   * dictionary / taxonomy override target paths
+   * (`<collectionPath>/<siteName>/Dictionary/<phrase>` etc.). Optional —
+   * when unset, the compiler derives a path from `collectionName`
+   * (`/sitecore/content/<collectionName>`) per the SXA default
+   * convention. **Required** when `collectionId` is used AND the recipe
+   * declares any dictionary or taxonomy overrides — there's no way to
+   * resolve `collectionId` to a content-tree path at compile time.
+   * Without it, the compiler skips override emission entirely (push
+   * still creates the site, but the overrides don't apply).
+   *
+   * Operator-supplied. The compiler trims a trailing `/` defensively
+   * but otherwise treats this as the truth.
+   */
+  collectionPath: z.string().min(1).optional(),
+  /**
    * Site grouping — hostname binding. Sites API uses
    * `NewSiteInput.hostName` for the primary host; multi-host setups
    * use the separate Site Hosts surface.

@@ -5,10 +5,7 @@ import { compileSiteRecipe } from "../../../src/recipe/compile";
 import type { CompileContext } from "../../../src/recipe/compile";
 import { executeIr } from "../../../src/recipe/execute";
 import { siteId, templateId } from "../../../src/recipe/guids";
-import type {
-  CreateSiteFromTemplateOp,
-  Operation,
-} from "../../../src/recipe/ir/operations";
+import type { CreateSiteFromTemplateOp } from "../../../src/recipe/ir/operations";
 import type { AuthoringApiClient } from "../../../src/recipe/api/client";
 import type {
   Job,
@@ -46,30 +43,36 @@ const makeStubAuthoringClient = (): AuthoringApiClient => ({
   }),
 });
 
-const makeStubSitesClient = (
-  overrides: Partial<SitesApiClient> = {},
-): SitesApiClient => ({
-  createSite: vi.fn(async (_input: NewSiteInput): Promise<JobResponse> => ({
-    handle: "job-1",
-  } as JobResponse)),
-  getJobStatus: vi.fn(async (_jobHandle: string): Promise<Job> => ({
-    state: "Done",
-  } as unknown as Job)),
+const makeStubSitesClient = (overrides: Partial<SitesApiClient> = {}): SitesApiClient => ({
+  createSite: vi.fn(
+    async (_input: NewSiteInput): Promise<JobResponse> =>
+      ({
+        handle: "job-1",
+      }) as JobResponse
+  ),
+  getJobStatus: vi.fn(
+    async (_jobHandle: string): Promise<Job> =>
+      ({
+        state: "Done",
+      }) as unknown as Job
+  ),
   listSites: vi.fn(async (): Promise<Site[]> => []),
   listSiteTemplates: vi.fn(async (): Promise<SiteTemplate[]> => []),
   listCollections: vi.fn(async (): Promise<SiteCollection[]> => []),
   listLanguages: vi.fn(async (): Promise<Language[]> => []),
-  addLanguage: vi.fn(async (_languageCode: string): Promise<Language> => ({
-    languageCode: _languageCode,
-  } as Language)),
+  addLanguage: vi.fn(
+    async (_languageCode: string): Promise<Language> =>
+      ({
+        languageCode: _languageCode,
+      }) as Language
+  ),
   ...overrides,
 });
 
 describe("compileSiteRecipe", () => {
-  it("emits a single CreateSiteFromTemplate op with the SiteTemplate handle resolved to its templateRefKey", () => {
+  it("emits CreateSiteFromTemplate as the first op with the SiteTemplate handle resolved to its templateRefKey", () => {
     const ir = compileSiteRecipe(solterraCoRecipe, COMPILE_CONTEXT);
     expect(ir.recipeHandle).toBe(solterraCoRecipe.handle);
-    expect(ir.operations).toHaveLength(1);
     const op = ir.operations[0] as CreateSiteFromTemplateOp;
     expect(op.op).toBe("CreateSiteFromTemplate");
     expect(op.siteName).toBe(solterraCoRecipe.name);
@@ -98,15 +101,17 @@ describe("compileSiteRecipe", () => {
       collectionId: "some-existing-collection-id",
     };
     expect(() => compileSiteRecipe(broken, COMPILE_CONTEXT)).toThrow(
-      /must specify exactly one of collectionId \/ collectionName/,
+      /must specify exactly one of collectionId \/ collectionName/
     );
   });
 
   it("rejects a SiteRecipe that specifies NEITHER collectionId nor collectionName", () => {
-    const { collectionName: _, collectionDisplayName: __, collectionDescription: ___, ...rest } =
-      solterraCoRecipe;
-    expect(() => compileSiteRecipe(rest as never, COMPILE_CONTEXT)).toThrow(
-      /must specify exactly one of collectionId \/ collectionName/,
+    const stripped: Record<string, unknown> = { ...solterraCoRecipe };
+    delete stripped.collectionName;
+    delete stripped.collectionDisplayName;
+    delete stripped.collectionDescription;
+    expect(() => compileSiteRecipe(stripped as never, COMPILE_CONTEXT)).toThrow(
+      /must specify exactly one of collectionId \/ collectionName/
     );
   });
 
@@ -114,6 +119,79 @@ describe("compileSiteRecipe", () => {
     const ir = compileSiteRecipe(solterraCoRecipe, COMPILE_CONTEXT);
     const op = ir.operations[0] as CreateSiteFromTemplateOp;
     expect(op.hostName).toBe(solterraCoRecipe.siteGrouping?.hostName);
+  });
+
+  describe("dictionary override emission (v2)", () => {
+    it("emits one SetField op per dictionaryOverrides phrase, with latePath under the derived collection path", () => {
+      const ir = compileSiteRecipe(solterraCoRecipe, COMPILE_CONTEXT);
+      // solterraCoRecipe overrides exactly one phrase: ContactUs.
+      const setFieldOps = ir.operations.filter((o) => o.op === "SetField");
+      expect(setFieldOps).toHaveLength(1);
+      const op = setFieldOps[0];
+      expect(op.label).toBe(`dictionary-override:${solterraCoRecipe.handle}/ContactUs`);
+      expect(op.value).toEqual({
+        kind: "string",
+        value: solterraCoRecipe.dictionaryOverrides?.ContactUs,
+      });
+      // Default-derived path: /sitecore/content/<collectionName>/<siteName>/Dictionary/<phrase>
+      expect(op.latePath).toBe(
+        `/sitecore/content/${solterraCoRecipe.collectionName}/${solterraCoRecipe.name}/Dictionary/ContactUs`
+      );
+    });
+
+    it("uses the operator-supplied collectionPath when set (overrides the collectionName-derived default)", () => {
+      const customRecipe = {
+        ...solterraCoRecipe,
+        collectionPath: "/sitecore/content/Marketing/Brands",
+      };
+      const ir = compileSiteRecipe(customRecipe, COMPILE_CONTEXT);
+      const setFieldOps = ir.operations.filter((o) => o.op === "SetField");
+      expect(setFieldOps[0].latePath).toBe(
+        `/sitecore/content/Marketing/Brands/${customRecipe.name}/Dictionary/ContactUs`
+      );
+    });
+
+    it("trims a trailing slash from operator-supplied collectionPath", () => {
+      const customRecipe = {
+        ...solterraCoRecipe,
+        collectionPath: "/sitecore/content/Marketing/",
+      };
+      const ir = compileSiteRecipe(customRecipe, COMPILE_CONTEXT);
+      const setFieldOps = ir.operations.filter((o) => o.op === "SetField");
+      expect(setFieldOps[0].latePath).toBe(
+        `/sitecore/content/Marketing/${customRecipe.name}/Dictionary/ContactUs`
+      );
+    });
+
+    it("skips override emission when collectionId is set without collectionPath (compiler can't derive path)", () => {
+      const idOnlyRecipe = {
+        ...alarisRecipe,
+        // alaris already uses collectionId; no collectionPath set on the
+        // fixture. Compiler cannot synthesise the dictionary phrase
+        // path, so override SetFields are deliberately skipped.
+      };
+      const ir = compileSiteRecipe(idOnlyRecipe, COMPILE_CONTEXT);
+      const setFieldOps = ir.operations.filter((o) => o.op === "SetField");
+      expect(setFieldOps).toHaveLength(0);
+      // The CreateSiteFromTemplate op is still emitted — the site is
+      // created; only the overrides are skipped.
+      expect(ir.operations).toHaveLength(1);
+      expect(ir.operations[0].op).toBe("CreateSiteFromTemplate");
+    });
+
+    it("emits override SetFields when collectionId AND collectionPath are both supplied", () => {
+      const idAndPathRecipe = {
+        ...alarisRecipe,
+        collectionPath: "/sitecore/content/Alaris-Collection",
+      };
+      const ir = compileSiteRecipe(idAndPathRecipe, COMPILE_CONTEXT);
+      const setFieldOps = ir.operations.filter((o) => o.op === "SetField");
+      // alaris overrides exactly one phrase: ReadMore.
+      expect(setFieldOps).toHaveLength(1);
+      expect(setFieldOps[0].latePath).toBe(
+        `/sitecore/content/Alaris-Collection/${idAndPathRecipe.name}/Dictionary/ReadMore`
+      );
+    });
   });
 });
 
@@ -138,7 +216,7 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
       getJobStatus: vi.fn(async () => ({ state: "Done" }) as unknown as Job),
       listSites: vi.fn(async () =>
         // Two calls: idempotency check (empty) + post-apply capture (with site)
-        [],
+        []
       ),
     });
     // listSites must return the new site on the post-apply call — make
@@ -176,7 +254,11 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
     });
 
     expect(result.aborted).toBe(false);
-    expect(result.summary).toEqual({ create: 1, update: 0, skip: 0, error: 0 });
+    // 1 create (CreateSiteFromTemplate) + 1 skip (the dictionary-override
+    // SetField that v2 emits — its late-path getItem returns null in the
+    // stub so it skips with "not yet captured/created").
+    expect(result.summary.create).toBe(1);
+    expect(result.summary.error).toBe(0);
     expect(sitesClient.createSite).toHaveBeenCalledTimes(1);
     expect(sitesClient.getJobStatus).toHaveBeenCalledWith("job-42");
   });
@@ -235,7 +317,11 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
       sitesClient,
     });
 
-    expect(result.summary.skip).toBe(1);
+    // Both ops skip: the createSite (templateRefKey not captured) and
+    // the dictionary-override SetField (its phrase-item ref not in
+    // capturedItemIds and the late-path getItem returns null in the stub).
+    expect(result.summary.create).toBe(0);
+    expect(result.summary.error).toBe(0);
     const action = result.plan.actions[0];
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/siteTemplate refKey .* not yet captured/);

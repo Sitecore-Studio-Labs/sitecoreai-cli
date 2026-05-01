@@ -5,9 +5,12 @@
  * The convention this walks: each CM environment has a single tenant
  * at `/sitecore/content/<Tenant>` with one or more sites under it at
  * `/sitecore/content/<Tenant>/<Site>`. Tenants and sites are identified
- * by template name match (`Tenant Folder` / `Tenant` / `Site`) rather
- * than hard-coded template GUIDs so the discovery is resilient across
- * SXA versions.
+ * by template name match rather than hard-coded template GUIDs so
+ * the discovery is resilient across SXA / XM Cloud variants:
+ *
+ *   - Tenant: `Tenant`, `Tenant Folder`, `Headless Tenant`,
+ *     `Headless Tenant Folder`
+ *   - Site:   `Site`, `Headless Site`
  *
  * Two round trips minimum:
  *   1. children of `/sitecore/content`        → candidate tenants
@@ -49,8 +52,13 @@ export type DiscoverSitesOptions = {
 
 const DEFAULT_CONTENT_ROOT = "/sitecore/content";
 
-const TENANT_TEMPLATE_NAMES = new Set(["Tenant", "Tenant Folder"]);
-const SITE_TEMPLATE_NAMES = new Set(["Site"]);
+const TENANT_TEMPLATE_NAMES = new Set([
+  "Tenant",
+  "Tenant Folder",
+  "Headless Tenant",
+  "Headless Tenant Folder",
+]);
+const SITE_TEMPLATE_NAMES = new Set(["Site", "Headless Site"]);
 const SITE_GROUPING_NAMES = new Set(["Site Grouping"]);
 
 const CHILDREN_QUERY = `
@@ -119,18 +127,14 @@ const fetchHostnames = async (
   const settingsItem = settings.find((node) => node.name === "Settings");
   if (!settingsItem) return [];
   const settingsChildren = await fetchChildren(environment, settingsItem.path);
-  const groupingContainer = settingsChildren.find((node) =>
-    SITE_GROUPING_NAMES.has(node.name)
-  );
+  const groupingContainer = settingsChildren.find((node) => SITE_GROUPING_NAMES.has(node.name));
   if (!groupingContainer) return [];
   const groupings = await fetchChildren(environment, groupingContainer.path);
   const hostnames: string[] = [];
   for (const grouping of groupings) {
-    const data = await runAuthoringGraphQL<FieldsResponse>(
-      environment,
-      HOSTNAME_QUERY,
-      { path: grouping.path }
-    );
+    const data = await runAuthoringGraphQL<FieldsResponse>(environment, HOSTNAME_QUERY, {
+      path: grouping.path,
+    });
     const value = data.item?.fields.nodes.find((field) => field.name === "Hostname")?.value;
     if (value && value.trim()) {
       // Hostname field is typically a single hostname or `|`-separated list.

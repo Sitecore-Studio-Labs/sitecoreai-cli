@@ -39,6 +39,7 @@ export const NAMESPACE_PARTIAL_DESIGN = uuidv5("partial-design", NAMESPACE_ROOT)
 export const NAMESPACE_PAGE_DESIGN = uuidv5("page-design", NAMESPACE_ROOT);
 export const NAMESPACE_SITE_BRANCH = uuidv5("site-branch", NAMESPACE_ROOT);
 export const NAMESPACE_CONTENT_ITEM = uuidv5("content-item", NAMESPACE_ROOT);
+export const NAMESPACE_SITE = uuidv5("site", NAMESPACE_ROOT);
 
 /** Internal: lets the test prove `NAMESPACE_ROOT` matches its derivation. */
 export const _deriveNamespaceRoot = (): string => uuidv5("registry.sitecoreai.dev", DNS_NAMESPACE);
@@ -57,6 +58,51 @@ export const pageDesignId = (handle: string): string => uuidv5(handle, NAMESPACE
 export const siteBranchId = (handle: string): string => uuidv5(handle, NAMESPACE_SITE_BRANCH);
 
 export const contentItemId = (handle: string): string => uuidv5(handle, NAMESPACE_CONTENT_ITEM);
+
+/**
+ * Recipe-internal refKey for a `SiteRecipe`'s site item. The actual
+ * Sitecore site itemId is server-assigned by the Sites API at
+ * `createSite` time; this refKey is the IR's identity for cross-op
+ * resolution (dictionary phrases, taxonomy tags scoped under the site
+ * inherit it).
+ */
+export const siteId = (handle: string): string => uuidv5(handle, NAMESPACE_SITE);
+
+/**
+ * Recipe-internal refKey for a dictionary phrase item under a site.
+ * SXA's Site Wizard materialises `<site>/Dictionary/<phraseName>` based
+ * on the SiteTemplate's dictionary defaults; SiteRecipe's
+ * `dictionaryOverrides` writes the Phrase field on those existing
+ * items. The executor seeds this refKey via cross-recipe path lookup
+ * after `CreateSiteFromTemplate` materialises the site.
+ */
+export const dictionaryPhraseId = (
+  siteHandle: string,
+  phraseName: string,
+): string => uuidv5(`dictionary:${phraseName}`, siteId(siteHandle));
+
+/**
+ * Recipe-internal refKey for a taxonomy folder (root) under a site.
+ * Mirror of `dictionaryPhraseId` for the taxonomy tree — late-seeded
+ * after the site materialises.
+ */
+export const taxonomyFolderId = (
+  siteHandle: string,
+  rootName: string,
+): string => uuidv5(`taxonomy:${rootName}`, siteId(siteHandle));
+
+/**
+ * Recipe-internal refKey for a taxonomy tag item under a site's
+ * taxonomy folder. Used when a SiteRecipe override list adds tags
+ * beyond the SiteTemplate defaults — those become CreateItem ops
+ * parented to the late-seeded taxonomy folder refKey.
+ */
+export const taxonomyTagId = (
+  siteHandle: string,
+  rootName: string,
+  tagName: string,
+): string =>
+  uuidv5(`tag:${tagName}`, taxonomyFolderId(siteHandle, rootName));
 
 /**
  * Stable refKey for the SXA Page Designs root item (the tenant-existing

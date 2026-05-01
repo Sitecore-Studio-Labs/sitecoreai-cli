@@ -1,0 +1,84 @@
+import {
+  addLanguage,
+  createSite,
+  getJobStatus,
+  type Job,
+  type JobResponse,
+  type Language,
+  listCollections,
+  listLanguages,
+  listSites,
+  listSiteTemplates,
+  type NewSiteInput,
+  type Site,
+  type SiteCollection,
+  type SiteTemplate,
+  type SitesApiClientOptions as RawSitesApiClientOptions,
+} from "../../sites/api";
+
+/**
+ * Sites API client surface for recipe execution.
+ *
+ * The recipe planner and executor depend only on this interface — they
+ * don't reach into `src/sites/api/*` directly. Production runs use
+ * `createSitesApiClient(options)`, which adapts the function-style
+ * Sites API surface into the interface; tests inject a mock — same
+ * seam either way (parallel to how `AuthoringApiClient` works).
+ *
+ * Surface is the recipe-required subset:
+ *   - `createSite` for `CreateSiteFromTemplate` ops
+ *   - `getJobStatus` for awaiting async createSite completion
+ *   - `listSites` for idempotency check (does this siteName exist?)
+ *   - `listSiteTemplates` for diagnostics (which templates are usable?)
+ *   - `listCollections` for resolving `collectionId`
+ *   - `listLanguages` + `addLanguage` for ensuring required language(s)
+ *     are present before site creation
+ *
+ * Additional Sites API operations (favourites, editor profiles, hosts,
+ * aggregation) live in `src/sites/api/*` and are not part of this
+ * recipe-execution surface — they belong to the broader CLI subcommand
+ * tree, not the push pipeline.
+ */
+export interface SitesApiClient {
+  createSite(input: NewSiteInput): Promise<JobResponse>;
+  getJobStatus(jobHandle: string): Promise<Job>;
+  listSites(): Promise<Site[]>;
+  listSiteTemplates(): Promise<SiteTemplate[]>;
+  listCollections(): Promise<SiteCollection[]>;
+  listLanguages(): Promise<Language[]>;
+  /**
+   * Add a language to the environment by ISO code (e.g. `"en"`, `"da"`,
+   * `"fr-CA"`). The Sites API distinguishes language code from
+   * regional code; the recipe push pipeline only needs to declare the
+   * language code. If the language is already present, the API
+   * surfaces a 409-style error which the executor treats as success.
+   */
+  addLanguage(languageCode: string): Promise<Language>;
+}
+
+/**
+ * Adapter: build a `SitesApiClient` over the function-style Sites API
+ * surface. The `options` arg carries the OAuth-resolved auth header and
+ * base URL; the underlying `sitesRequest` re-uses these per call.
+ */
+export const createSitesApiClient = (
+  options: RawSitesApiClientOptions,
+): SitesApiClient => ({
+  createSite: (input) => createSite(options, input),
+  getJobStatus: (jobHandle) => getJobStatus(options, jobHandle),
+  listSites: () => listSites(options),
+  listSiteTemplates: () => listSiteTemplates(options),
+  listCollections: () => listCollections(options),
+  listLanguages: () => listLanguages(options),
+  addLanguage: (languageCode) => addLanguage(options, { languageCode }),
+});
+
+export type {
+  Job,
+  JobResponse,
+  Language,
+  NewSiteInput,
+  Site,
+  SiteCollection,
+  SiteTemplate,
+};

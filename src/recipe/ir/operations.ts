@@ -148,6 +148,20 @@ export const SetFieldOpSchema = z.object({
   language: z.string().optional(),
   version: z.number().int().positive().optional(),
   value: RefValueSchema,
+  /**
+   * Optional content-tree path for late ref seeding. Used by SiteRecipe
+   * dictionary overrides where the target item (`<site>/Dictionary/<phrase>`)
+   * is materialised by SXA's Site Wizard during a `CreateSiteFromTemplate`
+   * apply, AFTER initial `crossRecipeRefs` seeding. The executor checks
+   * if `itemRefKey` is in the captured map; if not AND `latePath` is
+   * present, it runs `getItem({ path: latePath })` on demand to seed
+   * before planning the SetField.
+   *
+   * Compiler emits this only when the target item is created indirectly
+   * (Sites API / SXA scaffolding); regular SetField ops on items the
+   * recipe itself creates leave this undefined.
+   */
+  latePath: z.string().min(1).optional(),
 });
 
 export const SetBaseTemplatesOpSchema = z.object({
@@ -167,6 +181,83 @@ export const SetStandardValuesOpSchema = z.object({
   standardValuesRefKey: GUID,
 });
 
+/**
+ * Site instantiation via Sitecore's Sites API. Unlike CreateItem (which
+ * dispatches to Authoring GraphQL), CreateSiteFromTemplate dispatches
+ * to the Sites API's `createSite` operation — the only way to spin up
+ * a site instance with all the SXA initialization (content tree
+ * skeleton, settings, dictionary structure, etc.) that Authoring API
+ * `createItem` can't reproduce.
+ *
+ * Async semantics: the Sites API's `createSite` returns a JobResponse
+ * (a job handle); the executor polls until completion, then looks up
+ * the created site by name to capture its assigned itemId. The
+ * captured itemId becomes the resolution target for subsequent ops
+ * keyed on `siteRefKey`.
+ *
+ * Idempotency: planner checks if a site with this `siteName` already
+ * exists in the environment via Sites API `listSites`. If yes →
+ * status: skip (mutation: undefined). If no → status: create, mutation
+ * dispatches `createSite`. There is no "update site template"
+ * operation on the Sites API; mismatched-template sites are reported
+ * as planning errors rather than silently re-instantiated.
+ */
+export const CreateSiteFromTemplateOpSchema = z.object({
+  op: z.literal("CreateSiteFromTemplate"),
+  ...BaseOpFields,
+  /**
+   * Recipe-internal uuidv5 for this site (`siteId(handle)`). Subsequent
+   * SetField ops on the site's content tree (dictionary overrides,
+   * taxonomy overrides) reference items the Sites API materialises
+   * under this site; the executor seeds those itemIds via a post-apply
+   * re-walk of the cross-recipe ref map.
+   */
+  siteRefKey: GUID,
+  /**
+   * The Sitecore site Name (becomes Sites API `NewSiteInput.siteName`).
+   * Distinct from the recipe handle.
+   */
+  siteName: NON_EMPTY,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  /** Primary site language ISO code (Sites API `NewSiteInput.language`). */
+  language: NON_EMPTY,
+  /** Additional supported languages on this site (added via `addLanguage`). */
+  additionalLanguages: z.array(z.string().min(2)).optional(),
+  /**
+   * Optional primary hostname (Sites API `NewSiteInput.hostName`). When
+   * unset, the site is created without an explicit primary host (the
+   * customer can configure hosts via the Site Hosts surface).
+   */
+  hostName: z.string().optional(),
+  /**
+   * RefKey of the `SiteTemplateRecipe` this site instances. Resolves at
+   * execute time to the template's Sitecore itemId via the captured
+   * map; that itemId becomes Sites API `NewSiteInput.templateId`.
+   */
+  templateRefKey: GUID,
+  /**
+   * Existing collection ID. Mutually exclusive with `collectionName` —
+   * compiler validates that exactly one is present.
+   */
+  collectionId: z.string().optional(),
+  /**
+   * Name of a NEW collection to create alongside the site. Mutually
+   * exclusive with `collectionId`.
+   */
+  collectionName: z.string().optional(),
+  collectionDisplayName: z.string().optional(),
+  collectionDescription: z.string().optional(),
+});
+
+/**
+ * NOTE — `CreateSiteFromTemplateOpSchema` is intentionally NOT yet
+ * a member of this discriminated union. Adding it ripples into every
+ * switch over `op.op` (planner, executor, rollback, push aggregator).
+ * Phase 5 Milestone E lands those wirings together with the schema
+ * change; until then the op type is exported and reserved but the
+ * compiler doesn't emit it and the executor doesn't handle it.
+ */
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
@@ -178,6 +269,9 @@ export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;
 export type SetFieldOp = z.infer<typeof SetFieldOpSchema>;
 export type SetBaseTemplatesOp = z.infer<typeof SetBaseTemplatesOpSchema>;
 export type SetStandardValuesOp = z.infer<typeof SetStandardValuesOpSchema>;
+export type CreateSiteFromTemplateOp = z.infer<
+  typeof CreateSiteFromTemplateOpSchema
+>;
 export type Operation = z.infer<typeof OperationSchema>;
 
 export const OperationIrSchema = z.object({

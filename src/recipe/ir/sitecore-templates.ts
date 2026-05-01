@@ -206,6 +206,22 @@ export const RENDERING_FIELDS = {
   OTHER_PROPERTIES: "e829c217-5e94-4306-9c48-2634b094fdc2",
 } as const;
 
+/**
+ * Sitecore Dictionary Entry template fields. Used by SiteRecipe's
+ * `dictionaryOverrides` — each phrase override SetFields the Phrase
+ * value on an existing `<site>/Dictionary/<phraseName>` item that
+ * SXA's Site Wizard materialises from the SiteTemplate's defaults.
+ *
+ * TODO (sandbox-verify): the PHRASE GUID below is the standard
+ * Sitecore Dictionary Entry "Phrase" field. Validate via Authoring
+ * API introspection during the first integration test push and
+ * update if the SXA-shipped Dictionary Entry template diverges.
+ */
+export const DICTIONARY_ENTRY_FIELDS = {
+  /** Field ID for "Phrase" — the translated string value on a Dictionary Entry. */
+  PHRASE: "580c75a8-c01a-4580-83cb-987776ceb3af",
+} as const;
+
 export const DEFAULT_LANGUAGE = "en";
 export const DEFAULT_VERSION = 1;
 export const DEFAULT_ICON = "Office/32x32/document.png";

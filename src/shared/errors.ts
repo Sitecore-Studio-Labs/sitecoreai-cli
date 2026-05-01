@@ -6,6 +6,7 @@ export type CliErrorCode =
   | "NETWORK"
   | "ENV_NOT_FOUND"
   | "DEPLOY_FAILED"
+  | "SITES_API_FAILED"
   | "UNKNOWN";
 
 export class CliError extends Error {
@@ -50,6 +51,8 @@ const exitCodeFor = (code: CliErrorCode): number => {
       return 5;
     case "DEPLOY_FAILED":
       return 6;
+    case "SITES_API_FAILED":
+      return 7;
     default:
       return 1;
   }

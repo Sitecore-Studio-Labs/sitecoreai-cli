@@ -31,6 +31,17 @@ export const SITECORE_TEMPLATES = {
    */
   FOLDER: "a87a00b1-e6db-45ab-8b54-636fec3b5523",
   /**
+   * Sitecore "Template Folder" template — the conventional template for
+   * organisational folders inside the templates tree (sections,
+   * Component Folders, Presentation Parameters subfolders, Content
+   * Models groups). Distinct from the generic FOLDER above (which is
+   * what the renderings tree uses). GUID is the well-known Sitecore
+   * built-in:
+   * `/sitecore/templates/System/Templates/Template folder` →
+   * {0437FEE2-44C9-46A6-ABE9-28858D9FEE8C}.
+   */
+  TEMPLATE_FOLDER: "0437fee2-44c9-46a6-abe9-28858d9fee8c",
+  /**
    * SXA Partial Design item template. Items conforming to this carry
    * SXA partial-design semantics: their layout XML is composed into
    * page designs via the `PartialDesigns` field.
@@ -220,6 +231,23 @@ export const RENDERING_FIELDS = {
 export const DICTIONARY_ENTRY_FIELDS = {
   /** Field ID for "Phrase" — the translated string value on a Dictionary Entry. */
   PHRASE: "580c75a8-c01a-4580-83cb-987776ceb3af",
+} as const;
+
+/**
+ * Available Rendering Section Definition template fields. The
+ * `AVAILABLE_RENDERINGS` field is the multi-list that gates which
+ * renderings show up in the section's group inside the Pages
+ * "Toolbox" experience. Recipe `availableIn` bindings emit
+ * `AppendToMultiList` ops against this field.
+ *
+ * TODO (sandbox-verify): the GUID below is a placeholder until we
+ * inspect an XM Cloud Headless tenant. The executor matches by
+ * `fieldName` ("Available Renderings") when the IR carries one, so
+ * the placeholder GUID is only load-bearing for ref-encoding round-
+ * trip; mismatches are tolerated. Update once verified.
+ */
+export const SECTION_DEFINITION_FIELDS = {
+  AVAILABLE_RENDERINGS: "f56cab12-7f96-4a90-b0fa-e3b6f70b14db",
 } as const;
 
 export const DEFAULT_LANGUAGE = "en";

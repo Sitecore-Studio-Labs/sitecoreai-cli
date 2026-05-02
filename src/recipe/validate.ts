@@ -44,6 +44,8 @@ const TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template", "content-te
 const COMPONENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template"];
 const CONTENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["content-template"];
 const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
+const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["parameters-template"];
+const SECTION_DEFINITION_KINDS: readonly RecipeKind[] = ["section-definition"];
 const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
 const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
 const SITE_TEMPLATE_KINDS: readonly RecipeKind[] = ["site-template"];
@@ -51,6 +53,8 @@ const ANY_KINDS: readonly RecipeKind[] = [
   "component-template",
   "content-template",
   "content-item",
+  "parameters-template",
+  "section-definition",
   "partial-design",
   "page-design",
 ];
@@ -216,6 +220,44 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         recipe.insertOptions?.forEach((handle, idx) => {
           checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
         });
+        if (recipe.datasource) {
+          checkRef(
+            recipe.handle,
+            "datasource.handle",
+            recipe.datasource.handle,
+            CONTENT_TEMPLATE_KINDS
+          );
+        }
+        if (recipe.parameters) {
+          checkRef(
+            recipe.handle,
+            "parameters.handle",
+            recipe.parameters.handle,
+            PARAMETERS_TEMPLATE_KINDS
+          );
+        }
+        recipe.children?.allowedHandles.forEach((handle, idx) => {
+          checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);
+        });
+        recipe.availableIn?.forEach((handle, idx) => {
+          checkRef(recipe.handle, `availableIn.${idx}`, handle, SECTION_DEFINITION_KINDS);
+        });
+        break;
+      case "parameters-template":
+        recipe.params.forEach((param, idx) => {
+          param.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+            checkRef(
+              recipe.handle,
+              `params.${idx}.sitecore.sourceTypes.${sIdx}`,
+              handle,
+              TEMPLATE_KINDS
+            );
+          });
+        });
+        break;
+      case "section-definition":
+        // Section definitions don't carry cross-recipe references — they
+        // ARE the resolution target for `availableIn`.
         break;
       case "content-template":
         recipe.fields.forEach((field, idx) => {

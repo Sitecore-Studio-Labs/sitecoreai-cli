@@ -76,20 +76,16 @@ export const siteId = (handle: string): string => uuidv5(handle, NAMESPACE_SITE)
  * items. The executor seeds this refKey via cross-recipe path lookup
  * after `CreateSiteFromTemplate` materialises the site.
  */
-export const dictionaryPhraseId = (
-  siteHandle: string,
-  phraseName: string,
-): string => uuidv5(`dictionary:${phraseName}`, siteId(siteHandle));
+export const dictionaryPhraseId = (siteHandle: string, phraseName: string): string =>
+  uuidv5(`dictionary:${phraseName}`, siteId(siteHandle));
 
 /**
  * Recipe-internal refKey for a taxonomy folder (root) under a site.
  * Mirror of `dictionaryPhraseId` for the taxonomy tree — late-seeded
  * after the site materialises.
  */
-export const taxonomyFolderId = (
-  siteHandle: string,
-  rootName: string,
-): string => uuidv5(`taxonomy:${rootName}`, siteId(siteHandle));
+export const taxonomyFolderId = (siteHandle: string, rootName: string): string =>
+  uuidv5(`taxonomy:${rootName}`, siteId(siteHandle));
 
 /**
  * Recipe-internal refKey for a taxonomy tag item under a site's
@@ -97,11 +93,7 @@ export const taxonomyFolderId = (
  * beyond the SiteTemplate defaults — those become CreateItem ops
  * parented to the late-seeded taxonomy folder refKey.
  */
-export const taxonomyTagId = (
-  siteHandle: string,
-  rootName: string,
-  tagName: string,
-): string =>
+export const taxonomyTagId = (siteHandle: string, rootName: string, tagName: string): string =>
   uuidv5(`tag:${tagName}`, taxonomyFolderId(siteHandle, rootName));
 
 /**
@@ -155,3 +147,89 @@ export const standardValuesId = (handle: string): string =>
  */
 export const datasourceId = (pageItemId: string, slotPath: string): string =>
   uuidv5(slotPath, pageItemId);
+
+/**
+ * Project namespace — used for site-scoped folder identities (section
+ * folders under `Components/<site>/Components/<section>`, etc.). Distinct
+ * from the per-template namespaces because section folders are owned by
+ * the *site*, not by any single template.
+ */
+export const NAMESPACE_PROJECT = uuidv5("project", NAMESPACE_ROOT);
+
+/**
+ * Deterministic refKey for a section folder under a site's
+ * `Components/` bucket. Emitted as a `CreateOnly` `CreateItem` so
+ * re-pushing a recipe set materialises the section once and is a
+ * no-op thereafter. Identity scheme follows
+ * `plans/recipe-site-folder-layout.md` § "Deterministic GUID
+ * extensions".
+ */
+export const sectionFolderId = (site: string, section: string): string =>
+  uuidv5(`${site}:Components:${section}`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for the renderings-side section folder under
+ * `<renderingsRoot>/<section>/`. Distinct seed from the templates-side
+ * section folder so the two don't share an identity (they are separate
+ * Sitecore items in separate trees).
+ */
+export const renderingsSectionFolderId = (site: string, section: string): string =>
+  uuidv5(`${site}:Renderings:${section}`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for a "Component Folders" subfolder under a
+ * site's `Components/<section>/` — an idempotent parent for the
+ * generated `<Component> Folder` templates.
+ */
+export const componentFoldersBucketId = (site: string, section: string): string =>
+  uuidv5(`${site}:Components:${section}:Component Folders`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for a "Presentation Parameters" subfolder under
+ * a site's `Components/<section>/` — an idempotent parent for
+ * standalone (and synthesised) Parameters templates.
+ */
+export const presentationParametersBucketId = (site: string, section: string): string =>
+  uuidv5(`${site}:Components:${section}:Presentation Parameters`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for a `<Component> Folder` template emitted when
+ * a `ComponentTemplateRecipe` declares `children:`. The Sitecore item
+ * lands at `Components/<section>/Component Folders/<Component> Folder`;
+ * the seed is `<componentHandle>::folder`, namespaced under
+ * `NAMESPACE_TEMPLATE` so it shares the template-id family without
+ * colliding with the component's own template id.
+ */
+export const componentFolderTemplateId = (componentHandle: string): string =>
+  uuidv5(`${componentHandle}::folder`, NAMESPACE_TEMPLATE);
+
+/**
+ * Standard-values item refKey for a component folder template. Same
+ * derivation pattern as `standardValuesId(handle)` (seed
+ * `__standard-values`, scope under the folder template's id) but
+ * differentiated by the folder template's distinct namespace.
+ */
+export const componentFolderStandardValuesId = (componentHandle: string): string =>
+  uuidv5("__standard-values", componentFolderTemplateId(componentHandle));
+
+/**
+ * Deterministic refKey for a Content Models group folder under a
+ * site's `Content Models/<group>/`. Materialised once via a CreateOnly
+ * CreateItem when any content template in the recipe set carries
+ * `meta.tax.group` matching this name.
+ */
+export const contentModelsGroupFolderId = (site: string, group: string): string =>
+  uuidv5(`${site}:Content Models:${group}`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for a `SectionDefinitionRecipe` — the SXA
+ * Available Rendering Section Definition item the registry's
+ * `availableIn` bindings target. The section definition is typically
+ * pre-existing on the tenant; the GUID is used as the cross-recipe
+ * refKey so `AppendToMultiList` ops can resolve via the executor's
+ * captured-itemId map.
+ */
+export const NAMESPACE_SECTION_DEFINITION = uuidv5("section-definition", NAMESPACE_ROOT);
+
+export const sectionDefinitionId = (handle: string): string =>
+  uuidv5(handle, NAMESPACE_SECTION_DEFINITION);

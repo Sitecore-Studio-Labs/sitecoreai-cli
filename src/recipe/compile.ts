@@ -1,5 +1,9 @@
 import {
+  componentFolderStandardValuesId,
+  componentFolderTemplateId,
+  componentFoldersBucketId,
   contentItemId,
+  contentModelsGroupFolderId,
   dictionaryPhraseId,
   fieldId,
   PAGE_DESIGNS_ROOT_REF_KEY,
@@ -8,7 +12,11 @@ import {
   paramsSectionId,
   paramsTemplateId,
   partialDesignId,
+  presentationParametersBucketId,
   renderingId,
+  renderingsSectionFolderId,
+  sectionDefinitionId,
+  sectionFolderId,
   sectionId,
   siteId,
   standardValuesId,
@@ -17,6 +25,7 @@ import {
   variantsFolderId,
 } from "./guids";
 import {
+  type AppendToMultiListOp,
   type CreateItemOp,
   type CreateSiteFromTemplateOp,
   type FieldValue,
@@ -39,6 +48,7 @@ import {
   DICTIONARY_ENTRY_FIELDS,
   LAYOUT_FIELDS,
   RENDERING_FIELDS,
+  SECTION_DEFINITION_FIELDS,
   SITECORE_TEMPLATES,
   SITE_TEMPLATE_FIELDS,
   STANDARD_TEMPLATE_ID,
@@ -57,10 +67,14 @@ import {
   type PageDesignRecipe,
   PageDesignRecipeSchema,
   type ParamDefinition,
+  type ParametersTemplateRecipe,
+  ParametersTemplateRecipeSchema,
   type PartialDesignRecipe,
   PartialDesignRecipeSchema,
   type Recipe,
   RecipeSchema,
+  type SectionDefinitionRecipe,
+  SectionDefinitionRecipeSchema,
   type SiteRecipe,
   SiteRecipeSchema,
   type SiteTemplateRecipe,
@@ -82,10 +96,46 @@ import { encodeTemplatesMapping } from "./layout/templates-mapping";
  * that the executor resolves to server-assigned itemIds at runtime.
  */
 export interface CompileContext {
-  /** e.g. `/sitecore/templates/Project/<site>/Components`. */
+  /**
+   * Legacy flat templates root, e.g. `/sitecore/templates/Project/<site>`.
+   * The component template, parameters template, and (when present)
+   * Component Folder template land directly under this when `section`
+   * is omitted. When `section` is set on a `ComponentTemplateRecipe`,
+   * the compiler instead nests under the configured `componentsRoot`
+   * (preferred) or — fallback — under `templatesRoot/<section>`.
+   *
+   * Required for back-compat with callers that haven't migrated to the
+   * site-folder layout.
+   */
   templatesRoot: string;
-  /** e.g. `/sitecore/layout/Renderings/Project/<site>`. */
+  /**
+   * Renderings root. With `section`, the rendering lands at
+   * `<renderingsRoot>/<section>/<Component>`. Without section, falls
+   * back to the legacy flat `<renderingsRoot>/<Component>`.
+   */
   renderingsRoot: string;
+  /**
+   * Per-site Components bucket — `/sitecore/templates/Project/<site>/Components`.
+   * When set AND a `ComponentTemplateRecipe` carries a `section`, the
+   * compiler emits at `<componentsRoot>/<section>/<Component>` and
+   * companion paths (Component Folders / Presentation Parameters)
+   * also nest under the section. When unset, the compiler falls back
+   * to `templatesRoot` for back-compat with the flat layout.
+   *
+   * Optional today; will become the canonical input once the
+   * orchestrator's `buildRecipeRoots()` returns the new bucket-roots
+   * shape (see `plans/recipe-site-folder-layout.md`).
+   */
+  componentsRoot?: string;
+  /**
+   * Per-site Content Models bucket —
+   * `/sitecore/templates/Project/<site>/Content Models`. When set AND a
+   * `ContentTemplateRecipe` is being compiled, the template lands at
+   * `<contentModelsRoot>/<group>/<name>` (when the recipe carries
+   * `meta.tax.group`) or flat at `<contentModelsRoot>/<name>` otherwise.
+   * When unset, the compiler falls back to `templatesRoot`.
+   */
+  contentModelsRoot?: string;
   /**
    * Phase 4: required for `PartialDesignRecipe` compilation. Where the
    * partial-design items land — typically
@@ -120,11 +170,32 @@ export interface CompileContext {
    * `siteTemplate` and the Sites API instantiates it.
    */
   siteTemplatesRoot?: string;
+  /**
+   * Site name — e.g. `solterra`. Drives deterministic refKeys for
+   * site-scoped folders (section folders, Component Folders subfolders,
+   * Presentation Parameters subfolders, Content Models group folders).
+   * When unset, folder-creation ops fall back to a `default` site name
+   * to keep refKeys stable; production callers should always set this.
+   */
+  site?: string;
 }
 
 const PARAMS_SECTION_NAME = "Parameters";
 const DEFAULT_FIELDS_SECTION = "Content";
 const VARIANTS_FOLDER_NAME = "Variants";
+
+/**
+ * SXA Section Definition's "Available Renderings" multi-list field —
+ * the lookup key the executor uses to read/append values when
+ * applying `AppendToMultiList` ops emitted from `availableIn`.
+ *
+ * The GUID is a placeholder until sandbox introspection lands; the
+ * executor matches by `fieldName` when the IR carries one (recipe-
+ * authored fields share this property), so the placeholder is
+ * tolerated for now.
+ */
+const AVAILABLE_RENDERINGS_FIELD_ID = SECTION_DEFINITION_FIELDS.AVAILABLE_RENDERINGS;
+const AVAILABLE_RENDERINGS_FIELD_NAME = "Available Renderings";
 
 /**
  * Compiler-default `OtherProperties` on every emitted rendering. Recipe
@@ -141,6 +212,224 @@ const joinPath = (parent: string, name: string): string => {
   return `${trimmed}/${name}`;
 };
 
+const COMPONENT_FOLDERS_BUCKET = "Component Folders";
+const PRESENTATION_PARAMETERS_BUCKET = "Presentation Parameters";
+
+/**
+ * Resolve the parent path under which a `ComponentTemplateRecipe`'s
+ * template item lands.
+ *
+ *   - With section + componentsRoot → `<componentsRoot>/<section>` (new layout).
+ *   - With section only → `<templatesRoot>/<section>` (mid-migration fallback).
+ *   - Without section → `<templatesRoot>` (legacy flat layout).
+ */
+const resolveComponentTemplateParent = (
+  context: CompileContext,
+  section: string | undefined
+): string => {
+  if (section) {
+    if (context.componentsRoot) {
+      return joinPath(context.componentsRoot, section);
+    }
+    return joinPath(context.templatesRoot, section);
+  }
+  return context.templatesRoot;
+};
+
+/**
+ * Resolve the parent path for a Component Folder template — the
+ * `<Component> Folder` items emitted when a recipe declares
+ * `children:`. Always nested under
+ * `<sectionRoot>/Component Folders/`.
+ */
+const resolveComponentFoldersBucketPath = (context: CompileContext, section: string): string =>
+  joinPath(resolveComponentTemplateParent(context, section), COMPONENT_FOLDERS_BUCKET);
+
+/**
+ * Resolve the parent path for a Presentation Parameters template —
+ * `<sectionRoot>/Presentation Parameters/`. When the recipe lacks a
+ * section (legacy callers), parameters templates land directly under
+ * `templatesRoot` to match the old flat layout.
+ */
+const resolvePresentationParametersBucketPath = (
+  context: CompileContext,
+  section: string | undefined
+): string => {
+  if (!section) {
+    return context.templatesRoot;
+  }
+  return joinPath(resolveComponentTemplateParent(context, section), PRESENTATION_PARAMETERS_BUCKET);
+};
+
+/**
+ * Resolve the parent path for the rendering item.
+ *
+ *   - With section → `<renderingsRoot>/<section>/<Component>`.
+ *   - Without → legacy flat `<renderingsRoot>/<Component>`.
+ */
+const resolveRenderingParent = (context: CompileContext, section: string | undefined): string =>
+  section ? joinPath(context.renderingsRoot, section) : context.renderingsRoot;
+
+/** Site name for deterministic folder refKeys. */
+const siteOf = (context: CompileContext): string => context.site ?? "default";
+
+/**
+ * Ensure a section folder (under `componentsRoot/<section>`) exists.
+ * Idempotent: emits a CreateOnly CreateItem op the first time a given
+ * (site, section) pair is seen and records the refKey in the
+ * `emittedFolders` set so subsequent calls are no-ops.
+ *
+ * Returns the section folder's refKey for downstream callers that want
+ * to nest items under it.
+ */
+const ensureSectionFolder = (
+  operations: Operation[],
+  context: CompileContext,
+  section: string,
+  emittedFolders: Set<string>
+): string => {
+  const site = siteOf(context);
+  const refKey = sectionFolderId(site, section);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+
+  const parent = context.componentsRoot ?? context.templatesRoot;
+  const path = joinPath(parent, section);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `section-folder:${site}:${section}`,
+    id: refKey,
+    path,
+    parent: { kind: "ref-path", value: parent },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    name: section,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
+/**
+ * Ensure a "Component Folders" subfolder exists under the section
+ * folder. Idempotent.
+ */
+const ensureComponentFoldersBucket = (
+  operations: Operation[],
+  context: CompileContext,
+  section: string,
+  emittedFolders: Set<string>
+): string => {
+  const site = siteOf(context);
+  const refKey = componentFoldersBucketId(site, section);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+  const sectionRefKey = ensureSectionFolder(operations, context, section, emittedFolders);
+  const parentPath = resolveComponentTemplateParent(context, section);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `component-folders-bucket:${site}:${section}`,
+    id: refKey,
+    path: joinPath(parentPath, COMPONENT_FOLDERS_BUCKET),
+    parent: { kind: "ref-recipe", refKey: sectionRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    name: COMPONENT_FOLDERS_BUCKET,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
+/**
+ * Ensure a "Presentation Parameters" subfolder exists under the section
+ * folder. Idempotent.
+ */
+const ensurePresentationParametersBucket = (
+  operations: Operation[],
+  context: CompileContext,
+  section: string,
+  emittedFolders: Set<string>
+): string => {
+  const site = siteOf(context);
+  const refKey = presentationParametersBucketId(site, section);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+  const sectionRefKey = ensureSectionFolder(operations, context, section, emittedFolders);
+  const parentPath = resolveComponentTemplateParent(context, section);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `presentation-parameters-bucket:${site}:${section}`,
+    id: refKey,
+    path: joinPath(parentPath, PRESENTATION_PARAMETERS_BUCKET),
+    parent: { kind: "ref-recipe", refKey: sectionRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    name: PRESENTATION_PARAMETERS_BUCKET,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
+/**
+ * Ensure a section subfolder under the renderings tree exists —
+ * `<renderingsRoot>/<section>/`. Mirrors the templates side; the
+ * rendering tree shape mirrors the template tree per the layout plan.
+ */
+const ensureRenderingsSectionFolder = (
+  operations: Operation[],
+  context: CompileContext,
+  section: string,
+  emittedFolders: Set<string>
+): string => {
+  const site = siteOf(context);
+  const refKey = renderingsSectionFolderId(site, section);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+  const path = joinPath(context.renderingsRoot, section);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `renderings-section-folder:${site}:${section}`,
+    id: refKey,
+    path,
+    parent: { kind: "ref-path", value: context.renderingsRoot },
+    templateOf: SITECORE_TEMPLATES.FOLDER,
+    name: section,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
+/**
+ * Ensure a Content Models group folder exists. Returns the refKey for
+ * downstream `CreateItem.parent` references. Idempotent across
+ * repeated calls within one recipe-set compile.
+ */
+const ensureContentModelsGroupFolder = (
+  operations: Operation[],
+  context: CompileContext,
+  group: string,
+  emittedFolders: Set<string>
+): string | undefined => {
+  if (!context.contentModelsRoot) return undefined;
+  const site = siteOf(context);
+  const refKey = contentModelsGroupFolderId(site, group);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+  const path = joinPath(context.contentModelsRoot, group);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `content-models-group-folder:${site}:${group}`,
+    id: refKey,
+    path,
+    parent: { kind: "ref-path", value: context.contentModelsRoot },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    name: group,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
 /**
  * Compile a `ComponentTemplateRecipe` to an Operation IR.
  *
@@ -149,35 +438,40 @@ const joinPath = (parent: string, name: string): string => {
  * `path` fields for lookups + recipe-internal `refKey` GUIDs (uuidv5)
  * which the executor uses as the key into a per-run captured-itemId map.
  *
- * Op order is fixed so the IR is reviewable:
+ * Layout (per `plans/recipe-site-folder-layout.md`):
  *
- *   datasource template
- *     1. CreateItem(template)                    parent=templatesRoot path
- *     2. SetBaseTemplates(template) → Standard Template
- *     3. CreateItem(section)                     parent=template (ref-recipe)
- *     4. CreateItem(field)                       parent=section
- *     5. CreateItem(__Standard Values)           parent=template; templateOf=template's id
- *     6. SetStandardValues(template, sv)
+ *   With `section: "ui"`:
+ *     - Section folder (CreateOnly) at `<componentsRoot>/ui`
+ *     - Template at `<componentsRoot>/ui/<Component>`
+ *     - When recipe declares `children:`, a Component Folder template at
+ *       `<componentsRoot>/ui/Component Folders/<Component> Folder`
+ *     - Inline `params:` (or `parameters: { handle }`) → Parameters
+ *       template at `<componentsRoot>/ui/Presentation Parameters/<name>`
+ *     - Renderings-side section folder (CreateOnly) at
+ *       `<renderingsRoot>/ui`, then rendering at
+ *       `<renderingsRoot>/ui/<Component>`
+ *     - For each handle in `availableIn`, an `AppendToMultiList` op
+ *       against the section definition's Available Renderings field
  *
- *   parameters template (only when recipe.params is non-empty)
- *     7. CreateItem(params-template)
- *     8. SetBaseTemplates(params-template)
- *     9. CreateItem(params-section)
- *    10. CreateItem(params-field)
- *
- *   rendering and SXA Rendering Variants
- *    11. CreateItem(rendering)                   carries Parameters Template ref-recipe
- *    12. CreateItem(variants-folder)             only when recipe.variants is non-empty
- *    13. CreateItem(variant)
+ *   Without `section` (legacy back-compat):
+ *     - Flat layout — template at `<templatesRoot>/<Component>`,
+ *       parameters at `<templatesRoot>/<Component> Parameters`,
+ *       rendering at `<renderingsRoot>/<Component>`. No section folder
+ *       creation, no Component Folder generation.
  */
 export function compileComponentTemplateRecipe(
   input: ComponentTemplateRecipe,
-  context: CompileContext
+  context: CompileContext,
+  emittedFolders: Set<string> = new Set()
 ): OperationIr {
   const recipe = ComponentTemplateRecipeSchema.parse(input);
   const operations: Operation[] = [];
   const policy = defaultPolicyForRecipe(recipe.kind);
   const icon = DEFAULT_ICON;
+
+  if (recipe.section) {
+    ensureSectionFolder(operations, context, recipe.section, emittedFolders);
+  }
 
   emitDatasourceTemplate(
     operations,
@@ -187,21 +481,49 @@ export function compileComponentTemplateRecipe(
       displayName: recipe.displayName,
       fields: recipe.fields,
       insertOptions: recipe.insertOptions,
+      // Component templates always sit at the section root (or
+      // templatesRoot, for legacy callers).
+      parentPath: resolveComponentTemplateParent(context, recipe.section),
     },
     context,
     icon,
     policy
   );
 
-  const hasParams = recipe.params.length > 0;
-  if (hasParams) {
-    emitParamsTemplate(operations, recipe, context, icon, policy);
+  if (recipe.children) {
+    emitComponentFolderTemplate(operations, recipe, context, icon, emittedFolders);
   }
 
-  emitRendering(operations, recipe, context, icon, hasParams, policy);
+  // Parameter template emission:
+  //   - If `recipe.parameters` is set, the rendering points at that
+  //     external parameters template (no synthesis here).
+  //   - Else if inline `params:` non-empty, synthesise an anonymous
+  //     parameters template at the section-local Presentation
+  //     Parameters bucket (or templatesRoot for legacy).
+  const hasInlineParams = recipe.params.length > 0 && !recipe.parameters;
+  if (hasInlineParams) {
+    emitParamsTemplate(operations, recipe, context, icon, policy, emittedFolders);
+  }
+
+  if (recipe.section) {
+    ensureRenderingsSectionFolder(operations, context, recipe.section, emittedFolders);
+  }
+
+  emitRendering(
+    operations,
+    recipe,
+    context,
+    icon,
+    hasInlineParams || recipe.parameters !== undefined,
+    policy
+  );
 
   if (recipe.variants.length > 0) {
     emitVariants(operations, recipe, context, icon, policy);
+  }
+
+  if (recipe.availableIn && recipe.availableIn.length > 0) {
+    emitAvailableInBindings(operations, recipe, policy);
   }
 
   return OperationIrSchema.parse({
@@ -212,17 +534,168 @@ export function compileComponentTemplateRecipe(
 }
 
 /**
+ * Emit `AppendToMultiList` ops binding this rendering's GUID into the
+ * `Available Renderings` field of each section definition listed in
+ * `recipe.availableIn`. Idempotent under `merge-unique` policy.
+ */
+function emitAvailableInBindings(
+  operations: Operation[],
+  recipe: ComponentTemplateRecipe,
+  policy: PushPolicy
+): void {
+  const availableIn = recipe.availableIn ?? [];
+  for (const sectionDefinitionHandle of availableIn) {
+    operations.push({
+      op: "AppendToMultiList",
+      policy,
+      label: `available-in:${recipe.handle}->${sectionDefinitionHandle}`,
+      itemRefKey: sectionDefinitionId(sectionDefinitionHandle),
+      fieldId: AVAILABLE_RENDERINGS_FIELD_ID,
+      fieldName: AVAILABLE_RENDERINGS_FIELD_NAME,
+      values: [{ kind: "ref-recipe", refKey: renderingId(recipe.handle) }],
+      appendPolicy: "merge-unique",
+    } satisfies AppendToMultiListOp);
+  }
+}
+
+/**
+ * Emit the `<Component> Folder` template under
+ * `<componentsRoot>/<section>/Component Folders/`. Creates the
+ * companion section folders idempotently. The folder template's
+ * `__Standard Values` carries the Insert Options multi-list of allowed
+ * child handles.
+ */
+function emitComponentFolderTemplate(
+  operations: Operation[],
+  recipe: ComponentTemplateRecipe,
+  context: CompileContext,
+  icon: string,
+  emittedFolders: Set<string>
+): void {
+  if (!recipe.section) {
+    // Without a section we can't pick a sensible parent folder; skip
+    // emission and let the validator surface the missing section.
+    return;
+  }
+  if (!recipe.children) return;
+
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const bucketRefKey = ensureComponentFoldersBucket(
+    operations,
+    context,
+    recipe.section,
+    emittedFolders
+  );
+
+  const folderName = `${recipe.name} Folder`;
+  const folderTplRefKey = componentFolderTemplateId(recipe.handle);
+  const folderTplPath = joinPath(
+    resolveComponentFoldersBucketPath(context, recipe.section),
+    folderName
+  );
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `component-folder-template:${recipe.handle}`,
+    id: folderTplRefKey,
+    path: folderTplPath,
+    parent: { kind: "ref-recipe", refKey: bucketRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE,
+    name: folderName,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
+        kind: "string",
+        value: `${recipe.displayName} Folder`,
+      }),
+    ],
+  } satisfies CreateItemOp);
+
+  // Folder templates inherit Standard Template (no custom fields).
+  operations.push({
+    op: "SetBaseTemplates",
+    policy,
+    label: `component-folder-base-templates:${recipe.handle}`,
+    itemRefKey: folderTplRefKey,
+    baseTemplates: [STANDARD_TEMPLATE_ID],
+  } satisfies SetBaseTemplatesOp);
+
+  // Standard Values item — the Insert Options field we set below lives
+  // here, not on the template item itself.
+  const svRefKey = componentFolderStandardValuesId(recipe.handle);
+  const svPath = joinPath(folderTplPath, "__Standard Values");
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `component-folder-standard-values:${recipe.handle}`,
+    id: svRefKey,
+    path: svPath,
+    parent: { kind: "ref-recipe", refKey: folderTplRefKey },
+    templateOf: folderTplRefKey,
+    name: "__Standard Values",
+    fields: [],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "SetStandardValues",
+    policy,
+    label: `link-component-folder-standard-values:${recipe.handle}`,
+    templateRefKey: folderTplRefKey,
+    standardValuesRefKey: svRefKey,
+  } satisfies SetStandardValuesOp);
+
+  operations.push({
+    op: "SetField",
+    policy,
+    label: `component-folder-insert-options:${recipe.handle}`,
+    itemRefKey: svRefKey,
+    fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+    value: {
+      kind: "ref-recipe-list",
+      refKeys: recipe.children.allowedHandles.map((handle) => templateId(handle)),
+    },
+  } satisfies SetFieldOp);
+}
+
+/**
  * Compile a `ContentTemplateRecipe` to an Operation IR.
  *
  * Content templates are data-only: a Sitecore template + sections + fields
  * + standard values + back-fill. No rendering, no params, no variants.
+ *
+ * Path resolution:
+ *   - With `contentModelsRoot` and `meta.tax.group` set →
+ *     `<contentModelsRoot>/<group>/<name>` (group folder created
+ *     idempotently as a CreateOnly op).
+ *   - With `contentModelsRoot` and no group → `<contentModelsRoot>/<name>`.
+ *   - Without `contentModelsRoot` → legacy `<templatesRoot>/<name>`.
  */
 export function compileContentTemplateRecipe(
   input: ContentTemplateRecipe,
-  context: CompileContext
+  context: CompileContext,
+  emittedFolders: Set<string> = new Set()
 ): OperationIr {
   const recipe = ContentTemplateRecipeSchema.parse(input);
   const operations: Operation[] = [];
+
+  const group = recipe.meta?.tax?.group;
+  let parentPath: string | undefined;
+  let parentRefKey: string | undefined;
+  if (context.contentModelsRoot) {
+    if (group) {
+      const groupRefKey = ensureContentModelsGroupFolder(
+        operations,
+        context,
+        group,
+        emittedFolders
+      );
+      parentPath = joinPath(context.contentModelsRoot, group);
+      parentRefKey = groupRefKey;
+    } else {
+      parentPath = context.contentModelsRoot;
+    }
+  }
 
   emitDatasourceTemplate(
     operations,
@@ -232,6 +705,8 @@ export function compileContentTemplateRecipe(
       displayName: recipe.displayName,
       fields: recipe.fields,
       insertOptions: recipe.insertOptions,
+      ...(parentPath !== undefined && { parentPath }),
+      ...(parentRefKey !== undefined && { parentRefKey }),
     },
     context,
     DEFAULT_ICON,
@@ -242,6 +717,124 @@ export function compileContentTemplateRecipe(
     schemaVersion: "1",
     recipeHandle: recipe.handle,
     operations,
+  });
+}
+
+/**
+ * Compile a standalone `ParametersTemplateRecipe` to an Operation IR.
+ *
+ * Lands at
+ * `<componentsRoot>/<section>/Presentation Parameters/<name>` —
+ * mirrors the layout that the synthesised inline parameters template
+ * uses, so a standalone recipe and an inline-hoisted one occupy the
+ * same Sitecore path.
+ */
+export function compileParametersTemplateRecipe(
+  input: ParametersTemplateRecipe,
+  context: CompileContext,
+  emittedFolders: Set<string> = new Set()
+): OperationIr {
+  const recipe = ParametersTemplateRecipeSchema.parse(input);
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe(recipe.kind);
+  const icon = recipe.icon ?? DEFAULT_ICON;
+
+  ensureSectionFolder(operations, context, recipe.section, emittedFolders);
+  const bucketRefKey = ensurePresentationParametersBucket(
+    operations,
+    context,
+    recipe.section,
+    emittedFolders
+  );
+  const parentPath = resolvePresentationParametersBucketPath(context, recipe.section);
+
+  // The standalone parameters template lands at the same identity
+  // (paramsTemplateId) as inline-hoisted ones — keeps re-pushes
+  // idempotent if a recipe migrates from inline to standalone.
+  const tplRefKey = paramsTemplateId(recipe.handle);
+  const tplPath = joinPath(parentPath, recipe.name);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `parameters-template:${recipe.handle}`,
+    id: tplRefKey,
+    path: tplPath,
+    parent: { kind: "ref-recipe", refKey: bucketRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE,
+    name: recipe.name,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "SetBaseTemplates",
+    policy,
+    label: `parameters-base-templates:${recipe.handle}`,
+    itemRefKey: tplRefKey,
+    baseTemplates: [STANDARD_TEMPLATE_ID],
+  } satisfies SetBaseTemplatesOp);
+
+  const secRefKey = paramsSectionId(recipe.handle, PARAMS_SECTION_NAME);
+  const secPath = joinPath(tplPath, PARAMS_SECTION_NAME);
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `parameters-section:${recipe.handle}/${PARAMS_SECTION_NAME}`,
+    id: secRefKey,
+    path: secPath,
+    parent: { kind: "ref-recipe", refKey: tplRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+    name: PARAMS_SECTION_NAME,
+    fields: [],
+  } satisfies CreateItemOp);
+
+  recipe.params.forEach((param, index) => {
+    operations.push(
+      buildFieldOp({
+        recipeHandle: recipe.handle,
+        fieldRefKey: paramsFieldId(recipe.handle, param.name),
+        fieldPath: joinPath(secPath, param.name),
+        parentRefKey: secRefKey,
+        labelPrefix: `parameters-field:${recipe.handle}`,
+        field: param,
+        zeroBasedIndex: index,
+        policy,
+      })
+    );
+  });
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations,
+  });
+}
+
+/**
+ * Compile a `SectionDefinitionRecipe` to an Operation IR.
+ *
+ * Section definitions are typically pre-existing tenant scaffolding —
+ * the compiler does NOT emit a CreateItem op for them. Instead, the
+ * recipe's `sitePath` is registered as a cross-recipe ref so the
+ * executor's `seedCrossRecipeRefs` can resolve the existing item's
+ * Sitecore itemId at apply time. For now this compiler returns an
+ * empty IR; downstream `compileRecipeSet` handles the cross-recipe
+ * ref pre-seeding via `extractCrossRecipeSeeds()` (separate plan).
+ *
+ * The recipe is still validated here so authors get schema feedback.
+ */
+export function compileSectionDefinitionRecipe(
+  input: SectionDefinitionRecipe,
+  _context: CompileContext
+): OperationIr {
+  const recipe = SectionDefinitionRecipeSchema.parse(input);
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: recipe.handle,
+    operations: [],
   });
 }
 
@@ -648,7 +1241,22 @@ export function compileRecipeSet(
   recipes: readonly Recipe[],
   context: CompileContext
 ): OperationIr[] {
-  const irs: OperationIr[] = recipes.map((recipe) => compileRecipe(recipe, context));
+  // Shared across the whole set: section / Component Folders /
+  // Presentation Parameters / Content Models group folders only get
+  // emitted once even when many recipes land in the same section.
+  const emittedFolders = new Set<string>();
+  const irs: OperationIr[] = recipes.map((recipe) => {
+    switch (recipe.kind) {
+      case "component-template":
+        return compileComponentTemplateRecipe(recipe, context, emittedFolders);
+      case "content-template":
+        return compileContentTemplateRecipe(recipe, context, emittedFolders);
+      case "parameters-template":
+        return compileParametersTemplateRecipe(recipe, context, emittedFolders);
+      default:
+        return compileRecipe(recipe, context);
+    }
+  });
 
   const entries: { templateGuid: string; designGuid: string }[] = [];
   for (const recipe of recipes) {
@@ -844,6 +1452,10 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileContentTemplateRecipe(recipe, context);
     case "content-item":
       return compileContentItemRecipe(recipe, context);
+    case "parameters-template":
+      return compileParametersTemplateRecipe(recipe, context);
+    case "section-definition":
+      return compileSectionDefinitionRecipe(recipe, context);
     case "partial-design":
       return compilePartialDesignRecipe(recipe, context);
     case "page-design":
@@ -987,6 +1599,21 @@ interface DatasourceTemplateInput {
   displayName: string;
   fields: FieldDefinition[];
   insertOptions?: string[];
+  /**
+   * Optional override for the template's parent path. When set, the
+   * template lands at `<parentPath>/<name>` and `parent` resolves via
+   * `ref-path`. When omitted, falls back to `context.templatesRoot`
+   * for back-compat with the legacy flat layout.
+   */
+  parentPath?: string;
+  /**
+   * Optional override for the template's parent — when the parent has
+   * already been emitted as a CreateItem op in this set (e.g. a section
+   * folder), passing the refKey here lets the planner resolve via the
+   * captured-itemId map without needing a path-based lookup. Mutually
+   * exclusive with `parentPath`'s refKey-as-string semantics.
+   */
+  parentRefKey?: string;
 }
 
 function emitDatasourceTemplate(
@@ -997,7 +1624,11 @@ function emitDatasourceTemplate(
   policy: PushPolicy
 ): void {
   const tplRefKey = templateId(recipe.handle);
-  const tplPath = joinPath(context.templatesRoot, recipe.name);
+  const parentPath = recipe.parentPath ?? context.templatesRoot;
+  const tplPath = joinPath(parentPath, recipe.name);
+  const parentRef: CreateItemOp["parent"] = recipe.parentRefKey
+    ? { kind: "ref-recipe", refKey: recipe.parentRefKey }
+    : { kind: "ref-path", value: parentPath };
 
   operations.push({
     op: "CreateItem",
@@ -1005,7 +1636,7 @@ function emitDatasourceTemplate(
     label: `template:${recipe.handle}`,
     id: tplRefKey,
     path: tplPath,
-    parent: { kind: "ref-path", value: context.templatesRoot },
+    parent: parentRef,
     templateOf: SITECORE_TEMPLATES.TEMPLATE,
     name: recipe.name,
     fields: [
@@ -1097,12 +1728,29 @@ function emitParamsTemplate(
   recipe: ComponentTemplateRecipe,
   context: CompileContext,
   icon: string,
-  policy: PushPolicy
+  policy: PushPolicy,
+  emittedFolders: Set<string>
 ): void {
   const paramsTplRefKey = paramsTemplateId(recipe.handle);
   const paramsName = `${recipe.name} Parameters`;
   const paramsDisplayName = `${recipe.displayName} Parameters`;
-  const paramsTplPath = joinPath(context.templatesRoot, paramsName);
+
+  let paramsParent: CreateItemOp["parent"];
+  let paramsParentPath: string;
+  if (recipe.section) {
+    const bucketRefKey = ensurePresentationParametersBucket(
+      operations,
+      context,
+      recipe.section,
+      emittedFolders
+    );
+    paramsParent = { kind: "ref-recipe", refKey: bucketRefKey };
+    paramsParentPath = resolvePresentationParametersBucketPath(context, recipe.section);
+  } else {
+    paramsParent = { kind: "ref-path", value: context.templatesRoot };
+    paramsParentPath = context.templatesRoot;
+  }
+  const paramsTplPath = joinPath(paramsParentPath, paramsName);
 
   operations.push({
     op: "CreateItem",
@@ -1110,7 +1758,7 @@ function emitParamsTemplate(
     label: `params-template:${recipe.handle}`,
     id: paramsTplRefKey,
     path: paramsTplPath,
-    parent: { kind: "ref-path", value: context.templatesRoot },
+    parent: paramsParent,
     templateOf: SITECORE_TEMPLATES.TEMPLATE,
     name: paramsName,
     fields: [
@@ -1166,24 +1814,37 @@ function emitRendering(
   policy: PushPolicy
 ): void {
   const renderingRefKey = renderingId(recipe.handle);
-  const renderingPath = joinPath(context.renderingsRoot, recipe.name);
-  const tplRefKey = templateId(recipe.handle);
+  const renderingParentPath = resolveRenderingParent(context, recipe.section);
+  const renderingPath = joinPath(renderingParentPath, recipe.name);
+  // Datasource template ref: prefer the explicit `datasource:` ref when
+  // present (separate ContentTemplateRecipe under Content Models/);
+  // otherwise the component template itself is the datasource template
+  // (legacy inline-fields pattern).
+  const datasourceRefKey = recipe.datasource
+    ? templateId(recipe.datasource.handle)
+    : templateId(recipe.handle);
 
   const fields: FieldValue[] = [
     sharedField(RENDERING_FIELDS.COMPONENT_NAME, { kind: "string", value: recipe.name }),
     sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
       kind: "ref-recipe",
-      refKey: tplRefKey,
+      refKey: datasourceRefKey,
     }),
     sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
     versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
   ];
 
   if (hasParams) {
+    // Prefer the explicit `parameters: { handle }` reference when set,
+    // else point at the synthesised inline params template (whose
+    // refKey is `paramsTemplateId(recipe.handle)`).
+    const paramsRefKey = recipe.parameters
+      ? paramsTemplateId(recipe.parameters.handle)
+      : paramsTemplateId(recipe.handle);
     fields.push(
       sharedField(RENDERING_FIELDS.PARAMETERS_TEMPLATE, {
         kind: "ref-recipe",
-        refKey: paramsTemplateId(recipe.handle),
+        refKey: paramsRefKey,
       })
     );
   }
@@ -1223,7 +1884,7 @@ function emitRendering(
     label: `rendering:${recipe.handle}`,
     id: renderingRefKey,
     path: renderingPath,
-    parent: { kind: "ref-path", value: context.renderingsRoot },
+    parent: { kind: "ref-path", value: renderingParentPath },
     templateOf: SITECORE_TEMPLATES.RENDERING,
     name: recipe.name,
     fields,
@@ -1239,7 +1900,8 @@ function emitVariants(
 ): void {
   const folderRefKey = variantsFolderId(recipe.handle);
   const renderingRefKey = renderingId(recipe.handle);
-  const renderingPath = joinPath(context.renderingsRoot, recipe.name);
+  const renderingParentPath = resolveRenderingParent(context, recipe.section);
+  const renderingPath = joinPath(renderingParentPath, recipe.name);
   const folderPath = joinPath(renderingPath, VARIANTS_FOLDER_NAME);
 
   operations.push({

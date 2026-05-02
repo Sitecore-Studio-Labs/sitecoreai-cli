@@ -326,6 +326,8 @@ describe("validateRecipeSet — unresolved handles", () => {
         "component-template",
         "content-template",
         "content-item",
+        "parameters-template",
+        "section-definition",
         "partial-design",
         "page-design",
       ],

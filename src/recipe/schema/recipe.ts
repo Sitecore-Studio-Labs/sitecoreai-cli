@@ -192,6 +192,17 @@ export const ComponentTemplateRecipeSchema = z.object({
   description: z.string().optional(),
   /** Defaults to "Office/32x32/document.png" if omitted. */
   icon: z.string().optional(),
+  /**
+   * Section folder name (the Sitecore "subgroup") under which the
+   * component, its rendering, and its companion artifacts (Component
+   * Folder, Presentation Parameters) land. Drives the per-site folder
+   * layout — see `plans/recipe-site-folder-layout.md`.
+   *
+   * When omitted, the compiler falls back to the legacy flat layout
+   * (no section subfolder). Registry-driven recipes inject this from
+   * `meta.tax.subgroup` at registry build time.
+   */
+  section: z.string().min(1).optional(),
   fields: z.array(FieldDefinitionSchema).default([]),
   /**
    * Recipe handles whose templates are allowed as direct children of this
@@ -206,6 +217,62 @@ export const ComponentTemplateRecipeSchema = z.object({
    * prefer; the React component handles either resolution path.
    */
   insertOptions: z.array(z.string()).optional(),
+  /**
+   * Reference to a separate `ContentTemplateRecipe` that supplies the
+   * datasource fields. When present, the compiler uses the referenced
+   * content template as the rendering's Datasource Template (so the
+   * fields live under `Content Models/<group>/<name>` rather than on
+   * the component template itself).
+   *
+   * This is the modern shape; the inline `fields:` pattern still works
+   * (the compiler treats the component template itself as the
+   * datasource template) for back-compat.
+   */
+  datasource: z
+    .object({
+      handle: z.string().regex(HANDLE_PATTERN, {
+        message: "datasource.handle must match `<kebab-name>@<major>`",
+      }),
+    })
+    .optional(),
+  /**
+   * Reference to a separate `ParametersTemplateRecipe`. When present,
+   * the rendering's Parameters Template field points at this template
+   * and the compiler does NOT synthesise an anonymous parameters
+   * template from inline `params:`.
+   *
+   * When this is absent and `params:` is non-empty, the compiler
+   * synthesises a section-local Parameters template at
+   * `Components/<section>/Presentation Parameters/<Component> Parameters`.
+   */
+  parameters: z
+    .object({
+      handle: z.string().regex(HANDLE_PATTERN, {
+        message: "parameters.handle must match `<kebab-name>@<major>`",
+      }),
+    })
+    .optional(),
+  /**
+   * Children declaration — when present, the compiler emits a
+   * Component Folder template at
+   * `Components/<section>/Component Folders/<Component> Folder`. The
+   * folder template's `__Standard Values` carries an Insert Options
+   * field referencing the listed allowed handles, so author-side
+   * "Insert" UX surfaces the right children under each instance.
+   */
+  children: z
+    .object({
+      allowedHandles: z.array(z.string().regex(HANDLE_PATTERN)).min(1),
+    })
+    .optional(),
+  /**
+   * `SectionDefinitionRecipe` handles whose `Available Renderings`
+   * multi-list field should include this rendering's GUID. Drives the
+   * Sitecore Pages "Toolbox" surface — adding to this list registers
+   * the rendering with one or more Available Rendering Section
+   * Definition items.
+   */
+  availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
   variants: z.array(RenderingVariantDefinitionSchema).default([]),
   params: z.array(ParamDefinitionSchema).default([]),
   placeholders: z.array(PlaceholderDefinitionSchema).optional(),
@@ -229,6 +296,33 @@ export type ComponentTemplateRecipe = z.infer<typeof ComponentTemplateRecipeSche
  * Examples: accordion-item, tabs-item, faq-item — content shapes that
  * appear as part of a parent component, never standalone.
  */
+/**
+ * Optional taxonomy metadata, mirroring the registry's `meta.tax.*`
+ * namespace. `group` is the only field the compiler currently consumes
+ * — it drives `Content Models/<group>/<name>` nesting for content
+ * templates. Other fields (`section`, `subgroup`, `tag`) are accepted
+ * so registry → recipe pipelines can pass them through without
+ * losing data, but they're not load-bearing for compilation.
+ */
+export const RecipeMetaTaxSchema = z
+  .object({
+    section: z.string().optional(),
+    group: z.string().optional(),
+    subgroup: z.string().optional(),
+    tag: z.string().optional(),
+  })
+  .partial()
+  .optional();
+
+export const RecipeMetaSchema = z
+  .object({
+    tax: RecipeMetaTaxSchema,
+  })
+  .partial()
+  .optional();
+
+export type RecipeMeta = z.infer<typeof RecipeMetaSchema>;
+
 export const ContentTemplateRecipeSchema = z.object({
   kind: z.literal("content-template"),
   schemaVersion: z.literal("1"),
@@ -238,6 +332,14 @@ export const ContentTemplateRecipeSchema = z.object({
   name: z.string().min(1),
   displayName: z.string().min(1),
   description: z.string().optional(),
+  /**
+   * Optional taxonomy metadata. `meta.tax.group` drives Content Models
+   * folder nesting: when set, the template lands at
+   * `<contentModelsRoot>/<group>/<name>` instead of flat under
+   * `<contentModelsRoot>/<name>`. Other taxonomy fields pass through
+   * unmodified for downstream consumers.
+   */
+  meta: RecipeMetaSchema,
   fields: z.array(FieldDefinitionSchema).default([]),
   /**
    * Recipe handles allowed as children of this content template's items.
@@ -248,6 +350,89 @@ export const ContentTemplateRecipeSchema = z.object({
 });
 
 export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
+
+/**
+ * A standalone Parameters Template — a Sitecore template item that holds
+ * rendering-parameter fields, referenced from one or more
+ * `ComponentTemplateRecipe.parameters`. Lands at
+ * `<componentsRoot>/<section>/Presentation Parameters/<name>`.
+ *
+ * Authoring shape mirrors a stripped-down ContentTemplateRecipe — the
+ * compiler emits a Template + Section + Field children + standard
+ * values, parented under the section's "Presentation Parameters"
+ * folder. Distinct from inline `params:` (which the compiler hoists
+ * into an anonymous parameters template owned by one component);
+ * standalone parameters templates are reusable across components.
+ *
+ * Identity: `paramsTemplateId(handle)` derives the deterministic GUID.
+ * Same identity scheme as the inline-hoisted variant — the seed is the
+ * recipe handle, and the namespace is `NAMESPACE_TEMPLATE`. The seed
+ * suffix is `::params`, identical between inline and standalone forms,
+ * which keeps re-pushes idempotent if a recipe migrates from inline to
+ * standalone (the GUID stays the same).
+ */
+export const ParametersTemplateRecipeSchema = z.object({
+  kind: z.literal("parameters-template"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. cta-button-params@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /** Defaults to "Office/32x32/document.png" if omitted. */
+  icon: z.string().optional(),
+  /**
+   * Section name under which this parameters template lands —
+   * `Components/<section>/Presentation Parameters/<name>`. Required:
+   * presentation parameters are organised per-section by convention.
+   */
+  section: z.string().min(1),
+  params: z.array(ParamDefinitionSchema).default([]),
+});
+
+export type ParametersTemplateRecipe = z.infer<typeof ParametersTemplateRecipeSchema>;
+
+/**
+ * Available Rendering Section Definition — declares an SXA section
+ * definition item that the registry uses as the target for
+ * `availableIn` bindings. Each section definition holds an `Available
+ * Renderings` multi-list field whose pipe-separated GUID list controls
+ * which renderings appear in the section's toolbox group.
+ *
+ * The section definition typically lives in the content tree under
+ * `/sitecore/content/<tenant>/<site>/Presentation/Available Renderings/<Section>`,
+ * but exact path is recipe-supplied via `sitePath` so the same recipe
+ * shape works across SXA Headless and classic SXA layouts.
+ *
+ * Identity: section definitions are referenced by deterministic GUID
+ * via `sectionDefinitionId(handle)`. The compiler currently does not
+ * emit CreateItem ops for section definitions (they're assumed to
+ * pre-exist on the tenant — they're SXA-shipped scaffolding). The
+ * recipe surface accepts them so cross-recipe validation of
+ * `availableIn` references can resolve.
+ */
+export const SectionDefinitionRecipeSchema = z.object({
+  kind: z.literal("section-definition"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. showcase-section@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  /**
+   * Sitecore content-tree path of the section definition item
+   * (e.g. `/sitecore/content/<tenant>/<site>/Presentation/Available
+   * Renderings/<Section>`). The compiler uses this as the lookup target
+   * when emitting `AppendToMultiList` ops for the section's
+   * `Available Renderings` field — the executor resolves the path to
+   * a Sitecore itemId at apply time.
+   */
+  sitePath: z.string().min(1),
+});
+
+export type SectionDefinitionRecipe = z.infer<typeof SectionDefinitionRecipeSchema>;
 
 /**
  * A single field value on a `ContentItemRecipe`. Tagged on `shape` so the
@@ -744,6 +929,8 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   ContentItemRecipeSchema,
+  ParametersTemplateRecipeSchema,
+  SectionDefinitionRecipeSchema,
   PartialDesignRecipeSchema,
   PageDesignRecipeSchema,
   SiteTemplateRecipeSchema,

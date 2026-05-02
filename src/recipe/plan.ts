@@ -1,4 +1,5 @@
 import type {
+  AppendToMultiListOp,
   CreateItemOp,
   CreateSiteFromTemplateOp,
   FieldValue,
@@ -436,8 +437,15 @@ const lookupSelector = (
     // Authoring API getItem; planCreateSite handles the lookup itself.
     return null;
   }
-  const refKey =
-    op.op === "SetField" || op.op === "SetBaseTemplates" ? op.itemRefKey : op.templateRefKey;
+  let refKey: string;
+  if (op.op === "SetField" || op.op === "SetBaseTemplates") {
+    refKey = op.itemRefKey;
+  } else if (op.op === "SetStandardValues") {
+    refKey = op.templateRefKey;
+  } else {
+    // AppendToMultiList — target item is keyed by itemRefKey, same as SetField.
+    refKey = op.itemRefKey;
+  }
   const itemId = capturedItemIds.get(refKey);
   return itemId ? { itemId } : null;
 };
@@ -467,7 +475,7 @@ export const buildAction = async (
   // lookupSelector sees no captured itemId and the SetField skips
   // with "not yet captured/created" — even though the item exists.
   if (
-    op.op === "SetField" &&
+    (op.op === "SetField" || op.op === "AppendToMultiList") &&
     op.latePath &&
     !capturedItemIds.has(op.itemRefKey)
   ) {
@@ -533,9 +541,116 @@ export const buildAction = async (
         );
       case "CreateSiteFromTemplate":
         return planCreateSite(index, op, capturedItemIds, sitesClient);
+      case "AppendToMultiList":
+        return planAppendToMultiList(index, op, remote, capturedItemIds);
     }
   })();
   return { ...action, snapshot: remote };
+};
+
+/**
+ * Parse a Sitecore multi-list field value (pipe-separated GUIDs, each
+ * either bare or curly-wrapped) into a normalised lowercase, no-curly
+ * GUID set. Tolerates extra whitespace / empty entries from operator
+ * edits.
+ */
+const parseMultiList = (value: string | null | undefined): string[] => {
+  if (!value) return [];
+  return value
+    .split("|")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => s.replace(/^\{|\}$/g, "").toLowerCase());
+};
+
+const formatMultiList = (guids: readonly string[]): string =>
+  guids.map((g) => `{${g.toUpperCase()}}`).join("|");
+
+/**
+ * Plan an `AppendToMultiList` op. Reads the target's current field
+ * value, computes the union with the desired values (resolving recipe
+ * refs first), and emits an updateItem mutation only when the merge
+ * adds something new — otherwise a skip with a clear reason.
+ */
+const planAppendToMultiList = (
+  index: number,
+  op: AppendToMultiListOp,
+  remote: RemoteItem | null,
+  capturedItemIds: ReadonlyMap<string, string>
+): PlannedAction => {
+  if (!remote) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Target item (refKey ${op.itemRefKey}) not yet captured — section definition may not exist or path lookup hasn't run.`,
+    };
+  }
+
+  // Resolve every desired value into a concrete GUID. ref-recipe entries
+  // resolve via the captured map; ref-guid entries pass through.
+  const desired: string[] = [];
+  for (const entry of op.values) {
+    if (entry.kind === "ref-guid") {
+      desired.push(entry.value.toLowerCase());
+    } else {
+      const itemId = capturedItemIds.get(entry.refKey);
+      if (!itemId) {
+        return {
+          index,
+          operation: op,
+          status: "skip",
+          reason: `AppendToMultiList: refKey ${entry.refKey} not yet captured — producer recipe hasn't landed.`,
+        };
+      }
+      desired.push(itemId.toLowerCase());
+    }
+  }
+
+  // Read the current field value — match by name when carried (recipe-
+  // defined fields), else by GUID (system fields).
+  const found = remote.fields.find((f) => {
+    const idMatches = op.fieldName
+      ? f.name === op.fieldName
+      : f.fieldId.toLowerCase() === op.fieldId.toLowerCase();
+    return idMatches;
+  });
+  const existing = parseMultiList(found?.value ?? null);
+  const existingSet = new Set(existing);
+
+  const additions = desired.filter((g) => !existingSet.has(g));
+  if (additions.length === 0) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: "All desired values already present in multi-list (merge-unique).",
+    };
+  }
+
+  const merged = [...existing, ...additions];
+  const updatedField: FieldValue = {
+    fieldId: op.fieldId,
+    ...(op.fieldName !== undefined && { fieldName: op.fieldName }),
+    value: { kind: "string", value: formatMultiList(merged) },
+  };
+
+  return {
+    index,
+    operation: op,
+    status: "update",
+    diff: [
+      {
+        fieldId: op.fieldId,
+        before: found?.value ?? null,
+        after: formatMultiList(merged),
+      },
+    ],
+    mutation: {
+      kind: "updateItem",
+      input: { itemId: remote.itemId, fields: [updatedField] },
+    },
+  };
 };
 
 /**

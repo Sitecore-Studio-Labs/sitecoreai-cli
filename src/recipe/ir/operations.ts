@@ -250,21 +250,101 @@ export const CreateSiteFromTemplateOpSchema = z.object({
   collectionDescription: z.string().optional(),
 });
 
+/**
+ * Append GUIDs to an existing item's multi-list field without disturbing
+ * existing values. Used by registry-driven recipes to register their
+ * renderings against pre-existing SXA Available Rendering Section
+ * Definition items (`availableIn` on `ComponentTemplateRecipe`).
+ *
+ * Idempotent under `policy: "merge-unique"` — the executor reads the
+ * current field value, parses it as a pipe-separated GUID list,
+ * unions the desired values into the existing set, and writes back
+ * only if the set changed. Re-pushing a recipe with the same
+ * `values` is a no-op once the values are present.
+ *
+ * Removal is intentionally NOT modelled here — uninstalling a
+ * component does not auto-remove it from a section's Available
+ * Renderings; that's an explicit operator action with a different
+ * policy.
+ */
+export const AppendToMultiListOpSchema = z.object({
+  op: z.literal("AppendToMultiList"),
+  ...BaseOpFields,
+  /**
+   * RefKey of the target item — typically a SectionDefinitionRecipe's
+   * `sectionDefinitionId(handle)`. The executor resolves it to a
+   * Sitecore itemId via the captured map; cross-recipe pre-seeding
+   * (path lookup) populates the map for items the current recipe
+   * doesn't itself create.
+   */
+  itemRefKey: GUID,
+  /**
+   * Optional content-tree path for late-path seeding — same semantics
+   * as `SetFieldOpSchema.latePath`. Section definition items are
+   * typically pre-existing tenant scaffolding (not created by the
+   * recipe set), so the compiler emits this so the executor can
+   * resolve the itemId on demand if it's not in the captured map.
+   */
+  latePath: z.string().min(1).optional(),
+  /**
+   * Field GUID — the multi-list field to append into (e.g.
+   * Available Renderings). System fields use real Sitecore GUIDs;
+   * recipe-defined multi-list fields would carry the recipe-internal
+   * refKey (this case isn't used today but is forward-compatible).
+   */
+  fieldId: GUID,
+  /**
+   * Optional human-readable field name. See `FieldValueSchema.fieldName`
+   * — required for fields on recipe-created templates, omit for
+   * system fields whose GUIDs are real Sitecore built-ins.
+   */
+  fieldName: z.string().min(1).optional(),
+  /**
+   * GUIDs to append. Same value can be specified twice (the executor
+   * de-duplicates after the merge) but compilers should normalise.
+   * Each entry is either:
+   *   - a real Sitecore GUID (`ref-guid` style — already resolved)
+   *   - a recipe-internal refKey (`ref-recipe` style — resolved via
+   *     captured map at execute time)
+   *
+   * The compiler emits a discriminated `RefValue` per entry so the
+   * executor can resolve recipe-handle refs (rendering GUIDs derived
+   * from `renderingId(handle)`) without compile-time knowledge of
+   * the tenant's assigned itemIds.
+   */
+  values: z
+    .array(
+      z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("ref-guid"), value: GUID }),
+        z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
+      ])
+    )
+    .min(1),
+  /**
+   * Append policy. `merge-unique` is the only supported value today
+   * (preserve existing, add missing). The discriminator is reserved so
+   * future policies — `replace` (full overwrite) or `replace-prefix`
+   * (atomic swap of a recipe-owned subset) — can land without changing
+   * the op shape. Existing IRs continue to round-trip unchanged.
+   */
+  appendPolicy: z.literal("merge-unique"),
+});
+
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
   SetBaseTemplatesOpSchema,
   SetStandardValuesOpSchema,
   CreateSiteFromTemplateOpSchema,
+  AppendToMultiListOpSchema,
 ]);
 
 export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;
 export type SetFieldOp = z.infer<typeof SetFieldOpSchema>;
 export type SetBaseTemplatesOp = z.infer<typeof SetBaseTemplatesOpSchema>;
 export type SetStandardValuesOp = z.infer<typeof SetStandardValuesOpSchema>;
-export type CreateSiteFromTemplateOp = z.infer<
-  typeof CreateSiteFromTemplateOpSchema
->;
+export type CreateSiteFromTemplateOp = z.infer<typeof CreateSiteFromTemplateOpSchema>;
+export type AppendToMultiListOp = z.infer<typeof AppendToMultiListOpSchema>;
 export type Operation = z.infer<typeof OperationSchema>;
 
 export const OperationIrSchema = z.object({

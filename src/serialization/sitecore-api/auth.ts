@@ -262,6 +262,16 @@ export const pollDeviceToken = async (
   throw new Error("Device login expired. Try again.");
 };
 
+/**
+ * Default OAuth audience for Sitecore Cloud APIs (Deploy + Authoring +
+ * Sites). When the env profile doesn't pin an explicit `audience`,
+ * Auth0 falls back to whatever default is configured for the M2M
+ * client. Some org-scoped clients are configured with internal-only
+ * audiences they aren't authorized to mint tokens for, so we always
+ * send this audience explicitly on the request.
+ */
+export const DEFAULT_SITECORE_API_AUDIENCE = "https://api.sitecorecloud.io";
+
 export const requestClientCredentialsToken = async (
   environment: EnvironmentConfiguration,
   scope?: string
@@ -274,10 +284,8 @@ export const requestClientCredentialsToken = async (
     grant_type: "client_credentials",
     client_id: environment.clientId,
     client_secret: environment.clientSecret,
+    audience: environment.audience ?? DEFAULT_SITECORE_API_AUDIENCE,
   });
-  if (environment.audience) {
-    params.set("audience", environment.audience);
-  }
   if (scope) {
     params.set("scope", scope);
   }

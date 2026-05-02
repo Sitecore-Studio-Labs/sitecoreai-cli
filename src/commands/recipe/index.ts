@@ -44,6 +44,18 @@ const addRecipeRootOptions = (command: Command): Command =>
     )
     .addOption(
       new Option(
+        "--components-root <path>",
+        "Sitecore parent path for component template items in the per-site folder layout (Phase 2). Falls back to envProfiles[<name>].componentsRoot."
+      )
+    )
+    .addOption(
+      new Option(
+        "--content-models-root <path>",
+        "Sitecore parent path for content-template items (Phase 2). Falls back to envProfiles[<name>].contentModelsRoot."
+      )
+    )
+    .addOption(
+      new Option(
         "--partial-designs-root <path>",
         "Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot."
       )

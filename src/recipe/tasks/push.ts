@@ -44,6 +44,13 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     tenant.environment,
     tenant.envName
   );
+  // Phase 2 per-site folder layout roots — optional at the envProfile
+  // level. When unset the compiler falls back to `templatesRoot` for
+  // both, which means section-aware components nest under templatesRoot
+  // (mid-migration fallback) and content templates land mixed in with
+  // components. The orchestrator's ephemeral CLI config sets both.
+  const componentsRoot = options.componentsRoot ?? tenant.environment.componentsRoot;
+  const contentModelsRoot = options.contentModelsRoot ?? tenant.environment.contentModelsRoot;
   // Phase 4 composition roots — optional at the envProfile level. The
   // per-recipe compile fns throw with their own clear messages if a
   // partial-design / page-design / content-item recipe is in the set
@@ -84,6 +91,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
+    componentsRoot,
+    contentModelsRoot,
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,

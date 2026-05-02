@@ -33,6 +33,12 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     environment,
     envName ?? "(no environment)"
   );
+  // Phase 2 per-site folder layout roots — optional. When unset the
+  // compiler falls back to `templatesRoot` for both, which means
+  // section-aware components nest under templatesRoot (mid-migration
+  // fallback) and content templates land mixed in with components.
+  const componentsRoot = options.componentsRoot ?? environment?.componentsRoot;
+  const contentModelsRoot = options.contentModelsRoot ?? environment?.contentModelsRoot;
   // Phase 4 composition roots — optional. The per-recipe compile fns
   // throw with their own clear messages when a partial-design /
   // page-design / content-item recipe is in play but the corresponding
@@ -61,6 +67,8 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     const ir = compileRecipe(recipe, {
       templatesRoot,
       renderingsRoot,
+      componentsRoot,
+      contentModelsRoot,
       partialDesignsRoot,
       pageDesignsRoot,
       contentItemsRoot,

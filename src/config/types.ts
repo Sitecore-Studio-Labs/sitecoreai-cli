@@ -60,6 +60,28 @@ export type EnvironmentConfiguration = {
   renderingsRoot?: string;
   /**
    * Sitecore parent path under which `scai recipe compile|push` creates
+   * component template items in the per-site folder layout
+   * (`<componentsRoot>/<section>/<Component>`). When unset, the compiler
+   * falls back to `templatesRoot` and emits the legacy flat layout.
+   * Typically the same path as `templatesRoot` but kept distinct so
+   * future per-site nesting (`Project/<site>/Components`) doesn't
+   * conflate with the legacy fallback.
+   *
+   * Used as fallback when the CLI flag `--components-root` is not passed.
+   */
+  componentsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * content-template items
+   * (`<contentModelsRoot>/<group>/<name>` when grouped, flat otherwise).
+   * When unset, content templates fall back to `templatesRoot` — which
+   * means they land mixed in with components, not separated.
+   *
+   * Used as fallback when the CLI flag `--content-models-root` is not passed.
+   */
+  contentModelsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
    * partial-design items (Phase 4). Typically
    * `/sitecore/content/<site>/Presentation/Partial Designs`.
    *

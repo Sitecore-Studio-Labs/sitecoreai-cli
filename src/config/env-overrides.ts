@@ -102,6 +102,19 @@ export const applyEnvOverrides = (
   if (renderingsRoot !== undefined) {
     overrides.renderingsRoot = renderingsRoot;
   }
+  // Phase 2 per-site folder layout roots — read by `runRecipePush` /
+  // `runRecipeCompile` to wire
+  // `CompileContext.{componentsRoot, contentModelsRoot}` so recipes
+  // with `section:` land at `<componentsRoot>/<section>/<Component>`
+  // and content templates land under `<contentModelsRoot>`.
+  const componentsRoot = getEnvOverride(envName, "COMPONENTS_ROOT", includeGlobal);
+  if (componentsRoot !== undefined) {
+    overrides.componentsRoot = componentsRoot;
+  }
+  const contentModelsRoot = getEnvOverride(envName, "CONTENT_MODELS_ROOT", includeGlobal);
+  if (contentModelsRoot !== undefined) {
+    overrides.contentModelsRoot = contentModelsRoot;
+  }
   // Phase 4 composition roots — read by `runRecipePush` to wire
   // `CompileContext.{partialDesignsRoot, pageDesignsRoot, contentItemsRoot}`
   // and to seed `crossRecipeRefs[PAGE_DESIGNS_ROOT_REF_KEY]`.

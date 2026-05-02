@@ -38,6 +38,10 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
   renderingsRoot?: string;
+  /** Override `componentsRoot` from the env profile (Phase 2 layout). */
+  componentsRoot?: string;
+  /** Override `contentModelsRoot` from the env profile (Phase 2 layout). */
+  contentModelsRoot?: string;
   /** Override `partialDesignsRoot` from the env profile (Phase 4). */
   partialDesignsRoot?: string;
   /** Override `pageDesignsRoot` from the env profile (Phase 4). */
@@ -69,6 +73,10 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
   renderingsRoot?: string;
+  /** Override `componentsRoot` from the env profile (Phase 2 layout). */
+  componentsRoot?: string;
+  /** Override `contentModelsRoot` from the env profile (Phase 2 layout). */
+  contentModelsRoot?: string;
   /** Override `partialDesignsRoot` from the env profile (Phase 4). */
   partialDesignsRoot?: string;
   /** Override `pageDesignsRoot` from the env profile (Phase 4). */

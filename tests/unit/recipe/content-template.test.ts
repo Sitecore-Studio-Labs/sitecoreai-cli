@@ -18,6 +18,8 @@ const CONTEXT: CompileContext = {
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
 };
 
+const SITE = "default";
+
 const findField = (op: CreateItemOp, fieldGuid: string) =>
   op.fields.find((f) => f.fieldId === fieldGuid);
 
@@ -72,10 +74,10 @@ describe("compileContentTemplateRecipe", () => {
       (op): op is SetFieldOp => op.op === "SetField" && op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS
     );
     expect(insertOpsOp).toBeDefined();
-    expect(insertOpsOp?.itemRefKey).toBe(standardValuesId("section@1"));
+    expect(insertOpsOp?.itemRefKey).toBe(standardValuesId(SITE, "section@1"));
     expect(insertOpsOp?.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [templateId("accordion-item@1"), templateId("rich-text-block@1")],
+      refKeys: [templateId(SITE, "accordion-item@1"), templateId(SITE, "rich-text-block@1")],
     });
   });
 
@@ -183,7 +185,10 @@ describe("structured source field resolution", () => {
     const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1"] });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
+      site: SITE,
       sourceTypes: ["accordion-item@1"],
+      sourceQuery: undefined,
+      sourceScope: undefined,
     });
   });
 
@@ -191,7 +196,10 @@ describe("structured source field resolution", () => {
     const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1", "rich-text-block@1"] });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
+      site: SITE,
       sourceTypes: ["accordion-item@1", "rich-text-block@1"],
+      sourceQuery: undefined,
+      sourceScope: undefined,
     });
   });
 
@@ -202,7 +210,9 @@ describe("structured source field resolution", () => {
     });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
+      site: SITE,
       sourceTypes: ["accordion-item@1"],
+      sourceQuery: undefined,
       sourceScope: "/sitecore/content/Library",
     });
   });
@@ -237,10 +247,10 @@ describe("insertOptions on a ComponentTemplateRecipe", () => {
       (op): op is SetFieldOp => op.op === "SetField" && op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS
     );
     expect(insertOps).toBeDefined();
-    expect(insertOps?.itemRefKey).toBe(standardValuesId("accordion-block@1"));
+    expect(insertOps?.itemRefKey).toBe(standardValuesId(SITE, "accordion-block@1"));
     expect(insertOps?.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [templateId("accordion-item@1")],
+      refKeys: [templateId(SITE, "accordion-item@1")],
     });
   });
 });

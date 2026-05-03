@@ -85,13 +85,185 @@ export const SITECORE_TEMPLATES = {
    * `compileSiteTemplateRecipe`'s JSDoc.
    */
   SITE_TEMPLATE: "1b2dfd3b-f2f2-4f40-a75c-f6c2490919c4",
+  /**
+   * SXA `Rendering Folder` template — the conventional template for
+   * organisational folders inside the renderings tree (sections,
+   * Component Folders, Variants groupings). Distinct from the generic
+   * FOLDER template; SXA's editor UI looks for this template when
+   * walking the rendering tree.
+   *
+   * Verified against sandbox tenant `xmc-lizsitecore7e03-...` on
+   * 2026-05-02 via Authoring API introspection — every section folder
+   * under `/sitecore/layout/Renderings/Project/<site>/` conforms to
+   * this template.
+   */
+  RENDERING_FOLDER: "7ee0975b-0698-493e-b3a2-0b2ef33d0522",
+  /**
+   * SXA `HeadlessVariantsGrouping` template — the top-level "Headless
+   * Variants" folder under a site's `Presentation/` content tree.
+   * Recipe-emitted variant trees use this for the root grouping AND
+   * any section-level groupings under it (mirrors the templates tree's
+   * section folders).
+   *
+   * Verified against sandbox tenant 2026-05-02:
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants`
+   * conforms to this template.
+   */
+  HEADLESS_VARIANTS_GROUPING: "da26c636-96e1-45e4-88d6-3fcec70d5699",
+  /**
+   * SXA `HeadlessVariants` template — the per-rendering folder that
+   * groups all variant definitions for a single rendering.
+   *
+   * Verified against sandbox tenant 2026-05-02:
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants/<RenderingName>/`
+   * conforms to this template (e.g. Accordion, FeatureBanner, Promo).
+   */
+  HEADLESS_VARIANTS: "49c111d0-6867-4798-a724-1f103166e6e9",
+  /**
+   * SXA Headless `Variant Definition` template — each individual
+   * rendering variant (e.g. `default`, `outline`, `BoxedAccordion`).
+   *
+   * Verified against sandbox tenant 2026-05-02 — every leaf item under
+   * a `HeadlessVariants` rendering folder conforms to this template.
+   * Replaces scai's earlier use of generic `FOLDER` for variant items,
+   * which left the SXA editor unable to recognise them as variants.
+   */
+  VARIANT_DEFINITION: "4d50cdae-c2d9-4de8-b080-8f992bfb1b55",
+  /**
+   * SXA `Available Renderings Folder` — the parent grouping at
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
+   * Each child item conforms to `AVAILABLE_RENDERINGS` (below) and
+   * lists a section's renderings via the `RENDERINGS` field.
+   *
+   * Verified against sandbox tenant 2026-05-02.
+   */
+  AVAILABLE_RENDERINGS_FOLDER: "26ec1d18-11b2-4dd9-8326-f6115f4fd7eb",
+  /**
+   * SXA `Available Renderings` — each section's whitelist of
+   * renderings the SXA editor offers when composing pages. Stores
+   * a pipe-separated list of rendering itemIds in the `RENDERINGS`
+   * field (see `AVAILABLE_RENDERINGS_FIELDS.RENDERINGS`).
+   *
+   * Verified against sandbox tenant 2026-05-02 — `Page Content`,
+   * `Forms`, `Navigation`, etc. under the site's
+   * `Presentation/Available Renderings/` all conform to this.
+   */
+  AVAILABLE_RENDERINGS: "76da0a8d-fc7e-42b2-af1e-205b49e43f98",
 } as const;
+
+/**
+ * Fields of the SXA `Available Renderings` template. The `RENDERINGS`
+ * field is a multilist whose value is a pipe-separated string of
+ * Sitecore-formatted itemIds (`{GUID}|{GUID}|{GUID}`). Each id points
+ * at a rendering item — for our recipe-set, the renderings emitted
+ * by every component-template recipe in the same `section`.
+ *
+ * Verified against sandbox tenant 2026-05-02 by introspecting the
+ * `Page Content` Available Renderings item's own field.
+ */
+export const AVAILABLE_RENDERINGS_FIELDS = {
+  RENDERINGS: "715ae6c0-71c8-4744-ab4f-65362d20ad65",
+} as const;
+
+/**
+ * Sitecore `Placeholder` template (`/sitecore/templates/System/Layout/Placeholder`).
+ * A Placeholder Settings item is the gate for "what renderings can
+ * appear in this placeholder slot". Items conforming to this template
+ * are leaves under a `Placeholder Settings Folder`; recipes target
+ * them by their `Placeholder Key` field value (e.g. `headless-main`,
+ * `sxa-footer`), not by their item name.
+ *
+ * Verified against sandbox tenant 2026-05-02 — every placeholder under
+ * `/sitecore/content/<site>/Presentation/Placeholder Settings/...`
+ * conforms to this template.
+ */
+export const PLACEHOLDER_TEMPLATE_ID = "d2a6884c-04d5-4089-a64e-d27ca9d68d4c";
+
+/**
+ * Fields of the Sitecore `Placeholder` template that recipes interact
+ * with:
+ *
+ * - `PLACEHOLDER_KEY` (`Placeholder Key`) — identifying string used
+ *   in layout XML / page-design slot definitions. Recipe `placeholders`
+ *   entries match against this value.
+ * - `ALLOWED_CONTROLS` (`Allowed Controls`) — pipe-separated multilist
+ *   of rendering itemIds. Pages reads this when offering renderings
+ *   for the placeholder; without our renderings on this list, the
+ *   user can't add the component to the slot.
+ *
+ * Verified against sandbox tenant 2026-05-02 by introspecting
+ * `/sitecore/content/starters/e2e/Presentation/Placeholder Settings/Partial Design/Footer`.
+ */
+export const PLACEHOLDER_FIELDS = {
+  PLACEHOLDER_KEY: "7256bdab-1fd2-49dd-b205-cb4873d2917c",
+  ALLOWED_CONTROLS: "e391b526-d0c5-439d-803e-17512eae6222",
+} as const;
+
+/**
+ * SXA Foundation base templates that every component-template recipe
+ * (Phase 1 component template + standard values) must inherit so the
+ * SXA editor framework recognises the item as a component:
+ *
+ * - `_PerSiteStandardValues` ({44A022DB-56D3-419A-B43B-E27E4D8E9C41})
+ *   wires the per-site standard-values mechanism.
+ * - `_HorizonDatasourceGrouping` ({D0F6BE14-2A2D-4C56-ACB5-80CAA573B8E2})
+ *   exposes datasource grouping/defaults to the Pages (Horizon) editor.
+ * - `_PublishingGroupingTemplate` ({8BA7DAC6-32ED-4378-BD9E-5DA5B0F9848D})
+ *   wires the publishing/release grouping that SXA editors expect.
+ *
+ * Verified by introspecting `AccordionBlock` (and other components)
+ * in tenant `xmc-lizsitecore7e03-...` on 2026-05-02. Content-template
+ * (datasource-only) recipes deliberately exclude these — they're
+ * datasource items, not full SXA components.
+ */
+export const SXA_COMPONENT_BASE_TEMPLATES = [
+  "44a022db-56d3-419a-b43b-e27e4d8e9c41",
+  "d0f6be14-2a2d-4c56-acb5-80caa573b8e2",
+  "8ba7dac6-32ed-4378-bd9e-5da5b0f9848d",
+] as const;
 
 /**
  * Sitecore Standard Template — the implicit base of every template that
  * doesn't declare its own `__Base template`.
  */
 export const STANDARD_TEMPLATE_ID = "1930bbeb-7805-471a-a3be-4858ac7cf696";
+
+/**
+ * SXA Headless params-template bases — what every Pages-renderable
+ * rendering-parameters template must inherit so the editor recognises
+ * the template as a parameters shape and populates the rendering
+ * parameters dialog with its fields.
+ *
+ * Verified by introspecting the working `LinkList` params template in
+ * tenant `xmc-lizsitecore7e03-...` on 2026-05-03 — its `__Base templates`
+ * field carried exactly these three GUIDs:
+ *
+ *   - `4247AAD4-EBDE-4994-998F-E067A51B1FE4` — `BaseRenderingParameters`
+ *     at `/sitecore/templates/Foundation/JSS Experience Accelerator/
+ *     Presentation/Rendering Parameters/BaseRenderingParameters`. The
+ *     SXA Headless analog of vanilla Sitecore's "Standard Rendering
+ *     Parameters" — chains in `IStyling`, `IComponentVariant`, and
+ *     other facets the SXA editor scans for.
+ *   - `44A022DB-56D3-419A-B43B-E27E4D8E9C41` — `_PerSiteStandardValues`
+ *     (also part of `SXA_COMPONENT_BASE_TEMPLATES`). Wires the per-site
+ *     standard-values mechanism so per-site SV inheritance works for
+ *     params items too.
+ *   - `3DB3EB10-F8D0-4CC9-BE26-18CE7B139EC8` — additional SXA Headless
+ *     base (purpose not yet pinned, but consistently present on
+ *     working SXA Headless params templates; safer to mirror than
+ *     omit).
+ *
+ * Vanilla Sitecore "Standard Rendering Parameters"
+ * (`8CA06D6A-B353-44E8-BC31-B528C7306971`) is *not* used by SXA Headless
+ * — confirmed via the introspected LinkList template, which doesn't
+ * inherit it. Earlier emission attempted to use it and the params
+ * dialog stayed empty in Pages.
+ */
+export const SXA_HEADLESS_PARAMS_BASE_TEMPLATES = [
+  "4247aad4-ebde-4994-998f-e067a51b1fe4",
+  "44a022db-56d3-419a-b43b-e27e4d8e9c41",
+  "3db3eb10-f8d0-4cc9-be26-18ce7b139ec8",
+] as const;
 
 /**
  * Stable system-field GUIDs that recipes need to write.
@@ -252,4 +424,36 @@ export const SECTION_DEFINITION_FIELDS = {
 
 export const DEFAULT_LANGUAGE = "en";
 export const DEFAULT_VERSION = 1;
-export const DEFAULT_ICON = "Office/32x32/document.png";
+
+/**
+ * Default icon for component-shaped recipe items — SXA Headless's
+ * built-in component icon. Verified against live tenant 2026-05-02:
+ * real component templates and rendering items in healthy SXA sites
+ * (e.g. `AccordionBlock`, `Accordion`) carry this value on `__Icon`.
+ *
+ * Used for: component templates, parameters templates, rendering
+ * items, and (as the fallback) any other recipe-emitted item that
+ * doesn't override.
+ */
+export const DEFAULT_ICON = "office/32x32/elements3.png";
+
+/**
+ * Icon for folder-shaped recipe items — Sitecore's standard folder
+ * icon. Real SXA tenants leave the icon blank on per-site folders
+ * (Components, Renderings, Variants groupings) and inherit the
+ * underlying template's icon, but recipe-emitted items don't have
+ * that template inheritance set up the same way, so we stamp this
+ * explicitly to give the SXA editor's tree a usable icon for every
+ * recipe-created folder.
+ *
+ * Applied to: Components/<section> templates folder, Component
+ * Folders bucket, Presentation Parameters bucket, renderings-tree
+ * section folder, Headless Variants section grouping, per-rendering
+ * Headless Variants folder.
+ *
+ * NOT applied to Available Renderings section items — those use the
+ * SXA `Available Renderings` template (not a Folder template), and
+ * its template-level icon shows through correctly without an explicit
+ * `__Icon` override.
+ */
+export const FOLDER_ICON = "office/16x16/folder.png";

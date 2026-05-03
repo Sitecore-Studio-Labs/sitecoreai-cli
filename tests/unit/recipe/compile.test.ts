@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type CompileContext, compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import {
   fieldId,
+  inlineEnumFolderId,
   paramsFieldId,
   paramsSectionId,
   paramsTemplateId,
@@ -16,6 +17,7 @@ import {
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
+  SXA_COMPONENT_BASE_TEMPLATES,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
@@ -27,11 +29,17 @@ import type {
 } from "../../../src/recipe/ir/operations";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 
+const ENUMERATIONS_ROOT = "/sitecore/content/test-tenant/test-site/Settings/Enumerations";
+
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/test-site/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
+  enumerationsRoot: ENUMERATIONS_ROOT,
 };
 
+const SITE = "default";
 const HANDLE = "cta-button@1";
 
 const onlyOp = <K extends Operation["op"]>(
@@ -59,7 +67,7 @@ const findField = (
 describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   const ir = compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
 
-  it("emits exactly 17 operations in the canonical order", () => {
+  it("emits exactly 30 operations in the canonical order", () => {
     expect(ir.schemaVersion).toBe("1");
     expect(ir.recipeHandle).toBe(HANDLE);
     expect(ir.operations.map((op) => op.op)).toEqual([
@@ -72,14 +80,29 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
       "CreateItem", // 7. params-template
       "SetBaseTemplates", // 8. params-template → Standard Template
       "CreateItem", // 9. params-section "Parameters"
-      "CreateItem", // 10. params-field "Size"
-      "CreateItem", // 11. params-field "ColorScheme"
-      "CreateItem", // 12. rendering
-      "CreateItem", // 13. variants-folder
-      "CreateItem", // 14. variant "default"
-      "CreateItem", // 15. variant "outline"
-      "CreateItem", // 16. variant "ghost"
-      "CreateItem", // 17. variant "link"
+      // Inline-enum "Size": folder + 4 value items, then the field def.
+      "CreateItem", // 10. inline-enum folder Size (CtaButton--Size)
+      "CreateItem", // 11. inline-enum value Size/default
+      "CreateItem", // 12. inline-enum value Size/lg
+      "CreateItem", // 13. inline-enum value Size/sm
+      "CreateItem", // 14. inline-enum value Size/xs
+      "CreateItem", // 15. params-field "Size"
+      // Inline-enum "ColorScheme": folder + 5 value items, then the field def.
+      "CreateItem", // 16. inline-enum folder ColorScheme (CtaButton--ColorScheme)
+      "CreateItem", // 17. inline-enum value ColorScheme/primary
+      "CreateItem", // 18. inline-enum value ColorScheme/neutral
+      "CreateItem", // 19. inline-enum value ColorScheme/success
+      "CreateItem", // 20. inline-enum value ColorScheme/destructive
+      "CreateItem", // 21. inline-enum value ColorScheme/ai
+      "CreateItem", // 22. params-field "ColorScheme"
+      "CreateItem", // 23. params __Standard Values
+      "SetStandardValues", // 24. back-fill params-template
+      "CreateItem", // 25. rendering
+      "CreateItem", // 26. variants-folder
+      "CreateItem", // 27. variant "default"
+      "CreateItem", // 28. variant "outline"
+      "CreateItem", // 29. variant "ghost"
+      "CreateItem", // 30. variant "link"
     ]);
   });
 
@@ -90,7 +113,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("template item uses recipe.name, displayName goes to __Display name", () => {
     const op = ir.operations[0] as CreateItemOp;
-    expect(op.id).toBe(templateId(HANDLE));
+    expect(op.id).toBe(templateId(SITE, HANDLE));
     expect(op.path).toBe(`${CONTEXT.templatesRoot}/CtaButton`);
     expect(op.parent).toEqual({ kind: "ref-path", value: CONTEXT.templatesRoot });
     expect(op.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
@@ -99,16 +122,19 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     expect(displayName?.value).toEqual({ kind: "string", value: "CTA Button" });
   });
 
-  it("template gets Standard Template as its base", () => {
+  it("template inherits Standard Template + the SXA Foundation bases (per-site SVs, Horizon datasource grouping, publishing grouping)", () => {
     const op = ir.operations[1] as SetBaseTemplatesOp;
-    expect(op.itemRefKey).toBe(templateId(HANDLE));
-    expect(op.baseTemplates).toEqual([STANDARD_TEMPLATE_ID]);
+    expect(op.itemRefKey).toBe(templateId(SITE, HANDLE));
+    expect(op.baseTemplates).toEqual([
+      STANDARD_TEMPLATE_ID,
+      ...SXA_COMPONENT_BASE_TEMPLATES,
+    ]);
   });
 
   it("section 'Content' is parented under the template", () => {
     const op = ir.operations[2] as CreateItemOp;
-    expect(op.id).toBe(sectionId(HANDLE, "Content"));
-    expect(op.parent).toEqual({ kind: "ref-recipe", refKey: templateId(HANDLE) });
+    expect(op.id).toBe(sectionId(SITE, HANDLE, "Content"));
+    expect(op.parent).toEqual({ kind: "ref-recipe", refKey: templateId(SITE, HANDLE) });
     expect(op.path).toBe(`${CONTEXT.templatesRoot}/CtaButton/Content`);
     expect(op.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_SECTION);
     expect(op.name).toBe("Content");
@@ -116,10 +142,10 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("Link field carries General Link type (sitecore.type override) and sortOrder 100", () => {
     const op = onlyOp(ir.operations, "CreateItem", (o) => o.name === "Link");
-    expect(op.id).toBe(fieldId(HANDLE, "Link"));
+    expect(op.id).toBe(fieldId(SITE, HANDLE, "Link"));
     expect(op.parent).toEqual({
       kind: "ref-recipe",
-      refKey: sectionId(HANDLE, "Content"),
+      refKey: sectionId(SITE, HANDLE, "Content"),
     });
     const type = findField(op.fields, TEMPLATE_FIELD_FIELDS.TYPE);
     expect(type?.value).toEqual({ kind: "string", value: "General Link" });
@@ -129,23 +155,23 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("standard values item has templateOf = template's own refKey (chicken-and-egg)", () => {
     const op = ir.operations[4] as CreateItemOp;
-    expect(op.id).toBe(standardValuesId(HANDLE));
-    expect(op.parent).toEqual({ kind: "ref-recipe", refKey: templateId(HANDLE) });
+    expect(op.id).toBe(standardValuesId(SITE, HANDLE));
+    expect(op.parent).toEqual({ kind: "ref-recipe", refKey: templateId(SITE, HANDLE) });
     // templateOf carries the template's recipe-internal refKey; the executor
     // resolves it to the assigned itemId via capturedItemIds at apply time.
-    expect(op.templateOf).toBe(templateId(HANDLE));
+    expect(op.templateOf).toBe(templateId(SITE, HANDLE));
     expect(op.name).toBe("__Standard Values");
   });
 
   it("back-fills template.__Standard values via SetStandardValues op", () => {
     const op = ir.operations[5] as SetStandardValuesOp;
-    expect(op.templateRefKey).toBe(templateId(HANDLE));
-    expect(op.standardValuesRefKey).toBe(standardValuesId(HANDLE));
+    expect(op.templateRefKey).toBe(templateId(SITE, HANDLE));
+    expect(op.standardValuesRefKey).toBe(standardValuesId(SITE, HANDLE));
   });
 
   it("params template lands under the templates root with `<name> Parameters`", () => {
     const op = ir.operations[6] as CreateItemOp;
-    expect(op.id).toBe(paramsTemplateId(HANDLE));
+    expect(op.id).toBe(paramsTemplateId(SITE, HANDLE));
     expect(op.parent).toEqual({ kind: "ref-path", value: CONTEXT.templatesRoot });
     expect(op.path).toBe(`${CONTEXT.templatesRoot}/CtaButton Parameters`);
     expect(op.name).toBe("CtaButton Parameters");
@@ -155,32 +181,40 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("params section is parented under the params template", () => {
     const op = ir.operations[8] as CreateItemOp;
-    expect(op.id).toBe(paramsSectionId(HANDLE, "Parameters"));
+    expect(op.id).toBe(paramsSectionId(SITE, HANDLE, "Parameters"));
     expect(op.parent).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(HANDLE),
+      refKey: paramsTemplateId(SITE, HANDLE),
     });
     expect(op.name).toBe("Parameters");
   });
 
-  it("params field 'Size' carries Droplist + values pipe-joined as Source", () => {
+  it("params field 'Size' carries Droplist (sitecore.type override) + ref-recipe Source pointing at the per-field enum folder", () => {
     const op = onlyOp(
       ir.operations,
       "CreateItem",
       (o) =>
         o.name === "Size" &&
         o.parent.kind === "ref-recipe" &&
-        o.parent.refKey === paramsSectionId(HANDLE, "Parameters")
+        o.parent.refKey === paramsSectionId(SITE, HANDLE, "Parameters")
     );
-    expect(op.id).toBe(paramsFieldId(HANDLE, "Size"));
+    expect(op.id).toBe(paramsFieldId(SITE, HANDLE, "Size"));
+    // sitecore.type: "droplist" override is preserved on the Type cell.
     const type = findField(op.fields, TEMPLATE_FIELD_FIELDS.TYPE);
     expect(type?.value).toEqual({ kind: "string", value: "Droplist" });
+    // Inline enum Source is a ref-recipe to the per-field inline-enum
+    // folder under <enumerationsRoot>/<recipeName>--<fieldName>/. The
+    // executor resolves the refKey to the folder's apply-time path so
+    // SXA's rendering parameter dialog can enumerate the children.
     const source = findField(op.fields, TEMPLATE_FIELD_FIELDS.SOURCE);
-    expect(source?.value).toEqual({ kind: "string", value: "default|lg|sm|xs" });
+    expect(source?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: inlineEnumFolderId(SITE, HANDLE, "Size"),
+    });
   });
 
   it("rendering carries componentName, ref-recipe Datasource Template + Parameters Template", () => {
-    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(HANDLE));
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, HANDLE));
     expect(op.parent).toEqual({ kind: "ref-path", value: CONTEXT.renderingsRoot });
     expect(op.templateOf).toBe(SITECORE_TEMPLATES.RENDERING);
     expect(op.name).toBe("CtaButton");
@@ -190,16 +224,16 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     });
     expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)?.value).toEqual({
       kind: "ref-recipe",
-      refKey: templateId(HANDLE),
+      refKey: templateId(SITE, HANDLE),
     });
     expect(findField(op.fields, RENDERING_FIELDS.PARAMETERS_TEMPLATE)?.value).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(HANDLE),
+      refKey: paramsTemplateId(SITE, HANDLE),
     });
   });
 
   it("rendering's Datasource Location is the recipe's query string", () => {
-    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(HANDLE));
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, HANDLE));
     expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_LOCATION)?.value).toEqual({
       kind: "query",
       value: "query:$site/*[@@name='Data']",
@@ -207,7 +241,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   });
 
   it("rendering's OtherProperties merges compiler defaults with recipe overrides", () => {
-    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(HANDLE));
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, HANDLE));
     const otherProps = findField(op.fields, RENDERING_FIELDS.OTHER_PROPERTIES);
     expect(otherProps?.value).toMatchObject({
       kind: "url-string-map",
@@ -215,20 +249,27 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     });
   });
 
-  it("variants folder is parented under the rendering item, name 'Variants'", () => {
-    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === variantsFolderId(HANDLE));
-    expect(op.parent).toEqual({ kind: "ref-recipe", refKey: renderingId(HANDLE) });
-    expect(op.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
-    expect(op.name).toBe("Variants");
+  it("per-rendering Headless Variants folder lands under the configured root with HeadlessVariants template (no section)", () => {
+    // cta-button has no `section`, so the per-rendering folder is parented
+    // directly at headlessVariantsRoot (no grouping layer above).
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === variantsFolderId(SITE, HANDLE));
+    expect(op.parent).toEqual({
+      kind: "ref-path",
+      value: CONTEXT.headlessVariantsRoot,
+    });
+    expect(op.templateOf).toBe(SITECORE_TEMPLATES.HEADLESS_VARIANTS);
+    expect(op.name).toBe("CtaButton");
+    expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/CtaButton`);
   });
 
-  it("emits one Variant item per recipe.variants entry, all under the variants folder", () => {
+  it("emits one Variant Definition item per recipe.variants entry under the per-rendering folder", () => {
     const variantNames = ["default", "outline", "ghost", "link"];
     for (const name of variantNames) {
-      const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === variantId(HANDLE, name));
-      expect(op.parent).toEqual({ kind: "ref-recipe", refKey: variantsFolderId(HANDLE) });
-      expect(op.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
+      const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === variantId(SITE, HANDLE, name));
+      expect(op.parent).toEqual({ kind: "ref-recipe", refKey: variantsFolderId(SITE, HANDLE) });
+      expect(op.templateOf).toBe(SITECORE_TEMPLATES.VARIANT_DEFINITION);
       expect(op.name).toBe(name);
+      expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/CtaButton/${name}`);
     }
   });
 

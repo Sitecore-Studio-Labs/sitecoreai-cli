@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { requestClientCredentialsToken } from "../../src/serialization/sitecore-api";
 import { fetchEnvironments } from "../../src/deploy/api/environments";
 import { fetchProjectEnvironments } from "../../src/deploy/api/projects";
-import { DeployEnvironment } from "../../src/deploy/api/common";
+import { extractDeployEnvironmentList, getEnvironmentType } from "../../src/deploy/tasks/shared";
 
 export const getEnv = (name: string): string | undefined => {
   const value = process.env[name];
@@ -14,51 +14,6 @@ const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
 const DEFAULT_AUDIENCE = "https://api.sitecorecloud.io";
 
 let cachedDeployToken: string | undefined;
-
-const extractDeployEnvironmentList = (result: unknown): DeployEnvironment[] => {
-  if (Array.isArray(result)) {
-    return result as DeployEnvironment[];
-  }
-  if (result && typeof result === "object") {
-    const record = result as Record<string, unknown>;
-    const items = record.items ?? record.data ?? record.environments;
-    if (Array.isArray(items)) {
-      return items as DeployEnvironment[];
-    }
-  }
-  return [];
-};
-
-const getEnvironmentType = (environment: DeployEnvironment): string | undefined => {
-  const record = environment as Record<string, unknown>;
-  const candidates = [
-    record.projectType,
-    record.projectTypeName,
-    record.environmentType,
-    record.type,
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string") {
-      return candidate;
-    }
-  }
-  const project = record.project;
-  if (project && typeof project === "object") {
-    const projectRecord = project as Record<string, unknown>;
-    const projectCandidates = [
-      projectRecord.projectType,
-      projectRecord.projectTypeName,
-      projectRecord.environmentType,
-      projectRecord.type,
-    ];
-    for (const candidate of projectCandidates) {
-      if (typeof candidate === "string") {
-        return candidate;
-      }
-    }
-  }
-  return undefined;
-};
 
 export const requireEnv = (name: string): string => {
   const value = process.env[name];

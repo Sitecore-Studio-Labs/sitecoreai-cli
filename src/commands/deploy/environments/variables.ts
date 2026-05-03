@@ -3,7 +3,7 @@ import {
   runDeployEnvironmentsVariablesList,
   runDeployEnvironmentsVariablesCreate,
   runDeployEnvironmentsVariablesDelete,
-} from "../../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsVariablesCommand = (): Command => {

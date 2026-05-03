@@ -10,14 +10,12 @@ import {
 } from "@/deploy/api";
 import type { EnvironmentConfiguration } from "@/config";
 import type { ConnectOptions } from "../../types";
+import { inputError, selectFromList, selectMatch } from "@/shared/cli-tasks";
 import {
   getEnvironmentType,
-  inputError,
   resolveProjectIdValue,
   resolveTenantTypeValue,
-  selectFromList,
-  selectMatch,
-} from "../../shared";
+} from "@/deploy/tasks/shared";
 import type { Logger } from "@/shared/logger";
 import { promptConfirm, promptText } from "@/shared/prompt";
 import { createCliError, toCliError } from "@/shared/errors";

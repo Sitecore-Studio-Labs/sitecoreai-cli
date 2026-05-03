@@ -22,7 +22,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeployEnvironmentsDelete: vi.fn(),
 }));
 
-vi.mock("../../../src/serialization/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks", () => taskMocks);
 
 const runEnvironments = async (args: string[]): Promise<void> => {
   const command = createDeployEnvironmentsCommand();

@@ -150,6 +150,8 @@ describe("public recipe API surface", () => {
       {
         templatesRoot: "/sitecore/templates/Project/test/Components",
         renderingsRoot: "/sitecore/layout/Renderings/Project/test",
+        headlessVariantsRoot:
+          "/sitecore/content/test-tenant/test/Presentation/Headless Variants",
       }
     );
     expect(ir.schemaVersion).toBe("1");

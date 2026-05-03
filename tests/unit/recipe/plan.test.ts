@@ -11,6 +11,10 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot:
+    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 const compileCta = () => compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
@@ -92,7 +96,7 @@ describe("buildPlan — drifted item produces an update plan", () => {
     const iconDrift = templateAction.diff?.find((d) => d.fieldId === SYSTEM_FIELDS.ICON);
     expect(iconDrift).toMatchObject({
       before: "Office/32x32/old-icon.png",
-      after: "Office/32x32/document.png",
+      after: "office/32x32/elements3.png",
     });
     expect(templateAction.mutation).toMatchObject({
       kind: "updateItem",
@@ -137,7 +141,7 @@ describe("buildPlan — field name lookup is case-insensitive", () => {
       throw new Error("expected first op to be CreateItem");
     }
     client.preload({
-      itemId: templateId(HANDLE),
+      itemId: templateId("default", HANDLE),
       templateId: expectedTemplateOp.templateOf,
       parentId: "00000000-0000-0000-0000-000000000aaa",
       name: expectedTemplateOp.name,

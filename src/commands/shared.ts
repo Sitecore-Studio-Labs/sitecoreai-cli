@@ -25,9 +25,10 @@ export const normalizeArgs = (argv: string[]): string[] =>
 
 export const addConfigOption = (command: Command): Command =>
   command.addOption(
-    new Option("-c, --config <path>", "Path to root sitecoreai.cli.json directory").default(
-      process.cwd()
-    )
+    new Option(
+      "-c, --config <path>",
+      "Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself)."
+    ).default(process.cwd())
   );
 
 export const addEnvironmentOption = (command: Command): Command =>

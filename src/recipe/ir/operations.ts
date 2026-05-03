@@ -44,7 +44,20 @@ export const RefValueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ref-guid"), value: GUID }),
   z.object({ kind: z.literal("ref-guid-list"), values: z.array(GUID) }),
   z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
-  z.object({ kind: z.literal("ref-recipe-list"), refKeys: z.array(GUID) }),
+  z.object({
+    kind: z.literal("ref-recipe-list"),
+    refKeys: z.array(GUID),
+    /**
+     * When `true`, the resolver silently drops refKeys it can't find
+     * in the captured-itemId map instead of throwing. Default false
+     * (existing strict behavior — used by per-recipe SetField ops
+     * where a missing ref means a real bug). Set true on cross-recipe
+     * aggregate ops (e.g. `__available-renderings__`) where some
+     * sibling recipe IRs may have aborted and the aggregate should
+     * still write whichever items DID get created.
+     */
+    tolerateMissing: z.boolean().optional(),
+  }),
   z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
   z.object({ kind: z.literal("query"), value: NON_EMPTY }),
   /**
@@ -53,9 +66,15 @@ export const RefValueSchema = z.discriminatedUnion("kind", [
    * by the executor (via `renderSourceFields`) just before dispatching
    * the field write. Mirrors the `SitecoreFieldAugment` source surface
    * minus `sourceRaw` (raw is always rendered at compile time).
+   *
+   * `site` is the site name the compiler emitted under — required so the
+   * executor can resolve handle refKeys via the (site, handle)-scoped
+   * `templateId(site, handle)` derivation. Defaults to `default` when the
+   * compiler ran without `context.site`.
    */
   z.object({
     kind: z.literal("ref-source-fields"),
+    site: NON_EMPTY,
     sourceTypes: z.array(NON_EMPTY).min(1),
     sourceQuery: z.string().optional(),
     sourceScope: z.string().optional(),

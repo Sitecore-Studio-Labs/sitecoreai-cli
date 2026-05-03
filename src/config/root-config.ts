@@ -75,7 +75,7 @@ export const readRootConfiguration = (
       ? name.toLowerCase() === activeEnvironmentName.toLowerCase()
       : false;
     envWithOverrides[name] = {
-      ...applyEnvOverrides(name, env, includeGlobal),
+      ...applyEnvOverrides(name, flattenRecipeRoots(name, env), includeGlobal),
       name,
       cacheAuthenticationToken: settings.cacheAuthenticationToken,
     };
@@ -95,6 +95,62 @@ export const readRootConfiguration = (
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,
   };
+};
+
+/**
+ * Pairing of nested-form key (under `recipeRoots`) and its flat-form
+ * counterpart on `EnvironmentConfiguration`. The flatten step copies
+ * each nested entry into the matching flat field.
+ */
+const RECIPE_ROOT_PAIRS: ReadonlyArray<
+  [keyof NonNullable<EnvironmentConfiguration["recipeRoots"]>, keyof EnvironmentConfiguration]
+> = [
+  ["templates", "templatesRoot"],
+  ["renderings", "renderingsRoot"],
+  ["components", "componentsRoot"],
+  ["contentModels", "contentModelsRoot"],
+  ["partialDesigns", "partialDesignsRoot"],
+  ["pageDesigns", "pageDesignsRoot"],
+  ["contentItems", "contentItemsRoot"],
+  ["headlessVariants", "headlessVariantsRoot"],
+  ["availableRenderings", "availableRenderingsRoot"],
+  ["enumerations", "enumerationsRoot"],
+  ["placeholderSettings", "placeholderSettingsRoots"],
+];
+
+/**
+ * Flatten `env.recipeRoots.<x>` entries into the matching flat
+ * `env.<x>Root` fields so internal consumers see one shape. When the
+ * same field is set both nested and flat, **nested wins** (preferred
+ * form takes precedence for migrating configs) and a one-line warning
+ * fires so the operator can pick a side.
+ */
+const flattenRecipeRoots = (
+  envName: string,
+  env: EnvironmentConfiguration
+): EnvironmentConfiguration => {
+  if (!env.recipeRoots) {
+    return env;
+  }
+  const flattened: EnvironmentConfiguration = { ...env };
+  const collisions: string[] = [];
+  for (const [nestedKey, flatKey] of RECIPE_ROOT_PAIRS) {
+    const nestedValue = env.recipeRoots[nestedKey];
+    if (nestedValue === undefined) {
+      continue;
+    }
+    if (env[flatKey] !== undefined) {
+      collisions.push(`${flatKey}/recipeRoots.${nestedKey}`);
+    }
+    (flattened as Record<string, unknown>)[flatKey] = nestedValue;
+  }
+  if (collisions.length > 0) {
+    process.stderr.write(
+      `Warning: env profile '${envName}' sets these roots both flat and under recipeRoots: ` +
+        `${collisions.join(", ")}. recipeRoots wins. Pick one form.\n`
+    );
+  }
+  return flattened;
 };
 
 const resolveEnvironmentReferences = (

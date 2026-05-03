@@ -58,54 +58,12 @@ const exitCodeFor = (code: CliErrorCode): number => {
   }
 };
 
-const classifyMessage = (message: string): CliErrorCode => {
-  const normalized = message.toLowerCase();
-  if (normalized.includes("sitecoreai.cli.json") || normalized.includes("configuration file")) {
-    if (normalized.includes("invalid")) {
-      return "CONFIG_INVALID";
-    }
-    if (normalized.includes("resolve") || normalized.includes("not found")) {
-      return "CONFIG_NOT_FOUND";
-    }
-  }
-  if (
-    normalized.includes("environment") &&
-    (normalized.includes("not configured") ||
-      normalized.includes("not defined") ||
-      normalized.includes("does not exist"))
-  ) {
-    return "ENV_NOT_FOUND";
-  }
-  if (
-    normalized.includes("deploy api request failed") ||
-    normalized.includes("deployment failed")
-  ) {
-    return "DEPLOY_FAILED";
-  }
-  if (
-    normalized.includes("deploy token") ||
-    normalized.includes("client credentials") ||
-    normalized.includes("client secret") ||
-    normalized.includes("authentication")
-  ) {
-    return "AUTH_REQUIRED";
-  }
-  if (normalized.includes("timed out") || normalized.includes("network")) {
-    return "NETWORK";
-  }
-  if (normalized.includes("required")) {
-    return "INPUT_INVALID";
-  }
-  return "UNKNOWN";
-};
-
 export const toCliError = (error: unknown): CliError => {
   if (error instanceof CliError) {
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  const code = classifyMessage(message);
-  return new CliError(message, { code, exitCode: exitCodeFor(code) });
+  return new CliError(message, { code: "UNKNOWN", exitCode: exitCodeFor("UNKNOWN") });
 };
 
 export const withHint = (error: CliError, hint: string): CliError =>

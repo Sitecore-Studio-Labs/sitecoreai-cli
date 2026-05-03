@@ -46,6 +46,12 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const partialDesignsRoot = options.partialDesignsRoot ?? environment?.partialDesignsRoot;
   const pageDesignsRoot = options.pageDesignsRoot ?? environment?.pageDesignsRoot;
   const contentItemsRoot = options.contentItemsRoot ?? environment?.contentItemsRoot;
+  const headlessVariantsRoot =
+    options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
+  const availableRenderingsRoot =
+    options.availableRenderingsRoot ?? environment?.availableRenderingsRoot;
+  const enumerationsRoot =
+    options.enumerationsRoot ?? environment?.enumerationsRoot;
 
   const { files, source } = await resolveRecipeInputs(options, root);
 
@@ -72,6 +78,9 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
       partialDesignsRoot,
       pageDesignsRoot,
       contentItemsRoot,
+      headlessVariantsRoot,
+      availableRenderingsRoot,
+      enumerationsRoot,
     });
 
     const outputPath =

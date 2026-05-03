@@ -210,6 +210,14 @@
           "type": "string",
           "description": "Sitecore parent path under which `scai recipe compile|push` creates template items (e.g. /sitecore/templates/Project/<site>/Components). Tenant-specific. Used as fallback when --templates-root is not passed."
         },
+        "componentsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates component template items in the per-site folder layout (`<componentsRoot>/<section>/<Component>`). When unset, the compiler falls back to `templatesRoot` and emits the legacy flat layout. Used as fallback when --components-root is not passed."
+        },
+        "contentModelsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates content-template items (`<contentModelsRoot>/<group>/<name>` when grouped, flat otherwise). When unset, content templates fall back to `templatesRoot` and land mixed in with components. Used as fallback when --content-models-root is not passed."
+        },
         "renderingsRoot": {
           "type": "string",
           "description": "Sitecore parent path under which `scai recipe compile|push` creates rendering items (e.g. /sitecore/layout/Renderings/Project/<site>). Tenant-specific. Used as fallback when --renderings-root is not passed."
@@ -225,6 +233,44 @@
         "contentItemsRoot": {
           "type": "string",
           "description": "Sitecore parent path under which `scai recipe compile|push` creates shared content items (e.g. /sitecore/content/<site>/Data). Required for ContentItemRecipe compilation."
+        },
+        "headlessVariantsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates SXA Headless rendering variants (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants). Required when any recipe in the set declares variants."
+        },
+        "availableRenderingsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates SXA Available Renderings section items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings). One section per `recipe.section` is emitted with all renderings in that section listed in the Renderings field."
+        },
+        "enumerationsRoot": {
+          "type": "string",
+          "description": "Sitecore parent path under which `scai recipe compile|push` creates EnumerationRecipe items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Enumerations). Each enum lands as `<enumerationsRoot>/<EnumName>` with one child item per declared value. Required for EnumerationRecipe compilation, and for any recipe whose fields carry `sitecore.enumHandle`."
+        },
+        "placeholderSettingsRoots": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sitecore content-tree paths to walk when resolving recipe-declared `placeholders` to Placeholder Settings items (matched by their `Placeholder Key` field). Typically the per-site Presentation/Placeholder Settings AND the Layout/Placeholder Settings/Project/<site> path."
+        },
+        "recipeRoots": {
+          "type": "object",
+          "description": "Preferred nested form of the *Root fields. Flattened into the matching flat fields at config-load time (recipeRoots wins when both are set; a warning fires).",
+          "additionalProperties": false,
+          "properties": {
+            "templates": { "type": "string" },
+            "renderings": { "type": "string" },
+            "components": { "type": "string" },
+            "contentModels": { "type": "string" },
+            "partialDesigns": { "type": "string" },
+            "pageDesigns": { "type": "string" },
+            "contentItems": { "type": "string" },
+            "headlessVariants": { "type": "string" },
+            "availableRenderings": { "type": "string" },
+            "enumerations": { "type": "string" },
+            "placeholderSettings": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
         }
       }
     }

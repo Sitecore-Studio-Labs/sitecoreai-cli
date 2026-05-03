@@ -2,28 +2,19 @@ import { describe, expect, it } from "vitest";
 import { CliError, createCliError, toCliError, withHint } from "../../../src/shared/errors";
 
 describe("errors", () => {
-  it("classifies config errors", () => {
-    const notFound = toCliError(new Error("configuration file not found"));
-    expect(notFound.code).toBe("CONFIG_NOT_FOUND");
-    expect(notFound.exitCode).toBe(2);
-
-    const invalid = toCliError(new Error("sitecoreai.cli.json is invalid"));
-    expect(invalid.code).toBe("CONFIG_INVALID");
-    expect(invalid.exitCode).toBe(2);
-  });
-
-  it("classifies environment, auth, network, deploy, and input errors", () => {
-    expect(toCliError(new Error("Environment is not configured")).code).toBe("ENV_NOT_FOUND");
-    expect(toCliError(new Error("Deploy API request failed")).code).toBe("DEPLOY_FAILED");
-    expect(toCliError(new Error("Deploy token not found")).code).toBe("AUTH_REQUIRED");
-    expect(toCliError(new Error("Request timed out")).code).toBe("NETWORK");
-    expect(toCliError(new Error("Field is required")).code).toBe("INPUT_INVALID");
-  });
-
-  it("returns unknown for unclassified errors", () => {
+  it("wraps non-CliError inputs as UNKNOWN", () => {
     const error = toCliError(new Error("Something else happened"));
+    expect(error).toBeInstanceOf(CliError);
     expect(error.code).toBe("UNKNOWN");
     expect(error.exitCode).toBe(1);
+    expect(error.message).toBe("Something else happened");
+  });
+
+  it("wraps non-Error values as UNKNOWN with stringified message", () => {
+    const error = toCliError("string error");
+    expect(error.code).toBe("UNKNOWN");
+    expect(error.exitCode).toBe(1);
+    expect(error.message).toBe("string error");
   });
 
   it("preserves CliError and applies hints", () => {

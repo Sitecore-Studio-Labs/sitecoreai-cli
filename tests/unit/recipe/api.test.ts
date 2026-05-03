@@ -3,6 +3,7 @@ import type { EnvironmentConfiguration } from "../../../src/config";
 import { CliError } from "../../../src/shared/errors";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
+import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
 
 vi.mock("../../../src/recipe/api/auth", () => ({
   getAccessToken: vi.fn(),
@@ -236,9 +237,11 @@ describe("createAuthoringClient — mutations", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createAuthoringClient({ environment: baseEnv });
+    // Pass parent as a Sitecore itemId — bypasses scai's path→itemId
+    // auto-resolution, which is exercised separately below.
     const result = await client.createItem({
       templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
-      parent: "/sitecore/templates",
+      parent: "0de95ae4-41ab-4d01-9eb0-67441b7c2450",
       name: "CtaButton",
       fields: [
         {
@@ -255,7 +258,7 @@ describe("createAuthoringClient — mutations", () => {
     expect(body.variables.input).not.toHaveProperty("itemId");
     expect(body.variables.input).toMatchObject({
       templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
-      parent: "/sitecore/templates",
+      parent: "0de95ae4-41ab-4d01-9eb0-67441b7c2450",
       name: "CtaButton",
       database: "master",
       language: "en",
@@ -275,11 +278,123 @@ describe("createAuthoringClient — mutations", () => {
     await expect(
       client.createItem({
         templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
-        parent: "/sitecore/templates",
+        parent: "0de95ae4-41ab-4d01-9eb0-67441b7c2450",
         name: "CtaButton",
         fields: [],
       })
     ).rejects.toThrow(/no itemId/);
+  });
+
+  it("createItem with a path parent resolves to itemId via getItem and sends the GUID to the mutation", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes("query") && body.variables?.path) {
+        // getItem({ path }) — return an existing item with an itemId.
+        return okResponse({
+          data: {
+            item: {
+              itemId: "0de95ae441ab4d019eb067441b7c2450",
+              name: "templates",
+              path: body.variables.path,
+              parent: { itemId: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+              template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+              fields: { nodes: [] },
+            },
+          },
+        });
+      }
+      return okResponse({
+        data: { createItem: { item: { itemId: "22222222-2222-2222-2222-222222222222" } } },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+      parent: "/sitecore/templates",
+      name: "CtaButton",
+      fields: [],
+    });
+
+    expect(result).toEqual({ itemId: "22222222-2222-2222-2222-222222222222" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const createBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    // Parent must be the resolved itemId, not the raw path — the
+    // Authoring schema's `CreateItemInput.parent` is `ID!`, not String.
+    // Sitecore returns itemIds with dashes stripped; scai forwards
+    // whatever the API returned without re-dashifying.
+    expect(createBody.variables.input.parent).toBe("0de95ae441ab4d019eb067441b7c2450");
+  });
+
+  it("createItem with a path parent that doesn't exist auto-provisions the missing folder chain", async () => {
+    // Track per-path state so the test can simulate "doesn't exist yet"
+    // for the missing leaf segment that scai must auto-create.
+    const existing: Record<string, string> = {
+      "/sitecore/templates/Project/sync": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    };
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes("query") && body.variables?.path) {
+        const found = existing[body.variables.path];
+        if (!found) return okResponse({ data: { item: null } });
+        return okResponse({
+          data: {
+            item: {
+              itemId: found,
+              name: body.variables.path.split("/").pop()!,
+              path: body.variables.path,
+              parent: { itemId: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+              template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+              fields: { nodes: [] },
+            },
+          },
+        });
+      }
+      // createItem — assign a deterministic id based on call order.
+      const callIndex = fetchMock.mock.calls.length;
+      const newItemId = `bbbbbbbb-bbbb-bbbb-bbbb-${String(callIndex).padStart(12, "0")}`;
+      const inputPath =
+        body.variables?.input?.name === "Components"
+          ? "/sitecore/templates/Project/sync/Components"
+          : undefined;
+      if (inputPath) existing[inputPath] = newItemId;
+      return okResponse({ data: { createItem: { item: { itemId: newItemId } } } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+      parent: "/sitecore/templates/Project/sync/Components",
+      name: "CtaButton",
+      fields: [],
+    });
+
+    // Two creates: the auto-created `Components` folder, then the
+    // recipe-driven `CtaButton` template.
+    const createCalls = fetchMock.mock.calls.filter((call) => {
+      const body = JSON.parse(call[1].body);
+      return body.query.includes("createItem");
+    });
+    expect(createCalls).toHaveLength(2);
+
+    // Auto-created folder uses TEMPLATE_FOLDER under /sitecore/templates/.
+    const folderInput = JSON.parse(createCalls[0][1].body).variables.input;
+    expect(folderInput).toMatchObject({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parent: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    });
+
+    // The actual CtaButton create receives the auto-created folder's itemId.
+    const itemInput = JSON.parse(createCalls[1][1].body).variables.input;
+    expect(itemInput.name).toBe("CtaButton");
+    expect(itemInput.parent).toBe(existing["/sitecore/templates/Project/sync/Components"]);
+    // result.itemId is the leaf (CtaButton) itemId, distinct from the
+    // auto-created Components folder.
+    expect(result.itemId).not.toBe(existing["/sitecore/templates/Project/sync/Components"]);
+    expect(result.itemId).toMatch(/^bbbbbbbb-bbbb-bbbb-bbbb-/);
   });
 
   it("updateItem sends only itemId + fields", async () => {

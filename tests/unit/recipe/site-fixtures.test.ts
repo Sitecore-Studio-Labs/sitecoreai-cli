@@ -125,6 +125,8 @@ const COMPILE_CONTEXT: CompileContext = {
   siteTemplatesRoot: "/sitecore/templates/Project/Demo",
 };
 
+const SITE = "default";
+
 const findSet = (ir: ReturnType<typeof compileSiteTemplateRecipe>, label: string): SetFieldOp =>
   ir.operations.find((op): op is SetFieldOp => op.op === "SetField" && op.label === label)!;
 
@@ -141,7 +143,7 @@ describe("compileSiteTemplateRecipe", () => {
   it("CreateItem identity uses templateId(handle) — site templates are regular template items", () => {
     const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
     const create = ir.operations[0] as CreateItemOp;
-    expect(create.id).toBe(templateId("ccl-brand-template@1"));
+    expect(create.id).toBe(templateId(SITE, "ccl-brand-template@1"));
   });
 
   it("CreateItem lands under siteTemplatesRoot at <root>/<recipe.name>", () => {

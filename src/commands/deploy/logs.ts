@@ -1,5 +1,5 @@
 import { Command, Option } from "commander";
-import { runDeployLogsList, runDeployLogsView, runDeployLogsData } from "../../serialization/tasks";
+import { runDeployLogsList, runDeployLogsView, runDeployLogsData } from "@/deploy/tasks";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployLogsCommand = (): Command => {

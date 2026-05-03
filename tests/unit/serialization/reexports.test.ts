@@ -5,10 +5,9 @@ describe("serialization re-exports", () => {
     await import("../../../src/serialization/tasks");
     await import("../../../src/serialization/tasks/env.ts");
     await import("../../../src/serialization/tasks/env/index.ts");
-    await import("../../../src/serialization/tasks/serialization.ts");
-    await import("../../../src/serialization/tasks/serialization/index.ts");
-    await import("../../../src/serialization/tasks/serialization/helpers.ts");
-    await import("../../../src/serialization/tasks/serialization/helpers/index.ts");
+    await import("../../../src/serialization/tasks/index.ts");
+    await import("../../../src/serialization/tasks/helpers.ts");
+    await import("../../../src/serialization/tasks/helpers/index.ts");
     await import("../../../src/serialization/sitecore-api.ts");
     await import("../../../src/serialization/sitecore-api/index.ts");
     await import("../../../src/serialization/filesystem-store.ts");

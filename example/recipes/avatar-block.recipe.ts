@@ -82,15 +82,9 @@ export const avatarBlockRecipe = {
     },
   ],
 
-  // Author variant accepts child renderings beside the avatar (e.g. a CTA
-  // for "Read more posts by this author"). Restricting to cta-button@1 as
-  // the only allowed child rendering for v1; broaden later.
-  placeholders: [
-    {
-      key: "avatar-author-content",
-      allowedRenderingHandles: ["cta-button@1"],
-    },
-  ],
+  // Placeholder keys this rendering is compatible with — Pages will
+  // offer AvatarBlock in these slots' rendering pickers.
+  placeholders: ["avatar-author-content"],
 
   rendering: {
     datasourceLocation: "query",

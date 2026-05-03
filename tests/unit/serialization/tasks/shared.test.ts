@@ -2,17 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyIfDefined,
   inputError,
+  selectMatch,
+  resolveApiTimeoutMs,
+} from "../../../../src/shared/cli-tasks";
+import {
   printDeployResultWithContext,
   printDeployWhatIf,
-  selectMatch,
   resolveTenantTypeValue,
   resolveProjectIdValue,
   resolveEnvironmentType,
   getEnvironmentType,
   filterEnvironmentsByType,
-  resolveApiTimeoutMs,
   extractDeployEnvironmentList,
-} from "../../../../src/serialization/tasks/shared";
+} from "../../../../src/deploy/tasks/shared";
 
 describe("serialization task helpers", () => {
   it("applyIfDefined updates only when value is provided", () => {

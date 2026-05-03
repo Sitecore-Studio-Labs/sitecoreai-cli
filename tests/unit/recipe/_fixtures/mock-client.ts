@@ -74,6 +74,10 @@ export class MockAuthoringClient implements AuthoringApiClient {
       path: itemPath,
       fields: input.fields.map((f) => ({
         fieldId: f.fieldId,
+        // Preserve fieldName so the planner's name-based lookup (used for
+        // recipe-created fields whose IR-internal fieldId differs from
+        // the tenant's server-assigned GUID) finds a match on re-push.
+        ...(f.fieldName !== undefined ? { name: f.fieldName } : {}),
         value: renderRefValue(f.value),
         language: f.language,
         version: f.version,
@@ -103,6 +107,7 @@ export class MockAuthoringClient implements AuthoringApiClient {
       );
       const rendered: RemoteFieldValue = {
         fieldId: incoming.fieldId,
+        ...(incoming.fieldName !== undefined ? { name: incoming.fieldName } : {}),
         value: renderRefValue(incoming.value),
         language: incoming.language,
         version: incoming.version,

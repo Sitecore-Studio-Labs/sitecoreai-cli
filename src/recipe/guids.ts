@@ -21,6 +21,15 @@ import { v5 as uuidv5 } from "uuid";
  * The `handle` of a recipe (e.g. `cta-button@1`) is load-bearing forever:
  * a different handle = a different template. Versioning is pinned;
  * `cta-button@1` → `cta-button@2` is a *new* template.
+ *
+ * Component-shape items (templates, renderings, params templates, partial /
+ * page / content items, component-folder templates and everything chained
+ * off them — fields, sections, variants, standard-values) are also
+ * **site-scoped**. The seed is `<site>::<handle>`, so the same recipe
+ * pushed to two sites produces two distinct sets of items at distinct
+ * paths under each site's `Project/<site>/` subtree. Without this scoping
+ * a second site's push would collide on Sitecore's globally-unique GUID
+ * constraint with the first site's items.
  */
 
 /** RFC 4122 DNS namespace. */
@@ -40,24 +49,30 @@ export const NAMESPACE_PAGE_DESIGN = uuidv5("page-design", NAMESPACE_ROOT);
 export const NAMESPACE_SITE_BRANCH = uuidv5("site-branch", NAMESPACE_ROOT);
 export const NAMESPACE_CONTENT_ITEM = uuidv5("content-item", NAMESPACE_ROOT);
 export const NAMESPACE_SITE = uuidv5("site", NAMESPACE_ROOT);
+export const NAMESPACE_ENUMERATION = uuidv5("enumeration", NAMESPACE_ROOT);
 
 /** Internal: lets the test prove `NAMESPACE_ROOT` matches its derivation. */
 export const _deriveNamespaceRoot = (): string => uuidv5("registry.sitecoreai.dev", DNS_NAMESPACE);
 
-export const templateId = (handle: string): string => uuidv5(handle, NAMESPACE_TEMPLATE);
+export const templateId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_TEMPLATE);
 
-export const renderingId = (handle: string): string => uuidv5(handle, NAMESPACE_RENDERING);
+export const renderingId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_RENDERING);
 
-export const paramsTemplateId = (handle: string): string =>
-  uuidv5(`${handle}::params`, NAMESPACE_TEMPLATE);
+export const paramsTemplateId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}::params`, NAMESPACE_TEMPLATE);
 
-export const partialDesignId = (handle: string): string => uuidv5(handle, NAMESPACE_PARTIAL_DESIGN);
+export const partialDesignId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_PARTIAL_DESIGN);
 
-export const pageDesignId = (handle: string): string => uuidv5(handle, NAMESPACE_PAGE_DESIGN);
+export const pageDesignId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_PAGE_DESIGN);
 
 export const siteBranchId = (handle: string): string => uuidv5(handle, NAMESPACE_SITE_BRANCH);
 
-export const contentItemId = (handle: string): string => uuidv5(handle, NAMESPACE_CONTENT_ITEM);
+export const contentItemId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_CONTENT_ITEM);
 
 /**
  * Recipe-internal refKey for a `SiteRecipe`'s site item. The actual
@@ -107,37 +122,102 @@ export const taxonomyTagId = (siteHandle: string, rootName: string, tagName: str
  */
 export const PAGE_DESIGNS_ROOT_REF_KEY = uuidv5("page-designs-root", NAMESPACE_ROOT);
 
-/** Sections are scoped under their template; the seed is `section:<name>`. */
-export const sectionId = (handle: string, sectionName: string): string =>
-  uuidv5(`section:${sectionName}`, templateId(handle));
+/** Sections are scoped under their (site-scoped) template; seed `section:<name>`. */
+export const sectionId = (site: string, handle: string, sectionName: string): string =>
+  uuidv5(`section:${sectionName}`, templateId(site, handle));
 
-/** Fields are scoped under their template; the seed is the field name. */
-export const fieldId = (handle: string, fieldName: string): string =>
-  uuidv5(fieldName, templateId(handle));
+/** Fields are scoped under their (site-scoped) template; the seed is the field name. */
+export const fieldId = (site: string, handle: string, fieldName: string): string =>
+  uuidv5(fieldName, templateId(site, handle));
 
-/** Sections of the parameters template scope under `paramsTemplateId`. */
-export const paramsSectionId = (handle: string, sectionName: string): string =>
-  uuidv5(`section:${sectionName}`, paramsTemplateId(handle));
+/** Sections of the parameters template scope under (site-scoped) `paramsTemplateId`. */
+export const paramsSectionId = (site: string, handle: string, sectionName: string): string =>
+  uuidv5(`section:${sectionName}`, paramsTemplateId(site, handle));
 
-/** Fields of the parameters template scope under `paramsTemplateId`. */
-export const paramsFieldId = (handle: string, fieldName: string): string =>
-  uuidv5(fieldName, paramsTemplateId(handle));
+/** Fields of the parameters template scope under (site-scoped) `paramsTemplateId`. */
+export const paramsFieldId = (site: string, handle: string, fieldName: string): string =>
+  uuidv5(fieldName, paramsTemplateId(site, handle));
 
-/** Variants folder lives under the rendering item: <Rendering>/Variants. */
-export const variantsFolderId = (handle: string): string =>
-  uuidv5("__variants", renderingId(handle));
+/**
+ * Per-rendering Headless Variants folder. Lives at
+ * `<headlessVariantsRoot>/<section>/<RenderingName>/` and conforms to
+ * SXA's `HeadlessVariants` template. The refKey seed is unchanged
+ * from the legacy "under the rendering item" location (`__variants`
+ * scoped to the rendering's id) so existing caches continue to
+ * resolve — only the path/template changed.
+ */
+export const variantsFolderId = (site: string, handle: string): string =>
+  uuidv5("__variants", renderingId(site, handle));
 
-/** Each Variant item lives under the Variants folder. */
-export const variantId = (handle: string, variantName: string): string =>
-  uuidv5(variantName, variantsFolderId(handle));
+/**
+ * Each Variant Definition item lives under the per-rendering
+ * Headless Variants folder. Conforms to SXA's `Variant Definition`
+ * template.
+ */
+export const variantId = (site: string, handle: string, variantName: string): string =>
+  uuidv5(variantName, variantsFolderId(site, handle));
 
 /**
  * Standard values is a child of the template whose template-of is the
- * template's own ID. The GUID is derived from the template ID with the
- * `__standard-values` seed.
+ * template's own ID. The GUID is derived from the (site-scoped) template
+ * ID with the `__standard-values` seed.
  */
-export const standardValuesId = (handle: string): string =>
-  uuidv5("__standard-values", templateId(handle));
+export const standardValuesId = (site: string, handle: string): string =>
+  uuidv5("__standard-values", templateId(site, handle));
+
+/**
+ * Standard values for a parameters template. Same `__standard-values`
+ * seed pattern as `standardValuesId` but scoped under
+ * `paramsTemplateId(site, handle)` so params-template SV items don't
+ * collide with the component-template SV under the same handle.
+ */
+export const paramsStandardValuesId = (site: string, handle: string): string =>
+  uuidv5("__standard-values", paramsTemplateId(site, handle));
+
+/**
+ * Enumeration root item — backs an `EnumerationRecipe`. Lives at
+ * `<enumerationsRoot>/<EnumName>` per-site. Children are the enum's
+ * value items (see `enumValueId`). Site-scoped seed `<site>::<handle>`
+ * matches the rest of the per-component derivations so cross-site
+ * pushes don't collide.
+ */
+export const enumerationFolderId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_ENUMERATION);
+
+/**
+ * Deterministic refKey for a single enumeration value item. Scopes
+ * under the parent's refKey so the same value name (`primary`,
+ * `default`, etc.) produces distinct GUIDs across enums:
+ *
+ *   - Shared enum: parent = `enumerationFolderId(site, handle)`.
+ *   - Inline enum: parent = `inlineEnumFolderId(site, handle, fieldName)`.
+ */
+export const enumValueId = (
+  parentRefKey: string,
+  valueName: string,
+): string => uuidv5(`enum-value:${valueName}`, parentRefKey);
+
+/**
+ * Inline enumeration folder — a per-field Folder item under
+ * `<enumerationsRoot>` whose children are the field's value items.
+ * Used when a field declares `shape: "enum"` with `values: [...]` and
+ * NO `sitecore.enumHandle` (i.e. self-contained, scoped to one
+ * field). Same content-tree shape as a shared `EnumerationRecipe`,
+ * just keyed per-(recipe, field) so values don't cross-pollute.
+ *
+ * Distinct seed namespace from `enumerationFolderId(site, handle)` so
+ * a shared enum at `color-scheme@1` and an inline enum on a field
+ * named `ColorScheme` produce different GUIDs.
+ */
+export const inlineEnumFolderId = (
+  site: string,
+  recipeHandle: string,
+  fieldName: string,
+): string =>
+  uuidv5(
+    `${site}::${recipeHandle}::inline-enum::${fieldName}`,
+    NAMESPACE_ENUMERATION,
+  );
 
 /**
  * Datasource items are scoped to a page recipe's id, keyed on slot path —
@@ -177,6 +257,26 @@ export const renderingsSectionFolderId = (site: string, section: string): string
   uuidv5(`${site}:Renderings:${section}`, NAMESPACE_PROJECT);
 
 /**
+ * Deterministic refKey for an SXA Headless Variants section grouping
+ * under `<headlessVariantsRoot>/<section>/`. Distinct from the
+ * templates-side and renderings-side section folder seeds — separate
+ * tree, separate Sitecore items, separate identity. Conforms to the
+ * `HeadlessVariantsGrouping` template.
+ */
+export const headlessVariantsSectionFolderId = (site: string, section: string): string =>
+  uuidv5(`${site}:HeadlessVariants:${section}`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for an SXA Available Renderings section item
+ * (`<availableRenderingsRoot>/<section>`). Conforms to the
+ * `AVAILABLE_RENDERINGS` template; aggregates every component-template
+ * recipe in the section into one Renderings field. Idempotent across
+ * runs — same `(site, section)` → same refKey forever.
+ */
+export const availableRenderingsSectionId = (site: string, section: string): string =>
+  uuidv5(`${site}:AvailableRenderings:${section}`, NAMESPACE_PROJECT);
+
+/**
  * Deterministic refKey for a "Component Folders" subfolder under a
  * site's `Components/<section>/` — an idempotent parent for the
  * generated `<Component> Folder` templates.
@@ -200,17 +300,17 @@ export const presentationParametersBucketId = (site: string, section: string): s
  * `NAMESPACE_TEMPLATE` so it shares the template-id family without
  * colliding with the component's own template id.
  */
-export const componentFolderTemplateId = (componentHandle: string): string =>
-  uuidv5(`${componentHandle}::folder`, NAMESPACE_TEMPLATE);
+export const componentFolderTemplateId = (site: string, componentHandle: string): string =>
+  uuidv5(`${site}::${componentHandle}::folder`, NAMESPACE_TEMPLATE);
 
 /**
  * Standard-values item refKey for a component folder template. Same
- * derivation pattern as `standardValuesId(handle)` (seed
- * `__standard-values`, scope under the folder template's id) but
- * differentiated by the folder template's distinct namespace.
+ * derivation pattern as `standardValuesId` (seed `__standard-values`,
+ * scope under the folder template's id) but differentiated by the
+ * folder template's distinct namespace.
  */
-export const componentFolderStandardValuesId = (componentHandle: string): string =>
-  uuidv5("__standard-values", componentFolderTemplateId(componentHandle));
+export const componentFolderStandardValuesId = (site: string, componentHandle: string): string =>
+  uuidv5("__standard-values", componentFolderTemplateId(site, componentHandle));
 
 /**
  * Deterministic refKey for a Content Models group folder under a

@@ -1,3 +1,4 @@
+import { createCliError } from "@/shared/errors";
 import type { RefValue } from "../ir/operations";
 import { renderSourceFields } from "../schema/source-fields";
 
@@ -29,8 +30,9 @@ export const renderRefValue = (value: RefValue): string => {
     case "ref-recipe":
     case "ref-recipe-list":
     case "ref-source-fields":
-      throw new Error(
-        `Unresolved ${value.kind} cannot be rendered — call resolveRecipeRefs first.`
+      throw createCliError(
+        `Unresolved ${value.kind} cannot be rendered — call resolveRecipeRefs first.`,
+        "UNKNOWN"
       );
     case "ref-path":
       return value.value;
@@ -42,7 +44,7 @@ export const renderRefValue = (value: RefValue): string => {
         .join("&");
     default: {
       const exhaustive: never = value;
-      throw new Error(`Unhandled RefValue kind: ${JSON.stringify(exhaustive)}`);
+      throw createCliError(`Unhandled RefValue kind: ${JSON.stringify(exhaustive)}`, "UNKNOWN");
     }
   }
 };
@@ -62,8 +64,9 @@ export const resolveRecipeRefs = (
     case "ref-recipe": {
       const itemId = capturedItemIds.get(value.refKey);
       if (!itemId) {
-        throw new Error(
-          `ref-recipe refKey ${value.refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`
+        throw createCliError(
+          `ref-recipe refKey ${value.refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
+          "UNKNOWN"
         );
       }
       return { kind: "ref-guid", value: itemId };
@@ -73,8 +76,10 @@ export const resolveRecipeRefs = (
       for (const refKey of value.refKeys) {
         const itemId = capturedItemIds.get(refKey);
         if (!itemId) {
-          throw new Error(
-            `ref-recipe-list refKey ${refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`
+          if (value.tolerateMissing) continue;
+          throw createCliError(
+            `ref-recipe-list refKey ${refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
+            "UNKNOWN"
           );
         }
         guids.push(itemId);
@@ -85,8 +90,10 @@ export const resolveRecipeRefs = (
       // Structured source fields with recipe-handle references in
       // `sourceTypes`. Resolve each handle to its captured Sitecore
       // itemId, then render. Recipe handles map to refKeys via
-      // `templateId(handle)`, which the planner registers when the
-      // referenced template's CreateItem op completes.
+      // `templateId(site, handle)`, which the planner registers when the
+      // referenced template's CreateItem op completes. The site name is
+      // embedded on the value at compile time — the encoder can't otherwise
+      // know which site the recipe set was compiled under.
       const rendered = renderSourceFields(
         {
           sourceTypes: value.sourceTypes,
@@ -94,11 +101,12 @@ export const resolveRecipeRefs = (
           sourceScope: value.sourceScope,
         },
         (handle) => {
-          const refKey = templateIdForHandle(handle);
+          const refKey = templateIdForHandle(value.site, handle);
           const itemId = capturedItemIds.get(refKey);
           if (!itemId) {
-            throw new Error(
-              `ref-source-fields references handle '${handle}' (refKey ${refKey}); not yet in captured map.`
+            throw createCliError(
+              `ref-source-fields references handle '${handle}' (refKey ${refKey}); not yet in captured map.`,
+              "UNKNOWN"
             );
           }
           return itemId;
@@ -118,4 +126,23 @@ export const resolveRecipeRefs = (
 // resolver self-contained.
 import { templateId as templateIdForHandle } from "../guids";
 
-const toCurly = (guid: string): string => `{${guid.toUpperCase()}}`;
+/**
+ * Normalise a Sitecore itemId to the canonical 8-4-4-4-12 dashed
+ * form. Authoring GraphQL returns IDs without dashes
+ * (`825b30b4b40b422e992023a1b6bda89c`), but Sitecore's Treelist
+ * field-value parser only resolves IDs in dashed form
+ * (`{825B30B4-B40B-422E-9920-23A1B6BDA89C}`). Without this, multilist
+ * field values written by `toCurly` come out as `{NODASH}` and the
+ * editor renders "Item not found" for every entry even though the
+ * items exist.
+ *
+ * Returns input unchanged (lowercased) when the value isn't a 32-hex
+ * GUID — defensive against ref values that aren't actual itemIds.
+ */
+export const dashifyGuid = (guid: string): string => {
+  const compact = guid.replace(/[{}-]/g, "").toLowerCase();
+  if (compact.length !== 32) return guid.toLowerCase();
+  return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20, 32)}`;
+};
+
+const toCurly = (guid: string): string => `{${dashifyGuid(guid).toUpperCase()}}`;

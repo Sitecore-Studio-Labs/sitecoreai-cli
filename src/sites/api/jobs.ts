@@ -16,7 +16,17 @@ import type { SitesApiClientOptions } from "./types";
  * handle, but `listJobs` is included for the broader CLI surface.
  */
 
-export type Job = components["schemas"]["Job"];
+/**
+ * Codegen-typed Job, extended for the runtime shape. Some Sites API
+ * deployments return a top-level `state` string ("Done", "Succeeded",
+ * "Errored") in addition to the OpenAPI-spec'd `status` enum
+ * ("Queued"/"Running"/"Completed"/"Failed"). Callers that poll job
+ * status need to read both.
+ */
+export type Job = components["schemas"]["Job"] & {
+  /** Runtime-only state string returned by some Sites API deployments. */
+  state?: string;
+};
 
 /** Retrieve the status of a single job by its handle. */
 export const getJobStatus = (options: SitesApiClientOptions, jobHandle: string): Promise<Job> =>

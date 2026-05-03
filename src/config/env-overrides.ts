@@ -130,6 +130,46 @@ export const applyEnvOverrides = (
   if (contentItemsRoot !== undefined) {
     overrides.contentItemsRoot = contentItemsRoot;
   }
+  // SXA Headless variants root — read by `runRecipePush` to wire
+  // `CompileContext.headlessVariantsRoot` so component recipes' variants
+  // land under `<headlessVariantsRoot>/<section>/<rendering>/<variant>`
+  // (SXA Headless tree) instead of the legacy "under the rendering
+  // item" location.
+  const headlessVariantsRoot = getEnvOverride(envName, "HEADLESS_VARIANTS_ROOT", includeGlobal);
+  if (headlessVariantsRoot !== undefined) {
+    overrides.headlessVariantsRoot = headlessVariantsRoot;
+  }
+  // SXA Available Renderings root — read by `compileRecipeSet` to
+  // emit one Available Renderings section per `recipe.section` with
+  // every rendering in that section listed.
+  const availableRenderingsRoot = getEnvOverride(
+    envName,
+    "AVAILABLE_RENDERINGS_ROOT",
+    includeGlobal,
+  );
+  if (availableRenderingsRoot !== undefined) {
+    overrides.availableRenderingsRoot = availableRenderingsRoot;
+  }
+  // Enumerations root — required for EnumerationRecipe compilation
+  // and for any field that carries `sitecore.enumHandle`.
+  const enumerationsRoot = getEnvOverride(envName, "ENUMERATIONS_ROOT", includeGlobal);
+  if (enumerationsRoot !== undefined) {
+    overrides.enumerationsRoot = enumerationsRoot;
+  }
+  // Placeholder Settings roots — read by recipe push's placeholder
+  // resolver to find items by `Placeholder Key` and append the
+  // recipe's rendering to their `Allowed Controls`. Comma-separated.
+  const placeholderSettingsRoots = getEnvOverride(
+    envName,
+    "PLACEHOLDER_SETTINGS_ROOTS",
+    includeGlobal,
+  );
+  if (placeholderSettingsRoots !== undefined) {
+    overrides.placeholderSettingsRoots = placeholderSettingsRoots
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
   const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
   if (organizationId !== undefined) {
     overrides.organizationId = organizationId;

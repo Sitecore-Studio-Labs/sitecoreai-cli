@@ -1,3 +1,4 @@
+import { createCliError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, UpdateItemInput } from "./api/client";
 import type { FieldValue } from "./ir/operations";
 import type { PlannedAction } from "./plan";
@@ -89,14 +90,17 @@ export const inverseOf = (
 
   if (action.mutation.kind === "createItem") {
     if (action.operation.op !== "CreateItem") {
-      throw new Error("createItem mutation expected on a CreateItem operation.");
+      throw createCliError("createItem mutation expected on a CreateItem operation.", "UNKNOWN");
     }
     const itemId = capturedItemIds.get(action.operation.id);
     if (!itemId) {
       // The create dispatched but we never captured its assigned itemId —
       // refuse to roll back rather than guess. Caller treats as best-effort
       // failure and continues.
-      throw new Error(`Rollback: no captured itemId for createItem refKey ${action.operation.id}.`);
+      throw createCliError(
+        `Rollback: no captured itemId for createItem refKey ${action.operation.id}.`,
+        "UNKNOWN"
+      );
     }
     return { kind: "deleteItem", itemId };
   }

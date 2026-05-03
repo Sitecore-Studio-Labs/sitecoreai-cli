@@ -78,7 +78,7 @@ describe("compileSiteRecipe", () => {
     expect(op.siteName).toBe(solterraCoRecipe.name);
     expect(op.language).toBe(solterraCoRecipe.language);
     expect(op.siteRefKey).toBe(siteId(solterraCoRecipe.handle));
-    expect(op.templateRefKey).toBe(templateId(solterraCoRecipe.siteTemplate));
+    expect(op.templateRefKey).toBe(templateId("default", solterraCoRecipe.siteTemplate));
   });
 
   it("forwards collectionName when the recipe creates a new collection", () => {

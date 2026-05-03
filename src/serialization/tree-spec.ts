@@ -1,3 +1,4 @@
+import { createCliError } from "@/shared/errors";
 import { ItemPath, ItemPathMatch, ItemPathMatchLike } from "./item-path";
 import { isWildcard } from "./wildcard";
 
@@ -32,7 +33,7 @@ export class TreeSpecRule {
 
   protected validateInternal(parent: TreeSpec, validateScopes: boolean): void {
     if (!parent) {
-      throw new Error("TreeSpecRule parent is required.");
+      throw createCliError("TreeSpecRule parent is required.", "CONFIG_INVALID");
     }
 
     if (validateScopes) {
@@ -49,16 +50,22 @@ export class TreeSpecRule {
       return;
     }
 
-    throw new Error(`Subtree ${parent.path} has a rule with no path.`);
+    throw createCliError(`Subtree ${parent.path} has a rule with no path.`, "CONFIG_INVALID");
   }
 
   private validateScopes(parent: TreeSpec): void {
     if (!this.scope) {
-      throw new Error(`${parent.path} has rule ${this.path?.toPathString()} without scope.`);
+      throw createCliError(
+        `${parent.path} has rule ${this.path?.toPathString()} without scope.`,
+        "CONFIG_INVALID"
+      );
     }
 
     if (parent.scope === TreeScope.SingleItem) {
-      throw new Error(`${parent.path} has scope ${TreeScope.SingleItem} and rules are defined.`);
+      throw createCliError(
+        `${parent.path} has scope ${TreeScope.SingleItem} and rules are defined.`,
+        "CONFIG_INVALID"
+      );
     }
 
     if (
@@ -66,21 +73,26 @@ export class TreeSpecRule {
       (this.scope === TreeRuleScope.ItemAndDescendants ||
         this.scope === TreeRuleScope.ItemAndChildren)
     ) {
-      throw new Error(
-        `${parent.path} has scope ${TreeScope.ItemAndChildren} and rule ${this.path.toPathString()} has scope ${this.scope}.`
+      throw createCliError(
+        `${parent.path} has scope ${TreeScope.ItemAndChildren} and rule ${this.path.toPathString()} has scope ${this.scope}.`,
+        "CONFIG_INVALID"
       );
     }
   }
 
   private validateItemPath(parent: TreeSpec, itemPath: ItemPath): void {
     if (itemPath.isDescendantOrSelfOf(parent.path)) {
-      throw new Error(
-        `Subtree path ${parent.path} contained rule for ${this.path.toPathString()}, which is absolute.`
+      throw createCliError(
+        `Subtree path ${parent.path} contained rule for ${this.path.toPathString()}, which is absolute.`,
+        "CONFIG_INVALID"
       );
     }
 
     if (itemPath.count === 0) {
-      throw new Error(`Subtree path ${parent.path} contained rule for /, which is the root item.`);
+      throw createCliError(
+        `Subtree path ${parent.path} contained rule for /, which is the root item.`,
+        "CONFIG_INVALID"
+      );
     }
 
     const parentRelative = itemPath.createParentPath();
@@ -91,8 +103,9 @@ export class TreeSpecRule {
     let currentParentPath = parent.path.concatenate(parentRelative);
     while (!currentParentPath.equals(parent.path) && currentParentPath.count > 0) {
       if (!parent.includesPath(currentParentPath)) {
-        throw new Error(
-          `Subtree path ${parent.path} contained rule for ${this.path.toPathString()}, but ancestor path ${currentParentPath} was not included.`
+        throw createCliError(
+          `Subtree path ${parent.path} contained rule for ${this.path.toPathString()}, but ancestor path ${currentParentPath} was not included.`,
+          "CONFIG_INVALID"
         );
       }
 
@@ -107,14 +120,16 @@ export class TreeSpecRule {
   private validateItemPathMatch(parent: TreeSpec, itemPathMatch: ItemPathMatch): void {
     const matchValue = itemPathMatch.toPathString();
     if (!matchValue.endsWith("*")) {
-      throw new Error(
-        `Subtree ${parent.path} contained path match rule ${matchValue} without trailing '*'.`
+      throw createCliError(
+        `Subtree ${parent.path} contained path match rule ${matchValue} without trailing '*'.`,
+        "CONFIG_INVALID"
       );
     }
 
     if (this.scope === TreeRuleScope.SingleItem || this.scope === TreeRuleScope.ItemAndChildren) {
-      throw new Error(
-        `Subtree ${parent.path} contained wildcard rule ${matchValue} with invalid scope ${this.scope}.`
+      throw createCliError(
+        `Subtree ${parent.path} contained wildcard rule ${matchValue} with invalid scope ${this.scope}.`,
+        "CONFIG_INVALID"
       );
     }
   }
@@ -125,7 +140,7 @@ export class FilesystemTreeSpecRule extends TreeSpecRule {
 
   override validate(parent: TreeSpec): void {
     if (!parent) {
-      throw new Error("FilesystemTreeSpecRule parent is required.");
+      throw createCliError("FilesystemTreeSpecRule parent is required.", "CONFIG_INVALID");
     }
 
     if (!this.alias) {
@@ -136,20 +151,23 @@ export class FilesystemTreeSpecRule extends TreeSpecRule {
     this.validateInternal(parent, false);
 
     if (this.scope) {
-      throw new Error(
-        `Subtree ${parent.path} contained rule for ${this.path.toPathString()} with alias and scope.`
+      throw createCliError(
+        `Subtree ${parent.path} contained rule for ${this.path.toPathString()} with alias and scope.`,
+        "CONFIG_INVALID"
       );
     }
 
     if (this.path instanceof ItemPathMatch) {
-      throw new Error(
-        `Subtree ${parent.path} contained match rule ${this.path.toPathString()} that also had an alias.`
+      throw createCliError(
+        `Subtree ${parent.path} contained match rule ${this.path.toPathString()} that also had an alias.`,
+        "CONFIG_INVALID"
       );
     }
 
     if (!/^[A-Za-z0-9 \-_]+$/.test(this.alias)) {
-      throw new Error(
-        `Subtree ${parent.path} rule for ${this.path.toPathString()} has invalid alias '${this.alias}'.`
+      throw createCliError(
+        `Subtree ${parent.path} rule for ${this.path.toPathString()} has invalid alias '${this.alias}'.`,
+        "CONFIG_INVALID"
       );
     }
   }
@@ -163,12 +181,12 @@ export class TreeSpec {
 
   validate(): void {
     if (!this.path || this.path.count === 0) {
-      throw new Error("TreeSpec path is null or empty.");
+      throw createCliError("TreeSpec path is null or empty.", "CONFIG_INVALID");
     }
 
     for (const rule of this.rules) {
       if (!rule.path) {
-        throw new Error("TreeSpec rule path is null or empty.");
+        throw createCliError("TreeSpec rule path is null or empty.", "CONFIG_INVALID");
       }
 
       rule.validate(this);
@@ -209,7 +227,7 @@ export class TreeSpec {
         case TreeRuleScope.SingleItem:
         case TreeRuleScope.ItemAndChildren: {
           if (!(rule.path instanceof ItemPath)) {
-            throw new Error("Cannot determine relative path to wildcard.");
+            throw createCliError("Cannot determine relative path to wildcard.", "CONFIG_INVALID");
           }
           const ruleRelativePath = relativePath.createRelativePathFrom(rule.path);
           if (!ruleRelativePath) {
@@ -268,15 +286,21 @@ export class FilesystemTreeSpec extends TreeSpec {
     super.validate();
 
     if (!this.name) {
-      throw new Error(`Subtree name was null or empty for path ${this.path}.`);
+      throw createCliError(
+        `Subtree name was null or empty for path ${this.path}.`,
+        "CONFIG_INVALID"
+      );
     }
 
     if (!this.database) {
-      throw new Error(`Subtree ${this.name} database was null or empty.`);
+      throw createCliError(`Subtree ${this.name} database was null or empty.`, "CONFIG_INVALID");
     }
 
     if (!this.physicalPath) {
-      throw new Error(`Subtree ${this.name} physicalPath was null or empty.`);
+      throw createCliError(
+        `Subtree ${this.name} physicalPath was null or empty.`,
+        "CONFIG_INVALID"
+      );
     }
 
     const aliasSet = new Set<string>();
@@ -285,7 +309,10 @@ export class FilesystemTreeSpec extends TreeSpec {
         continue;
       }
       if (aliasSet.has(rule.alias.toLowerCase())) {
-        throw new Error(`Duplicate path alias '${rule.alias}' in subtree ${this.name}.`);
+        throw createCliError(
+          `Duplicate path alias '${rule.alias}' in subtree ${this.name}.`,
+          "CONFIG_INVALID"
+        );
       }
       aliasSet.add(rule.alias.toLowerCase());
     }

@@ -17,6 +17,32 @@ export type Settings = {
   apiClientTimeoutInMinutes: number;
 };
 
+/**
+ * Nested form of the recipe parent paths for a single env profile.
+ * Authors may set these under `envProfiles.<name>.recipeRoots` instead
+ * of (or in addition to) the flat `templatesRoot` / `renderingsRoot` /
+ * etc. fields. At config-load time `readRootConfiguration` flattens
+ * the nested form into the flat fields so internal consumers see one
+ * shape.
+ *
+ * If the same field is set both nested and flat, **nested wins** —
+ * `recipeRoots` is the preferred form for new configs. A duplication
+ * warning fires so the operator can pick a side.
+ */
+export type EnvironmentRecipeRoots = {
+  templates?: string;
+  renderings?: string;
+  components?: string;
+  contentModels?: string;
+  partialDesigns?: string;
+  pageDesigns?: string;
+  contentItems?: string;
+  headlessVariants?: string;
+  availableRenderings?: string;
+  enumerations?: string;
+  placeholderSettings?: string[];
+};
+
 export type EnvironmentConfiguration = {
   name?: string;
   host?: string;
@@ -106,6 +132,70 @@ export type EnvironmentConfiguration = {
    * Optional — only `ContentItemRecipe` compilation requires it.
    */
   contentItemsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * SXA Headless rendering variants. Typically
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants`.
+   *
+   * Variants for a recipe `R` with section `S` and N variants land at
+   * `<headlessVariantsRoot>/<S>/<R.name>/<variant>` and conform to the
+   * SXA `Variant Definition` template; the section + per-rendering
+   * groupings use `HeadlessVariantsGrouping` / `HeadlessVariants`
+   * respectively (`SITECORE_TEMPLATES.HEADLESS_VARIANTS_*`).
+   *
+   * Required for any recipe that declares `variants` — without it the
+   * compiler throws INPUT_INVALID before emitting variant ops, since
+   * the legacy "variants live under the rendering item" layout no
+   * longer matches SXA Headless.
+   */
+  headlessVariantsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai recipe compile|push` creates
+   * SXA `Available Renderings` section items. Typically
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
+   *
+   * `compileRecipeSet` aggregates every component-template recipe by
+   * `section` and emits one `Available Renderings` child per section,
+   * setting the `Renderings` field to the pipe-separated rendering
+   * itemIds. SXA's editor reads this list when composing pages.
+   *
+   * Optional — when unset, the compileRecipeSet aggregator skips the
+   * Available Renderings emission entirely. Pushing without it leaves
+   * the rendering list unscoped (the SXA editor falls back to the
+   * tenant-wide list, which usually isn't what you want).
+   */
+  availableRenderingsRoot?: string;
+  /**
+   * Per-site enumerations bucket — typically
+   * `/sitecore/content/<siteCollection>/<site>/Presentation/Enumerations`.
+   * Each `EnumerationRecipe` lands as `<enumerationsRoot>/<EnumName>`
+   * with one child item per declared value. Required for
+   * `EnumerationRecipe` compilation, AND for any recipe whose fields
+   * carry `sitecore.enumHandle` (the Droplink Source paths into this
+   * bucket).
+   */
+  enumerationsRoot?: string;
+  /**
+   * Sitecore content-tree paths to walk when resolving recipe-declared
+   * `placeholders` to actual Placeholder Settings items (matched by
+   * the items' `Placeholder Key` field). Both per-site
+   * `<site>/Presentation/Placeholder Settings` and project-level
+   * `/sitecore/Layout/Placeholder Settings/Project/<site>` typically
+   * need to be searched.
+   *
+   * Empty / unset → recipe `placeholders` declarations are silently
+   * ignored. The orchestrator's ephemeral CLI config sets this; not
+   * commonly hand-authored.
+   */
+  placeholderSettingsRoots?: string[];
+  /**
+   * Preferred nested form of the 11 `*Root` fields above. When set,
+   * `readRootConfiguration` flattens entries into the matching flat
+   * fields before internal consumers read them. New configs should
+   * use this shape — it scales as new recipe-tree roots get added
+   * without bloating each env profile.
+   */
+  recipeRoots?: EnvironmentRecipeRoots;
 };
 
 export type RootConfiguration = {

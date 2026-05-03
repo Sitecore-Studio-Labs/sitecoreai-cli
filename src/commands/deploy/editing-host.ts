@@ -5,7 +5,7 @@ import {
   runDeployEditingHostDelete,
   runDeployEditingHostUpdate,
   runDeployEditingHostDeploy,
-} from "../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployEditingHostCommand = (): Command => {

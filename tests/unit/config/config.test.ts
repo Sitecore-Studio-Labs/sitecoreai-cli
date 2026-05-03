@@ -30,6 +30,19 @@ describe("resolveRootConfigurationPath", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it("accepts an explicit file path", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "scai-config-"));
+    const customName = path.join(root, "sitecoreai.dev.json");
+    await fs.writeFile(customName, JSON.stringify({ ...baseConfig, envProfiles: {} }, null, 2));
+
+    try {
+      const resolved = resolveRootConfigurationPath(customName);
+      expect(resolved).toBe(path.resolve(customName));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readRootConfiguration", () => {
@@ -48,6 +61,57 @@ describe("readRootConfiguration", () => {
       const config = readRootConfiguration(root);
       expect(config.environments.child.host).toBe("child.host");
       expect(config.environments.child.authority).toBe("https://auth");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("flattens recipeRoots into the matching flat *Root fields", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "scai-config-"));
+    await writeConfig(root, {
+      ...baseConfig,
+      envProfiles: {
+        demo: {
+          recipeRoots: {
+            templates: "/sitecore/templates/Project/demo",
+            renderings: "/sitecore/layout/Renderings/Project/demo",
+            placeholderSettings: ["/sitecore/content/demo/Presentation/Placeholder Settings"],
+          },
+        },
+      },
+      defaultEnvProfile: "demo",
+    });
+
+    try {
+      const config = readRootConfiguration(root);
+      expect(config.environments.demo.templatesRoot).toBe("/sitecore/templates/Project/demo");
+      expect(config.environments.demo.renderingsRoot).toBe(
+        "/sitecore/layout/Renderings/Project/demo"
+      );
+      expect(config.environments.demo.placeholderSettingsRoots).toEqual([
+        "/sitecore/content/demo/Presentation/Placeholder Settings",
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recipeRoots wins when the same field is set both flat and nested", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "scai-config-"));
+    await writeConfig(root, {
+      ...baseConfig,
+      envProfiles: {
+        demo: {
+          templatesRoot: "/sitecore/templates/flat",
+          recipeRoots: { templates: "/sitecore/templates/nested" },
+        },
+      },
+      defaultEnvProfile: "demo",
+    });
+
+    try {
+      const config = readRootConfiguration(root);
+      expect(config.environments.demo.templatesRoot).toBe("/sitecore/templates/nested");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

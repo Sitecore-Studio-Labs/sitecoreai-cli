@@ -1,4 +1,3 @@
 export * from "./tasks/env";
-export * from "./tasks/serialization";
-export * from "./tasks/deploy";
+export * from "./tasks/index";
 export * from "./tasks/types";

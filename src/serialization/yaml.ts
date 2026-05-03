@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import YAML from "yaml";
+import { createCliError } from "@/shared/errors";
 import { ItemPath } from "./item-path";
 import {
   ItemData,
@@ -60,7 +61,7 @@ class YamlWriter {
 
   writeBeginListItem(key: string, value: string): void {
     if (this.indent < YamlWriter.indentSpaces) {
-      throw new Error("Indent is at minimum. You must indent to support a list.");
+      throw createCliError("Indent is at minimum. You must indent to support a list.", "UNKNOWN");
     }
     const prefix = " ".repeat(this.indent - YamlWriter.indentSpaces);
     this.chunks.push(`${prefix}- ${key}: ${value}\n`);

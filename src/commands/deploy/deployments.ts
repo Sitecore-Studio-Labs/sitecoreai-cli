@@ -8,7 +8,7 @@ import {
   runDeployDeploymentsSource,
   runDeployDeploymentsWatch,
   runDeployDeploymentLogs,
-} from "../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployDeploymentsCommand = (): Command => {

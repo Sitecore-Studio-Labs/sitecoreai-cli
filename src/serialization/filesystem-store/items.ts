@@ -1,6 +1,7 @@
 import fg from "fast-glob";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { createCliError } from "@/shared/errors";
 import { FilesystemTreeSpec } from "../tree-spec";
 import { ItemData, ItemMetadata } from "../types";
 import { readItemYaml, writeItemYaml } from "../yaml";
@@ -52,7 +53,7 @@ export const writeItemToFilesystem = async (
 ): Promise<string> => {
   const targetPath = pathProvider.getPhysicalPathForItemPath(item.path, ".yml");
   if (!targetPath) {
-    throw new Error(`Unable to resolve file path for ${item.path}`);
+    throw createCliError(`Unable to resolve file path for ${item.path}`, "INPUT_INVALID");
   }
 
   await fs.mkdir(path.dirname(targetPath), { recursive: true });

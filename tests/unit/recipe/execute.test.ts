@@ -9,6 +9,10 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot:
+    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 const compileCta = () => compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
@@ -92,9 +96,9 @@ describe("executeIr — drift detection under CreateAndUpdate", () => {
     const client = new MockAuthoringClient();
     const templateOp = ir.operations[0] as CreateItemOp;
 
-    // Pre-seed the template at its path with a wrong icon. The compiler emits
-    // Icon="Office/32x32/document.png" (DEFAULT_ICON); we stage a different
-    // one so the planner sees drift.
+    // Pre-seed the template at its path with a wrong icon. The compiler
+    // emits Icon=DEFAULT_ICON ("office/32x32/elements3.png", the SXA
+    // component icon); we stage a different one so the planner sees drift.
     const preloadedTemplateId = "11111111-1111-1111-1111-111111111111";
     client.preload({
       itemId: preloadedTemplateId,
@@ -120,7 +124,7 @@ describe("executeIr — drift detection under CreateAndUpdate", () => {
       .find((f) => f.fieldId === SYSTEM_FIELDS.ICON);
     expect(templateIconUpdate?.value).toEqual({
       kind: "string",
-      value: "Office/32x32/document.png",
+      value: "office/32x32/elements3.png",
     });
   });
 });

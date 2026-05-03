@@ -76,14 +76,32 @@ export const loadRecipe = async (filePath: string): Promise<Recipe> => {
   return result.data;
 };
 
+/**
+ * Lazily install tsx's CommonJS require hook *once* per process. Earlier
+ * versions of this file called `register()` and the matching `unregister`
+ * cleanup on every `loadRecipe` call — fine for one-shot CLI runs but
+ * wasteful in long-running surfaces like `scai shell` where N recipe
+ * loads = N register/unregister cycles. Once installed, the hook stays
+ * for the rest of the process lifetime; recipe changes mid-shell-session
+ * therefore require an exit (the per-recipe `require.cache` clear below
+ * handles re-imports of the *same* file path within the same process).
+ */
+let tsxRegistered = false;
+const ensureTsxRegistered = (): void => {
+  if (tsxRegistered) {
+    return;
+  }
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const tsxApi = require("tsx/cjs/api") as { register: () => () => void };
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  tsxApi.register();
+  tsxRegistered = true;
+};
+
 const loadRecipeFromTypeScript = async (filePath: string): Promise<unknown> => {
   const absolute = path.resolve(filePath);
-  let cleanup: (() => void) | undefined;
   try {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const tsxApi = require("tsx/cjs/api") as { register: () => () => void };
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    cleanup = tsxApi.register();
+    ensureTsxRegistered();
     if (require.cache[absolute]) {
       delete require.cache[absolute];
     }
@@ -114,8 +132,6 @@ const loadRecipeFromTypeScript = async (filePath: string): Promise<unknown> => {
       "INPUT_INVALID",
       { hint: "Confirm the file compiles standalone (try `pnpm exec tsx <file>`)." }
     );
-  } finally {
-    cleanup?.();
   }
 };
 

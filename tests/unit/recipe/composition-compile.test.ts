@@ -32,6 +32,8 @@ const CONTEXT: CompileContext = {
   pageDesignsRoot: "/sitecore/content/Demo/Presentation/Page Designs",
 };
 
+const SITE = "default";
+
 const findCreate = (ops: Operation[], label: string): CreateItemOp =>
   ops.find((op): op is CreateItemOp => op.op === "CreateItem" && op.label === label)!;
 
@@ -76,7 +78,7 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
 
   it("CreateItem points the partial-design item under the partial-designs root with the SXA partial-design template", () => {
     const create = findCreate(ir.operations, "partial-design:standard-header@1");
-    expect(create.id).toBe(partialDesignId("standard-header@1"));
+    expect(create.id).toBe(partialDesignId(SITE, "standard-header@1"));
     expect(create.path).toBe("/sitecore/content/Demo/Presentation/Partial Designs/StandardHeader");
     expect(create.templateOf).toBe(SITECORE_TEMPLATES.PARTIAL_DESIGN);
     expect(create.parent).toEqual({
@@ -97,11 +99,11 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(setLayout.value.kind).toBe("string");
     if (setLayout.value.kind === "string") {
       const xml = setLayout.value.value;
-      expect(xml).toContain(`{${renderingId("site-logo@1").toUpperCase()}}`);
-      expect(xml).toContain(`{${renderingId("primary-nav@1").toUpperCase()}}`);
-      expect(xml).toContain(`{${renderingId("utility-nav@1").toUpperCase()}}`);
+      expect(xml).toContain(`{${renderingId(SITE, "site-logo@1").toUpperCase()}}`);
+      expect(xml).toContain(`{${renderingId(SITE, "primary-nav@1").toUpperCase()}}`);
+      expect(xml).toContain(`{${renderingId(SITE, "utility-nav@1").toUpperCase()}}`);
       // Each rendering's shared content datasource should appear as a `ds=` attribute.
-      expect(xml).toContain(`{${contentItemId("site-logo-content@1").toUpperCase()}}`);
+      expect(xml).toContain(`{${contentItemId(SITE, "site-logo-content@1").toUpperCase()}}`);
     }
   });
 });
@@ -125,11 +127,11 @@ describe("compilePartialDesignRecipe — article-byline@1 (no datasource + param
   it("emits a placement with params but no ds attribute for kind: 'none'", () => {
     // author-avatar@1 has params: { Size: "sm" } and datasourceRef: { kind: "none" }
     expect(xml).toContain("Size=sm");
-    expect(xml).toContain(`{${renderingId("author-avatar@1").toUpperCase()}}`);
+    expect(xml).toContain(`{${renderingId(SITE, "author-avatar@1").toUpperCase()}}`);
   });
 
   it("emits the shared datasource for author-info@1", () => {
-    expect(xml).toContain(`{${contentItemId("byline-author-content@1").toUpperCase()}}`);
+    expect(xml).toContain(`{${contentItemId(SITE, "byline-author-content@1").toUpperCase()}}`);
   });
 });
 
@@ -159,7 +161,7 @@ describe("compilePageDesignRecipe — default-page-design@1 (partials only, no o
 
   it("CreateItem uses the SXA page-design template and lands under the page-designs root", () => {
     const create = findCreate(ir.operations, "page-design:default-page-design@1");
-    expect(create.id).toBe(pageDesignId("default-page-design@1"));
+    expect(create.id).toBe(pageDesignId(SITE, "default-page-design@1"));
     expect(create.templateOf).toBe(SITECORE_TEMPLATES.PAGE_DESIGN);
     expect(create.path).toBe("/sitecore/content/Demo/Presentation/Page Designs/DefaultPageDesign");
   });
@@ -169,7 +171,7 @@ describe("compilePageDesignRecipe — default-page-design@1 (partials only, no o
     expect(setPartials.fieldId).toBe(COMPOSITION_FIELDS.PARTIAL_DESIGNS);
     expect(setPartials.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [partialDesignId("standard-header@1"), partialDesignId("standard-footer@1")],
+      refKeys: [partialDesignId(SITE, "standard-header@1"), partialDesignId(SITE, "standard-footer@1")],
     });
   });
 });
@@ -185,9 +187,9 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
     const layout = findSetField(ir.operations, "page-design-layout:landing-design@1");
     expect(layout.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
     if (layout.value.kind === "string") {
-      expect(layout.value.value).toContain(`{${renderingId("cta-banner@1").toUpperCase()}}`);
+      expect(layout.value.value).toContain(`{${renderingId(SITE, "cta-banner@1").toUpperCase()}}`);
       expect(layout.value.value).toContain(
-        `{${contentItemId("landing-cta-content@1").toUpperCase()}}`
+        `{${contentItemId(SITE, "landing-cta-content@1").toUpperCase()}}`
       );
     }
   });
@@ -210,7 +212,7 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
     const partials = findSetField(ir.operations, "page-design-partials:landing-design@1");
     expect(partials.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [partialDesignId("standard-footer@1")],
+      refKeys: [partialDesignId(SITE, "standard-footer@1")],
     });
   });
 });
@@ -227,9 +229,9 @@ describe("compilePageDesignRecipe — article-design@1 (three partials, no own l
     expect(partials.value).toEqual({
       kind: "ref-recipe-list",
       refKeys: [
-        partialDesignId("standard-header@1"),
-        partialDesignId("article-byline@1"),
-        partialDesignId("standard-footer@1"),
+        partialDesignId(SITE, "standard-header@1"),
+        partialDesignId(SITE, "article-byline@1"),
+        partialDesignId(SITE, "standard-footer@1"),
       ],
     });
   });

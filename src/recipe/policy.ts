@@ -54,6 +54,12 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // policy purposes; per-op CreateOnly vs CreateAndUpdate gets
   // refined when the executor lands (Milestone D).
   site: "composition-structure",
+  // Enumerations are registry-owned vocabulary. CreateAndUpdate so
+  // re-pushes flip displayName edits and add/remove value items as
+  // the recipe evolves. Authors who need extra values can add them
+  // to the recipe and re-push; CMS edits to enumeration items get
+  // overwritten.
+  enumeration: "template-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

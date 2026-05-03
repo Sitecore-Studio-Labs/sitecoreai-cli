@@ -88,6 +88,15 @@ export const sitecoreFieldTypeLabel = (type: SitecoreFieldType): string =>
  * Map an abstract field shape to its default Sitecore field type.
  * `reference` resolves to `treelist` when `multiple === true`, otherwise
  * `droplink`. All other shapes are 1:1.
+ *
+ * `enum` maps to `droplink` (NOT droplist): SXA Headless rendering
+ * parameters and content fields back enumerated values with item-shaped
+ * Droplink references — the editor enumerates the source location's
+ * children at edit time. Pipe-delimited Droplist Source is the older
+ * vanilla-Sitecore pattern and is not how working SXA Headless params
+ * fields are wired (verified against tenant introspection 2026-05-02).
+ * Authors who specifically need a Droplist can override via
+ * `sitecore.type: "droplist"` on the field.
  */
 export const defaultSitecoreFieldType = (
   shape: FieldShape,
@@ -113,7 +122,7 @@ export const defaultSitecoreFieldType = (
     case "datetime":
       return "datetime";
     case "enum":
-      return "droplist";
+      return "droplink";
     case "reference":
       return multiple ? "treelist" : "droplink";
   }

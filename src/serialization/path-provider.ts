@@ -1,5 +1,6 @@
 import path from "node:path";
 import crypto from "node:crypto";
+import { createCliError } from "@/shared/errors";
 import { FilesystemTreeSpec, FilesystemTreeSpecRule } from "./tree-spec";
 import { ItemPath } from "./item-path";
 
@@ -106,7 +107,7 @@ class SubtreeFilesystemPathProvider {
 
   getPhysicalPathForItemPath(itemPath: ItemPath, extension: string): string | null {
     if (!extension.startsWith(".")) {
-      throw new Error("Extension must start with a period.");
+      throw createCliError("Extension must start with a period.", "INPUT_INVALID");
     }
 
     const childPath = this.getChildrenPathForItemPath(itemPath);
@@ -263,7 +264,10 @@ class SubtreeFilesystemPathProvider {
     }
 
     if (maxLength < 16) {
-      throw new Error(`MaxRelativePathLength ${maxLength} is below minimum value of 16.`);
+      throw createCliError(
+        `MaxRelativePathLength ${maxLength} is below minimum value of 16.`,
+        "CONFIG_INVALID"
+      );
     }
 
     let currentPath: ItemPath | null = relativeItemPath;
@@ -278,8 +282,9 @@ class SubtreeFilesystemPathProvider {
     }
 
     if (!currentPath || currentPath.count === 0) {
-      throw new Error(
-        `The path ${relativeItemPath} could not be stored because its length could not be reduced below the maximum path length ${maxLength}.`
+      throw createCliError(
+        `The path ${relativeItemPath} could not be stored because its length could not be reduced below the maximum path length ${maxLength}.`,
+        "INPUT_INVALID"
       );
     }
 
@@ -328,8 +333,9 @@ export class FilesystemPathProvider {
     for (const subtree of this.subtrees.getAncestorAndSelfPathData(itemPath)) {
       const subtreeResult = fn(subtree);
       if (subtreeResult != null && result != null) {
-        throw new Error(
-          `The item path ${itemPath} was included in multiple places. Found valid file paths within these modules: ${resultFoundOn} and ${subtree}`
+        throw createCliError(
+          `The item path ${itemPath} was included in multiple places. Found valid file paths within these modules: ${resultFoundOn} and ${subtree}`,
+          "CONFIG_INVALID"
         );
       }
       if (subtreeResult != null) {

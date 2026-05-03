@@ -2,7 +2,7 @@ import { Command, Option } from "commander";
 import {
   runDeployEnvironmentsDeploymentsList,
   runDeployEnvironmentsDeploymentsCreate,
-} from "../../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsDeploymentsCommand = (): Command => {

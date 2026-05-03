@@ -89,6 +89,22 @@ export const SitecoreFieldAugmentSchema = z
     required: z.boolean().optional(),
     /** Default value via the template's __Standard Values item. */
     defaultValue: z.string().optional(),
+    /**
+     * For enum-shaped fields: handle of an `EnumerationRecipe` whose
+     * value items back this field's dropdown. When set, the compiler:
+     *   - emits `Type: Droplink` and `Source: <enum's content path>`
+     *     so the editor enumerates the shared enum's child items;
+     *   - resolves the field's `default` against that enum's value
+     *     items (so `default: "primary"` becomes a GUID reference to
+     *     the corresponding value item).
+     *
+     * Inline enums (no `enumHandle`) get value items emitted as
+     * children of the field-definition itself, scoped to the field.
+     * Use `enumHandle` for shared enums (color schemes, size scales,
+     * spacing scales) so adding/renaming a value updates every
+     * referencing field on the next push.
+     */
+    enumHandle: z.string().regex(HANDLE_PATTERN).optional(),
     /** Ordinal within the section/params block; auto-assigned 100/200/… if omitted. */
     sortOrder: z.number().int().optional(),
     /**
@@ -275,7 +291,26 @@ export const ComponentTemplateRecipeSchema = z.object({
   availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
   variants: z.array(RenderingVariantDefinitionSchema).default([]),
   params: z.array(ParamDefinitionSchema).default([]),
-  placeholders: z.array(PlaceholderDefinitionSchema).optional(),
+  /**
+   * SXA placeholder keys this rendering is compatible with — slots
+   * the user can drop the rendering into in Pages. At apply time scai
+   * walks the configured Placeholder Settings roots, finds items
+   * whose `Placeholder Key` field matches each entry here, and
+   * appends this rendering's itemId to their `Allowed Controls`
+   * field. Without this, the rendering exists in CM but Pages won't
+   * offer it in any placeholder picker.
+   *
+   * Example: `["headless-main", "headless-main-{*}", "sxa-footer"]`.
+   *
+   * The previous schema for this field accepted an object shape with
+   * a `key` + `allowedRenderingHandles` per entry — the inverse
+   * mapping ("this rendering exposes a slot for these children").
+   * That shape was never wired through the compiler, so the v1
+   * version is the simpler `string[]` form documented above. If a
+   * recipe needs to declare slots it exposes, that's a separate
+   * concept (and a future field).
+   */
+  placeholders: z.array(z.string().min(1)).default([]),
   rendering: RenderingDefinitionSchema,
 });
 
@@ -925,6 +960,53 @@ export type SiteRecipe = z.infer<typeof SiteRecipeSchema>;
  * Discriminated union of recipe kinds. Compilers and validators can accept
  * `Recipe` and dispatch on `kind`.
  */
+/**
+ * One value in an `EnumerationRecipe`. The Sitecore item conforming to
+ * this entry has its `__Display name` set to `displayName` (or `name`
+ * when omitted) and is the target the editor's Droplink dropdown shows.
+ *
+ * `name` is load-bearing — uuidv5 derives the value item's GUID from
+ * it. Renaming `name` creates a *different* value item; existing
+ * datasource items that referenced the old GUID become orphaned. Use
+ * `displayName` to change the visible label without touching `name`.
+ */
+export const EnumerationValueSchema = z.object({
+  name: z.string().min(1),
+  displayName: z.string().min(1).optional(),
+});
+
+export type EnumerationValue = z.infer<typeof EnumerationValueSchema>;
+
+/**
+ * A reusable enumeration — backs Droplink fields whose options are
+ * shared across multiple components (color schemes, size scales,
+ * spacing scales, etc.). Each value lands as a child item under
+ * `<enumerationsRoot>/<EnumName>/<ValueName>`.
+ *
+ * Reference from any field via `sitecore.enumHandle: "<handle>"`. On
+ * re-push, adding a value to the enumeration surfaces it on every
+ * referencing field automatically (the Droplink Source resolves by
+ * location at editor time, so consumer field-definitions don't need
+ * to change).
+ *
+ * Inline enums (`shape: "enum"` with `values: [...]` and no
+ * `enumHandle`) emit child items as children of the field-definition
+ * item itself — same wire format, but scoped to one field.
+ */
+export const EnumerationRecipeSchema = z.object({
+  kind: z.literal("enumeration"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN),
+  /** Item name under `<enumerationsRoot>` (e.g. `ColorScheme`). */
+  name: z.string().min(1),
+  /** Author-facing label (defaults to `name` when omitted). */
+  displayName: z.string().min(1).optional(),
+  description: z.string().optional(),
+  values: z.array(EnumerationValueSchema).min(1),
+});
+
+export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;
+
 export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
@@ -935,6 +1017,7 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   PageDesignRecipeSchema,
   SiteTemplateRecipeSchema,
   SiteRecipeSchema,
+  EnumerationRecipeSchema,
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;

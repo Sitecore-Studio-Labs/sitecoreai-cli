@@ -115,13 +115,14 @@ const requestToken = async (
     } catch {
       // keep raw body text
     }
-    throw new Error(
-      `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`
+    throw createCliError(
+      `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`,
+      "AUTH_REQUIRED"
     );
   }
   const json = (await response.json()) as OAuthTokenResponse;
   if (!json.access_token) {
-    throw new Error("Access token was not returned by the identity server.");
+    throw createCliError("Access token was not returned by the identity server.", "AUTH_REQUIRED");
   }
   return {
     accessToken: json.access_token,
@@ -136,7 +137,7 @@ export const requestDeviceAuthorization = async (
   scope?: string
 ): Promise<DeviceAuthorizationResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw new Error("Authority and clientId are required for device login.");
+    throw createCliError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
   }
   const endpoint = await getDeviceAuthorizationEndpoint(environment.authority);
   const params = new URLSearchParams({
@@ -166,13 +167,17 @@ export const requestDeviceAuthorization = async (
     } catch {
       // keep raw body text
     }
-    throw new Error(
-      `Failed to start device login (${response.status}): ${detail || "Unknown error"}`
+    throw createCliError(
+      `Failed to start device login (${response.status}): ${detail || "Unknown error"}`,
+      "AUTH_REQUIRED"
     );
   }
   const json = (await response.json()) as DeviceAuthorizationResponse;
   if (!json.device_code || !json.verification_uri) {
-    throw new Error("Device authorization response was missing required fields.");
+    throw createCliError(
+      "Device authorization response was missing required fields.",
+      "AUTH_REQUIRED"
+    );
   }
   return {
     deviceCode: json.device_code,
@@ -195,7 +200,7 @@ export const pollDeviceToken = async (
   device: DeviceAuthorizationResult
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw new Error("Authority and clientId are required for device login.");
+    throw createCliError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
   }
   const tokenEndpoint = await getTokenEndpoint(environment.authority);
   const deadline = Date.now() + device.expiresIn * 1000;
@@ -218,7 +223,10 @@ export const pollDeviceToken = async (
     if (response.ok) {
       const json = JSON.parse(bodyText) as OAuthTokenResponse;
       if (!json.access_token) {
-        throw new Error("Access token was not returned by the identity server.");
+        throw createCliError(
+          "Access token was not returned by the identity server.",
+          "AUTH_REQUIRED"
+        );
       }
       return {
         accessToken: json.access_token,
@@ -250,16 +258,17 @@ export const pollDeviceToken = async (
       continue;
     }
     if (errorCode === "access_denied") {
-      throw new Error("Device login was cancelled.");
+      throw createCliError("Device login was cancelled.", "AUTH_REQUIRED");
     }
     if (errorCode === "expired_token") {
-      throw new Error("Device login expired. Try again.");
+      throw createCliError("Device login expired. Try again.", "AUTH_REQUIRED");
     }
-    throw new Error(
-      `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`
+    throw createCliError(
+      `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`,
+      "AUTH_REQUIRED"
     );
   }
-  throw new Error("Device login expired. Try again.");
+  throw createCliError("Device login expired. Try again.", "AUTH_REQUIRED");
 };
 
 /**
@@ -277,7 +286,10 @@ export const requestClientCredentialsToken = async (
   scope?: string
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId || !environment.clientSecret) {
-    throw new Error("Authority, clientId, and clientSecret are required for client credentials.");
+    throw createCliError(
+      "Authority, clientId, and clientSecret are required for client credentials.",
+      "AUTH_REQUIRED"
+    );
   }
 
   const params = new URLSearchParams({
@@ -300,7 +312,10 @@ export const requestPasswordToken = async (
   scope?: string
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw new Error("Authority and clientId are required for username/password login.");
+    throw createCliError(
+      "Authority and clientId are required for username/password login.",
+      "AUTH_REQUIRED"
+    );
   }
 
   const params = new URLSearchParams({

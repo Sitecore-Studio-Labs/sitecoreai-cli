@@ -1,60 +1,83 @@
-## Production Readiness Checklist
+## Production Readiness — Standing Gates
 
-Date: 2026-02-04
+This document used to be a one-time audit snapshot dated 2026-02-04 with
+every box pre-ticked. That shape rotted within months: every entry was
+either a CI gate that has stayed green or a one-off check whose result
+isn't reproducible from the file. Rewritten as a living map of _where_
+each gate is enforced, so readers can verify status by looking at the
+enforcement point rather than trusting a date.
 
-### Quality Gates
+When a gate is added, removed, or moved: update the corresponding row
+here. The file is informational — it does not gate releases. CI does.
 
-- [x] `npm run lint` (pass)
-- [x] `npm run test` (pass, earlier in this session)
-- [x] `npm run build` (pass)
+### Quality
 
-### Dependency & Supply Chain
+| Gate                     | Enforced by                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| Lint                     | `pnpm lint` (eslint.config.js) — runs in `.github/workflows/ci.yml`                 |
+| Typecheck                | `pnpm typecheck` (`tsc --noEmit`) — runs as `pretest`; CI                           |
+| Unit + integration tests | `pnpm test` (vitest) — CI; integration tier gated on `SITECOREAI_RUN_INTEGRATION=1` |
+| Build                    | `pnpm build` (tsc + tsc-alias) — `prepack` + CI                                     |
 
-- [x] `npm audit --omit=dev` (0 vulnerabilities)
-- [x] License summary captured via `npx license-checker --summary`
-- [x] Review license policy compliance (verify acceptable licenses for your org)
-- [x] Lockfile hygiene (ignore `pnpm-lock.yaml` and `.pnpm-store/`)
+### Dependency & supply chain
 
-### Packaging & Artifacts
+| Gate                   | Enforced by                                                          |
+| ---------------------- | -------------------------------------------------------------------- |
+| No known runtime vulns | Run `pnpm audit --omit=dev` ad-hoc; not currently CI-gated           |
+| License policy         | Run `pnpm dlx license-checker --summary` ad-hoc; org-policy decision |
+| Lockfile hygiene       | `pnpm-lock.yaml` committed, `.pnpm-store/` gitignored                |
 
-- [x] `npm pack --dry-run` executed; tarball contents reviewed
-- [x] `dist/config/schema.json` present
-- [x] `dist/config/serialization-module.schema.json` present
-- [x] `dist/config/telemetry.schema.json` present
-- [x] Confirm `prepare`/Husky behavior on publish and installs from git
-  - Note: `npm pack --dry-run` triggers `prepare`; if CI lacks `.git` access, set `HUSKY=0`
+### Packaging & artifacts
 
-### Security & Secrets
+| Gate                 | Enforced by                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Tarball contents     | `pnpm pack --dry-run` — verify before publish                                 |
+| Schema files shipped | `dist/config/*.schema.json` produced by `tsc` (verified manually pre-publish) |
+| Husky / `prepare`    | Husky disabled in publish CI via `HUSKY=0`                                    |
 
-- [x] History logging redacts sensitive CLI args
-- [x] Secret scanning in `src/` and `tests/` shows no hardcoded credentials
-- [x] Run automated secret scan in CI (gitleaks workflow added)
+### Security & secrets
 
-### Reliability & Networking
+| Gate                     | Enforced by                                                            |
+| ------------------------ | ---------------------------------------------------------------------- |
+| History redacts CLI args | `src/shared/redact.ts`; covered in `tests/unit/shared/redact.test.ts`  |
+| No hardcoded credentials | `.github/workflows/secret-scan.yml` (gitleaks) — fails CI on detection |
+| Auth/credential storage  | `src/shared/keychain.ts` (system keychain) — covered in unit tests     |
 
-- [x] GraphQL calls have timeout + HTTP status handling
-- [x] Telemetry uses retries and schema validation
-- [x] Confirm all network clients share consistent retry/backoff strategy
-  - Deploy API retries idempotent GETs; GraphQL POSTs not retried to avoid side effects
+### Reliability & networking
 
-### Compatibility & Runtime
+| Gate                              | Enforced by                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| GraphQL timeout + status handling | `src/shared/graphql.ts` (shared transport) — unit + integration tests                                         |
+| Telemetry retries + schema        | `src/shared/telemetry.ts`                                                                                     |
+| Retry/backoff strategy            | Deploy API retries idempotent GETs; GraphQL POSTs not retried (intentional, to avoid silent duplicate writes) |
+| CliError contract                 | `src/shared/errors.ts` — every code maps to a stable exit code; covered in `tests/unit/shared/errors.test.ts` |
 
-- [x] Node engine specified (`>=20`)
-- [x] Smoke test on macOS/Windows/Linux (keytar + TTY behavior)
-  - Local `npm run smoke` executed; CI workflow added for OS matrix
-- [x] Validate CLI behavior in CI (non-TTY, headless)
-  - `smoke.yml` runs `npm run smoke` in CI
+### Compatibility & runtime
 
-### Documentation & Governance
+| Gate               | Enforced by                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Node engine        | `package.json` `engines.node: ">=20"`                                                                         |
+| OS matrix          | `.github/workflows/smoke.yml` — runs `pnpm smoke` on macOS/Windows/Linux                                      |
+| Headless / non-TTY | Smoke workflow runs in CI (no TTY); `cli.ts` falls back to non-interactive mode when stdin/stdout aren't TTYs |
 
-- [x] Telemetry + module schema validation documented in README
-- [x] Add production troubleshooting guide (common auth/network failures)
-- [x] Add data handling/retention statement for telemetry + history logs
+### Documentation & governance
 
-### Release Process
+| Gate                          | Enforced by                                                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| README accuracy               | Manually maintained; PRs touching public surface should update it                                                    |
+| AGENTS.md / AGENT_CI.md       | Manually maintained; describes the agent-facing contract (`--json`, `--non-interactive`, `SITECOREAI_AUTO_WIZARD=0`) |
+| Telemetry / history retention | Documented in README; data-handling decisions live with the operator                                                 |
 
-- [x] Changesets workflow present
-- [x] Verify npm publish permissions + provenance/signing requirements
-  - Release workflow sets `NPM_CONFIG_PROVENANCE=true`
-- [x] Validate release automation in CI on protected branches
-  - Branch protection workflow enforces protection on `main`
+### Release process
+
+| Gate               | Enforced by                                                             |
+| ------------------ | ----------------------------------------------------------------------- |
+| Changesets         | `pnpm changeset` — required for any user-facing change                  |
+| Publish provenance | `.github/workflows/release.yml` sets `NPM_CONFIG_PROVENANCE=true`       |
+| Branch protection  | `.github/workflows/branch-protection.yml` enforces protection on `main` |
+
+### What this file is not
+
+- Not a release gate — CI gates releases.
+- Not a status report — the truth is in the enforcement points above.
+- Not a one-time pre-launch audit — that was 2026-02-04; if you need a fresh audit, run one and write a separate dated note.

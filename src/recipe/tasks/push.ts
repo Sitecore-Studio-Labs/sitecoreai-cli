@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { createCliError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
 import { compileRecipeSet } from "../compile";
@@ -6,6 +8,7 @@ import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
 import type { OperationIr } from "../ir/operations";
+import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
@@ -59,6 +62,21 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const partialDesignsRoot = options.partialDesignsRoot ?? tenant.environment.partialDesignsRoot;
   const pageDesignsRoot = options.pageDesignsRoot ?? tenant.environment.pageDesignsRoot;
   const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
+  // SXA Headless variants root — required when any recipe in the set
+  // declares variants. Compiler throws INPUT_INVALID with a clear hint
+  // if a recipe asks for variants but this root is unset; if no
+  // recipe in the set has variants, this stays unset and the
+  // compiler skips the check.
+  const headlessVariantsRoot =
+    options.headlessVariantsRoot ?? tenant.environment.headlessVariantsRoot;
+  // SXA Available Renderings root — when set, compileRecipeSet emits
+  // a synthetic IR with one Available Renderings section per
+  // `recipe.section`, listing every rendering in that section.
+  const availableRenderingsRoot =
+    options.availableRenderingsRoot ?? tenant.environment.availableRenderingsRoot;
+  // Per-site enumerations bucket — required for EnumerationRecipe
+  // compilation and for any field carrying `sitecore.enumHandle`.
+  const enumerationsRoot = options.enumerationsRoot ?? tenant.environment.enumerationsRoot;
 
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
@@ -87,7 +105,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       recipeFiles.push(file);
     }
   }
-  const recipes: Recipe[] = await Promise.all(recipeFiles.map((f) => loadRecipe(f)));
+  const recipes: Recipe[] = await mapWithConcurrency(recipeFiles, (f) => loadRecipe(f));
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
@@ -96,8 +114,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,
+    headlessVariantsRoot,
+    availableRenderingsRoot,
+    enumerationsRoot,
   });
-  const loadedIrs: OperationIr[] = await Promise.all(irFiles.map((f) => loadIr(f)));
+  const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
   const irs: { ir: OperationIr }[] = [
     ...compiled.map((ir) => ({ ir })),
     ...loadedIrs.map((ir) => ({ ir })),
@@ -132,12 +153,20 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   if (hasSiteOp) {
     const accessToken = await getAccessToken(tenant.environment);
     if (!accessToken) {
-      throw new Error(
-        `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai login' or set client credentials, then retry.`
+      throw createCliError(
+        `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai login' or set client credentials, then retry.`,
+        "AUTH_REQUIRED"
       );
     }
     sitesClient = createSitesApiClient({ accessToken });
   }
+
+  // Recipe-source files (vs pre-compiled `.ir.json`) are kept in scope
+  // for the post-IR placeholder-allow phase. Pre-compiled IRs lose
+  // their source-recipe handle/section/name → can't drive placeholder
+  // resolution; for those, callers should run `scai deploy placeholders`
+  // separately if needed.
+  const sourceRecipes = recipes;
 
   for (const { ir } of irs) {
     const result = await executeIr(ir, tenant.client, {
@@ -179,12 +208,62 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
   }
 
+  // Post-IR phase: register each component-template recipe's
+  // rendering with the placeholder slots it declares compatibility
+  // with (`recipe.placeholders: string[]`). Runs only on apply mode
+  // and only when at least one IR succeeded (a fully-aborted push
+  // shouldn't dirty unrelated placeholders). Skipped when the env
+  // profile doesn't configure `placeholderSettingsRoots` — empty list
+  // means no slots to walk.
+  const placeholderRoots = tenant.environment.placeholderSettingsRoots ?? [];
+  const anyComponentRecipeDeclaresPlaceholders = sourceRecipes.some(
+    (r) =>
+      r.kind === "component-template" && Array.isArray(r.placeholders) && r.placeholders.length > 0
+  );
+  let placeholderAllowSummary: PlaceholderAllowResult | null = null;
+  if (
+    !isDryRun &&
+    anyComponentRecipeDeclaresPlaceholders &&
+    placeholderRoots.length > 0 &&
+    results.some((r) => !r.aborted)
+  ) {
+    placeholderAllowSummary = await applyPlaceholderAllowControls({
+      client: tenant.client,
+      recipes: sourceRecipes,
+      renderingsRoot,
+      placeholderSettingsRoots: placeholderRoots,
+      apply: true,
+      onUpdate: (placeholderPath, added) => {
+        if (!logger.isJson()) {
+          logger.info(`  Placeholder ${placeholderPath} ← +${added} rendering(s)`, "cyan");
+        }
+      },
+    });
+    if (!logger.isJson()) {
+      logger.info(
+        `Placeholder allow-controls: ${placeholderAllowSummary.patched} placeholder(s) patched, ${placeholderAllowSummary.totalAdded} entry(ies) added`,
+        placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0 ? "yellow" : "green"
+      );
+      if (placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0) {
+        logger.warn(
+          `  Unmatched placeholder keys (no Placeholder Settings item with that key under any configured root): ${placeholderAllowSummary.unmatchedPlaceholderKeys.join(", ")}`
+        );
+      }
+      if (placeholderAllowSummary.unresolvedRecipeHandles.length > 0) {
+        logger.warn(
+          `  Recipes whose rendering item couldn't be resolved (skipped from placeholder registration): ${placeholderAllowSummary.unresolvedRecipeHandles.join(", ")}`
+        );
+      }
+    }
+  }
+
   if (logger.isJson()) {
     logger.json({
       command: "recipe.push",
       environment: tenant.envName,
       source,
       whatIf: isDryRun,
+      placeholderAllowControls: placeholderAllowSummary ?? undefined,
       results: results.map((r) => ({
         recipeHandle: r.plan.recipeHandle,
         summary: r.summary,

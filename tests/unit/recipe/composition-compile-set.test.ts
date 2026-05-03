@@ -19,7 +19,11 @@ const CONTEXT: CompileContext = {
   renderingsRoot: "/sitecore/layout/Renderings/Project/Demo",
   partialDesignsRoot: "/sitecore/content/Demo/Presentation/Partial Designs",
   pageDesignsRoot: "/sitecore/content/Demo/Presentation/Page Designs",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/Demo/Presentation/Headless Variants",
+  enumerationsRoot: "/sitecore/content/test-tenant/Demo/Settings/Enumerations",
 };
+
+const SITE = "default";
 
 const findAggregate = (irs: OperationIr[]): OperationIr | undefined =>
   irs.find((ir) => ir.recipeHandle === TEMPLATES_MAPPING_AGGREGATE_HANDLE);
@@ -98,8 +102,8 @@ describe("compileRecipeSet — TemplatesMapping aggregate", () => {
       ["landing-page@1", "landing-design@1"],
       ["article-page@1", "article-design@1"],
     ] as const) {
-      expect(value).toContain(encodeURIComponent(`{${templateId(tplHandle).toUpperCase()}}`));
-      expect(value).toContain(encodeURIComponent(`{${pageDesignId(designHandle).toUpperCase()}}`));
+      expect(value).toContain(encodeURIComponent(`{${templateId(SITE, tplHandle).toUpperCase()}}`));
+      expect(value).toContain(encodeURIComponent(`{${pageDesignId(SITE, designHandle).toUpperCase()}}`));
     }
   });
 

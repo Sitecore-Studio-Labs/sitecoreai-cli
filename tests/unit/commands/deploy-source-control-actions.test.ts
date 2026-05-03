@@ -16,7 +16,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeploySourceControlDelete: vi.fn(),
 }));
 
-vi.mock("../../../src/serialization/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks", () => taskMocks);
 
 const runSourceControl = async (args: string[]): Promise<void> => {
   const command = createDeploySourceControlCommand();

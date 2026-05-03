@@ -5,7 +5,7 @@ import {
   runDeployEnvironmentsGet,
   runDeployEnvironmentsGetEdgeToken,
   runDeployEnvironmentsGetEditingSecret,
-} from "../../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsListCommand = (): Command => {

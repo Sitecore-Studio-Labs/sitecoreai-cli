@@ -24,7 +24,7 @@ import {
 } from "./shared/telemetry";
 import { resolveOutputOptionsFromArgs } from "./shared/output";
 import { redactSecrets } from "./shared/redact";
-import { toCliError, withHint } from "./shared/errors";
+import { toCliError } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
 import { readRootConfiguration, readRootConfigurationFile } from "./config";
@@ -259,37 +259,6 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   return program;
 };
 
-const guessHint = (message: string): string | undefined => {
-  if (message.includes("Deploy token not found")) {
-    return "Run 'scai init' or 'scai login' to authenticate.";
-  }
-  if (message.includes("Deploy API access token is required")) {
-    return "Provide --deploy-token or run 'scai login' to authenticate.";
-  }
-  if (message.includes("Project ID is required")) {
-    return "Provide --project/--id or set projectId in the environment profile.";
-  }
-  if (message.includes("Environment ID is required")) {
-    return "Provide --id/--name or set environmentId in the environment profile.";
-  }
-  if (message.includes("Environment name is required")) {
-    return "Provide --environment-name or set defaultEnvProfile in the config.";
-  }
-  if (message.includes("Client ID and client secret are required")) {
-    return "Provide --client-id/--client-secret or set SITECOREAI_CLIENT_ID/SECRET.";
-  }
-  if (message.includes("Client ID is required")) {
-    return "Provide --client-id or set SITECOREAI_CLIENT_ID.";
-  }
-  if (message.includes("Environment host is not configured")) {
-    return "Set a CM host with 'scai init' or pass --host.";
-  }
-  if (message.includes("configuration file")) {
-    return "Run 'scai init' to create a config or fix the config file.";
-  }
-  return undefined;
-};
-
 const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   const argv = normalizeArgs(inputArgv);
   const args = argv.slice(2);
@@ -399,8 +368,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
     );
     const cliError = toCliError(error);
     const redactedMessage = redactSecrets(cliError.message);
-    const hint = cliError.hint ?? guessHint(redactedMessage);
-    const finalError = hint ? withHint(cliError, hint) : cliError;
+    const finalError = cliError;
     if (baseLogger.isJson()) {
       baseLogger.json({
         message: redactedMessage,

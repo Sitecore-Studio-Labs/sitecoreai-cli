@@ -1,14 +1,9 @@
 import path from "node:path";
 import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
-import {
-  readRootConfiguration,
-  readRootConfigurationFile,
-  type EnvironmentConfiguration,
-  type RootConfiguration,
-} from "@/config";
+import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
 import { createCliError } from "@/shared/errors";
-import { resolveApiTimeoutMs } from "@/serialization/tasks/shared";
+import { resolveEnvironment } from "@/shared/env";
 import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient } from "../api/client";
 
@@ -48,6 +43,12 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   pageDesignsRoot?: string;
   /** Override `contentItemsRoot` from the env profile (Phase 4). */
   contentItemsRoot?: string;
+  /** Override `headlessVariantsRoot` from the env profile. */
+  headlessVariantsRoot?: string;
+  /** Override `availableRenderingsRoot` from the env profile. */
+  availableRenderingsRoot?: string;
+  /** Override `enumerationsRoot` from the env profile. */
+  enumerationsRoot?: string;
   /**
    * Active env profile to source `templatesRoot` / `renderingsRoot`
    * defaults from when the flags are not passed. Required for compile
@@ -83,6 +84,12 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   pageDesignsRoot?: string;
   /** Override `contentItemsRoot` from the env profile (Phase 4). */
   contentItemsRoot?: string;
+  /** Override `headlessVariantsRoot` from the env profile. */
+  headlessVariantsRoot?: string;
+  /** Override `availableRenderingsRoot` from the env profile. */
+  availableRenderingsRoot?: string;
+  /** Override `enumerationsRoot` from the env profile. */
+  enumerationsRoot?: string;
   whatIf?: boolean;
   allowWrite?: boolean;
 }
@@ -104,24 +111,10 @@ export interface ResolvedTenant {
 }
 
 export const resolveTenant = (options: RecipeTenantOptions): ResolvedTenant => {
-  const configPath = options.config ?? process.cwd();
-  const rootFile = readRootConfigurationFile(configPath);
-  const envName = options.environmentName ?? rootFile.config.defaultEnvProfile;
-  if (!envName) {
-    throw createCliError("Environment name is required.", "INPUT_INVALID", {
-      hint: "Pass --environment-name or set defaultEnvProfile in the config.",
-    });
-  }
-  const root = readRootConfiguration(configPath, envName);
-  const environment = root.environments[envName];
-  if (!environment) {
-    throw createCliError(`Environment '${envName}' is not configured.`, "ENV_NOT_FOUND", {
-      hint: "Run 'scai init' to configure the environment.",
-    });
-  }
+  const { envName, environment, root, timeoutMs } = resolveEnvironment(options);
   const client = createAuthoringClient({
     environment,
-    request: { timeoutMs: resolveApiTimeoutMs(root) },
+    request: { timeoutMs },
   });
   return { envName, environment, root, client };
 };

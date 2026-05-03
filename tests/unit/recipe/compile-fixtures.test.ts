@@ -26,10 +26,17 @@ import { accordionItemRecipe } from "../../../example/recipes/accordion-item.rec
 import { accordionBlockRecipe } from "../../../example/recipes/accordion-block.recipe";
 import { avatarBlockRecipe } from "../../../example/recipes/avatar-block.recipe";
 
+const ENUMERATIONS_ROOT = "/sitecore/content/test-tenant/test-site/Settings/Enumerations";
+
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/test-site/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
+  enumerationsRoot: ENUMERATIONS_ROOT,
 };
+
+const SITE = "default";
 
 const findField = (op: CreateItemOp, fieldGuid: string) =>
   op.fields.find((f) => f.fieldId === fieldGuid);
@@ -40,15 +47,13 @@ const datasourceSectionsIn = (ops: Operation[], handle: string) =>
       op.op === "CreateItem" &&
       op.templateOf === SITECORE_TEMPLATES.TEMPLATE_SECTION &&
       op.parent.kind === "ref-recipe" &&
-      op.parent.refKey === templateId(handle)
+      op.parent.refKey === templateId(SITE, handle)
   );
 
 const variantsIn = (ops: Operation[]) =>
   ops.filter(
     (op): op is CreateItemOp =>
-      op.op === "CreateItem" &&
-      op.templateOf === SITECORE_TEMPLATES.FOLDER &&
-      op.name !== "Variants"
+      op.op === "CreateItem" && op.templateOf === SITECORE_TEMPLATES.VARIANT_DEFINITION
   );
 
 /**
@@ -57,14 +62,18 @@ const variantsIn = (ops: Operation[]) =>
  * unintended op emission changes (a new field, lost variant, etc.).
  */
 describe("compile fixtures — registry recipes round-trip cleanly", () => {
-  it("cta-button@1: 1 field, 4 variants, 2 params → 17 ops", () => {
+  it("cta-button@1: 1 field, 4 variants, 2 params (4+5 inline-enum values) → 30 ops", () => {
     const ir = compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(17);
+    // 19 baseline + 2 inline-enum folders + 9 inline-enum value-item
+    // children (Size:4 + ColorScheme:5). Each inline enum lands as a
+    // per-field Folder under <enumerationsRoot> with N child value items.
+    expect(ir.operations).toHaveLength(30);
   });
 
-  it("badge-block@1: 1 field, 5 variants, 2 params → 18 ops", () => {
+  it("badge-block@1: 1 field, 5 variants, 2 params (3+5 inline-enum values) → 30 ops", () => {
     const ir = compileComponentTemplateRecipe(badgeBlockRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(18);
+    // 20 baseline + 2 inline-enum folders + 8 inline-enum value-item children
+    expect(ir.operations).toHaveLength(30);
     const variants = variantsIn(ir.operations);
     expect(variants.map((v) => v.name)).toEqual([
       "default",
@@ -75,9 +84,11 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     ]);
   });
 
-  it("card-block@1: multi-section + shape→type override → 20 ops", () => {
+  it("card-block@1: multi-section + shape→type override → 34 ops", () => {
     const ir = compileComponentTemplateRecipe(cardBlockRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(20);
+    // 22 baseline + 2 inline-enum folders + 10 inline-enum value-item
+    // children (7 + 3)
+    expect(ir.operations).toHaveLength(34);
     const sections = datasourceSectionsIn(ir.operations, ir.recipeHandle);
     expect(sections.map((s) => s.name)).toEqual(["Content", "Media"]);
     // Description overrides text → multi-line-text via sitecore.type
@@ -102,9 +113,11 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     });
   });
 
-  it("rich-text-block@1: 5 variants, boolean param, 4 params total → 21 ops", () => {
+  it("rich-text-block@1: 5 variants, boolean param, 4 params total → 34 ops", () => {
     const ir = compileComponentTemplateRecipe(richTextBlockRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(21);
+    // 23 baseline + 3 inline-enum folders + 8 inline-enum value-item
+    // children (2 + 3 + 3)
+    expect(ir.operations).toHaveLength(34);
     const variants = variantsIn(ir.operations);
     expect(variants.map((v) => v.name)).toEqual([
       "default",
@@ -135,9 +148,11 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     expect(sections.map((s) => s.name)).toEqual(["Content", "Media"]);
   });
 
-  it("accordion-block@1: Treelist source resolves + insertOptions emits SetField → 19 ops", () => {
+  it("accordion-block@1: Treelist source resolves + insertOptions emits SetField → 32 ops", () => {
     const ir = compileComponentTemplateRecipe(accordionBlockRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(19);
+    // 21 baseline + 3 inline-enum folders + 8 inline-enum value-item
+    // children (2 + 3 + 3)
+    expect(ir.operations).toHaveLength(32);
 
     // The Items field's source references a recipe handle, so the compiler
     // emits ref-source-fields and the executor renders with captured itemIds.
@@ -146,7 +161,10 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     );
     expect(findField(itemsField!, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual({
       kind: "ref-source-fields",
+      site: SITE,
       sourceTypes: ["accordion-item@1"],
+      sourceQuery: undefined,
+      sourceScope: undefined,
     });
 
     // insertOptions emits a SetField on the standard-values item carrying
@@ -157,13 +175,15 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     expect(insertOps).toBeDefined();
     expect(insertOps?.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [templateId("accordion-item@1")],
+      refKeys: [templateId(SITE, "accordion-item@1")],
     });
   });
 
-  it("avatar-block@1: placeholders parse but Phase 1 emits no placeholder ops → 18 ops", () => {
+  it("avatar-block@1: placeholders parse but Phase 1 emits no placeholder ops → 27 ops", () => {
     const ir = compileComponentTemplateRecipe(avatarBlockRecipe, CONTEXT);
-    expect(ir.operations).toHaveLength(18);
+    // 20 baseline + 2 inline-enum folders + 5 inline-enum value-item
+    // children (3 + 2)
+    expect(ir.operations).toHaveLength(27);
     // Phase 4 will add placeholder-settings + AllowedRenderings ops; for now
     // the recipe parses (placeholders is in the schema) but the compiler
     // emits nothing for it.
@@ -192,7 +212,7 @@ describe("compile fixtures — cross-recipe deterministic ID linkage", () => {
       (op): op is SetFieldOp => op.op === "SetField" && op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS
     );
     if (insertOps?.value.kind !== "ref-recipe-list") throw new Error("expected ref-recipe-list");
-    expect(insertOps.value.refKeys).toEqual([templateId("accordion-item@1")]);
+    expect(insertOps.value.refKeys).toEqual([templateId(SITE, "accordion-item@1")]);
   });
 });
 
@@ -202,20 +222,20 @@ describe("compile fixtures — paramsField IDs scope under paramsTemplateId", ()
     const useSectionWrapper = ir.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name === "UseSectionWrapper"
     );
-    expect(useSectionWrapper?.id).toBe(paramsFieldId("rich-text-block@1", "UseSectionWrapper"));
+    expect(useSectionWrapper?.id).toBe(paramsFieldId(SITE, "rich-text-block@1", "UseSectionWrapper"));
     // Sanity: the field id is NOT the datasource-template's fieldId
-    expect(useSectionWrapper?.id).not.toBe(fieldId("rich-text-block@1", "UseSectionWrapper"));
+    expect(useSectionWrapper?.id).not.toBe(fieldId(SITE, "rich-text-block@1", "UseSectionWrapper"));
   });
 });
 
 describe("compile fixtures — variant IDs scope under each rendering's variants folder", () => {
   it("badge-block variants live under badge-block's variants folder", () => {
     const ir = compileComponentTemplateRecipe(badgeBlockRecipe, CONTEXT);
-    const folderId = variantsFolderId("badge-block@1");
+    const folderId = variantsFolderId(SITE, "badge-block@1");
     const variants = variantsIn(ir.operations);
     for (const v of variants) {
       expect(v.parent).toEqual({ kind: "ref-recipe", refKey: folderId });
-      expect(v.id).toBe(variantId("badge-block@1", v.name));
+      expect(v.id).toBe(variantId(SITE, "badge-block@1", v.name));
     }
   });
 });

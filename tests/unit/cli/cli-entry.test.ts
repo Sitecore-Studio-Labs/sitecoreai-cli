@@ -174,9 +174,14 @@ describe("cli entrypoint", () => {
   });
 
   it("emits JSON errors with exit code on failure", async () => {
-    actionMock.mockRejectedValueOnce(new Error("Deploy token not found"));
     process.argv = ["node", "scai", "status", "--json"];
     vi.resetModules();
+    const { createCliError } = await import("../../../src/shared/errors");
+    actionMock.mockRejectedValueOnce(
+      createCliError("Deploy token not found", "AUTH_REQUIRED", {
+        hint: "Run 'scai login' to authenticate.",
+      })
+    );
     await import("../../../src/cli");
 
     expect(jsonSpy).toHaveBeenCalled();
@@ -187,17 +192,21 @@ describe("cli entrypoint", () => {
     };
     expect(payload.code).toBe("AUTH_REQUIRED");
     expect(payload.exitCode).toBe(3);
-    expect(payload.hint).toBe("Run 'scai init' or 'scai login' to authenticate.");
+    expect(payload.hint).toBe("Run 'scai login' to authenticate.");
   });
 
-  it("uses a guessed hint for deploy access token errors", async () => {
-    actionMock.mockRejectedValueOnce(new Error("Deploy API access token is required"));
+  it("emits UNKNOWN code for bare Errors thrown outside CliError contract", async () => {
+    actionMock.mockRejectedValueOnce(new Error("Some unexpected failure"));
     process.argv = ["node", "scai", "status", "--json"];
     vi.resetModules();
     await import("../../../src/cli");
 
-    const payload = jsonSpy.mock.calls.at(-1)?.[0] as { hint?: string } | undefined;
-    expect(payload?.hint).toBe("Provide --deploy-token or run 'scai login' to authenticate.");
+    const payload = jsonSpy.mock.calls.at(-1)?.[0] as
+      | { code?: string; exitCode?: number; hint?: string }
+      | undefined;
+    expect(payload?.code).toBe("UNKNOWN");
+    expect(payload?.exitCode).toBe(1);
+    expect(payload?.hint).toBeUndefined();
   });
 
   it("prints non-JSON errors with details and hints", async () => {
@@ -215,39 +224,6 @@ describe("cli entrypoint", () => {
     expect(loggerState.last?.error).toHaveBeenCalledWith("Input required");
     expect(loggerState.last?.verbose).toHaveBeenCalledWith("  - Missing configuration");
     expect(loggerState.last?.warn).toHaveBeenCalledWith("Hint: Use --environment-name");
-  });
-
-  it.each([
-    [
-      "Project ID is required",
-      "Provide --project/--id or set projectId in the environment profile.",
-    ],
-    [
-      "Environment ID is required",
-      "Provide --id/--name or set environmentId in the environment profile.",
-    ],
-    [
-      "Environment name is required",
-      "Provide --environment-name or set defaultEnvProfile in the config.",
-    ],
-    [
-      "Client ID and client secret are required",
-      "Provide --client-id/--client-secret or set SITECOREAI_CLIENT_ID/SECRET.",
-    ],
-    ["Client ID is required", "Provide --client-id or set SITECOREAI_CLIENT_ID."],
-    ["Environment host is not configured", "Set a CM host with 'scai init' or pass --host."],
-    [
-      "configuration file could not be resolved",
-      "Run 'scai init' to create a config or fix the config file.",
-    ],
-  ])("guesses hint for %s", async (message, expected) => {
-    actionMock.mockRejectedValueOnce(new Error(message));
-    process.argv = ["node", "scai", "status", "--json"];
-    vi.resetModules();
-    await import("../../../src/cli");
-
-    const payload = jsonSpy.mock.calls.at(-1)?.[0] as { hint?: string } | undefined;
-    expect(payload?.hint).toBe(expected);
   });
 
   it("swallows history and telemetry failures", async () => {
@@ -286,8 +262,12 @@ describe("cli entrypoint", () => {
   it("runs init wizard when config is missing", async () => {
     process.argv = ["node", "scai", "status"];
     vi.resetModules();
+    const { createCliError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+      throw createCliError(
+        "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
+        "CONFIG_NOT_FOUND"
+      );
     });
     await import("../../../src/cli");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -313,8 +293,12 @@ describe("cli entrypoint", () => {
   it("runs init wizard when no command is provided", async () => {
     process.argv = ["node", "scai"];
     vi.resetModules();
+    const { createCliError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+      throw createCliError(
+        "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
+        "CONFIG_NOT_FOUND"
+      );
     });
     await import("../../../src/cli");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -356,8 +340,12 @@ describe("cli entrypoint", () => {
     setTty(false);
     process.env.SITECOREAI_NON_INTERACTIVE = "1";
     vi.resetModules();
+    const { createCliError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw new Error("Couldn't resolve a root configuration file (sitecoreai.cli.json).");
+      throw createCliError(
+        "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
+        "CONFIG_NOT_FOUND"
+      );
     });
     await import("../../../src/cli");
     await new Promise((resolve) => setTimeout(resolve, 0));

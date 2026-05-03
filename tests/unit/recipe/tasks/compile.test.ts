@@ -8,6 +8,10 @@ import { ctaButtonRecipe } from "../../../../example/recipes/cta-button.recipe";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot:
+    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 describe("runRecipeCompile", () => {
@@ -22,6 +26,8 @@ describe("runRecipeCompile", () => {
       output: irPath,
       templatesRoot: CONTEXT.templatesRoot,
       renderingsRoot: CONTEXT.renderingsRoot,
+      headlessVariantsRoot: CONTEXT.headlessVariantsRoot,
+      enumerationsRoot: CONTEXT.enumerationsRoot,
       json: true,
       quiet: true,
     });
@@ -29,7 +35,10 @@ describe("runRecipeCompile", () => {
     const written = JSON.parse(await fs.readFile(irPath, "utf8"));
     expect(written.schemaVersion).toBe("1");
     expect(written.recipeHandle).toBe("cta-button@1");
-    expect(written.operations).toHaveLength(17);
+    // 19 baseline + 2 per-field enum folders + 9 inline-enum value-item
+    // children (Size:4 + ColorScheme:5). Each inline-enum field now also
+    // emits a Folder op for its per-field enum bucket.
+    expect(written.operations).toHaveLength(30);
   });
 
   it("rejects an invalid recipe with a CONFIG-style hint", async () => {
@@ -42,6 +51,7 @@ describe("runRecipeCompile", () => {
         output: path.join(tmpDir, "out.ir.json"),
         templatesRoot: CONTEXT.templatesRoot,
         renderingsRoot: CONTEXT.renderingsRoot,
+        enumerationsRoot: CONTEXT.enumerationsRoot,
         json: true,
         quiet: true,
       })

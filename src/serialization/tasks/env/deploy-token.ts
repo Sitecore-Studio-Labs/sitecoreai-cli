@@ -13,8 +13,8 @@ import {
   requestDeviceAuthorization,
   pollDeviceToken,
 } from "@/serialization/sitecore-api";
-import { inputError, toLogger } from "../shared";
-import type { DeployTokenOptions } from "../types";
+import { inputError, toLogger } from "@/shared/cli-tasks";
+import type { DeployTokenOptions } from "@/deploy/tasks/types";
 import { DEFAULT_PUBLIC_CLIENT_ID } from "./constants";
 
 export const runDeployToken = async (options: DeployTokenOptions): Promise<void> => {

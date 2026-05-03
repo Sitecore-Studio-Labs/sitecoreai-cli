@@ -1,5 +1,7 @@
 import { v5 as uuidv5 } from "uuid";
 
+import { createCliError } from "@/shared/errors";
+
 /**
  * Emit a Sitecore layout XML string from a structural `Layout` shape.
  *
@@ -136,8 +138,9 @@ const resolvePlacement = (
         break;
       case "scoped":
         if (!ctx.allowScoped) {
-          throw new Error(
-            `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`
+          throw createCliError(
+            `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`,
+            "INPUT_INVALID"
           );
         }
         // Scoped resolution is a Phase 5 concern (PageRecipe). Emit

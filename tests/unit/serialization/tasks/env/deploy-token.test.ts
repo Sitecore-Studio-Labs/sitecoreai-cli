@@ -45,7 +45,7 @@ const logger = {
   warn: vi.fn(),
 };
 
-vi.mock("../../../../../src/serialization/tasks/shared", () => ({
+vi.mock("../../../../../src/shared/cli-tasks", () => ({
   inputError: (message: string) => new Error(message),
   toLogger: () => logger,
 }));

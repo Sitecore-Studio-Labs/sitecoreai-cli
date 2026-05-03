@@ -49,6 +49,7 @@ const CONTEXT: CompileContext = {
   componentsRoot: COMPONENTS_ROOT,
   contentModelsRoot: CONTENT_MODELS_ROOT,
   renderingsRoot: RENDERINGS_ROOT,
+  headlessVariantsRoot: `/sitecore/content/test-tenant/${SITE}/Presentation/Headless Variants`,
   site: SITE,
 };
 
@@ -216,7 +217,7 @@ describe("Component template path — section-aware emission", () => {
     const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
     const renderingOp = findCreates(
       ir.operations,
-      (op) => op.id === renderingId("accordion-block@1")
+      (op) => op.id === renderingId(SITE, "accordion-block@1")
     )[0];
     expect(renderingOp.path).toBe(`${RENDERINGS_ROOT}/ui/AccordionBlock`);
   });
@@ -254,7 +255,7 @@ describe("Component Folder template — emitted when children: declared", () => 
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const folderTplOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId(recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId(SITE, recipe.handle)
     ) as CreateItemOp | undefined;
     expect(folderTplOp).toBeDefined();
     expect(folderTplOp!.path).toBe(`${COMPONENTS_ROOT}/ui/Component Folders/AccordionBlock Folder`);
@@ -283,19 +284,19 @@ describe("Component Folder template — emitted when children: declared", () => 
     const setField = ir.operations.find(
       (op) =>
         op.op === "SetField" &&
-        (op as SetFieldOp).itemRefKey === componentFolderStandardValuesId(recipe.handle)
+        (op as SetFieldOp).itemRefKey === componentFolderStandardValuesId(SITE, recipe.handle)
     ) as SetFieldOp | undefined;
     expect(setField).toBeDefined();
     expect(setField!.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [templateId("accordion-item@1"), templateId("accordion-divider@1")],
+      refKeys: [templateId(SITE, "accordion-item@1"), templateId(SITE, "accordion-divider@1")],
     });
   });
 
   it("does NOT emit a Component Folder template when children is absent", () => {
     const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
     const folderTpl = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId("accordion-block@1")
+      (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId(SITE, "accordion-block@1")
     );
     expect(folderTpl).toBeUndefined();
   });
@@ -309,7 +310,7 @@ describe("Parameters template path — section-aware emission", () => {
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const paramsTpl = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, recipe.handle)
     ) as CreateItemOp | undefined;
     expect(paramsTpl).toBeDefined();
     expect(paramsTpl!.path).toBe(
@@ -339,7 +340,7 @@ describe("Parameters template path — section-aware emission", () => {
     // The recipe's own paramsTemplateId should NOT be emitted — the
     // rendering points at the external one instead.
     const ownParams = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, recipe.handle)
     );
     expect(ownParams).toBeUndefined();
   });
@@ -352,7 +353,7 @@ describe("Parameters template path — section-aware emission", () => {
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const renderingOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === renderingId(recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === renderingId(SITE, recipe.handle)
     ) as CreateItemOp | undefined;
     expect(renderingOp).toBeDefined();
     const paramsField = renderingOp!.fields.find(
@@ -360,7 +361,7 @@ describe("Parameters template path — section-aware emission", () => {
     );
     expect(paramsField?.value).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId("shared-params@1"),
+      refKey: paramsTemplateId(SITE, "shared-params@1"),
     });
   });
 });
@@ -380,7 +381,7 @@ describe("Standalone ParametersTemplateRecipe compile", () => {
       CONTEXT
     );
     const tplOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId("shared-params@1")
+      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, "shared-params@1")
     ) as CreateItemOp | undefined;
     expect(tplOp).toBeDefined();
     expect(tplOp!.path).toBe(`${COMPONENTS_ROOT}/ui/Presentation Parameters/SharedParams`);
@@ -402,7 +403,7 @@ describe("ContentTemplateRecipe — group-based path emission", () => {
       CONTEXT
     );
     const tplOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === templateId("accordion-content@1")
+      (op) => op.op === "CreateItem" && op.id === templateId(SITE, "accordion-content@1")
     ) as CreateItemOp | undefined;
     expect(tplOp!.path).toBe(`${CONTENT_MODELS_ROOT}/sitecore-blocks/AccordionContent`);
   });
@@ -420,7 +421,7 @@ describe("ContentTemplateRecipe — group-based path emission", () => {
       CONTEXT
     );
     const tplOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === templateId("loose-content@1")
+      (op) => op.op === "CreateItem" && op.id === templateId(SITE, "loose-content@1")
     ) as CreateItemOp | undefined;
     expect(tplOp!.path).toBe(`${CONTENT_MODELS_ROOT}/LooseContent`);
   });
@@ -467,7 +468,7 @@ describe("AppendToMultiList op — availableIn binding", () => {
     expect(showcaseOp!.fieldName).toBe("Available Renderings");
     expect(showcaseOp!.appendPolicy).toBe("merge-unique");
     expect(showcaseOp!.values).toEqual([
-      { kind: "ref-recipe", refKey: renderingId(recipe.handle) },
+      { kind: "ref-recipe", refKey: renderingId(SITE, recipe.handle) },
     ]);
   });
 });
@@ -541,11 +542,11 @@ describe("Deterministic GUID extensions", () => {
   });
 
   it("componentFolderTemplateId(handle) is stable and distinct from templateId(handle)", () => {
-    expect(componentFolderTemplateId("accordion-block@1")).not.toBe(
-      templateId("accordion-block@1")
+    expect(componentFolderTemplateId(SITE, "accordion-block@1")).not.toBe(
+      templateId(SITE, "accordion-block@1")
     );
-    expect(componentFolderTemplateId("accordion-block@1")).toBe(
-      componentFolderTemplateId("accordion-block@1")
+    expect(componentFolderTemplateId(SITE, "accordion-block@1")).toBe(
+      componentFolderTemplateId(SITE, "accordion-block@1")
     );
   });
 

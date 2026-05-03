@@ -6,7 +6,8 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import { runRecipeCompile, runRecipePlan, runRecipePush } from "../../recipe/tasks";
+import { runRecipeCompile, runRecipeDiff, runRecipePlan, runRecipePush } from "../../recipe/tasks";
+import { createCliError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
   command.addOption(
@@ -106,6 +107,26 @@ const createPlanCommand = (): Command => {
   return command;
 };
 
+const createDiffCommand = (): Command => {
+  const command = new Command("diff").description(
+    "Show what `recipe push` would change — read-only diff against a tenant. Compiles recipes in-memory; never mutates."
+  );
+
+  addOptionalInputOption(
+    command,
+    "Path to a recipe file (.recipe.ts/.json) or pre-compiled .ir.json"
+  );
+  addRecipeRootOptions(command);
+  addEnvironmentOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.action(async (options) => {
+    await runRecipeDiff(options);
+  });
+  return command;
+};
+
 const createPushCommand = (): Command => {
   const command = new Command("push").description(
     "Apply recipes to a tenant. Compiles in-memory and runs the executor with idempotency + best-effort rollback."
@@ -123,7 +144,23 @@ const createPushCommand = (): Command => {
   addVerbosityOptions(command);
 
   command.action(async (options) => {
-    await runRecipePush(options);
+    const results = await runRecipePush(options);
+    // Surface failure to the caller's exit code. `runRecipePush` returns
+    // a non-empty array even when every recipe aborted with errors —
+    // without this guard, the CLI exits 0 and orchestrators (or CI)
+    // can't tell a successful push from a 100%-failed one.
+    const failed = results.some((result) => result.aborted || result.summary.error > 0);
+    if (failed) {
+      const aborted = results.filter((r) => r.aborted).length;
+      const errored = results.reduce((acc, r) => acc + r.summary.error, 0);
+      throw createCliError(
+        `Recipe push failed: ${aborted} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
+        "DEPLOY_FAILED",
+        {
+          hint: "Inspect per-op `events[]` in the JSON output (or rerun with --verbose) to see which op aborted and why.",
+        }
+      );
+    }
   });
   return command;
 };
@@ -134,6 +171,7 @@ export const createRecipeCommand = (): Command => {
   );
 
   command.addCommand(createCompileCommand());
+  command.addCommand(createDiffCommand());
   command.addCommand(createPlanCommand());
   command.addCommand(createPushCommand());
 
@@ -149,6 +187,9 @@ export const createRecipeCommand = (): Command => {
       "",
       "  # Plan against a tenant from a pre-compiled IR",
       "  $ scai recipe plan -i ./recipes/.scai/cta-button_v1.ir.json -n my-tenant",
+      "",
+      "  # Diff every recipe in the config glob against a tenant (read-only)",
+      "  $ scai recipe diff -n my-tenant",
       "",
       "  # Push every recipe in the config glob (default `recipes/**/*.recipe.ts`)",
       "  $ scai recipe push -n my-tenant --what-if",

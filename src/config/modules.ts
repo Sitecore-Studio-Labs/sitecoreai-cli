@@ -152,7 +152,10 @@ export const readSerializationModules = async (
   exclude?: string[]
 ): Promise<SerializationModuleConfiguration[]> => {
   if (!rootConfig.modules.length) {
-    throw new Error("Root configuration does not contain any module path definitions.");
+    throw createCliError(
+      "Root configuration does not contain any module path definitions.",
+      "CONFIG_INVALID"
+    );
   }
 
   const rootDir = path.dirname(rootConfig.physicalPath);

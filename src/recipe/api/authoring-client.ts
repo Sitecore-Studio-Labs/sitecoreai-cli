@@ -1,6 +1,8 @@
 import type { EnvironmentConfiguration } from "@/config";
+import { createCliError } from "@/shared/errors";
 import type { FieldValue } from "../ir/operations";
-import { renderRefValue } from "./ref-encoding";
+import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
+import { dashifyGuid, renderRefValue } from "./ref-encoding";
 import {
   type AuthoringApiClient,
   type CreateItemInput,
@@ -11,6 +13,42 @@ import {
   type UpdateItemInput,
 } from "./client";
 import { runAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
+
+/** Sitecore itemIds are uuids — bare or wrapped in curly braces. Anything
+ *  that doesn't look like one is treated as a content-tree path. */
+const GUID_PATTERN = /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i;
+
+const isItemId = (value: string): boolean => GUID_PATTERN.test(value.trim());
+
+/**
+ * Pick the folder template scai will auto-create missing parent path
+ * segments under. Conventional SXA template per tree:
+ *
+ * - `/sitecore/templates/...`         → `Template Folder` (the SXA editor
+ *                                        treats these as templates-tree
+ *                                        organisational nodes)
+ * - `/sitecore/layout/Renderings/...` → `Rendering Folder` (verified
+ *                                        against live tenant — section
+ *                                        folders under
+ *                                        `/sitecore/layout/Renderings/Project/<site>/`
+ *                                        all conform to this template,
+ *                                        not generic `Folder`)
+ * - everything else                   → generic `Folder`
+ *
+ * Picking the wrong template here doesn't break createItem itself, but
+ * it can leave SXA's editor UI unable to recognise the auto-created
+ * folder when walking the tree.
+ */
+const folderTemplateForPath = (path: string): string => {
+  const normalized = path.toLowerCase();
+  if (normalized.startsWith("/sitecore/templates/")) {
+    return SITECORE_TEMPLATES.TEMPLATE_FOLDER;
+  }
+  if (normalized.startsWith("/sitecore/layout/renderings/")) {
+    return SITECORE_TEMPLATES.RENDERING_FOLDER;
+  }
+  return SITECORE_TEMPLATES.FOLDER;
+};
 
 /**
  * Production `AuthoringApiClient` against Sitecore Authoring GraphQL.
@@ -152,12 +190,6 @@ const toRemoteItem = (node: RemoteItemNode): RemoteItem => ({
     })),
 });
 
-const dashifyGuid = (guid: string): string => {
-  const compact = guid.replace(/[{}-]/g, "").toLowerCase();
-  if (compact.length !== 32) return guid.toLowerCase();
-  return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20, 32)}`;
-};
-
 const toAuthoringFieldsInput = (fields: FieldValue[]): Array<{ name: string; value: string }> =>
   fields.map((field) => ({
     // Sitecore's `FieldValueInput.name` accepts a field name OR id. For
@@ -196,7 +228,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item;
     }
-    throw new Error("ItemSelector requires either path or itemId.");
+    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
   };
 
   const fetchChildren = async (selector: ItemSelector): Promise<RemoteItemNode[]> => {
@@ -218,7 +250,83 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item?.children.nodes ?? [];
     }
-    throw new Error("ItemSelector requires either path or itemId.");
+    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+  };
+
+  /**
+   * Walk the content-tree path bottom-up, returning the itemId of `path`.
+   * Creates any missing segments using `folderTemplateForPath`. Recursive
+   * — each level either finds an existing item OR creates one and walks
+   * up further. The Sitecore root (`/sitecore`) MUST already exist; any
+   * path that bottoms out before reaching an existing ancestor throws.
+   *
+   * Used by `createItem` to satisfy Authoring GraphQL's
+   * `CreateItemInput.parent: ID!` typing — callers pass paths, scai
+   * resolves to itemIds (auto-provisioning the SXA-style folder chain
+   * if the tenant's per-site templates/renderings/content folders
+   * haven't been scaffolded yet).
+   */
+  const ensurePathExists = async (rawPath: string): Promise<string> => {
+    const path = rawPath.replace(/\/+$/, "");
+    const existing = await fetchOne({ path });
+    if (existing) return existing.itemId;
+
+    const lastSlash = path.lastIndexOf("/");
+    if (lastSlash <= 0) {
+      throw createCliError(
+        `Cannot auto-create root path '${path}'. The Sitecore root must already exist on the tenant.`,
+        "INPUT_INVALID"
+      );
+    }
+    const parentPath = path.slice(0, lastSlash);
+    const name = path.slice(lastSlash + 1);
+    if (!name) {
+      throw createCliError(`Path '${rawPath}' has no leaf segment to create.`, "INPUT_INVALID");
+    }
+    const parentItemId = await ensurePathExists(parentPath);
+    const templateId = folderTemplateForPath(path);
+
+    const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
+      environment,
+      CREATE_ITEM_MUTATION,
+      {
+        input: {
+          parent: parentItemId,
+          templateId,
+          name,
+          database: "master",
+          language: "en",
+          fields: [],
+        },
+      },
+      request
+    );
+    const itemId = data.createItem?.item?.itemId;
+    if (!itemId) {
+      throw createCliError(
+        `Auto-provisioning failed: Authoring API returned no itemId after creating folder '${path}'.`,
+        "UNKNOWN"
+      );
+    }
+    return itemId;
+  };
+
+  /**
+   * Resolve a `CreateItemInput.parent` value (itemId GUID OR content-tree
+   * path) to a Sitecore itemId. The Authoring API's
+   * `CreateItemInput.parent` is typed `ID!`, so paths must be resolved
+   * before the mutation — otherwise GraphQL fails with
+   * "Unable to convert type from String to Guid". Missing path segments
+   * are auto-created as folders.
+   */
+  const resolveParentItemId = async (parent: string): Promise<string> => {
+    const trimmed = parent.trim();
+    if (isItemId(trimmed)) return trimmed.replace(/[{}]/g, "");
+    if (trimmed.startsWith("/")) return ensurePathExists(trimmed);
+    throw createCliError(
+      `createItem.input.parent must be a Sitecore itemId or content-tree path; got: '${trimmed}'.`,
+      "INPUT_INVALID"
+    );
   };
 
   return {
@@ -233,12 +341,13 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     },
 
     async createItem(input: CreateItemInput): Promise<CreateItemResult> {
+      const parentItemId = await resolveParentItemId(input.parent);
       const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
         environment,
         CREATE_ITEM_MUTATION,
         {
           input: {
-            parent: input.parent,
+            parent: parentItemId,
             templateId: input.templateId,
             name: input.name,
             database: input.database ?? "master",
@@ -250,7 +359,10 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       const itemId = data.createItem?.item?.itemId;
       if (!itemId) {
-        throw new Error("createItem returned no itemId — Authoring API response was malformed.");
+        throw createCliError(
+          "createItem returned no itemId — Authoring API response was malformed.",
+          "UNKNOWN"
+        );
       }
       return { itemId };
     },
@@ -280,15 +392,16 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       } = { permanently: true };
       if (selector.itemId) input.itemId = selector.itemId;
       else if (selector.path) input.path = selector.path;
-      else throw new Error("deleteItem requires either path or itemId.");
+      else throw createCliError("deleteItem requires either path or itemId.", "INPUT_INVALID");
       const data = await runAuthoringGraphQL<{
         deleteItem: { successful: boolean } | null;
       }>(environment, DELETE_ITEM_MUTATION, { input }, request);
       if (!data.deleteItem?.successful) {
-        throw new Error(
+        throw createCliError(
           `deleteItem returned successful: ${data.deleteItem?.successful} for ${
             selector.itemId ?? selector.path ?? "(no selector)"
-          }`
+          }`,
+          "UNKNOWN"
         );
       }
     },

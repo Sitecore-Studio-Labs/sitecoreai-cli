@@ -9,7 +9,7 @@ import {
   runDeployProjectsLinkRepository,
   runDeployProjectsUnlinkRepository,
   runDeployProjectsDelete,
-} from "../../serialization/tasks";
+} from "@/deploy/tasks";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployProjectsCommand = (): Command => {

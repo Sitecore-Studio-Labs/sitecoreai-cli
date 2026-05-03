@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   _deriveNamespaceRoot,
   contentItemId,
+  enumerationFolderId,
+  enumValueId,
   fieldId,
   NAMESPACE_CONTENT_ITEM,
   NAMESPACE_PAGE_DESIGN,
@@ -19,6 +21,8 @@ import {
   templateId,
 } from "../../../src/recipe/guids";
 
+const DEFAULT_SITE = "default";
+
 describe("recipe guids — namespace constants are frozen", () => {
   it("NAMESPACE_ROOT matches its uuidv5(DNS, 'registry.sitecoreai.dev') derivation", () => {
     expect(NAMESPACE_ROOT).toBe(_deriveNamespaceRoot());
@@ -35,142 +39,311 @@ describe("recipe guids — namespace constants are frozen", () => {
 });
 
 describe("recipe guids — partial-design and page-design derivation is deterministic", () => {
-  it("partial-design ids are stable for a given handle", () => {
-    expect(partialDesignId("standard-header@1")).toBe("f5d69b31-7f02-5a1d-a317-5819af0494e4");
-    expect(partialDesignId("standard-footer@1")).toBe("093951aa-02b5-5fe4-a7e1-126dabb1b3d9");
-    expect(partialDesignId("article-byline@1")).toBe("1ca498c3-d2e5-5fd2-a25a-9f683af6195d");
+  it("partial-design ids are stable for a given (site, handle)", () => {
+    expect(partialDesignId(DEFAULT_SITE, "standard-header@1")).toBe(
+      "10e13dd1-25c5-53eb-bbe3-58415aa8ad75"
+    );
+    expect(partialDesignId(DEFAULT_SITE, "standard-footer@1")).toBe(
+      "94145d77-f6fe-5ada-beca-23a8840f8317"
+    );
+    expect(partialDesignId(DEFAULT_SITE, "article-byline@1")).toBe(
+      "328743f4-325d-5138-b197-451256e239b5"
+    );
   });
 
-  it("page-design ids are stable for a given handle", () => {
-    expect(pageDesignId("default-page-design@1")).toBe("357bedb4-54b0-5716-a64b-f1aa253e6500");
-    expect(pageDesignId("landing-design@1")).toBe("35218c5c-b317-515d-9e55-81d0290804c3");
-    expect(pageDesignId("article-design@1")).toBe("8aa27e13-c88c-5e20-bce2-75c268e012fc");
+  it("page-design ids are stable for a given (site, handle)", () => {
+    expect(pageDesignId(DEFAULT_SITE, "default-page-design@1")).toBe(
+      "b9f426ed-1192-5bdc-bf3c-78fcb6ec3baa"
+    );
+    expect(pageDesignId(DEFAULT_SITE, "landing-design@1")).toBe(
+      "93a16cb8-f491-59b1-a1f5-aa775c32e30c"
+    );
+    expect(pageDesignId(DEFAULT_SITE, "article-design@1")).toBe(
+      "a2ad7919-19bf-5bf7-912a-b9b4ba4697a5"
+    );
   });
 
   it("partial-design ids and page-design ids are namespaced separately", () => {
-    expect(partialDesignId("standard-header@1")).not.toBe(pageDesignId("standard-header@1"));
+    expect(partialDesignId(DEFAULT_SITE, "standard-header@1")).not.toBe(
+      pageDesignId(DEFAULT_SITE, "standard-header@1")
+    );
   });
 
   it("composition-kind ids are namespaced separately from template ids", () => {
-    expect(partialDesignId("standard-header@1")).not.toBe(templateId("standard-header@1"));
-    expect(pageDesignId("landing-design@1")).not.toBe(templateId("landing-design@1"));
+    expect(partialDesignId(DEFAULT_SITE, "standard-header@1")).not.toBe(
+      templateId(DEFAULT_SITE, "standard-header@1")
+    );
+    expect(pageDesignId(DEFAULT_SITE, "landing-design@1")).not.toBe(
+      templateId(DEFAULT_SITE, "landing-design@1")
+    );
   });
 });
 
 describe("recipe guids — content-item derivation is deterministic", () => {
-  it("content-item ids are stable for a given handle", () => {
-    expect(contentItemId("site-logo-content@1")).toBe("bdd465b4-58a9-5f50-8c87-cf61d50b3965");
-    expect(contentItemId("primary-nav-content@1")).toBe("70ecf4d2-92ba-54d9-bb49-c517e44a741f");
+  it("content-item ids are stable for a given (site, handle)", () => {
+    expect(contentItemId(DEFAULT_SITE, "site-logo-content@1")).toBe(
+      "2f61a896-3c2f-5bf2-9dd0-cd995b244d6c"
+    );
+    expect(contentItemId(DEFAULT_SITE, "primary-nav-content@1")).toBe(
+      "7da4312f-74c1-5a3c-b5b7-402a3774ba9e"
+    );
   });
 
   it("content-item ids are namespaced separately from template ids", () => {
-    expect(contentItemId("site-logo-content@1")).not.toBe(templateId("site-logo-content@1"));
+    expect(contentItemId(DEFAULT_SITE, "site-logo-content@1")).not.toBe(
+      templateId(DEFAULT_SITE, "site-logo-content@1")
+    );
   });
 
   it("different content-item handles yield different ids", () => {
-    expect(contentItemId("site-logo-content@1")).not.toBe(contentItemId("site-logo-content@2"));
-    expect(contentItemId("site-logo-content@1")).not.toBe(contentItemId("primary-nav-content@1"));
+    expect(contentItemId(DEFAULT_SITE, "site-logo-content@1")).not.toBe(
+      contentItemId(DEFAULT_SITE, "site-logo-content@2")
+    );
+    expect(contentItemId(DEFAULT_SITE, "site-logo-content@1")).not.toBe(
+      contentItemId(DEFAULT_SITE, "primary-nav-content@1")
+    );
   });
 });
 
 describe("recipe guids — derivation is deterministic", () => {
   const handle = "cta-button@1";
 
-  it("template ids are stable for a given handle", () => {
-    expect(templateId(handle)).toBe("603df982-441a-5e9c-82d0-2c4e016f0f7b");
+  it("template ids are stable for a given (site, handle)", () => {
+    expect(templateId(DEFAULT_SITE, handle)).toBe("939faa17-a0ba-5f2b-bdd9-03e198837890");
   });
 
-  it("rendering ids are stable for a given handle", () => {
-    expect(renderingId(handle)).toBe("f6a4e7fd-2b2e-5347-88b6-6e653ae579c8");
+  it("rendering ids are stable for a given (site, handle)", () => {
+    expect(renderingId(DEFAULT_SITE, handle)).toBe("d91aafbe-28dc-5ad4-ad49-9c44657b9b56");
   });
 
-  it("section ids are stable for a given handle + section name", () => {
-    expect(sectionId(handle, "Content")).toBe("bd0a988e-5f09-545c-93ea-d3dbce86b0ac");
+  it("section ids are stable for a given (site, handle, section name)", () => {
+    expect(sectionId(DEFAULT_SITE, handle, "Content")).toBe(
+      "fa3b53c3-7d41-5af0-8f4f-6edd86594f89"
+    );
   });
 
-  it("field ids are stable for a given handle + field name", () => {
-    expect(fieldId(handle, "Label")).toBe("daae9752-0d5d-5926-a0c3-6cfb2a7ed074");
-    expect(fieldId(handle, "Link")).toBe("fb1d166b-1020-5d61-8472-00affab6a726");
+  it("field ids are stable for a given (site, handle, field name)", () => {
+    expect(fieldId(DEFAULT_SITE, handle, "Label")).toBe("f7e579df-34b0-5c25-8010-9c7f14b181cd");
+    expect(fieldId(DEFAULT_SITE, handle, "Link")).toBe("09e85795-ff91-5ac8-8a49-0f874954fb0d");
   });
 
-  it("standard-values ids are stable for a given handle", () => {
-    expect(standardValuesId(handle)).toBe("a1ba1ae5-507f-5a7e-935f-7c3396ead953");
+  it("standard-values ids are stable for a given (site, handle)", () => {
+    expect(standardValuesId(DEFAULT_SITE, handle)).toBe("fc9a4937-094f-5489-a112-74a64bcbb7a0");
   });
 
   it("params template ids segregate from regular template ids", () => {
-    expect(paramsTemplateId(handle)).not.toBe(templateId(handle));
+    expect(paramsTemplateId(DEFAULT_SITE, handle)).not.toBe(templateId(DEFAULT_SITE, handle));
   });
 
   it("different handles yield different template ids", () => {
-    expect(templateId("cta-button@1")).not.toBe(templateId("cta-button@2"));
-    expect(templateId("cta-button@1")).not.toBe(templateId("card-block@1"));
+    expect(templateId(DEFAULT_SITE, "cta-button@1")).not.toBe(
+      templateId(DEFAULT_SITE, "cta-button@2")
+    );
+    expect(templateId(DEFAULT_SITE, "cta-button@1")).not.toBe(
+      templateId(DEFAULT_SITE, "card-block@1")
+    );
   });
 
-  it("different field names under the same handle yield different field ids", () => {
-    expect(fieldId(handle, "Label")).not.toBe(fieldId(handle, "Link"));
+  it("different field names under the same (site, handle) yield different field ids", () => {
+    expect(fieldId(DEFAULT_SITE, handle, "Label")).not.toBe(
+      fieldId(DEFAULT_SITE, handle, "Link")
+    );
   });
 });
 
 /**
- * Snapshot every handle currently in `example/recipes/`. Once a recipe has
- * been pushed to a real tenant, these GUIDs become its identity forever —
- * any change here means the recipe re-points to a different Sitecore item
- * and the prior tenant's items become orphans. This test catches that
- * loudly, before someone re-pushes against the sandbox.
+ * Snapshot every handle currently in `example/recipes/`, scoped under the
+ * `default` site. Once a recipe has been pushed to a real tenant under a
+ * given site, these GUIDs become that (site, recipe) pair's identity
+ * forever — any change here means the recipe re-points to a different
+ * Sitecore item under that site and the prior items become orphans. This
+ * test catches that loudly, before someone re-pushes against the sandbox.
+ *
+ * Per-site identity: pushing the same recipe under a different `site`
+ * intentionally yields a *different* GUID set (covered by the
+ * "site-scoping" suite below).
  */
-describe("recipe guids — snapshots for all registry handles", () => {
+describe("recipe guids — snapshots for all registry handles (site=default)", () => {
   const SNAPSHOTS = {
     "cta-button@1": {
-      template: "603df982-441a-5e9c-82d0-2c4e016f0f7b",
-      rendering: "f6a4e7fd-2b2e-5347-88b6-6e653ae579c8",
-      paramsTemplate: "7de0a37a-2aaf-5b36-ab98-3b9a0e79a92b",
-      standardValues: "a1ba1ae5-507f-5a7e-935f-7c3396ead953",
+      template: "939faa17-a0ba-5f2b-bdd9-03e198837890",
+      rendering: "d91aafbe-28dc-5ad4-ad49-9c44657b9b56",
+      paramsTemplate: "4394eb73-3f01-5b5d-82ec-ea2cd747f3d5",
+      standardValues: "fc9a4937-094f-5489-a112-74a64bcbb7a0",
     },
     "badge-block@1": {
-      template: "5d034663-961b-5fef-a6c3-819f41bd78e1",
-      rendering: "cb5324ab-c4a6-5daf-83c7-2407ffe86f10",
-      paramsTemplate: "61ae8bb6-38a0-5934-a3ad-ac1cd936a5e2",
-      standardValues: "5efc5946-8e00-5f87-9a4d-17fed7ff2c4f",
+      template: "f727da45-8a7b-5ca3-a741-470a5e756fb6",
+      rendering: "99070cbb-aee9-52c5-ae86-f0b91e6c2ab6",
+      paramsTemplate: "500fdff1-40fc-5813-a7c0-f1d4d0d84460",
+      standardValues: "c6f19465-3a8d-5bc4-b5d2-9cbccd10b8bf",
     },
     "card-block@1": {
-      template: "624553d8-502f-5b4d-a2e7-dd30c7a6a784",
-      rendering: "a101e10e-63a2-539b-91d0-39885b64b6b4",
-      paramsTemplate: "47bb1167-00e5-5d98-94c8-db090224c3ca",
-      standardValues: "befbb2ec-9b36-5267-a092-3ae6df7b8e1c",
+      template: "a5038964-b551-5140-9d5c-5935809db093",
+      rendering: "2c7d89a2-2a3c-5770-a31a-0fa7a48411e0",
+      paramsTemplate: "4d3bc0aa-c3ec-582f-a2a8-f153756c14bf",
+      standardValues: "af5866f6-4f2a-5c03-b2a9-b948a3cd886f",
     },
     "rich-text-block@1": {
-      template: "f151e51c-3667-5d60-ab3a-f0c0beffafa2",
-      rendering: "28009070-2d42-5c24-8452-04d12190bfa9",
-      paramsTemplate: "2981a3dd-8137-5c0e-81a6-83278da16e85",
-      standardValues: "b236ee59-ef85-52f0-8582-eec0724bffd5",
+      template: "5e6ef05a-4f68-5862-bb6b-edef6df45341",
+      rendering: "8220019a-b0cb-5eb0-8d34-23b294ddd3a0",
+      paramsTemplate: "033b7f43-ad2e-57c8-a7b9-b30729c5c771",
+      standardValues: "d78dcc4d-7908-5565-9889-029d836a9e3e",
     },
     "accordion-item@1": {
-      template: "6823cd8b-ab68-5d48-a3f1-49e85ea725b2",
-      rendering: "c7e72397-5cb5-589f-afda-190c4ae8b212",
-      paramsTemplate: "3400b92a-0f69-55c1-a730-ee9d5e0d5ed5",
-      standardValues: "c6b3a22a-9c4b-5c60-987a-7899e48f805c",
+      template: "40fa74c6-d7d0-5551-9d60-70f3ac58aaa2",
+      rendering: "d9208a94-8c66-5a79-96db-b4587725c3b6",
+      paramsTemplate: "519b5495-0a5b-51dd-a595-91eae3c2ee11",
+      standardValues: "fb677a73-4c58-5f49-ab71-95e07e3bed80",
     },
     "accordion-block@1": {
-      template: "e213797a-0460-5064-a896-c14d0a559588",
-      rendering: "0cd5389a-5da8-5ea5-a395-56734a8f0556",
-      paramsTemplate: "b6739172-8f12-5cd6-8e8a-5262eb0d2906",
-      standardValues: "8c2ab358-a179-562d-85f0-f69be83cb020",
+      template: "fc80e90a-8841-564f-9820-5f67602ff5f3",
+      rendering: "d9834dd5-1e0f-52a3-8bd5-ec5e6b938a3e",
+      paramsTemplate: "b2bc027c-8228-53a5-a226-c00275881f8a",
+      standardValues: "27329961-2640-5ce8-a9e8-9c19b81c32ac",
     },
     "avatar-block@1": {
-      template: "4ea5eae5-71f3-571d-b1e4-d0a899394690",
-      rendering: "67c9e4d9-e91c-5dea-bd2d-732c2e516406",
-      paramsTemplate: "c53534af-ab29-5669-8852-8782ab95bf09",
-      standardValues: "88a4c968-cd89-5b6c-b5b2-d1cf312c64c8",
+      template: "188691e3-00b4-5794-ab4f-3cb5bc64b999",
+      rendering: "7923bd96-72e6-5a38-ab40-cc6f51639e3d",
+      paramsTemplate: "b88149f9-3a1e-5338-ae34-d98e6f50939e",
+      standardValues: "85824e43-90fb-555f-a7f8-adbc9f28f494",
     },
   } as const;
 
   it.each(Object.entries(SNAPSHOTS))(
     "%s — template / rendering / params / SV are pinned",
     (handle, expected) => {
-      expect(templateId(handle)).toBe(expected.template);
-      expect(renderingId(handle)).toBe(expected.rendering);
-      expect(paramsTemplateId(handle)).toBe(expected.paramsTemplate);
-      expect(standardValuesId(handle)).toBe(expected.standardValues);
+      expect(templateId(DEFAULT_SITE, handle)).toBe(expected.template);
+      expect(renderingId(DEFAULT_SITE, handle)).toBe(expected.rendering);
+      expect(paramsTemplateId(DEFAULT_SITE, handle)).toBe(expected.paramsTemplate);
+      expect(standardValuesId(DEFAULT_SITE, handle)).toBe(expected.standardValues);
     }
   );
+});
+
+/**
+ * Per-site GUID scoping — the same handle pushed under two different
+ * sites produces two distinct sets of items. This is the invariant that
+ * lets the same recipe set materialise into multiple sites under one
+ * tenant without colliding on Sitecore's globally-unique GUID constraint.
+ */
+describe("recipe guids — site-scoping yields distinct ids per site", () => {
+  const SNAPSHOTS_E2E = {
+    "cta-button@1": {
+      template: "63f86073-d77e-56e7-8bcf-aeec9820e1b8",
+      rendering: "1246a4d0-2e86-5720-92ec-de948e361ad8",
+      paramsTemplate: "0a710272-ec8c-5aca-bca3-333deda4a2d4",
+      standardValues: "e07b1a1c-ce14-56f0-9c6f-06eb5d107a3a",
+    },
+    "badge-block@1": {
+      template: "dd3010d7-115f-54bd-87ef-369a20ba210f",
+      rendering: "3fbcb4ec-4236-5910-bc1a-8af2acbf2c40",
+      paramsTemplate: "844c7071-cc68-58f1-b76c-3f2d8517f0cf",
+      standardValues: "3bb06920-dc66-5dd5-961e-f04879b4cd9c",
+    },
+    "card-block@1": {
+      template: "57486e9e-348b-521f-8cdd-d21ad7e40ebd",
+      rendering: "9d175a94-bed7-54a8-b310-be7ef19f8a8b",
+      paramsTemplate: "72b47859-bd59-5829-b17d-98cda95946ff",
+      standardValues: "2fcfe917-2eb6-5189-950a-d3fcf90f1fe3",
+    },
+    "rich-text-block@1": {
+      template: "d6987550-5aa4-5d20-8a42-d719f155fa8e",
+      rendering: "ffb3f452-2825-5181-8171-f53a0ed100f9",
+      paramsTemplate: "97634b9a-8fb6-5cda-8fc9-3493137aaa3b",
+      standardValues: "bfd6cc88-3134-55ba-b912-0f9475b91dae",
+    },
+    "accordion-item@1": {
+      template: "2bb86983-5e61-5ea1-ac98-d31d2783484e",
+      rendering: "8e2fe048-11d2-5225-8416-e642959961c5",
+      paramsTemplate: "27d70c36-884c-50ea-880b-49ab7468edec",
+      standardValues: "a726bd67-e9f6-5cf4-8b61-6c9c3271d31b",
+    },
+    "accordion-block@1": {
+      template: "ef78bd6b-1793-5476-8a87-e16e1e5d6bc1",
+      rendering: "6f22d6fd-d80c-5540-b77d-d427e52970c8",
+      paramsTemplate: "723a9780-0d96-502e-85dd-40c4a6900c51",
+      standardValues: "d9b05009-4375-5b3e-b15a-d7ac089aa6ab",
+    },
+    "avatar-block@1": {
+      template: "1a105964-2b4b-582c-9d49-12275c743220",
+      rendering: "b98b43c6-0be2-55c6-9650-42036f3ffb0e",
+      paramsTemplate: "a752f9ee-2179-5587-93c3-cecfc4a02c3b",
+      standardValues: "4bb6e03a-dc58-5689-ba67-d2e6b304f219",
+    },
+  } as const;
+
+  it.each(Object.entries(SNAPSHOTS_E2E))(
+    "%s under site='e2e' — template / rendering / params / SV are pinned and distinct from site='default'",
+    (handle, expected) => {
+      expect(templateId("e2e", handle)).toBe(expected.template);
+      expect(renderingId("e2e", handle)).toBe(expected.rendering);
+      expect(paramsTemplateId("e2e", handle)).toBe(expected.paramsTemplate);
+      expect(standardValuesId("e2e", handle)).toBe(expected.standardValues);
+
+      // And: the e2e ids must not collide with the default ones.
+      expect(templateId("e2e", handle)).not.toBe(templateId(DEFAULT_SITE, handle));
+      expect(renderingId("e2e", handle)).not.toBe(renderingId(DEFAULT_SITE, handle));
+      expect(paramsTemplateId("e2e", handle)).not.toBe(paramsTemplateId(DEFAULT_SITE, handle));
+      expect(standardValuesId("e2e", handle)).not.toBe(standardValuesId(DEFAULT_SITE, handle));
+    }
+  );
+
+  it("section/field ids also differ across sites for the same (handle, name)", () => {
+    expect(sectionId("e2e", "cta-button@1", "Content")).not.toBe(
+      sectionId(DEFAULT_SITE, "cta-button@1", "Content")
+    );
+    expect(fieldId("e2e", "cta-button@1", "Label")).not.toBe(
+      fieldId(DEFAULT_SITE, "cta-button@1", "Label")
+    );
+  });
+});
+
+/**
+ * Enumeration folder + value derivations. Once an enumeration recipe
+ * has been pushed to a tenant under a given site, the folder GUID and
+ * each value GUID become that (site, handle, value) triple's identity
+ * forever — flipping any of them strands the tenant's existing items
+ * and orphans every datasource SV default that referenced the old GUID.
+ *
+ * The cross-site comparison proves enums are site-scoped (same as
+ * templates / renderings); the cross-context comparison proves the
+ * inline-vs-shared parent scoping yields distinct GUIDs even when the
+ * value name (`primary`) repeats across enums and across usage modes.
+ */
+describe("recipe guids — enumeration ids are deterministic and site-scoped", () => {
+  it("enumerationFolderId is stable for a given (site, handle)", () => {
+    expect(enumerationFolderId(DEFAULT_SITE, "color-scheme@1")).toBe(
+      "2d3f1bf9-0adc-5b4c-b651-5a9b705af19c"
+    );
+  });
+
+  it("enumerationFolderId is site-scoped — same handle, different sites yield distinct GUIDs", () => {
+    expect(enumerationFolderId("e2e", "color-scheme@1")).toBe(
+      "ef2c19fc-bf36-5eae-bd92-ca03f9814f21"
+    );
+    expect(enumerationFolderId("e2e", "color-scheme@1")).not.toBe(
+      enumerationFolderId(DEFAULT_SITE, "color-scheme@1")
+    );
+  });
+
+  it("enumValueId scoped under a shared-enum folder is stable", () => {
+    const folder = enumerationFolderId(DEFAULT_SITE, "color-scheme@1");
+    expect(enumValueId(folder, "primary")).toBe("7c279fba-1b67-5e1f-9d0d-243b098e43c8");
+  });
+
+  it("enumValueId scoped under a field-definition refKey (inline enum) is distinct from the same-named shared-enum value", () => {
+    const fieldRef = fieldId(DEFAULT_SITE, "cta-button@1", "ColorScheme");
+    const inlinePrimary = enumValueId(fieldRef, "primary");
+    expect(inlinePrimary).toBe("3c771955-486c-513c-bb0c-e93cfdee886d");
+
+    // The same value name `primary` under a different parent (a shared
+    // enum's folder) yields a different GUID — this is the property
+    // that lets two different enums use the same value name without
+    // colliding on Sitecore's globally-unique GUID constraint.
+    const sharedPrimary = enumValueId(
+      enumerationFolderId(DEFAULT_SITE, "color-scheme@1"),
+      "primary"
+    );
+    expect(inlinePrimary).not.toBe(sharedPrimary);
+  });
 });

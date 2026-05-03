@@ -17,6 +17,8 @@ const CONTEXT: CompileContext = {
   contentItemsRoot: "/sitecore/content/Demo/Data",
 };
 
+const SITE = "default";
+
 const findCreate = (ops: Operation[]): CreateItemOp =>
   ops.find((op): op is CreateItemOp => op.op === "CreateItem")!;
 
@@ -59,8 +61,8 @@ describe("compileContentItemRecipe — IR shape", () => {
     const create = findCreate(ir.operations);
     expect(create.path).toBe("/sitecore/content/Demo/Data/TestContent");
     expect(create.parent).toEqual({ kind: "ref-path", value: CONTEXT.contentItemsRoot });
-    expect(create.id).toBe(contentItemId("test-content@1"));
-    expect(create.templateOf).toBe(templateId("test-template@1"));
+    expect(create.id).toBe(contentItemId(SITE, "test-content@1"));
+    expect(create.templateOf).toBe(templateId(SITE, "test-template@1"));
   });
 
   it("CreateItem carries DisplayName + Icon as initial fields", () => {
@@ -76,8 +78,8 @@ describe("compileContentItemRecipe — IR shape", () => {
       CONTEXT
     );
     const setTitle = findSet(ir.operations, "Title", "test-content@1");
-    expect(setTitle.fieldId).toBe(fieldId("test-template@1", "Title"));
-    expect(setTitle.itemRefKey).toBe(contentItemId("test-content@1"));
+    expect(setTitle.fieldId).toBe(fieldId(SITE, "test-template@1", "Title"));
+    expect(setTitle.itemRefKey).toBe(contentItemId(SITE, "test-content@1"));
   });
 
   it("SetField carries fieldName so the mutation resolves by name on the tenant", () => {
@@ -215,7 +217,7 @@ describe("compileContentItemRecipe — field encoders", () => {
   it("reference → kind: 'ref-recipe-list' with refKeys derived via contentItemId", () => {
     expect(exercise({ shape: "reference", refs: ["a@1", "b@1", "c@1"] })).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [contentItemId("a@1"), contentItemId("b@1"), contentItemId("c@1")],
+      refKeys: [contentItemId(SITE, "a@1"), contentItemId(SITE, "b@1"), contentItemId(SITE, "c@1")],
     });
   });
 });
@@ -225,15 +227,15 @@ describe("compileContentItemRecipe — fixture round-trip", () => {
     const ir = compileContentItemRecipe(primaryNavContentRecipe, CONTEXT);
     expect(ir.recipeHandle).toBe("primary-nav-content@1");
     const create = findCreate(ir.operations);
-    expect(create.templateOf).toBe(templateId("primary-nav-template@1"));
+    expect(create.templateOf).toBe(templateId(SITE, "primary-nav-template@1"));
 
     const links = findSet(ir.operations, "Links", "primary-nav-content@1");
     expect(links.value).toEqual({
       kind: "ref-recipe-list",
       refKeys: [
-        contentItemId("nav-link-products@1"),
-        contentItemId("nav-link-pricing@1"),
-        contentItemId("nav-link-docs@1"),
+        contentItemId(SITE, "nav-link-products@1"),
+        contentItemId(SITE, "nav-link-pricing@1"),
+        contentItemId(SITE, "nav-link-docs@1"),
       ],
     });
   });

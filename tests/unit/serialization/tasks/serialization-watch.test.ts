@@ -25,7 +25,7 @@ const runPull = vi.fn();
 vi.mock("../../../../src/serialization/tasks/shared", () => sharedMocks);
 vi.mock("../../../../src/serialization/sitecore-api", () => apiMocks);
 vi.mock("../../../../src/serialization/filesystem-store", () => fsMocks);
-vi.mock("../../../../src/serialization/tasks/serialization/pull", () => ({
+vi.mock("../../../../src/serialization/tasks/pull", () => ({
   runPull: (...args: unknown[]) => runPull(...args),
 }));
 vi.mock("../../../../src/serialization/path-provider", () => ({
@@ -35,10 +35,10 @@ vi.mock("../../../../src/serialization/path-provider", () => ({
 }));
 
 describe("runWatch", () => {
-  let runWatch: (typeof import("../../../../src/serialization/tasks/serialization/watch"))["runWatch"];
+  let runWatch: (typeof import("../../../../src/serialization/tasks/watch"))["runWatch"];
 
   beforeAll(async () => {
-    ({ runWatch } = await import("../../../../src/serialization/tasks/serialization/watch"));
+    ({ runWatch } = await import("../../../../src/serialization/tasks/watch"));
   });
 
   beforeEach(() => {

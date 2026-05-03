@@ -1,3 +1,4 @@
+import { createCliError } from "@/shared/errors";
 import type { AuthoringApiClient } from "./api/client";
 import type { SitesApiClient } from "./api/sites-client";
 import type { OperationIr } from "./ir/operations";
@@ -52,6 +53,20 @@ export type ExecutionEvent =
   | { kind: "apply-start"; action: PlannedAction }
   | { kind: "apply-success"; action: PlannedAction }
   | { kind: "apply-error"; action: PlannedAction; error: string }
+  /**
+   * Emitted on each Sites API job poll while waiting for an async op
+   * (createSite, deleteSite). Lets operators and orchestrators see
+   * progress on long-running jobs (cold tenants can take >30s) instead
+   * of staring at a silent CLI.
+   */
+  | {
+      kind: "site-job-poll";
+      jobHandle: string;
+      /** Normalized phase string read from `Job.state ?? Job.status`. */
+      phase: string;
+      /** Milliseconds elapsed since polling began. */
+      elapsedMs: number;
+    }
   | ExecutionFailedEvent;
 
 export interface ExecutionResult {
@@ -107,24 +122,31 @@ const SITES_JOB_POLL_INTERVAL_MS = 1_000;
 
 const awaitSitesJob = async (
   sitesClient: SitesApiClient,
-  jobHandle: string
+  jobHandle: string,
+  emit?: (event: ExecutionEvent) => void
 ): Promise<void> => {
-  const deadline = Date.now() + SITES_JOB_POLL_BUDGET_MS;
+  const start = Date.now();
+  const deadline = start + SITES_JOB_POLL_BUDGET_MS;
   while (Date.now() < deadline) {
     const job = await sitesClient.getJobStatus(jobHandle);
-    const state = (job as { state?: string }).state ?? "";
-    if (state === "Done" || state === "Completed" || state === "Succeeded") {
+    // Sites API deployments return either `state` (runtime) or `status`
+    // (OpenAPI-spec) — accept either. See `Job` type in src/sites/api/jobs.ts.
+    const phase = job.state ?? job.status ?? "";
+    emit?.({ kind: "site-job-poll", jobHandle, phase, elapsedMs: Date.now() - start });
+    if (phase === "Done" || phase === "Completed" || phase === "Succeeded") {
       return;
     }
-    if (state === "Failed" || state === "Errored") {
-      throw new Error(
-        `Sites API job ${jobHandle} reported terminal state '${state}'.`
+    if (phase === "Failed" || phase === "Errored") {
+      throw createCliError(
+        `Sites API job ${jobHandle} reported terminal state '${phase}'.`,
+        "SITES_API_FAILED"
       );
     }
     await new Promise((resolve) => setTimeout(resolve, SITES_JOB_POLL_INTERVAL_MS));
   }
-  throw new Error(
-    `Sites API job ${jobHandle} did not finish within ${SITES_JOB_POLL_BUDGET_MS}ms.`
+  throw createCliError(
+    `Sites API job ${jobHandle} did not finish within ${SITES_JOB_POLL_BUDGET_MS}ms.`,
+    "SITES_API_FAILED"
   );
 };
 
@@ -132,7 +154,8 @@ const dispatchMutation = async (
   client: AuthoringApiClient,
   sitesClient: SitesApiClient | undefined,
   action: PlannedAction,
-  capturedItemIds: Map<string, string>
+  capturedItemIds: Map<string, string>,
+  emit?: (event: ExecutionEvent) => void
 ): Promise<void> => {
   if (!action.mutation) return;
   if (action.mutation.kind === "createItem") {
@@ -152,20 +175,21 @@ const dispatchMutation = async (
   // subsequent SetField overrides (dictionary, taxonomy) targeting
   // items under the site can resolve via late-path seeding.
   if (!sitesClient) {
-    throw new Error(
-      "createSite mutation requires a SitesApiClient — none threaded into the executor."
+    throw createCliError(
+      "createSite mutation requires a SitesApiClient — none threaded into the executor.",
+      "UNKNOWN"
     );
   }
   const { input, siteRefKey } = action.mutation;
   const jobResponse = await sitesClient.createSite(input);
-  const jobHandle = (jobResponse as { handle?: string; jobHandle?: string }).handle
-    ?? (jobResponse as { jobHandle?: string }).jobHandle;
+  const jobHandle = jobResponse.handle ?? jobResponse.jobHandle;
   if (!jobHandle) {
-    throw new Error(
-      `createSite for '${input.siteName}' returned a JobResponse with no handle: ${JSON.stringify(jobResponse)}`
+    throw createCliError(
+      `createSite for '${input.siteName}' returned a JobResponse with no handle: ${JSON.stringify(jobResponse)}`,
+      "SITES_API_FAILED"
     );
   }
-  await awaitSitesJob(sitesClient, jobHandle);
+  await awaitSitesJob(sitesClient, jobHandle, emit);
   // Re-list and capture the new site's itemId. The Sites API doesn't
   // return the materialised site object from createSite directly —
   // listSites is the canonical way to get the assigned id.
@@ -174,8 +198,9 @@ const dispatchMutation = async (
   if (created?.id) {
     capturedItemIds.set(siteRefKey, created.id);
   } else {
-    throw new Error(
-      `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`
+    throw createCliError(
+      `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`,
+      "SITES_API_FAILED"
     );
   }
 };
@@ -294,7 +319,7 @@ export const executeIr = async (
 
     options.emit?.({ kind: "apply-start", action });
     try {
-      await dispatchMutation(client, options.sitesClient, action, capturedItemIds);
+      await dispatchMutation(client, options.sitesClient, action, capturedItemIds, options.emit);
       applied.push(action);
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {

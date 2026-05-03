@@ -17,7 +17,15 @@ import type { SitesApiClientOptions } from "./types";
 export type Site = components["schemas"]["Site"];
 export type SiteTemplate = components["schemas"]["SiteTemplate"];
 export type NewSiteInput = components["schemas"]["NewSiteInput"];
-export type JobResponse = components["schemas"]["JobResponse"];
+/**
+ * Codegen-typed JobResponse, extended for the runtime shape. The
+ * OpenAPI spec defines only `handle`, but some Sites API deployments
+ * return `jobHandle` instead. Callers must accept either.
+ */
+export type JobResponse = components["schemas"]["JobResponse"] & {
+  /** Runtime-only alias for `handle` returned by some deployments. */
+  jobHandle?: string | null;
+};
 
 /**
  * Create a new site from a site template (async).

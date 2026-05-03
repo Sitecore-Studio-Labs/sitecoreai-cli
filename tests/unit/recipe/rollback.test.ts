@@ -12,6 +12,10 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
+  headlessVariantsRoot:
+    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot:
+    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 const compileCta = () => compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
@@ -365,7 +369,7 @@ describe("executeIr — apply error triggers rollback + terminal failed event", 
     // Sanity: the template's refKey was the one our deletion targeted.
     expect(rollbackSuccesses[1].action.operation.op).toBe("CreateItem");
     if (rollbackSuccesses[1].action.operation.op === "CreateItem") {
-      expect(rollbackSuccesses[1].action.operation.id).toBe(templateId("cta-button@1"));
+      expect(rollbackSuccesses[1].action.operation.id).toBe(templateId("default", "cta-button@1"));
     }
   });
 });

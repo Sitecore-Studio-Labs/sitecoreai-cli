@@ -63,26 +63,42 @@ export const resolveRecipeRefs = (
   switch (value.kind) {
     case "ref-recipe": {
       const itemId = capturedItemIds.get(value.refKey);
-      if (!itemId) {
-        throw createCliError(
-          `ref-recipe refKey ${value.refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
-          "UNKNOWN"
-        );
+      if (itemId) return { kind: "ref-guid", value: itemId };
+      // Pass-through: when a refKey isn't in the captured map but looks
+      // like a literal Sitecore GUID (e.g. `SITECORE_TEMPLATES.FOLDER`
+      // baked into an aggregator's ref-recipe list), treat it as a
+      // literal rather than failing. Recipe-internal refKeys are also
+      // valid GUIDs in shape, so this is purely a fallback for items
+      // that don't get produced by sibling CreateItem ops — built-in
+      // templates, tenant-pre-existing items.
+      if (isGuid(value.refKey)) {
+        return { kind: "ref-guid", value: value.refKey };
       }
-      return { kind: "ref-guid", value: itemId };
+      throw createCliError(
+        `ref-recipe refKey ${value.refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
+        "UNKNOWN"
+      );
     }
     case "ref-recipe-list": {
       const guids: string[] = [];
       for (const refKey of value.refKeys) {
         const itemId = capturedItemIds.get(refKey);
-        if (!itemId) {
-          if (value.tolerateMissing) continue;
-          throw createCliError(
-            `ref-recipe-list refKey ${refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
-            "UNKNOWN"
-          );
+        if (itemId) {
+          guids.push(itemId);
+          continue;
         }
-        guids.push(itemId);
+        // Same pass-through as `ref-recipe` above — built-in Sitecore
+        // template constants and tenant-pre-existing items appear in
+        // aggregator ref-recipe-list values; honour them as literals.
+        if (isGuid(refKey)) {
+          guids.push(refKey);
+          continue;
+        }
+        if (value.tolerateMissing) continue;
+        throw createCliError(
+          `ref-recipe-list refKey ${refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
+          "UNKNOWN"
+        );
       }
       return { kind: "ref-guid-list", values: guids };
     }
@@ -143,6 +159,18 @@ export const dashifyGuid = (guid: string): string => {
   const compact = guid.replace(/[{}-]/g, "").toLowerCase();
   if (compact.length !== 32) return guid.toLowerCase();
   return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20, 32)}`;
+};
+
+/**
+ * True when the string is a valid Sitecore item GUID — 32 hex chars,
+ * with or without dashes, with or without curly braces. Used by the
+ * `ref-recipe` / `ref-recipe-list` resolvers to pass through literal
+ * GUIDs (built-in Sitecore template constants, tenant-pre-existing
+ * items) that aren't produced by sibling CreateItem ops.
+ */
+const isGuid = (s: string): boolean => {
+  const compact = s.replace(/[{}-]/g, "");
+  return compact.length === 32 && /^[0-9a-fA-F]{32}$/.test(compact);
 };
 
 const toCurly = (guid: string): string => `{${dashifyGuid(guid).toUpperCase()}}`;

@@ -35,10 +35,10 @@ describe("runRecipeCompile", () => {
     const written = JSON.parse(await fs.readFile(irPath, "utf8"));
     expect(written.schemaVersion).toBe("1");
     expect(written.recipeHandle).toBe("cta-button@1");
-    // 19 baseline + 2 per-field enum folders + 9 inline-enum value-item
-    // children (Size:4 + ColorScheme:5). Each inline-enum field now also
-    // emits a Folder op for its per-field enum bucket.
-    expect(written.operations).toHaveLength(30);
+    // cta-button's Size + ColorScheme params override sitecore.type to
+    // "droplist", so the inline-enum folder + value items + per-site
+    // Enumeration template pair don't emit. 19 baseline ops total.
+    expect(written.operations).toHaveLength(19);
   });
 
   it("rejects an invalid recipe with a CONFIG-style hint", async () => {

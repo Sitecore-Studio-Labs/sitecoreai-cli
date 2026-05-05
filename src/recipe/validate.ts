@@ -221,11 +221,11 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         recipe.insertOptions?.forEach((handle, idx) => {
           checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
         });
-        if (recipe.datasource) {
+        if (recipe.datasource?.template) {
           checkRef(
             recipe.handle,
-            "datasource.handle",
-            recipe.datasource.handle,
+            "datasource.template.handle",
+            recipe.datasource.template.handle,
             CONTENT_TEMPLATE_KINDS
           );
         }

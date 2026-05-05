@@ -210,7 +210,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
 
   // Post-IR phase: register each component-template recipe's
   // rendering with the placeholder slots it declares compatibility
-  // with (`recipe.placeholders: string[]`). Runs only on apply mode
+  // with (`recipe.placedIn: string[]`). Runs only on apply mode
   // and only when at least one IR succeeded (a fully-aborted push
   // shouldn't dirty unrelated placeholders). Skipped when the env
   // profile doesn't configure `placeholderSettingsRoots` — empty list
@@ -218,7 +218,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const placeholderRoots = tenant.environment.placeholderSettingsRoots ?? [];
   const anyComponentRecipeDeclaresPlaceholders = sourceRecipes.some(
     (r) =>
-      r.kind === "component-template" && Array.isArray(r.placeholders) && r.placeholders.length > 0
+      r.kind === "component-template" && Array.isArray(r.placedIn) && r.placedIn.length > 0
   );
   let placeholderAllowSummary: PlaceholderAllowResult | null = null;
   if (

@@ -2,9 +2,13 @@ import {
   componentFoldersBucketId,
   contentModelsGroupFolderId,
   enumerationFolderId,
+  enumerationsFolderTemplateId,
+  enumerationsFolderTemplateStandardValuesId,
+  enumerationTemplateId,
+  enumerationTemplateSectionId,
+  enumerationTemplateValueFieldId,
   enumValueId,
   fieldId,
-  inlineEnumFolderId,
   presentationParametersBucketId,
   renderingsSectionFolderId,
   sectionFolderId,
@@ -26,6 +30,7 @@ import { createCliError } from "../../shared/errors";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
+  ENUMERATION_ICON,
   FOLDER_ICON,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
@@ -156,6 +161,48 @@ export interface CompileContext {
    */
   enumerationsRoot?: string;
   /**
+   * Cross-recipe signal populated by `compileRecipeSet` when two or more
+   * `ComponentTemplateRecipe`s in the set declare site-scoped datasource
+   * locations against the same `subfolder`. Membership flips per-recipe
+   * Data Folder template emission OFF (the coalescer emits a SHARED
+   * template instead) and changes the folder ITEM's `templateOf` to point
+   * at `sharedDataFolderTemplateId(site, subfolder)`.
+   *
+   * Optional. Standalone callers of `compileComponentTemplateRecipe`
+   * leave this unset — every site-scoped subfolder is treated as a
+   * singleton (per-recipe template owns the folder), preserving the
+   * pre-coalescer behaviour.
+   */
+  sharedSubfolders?: ReadonlySet<string>;
+  /**
+   * Cross-recipe map of section handles → `ComponentSectionRecipe`,
+   * populated by `compileRecipeSet` from every `component-section`
+   * recipe in the input. `compileComponentTemplateRecipe` uses this to
+   * resolve `recipe.section.handle` → section name (for path
+   * computation) and to validate the reference exists (else
+   * INPUT_INVALID).
+   *
+   * Optional. Standalone callers of `compileComponentTemplateRecipe`
+   * leave this unset; the per-recipe compiler then errors on any
+   * `recipe.section` reference, since there's no way to resolve it.
+   */
+  sectionsByHandle?: ReadonlyMap<string, import("../schema/recipe").ComponentSectionRecipe>;
+  /**
+   * Cross-recipe map of enumeration handles → `EnumerationRecipe`,
+   * populated by `compileRecipeSet` from every `enumeration` recipe in
+   * the input. Field compilers (`buildFieldOp` → `resolveFieldSource`)
+   * use this to resolve `sitecore.enumHandle` → the enum folder's
+   * tenant path, so Droplink Source values are emitted as content paths
+   * (which SXA Headless's rendering parameter dialog enumerates) rather
+   * than `{GUID}` references (which it doesn't honour for Droplink
+   * Source).
+   *
+   * Optional. Standalone callers leave it unset; the field compiler
+   * then errors on any `sitecore.enumHandle` reference, since there's
+   * no way to resolve the folder path.
+   */
+  enumsByHandle?: ReadonlyMap<string, import("../schema/recipe").EnumerationRecipe>;
+  /**
    * SXA Available Renderings root, e.g.
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
    * `compileRecipeSet` aggregates every component-template recipe by
@@ -179,13 +226,6 @@ export const DEFAULT_FIELDS_SECTION = "Content";
 export const COMPONENT_FOLDERS_BUCKET = "Component Folders";
 export const PRESENTATION_PARAMETERS_BUCKET = "Presentation Parameters";
 
-/**
- * Icon for an `EnumerationRecipe`'s root folder item — distinct from
- * `FOLDER_ICON` so the SXA editor's content tree can quickly tell an
- * enum folder apart from a generic content / template folder.
- */
-export const ENUMERATION_FOLDER_ICON = "office/16x16/list.png";
-
 export const joinPath = (parent: string, name: string): string => {
   const trimmed = parent.endsWith("/") ? parent.slice(0, -1) : parent;
   return `${trimmed}/${name}`;
@@ -193,6 +233,51 @@ export const joinPath = (parent: string, name: string): string => {
 
 /** Site name for deterministic folder refKeys. */
 export const siteOf = (context: CompileContext): string => context.site ?? "default";
+
+/**
+ * Resolve a `sitecore.enumHandle` reference to the tenant content path
+ * the enumeration's folder lives at. Used by `resolveFieldSource` to
+ * emit Droplink Source values as content paths (the form SXA Headless's
+ * rendering parameter dialog accepts) rather than `{GUID}` references.
+ *
+ * Path shape:
+ *   - With `location.folder` set →
+ *     `<enumerationsRoot>/<folder>/<enum.name>`.
+ *   - Without `location.folder` → `<enumerationsRoot>/<enum.name>` (flat).
+ *
+ * Throws INPUT_INVALID when the enum handle isn't in the recipe set
+ * (author error: `sitecore.enumHandle` references something that
+ * doesn't exist), or when `enumerationsRoot` is unset on the context.
+ */
+export const resolveEnumFolderPath = (
+  context: CompileContext,
+  enumHandle: string,
+  consumerHandle: string
+): string => {
+  if (!context.enumerationsRoot) {
+    throw createCliError(
+      `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no enumerationsRoot is configured.`,
+      "INPUT_INVALID",
+      {
+        hint: "Set `enumerationsRoot` on the active envProfile in sitecoreai.cli.json.",
+      }
+    );
+  }
+  const enumRecipe = context.enumsByHandle?.get(enumHandle);
+  if (!enumRecipe) {
+    throw createCliError(
+      `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no EnumerationRecipe with that handle is in the set.`,
+      "INPUT_INVALID",
+      {
+        hint: "Add an `EnumerationRecipe` (kind: 'enumeration') with the matching handle to the recipe set, or change the field's `sitecore.enumHandle` to point at an existing one.",
+      }
+    );
+  }
+  const folder = enumRecipe.location?.folder;
+  return folder
+    ? joinPath(joinPath(context.enumerationsRoot, folder), enumRecipe.name)
+    : joinPath(context.enumerationsRoot, enumRecipe.name);
+};
 
 export function sharedField(fieldGuid: string, value: FieldValue["value"]): FieldValue {
   return { fieldId: fieldGuid, value };
@@ -427,6 +512,192 @@ export const ensureContentModelsGroupFolder = (
   return refKey;
 };
 
+/**
+ * Per-site SXA-style enumeration template pair. Mirrors the OOTB
+ * starter-site convention (verified 2026-05-03 against
+ * `/sitecore/templates/Project/click-click-launch/Presentation/`):
+ *
+ *   Enumerations Folder        → folder layers in the enum content tree
+ *                                (root, per-section grouping, per-enum)
+ *   Enumeration                → leaf value items (`lg`, `primary`, etc.)
+ *     └── Enumeration (section)
+ *           └── Value (Single-Line Text, shared)
+ *
+ * Both inherit from Standard Template only and stamp the
+ * `keyboard_key_e.png` icon so the SXA editor recognises enum items
+ * as enumeration entries (not folders) and value items don't need
+ * an explicit `__Icon` override.
+ *
+ * The `Enumeration` template carries an `Enumeration` section with a
+ * single `Value` field (Single-Line Text, shared) so each value item
+ * conforming to the template can store its actual enumeration value
+ * (`"primary"`, `"shooting-star"`, etc.) — matches the canonical
+ * `click-click-launch` starter site exactly. Without the section+field,
+ * value items are bare names with no payload and the Droplink picker
+ * has nothing to enumerate, so component fields wired against the enum
+ * stay empty.
+ *
+ * Idempotent across the recipe set — the templates are emitted on
+ * first call and re-uses are no-ops via the shared `emittedFolders`
+ * set. Returns the deterministic refKeys for both templates so
+ * callers can use them as `templateOf` on the items they emit.
+ */
+export interface EnumerationTemplateRefs {
+  folderTemplateRefKey: string;
+  valueTemplateRefKey: string;
+  /**
+   * RefKey of the `Value` Template Field under the Enumeration template.
+   * Callers writing the field on individual value items pair this with
+   * `fieldName: "Value"` so the executor's tenant-side resolver can
+   * locate the field by name (recipe-derived field GUIDs don't match
+   * the Sitecore-assigned ones).
+   */
+  valueFieldRefKey: string;
+}
+
+export const ensureEnumerationTemplates = (
+  operations: Operation[],
+  context: CompileContext,
+  site: string,
+  emittedFolders: Set<string>
+): EnumerationTemplateRefs => {
+  const folderTemplateRefKey = enumerationsFolderTemplateId(site);
+  const valueTemplateRefKey = enumerationTemplateId(site);
+  const valueFieldRefKey = enumerationTemplateValueFieldId(site);
+  const sentinel = `enumeration-templates:${site}`;
+  if (emittedFolders.has(sentinel)) {
+    return { folderTemplateRefKey, valueTemplateRefKey, valueFieldRefKey };
+  }
+  emittedFolders.add(sentinel);
+
+  // Enum templates live at the SITE templates root's `/Presentation`
+  // bucket (sibling of `/Components`), NOT nested under `/Components`.
+  // Orchestrators typically alias `templatesRoot` and `componentsRoot`
+  // to the same `<siteRoot>/Components` value; strip the trailing
+  // `/Components` segment from whichever is provided to land on the
+  // site templates root. When the input doesn't end in `/Components`
+  // (legacy flat layout), use it as-is.
+  const root = context.componentsRoot ?? context.templatesRoot;
+  const siteTemplatesRoot = root.replace(/\/Components$/, "");
+  const parentPath = joinPath(siteTemplatesRoot, "Presentation");
+
+  const entries: ReadonlyArray<{ refKey: string; name: string }> = [
+    { refKey: folderTemplateRefKey, name: "Enumerations Folder" },
+    { refKey: valueTemplateRefKey, name: "Enumeration" },
+  ];
+
+  for (const { refKey, name } of entries) {
+    operations.push({
+      op: "CreateItem",
+      policy: "CreateOnly",
+      label: `enumeration-template:${site}:${name}`,
+      id: refKey,
+      path: joinPath(parentPath, name),
+      parent: { kind: "ref-path", value: parentPath },
+      templateOf: SITECORE_TEMPLATES.TEMPLATE,
+      name,
+      fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: ENUMERATION_ICON })],
+    } satisfies CreateItemOp);
+
+    operations.push({
+      op: "SetBaseTemplates",
+      policy: "CreateOnly",
+      label: `enumeration-template-base:${site}:${name}`,
+      itemRefKey: refKey,
+      baseTemplates: [STANDARD_TEMPLATE_ID],
+    } satisfies SetBaseTemplatesOp);
+  }
+
+  // Inner section + field on the `Enumeration` template:
+  //   <Enumeration template>/Enumeration         (Template Section)
+  //   <Enumeration template>/Enumeration/Value   (Template Field, Single-Line Text, shared)
+  // Recipe-emitted value items conforming to the Enumeration template
+  // store their actual enum string (`"primary"`, `"shooting-star"`)
+  // on the `Value` shared field — matches the canonical
+  // `click-click-launch/Presentation/Enumeration/Enumeration/Value`
+  // structure exactly.
+  const valueTemplatePath = joinPath(parentPath, "Enumeration");
+  const valueSectionRefKey = enumerationTemplateSectionId(site);
+  const valueSectionPath = joinPath(valueTemplatePath, "Enumeration");
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `enumeration-template-section:${site}`,
+    id: valueSectionRefKey,
+    path: valueSectionPath,
+    parent: { kind: "ref-recipe", refKey: valueTemplateRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+    name: "Enumeration",
+    fields: [],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `enumeration-template-value-field:${site}`,
+    id: valueFieldRefKey,
+    path: joinPath(valueSectionPath, "Value"),
+    parent: { kind: "ref-recipe", refKey: valueSectionRefKey },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+    name: "Value",
+    fields: [
+      sharedField(TEMPLATE_FIELD_FIELDS.TYPE, {
+        kind: "string",
+        value: sitecoreFieldTypeLabel("single-line-text"),
+      }),
+      sharedField(SYSTEM_FIELDS.SORT_ORDER, { kind: "number", value: 100 }),
+      sharedField(TEMPLATE_FIELD_FIELDS.SHARED, { kind: "string", value: "1" }),
+      versionedField(TEMPLATE_FIELD_FIELDS.TITLE, { kind: "string", value: "Value" }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: "Value" }),
+    ],
+  } satisfies CreateItemOp);
+
+  // Template-level Standard Values for the Enumerations Folder template,
+  // linked via SetStandardValues so Insert Options propagates to every
+  // item conforming to it (the grouping folders + each per-enum data
+  // folder). Allows inserting Enumerations Folder (subgrouping) AND
+  // Enumeration (value items) — both shapes a folder might contain.
+  // Living at the template definition keeps Droplink picker results
+  // clean: the data folders themselves contain only enum value items,
+  // not a stray __Standard Values sibling.
+  const folderTemplatePath = joinPath(parentPath, "Enumerations Folder");
+  const folderSvRefKey = enumerationsFolderTemplateStandardValuesId(site);
+  const folderSvPath = joinPath(folderTemplatePath, "__Standard Values");
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `enumeration-template-standard-values:${site}`,
+    id: folderSvRefKey,
+    path: folderSvPath,
+    parent: { kind: "ref-recipe", refKey: folderTemplateRefKey },
+    templateOf: folderTemplateRefKey,
+    name: "__Standard Values",
+    fields: [],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "SetStandardValues",
+    policy: "CreateOnly",
+    label: `enumeration-template-link-standard-values:${site}`,
+    templateRefKey: folderTemplateRefKey,
+    standardValuesRefKey: folderSvRefKey,
+  } satisfies SetStandardValuesOp);
+
+  operations.push({
+    op: "SetField",
+    policy: "CreateOnly",
+    label: `enumeration-template-insert-options:${site}`,
+    itemRefKey: folderSvRefKey,
+    fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+    value: {
+      kind: "ref-guid-list",
+      values: [folderTemplateRefKey, valueTemplateRefKey],
+    },
+  } satisfies SetFieldOp);
+
+  return { folderTemplateRefKey, valueTemplateRefKey, valueFieldRefKey };
+};
+
 export interface DatasourceTemplateInput {
   handle: string;
   name: string;
@@ -517,9 +788,6 @@ export function emitDatasourceTemplate(
       operations.push(
         ...buildFieldOp({
           recipeHandle: recipe.handle,
-          recipeName: recipe.name,
-          recipeDisplayName: recipe.displayName,
-          enumerationsRoot: context.enumerationsRoot,
           fieldRefKey: fieldId(site, recipe.handle, field.name),
           fieldPath: joinPath(secPath, field.name),
           parentRefKey: secRefKey,
@@ -528,6 +796,7 @@ export function emitDatasourceTemplate(
           zeroBasedIndex: index,
           policy,
           site,
+          context,
         })
       );
     });
@@ -579,26 +848,6 @@ export function emitDatasourceTemplate(
 
 export interface BuildFieldOpInput {
   recipeHandle: string;
-  /**
-   * Recipe `name` (the Sitecore item name — e.g. `CtaButton`). Threaded
-   * through so inline-enum folder items can use `<recipeName>--<fieldName>`
-   * as both their content-tree name and `__Display name` prefix base.
-   */
-  recipeName: string;
-  /**
-   * Recipe `displayName` (when set). Used to build the inline-enum folder's
-   * `__Display name` (`<recipeDisplayName> · <fieldName>`); falls back to
-   * `recipeName` when unset, mirroring `compileEnumerationRecipe`.
-   */
-  recipeDisplayName: string | undefined;
-  /**
-   * Enumerations root from `CompileContext`. Required when any inline enum
-   * field is being emitted — the per-field folder lands at
-   * `<enumerationsRoot>/<recipeName>--<fieldName>/`. `buildFieldOp` throws
-   * INPUT_INVALID when an inline enum field is encountered but this is
-   * undefined.
-   */
-  enumerationsRoot: string | undefined;
   fieldRefKey: string;
   fieldPath: string;
   parentRefKey: string;
@@ -613,37 +862,43 @@ export interface BuildFieldOpInput {
    * handle)` for handle references in `sourceTypes`.
    */
   site: string;
+  /**
+   * Compile context — used by `resolveFieldSource` to look up
+   * `sitecore.enumHandle` references against `enumsByHandle` and emit
+   * the enum's tenant content path as the Droplink Source value.
+   * Standalone callers can omit it, but any field with
+   * `sitecore.enumHandle` will then throw INPUT_INVALID since the path
+   * can't be resolved.
+   */
+  context?: CompileContext;
 }
 
 /**
- * Build the CreateItem op(s) for a single field definition.
+ * Build the CreateItem op for a single field definition.
  *
- * Returns an array — usually length 1 (the field-definition item alone),
- * but for **inline enum** fields (`shape: "enum"` with no
- * `sitecore.enumHandle`) the returned array also includes:
- *   1. a Folder CreateItem for the per-field enum folder under
- *      `<enumerationsRoot>/<recipeName>--<fieldName>/`;
- *   2. one Folder CreateItem per declared value, parented under that
- *      folder.
+ * Always returns exactly one op — the field-definition item itself.
+ * Backing storage for enum-shaped fields is decided by the field's
+ * `sitecore.type` / `sitecore.enumHandle` and resolved into the
+ * `Source` field via `resolveFieldSource`:
+ *   - `sitecore.type: "droplist"` + inline `values: [...]` → Source is
+ *     a pipe-separated literal; Sitecore enumerates the string directly,
+ *     no value items needed.
+ *   - `sitecore.enumHandle: "<handle>"` (Droplink default) → Source is
+ *     the EnumerationRecipe's folder path on the tenant; the picker
+ *     enumerates that path's children at editor time. The values live
+ *     under the `EnumerationRecipe`'s folder item, emitted by
+ *     `compileEnumerationRecipe`.
  *
- * The field-definition item itself stays at its original path with no
- * value-item children; its `Source` resolves at apply-time to the per-
- * field folder via `ref-recipe` (see `resolveFieldSource`). This mirrors
- * the shared-enum layout — SXA Headless rendering parameter dialogs only
- * resolve `query:` Source against the *current* item (which the field-
- * definition isn't), so the dropdown stayed empty before. Pointing the
- * Source at the per-field folder fixes the picker.
- *
- * Shared-enum fields (with `enumHandle`) emit no value children here —
- * the values live under the `EnumerationRecipe`'s folder item, emitted
- * by `compileEnumerationRecipe`.
+ * Inline Droplink (`shape: "enum"` + inline `values` + no `enumHandle`
+ * + no `sitecore.type` override) is rejected by `resolveFieldSource`
+ * with INPUT_INVALID — it never reliably worked in SXA Headless's
+ * rendering parameters dialog (the picker couldn't enumerate the
+ * per-field folder), so authors must commit to one of the two
+ * supported shapes.
  */
-export function buildFieldOp(input: BuildFieldOpInput): CreateItemOp[] {
+export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
   const {
     recipeHandle,
-    recipeName,
-    recipeDisplayName,
-    enumerationsRoot,
     fieldRefKey,
     fieldPath,
     parentRefKey,
@@ -652,6 +907,7 @@ export function buildFieldOp(input: BuildFieldOpInput): CreateItemOp[] {
     zeroBasedIndex,
     policy,
     site,
+    context,
   } = input;
   const sortOrder = field.sitecore?.sortOrder ?? (zeroBasedIndex + 1) * 100;
   const sitecoreType = resolveSitecoreType(field);
@@ -665,91 +921,24 @@ export function buildFieldOp(input: BuildFieldOpInput): CreateItemOp[] {
     versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: field.name }),
   ];
 
-  const sourceValue = resolveFieldSource(field, sitecoreType, site, recipeHandle);
+  const sourceValue = resolveFieldSource(field, sitecoreType, site, recipeHandle, context);
   if (sourceValue !== undefined) {
     fields.push(sharedField(TEMPLATE_FIELD_FIELDS.SOURCE, sourceValue));
   }
 
-  const fieldOp: CreateItemOp = {
-    op: "CreateItem",
-    policy,
-    label: `${labelPrefix}/${field.name}`,
-    id: fieldRefKey,
-    path: fieldPath,
-    parent: { kind: "ref-recipe", refKey: parentRefKey },
-    templateOf: SITECORE_TEMPLATES.TEMPLATE_FIELD,
-    name: field.name,
-    fields,
-  };
-
-  const isInlineEnum =
-    field.shape === "enum" &&
-    !field.sitecore?.enumHandle &&
-    field.values !== undefined &&
-    field.values.length > 0;
-
-  if (!isInlineEnum) {
-    return [fieldOp];
-  }
-
-  if (!enumerationsRoot) {
-    throw createCliError(
-      `Inline enum field '${field.name}' on recipe '${recipeHandle}' requires enumerationsRoot but none is configured.`,
-      "INPUT_INVALID",
-      {
-        hint: "Set `enumerationsRoot` on the active envProfile in sitecoreai.cli.json (e.g. `/sitecore/content/<siteCollection>/<site>/Settings/Enumerations`). Inline enum value items now live as children of a per-field Folder under the enumerations root so SXA's rendering parameter dialog can resolve them.",
-      }
-    );
-  }
-
-  const folderRefKey = inlineEnumFolderId(site, recipeHandle, field.name);
-  const folderName = `${recipeName}--${field.name}`;
-  const folderPath = joinPath(enumerationsRoot, folderName);
-  const folderDisplayName = `${recipeDisplayName ?? recipeName} · ${field.name}`;
-
-  const ops: CreateItemOp[] = [];
-
-  // Per-field enum folder — same content-tree shape as a shared
-  // EnumerationRecipe's folder, just keyed per-(recipe, field).
-  ops.push({
-    op: "CreateItem",
-    policy,
-    label: `inline-enum-folder:${recipeHandle}/${field.name}`,
-    id: folderRefKey,
-    path: folderPath,
-    parent: { kind: "ref-path", value: enumerationsRoot },
-    templateOf: SITECORE_TEMPLATES.FOLDER,
-    name: folderName,
-    fields: [
-      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: ENUMERATION_FOLDER_ICON }),
-      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
-        kind: "string",
-        value: folderDisplayName,
-      }),
-    ],
-  } satisfies CreateItemOp);
-
-  // One value item per declared value, parented under the per-field folder.
-  for (const value of field.values!) {
-    ops.push({
+  return [
+    {
       op: "CreateItem",
       policy,
-      label: `inline-enum-value:${recipeHandle}/${field.name}/${value}`,
-      id: enumValueId(folderRefKey, value),
-      path: joinPath(folderPath, value),
-      parent: { kind: "ref-recipe", refKey: folderRefKey },
-      templateOf: SITECORE_TEMPLATES.FOLDER,
-      name: value,
-      fields: [versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value })],
-    } satisfies CreateItemOp);
-  }
-
-  // Field definition lands LAST so the per-field folder + values are
-  // already in the captured-itemId map by the time the field's
-  // ref-recipe Source is resolved at apply time.
-  ops.push(fieldOp);
-
-  return ops;
+      label: `${labelPrefix}/${field.name}`,
+      id: fieldRefKey,
+      path: fieldPath,
+      parent: { kind: "ref-recipe", refKey: parentRefKey },
+      templateOf: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      name: field.name,
+      fields,
+    } satisfies CreateItemOp,
+  ];
 }
 
 function resolveSitecoreType(field: FieldDefinition | ParamDefinition): SitecoreFieldType {
@@ -775,16 +964,16 @@ function resolveSitecoreType(field: FieldDefinition | ParamDefinition): Sitecore
  * can layer them in via a `ContentItemRecipe` that targets the SV
  * path explicitly.
  *
- * Enum-shaped fields are special — their on-disk Sitecore type is
- * Droplink (since 2026-05), so the default value must encode as a
- * `ref-recipe` GUID reference to the value item, NOT a plain string.
- * The target value item's GUID derives from:
- *   - **Inline enum**: parent = the per-field enum folder
- *     (`inlineEnumFolderId(site, handle, field.name)`). Value items
- *     live under that folder under `<enumerationsRoot>` — see
- *     `buildFieldOp`'s inline-enum emission.
- *   - **Shared enum** (`sitecore.enumHandle`): parent =
- *     `enumerationFolderId(site, enumHandle)`.
+ * Enum-shaped fields branch on the resolved Type:
+ *   - **Type=Droplist** (override): default is the raw string. Droplist
+ *     reads its options from a pipe-separated Source; SV default is a
+ *     name match against that list.
+ *   - **Type=Droplink + `sitecore.enumHandle`** (the canonical shared
+ *     enum shape): default is a `ref-recipe` GUID reference to the
+ *     value item under `enumerationFolderId(site, enumHandle)`.
+ *   - **Type=Droplink without `sitecore.enumHandle`** (inline Droplink):
+ *     unsupported — `resolveFieldSource` rejects it upstream and this
+ *     function throws defensively if it ever reaches here.
  *
  * If the declared default isn't actually one of the enum's values, the
  * derived GUID won't exist on the tenant and the SV write fails at
@@ -819,14 +1008,18 @@ export function buildStandardValuesFieldEntries(
 
 /**
  * Encode an SV default value for a field. Wraps `encodeStandardValueDefault`
- * with shape-aware handling for enum fields (which now back Droplink and
- * thus need GUID references rather than raw strings).
+ * with shape-aware handling for enum fields.
  *
- * For enum fields the parent refKey for `enumValueId` derivation is the
- * folder that owns the value items — `enumerationFolderId(site,
- * enumHandle)` for shared enums, `inlineEnumFolderId(site, handle,
- * fieldName)` for inline enums. Both reflect the live content-tree
- * parentage of the value items.
+ * Type decides the encoding shape:
+ *   - Type=Droplink + `sitecore.enumHandle`: default is a GUID reference
+ *     to the value item under the EnumerationRecipe's folder
+ *     (`enumerationFolderId(site, enumHandle)`).
+ *   - Type=Droplist (override): default is the raw string — Droplist's
+ *     own enumeration is a pipe-separated Source string, so a name match
+ *     in that list is the right encoding.
+ *   - Type=Droplink without `enumHandle`: throws INPUT_INVALID — inline
+ *     Droplink isn't supported; authors must commit to one of the two
+ *     shapes above.
  */
 function encodeStandardValueDefaultForField(
   raw: string,
@@ -835,11 +1028,30 @@ function encodeStandardValueDefaultForField(
   handle: string
 ): RefValue | undefined {
   if (field.shape === "enum") {
+    const sitecoreType = resolveSitecoreType(field);
+    if (sitecoreType === "droplist") {
+      // Droplist enumerates from a pipe-list Source; the SV default is
+      // the raw value string, not a GUID.
+      return { kind: "string", value: raw };
+    }
     const enumHandle = field.sitecore?.enumHandle;
-    const parentRefKey = enumHandle
-      ? enumerationFolderId(site, enumHandle)
-      : inlineEnumFolderId(site, handle, field.name);
-    return { kind: "ref-recipe", refKey: enumValueId(parentRefKey, raw) };
+    if (!enumHandle) {
+      // Defensive — `resolveFieldSource` rejects inline Droplink at the
+      // upstream call site, so this branch only fires if an enum field
+      // somehow reached SV emission without going through field-op
+      // construction. Throw rather than emit a broken default.
+      throw createCliError(
+        `Field '${field.name}' on recipe '${handle}' is shape=enum + Type=Droplink but declares no sitecore.enumHandle; inline Droplink isn't supported.`,
+        "INPUT_INVALID",
+        {
+          hint: "Either set `sitecore.enumHandle` to a shared EnumerationRecipe's handle, or override `sitecore.type` to 'droplist' for an inline pipe-list dropdown.",
+        }
+      );
+    }
+    return {
+      kind: "ref-recipe",
+      refKey: enumValueId(enumerationFolderId(site, enumHandle), raw),
+    };
   }
   return encodeStandardValueDefault(raw, resolveSitecoreType(field));
 }
@@ -886,26 +1098,35 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
  * Sources without handle references (`sourceRaw`, or `sourceQuery` /
  * `sourceScope` alone) render at compile time as a plain string.
  *
- * Enum fields (`shape: "enum"`) get special handling — Source is shape-
- * derived, not type-derived (works regardless of whether the author
- * overrode the Type via `sitecore.type`):
- *   - **Inline enum** (no `enumHandle`): Source resolves at apply-time
- *     to the per-field enum folder via `ref-recipe` to
- *     `inlineEnumFolderId(site, recipeHandle, field.name)`. The folder
- *     and its value-item children are emitted by `buildFieldOp`. (Prior
- *     to 2026-05 this returned `query:./*` and inline enum values were
- *     parented under the field-definition item — but `query:` Source
- *     doesn't resolve in SXA Headless rendering parameter dialogs, so
- *     dropdowns came up empty.)
- *   - **Shared enum** (`sitecore.enumHandle` set): Source resolves at
- *     apply-time to the path of the EnumerationRecipe's folder item via
- *     `ref-recipe` to `enumerationFolderId(site, enumHandle)`.
+ * Enum fields (`shape: "enum"`) accept exactly two shapes — the
+ * compiler rejects anything else with INPUT_INVALID:
+ *   - **Type=Droplink + `sitecore.enumHandle`** (the canonical shared
+ *     shape): Source is the EnumerationRecipe's tenant content path
+ *     (resolved via `context.enumsByHandle`). SXA enumerates that
+ *     path's children as picker entries; the values live as content
+ *     items the EnumerationRecipe owns. Source is emitted as a path
+ *     string (not a `{GUID}`) — SXA Headless's rendering parameter
+ *     dialog only enumerates Droplink Source as a content path / query.
+ *   - **Type=Droplist (override) + inline `values: [...]`**: Source is
+ *     a pipe-separated literal of the values — Sitecore reads the
+ *     option list straight out of the Source string with no folder
+ *     lookup. No content items are emitted.
+ *
+ * Inline Droplink (shape=enum + `values` + neither override) is rejected
+ * here: SXA Headless's rendering parameters dialog never reliably picked
+ * up the per-field folder of values, so authors must commit to one of
+ * the two supported shapes.
+ *
+ * Shared-enum + Droplist isn't supported either — Droplist needs values
+ * at compile time, which we can't resolve from a sibling EnumerationRecipe
+ * without a lookup.
  */
 function resolveFieldSource(
   field: FieldDefinition | ParamDefinition,
   type: SitecoreFieldType,
   site: string,
-  recipeHandle: string
+  recipeHandle: string,
+  context?: CompileContext
 ): RefValue | undefined {
   const sc = field.sitecore;
   if (sc) {
@@ -932,20 +1153,53 @@ function resolveFieldSource(
     }
   }
   if (field.shape === "enum") {
-    if (sc?.enumHandle) {
-      // Shared enum — the executor resolves the refKey to the
-      // enumeration folder's apply-time path so the Droplink Source
-      // points at the right tenant location.
-      return { kind: "ref-recipe", refKey: enumerationFolderId(site, sc.enumHandle) };
+    // Droplist override on an enum field needs the inline values
+    // baked into Source as a pipe-separated literal — SXA's Droplist
+    // enumerates the string directly and never reads a folder.
+    if (type === "droplist") {
+      if (!field.values || field.values.length === 0) {
+        throw createCliError(
+          `Field '${field.name}' on recipe '${recipeHandle}' overrides sitecore.type to 'droplist' but declares no inline values; Droplist needs an inline value list.`,
+          "INPUT_INVALID",
+          {
+            hint: 'Either drop the `sitecore.type: "droplist"` override and add `sitecore.enumHandle: "<recipe>@<v>"` (shared Droplink), or add `values: [...]` to the field.',
+          }
+        );
+      }
+      return { kind: "string", value: field.values.join("|") };
     }
-    // Inline enum — same shape as shared, just scoped to a per-(recipe,
-    // field) folder under <enumerationsRoot>. Same `ref-recipe`
-    // resolution mechanism so SXA's editor enumerates the folder's
-    // children at edit time.
-    return {
-      kind: "ref-recipe",
-      refKey: inlineEnumFolderId(site, recipeHandle, field.name),
-    };
+    if (sc?.enumHandle) {
+      // Shared enum + Droplink — Source is the enum folder's tenant
+      // content path (NOT a `{GUID}` reference). SXA Headless's
+      // rendering parameter dialog enumerates Droplink Source as a path
+      // / query; a bare GUID doesn't reliably surface picker options.
+      // Path is computable at compile time from the EnumerationRecipe
+      // looked up via `context.enumsByHandle`.
+      if (!context) {
+        throw createCliError(
+          `Field '${field.name}' on recipe '${recipeHandle}' uses sitecore.enumHandle='${sc.enumHandle}' but the field-op builder was invoked without a CompileContext.`,
+          "INPUT_INVALID",
+          {
+            hint: "Pass `context` into `buildFieldOp` so the enum's tenant path can be resolved from `enumsByHandle` + `enumerationsRoot`.",
+          }
+        );
+      }
+      const enumPath = resolveEnumFolderPath(context, sc.enumHandle, recipeHandle);
+      return { kind: "string", value: enumPath };
+    }
+    // Inline Droplink (shape=enum + values + no enumHandle + no Droplist
+    // override) is not a valid shape — SXA Headless's rendering parameter
+    // dialog never reliably picked up a per-field folder of values, so the
+    // dropdown stayed empty in Pages. Force the author to commit:
+    //   - Inline scale → `sitecore.type: "droplist"` + inline `values`.
+    //   - Shared scale → `sitecore.enumHandle: "<EnumerationRecipe>@<v>"`.
+    throw createCliError(
+      `Field '${field.name}' on recipe '${recipeHandle}' is shape=enum but declares neither sitecore.type='droplist' (with inline values) nor sitecore.enumHandle (pointing at a shared EnumerationRecipe); inline Droplink isn't supported.`,
+      "INPUT_INVALID",
+      {
+        hint: 'Pick one: add `sitecore.type: "droplist"` for an inline pipe-list dropdown, or `sitecore.enumHandle: "<recipe>@<v>"` to point at a shared EnumerationRecipe (which authors edit out-of-band as content items).',
+      }
+    );
   }
   if (type === "droplist" && field.values && field.values.length > 0) {
     return { kind: "string", value: field.values.join("|") };

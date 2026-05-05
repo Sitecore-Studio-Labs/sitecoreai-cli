@@ -49,9 +49,10 @@ const resolveRenderingItemId = async (
   client: AuthoringApiClient,
   renderingsRoot: string,
   recipe: ComponentTemplateRecipe,
+  sectionName: string | undefined,
 ): Promise<string | null> => {
-  const path = recipe.section
-    ? joinPath(joinPath(renderingsRoot, recipe.section), recipe.name)
+  const path = sectionName
+    ? joinPath(joinPath(renderingsRoot, sectionName), recipe.name)
     : joinPath(renderingsRoot, recipe.name);
   const item = await client.getItem({ path });
   return item ? item.itemId : null;
@@ -179,17 +180,33 @@ export const applyPlaceholderAllowControls = async (
   const { client, recipes, renderingsRoot, placeholderSettingsRoots, apply, onUpdate } =
     options;
 
+  // Build the section handle → name map so we can resolve each
+  // component's `section.handle` to a name for the rendering path.
+  const sectionsByHandle = new Map<string, string>();
+  for (const recipe of recipes) {
+    if (recipe.kind === "component-section") {
+      sectionsByHandle.set(recipe.handle, recipe.name);
+    }
+  }
+
   // Collect: placeholderKey → Set<renderingItemId>
   const keyToRenderings = new Map<string, Set<string>>();
   const unresolvedRecipeHandles: string[] = [];
   for (const recipe of recipes) {
     if (recipe.kind !== "component-template") continue;
-    const keys = recipe.placeholders ?? [];
+    // `placedIn` is the placement allow-list — placeholder keys this
+    // rendering can be placed into. Distinct from `placeholders`, which
+    // is for slots this component DEFINES (handled elsewhere).
+    const keys = recipe.placedIn ?? [];
     if (keys.length === 0) continue;
+    const sectionName = recipe.section
+      ? sectionsByHandle.get(recipe.section.handle)
+      : undefined;
     const renderingItemId = await resolveRenderingItemId(
       client,
       renderingsRoot,
       recipe,
+      sectionName,
     );
     if (!renderingItemId) {
       unresolvedRecipeHandles.push(recipe.handle);

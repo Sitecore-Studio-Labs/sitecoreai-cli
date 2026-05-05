@@ -53,7 +53,7 @@ export const avatarBlockRecipe = {
     },
   ],
 
-  variants: [{ name: "default" }, { name: "author" }],
+  variants: [{ name: "Default" }, { name: "Author" }],
 
   params: [
     {
@@ -82,17 +82,14 @@ export const avatarBlockRecipe = {
     },
   ],
 
-  // Placeholder keys this rendering is compatible with — Pages will
+  // Placeholder keys this rendering can be PLACED INTO — Pages will
   // offer AvatarBlock in these slots' rendering pickers.
-  placeholders: ["avatar-author-content"],
+  placedIn: ["avatar-author-content"],
 
-  rendering: {
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;
 

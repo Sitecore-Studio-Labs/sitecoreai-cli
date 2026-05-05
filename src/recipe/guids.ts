@@ -186,38 +186,73 @@ export const enumerationFolderId = (site: string, handle: string): string =>
 
 /**
  * Deterministic refKey for a single enumeration value item. Scopes
- * under the parent's refKey so the same value name (`primary`,
- * `default`, etc.) produces distinct GUIDs across enums:
- *
- *   - Shared enum: parent = `enumerationFolderId(site, handle)`.
- *   - Inline enum: parent = `inlineEnumFolderId(site, handle, fieldName)`.
+ * under the EnumerationRecipe's `enumerationFolderId(site, handle)` so
+ * the same value name (`primary`, `default`, etc.) produces distinct
+ * GUIDs across enums.
  */
-export const enumValueId = (
-  parentRefKey: string,
-  valueName: string,
-): string => uuidv5(`enum-value:${valueName}`, parentRefKey);
+export const enumValueId = (parentRefKey: string, valueName: string): string =>
+  uuidv5(`enum-value:${valueName}`, parentRefKey);
 
 /**
- * Inline enumeration folder — a per-field Folder item under
- * `<enumerationsRoot>` whose children are the field's value items.
- * Used when a field declares `shape: "enum"` with `values: [...]` and
- * NO `sitecore.enumHandle` (i.e. self-contained, scoped to one
- * field). Same content-tree shape as a shared `EnumerationRecipe`,
- * just keyed per-(recipe, field) so values don't cross-pollute.
- *
- * Distinct seed namespace from `enumerationFolderId(site, handle)` so
- * a shared enum at `color-scheme@1` and an inline enum on a field
- * named `ColorScheme` produce different GUIDs.
+ * Per-site `Enumerations Folder` template. The folder layers in an
+ * enumeration tree (root, per-section grouping, per-enum) all conform
+ * to this template instead of Sitecore's generic Folder, so the SXA
+ * editor recognises the layout and stamps the right icon. Site-scoped
+ * because each site owns its own per-Project templates tree.
  */
-export const inlineEnumFolderId = (
-  site: string,
-  recipeHandle: string,
-  fieldName: string,
-): string =>
-  uuidv5(
-    `${site}::${recipeHandle}::inline-enum::${fieldName}`,
-    NAMESPACE_ENUMERATION,
-  );
+export const enumerationsFolderTemplateId = (site: string): string =>
+  uuidv5(`${site}::enumerations-folder-template`, NAMESPACE_TEMPLATE);
+
+/**
+ * Deterministic refKey for one segment of an
+ * `EnumerationRecipe.location.folder` grouping path under
+ * `<enumerationsRoot>/<…segments…>`. Conforms to the per-site
+ * `Enumerations Folder` template. Site-scoped + keyed on the segment's
+ * cumulative path so two recipes in the same push pointing at
+ * `folder: "Theme/Color"` reuse the `Theme` and `Theme/Color` folders
+ * rather than colliding.
+ *
+ * Pass the cumulative path (e.g. `"Theme"` then `"Theme/Color"`) — not
+ * just the leaf segment — so each level gets its own GUID seeded by its
+ * full position in the tree. This keeps two folders named `Color`
+ * (one under `Theme`, one under `Layout`) distinct.
+ *
+ * Same `NAMESPACE_PROJECT` family as section folders / Component
+ * Folders buckets — all "site organisational folders" with the same
+ * identity model.
+ */
+export const enumerationsGroupingFolderId = (site: string, cumulativePath: string): string =>
+  uuidv5(`${site}:Enumerations:${cumulativePath}`, NAMESPACE_PROJECT);
+
+/**
+ * Per-site `Enumeration` template. Enum value items (the leaves like
+ * `lg`, `primary`, `dark`) conform to this template so they inherit
+ * the enumeration icon and aren't mistaken for folders by the editor.
+ * Site-scoped for the same reason as `enumerationsFolderTemplateId`.
+ */
+export const enumerationTemplateId = (site: string): string =>
+  uuidv5(`${site}::enumeration-template`, NAMESPACE_TEMPLATE);
+
+/**
+ * The single Template Section under the per-site `Enumeration`
+ * template, named `"Enumeration"` (matches the canonical
+ * `click-click-launch/Presentation/Enumeration/Enumeration`). Holds the
+ * `Value` field below. Scoped under `enumerationTemplateId(site)` so the
+ * GUID is stable per-site without colliding across sites.
+ */
+export const enumerationTemplateSectionId = (site: string): string =>
+  uuidv5("section:Enumeration", enumerationTemplateId(site));
+
+/**
+ * The `Value` Template Field under the per-site `Enumeration`
+ * template's `Enumeration` section. Stores the actual enumeration
+ * value (`"primary"`, `"shooting-star"`, etc.) on every value item
+ * conforming to the Enumeration template — matches the canonical
+ * `click-click-launch/Presentation/Enumeration/Enumeration/Value`
+ * field. Scoped under `enumerationTemplateId(site)` for stability.
+ */
+export const enumerationTemplateValueFieldId = (site: string): string =>
+  uuidv5("field:Value", enumerationTemplateId(site));
 
 /**
  * Datasource items are scoped to a page recipe's id, keyed on slot path —
@@ -320,6 +355,110 @@ export const componentFolderStandardValuesId = (site: string, componentHandle: s
  */
 export const contentModelsGroupFolderId = (site: string, group: string): string =>
   uuidv5(`${site}:Content Models:${group}`, NAMESPACE_PROJECT);
+
+/**
+ * Per-site shared Data Folder under `<contentItemsRoot>/<subfolder>`.
+ * Emitted as a CreateOnly item by `compileComponentTemplateRecipe` when
+ * a recipe declares a `site`-scoped datasource location with a
+ * `subfolder`. Multiple recipes with the same subfolder share the
+ * folder (idempotent emission via the `emittedFolders` set).
+ */
+export const siteDataFolderId = (site: string, subfolder: string): string =>
+  uuidv5(`${site}::data-folder::${subfolder}`, NAMESPACE_PROJECT);
+
+/**
+ * Per-component Data Folder TEMPLATE emitted when a recipe declares a
+ * site-scoped datasource location. Lands at
+ * `Components/<section>/Data Folders/<Component> Data Folder`. The
+ * Sitecore folder ITEM(s) at `<contentItemsRoot>/<subfolder>` conform
+ * to this template (instead of the generic `Folder`) so its
+ * `__Standard Values`'s Insert Options can restrict children to the
+ * component's own datasource template — i.e. a "Badges" folder only
+ * accepts Badge datasources when an author right-clicks → Insert.
+ *
+ * One template per recipe-handle (idempotent across multiple
+ * site-scoped subfolders that share the same recipe). Mirrors
+ * `componentFolderTemplateId` for `children:` declarations, but
+ * keyed under a distinct seed so the two templates don't collide.
+ */
+export const siteDataFolderTemplateId = (site: string, recipeHandle: string): string =>
+  uuidv5(`${site}::${recipeHandle}::data-folder-template`, NAMESPACE_TEMPLATE);
+
+/**
+ * Standard-values item refKey for a per-component Data Folder template.
+ * Same derivation pattern as `standardValuesId` and
+ * `componentFolderStandardValuesId` — seed `__standard-values` under
+ * the folder template's own id.
+ */
+export const siteDataFolderStandardValuesId = (site: string, recipeHandle: string): string =>
+  uuidv5("__standard-values", siteDataFolderTemplateId(site, recipeHandle));
+
+/**
+ * SHARED Data Folder template — keyed on `(site, subfolder)` instead of
+ * `(site, recipeHandle)`. Emitted by `compileRecipeSet` when two or
+ * more recipes target the same site-scoped `subfolder` (the shared-
+ * pool design-system pattern: Badge + StatusPill + Tag all populating
+ * `Site Shared UI/Badges`). The shared template's `__Standard Values`
+ * Insert Options field aggregates every contributing recipe's
+ * datasource template, so a CMS author right-clicking → Insert sees
+ * all the shapes that legitimately belong in that pool.
+ *
+ * Per-recipe `siteDataFolderTemplateId` stays in use for the
+ * SINGLETON case (one recipe → one subfolder). The choice between the
+ * two is made by the cross-recipe coalescer in `compileRecipeSet`:
+ * count refs per `(site, subfolder)`; ≥2 → shared template;
+ * exactly 1 → per-recipe template.
+ */
+export const sharedDataFolderTemplateId = (site: string, subfolder: string): string =>
+  uuidv5(`${site}::shared-data-folder-template::${subfolder}`, NAMESPACE_TEMPLATE);
+
+/**
+ * Standard-values item refKey for a shared per-subfolder Data Folder
+ * template. Same `__standard-values` seed pattern as the rest of the
+ * SV family.
+ */
+export const sharedDataFolderStandardValuesId = (site: string, subfolder: string): string =>
+  uuidv5("__standard-values", sharedDataFolderTemplateId(site, subfolder));
+
+/**
+ * Recipe-internal refKey for the site Data folder ROOT's
+ * `__Standard Values` item (one per site). The ITEM at
+ * `<contentItemsRoot>` itself is tenant-pre-existing or
+ * lazy-created; scai writes the SV directly under it via a
+ * CreateOnly CreateItem op.
+ */
+export const siteDataRootStandardValuesId = (site: string): string =>
+  uuidv5(`${site}::data-root-standard-values`, NAMESPACE_PROJECT);
+
+/**
+ * Recipe-internal refKey for the enumerations root's
+ * `__Standard Values` item (one per site). Mirror of
+ * `siteDataRootStandardValuesId` for the enumerations tree — the
+ * `<enumerationsRoot>` item itself is tenant-pre-existing; scai writes
+ * the SV directly under it via a CreateOnly CreateItem op so authors'
+ * right-click → Insert UX is restricted to enumeration folders + the
+ * generic Folder template.
+ */
+export const enumerationsRootStandardValuesId = (site: string): string =>
+  uuidv5(`${site}::enumerations-root-standard-values`, NAMESPACE_PROJECT);
+
+/**
+ * Per-site `__Standard Values` item under the `Enumerations Folder`
+ * template definition (NOT under each data folder). Linked to the
+ * template via `SetStandardValues` so its `Insert Options` propagates
+ * to every item conforming to Enumerations Folder — both the
+ * grouping-folder items under `<enumerationsRoot>` and the per-enum
+ * data folders themselves get the same Insert UX without an SV item
+ * polluting each data folder's children.
+ *
+ * Replaces the old `enumerationFolderStandardValuesId` (per-recipe SV
+ * under each data folder), which was non-functional anyway — it set
+ * Insert Options on the SV item without `SetStandardValues` linking,
+ * so the field had no effect, but the SV item itself appeared in the
+ * Droplink picker as a sibling of the enum value items.
+ */
+export const enumerationsFolderTemplateStandardValuesId = (site: string): string =>
+  uuidv5(`${site}::enumerations-folder-template-standard-values`, NAMESPACE_TEMPLATE);
 
 /**
  * Deterministic refKey for a `SectionDefinitionRecipe` — the SXA

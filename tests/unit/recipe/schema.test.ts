@@ -70,7 +70,6 @@ describe("ComponentTemplateRecipe Zod schema", () => {
       handle: "minimal@1",
       name: "Minimal",
       displayName: "Minimal",
-      rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
     });
     expect(result.success).toBe(true);
     if (result.success) {

@@ -25,7 +25,8 @@ describe("public recipe API surface", () => {
     "PartialDesignRecipeSchema",
     "PlaceholderDefinitionSchema",
     "RecipeSchema",
-    "RenderingDefinitionSchema",
+    "RecipeDatasourceSchema",
+    "RenderingDatasourceLocationSchema",
     "RenderingVariantDefinitionSchema",
     "SiteGroupingSchema",
     "SiteRecipeSchema",
@@ -126,7 +127,6 @@ describe("public recipe API surface", () => {
       name: "Smoke",
       displayName: "Smoke",
       fields: [{ name: "Title", shape: "text" }],
-      rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
     });
     expect(result.success).toBe(true);
   });
@@ -142,10 +142,6 @@ describe("public recipe API surface", () => {
         fields: [{ name: "Title", shape: "text" }],
         variants: [],
         params: [],
-        rendering: {
-          datasourceLocation: "current-item",
-          openPropertiesAfterAdd: false,
-        },
       },
       {
         templatesRoot: "/sitecore/templates/Project/test/Components",

@@ -51,7 +51,7 @@ const buildRecipe = (): ComponentTemplateRecipe => ({
       },
     },
   ],
-  variants: [{ name: "default" }, { name: "outline" }, { name: "ghost" }, { name: "link" }],
+  variants: [{ name: "Default" }, { name: "Outline" }, { name: "Ghost" }, { name: "Link" }],
   params: [
     {
       name: "Size",

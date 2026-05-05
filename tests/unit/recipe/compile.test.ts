@@ -67,9 +67,14 @@ const findField = (
 describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   const ir = compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
 
-  it("emits exactly 30 operations in the canonical order", () => {
+  it("emits exactly 19 operations in the canonical order", () => {
     expect(ir.schemaVersion).toBe("1");
     expect(ir.recipeHandle).toBe(HANDLE);
+    // Both `Size` and `ColorScheme` carry sitecore.type: "droplist", so
+    // they don't trigger the inline-enum folder + value-item emission
+    // (Droplist enumerates from a pipe-list Source string; the folder
+    // would just be unused content). The per-site Enumeration template
+    // pair is also skipped — nothing references them.
     expect(ir.operations.map((op) => op.op)).toEqual([
       "CreateItem", // 1. template
       "SetBaseTemplates", // 2. template → Standard Template
@@ -80,29 +85,16 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
       "CreateItem", // 7. params-template
       "SetBaseTemplates", // 8. params-template → Standard Template
       "CreateItem", // 9. params-section "Parameters"
-      // Inline-enum "Size": folder + 4 value items, then the field def.
-      "CreateItem", // 10. inline-enum folder Size (CtaButton--Size)
-      "CreateItem", // 11. inline-enum value Size/default
-      "CreateItem", // 12. inline-enum value Size/lg
-      "CreateItem", // 13. inline-enum value Size/sm
-      "CreateItem", // 14. inline-enum value Size/xs
-      "CreateItem", // 15. params-field "Size"
-      // Inline-enum "ColorScheme": folder + 5 value items, then the field def.
-      "CreateItem", // 16. inline-enum folder ColorScheme (CtaButton--ColorScheme)
-      "CreateItem", // 17. inline-enum value ColorScheme/primary
-      "CreateItem", // 18. inline-enum value ColorScheme/neutral
-      "CreateItem", // 19. inline-enum value ColorScheme/success
-      "CreateItem", // 20. inline-enum value ColorScheme/destructive
-      "CreateItem", // 21. inline-enum value ColorScheme/ai
-      "CreateItem", // 22. params-field "ColorScheme"
-      "CreateItem", // 23. params __Standard Values
-      "SetStandardValues", // 24. back-fill params-template
-      "CreateItem", // 25. rendering
-      "CreateItem", // 26. variants-folder
-      "CreateItem", // 27. variant "default"
-      "CreateItem", // 28. variant "outline"
-      "CreateItem", // 29. variant "ghost"
-      "CreateItem", // 30. variant "link"
+      "CreateItem", // 10. params-field "Size" (Droplist, pipe-list Source)
+      "CreateItem", // 11. params-field "ColorScheme" (Droplist, pipe-list Source)
+      "CreateItem", // 12. params __Standard Values
+      "SetStandardValues", // 13. back-fill params-template
+      "CreateItem", // 14. rendering
+      "CreateItem", // 15. variants-folder
+      "CreateItem", // 16. variant "Default"
+      "CreateItem", // 17. variant "Outline"
+      "CreateItem", // 18. variant "Ghost"
+      "CreateItem", // 19. variant "Link"
     ]);
   });
 
@@ -141,7 +133,11 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   });
 
   it("Link field carries General Link type (sitecore.type override) and sortOrder 100", () => {
-    const op = onlyOp(ir.operations, "CreateItem", (o) => o.name === "Link");
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.name === "Link" && o.templateOf === SITECORE_TEMPLATES.TEMPLATE_FIELD
+    );
     expect(op.id).toBe(fieldId(SITE, HANDLE, "Link"));
     expect(op.parent).toEqual({
       kind: "ref-recipe",
@@ -189,7 +185,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     expect(op.name).toBe("Parameters");
   });
 
-  it("params field 'Size' carries Droplist (sitecore.type override) + ref-recipe Source pointing at the per-field enum folder", () => {
+  it("params field 'Size' carries Droplist (sitecore.type override) + pipe-list Source", () => {
     const op = onlyOp(
       ir.operations,
       "CreateItem",
@@ -199,17 +195,16 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
         o.parent.refKey === paramsSectionId(SITE, HANDLE, "Parameters")
     );
     expect(op.id).toBe(paramsFieldId(SITE, HANDLE, "Size"));
-    // sitecore.type: "droplist" override is preserved on the Type cell.
+    // sitecore.type: "droplist" override → Type=Droplist + Source as a
+    // pipe-separated value list. The Droplist field reads its options
+    // straight from the Source string; no folder lookup, no per-field
+    // enum value items emitted.
     const type = findField(op.fields, TEMPLATE_FIELD_FIELDS.TYPE);
     expect(type?.value).toEqual({ kind: "string", value: "Droplist" });
-    // Inline enum Source is a ref-recipe to the per-field inline-enum
-    // folder under <enumerationsRoot>/<recipeName>--<fieldName>/. The
-    // executor resolves the refKey to the folder's apply-time path so
-    // SXA's rendering parameter dialog can enumerate the children.
     const source = findField(op.fields, TEMPLATE_FIELD_FIELDS.SOURCE);
     expect(source?.value).toEqual({
-      kind: "ref-recipe",
-      refKey: inlineEnumFolderId(SITE, HANDLE, "Size"),
+      kind: "string",
+      value: "default|lg|sm|xs",
     });
   });
 
@@ -235,7 +230,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   it("rendering's Datasource Location is the recipe's query string", () => {
     const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, HANDLE));
     expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_LOCATION)?.value).toEqual({
-      kind: "query",
+      kind: "string",
       value: "query:$site/*[@@name='Data']",
     });
   });
@@ -263,7 +258,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   });
 
   it("emits one Variant Definition item per recipe.variants entry under the per-rendering folder", () => {
-    const variantNames = ["default", "outline", "ghost", "link"];
+    const variantNames = ["Default", "Outline", "Ghost", "Link"];
     for (const name of variantNames) {
       const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === variantId(SITE, HANDLE, name));
       expect(op.parent).toEqual({ kind: "ref-recipe", refKey: variantsFolderId(SITE, HANDLE) });
@@ -273,7 +268,11 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     }
   });
 
-  it("every operation carries policy CreateAndUpdate (default for registry-owned items)", () => {
+  it("every operation carries policy CreateAndUpdate (cta-button has no inline-enum + Droplink, so no template-ensure CreateOnly ops)", () => {
+    // The per-site Enumeration template pair only emits when an inline
+    // enum field with Type=Droplink (the default for shape=enum) is
+    // encountered. cta-button overrides every enum param to Droplist,
+    // so no template-ensure ops fire and every op stays CreateAndUpdate.
     for (const op of ir.operations) {
       expect(op.policy).toBe("CreateAndUpdate");
     }
@@ -306,10 +305,6 @@ describe("compileComponentTemplateRecipe — section grouping", () => {
             sitecore: { section: "Content", sortOrder: 200, type: "multi-line-text" },
           },
         ],
-        rendering: {
-          datasourceLocation: "current-item",
-          openPropertiesAfterAdd: false,
-        },
       },
       CONTEXT
     );
@@ -338,7 +333,6 @@ describe("compileComponentTemplateRecipe — shape defaults", () => {
         name: "DefaultText",
         displayName: "Default Text",
         fields: [{ name: "Title", shape: "text" }],
-        rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
       },
       CONTEXT
     );
@@ -358,7 +352,6 @@ describe("compileComponentTemplateRecipe — shape defaults", () => {
         name: "RefMulti",
         displayName: "Ref Multi",
         fields: [{ name: "Tags", shape: "reference", multiple: true }],
-        rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
       },
       CONTEXT
     );
@@ -380,7 +373,6 @@ describe("compileComponentTemplateRecipe — recipes without optional buckets", 
         name: "Minimal",
         displayName: "Minimal",
         fields: [{ name: "Title", shape: "text" }],
-        rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
       },
       CONTEXT
     );

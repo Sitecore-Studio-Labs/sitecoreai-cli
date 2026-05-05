@@ -60,7 +60,7 @@ export const accordionBlockRecipe = {
   // under this accordion's datasource as children. Either pattern works.
   insertOptions: ["accordion-item@1"],
 
-  variants: [{ name: "default" }, { name: "media" }],
+  variants: [{ name: "Default" }, { name: "Media" }],
 
   params: [
     {
@@ -111,13 +111,10 @@ export const accordionBlockRecipe = {
     },
   ],
 
-  rendering: {
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;
 

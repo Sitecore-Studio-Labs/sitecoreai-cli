@@ -133,7 +133,6 @@ describe("compileRecipe — dispatcher", () => {
         fields: [{ name: "Title", shape: "text" }],
         variants: [],
         params: [],
-        rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
       },
       CONTEXT
     );
@@ -239,7 +238,6 @@ describe("insertOptions on a ComponentTemplateRecipe", () => {
         variants: [],
         params: [],
         insertOptions: ["accordion-item@1"],
-        rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
       },
       CONTEXT
     ).operations;

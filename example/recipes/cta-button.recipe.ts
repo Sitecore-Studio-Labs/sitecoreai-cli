@@ -42,7 +42,7 @@ export const ctaButtonRecipe = {
     },
   ],
 
-  variants: [{ name: "default" }, { name: "outline" }, { name: "ghost" }, { name: "link" }],
+  variants: [{ name: "Default" }, { name: "Outline" }, { name: "Ghost" }, { name: "Link" }],
 
   params: [
     {
@@ -69,12 +69,9 @@ export const ctaButtonRecipe = {
     },
   ],
 
-  rendering: {
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;

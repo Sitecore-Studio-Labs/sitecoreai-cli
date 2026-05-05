@@ -153,9 +153,28 @@ export type ParamDefinition = z.infer<typeof ParamDefinitionSchema>;
  * Phase 1 = Variants Lite: bare Variant item per `name`, no internal
  * structure. Phase 2+ may add per-variant template-card bindings for full
  * SXA NVELOPe authoring.
+ *
+ * `name` MUST be PascalCase. The Sitecore Content SDK looks up variants
+ * at render time via case-sensitive `component[name]` indexing on the
+ * component module's named exports, and React convention requires
+ * exported component identifiers to be PascalCase. Using lowercase or
+ * kebab-case here makes the SDK's variant lookup return `undefined` —
+ * Pages then renders the missing-component fallback.
+ *
+ * The `Default` variant is special-cased by the SDK
+ * (`DEFAULT_EXPORT_NAME = "Default"`): when `params.FieldNames` matches
+ * that, the SDK falls through to `component.default || component.Default
+ * || component`, so any of those export shapes work for the default
+ * variant. All OTHER variant names require an exact-match named export
+ * in the component file (e.g. `name: "FullWidth"` → `export function
+ * FullWidth(...)`).
  */
+const VARIANT_NAME_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 export const RenderingVariantDefinitionSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().regex(VARIANT_NAME_PATTERN, {
+    message:
+      "Variant `name` must be PascalCase (e.g. `Default`, `FullWidth`) — the Content SDK uses it as a case-sensitive key into the component module's named exports.",
+  }),
 });
 
 export type RenderingVariantDefinition = z.infer<typeof RenderingVariantDefinitionSchema>;
@@ -169,30 +188,141 @@ export const PlaceholderDefinitionSchema = z.object({
 
 export type PlaceholderDefinition = z.infer<typeof PlaceholderDefinitionSchema>;
 
-export const RenderingDefinitionSchema = z.object({
-  /**
-   * Where the rendering looks for / creates its datasource:
-   *   - `current-item` → ".", the rendering's host item itself
-   *   - `query` → `datasourceLocationQuery` is required
-   */
-  datasourceLocation: z.enum(["current-item", "query"]).default("current-item"),
-  /** Sitecore Query string; required when `datasourceLocation === "query"`. */
-  datasourceLocationQuery: z.string().optional(),
-  /** Restrict where this rendering can be placed (placeholder keys). */
-  allowedPlaceholders: z.array(z.string()).optional(),
-  /** Open the properties dialog after add (XM Cloud Pages UX). */
+/**
+ * One entry in the modern semantic-scope datasource locations list.
+ *
+ * Each entry compiles to a single Sitecore Source segment; the compiler
+ * pipe-joins entries into the rendering's `Datasource Location` field so
+ * one rendering can offer authors per-page auto-creation AND a shared
+ * site-level pool of datasources to pick from.
+ *
+ *   - `page` → relative `./Data` (no subfolder) or `./Data/<subfolder>`.
+ *     SXA materialises the `Data` and `<subfolder>` items lazily on first
+ *     datasource creation; no extra CreateItem op is emitted.
+ *   - `site` → absolute `<contentItemsRoot>` (no subfolder) or
+ *     `<contentItemsRoot>/<subfolder>`. With `subfolder` the compiler
+ *     emits a `CreateOnly` `CreateItem` for the data folder so the
+ *     shared pool exists before any rendering tries to read from it.
+ */
+export const RenderingDatasourceLocationSchema = z.discriminatedUnion("scope", [
+  z.object({
+    scope: z.literal("page"),
+    /** Optional `Data` subfolder; absent = `./Data`. */
+    subfolder: z.string().min(1).optional(),
+  }),
+  z.object({
+    scope: z.literal("site"),
+    /**
+     * Optional subfolder under `<contentItemsRoot>`. When present the
+     * compiler emits a `CreateOnly` folder item so the shared pool is
+     * materialised once per recipe-set.
+     */
+    subfolder: z.string().min(1).optional(),
+  }),
+]);
+
+export type RenderingDatasourceLocation = z.infer<typeof RenderingDatasourceLocationSchema>;
+
+/**
+ * Top-level datasource block on `ComponentTemplateRecipe`. Captures
+ * everything the rendering needs to know about its datasource:
+ *
+ *   - **template**: optional reference to a separate
+ *     `ContentTemplateRecipe`. When set, the compiler points the
+ *     rendering's Datasource Template field at that template (its
+ *     fields land under `Content Models/<group>/<name>`). When unset,
+ *     the component template itself is the datasource template (legacy
+ *     inline-`fields:` pattern).
+ *   - **autoCreate**: toggles `IsAutoDatasourceRendering=true` in the
+ *     rendering's `OtherProperties` URL-encoded blob. Default true.
+ *   - **openPropertiesAfterAdd**: opens the rendering parameters
+ *     dialog right after the rendering is dropped on a page. Default
+ *     false.
+ *   - **locations**: semantic page/site scope entries — each compiles
+ *     to one Sitecore Source segment (a relative `./Data/...` path or
+ *     an absolute `<contentItemsRoot>/...` path).
+ *   - **query**: raw Sitecore Source segments — included verbatim.
+ *     Use `"query:$site/*[@@name='Data']/CustomPath"`-style entries for
+ *     authors who need a Source shape that doesn't fit the semantic
+ *     `locations` model.
+ *
+ * The compiler pipe-joins `locations` (resolved to paths) and `query`
+ * (verbatim) into the rendering's `Datasource Location` field.
+ */
+export const RecipeDatasourceSchema = z.object({
+  /** Reference to a separate `ContentTemplateRecipe`. */
+  template: z
+    .object({
+      handle: z.string().regex(HANDLE_PATTERN, {
+        message: "datasource.template.handle must match `<kebab-name>@<major>`",
+      }),
+    })
+    .optional(),
+  /** Sets `IsAutoDatasourceRendering` in `OtherProperties`. Default true. */
+  autoCreate: z.boolean().default(true),
+  /** Open the properties dialog after add. Default false. */
   openPropertiesAfterAdd: z.boolean().default(false),
   /**
-   * Free-form key/value pairs encoded into the rendering's
-   * "OtherProperties" URL-encoded shared field. Common values:
-   * `IsAutoDatasourceRendering`, `IsRenderingsWithDynamicPlaceholders`.
-   * The compiler defaults `IsAutoDatasourceRendering=true`; recipe values
-   * override the default.
+   * Semantic-scope locations that compile to a path-style Sitecore
+   * Source segment each. Empty when only `query` entries are needed.
    */
-  otherProperties: z.record(z.string(), z.string()).optional(),
+  locations: z.array(RenderingDatasourceLocationSchema).default([]),
+  /**
+   * Raw Sitecore Source segments — included verbatim in the joined
+   * `Datasource Location` field. Each entry should be a complete
+   * segment (e.g. `"query:$site/*[@@name='Data']/Custom"` or
+   * `"fast:/sitecore/content/...//*[@@templatename='Foo']"`). Empty
+   * when only `locations` entries are needed.
+   */
+  query: z.array(z.string().min(1)).default([]),
 });
 
-export type RenderingDefinition = z.infer<typeof RenderingDefinitionSchema>;
+export type RecipeDatasource = z.infer<typeof RecipeDatasourceSchema>;
+
+/**
+ * Container for a related set of components in the Sitecore tree.
+ * Owns the SIX organisational items that previously emitted implicitly
+ * from `ComponentTemplateRecipe.section: string`:
+ *
+ *   1. Templates section folder        — `<componentsRoot>/<name>/`
+ *   2. Component Folders bucket        — `<componentsRoot>/<name>/Component Folders/`
+ *   3. Presentation Parameters bucket  — `<componentsRoot>/<name>/Presentation Parameters/`
+ *   4. Renderings-tree section folder  — `<renderingsRoot>/<name>/`
+ *   5. Headless Variants section       — `<headlessVariantsRoot>/<name>/`
+ *   6. Available Renderings section    — `<availableRenderingsRoot>/<name>` (built by
+ *                                        the cross-recipe aggregator from every
+ *                                        `ComponentTemplateRecipe` referencing this
+ *                                        section by handle)
+ *
+ * `ComponentTemplateRecipe.section` references this recipe by handle
+ * (`section: { handle: "ui-section@1" }`); the compiler errors at
+ * INPUT_INVALID time if a component points at a section handle no
+ * `ComponentSectionRecipe` in the set defines.
+ */
+export const ComponentSectionRecipeSchema = z.object({
+  kind: z.literal("component-section"),
+  schemaVersion: z.literal("1"),
+  /** Stable identifier of the form `<kebab-name>@<major>`, e.g. `ui-section@1`. */
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. ui-section@1",
+  }),
+  /** Folder name in the Sitecore tree (e.g. `"ui"`). */
+  name: z.string().min(1),
+  /** Author-facing label (defaults to `name`). */
+  displayName: z.string().min(1).optional(),
+  description: z.string().optional(),
+  /** Defaults to `office/16x16/folder.png`. */
+  icon: z.string().optional(),
+  /**
+   * Sort order across sections. Optional. Default = alphabetic by
+   * `name` (a–z). When `sortOrder` is set on any section in the set,
+   * sections with explicit values sort numerically first; ties and
+   * unset entries fall through to alphabetic by name.
+   */
+  sortOrder: z.number().int().optional(),
+});
+
+export type ComponentSectionRecipe = z.infer<typeof ComponentSectionRecipeSchema>;
 
 export const ComponentTemplateRecipeSchema = z.object({
   kind: z.literal("component-template"),
@@ -209,16 +339,27 @@ export const ComponentTemplateRecipeSchema = z.object({
   /** Defaults to "Office/32x32/document.png" if omitted. */
   icon: z.string().optional(),
   /**
-   * Section folder name (the Sitecore "subgroup") under which the
-   * component, its rendering, and its companion artifacts (Component
-   * Folder, Presentation Parameters) land. Drives the per-site folder
-   * layout — see `plans/recipe-site-folder-layout.md`.
+   * Reference to a `ComponentSectionRecipe` whose section folders this
+   * component lives under. The referenced recipe owns the templates
+   * section folder, Component Folders bucket, Presentation Parameters
+   * bucket, renderings-tree section folder, Headless Variants section,
+   * and Available Renderings section item.
    *
-   * When omitted, the compiler falls back to the legacy flat layout
-   * (no section subfolder). Registry-driven recipes inject this from
+   * Compile errors INPUT_INVALID if `section.handle` doesn't resolve to
+   * a `ComponentSectionRecipe` in the same recipe set.
+   *
+   * Optional: omit for the flat layout (component + rendering land
+   * directly at `<templatesRoot>` / `<renderingsRoot>` with no section
+   * scaffolding). Registry-driven recipes inject this from
    * `meta.tax.subgroup` at registry build time.
    */
-  section: z.string().min(1).optional(),
+  section: z
+    .object({
+      handle: z.string().regex(HANDLE_PATTERN, {
+        message: "section.handle must match `<kebab-name>@<major>`",
+      }),
+    })
+    .optional(),
   fields: z.array(FieldDefinitionSchema).default([]),
   /**
    * Recipe handles whose templates are allowed as direct children of this
@@ -234,23 +375,13 @@ export const ComponentTemplateRecipeSchema = z.object({
    */
   insertOptions: z.array(z.string()).optional(),
   /**
-   * Reference to a separate `ContentTemplateRecipe` that supplies the
-   * datasource fields. When present, the compiler uses the referenced
-   * content template as the rendering's Datasource Template (so the
-   * fields live under `Content Models/<group>/<name>` rather than on
-   * the component template itself).
-   *
-   * This is the modern shape; the inline `fields:` pattern still works
-   * (the compiler treats the component template itself as the
-   * datasource template) for back-compat.
+   * Datasource configuration — the rendering's data shape, picker
+   * locations, auto-create behaviour, and dialog UX. See
+   * `RecipeDatasourceSchema` for the full surface. Optional: omit
+   * for a rendering with no author-pickable datasource (e.g. a
+   * static component).
    */
-  datasource: z
-    .object({
-      handle: z.string().regex(HANDLE_PATTERN, {
-        message: "datasource.handle must match `<kebab-name>@<major>`",
-      }),
-    })
-    .optional(),
+  datasource: RecipeDatasourceSchema.optional(),
   /**
    * Reference to a separate `ParametersTemplateRecipe`. When present,
    * the rendering's Parameters Template field points at this template
@@ -292,26 +423,52 @@ export const ComponentTemplateRecipeSchema = z.object({
   variants: z.array(RenderingVariantDefinitionSchema).default([]),
   params: z.array(ParamDefinitionSchema).default([]),
   /**
-   * SXA placeholder keys this rendering is compatible with — slots
-   * the user can drop the rendering into in Pages. At apply time scai
-   * walks the configured Placeholder Settings roots, finds items
-   * whose `Placeholder Key` field matches each entry here, and
-   * appends this rendering's itemId to their `Allowed Controls`
-   * field. Without this, the rendering exists in CM but Pages won't
-   * offer it in any placeholder picker.
+   * SXA placeholder keys this rendering can be PLACED INTO — the
+   * allow-list. At apply time scai walks the configured Placeholder
+   * Settings roots, finds items whose `Placeholder Key` field matches
+   * each entry here, and appends this rendering's itemId to their
+   * `Allowed Controls` field. Without this, the rendering exists in
+   * CM but Pages won't offer it in any placeholder picker.
    *
    * Example: `["headless-main", "headless-main-{*}", "sxa-footer"]`.
    *
-   * The previous schema for this field accepted an object shape with
-   * a `key` + `allowedRenderingHandles` per entry — the inverse
-   * mapping ("this rendering exposes a slot for these children").
-   * That shape was never wired through the compiler, so the v1
-   * version is the simpler `string[]` form documented above. If a
-   * recipe needs to declare slots it exposes, that's a separate
-   * concept (and a future field).
+   * Distinct from `placeholders` (below), which declares slots THIS
+   * component EXPOSES for child renderings.
    */
-  placeholders: z.array(z.string().min(1)).default([]),
-  rendering: RenderingDefinitionSchema,
+  placedIn: z.array(z.string().min(1)).default([]),
+  /**
+   * Container slots — placeholders this component DEFINES for child
+   * renderings to drop into. Only meaningful for container components
+   * (e.g. a section wrapper that exposes a `headless-main-{*}` slot).
+   * Each entry carries the placeholder key + an optional restriction
+   * on which rendering handles may be dropped there.
+   *
+   * Distinct from `placedIn` (above), which lists placeholder keys
+   * this rendering can be placed INTO.
+   */
+  placeholders: z.array(PlaceholderDefinitionSchema).default([]),
+  /**
+   * First-class option for SXA "renderings with dynamic placeholders".
+   * When true, the compiler sets `IsRenderingsWithDynamicPlaceholders=true`
+   * in the rendering's `OtherProperties` blob — equivalent to passing
+   * `otherProperties: { IsRenderingsWithDynamicPlaceholders: "true" }`
+   * but typed and discoverable. Default false.
+   */
+  dynamicPlaceholders: z.boolean().default(false),
+  /**
+   * Free-form key/value pairs encoded into the rendering's
+   * `OtherProperties` URL-encoded shared field. Common keys are
+   * surfaced as dedicated options elsewhere on the recipe
+   * (`autoCreate` → `IsAutoDatasourceRendering`, `dynamicPlaceholders`
+   * → `IsRenderingsWithDynamicPlaceholders`); use this for anything
+   * else that needs to land in OtherProperties without a first-class
+   * option.
+   *
+   * Explicitly-set keys here OVERRIDE the auto-set values from
+   * `autoCreate` / `dynamicPlaceholders` — useful for the rare case
+   * where you need to force a specific value.
+   */
+  otherProperties: z.record(z.string(), z.string()).optional(),
 });
 
 export type ComponentTemplateRecipe = z.infer<typeof ComponentTemplateRecipeSchema>;
@@ -981,7 +1138,7 @@ export type EnumerationValue = z.infer<typeof EnumerationValueSchema>;
  * A reusable enumeration — backs Droplink fields whose options are
  * shared across multiple components (color schemes, size scales,
  * spacing scales, etc.). Each value lands as a child item under
- * `<enumerationsRoot>/<EnumName>/<ValueName>`.
+ * `<enumerationsRoot>/[<subfolder>/]<EnumName>/<ValueName>`.
  *
  * Reference from any field via `sitecore.enumHandle: "<handle>"`. On
  * re-push, adding a value to the enumeration surfaces it on every
@@ -989,9 +1146,11 @@ export type EnumerationValue = z.infer<typeof EnumerationValueSchema>;
  * location at editor time, so consumer field-definitions don't need
  * to change).
  *
- * Inline enums (`shape: "enum"` with `values: [...]` and no
- * `enumHandle`) emit child items as children of the field-definition
- * item itself — same wire format, but scoped to one field.
+ * The matching consumer-side surface is `Type=Droplink` (the default
+ * for `shape: "enum"`). Inline Droplink (`shape: "enum"` with `values`
+ * but no `enumHandle`) is unsupported — authors must either point at
+ * an EnumerationRecipe via `enumHandle` or override `sitecore.type` to
+ * `"droplist"` for an inline pipe-list dropdown.
  */
 export const EnumerationRecipeSchema = z.object({
   kind: z.literal("enumeration"),
@@ -1002,12 +1161,43 @@ export const EnumerationRecipeSchema = z.object({
   /** Author-facing label (defaults to `name` when omitted). */
   displayName: z.string().min(1).optional(),
   description: z.string().optional(),
+  /**
+   * Optional placement of the enum's items in the content tree. Mirrors
+   * the `scope` + `folder` shape used by component
+   * `rendering.datasource.locations`, but kept SINGULAR (`location`,
+   * not `locations`) — an enum's value items live in exactly one place
+   * by construction, so multi-location dual identity isn't a thing.
+   *
+   *   scope: "site"           → under the site's enumerations root.
+   *   scope: "siteCollection" → reserved for shared-vocabulary use
+   *                             (not yet implemented; throws
+   *                             INPUT_INVALID at compile time).
+   *   folder                  → optional grouping segment(s) under the
+   *                             scope root. Materialised as `CreateOnly`
+   *                             items conforming to the per-site
+   *                             `Enumerations Folder` template. Multiple
+   *                             recipes naming the same folder share it,
+   *                             not collide. Multi-segment paths like
+   *                             `"Theme/Color"` work too — splits on
+   *                             `/`, intermediate segments emit one
+   *                             grouping item each.
+   *
+   * Omit `location` entirely → enum lands flat at the site enumerations
+   * root, no grouping folder.
+   */
+  location: z
+    .object({
+      scope: z.enum(["site", "siteCollection"]),
+      folder: z.string().min(1).optional(),
+    })
+    .optional(),
   values: z.array(EnumerationValueSchema).min(1),
 });
 
 export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;
 
 export const RecipeSchema = z.discriminatedUnion("kind", [
+  ComponentSectionRecipeSchema,
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   ContentItemRecipeSchema,

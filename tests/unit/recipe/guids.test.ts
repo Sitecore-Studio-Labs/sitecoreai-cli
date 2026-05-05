@@ -3,6 +3,10 @@ import {
   _deriveNamespaceRoot,
   contentItemId,
   enumerationFolderId,
+  enumerationsFolderTemplateId,
+  enumerationTemplateId,
+  enumerationTemplateSectionId,
+  enumerationTemplateValueFieldId,
   enumValueId,
   fieldId,
   NAMESPACE_CONTENT_ITEM,
@@ -17,6 +21,7 @@ import {
   partialDesignId,
   renderingId,
   sectionId,
+  siteDataFolderId,
   standardValuesId,
   templateId,
 } from "../../../src/recipe/guids";
@@ -117,9 +122,7 @@ describe("recipe guids — derivation is deterministic", () => {
   });
 
   it("section ids are stable for a given (site, handle, section name)", () => {
-    expect(sectionId(DEFAULT_SITE, handle, "Content")).toBe(
-      "fa3b53c3-7d41-5af0-8f4f-6edd86594f89"
-    );
+    expect(sectionId(DEFAULT_SITE, handle, "Content")).toBe("fa3b53c3-7d41-5af0-8f4f-6edd86594f89");
   });
 
   it("field ids are stable for a given (site, handle, field name)", () => {
@@ -145,9 +148,7 @@ describe("recipe guids — derivation is deterministic", () => {
   });
 
   it("different field names under the same (site, handle) yield different field ids", () => {
-    expect(fieldId(DEFAULT_SITE, handle, "Label")).not.toBe(
-      fieldId(DEFAULT_SITE, handle, "Link")
-    );
+    expect(fieldId(DEFAULT_SITE, handle, "Label")).not.toBe(fieldId(DEFAULT_SITE, handle, "Link"));
   });
 });
 
@@ -331,6 +332,12 @@ describe("recipe guids — enumeration ids are deterministic and site-scoped", (
     expect(enumValueId(folder, "primary")).toBe("7c279fba-1b67-5e1f-9d0d-243b098e43c8");
   });
 
+  it("siteDataFolderId is stable for a given (site, subfolder) and site-scoped", () => {
+    expect(siteDataFolderId(DEFAULT_SITE, "Badges")).toBe("1c5292fc-55fd-581a-aed4-c5b6aab1ee88");
+    expect(siteDataFolderId(DEFAULT_SITE, "Shared")).toBe("67aa0552-4c51-5724-b300-a4677a9dab0e");
+    expect(siteDataFolderId("e2e", "Badges")).not.toBe(siteDataFolderId(DEFAULT_SITE, "Badges"));
+  });
+
   it("enumValueId scoped under a field-definition refKey (inline enum) is distinct from the same-named shared-enum value", () => {
     const fieldRef = fieldId(DEFAULT_SITE, "cta-button@1", "ColorScheme");
     const inlinePrimary = enumValueId(fieldRef, "primary");
@@ -345,5 +352,24 @@ describe("recipe guids — enumeration ids are deterministic and site-scoped", (
       "primary"
     );
     expect(inlinePrimary).not.toBe(sharedPrimary);
+  });
+
+  it("enumerationTemplateSectionId / enumerationTemplateValueFieldId scope under the per-site Enumeration template", () => {
+    const sectionDefault = enumerationTemplateSectionId(DEFAULT_SITE);
+    const sectionE2e = enumerationTemplateSectionId("e2e");
+    const valueFieldDefault = enumerationTemplateValueFieldId(DEFAULT_SITE);
+    const valueFieldE2e = enumerationTemplateValueFieldId("e2e");
+
+    // Site-scoped (different sites yield different GUIDs).
+    expect(sectionDefault).not.toBe(sectionE2e);
+    expect(valueFieldDefault).not.toBe(valueFieldE2e);
+
+    // Distinct from the parent Enumeration template's own GUID and from
+    // the sibling Enumerations Folder template — the three live in the
+    // same namespace family but the seed differentiates them.
+    expect(sectionDefault).not.toBe(enumerationTemplateId(DEFAULT_SITE));
+    expect(valueFieldDefault).not.toBe(enumerationTemplateId(DEFAULT_SITE));
+    expect(sectionDefault).not.toBe(valueFieldDefault);
+    expect(sectionDefault).not.toBe(enumerationsFolderTemplateId(DEFAULT_SITE));
   });
 });

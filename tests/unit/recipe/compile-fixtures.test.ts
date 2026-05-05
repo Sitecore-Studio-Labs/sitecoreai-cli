@@ -62,33 +62,32 @@ const variantsIn = (ops: Operation[]) =>
  * unintended op emission changes (a new field, lost variant, etc.).
  */
 describe("compile fixtures — registry recipes round-trip cleanly", () => {
-  it("cta-button@1: 1 field, 4 variants, 2 params (4+5 inline-enum values) → 30 ops", () => {
+  it("cta-button@1: 1 field, 4 variants, 2 droplist params → 19 ops", () => {
     const ir = compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
-    // 19 baseline + 2 inline-enum folders + 9 inline-enum value-item
-    // children (Size:4 + ColorScheme:5). Each inline enum lands as a
-    // per-field Folder under <enumerationsRoot> with N child value items.
-    expect(ir.operations).toHaveLength(30);
+    // Both params override sitecore.type to "droplist", so the inline-enum
+    // folder + value items + per-site Enumeration template pair don't
+    // emit (Droplist enumerates from a pipe-list Source string instead).
+    expect(ir.operations).toHaveLength(19);
   });
 
-  it("badge-block@1: 1 field, 5 variants, 2 params (3+5 inline-enum values) → 30 ops", () => {
+  it("badge-block@1: 1 field, 5 variants, 2 droplist params → 20 ops", () => {
     const ir = compileComponentTemplateRecipe(badgeBlockRecipe, CONTEXT);
-    // 20 baseline + 2 inline-enum folders + 8 inline-enum value-item children
-    expect(ir.operations).toHaveLength(30);
+    // Same story as cta-button — sitecore.type: "droplist" override means
+    // no folder/value items emitted for the Size + ColorScheme params.
+    expect(ir.operations).toHaveLength(20);
     const variants = variantsIn(ir.operations);
     expect(variants.map((v) => v.name)).toEqual([
-      "default",
-      "bold",
-      "outline",
-      "rounded",
-      "rounded-bold",
+      "Default",
+      "Bold",
+      "Outline",
+      "Rounded",
+      "RoundedBold",
     ]);
   });
 
-  it("card-block@1: multi-section + shape→type override → 34 ops", () => {
+  it("card-block@1: multi-section + shape→type override → 22 ops", () => {
     const ir = compileComponentTemplateRecipe(cardBlockRecipe, CONTEXT);
-    // 22 baseline + 2 inline-enum folders + 10 inline-enum value-item
-    // children (7 + 3)
-    expect(ir.operations).toHaveLength(34);
+    expect(ir.operations).toHaveLength(22);
     const sections = datasourceSectionsIn(ir.operations, ir.recipeHandle);
     expect(sections.map((s) => s.name)).toEqual(["Content", "Media"]);
     // Description overrides text → multi-line-text via sitecore.type
@@ -113,18 +112,16 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     });
   });
 
-  it("rich-text-block@1: 5 variants, boolean param, 4 params total → 34 ops", () => {
+  it("rich-text-block@1: 5 variants, boolean param, 4 params total → 23 ops", () => {
     const ir = compileComponentTemplateRecipe(richTextBlockRecipe, CONTEXT);
-    // 23 baseline + 3 inline-enum folders + 8 inline-enum value-item
-    // children (2 + 3 + 3)
-    expect(ir.operations).toHaveLength(34);
+    expect(ir.operations).toHaveLength(23);
     const variants = variantsIn(ir.operations);
     expect(variants.map((v) => v.name)).toEqual([
-      "default",
-      "full-width",
-      "prose",
-      "page-content",
-      "title-only",
+      "Default",
+      "FullWidth",
+      "Prose",
+      "PageContent",
+      "TitleOnly",
     ]);
     // boolean param — UseSectionWrapper → Checkbox
     const useSectionWrapper = ir.operations.find(
@@ -148,11 +145,9 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     expect(sections.map((s) => s.name)).toEqual(["Content", "Media"]);
   });
 
-  it("accordion-block@1: Treelist source resolves + insertOptions emits SetField → 32 ops", () => {
+  it("accordion-block@1: Treelist source resolves + insertOptions emits SetField → 21 ops", () => {
     const ir = compileComponentTemplateRecipe(accordionBlockRecipe, CONTEXT);
-    // 21 baseline + 3 inline-enum folders + 8 inline-enum value-item
-    // children (2 + 3 + 3)
-    expect(ir.operations).toHaveLength(32);
+    expect(ir.operations).toHaveLength(21);
 
     // The Items field's source references a recipe handle, so the compiler
     // emits ref-source-fields and the executor renders with captured itemIds.
@@ -179,11 +174,9 @@ describe("compile fixtures — registry recipes round-trip cleanly", () => {
     });
   });
 
-  it("avatar-block@1: placeholders parse but Phase 1 emits no placeholder ops → 27 ops", () => {
+  it("avatar-block@1: placeholders parse but Phase 1 emits no placeholder ops → 20 ops", () => {
     const ir = compileComponentTemplateRecipe(avatarBlockRecipe, CONTEXT);
-    // 20 baseline + 2 inline-enum folders + 5 inline-enum value-item
-    // children (3 + 2)
-    expect(ir.operations).toHaveLength(27);
+    expect(ir.operations).toHaveLength(20);
     // Phase 4 will add placeholder-settings + AllowedRenderings ops; for now
     // the recipe parses (placeholders is in the schema) but the compiler
     // emits nothing for it.

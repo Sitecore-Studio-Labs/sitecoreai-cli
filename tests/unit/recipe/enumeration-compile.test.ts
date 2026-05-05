@@ -6,43 +6,52 @@ import {
 } from "../../../src/recipe/compile";
 import {
   enumerationFolderId,
+  enumerationsFolderTemplateId,
+  enumerationsFolderTemplateStandardValuesId,
+  enumerationsGroupingFolderId,
+  enumerationTemplateId,
+  enumerationTemplateSectionId,
+  enumerationTemplateValueFieldId,
   enumValueId,
-  inlineEnumFolderId,
   paramsFieldId,
   paramsStandardValuesId,
   paramsTemplateId,
 } from "../../../src/recipe/guids";
 import {
   SITECORE_TEMPLATES,
+  STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
-import type {
-  CreateItemOp,
-  Operation,
-  RefValue,
-} from "../../../src/recipe/ir/operations";
-import type {
-  ComponentTemplateRecipe,
-  EnumerationRecipe,
-} from "../../../src/recipe/schema/recipe";
+import { sitecoreFieldTypeLabel } from "../../../src/recipe/schema/field-types";
+import type { CreateItemOp, Operation, RefValue } from "../../../src/recipe/ir/operations";
+import type { ComponentTemplateRecipe, EnumerationRecipe } from "../../../src/recipe/schema/recipe";
 
 const SITE = "default";
 const ENUMERATIONS_ROOT = "/sitecore/content/test-tenant/test-site/Settings/Enumerations";
+const SITE_TEMPLATES_ROOT = "/sitecore/templates/Project/test-site";
+
+// Sibling EnumerationRecipe required by `compileComponentTemplateRecipe`
+// when a component declares `sitecore.enumHandle`. Standalone callers
+// (no `compileRecipeSet`) must seed `enumsByHandle` themselves so the
+// field compiler can resolve the enum's tenant path.
+const COLOR_SCHEME_ENUM: EnumerationRecipe = {
+  kind: "enumeration",
+  schemaVersion: "1",
+  handle: "color-scheme@1",
+  name: "ColorScheme",
+  values: [{ name: "primary" }, { name: "neutral" }],
+};
 
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/test-site/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
-  headlessVariantsRoot:
-    "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
   enumerationsRoot: ENUMERATIONS_ROOT,
+  enumsByHandle: new Map([[COLOR_SCHEME_ENUM.handle, COLOR_SCHEME_ENUM]]),
 };
 
-const findField = (
-  fields: CreateItemOp["fields"],
-  fieldGuid: string,
-  language?: string
-) =>
+const findField = (fields: CreateItemOp["fields"], fieldGuid: string, language?: string) =>
   fields.find(
     (f) => f.fieldId === fieldGuid && (language === undefined || f.language === language)
   );
@@ -67,66 +76,209 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     ],
   };
 
-  it("emits 1 folder op + 1 op per value, in declared order", () => {
+  it("emits per-site template-ensure ops (incl. inner section/field + template-level SV) + 1 folder op + 1 op per value", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
     expect(ir.recipeHandle).toBe("color-scheme@1");
-    expect(ir.operations).toHaveLength(4);
+    // ensureEnumerationTemplates: 2 template CreateItem + 2 SetBaseTemplates
+    // + 2 inner CreateItem (Enumeration section + Value field on the
+    // Enumeration template) + 1 SV CreateItem + 1 SetStandardValues
+    // + 1 Insert Options SetField.
+    // Per recipe: 1 folder CreateItem + 3 value CreateItems.
+    expect(ir.operations).toHaveLength(13);
     expect(ir.operations.map((op) => op.op)).toEqual([
-      "CreateItem",
-      "CreateItem",
-      "CreateItem",
-      "CreateItem",
+      "CreateItem", // Enumerations Folder template
+      "SetBaseTemplates",
+      "CreateItem", // Enumeration template
+      "SetBaseTemplates",
+      "CreateItem", // Enumeration section (under Enumeration template)
+      "CreateItem", // Value field (under Enumeration section)
+      "CreateItem", // Enumerations Folder __Standard Values
+      "SetStandardValues",
+      "SetField", // Insert Options on Enumerations Folder SV
+      "CreateItem", // recipe data folder
+      "CreateItem", // value 1
+      "CreateItem", // value 2
+      "CreateItem", // value 3
     ]);
+  });
+
+  it("scaffolds the per-site Enumerations Folder + Enumeration templates under <templatesRoot>/Presentation", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const folderTpl = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationsFolderTemplateId(SITE)
+    );
+    const valueTpl = findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE));
+    expect(folderTpl).toBeDefined();
+    expect(folderTpl!.name).toBe("Enumerations Folder");
+    // Lands at the SITE templates root's `/Presentation` (sibling of
+    // /Components), not nested under /Components — derived by stripping
+    // the trailing `/Components` segment from `templatesRoot`.
+    expect(folderTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumerations Folder`);
+    expect(folderTpl!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
+    expect(folderTpl!.policy).toBe("CreateOnly");
+    expect(valueTpl).toBeDefined();
+    expect(valueTpl!.name).toBe("Enumeration");
+    expect(valueTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration`);
+    expect(valueTpl!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
+    expect(valueTpl!.policy).toBe("CreateOnly");
+    // Both inherit Standard Template only.
+    for (const tplRefKey of [enumerationsFolderTemplateId(SITE), enumerationTemplateId(SITE)]) {
+      const baseOp = ir.operations.find(
+        (op) => op.op === "SetBaseTemplates" && op.itemRefKey === tplRefKey
+      );
+      expect(baseOp).toBeDefined();
+      expect((baseOp as { baseTemplates: string[] }).baseTemplates).toEqual([STANDARD_TEMPLATE_ID]);
+    }
+  });
+
+  it("Enumeration template carries an inner `Enumeration` section with a single `Value` field (Single-Line Text, shared)", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const valueTplRefKey = enumerationTemplateId(SITE);
+    const sectionRefKey = enumerationTemplateSectionId(SITE);
+    const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
+
+    const section = findCreateItem(ir.operations, (o) => o.id === sectionRefKey);
+    expect(section).toBeDefined();
+    expect(section!.name).toBe("Enumeration");
+    expect(section!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration`);
+    expect(section!.parent).toEqual({ kind: "ref-recipe", refKey: valueTplRefKey });
+    expect(section!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_SECTION);
+    expect(section!.policy).toBe("CreateOnly");
+
+    const valueField = findCreateItem(ir.operations, (o) => o.id === valueFieldRefKey);
+    expect(valueField).toBeDefined();
+    expect(valueField!.name).toBe("Value");
+    expect(valueField!.path).toBe(
+      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration/Value`
+    );
+    expect(valueField!.parent).toEqual({ kind: "ref-recipe", refKey: sectionRefKey });
+    expect(valueField!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_FIELD);
+    expect(valueField!.policy).toBe("CreateOnly");
+
+    // Type=Single-Line Text, Shared=1, __Sortorder=100 — matches the
+    // canonical click-click-launch Value field exactly so SXA editor
+    // recognises the enumeration entry shape.
+    expect(findField(valueField!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
+      kind: "string",
+      value: sitecoreFieldTypeLabel("single-line-text"),
+    });
+    expect(findField(valueField!.fields, TEMPLATE_FIELD_FIELDS.SHARED)?.value).toEqual({
+      kind: "string",
+      value: "1",
+    });
+    expect(findField(valueField!.fields, SYSTEM_FIELDS.SORT_ORDER)?.value).toEqual({
+      kind: "number",
+      value: 100,
+    });
+  });
+
+  it("dedups template-ensure ops across recipes when emittedFolders is shared", () => {
+    const emittedFolders = new Set<string>();
+    const first = compileEnumerationRecipe(recipe, CONTEXT, emittedFolders);
+    const second = compileEnumerationRecipe(
+      { ...recipe, handle: "size-scale@1", name: "SizeScale" },
+      CONTEXT,
+      emittedFolders
+    );
+    // First IR carries the template scaffolding (incl. inner section +
+    // Value field); second IR doesn't.
+    for (const refKey of [
+      enumerationsFolderTemplateId(SITE),
+      enumerationTemplateId(SITE),
+      enumerationTemplateSectionId(SITE),
+      enumerationTemplateValueFieldId(SITE),
+    ]) {
+      expect(findCreateItem(first.operations, (o) => o.id === refKey)).toBeDefined();
+      expect(findCreateItem(second.operations, (o) => o.id === refKey)).toBeUndefined();
+    }
   });
 
   it("folder lands at <enumerationsRoot>/<recipe.name> with the recipe's deterministic refKey", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
-    const folder = ir.operations[0] as CreateItemOp;
-    expect(folder.id).toBe(enumerationFolderId(SITE, "color-scheme@1"));
-    expect(folder.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme`);
-    expect(folder.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
-    expect(folder.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
-    expect(folder.name).toBe("ColorScheme");
-    expect(findField(folder.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
+    const folder = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
+    );
+    expect(folder).toBeDefined();
+    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme`);
+    expect(folder!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
+    expect(folder!.templateOf).toBe(enumerationsFolderTemplateId(SITE));
+    expect(folder!.name).toBe("ColorScheme");
+    expect(findField(folder!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
       kind: "string",
       value: "Color Scheme",
     });
   });
 
   it("falls back displayName -> name when displayName is omitted on the recipe", () => {
-    const ir = compileEnumerationRecipe(
-      { ...recipe, displayName: undefined },
-      CONTEXT,
+    const ir = compileEnumerationRecipe({ ...recipe, displayName: undefined }, CONTEXT);
+    const folder = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
     );
-    const folder = ir.operations[0] as CreateItemOp;
-    expect(findField(folder.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
+    expect(findField(folder!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
       kind: "string",
       value: "ColorScheme",
     });
   });
 
-  it("each value item is parented under the folder via ref-recipe and conforms to FOLDER", () => {
+  it("each value item is parented under the folder via ref-recipe and conforms to per-site Enumeration template", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
     const folderRefKey = enumerationFolderId(SITE, "color-scheme@1");
+    const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
     for (const value of recipe.values) {
       const op = findCreateItem(ir.operations, (o) => o.name === value.name);
       expect(op).toBeDefined();
       expect(op!.id).toBe(enumValueId(folderRefKey, value.name));
       expect(op!.parent).toEqual({ kind: "ref-recipe", refKey: folderRefKey });
       expect(op!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme/${value.name}`);
-      expect(op!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
+      expect(op!.templateOf).toBe(enumerationTemplateId(SITE));
       expect(findField(op!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
         kind: "string",
         value: value.displayName ?? value.name,
       });
+      // Each value item writes its `Value` shared field to the value's
+      // name — matches the canonical click-click-launch pattern (e.g.
+      // `Background Themes/shooting-star` carries `Value: "shooting-star"`).
+      // `fieldName` is required so the executor's tenant-side resolver
+      // can match the recipe-derived field GUID against the
+      // server-assigned one.
+      const valueEntry = op!.fields.find((f) => f.fieldId === valueFieldRefKey);
+      expect(valueEntry).toBeDefined();
+      expect(valueEntry!.fieldName).toBe("Value");
+      expect(valueEntry!.language).toBeUndefined();
+      expect(valueEntry!.version).toBeUndefined();
+      expect(valueEntry!.value).toEqual({ kind: "string", value: value.name });
     }
   });
 
-  it("every op carries CreateAndUpdate policy (registry-owned vocabulary)", () => {
+  it("recipe-owned ops carry CreateAndUpdate; template-ensure ops (incl. inner section/field + template SV + link + insert-options) carry CreateOnly", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const folderRefKey = enumerationFolderId(SITE, "color-scheme@1");
+    const folderTplRefKey = enumerationsFolderTemplateId(SITE);
+    const valueTplRefKey = enumerationTemplateId(SITE);
+    const sectionRefKey = enumerationTemplateSectionId(SITE);
+    const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
+    const folderSvRefKey = enumerationsFolderTemplateStandardValuesId(SITE);
+    const ensureRefKeys = new Set([
+      folderTplRefKey,
+      valueTplRefKey,
+      sectionRefKey,
+      valueFieldRefKey,
+      folderSvRefKey,
+    ]);
     for (const op of ir.operations) {
-      expect(op.policy).toBe("CreateAndUpdate");
+      const isTemplateEnsure =
+        ("itemRefKey" in op && ensureRefKeys.has(op.itemRefKey)) ||
+        ("id" in op && ensureRefKeys.has(op.id)) ||
+        ("templateRefKey" in op && ensureRefKeys.has(op.templateRefKey)) ||
+        ("standardValuesRefKey" in op && ensureRefKeys.has(op.standardValuesRefKey));
+      expect(op.policy).toBe(isTemplateEnsure ? "CreateOnly" : "CreateAndUpdate");
     }
+    // Sanity-check the folder/value items are CreateAndUpdate.
+    const folder = findCreateItem(ir.operations, (o) => o.id === folderRefKey);
+    expect(folder!.policy).toBe("CreateAndUpdate");
   });
 
   it("throws INPUT_INVALID when context.enumerationsRoot is unset", () => {
@@ -139,34 +291,116 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
   });
 });
 
+describe("compileEnumerationRecipe — location.folder grouping", () => {
+  const recipeInTheme: EnumerationRecipe = {
+    kind: "enumeration",
+    schemaVersion: "1",
+    handle: "color-scheme@1",
+    name: "ColorScheme",
+    displayName: "Color Scheme",
+    location: { scope: "site", folder: "Theme" },
+    values: [{ name: "primary" }, { name: "neutral" }],
+  };
+
+  it("nests the enum folder under the configured location.folder", () => {
+    const ir = compileEnumerationRecipe(recipeInTheme, CONTEXT);
+    const groupingRefKey = enumerationsGroupingFolderId(SITE, "Theme");
+    const grouping = findCreateItem(ir.operations, (o) => o.id === groupingRefKey);
+    expect(grouping).toBeDefined();
+    expect(grouping!.path).toBe(`${ENUMERATIONS_ROOT}/Theme`);
+    expect(grouping!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
+    expect(grouping!.templateOf).toBe(enumerationsFolderTemplateId(SITE));
+    expect(grouping!.policy).toBe("CreateOnly");
+    expect(grouping!.name).toBe("Theme");
+
+    const folder = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
+    );
+    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/ColorScheme`);
+    expect(folder!.parent).toEqual({ kind: "ref-recipe", refKey: groupingRefKey });
+    // Value items follow the new path too.
+    const primary = findCreateItem(ir.operations, (o) => o.name === "primary");
+    expect(primary!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/ColorScheme/primary`);
+  });
+
+  it("dedups the grouping folder across recipes when emittedFolders is shared", () => {
+    const emittedFolders = new Set<string>();
+    const first = compileEnumerationRecipe(recipeInTheme, CONTEXT, emittedFolders);
+    const sibling: EnumerationRecipe = {
+      ...recipeInTheme,
+      handle: "tone@1",
+      name: "Tone",
+      values: [{ name: "warm" }, { name: "cool" }],
+    };
+    const second = compileEnumerationRecipe(sibling, CONTEXT, emittedFolders);
+    const groupingRefKey = enumerationsGroupingFolderId(SITE, "Theme");
+    expect(findCreateItem(first.operations, (o) => o.id === groupingRefKey)).toBeDefined();
+    expect(findCreateItem(second.operations, (o) => o.id === groupingRefKey)).toBeUndefined();
+    // The sibling's enum folder still parents under the (already-emitted)
+    // grouping folder via ref-recipe — the executor resolves the refKey
+    // at apply time against the captured-itemId map.
+    const siblingFolder = findCreateItem(
+      second.operations,
+      (o) => o.id === enumerationFolderId(SITE, "tone@1")
+    );
+    expect(siblingFolder!.parent).toEqual({ kind: "ref-recipe", refKey: groupingRefKey });
+  });
+
+  it("emits no grouping ops when location is omitted (flat layout)", () => {
+    const flat: EnumerationRecipe = { ...recipeInTheme, location: undefined };
+    const ir = compileEnumerationRecipe(flat, CONTEXT);
+    expect(
+      findCreateItem(ir.operations, (o) => o.id === enumerationsGroupingFolderId(SITE, "Theme"))
+    ).toBeUndefined();
+    const folder = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
+    );
+    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme`);
+    expect(folder!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
+  });
+
+  it("rejects location.scope='siteCollection' with a clear hint", () => {
+    const collectionScoped: EnumerationRecipe = {
+      ...recipeInTheme,
+      location: { scope: "siteCollection", folder: "Theme" },
+    };
+    expect(() => compileEnumerationRecipe(collectionScoped, CONTEXT)).toThrowError(
+      /siteCollection enumerations root isn't wired up yet/
+    );
+  });
+});
+
 /**
  * Cross-cutting: enum-shaped fields on a ComponentTemplateRecipe.
  *
- * Inline enum (no `enumHandle`):
- *   - Source = `ref-recipe` to `inlineEnumFolderId(site, recipeHandle,
- *     fieldName)` — same shape as shared, just keyed per-(recipe, field).
- *     SXA Headless's rendering parameter dialog can resolve a `ref-recipe`
- *     Source to a content-tree folder (it can't resolve `query:` Source
- *     against the field-definition item, which is why the prior layout
- *     came up empty).
- *   - One Folder CreateItem at `<enumerationsRoot>/<recipeName>--<fieldName>/`
- *     plus one CreateItem per declared value parented under that folder.
- *   - SV default encodes as `ref-recipe` to `enumValueId(folder, default)`.
+ * Two supported shapes (anything else throws INPUT_INVALID):
  *
- * Shared enum (`enumHandle: "<EnumerationRecipe.handle>"`):
+ * Inline Droplist (`sitecore.type: "droplist"` + inline `values: [...]`):
+ *   - Source = pipe-separated literal of the values.
+ *   - No value items emitted; Sitecore enumerates from the Source string.
+ *   - SV default encodes as raw string.
+ *
+ * Shared Droplink (`sitecore.enumHandle: "<EnumerationRecipe.handle>"`):
  *   - Source = `ref-recipe` to `enumerationFolderId(site, enumHandle)`.
  *   - No value-item children emitted by the consuming field — the
  *     `EnumerationRecipe` owns those.
  *   - SV default encodes as `ref-recipe` to
  *     `enumValueId(enumerationFolderId(site, enumHandle), default)`.
+ *
+ * Inline Droplink (shape=enum + inline `values` + neither override) is
+ * NOT supported — the SXA Headless rendering parameters dialog never
+ * reliably picked up the per-field folder of values, so the compiler
+ * rejects this combo with INPUT_INVALID at field-emission time.
  */
-describe("compileComponentTemplateRecipe — inline enum field", () => {
+describe("compileComponentTemplateRecipe — inline Droplink (rejected)", () => {
   const recipe: ComponentTemplateRecipe = {
     kind: "component-template",
     schemaVersion: "1",
-    handle: "inline-enum-comp@1",
-    name: "InlineEnumComp",
-    displayName: "Inline Enum Comp",
+    handle: "inline-droplink-comp@1",
+    name: "InlineDroplinkComp",
+    displayName: "Inline Droplink Comp",
     fields: [
       {
         name: "Mood",
@@ -175,49 +409,63 @@ describe("compileComponentTemplateRecipe — inline enum field", () => {
         default: "calm",
       },
     ],
-    rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
   } as ComponentTemplateRecipe;
 
-  it("Type defaults to Droplink for shape=enum (no sitecore.type override)", () => {
+  it("throws INPUT_INVALID on shape=enum + values without sitecore.type=droplist or sitecore.enumHandle", () => {
+    expect(() => compileComponentTemplateRecipe(recipe, CONTEXT)).toThrowError(
+      /inline Droplink isn't supported/
+    );
+  });
+});
+
+describe("compileComponentTemplateRecipe — inline Droplist field (sitecore.type override)", () => {
+  const recipe: ComponentTemplateRecipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "inline-droplist-comp@1",
+    name: "InlineDroplistComp",
+    displayName: "Inline Droplist Comp",
+    fields: [
+      {
+        name: "Mood",
+        shape: "enum",
+        values: ["calm", "loud"],
+        default: "calm",
+        sitecore: { type: "droplist" },
+      },
+    ],
+  } as ComponentTemplateRecipe;
+
+  it("Type=Droplist + Source is the pipe-separated value list", () => {
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const fieldOp = findCreateItem(ir.operations, (o) => o.name === "Mood");
     expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
       kind: "string",
-      value: "Droplink",
+      value: "Droplist",
+    });
+    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual({
+      kind: "string",
+      value: "calm|loud",
     });
   });
 
-  it("Source is a ref-recipe to the per-field inline-enum folder", () => {
+  it("emits no per-field folder or value items (Droplist enumerates from the Source string)", () => {
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
-    const fieldOp = findCreateItem(ir.operations, (o) => o.name === "Mood");
-    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual<RefValue>({
-      kind: "ref-recipe",
-      refKey: inlineEnumFolderId(SITE, recipe.handle, "Mood"),
-    });
-  });
-
-  it("emits a per-field Folder under <enumerationsRoot> plus one CreateItem per declared value, parented at the folder", () => {
-    const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
-    const folderRefKey = inlineEnumFolderId(SITE, recipe.handle, "Mood");
-    const folderName = `${recipe.name}--Mood`;
-    const folder = findCreateItem(ir.operations, (o) => o.id === folderRefKey);
-    expect(folder).toBeDefined();
-    expect(folder!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
-    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/${folderName}`);
-    expect(folder!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
-    expect(folder!.name).toBe(folderName);
-
+    // No CreateItem for any of the value names — Droplist has no shadow content.
     for (const value of recipe.fields[0].values!) {
-      const valueOp = findCreateItem(ir.operations, (o) => o.name === value);
-      expect(valueOp).toBeDefined();
-      expect(valueOp!.id).toBe(enumValueId(folderRefKey, value));
-      expect(valueOp!.parent).toEqual({ kind: "ref-recipe", refKey: folderRefKey });
-      expect(valueOp!.path).toBe(`${ENUMERATIONS_ROOT}/${folderName}/${value}`);
-      expect(valueOp!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
+      expect(findCreateItem(ir.operations, (o) => o.name === value)).toBeUndefined();
     }
+    // Per-site Enumeration templates also stay un-emitted (only the
+    // shared-Droplink path scaffolds them).
+    expect(
+      findCreateItem(ir.operations, (o) => o.id === enumerationsFolderTemplateId(SITE))
+    ).toBeUndefined();
+    expect(
+      findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE))
+    ).toBeUndefined();
   });
 
-  it("SV default encodes as ref-recipe to the inline value-item GUID under the per-field folder", () => {
+  it("SV default encodes as the raw string (Droplist matches by name in the Source list)", () => {
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const sv = findCreateItem(
       ir.operations,
@@ -229,14 +477,24 @@ describe("compileComponentTemplateRecipe — inline enum field", () => {
     expect(sv).toBeDefined();
     const moodEntry = sv!.fields.find((f) => f.fieldName === "Mood");
     expect(moodEntry).toBeDefined();
-    const expectedRefKey = enumValueId(
-      inlineEnumFolderId(SITE, recipe.handle, "Mood"),
-      "calm",
+    expect(moodEntry!.value).toEqual<RefValue>({ kind: "string", value: "calm" });
+  });
+
+  it("throws INPUT_INVALID when sitecore.type=droplist but no inline values are declared", () => {
+    const noValues = {
+      ...recipe,
+      fields: [
+        {
+          name: "Mood",
+          shape: "enum",
+          default: "calm",
+          sitecore: { type: "droplist" },
+        },
+      ],
+    } as ComponentTemplateRecipe;
+    expect(() => compileComponentTemplateRecipe(noValues, CONTEXT)).toThrowError(
+      /Droplist needs an inline value list/
     );
-    expect(moodEntry!.value).toEqual<RefValue>({
-      kind: "ref-recipe",
-      refKey: expectedRefKey,
-    });
   });
 });
 
@@ -259,7 +517,6 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
         },
       },
     ],
-    rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
   } as ComponentTemplateRecipe;
 
   it("Type defaults to Droplink for shape=enum", () => {
@@ -274,15 +531,15 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
     });
   });
 
-  it("Source is a ref-recipe to enumerationFolderId — executor resolves apply-time path", () => {
+  it("Source is the enum folder's tenant path — Sitecore Droplink picker enumerates by path, not by GUID", () => {
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const fieldOp = findCreateItem(
       ir.operations,
       (o) => o.id === paramsFieldId(SITE, recipe.handle, "ColorScheme")
     );
     expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual<RefValue>({
-      kind: "ref-recipe",
-      refKey: enumerationFolderId(SITE, "color-scheme@1"),
+      kind: "string",
+      value: `${ENUMERATIONS_ROOT}/${COLOR_SCHEME_ENUM.name}`,
     });
   });
 

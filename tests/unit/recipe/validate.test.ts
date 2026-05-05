@@ -26,7 +26,6 @@ const ctaButtonComponent: Recipe = {
   fields: [],
   variants: [],
   params: [],
-  rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
 };
 
 const logoTemplate: Recipe = {
@@ -276,7 +275,6 @@ describe("validateRecipeSet — unresolved handles", () => {
       ],
       variants: [],
       params: [],
-      rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
     };
     const result = validateRecipeSet([componentWithBadSource]);
     expect(result.unresolvedHandles).toContainEqual({

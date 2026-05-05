@@ -38,11 +38,11 @@ export const badgeBlockRecipe = {
   ],
 
   variants: [
-    { name: "default" },
-    { name: "bold" },
-    { name: "outline" },
-    { name: "rounded" },
-    { name: "rounded-bold" },
+    { name: "Default" },
+    { name: "Bold" },
+    { name: "Outline" },
+    { name: "Rounded" },
+    { name: "RoundedBold" },
   ],
 
   params: [
@@ -70,17 +70,14 @@ export const badgeBlockRecipe = {
     },
   ],
 
-  rendering: {
-    /**
-     * Convention: badge datasources live in the site's Data folder.
-     * Tenants with a different content layout may need a per-install override.
-     */
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  /**
+   * Convention: badge datasources live in the site's Data folder.
+   * Tenants with a different content layout may need a per-install override.
+   */
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;
 

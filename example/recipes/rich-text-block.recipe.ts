@@ -41,11 +41,11 @@ export const richTextBlockRecipe = {
   ],
 
   variants: [
-    { name: "default" },
-    { name: "full-width" },
-    { name: "prose" },
-    { name: "page-content" },
-    { name: "title-only" },
+    { name: "Default" },
+    { name: "FullWidth" },
+    { name: "Prose" },
+    { name: "PageContent" },
+    { name: "TitleOnly" },
   ],
 
   params: [
@@ -97,13 +97,10 @@ export const richTextBlockRecipe = {
     },
   ],
 
-  rendering: {
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;
 

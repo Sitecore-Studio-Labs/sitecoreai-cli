@@ -28,6 +28,11 @@ export type OpPurpose =
   | "page-item";
 
 const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
+  // Component sections own organisational folders that components live
+  // under (templates section folder, renderings section folder, etc.).
+  // Registry-owned structure — CreateAndUpdate so re-pushes can update
+  // the section's display name / icon / sort order.
+  "component-section": "template-structure",
   "component-template": "template-structure",
   "content-template": "template-structure",
   "content-item": "datasource-item",

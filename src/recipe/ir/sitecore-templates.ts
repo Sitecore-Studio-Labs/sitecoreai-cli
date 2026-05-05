@@ -291,6 +291,15 @@ export const TEMPLATE_FIELD_FIELDS = {
   TYPE: "ab162cc0-dc80-4abf-8871-998ee5d7ba32",
   SOURCE: "1eb8ae32-e190-44a6-968d-ed904c794ebf",
   TITLE: "19a69332-a23e-4e70-8d16-b2640cb24cc8",
+  /**
+   * `Shared` toggle on a Template Field — `"1"` makes the field's
+   * value shared across all language versions and numeric versions of
+   * any item conforming to the template. Verified against the canonical
+   * `click-click-launch/Presentation/Enumeration/Enumeration/Value`
+   * field item, where the enumeration `Value` field is shared (per-item
+   * value, not per-language). GUID is the well-known Sitecore built-in.
+   */
+  SHARED: "be351a73-fcb0-4213-93fa-c302d8ab4f51",
 } as const;
 
 /**
@@ -457,3 +466,18 @@ export const DEFAULT_ICON = "office/32x32/elements3.png";
  * `__Icon` override.
  */
 export const FOLDER_ICON = "office/16x16/folder.png";
+
+/**
+ * Icon stamped on the per-site `Enumerations Folder` and `Enumeration`
+ * templates emitted by `ensureEnumerationTemplates`. Matches the icon
+ * SXA Headless's OOTB Enumeration templates carry on starter sites
+ * (verified 2026-05-03 against
+ * `/sitecore/templates/Project/click-click-launch/Presentation/Enumeration`),
+ * so the SXA editor recognises enum items as enumeration entries — not
+ * generic folders — and the content tree renders the "E" key glyph.
+ *
+ * Applied at the template level, NOT on individual value items: value
+ * items conform to the per-site `Enumeration` template and inherit the
+ * icon through template-level inheritance.
+ */
+export const ENUMERATION_ICON = "office/32x32/keyboard_key_e.png";

@@ -109,9 +109,6 @@ export function compileParametersTemplateRecipe(
     operations.push(
       ...buildFieldOp({
         recipeHandle: recipe.handle,
-        recipeName: recipe.name,
-        recipeDisplayName: recipe.displayName,
-        enumerationsRoot: context.enumerationsRoot,
         fieldRefKey: paramsFieldId(site, recipe.handle, param.name),
         fieldPath: joinPath(secPath, param.name),
         parentRefKey: secRefKey,
@@ -120,6 +117,7 @@ export function compileParametersTemplateRecipe(
         zeroBasedIndex: index,
         policy,
         site,
+        context,
       })
     );
   });

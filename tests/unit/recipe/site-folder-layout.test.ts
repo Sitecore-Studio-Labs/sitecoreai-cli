@@ -36,6 +36,7 @@ import {
   ParametersTemplateRecipeSchema,
   RecipeSchema,
   SectionDefinitionRecipeSchema,
+  type ComponentSectionRecipe,
   type ComponentTemplateRecipe,
 } from "../../../src/recipe/schema/recipe";
 
@@ -44,6 +45,13 @@ const COMPONENTS_ROOT = `/sitecore/templates/Project/${SITE}/Components`;
 const CONTENT_MODELS_ROOT = `/sitecore/templates/Project/${SITE}/Content Models`;
 const RENDERINGS_ROOT = `/sitecore/layout/Renderings/Project/${SITE}/Components`;
 
+const UI_SECTION_RECIPE: ComponentSectionRecipe = {
+  kind: "component-section",
+  schemaVersion: "1",
+  handle: "ui-section@1",
+  name: "ui",
+};
+
 const CONTEXT: CompileContext = {
   templatesRoot: `/sitecore/templates/Project/${SITE}`,
   componentsRoot: COMPONENTS_ROOT,
@@ -51,6 +59,7 @@ const CONTEXT: CompileContext = {
   renderingsRoot: RENDERINGS_ROOT,
   headlessVariantsRoot: `/sitecore/content/test-tenant/${SITE}/Presentation/Headless Variants`,
   site: SITE,
+  sectionsByHandle: new Map([[UI_SECTION_RECIPE.handle, UI_SECTION_RECIPE]]),
 };
 
 const findCreates = (ops: Operation[], predicate: (op: CreateItemOp) => boolean): CreateItemOp[] =>
@@ -67,7 +76,6 @@ const minimalComponentRecipe = (
   fields: [{ name: "Title", shape: "text" }],
   variants: [],
   params: [],
-  rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
   ...overrides,
 });
 
@@ -75,8 +83,8 @@ describe("ComponentTemplateRecipe schema — new fields", () => {
   it("accepts `section`, `datasource`, `parameters`, `children`, `availableIn`", () => {
     const result = ComponentTemplateRecipeSchema.safeParse({
       ...minimalComponentRecipe(),
-      section: "ui",
-      datasource: { handle: "accordion-content@1" },
+      section: { handle: "ui-section@1" },
+      datasource: { template: { handle: "accordion-content@1" } },
       parameters: { handle: "accordion-params@1" },
       children: { allowedHandles: ["accordion-item@1"] },
       availableIn: ["showcase-section@1"],
@@ -92,10 +100,10 @@ describe("ComponentTemplateRecipe schema — new fields", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects `datasource.handle` not matching the handle pattern", () => {
+  it("rejects `datasource.template.handle` not matching the handle pattern", () => {
     const result = ComponentTemplateRecipeSchema.safeParse({
       ...minimalComponentRecipe(),
-      datasource: { handle: "not a handle" },
+      datasource: { template: { handle: "not a handle" } },
     });
     expect(result.success).toBe(false);
   });
@@ -202,7 +210,7 @@ describe("Recipe discriminated union — new kinds", () => {
 
 describe("Component template path — section-aware emission", () => {
   it("emits the template under <componentsRoot>/<section>/<Component>", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
     const tplOp = findCreates(ir.operations, (op) => op.label === "template:accordion-block@1")[0];
     expect(tplOp.path).toBe(`${COMPONENTS_ROOT}/ui/AccordionBlock`);
   });
@@ -214,7 +222,7 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits the rendering at <renderingsRoot>/<section>/<Component>", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
     const renderingOp = findCreates(
       ir.operations,
       (op) => op.id === renderingId(SITE, "accordion-block@1")
@@ -223,7 +231,7 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits a section folder CreateOnly op once for a (site, section) pair", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
     const sectionFolders = ir.operations.filter(
       (op) => op.op === "CreateItem" && op.id === sectionFolderId(SITE, "ui")
     );
@@ -234,7 +242,7 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits a renderings-side section folder distinct from the templates-side one", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
     const tplFolderId = sectionFolderId(SITE, "ui");
     const renderingFolderId = renderingsSectionFolderId(SITE, "ui");
     expect(tplFolderId).not.toBe(renderingFolderId);
@@ -250,7 +258,7 @@ describe("Component template path — section-aware emission", () => {
 describe("Component Folder template — emitted when children: declared", () => {
   it("emits a `<Component> Folder` template at Component Folders/<Component> Folder", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       children: { allowedHandles: ["accordion-item@1"] },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -264,7 +272,7 @@ describe("Component Folder template — emitted when children: declared", () => 
 
   it("emits a Component Folders bucket folder once per (site, section)", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       children: { allowedHandles: ["accordion-item@1"] },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -277,7 +285,7 @@ describe("Component Folder template — emitted when children: declared", () => 
 
   it("emits an Insert Options SetField on the folder template's standard values", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       children: { allowedHandles: ["accordion-item@1", "accordion-divider@1"] },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -294,7 +302,7 @@ describe("Component Folder template — emitted when children: declared", () => 
   });
 
   it("does NOT emit a Component Folder template when children is absent", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: "ui" }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
     const folderTpl = ir.operations.find(
       (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId(SITE, "accordion-block@1")
     );
@@ -305,7 +313,7 @@ describe("Component Folder template — emitted when children: declared", () => 
 describe("Parameters template path — section-aware emission", () => {
   it("places inline-hoisted params at <section>/Presentation Parameters/", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       params: [{ name: "Variant", shape: "text" }],
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -320,7 +328,7 @@ describe("Parameters template path — section-aware emission", () => {
 
   it("emits a Presentation Parameters bucket once per (site, section)", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       params: [{ name: "Variant", shape: "text" }],
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -332,7 +340,7 @@ describe("Parameters template path — section-aware emission", () => {
 
   it("does NOT synthesise inline params when `parameters: { handle }` is set", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       params: [{ name: "Variant", shape: "text" }],
       parameters: { handle: "shared-params@1" },
     });
@@ -347,7 +355,7 @@ describe("Parameters template path — section-aware emission", () => {
 
   it("rendering's Parameters Template field points at the external `parameters.handle` when set", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       params: [{ name: "Variant", shape: "text" }],
       parameters: { handle: "shared-params@1" },
     });
@@ -451,7 +459,7 @@ describe("ContentTemplateRecipe — group-based path emission", () => {
 describe("AppendToMultiList op — availableIn binding", () => {
   it("emits one AppendToMultiList per availableIn entry", () => {
     const recipe = minimalComponentRecipe({
-      section: "ui",
+      section: { handle: UI_SECTION_RECIPE.handle },
       availableIn: ["showcase-section@1", "primitives-section@1"],
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -495,17 +503,18 @@ describe("compileRecipeSet — folder dedup across recipes in the same section",
   it("emits each section / Component Folders / Presentation Parameters bucket once per set", () => {
     const irs = compileRecipeSet(
       [
+        UI_SECTION_RECIPE,
         minimalComponentRecipe({
           handle: "accordion-block@1",
           name: "AccordionBlock",
-          section: "ui",
+          section: { handle: UI_SECTION_RECIPE.handle },
           children: { allowedHandles: ["accordion-item@1"] },
           params: [{ name: "Mode", shape: "text" }],
         }),
         minimalComponentRecipe({
           handle: "tabs-block@1",
           name: "TabsBlock",
-          section: "ui",
+          section: { handle: UI_SECTION_RECIPE.handle },
           children: { allowedHandles: ["tab-item@1"] },
           params: [{ name: "Mode", shape: "text" }],
         }),

@@ -1,4 +1,4 @@
-import { enumerationFolderId, enumValueId } from "../guids";
+import { enumerationFolderId, enumerationsGroupingFolderId, enumValueId } from "../guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -7,10 +7,10 @@ import {
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../policy";
 import { createCliError } from "../../shared/errors";
-import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
+import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";
 import {
-  ENUMERATION_FOLDER_ICON,
+  ensureEnumerationTemplates,
   joinPath,
   sharedField,
   siteOf,
@@ -21,14 +21,41 @@ import {
 /**
  * Compile an `EnumerationRecipe` to an Operation IR.
  *
- * Emits one CreateItem op for the enumeration's root folder
- * (`<enumerationsRoot>/<recipe.name>`) and one CreateItem op per
- * declared value (parented under the folder). Both the folder and the
- * value items conform to Sitecore's generic Folder template — Sitecore's
- * Droplink picker enumerates the folder's children at edit time without
- * needing a specialised template.
+ * Emits the per-site `Enumerations Folder` + `Enumeration` template
+ * pair (idempotent across the recipe set via the shared
+ * `emittedFolders` sentinel), an optional grouping folder under
+ * `<enumerationsRoot>` driven by `recipe.location.folder` (also
+ * idempotent), one CreateItem op for the enumeration's own folder,
+ * and one CreateItem op per declared value parented under the enum
+ * folder.
+ *
+ * Path resolution:
+ *   - With `recipe.location.folder` set →
+ *     `<enumerationsRoot>/<folder>/<EnumName>/<ValueName>`. The leaf
+ *     folder lands as a `CreateOnly` item conforming to the per-site
+ *     `Enumerations Folder` template; multiple recipes naming the same
+ *     folder path share it via the `emittedFolders` sentinel.
+ *   - Without `recipe.location` (or `recipe.location.folder`) →
+ *     `<enumerationsRoot>/<EnumName>/<ValueName>` (flat layout).
+ *
+ * Folders conform to the per-site `Enumerations Folder` template;
+ * value items conform to the per-site `Enumeration` template — both
+ * inherit Standard Template and stamp the `keyboard_key_e.png` icon
+ * via template-level inheritance, so the SXA editor shows enum items
+ * as enumeration entries (not folders) without needing per-item icon
+ * overrides.
+ *
+ * Each value item also writes its `value.name` to the `Value` shared
+ * field defined on the `Enumeration` template's inner `Enumeration`
+ * section. Without this the value items would have no payload — the
+ * Droplink picker would still enumerate them, but consumers reading
+ * the picked item's `Value` field (the canonical SXA pattern) would
+ * find it empty.
  *
  * Refkeys:
+ *   - Grouping folder: `enumerationsGroupingFolderId(site, folder)` —
+ *     site + cumulative path keyed so two recipes naming the same
+ *     folder reuse one item rather than colliding.
  *   - Folder:  `enumerationFolderId(site, recipe.handle)` — site-scoped
  *     so cross-site pushes don't collide.
  *   - Values:  `enumValueId(folderRefKey, value.name)` — value-name keyed
@@ -36,12 +63,14 @@ import {
  *     different GUID; consuming fields whose default referenced the old
  *     name end up orphaned. Author error.
  *
- * Throws `INPUT_INVALID` when `context.enumerationsRoot` is unset —
- * mirrors how `compilePartialDesignRecipe` validates `partialDesignsRoot`.
+ * Throws `INPUT_INVALID` when `context.enumerationsRoot` is unset, or
+ * when `recipe.location.scope` is `"siteCollection"` (reserved for
+ * shared-vocabulary use; not yet implemented).
  */
 export function compileEnumerationRecipe(
   input: EnumerationRecipe,
-  context: CompileContext
+  context: CompileContext,
+  emittedFolders: Set<string> = new Set()
 ): OperationIr {
   const recipe = EnumerationRecipeSchema.parse(input);
   if (!context.enumerationsRoot) {
@@ -57,8 +86,80 @@ export function compileEnumerationRecipe(
   const operations: Operation[] = [];
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
+  const { folderTemplateRefKey, valueTemplateRefKey, valueFieldRefKey } =
+    ensureEnumerationTemplates(operations, context, site, emittedFolders);
+
+  // siteCollection scope is reserved for shared-vocabulary use
+  // (multiple sites in a collection sourcing one canonical enum) but
+  // requires a `siteCollectionEnumerationsRoot` on `CompileContext`
+  // that doesn't exist yet. Reject explicitly so authors don't get a
+  // surprise misplacement.
+  if (recipe.location?.scope === "siteCollection") {
+    throw createCliError(
+      `Recipe '${recipe.handle}' declares location.scope='siteCollection' but the siteCollection enumerations root isn't wired up yet.`,
+      "INPUT_INVALID",
+      {
+        hint: 'Use `location.scope: "site"` for now (or omit `location`). Site-collection scope will land when the orchestrator threads a siteCollectionEnumerationsRoot through CompileContext.',
+      }
+    );
+  }
+
+  // Optional grouping folder driven by `location.folder`. CreateOnly +
+  // dedup via emittedFolders so multiple recipes naming the same folder
+  // share one item. Multi-segment paths (e.g. "Theme/Color") split on
+  // `/` — only the LEAF segment gets an explicit CreateItem (conforming
+  // to the per-site Enumerations Folder template); intermediate
+  // segments auto-create as plain Folders via the executor's
+  // path-walker. The dedup refKey keys on the full folder string so
+  // siblings with identical paths reuse the same folder.
+  let parentPath = context.enumerationsRoot;
+  let parentRef: CreateItemOp["parent"] = {
+    kind: "ref-path",
+    value: context.enumerationsRoot,
+  };
+  const folder = recipe.location?.folder;
+  if (folder) {
+    const folderSegments = folder
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (folderSegments.length === 0) {
+      throw createCliError(
+        `Recipe '${recipe.handle}' declares location.folder that is empty after trimming.`,
+        "INPUT_INVALID",
+        {
+          hint: "Use a non-empty folder string like 'Theme' or 'Theme/Color'.",
+        }
+      );
+    }
+    const groupingRefKey = enumerationsGroupingFolderId(site, folder);
+    const leafSegment = folderSegments[folderSegments.length - 1]!;
+    const intermediateSegments = folderSegments.slice(0, -1);
+    const groupingParentPath =
+      intermediateSegments.length > 0
+        ? joinPath(context.enumerationsRoot, intermediateSegments.join("/"))
+        : context.enumerationsRoot;
+    const groupingPath = joinPath(context.enumerationsRoot, folderSegments.join("/"));
+    if (!emittedFolders.has(groupingRefKey)) {
+      emittedFolders.add(groupingRefKey);
+      operations.push({
+        op: "CreateItem",
+        policy: "CreateOnly",
+        label: `enumerations-grouping-folder:${site}:${folder}`,
+        id: groupingRefKey,
+        path: groupingPath,
+        parent: { kind: "ref-path", value: groupingParentPath },
+        templateOf: folderTemplateRefKey,
+        name: leafSegment,
+        fields: [],
+      } satisfies CreateItemOp);
+    }
+    parentPath = groupingPath;
+    parentRef = { kind: "ref-recipe", refKey: groupingRefKey };
+  }
+
   const folderRefKey = enumerationFolderId(site, recipe.handle);
-  const folderPath = joinPath(context.enumerationsRoot, recipe.name);
+  const folderPath = joinPath(parentPath, recipe.name);
   const folderDisplayName = recipe.displayName ?? recipe.name;
 
   operations.push({
@@ -67,11 +168,10 @@ export function compileEnumerationRecipe(
     label: `enumeration:${recipe.handle}`,
     id: folderRefKey,
     path: folderPath,
-    parent: { kind: "ref-path", value: context.enumerationsRoot },
-    templateOf: SITECORE_TEMPLATES.FOLDER,
+    parent: parentRef,
+    templateOf: folderTemplateRefKey,
     name: recipe.name,
     fields: [
-      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: ENUMERATION_FOLDER_ICON }),
       versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: folderDisplayName }),
     ],
   } satisfies CreateItemOp);
@@ -85,9 +185,20 @@ export function compileEnumerationRecipe(
       id: enumValueId(folderRefKey, value.name),
       path: joinPath(folderPath, value.name),
       parent: { kind: "ref-recipe", refKey: folderRefKey },
-      templateOf: SITECORE_TEMPLATES.FOLDER,
+      templateOf: valueTemplateRefKey,
       name: value.name,
+      // The `Value` shared field carries the actual enumeration string
+      // (matches canonical pattern: each value item under
+      // `Background Themes/shooting-star` stores `Value: "shooting-star"`).
+      // `fieldName` is required so the executor's tenant-side resolver
+      // can locate the field by name — the recipe-derived `valueFieldRefKey`
+      // doesn't match the Sitecore-assigned field GUID after the template
+      // is materialised.
       fields: [
+        {
+          ...sharedField(valueFieldRefKey, { kind: "string", value: value.name }),
+          fieldName: "Value",
+        },
         versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
           kind: "string",
           value: valueDisplayName,
@@ -96,6 +207,13 @@ export function compileEnumerationRecipe(
     } satisfies CreateItemOp);
   }
 
+  // Per-data-folder __Standard Values is intentionally NOT emitted —
+  // Insert Options now live on the Enumerations Folder template's own
+  // Standard Values (set up in `ensureEnumerationTemplates`) and
+  // propagate to every item conforming to the template. Emitting an SV
+  // ITEM under each data folder would re-introduce the old bug where
+  // the Droplink picker enumerates the SV as a sibling of the enum
+  // value items (the Source path's children include any direct child).
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: recipe.handle,

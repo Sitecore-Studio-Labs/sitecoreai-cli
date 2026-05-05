@@ -72,7 +72,7 @@ export const cardBlockRecipe = {
     },
   ],
 
-  variants: [{ name: "flat" }, { name: "outline" }, { name: "filled" }],
+  variants: [{ name: "Flat" }, { name: "Outline" }, { name: "Filled" }],
 
   params: [
     {
@@ -99,17 +99,14 @@ export const cardBlockRecipe = {
     },
   ],
 
-  rendering: {
-    /**
-     * Convention: card datasources live in the site's Data folder.
-     * Tenants with a different content layout may need a per-install override.
-     */
-    datasourceLocation: "query",
-    datasourceLocationQuery: "query:$site/*[@@name='Data']",
+  /**
+   * Convention: card datasources live in the site's Data folder.
+   * Tenants with a different content layout may need a per-install override.
+   */
+  datasource: {
+    autoCreate: true,
     openPropertiesAfterAdd: false,
-    otherProperties: {
-      IsAutoDatasourceRendering: "true",
-    },
+    query: ["query:$site/*[@@name='Data']"],
   },
 } satisfies ComponentTemplateRecipe;
 

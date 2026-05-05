@@ -261,12 +261,12 @@ export function buildPhase4Fixtures(runId: string): Phase4FixtureSet {
   const siteLogo = buildComponent("siteLogo");
   const primaryNav = buildComponent("primaryNav");
   const utilityNav = buildComponent("utilityNav");
-  const ctaBanner = buildComponent("ctaBanner", { variants: ["default", "outline"] });
+  const ctaBanner = buildComponent("ctaBanner", { variants: ["Default", "Outline"] });
   const authorAvatar = buildComponent("authorAvatar", { hasParams: true });
   const authorInfo = buildComponent("authorInfo");
   const readTime = buildComponent("readTime");
   const footerLinkGrid = buildComponent("footerLinkGrid");
-  const footerSocial = buildComponent("footerSocial", { variants: ["icons-only", "labeled"] });
+  const footerSocial = buildComponent("footerSocial", { variants: ["IconsOnly", "Labeled"] });
   const footerCopyright = buildComponent("footerCopyright");
 
   // ---------------- content items (9 + 3 nav-link children) ----------------

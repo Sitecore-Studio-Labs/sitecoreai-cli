@@ -225,34 +225,87 @@ export const enumerationsGroupingFolderId = (site: string, cumulativePath: strin
   uuidv5(`${site}:Enumerations:${cumulativePath}`, NAMESPACE_PROJECT);
 
 /**
- * Per-site `Enumeration` template. Enum value items (the leaves like
- * `lg`, `primary`, `dark`) conform to this template so they inherit
- * the enumeration icon and aren't mistaken for folders by the editor.
- * Site-scoped for the same reason as `enumerationsFolderTemplateId`.
+ * Per-site `Enumeration` template. The per-enum container items
+ * (`Color Scheme`, `Heading Size`, `Background Themes`, etc.) conform
+ * to this template — i.e. each enumeration is itself an `Enumeration`,
+ * and its leaf values live below it as `Enumeration Value` children.
+ * Carries an inner `Enumeration` Section + `Value` Single-Line Text
+ * shared field so each per-enum container item can store its
+ * canonical default (driven by `EnumerationRecipe.default`). Site-
+ * scoped for the same reason as `enumerationsFolderTemplateId`.
  */
 export const enumerationTemplateId = (site: string): string =>
   uuidv5(`${site}::enumeration-template`, NAMESPACE_TEMPLATE);
 
 /**
  * The single Template Section under the per-site `Enumeration`
- * template, named `"Enumeration"` (matches the canonical
- * `click-click-launch/Presentation/Enumeration/Enumeration`). Holds the
- * `Value` field below. Scoped under `enumerationTemplateId(site)` so the
- * GUID is stable per-site without colliding across sites.
+ * template, named `"Enumeration"` (mirrors the Enumeration Value
+ * template's inner section so the field path on both templates is
+ * structurally identical: `<template>/Enumeration/Value`).
  */
-export const enumerationTemplateSectionId = (site: string): string =>
+export const enumerationContainerSectionId = (site: string): string =>
   uuidv5("section:Enumeration", enumerationTemplateId(site));
 
 /**
- * The `Value` Template Field under the per-site `Enumeration`
+ * The `Value` Template Field under the per-site `Enumeration` template's
+ * `Enumeration` section. Stores each per-enum container item's default
+ * value (`"primary"` for Color Scheme, `"md"` for Heading Size, etc.) —
+ * driven by `EnumerationRecipe.default` at compile time. Edge consumers
+ * reading the container directly resolve the default via this field.
+ */
+export const enumerationContainerValueFieldId = (site: string): string =>
+  uuidv5("field:Value", enumerationTemplateId(site));
+
+/**
+ * Per-site `__Standard Values` item under the `Enumeration` template
+ * definition. Linked via `SetStandardValues` so its Insert Options
+ * propagate to every per-enum container item conforming to the
+ * Enumeration template — authors can right-click `Color Scheme` →
+ * Insert → Enumeration Value to add a new value without picking
+ * templates from a long list.
+ */
+export const enumerationTemplateStandardValuesId = (site: string): string =>
+  uuidv5(`${site}::enumeration-template-standard-values`, NAMESPACE_TEMPLATE);
+
+/**
+ * Per-site `Enumeration Value` template. The leaf value items (like
+ * `primary`, `accent`, `lg`, `shooting-star`) conform to this template,
+ * NOT to the `Enumeration` template — `Enumeration` is for the per-enum
+ * container; `Enumeration Value` is for the leaves. Carries the inner
+ * `Enumeration` Template Section + `Value` Template Field (defined
+ * below) so each value item stores its actual enumeration string on
+ * the `Value` shared field. Site-scoped.
+ */
+export const enumerationValueTemplateId = (site: string): string =>
+  uuidv5(`${site}::enumeration-value-template`, NAMESPACE_TEMPLATE);
+
+/**
+ * The single Template Section under the per-site `Enumeration Value`
+ * template, named `"Enumeration"` (matches the canonical
+ * `click-click-launch/Presentation/Enumeration Value/Enumeration`).
+ * Holds the `Value` field below. Scoped under
+ * `enumerationValueTemplateId(site)` so the GUID is stable per-site
+ * without colliding across sites.
+ *
+ * Function name retained for backwards compatibility with the prior
+ * (broken) layout where this section lived under the Enumeration
+ * template; the GUID it derives is now under the value template.
+ */
+export const enumerationTemplateSectionId = (site: string): string =>
+  uuidv5("section:Enumeration", enumerationValueTemplateId(site));
+
+/**
+ * The `Value` Template Field under the per-site `Enumeration Value`
  * template's `Enumeration` section. Stores the actual enumeration
  * value (`"primary"`, `"shooting-star"`, etc.) on every value item
- * conforming to the Enumeration template — matches the canonical
- * `click-click-launch/Presentation/Enumeration/Enumeration/Value`
- * field. Scoped under `enumerationTemplateId(site)` for stability.
+ * conforming to the Enumeration Value template. Scoped under
+ * `enumerationValueTemplateId(site)` for stability.
+ *
+ * Function name retained for backwards compatibility — see
+ * `enumerationTemplateSectionId` note above.
  */
 export const enumerationTemplateValueFieldId = (site: string): string =>
-  uuidv5("field:Value", enumerationTemplateId(site));
+  uuidv5("field:Value", enumerationValueTemplateId(site));
 
 /**
  * Datasource items are scoped to a page recipe's id, keyed on slot path —

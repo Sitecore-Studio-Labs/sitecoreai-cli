@@ -152,12 +152,12 @@ describe("compileEnumerationRecipe — Standard Values lives on the template, no
     expect(svUnderDataFolder).toBeUndefined();
   });
 
-  it("emits one template-level __Standard Values under Enumerations Folder, linked + Insert Options=[Enumerations Folder, Enumeration]", () => {
+  it("emits one template-level __Standard Values under Enumerations Folder, linked + Insert Options=[Enumeration, Enumerations Folder]", () => {
     const recipe = baseEnum({});
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
 
     const folderTemplateRefKey = enumerationsFolderTemplateId(SITE);
-    const valueTemplateRefKey = enumerationTemplateId(SITE);
+    const enumerationTemplateRefKey = enumerationTemplateId(SITE);
     const svRefKey = enumerationsFolderTemplateStandardValuesId(SITE);
 
     const sv = findCreateItem(ir.operations, (o) => o.id === svRefKey);
@@ -182,9 +182,12 @@ describe("compileEnumerationRecipe — Standard Values lives on the template, no
     );
     expect(insert).toBeDefined();
     expect(insert!.fieldId).toBe(SYSTEM_FIELDS.INSERT_OPTIONS);
+    // Enumeration first (typical insert: an author drops a new enum
+    // into a folder), Enumerations Folder second (nesting for
+    // multi-segment recipes like `folder: "Theme/Color"`).
     expect(insert!.value).toEqual({
-      kind: "ref-guid-list",
-      values: [folderTemplateRefKey, valueTemplateRefKey],
+      kind: "ref-recipe-list",
+      refKeys: [enumerationTemplateRefKey, folderTemplateRefKey],
     });
   });
 });
@@ -208,37 +211,48 @@ describe("compileEnumerationRecipe — multi-segment location.folder", () => {
     expect(folder!.parent).toEqual({ kind: "ref-recipe", refKey: groupingRefKey });
   });
 
-  it("multi-segment folder splits on `/` — only leaf segment gets explicit CreateItem", () => {
+  it("multi-segment folder emits a CreateItem for EVERY segment using the Enumerations Folder template, not just the leaf", () => {
     const recipe = baseEnum({ location: { scope: "site", folder: "Theme/Color" } });
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
 
-    const groupingRefKey = enumerationsGroupingFolderId(SITE, "Theme/Color");
-    const grouping = findCreateItem(ir.operations, (o) => o.id === groupingRefKey);
-    expect(grouping).toBeDefined();
-    // Path is the full folder path; name is just the leaf segment
-    // (Sitecore item names can't contain `/`). Parent is the
-    // intermediate path so the path-walker auto-creates "Theme".
-    expect(grouping!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/Color`);
-    expect(grouping!.parent).toEqual({
-      kind: "ref-path",
-      value: `${ENUMERATIONS_ROOT}/Theme`,
-    });
-    expect(grouping!.name).toBe("Color");
+    // Intermediate segment ("Theme") gets its own explicit CreateItem
+    // conforming to the Enumerations Folder template — without this,
+    // the executor's path-walker would auto-create it as the generic
+    // `Folder` template, which has no Insert Options for Enumeration
+    // / Enumerations Folder.
+    const intermediateRefKey = enumerationsGroupingFolderId(SITE, "Theme");
+    const intermediate = findCreateItem(ir.operations, (o) => o.id === intermediateRefKey);
+    expect(intermediate).toBeDefined();
+    expect(intermediate!.path).toBe(`${ENUMERATIONS_ROOT}/Theme`);
+    expect(intermediate!.name).toBe("Theme");
+    expect(intermediate!.templateOf).toBe(enumerationsFolderTemplateId(SITE));
+    expect(intermediate!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
 
-    // The enum folder itself parents under the leaf grouping folder.
-    const folder = findCreateItem(
+    // Leaf segment ("Color") parents under the intermediate via
+    // ref-recipe (NOT ref-path) so the executor resolves the captured
+    // itemId from the intermediate's CreateItem.
+    const leafRefKey = enumerationsGroupingFolderId(SITE, "Theme/Color");
+    const leaf = findCreateItem(ir.operations, (o) => o.id === leafRefKey);
+    expect(leaf).toBeDefined();
+    expect(leaf!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/Color`);
+    expect(leaf!.name).toBe("Color");
+    expect(leaf!.templateOf).toBe(enumerationsFolderTemplateId(SITE));
+    expect(leaf!.parent).toEqual({ kind: "ref-recipe", refKey: intermediateRefKey });
+
+    // The enum container parents under the leaf grouping folder.
+    const container = findCreateItem(
       ir.operations,
       (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
     );
-    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/Color/ColorScheme`);
-    expect(folder!.parent).toEqual({ kind: "ref-recipe", refKey: groupingRefKey });
+    expect(container!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/Color/ColorScheme`);
+    expect(container!.parent).toEqual({ kind: "ref-recipe", refKey: leafRefKey });
 
     // Value items follow the new path too.
     const primary = findCreateItem(ir.operations, (o) => o.name === "primary");
     expect(primary!.path).toBe(`${ENUMERATIONS_ROOT}/Theme/Color/ColorScheme/primary`);
   });
 
-  it("two recipes with the same multi-segment folder share the leaf folder via emittedFolders", () => {
+  it("two recipes sharing a multi-segment prefix dedup BOTH the intermediate and leaf folders via emittedFolders", () => {
     const a = baseEnum({
       handle: "color-scheme@1",
       name: "ColorScheme",
@@ -253,8 +267,46 @@ describe("compileEnumerationRecipe — multi-segment location.folder", () => {
     const irA = compileEnumerationRecipe(a, CONTEXT, emittedFolders);
     const irB = compileEnumerationRecipe(b, CONTEXT, emittedFolders);
 
-    const groupingRefKey = enumerationsGroupingFolderId(SITE, "Theme/Color");
-    expect(findCreateItem(irA.operations, (o) => o.id === groupingRefKey)).toBeDefined();
-    expect(findCreateItem(irB.operations, (o) => o.id === groupingRefKey)).toBeUndefined();
+    const intermediateRefKey = enumerationsGroupingFolderId(SITE, "Theme");
+    const leafRefKey = enumerationsGroupingFolderId(SITE, "Theme/Color");
+    // First IR carries both segments; second IR carries neither.
+    expect(findCreateItem(irA.operations, (o) => o.id === intermediateRefKey)).toBeDefined();
+    expect(findCreateItem(irA.operations, (o) => o.id === leafRefKey)).toBeDefined();
+    expect(findCreateItem(irB.operations, (o) => o.id === intermediateRefKey)).toBeUndefined();
+    expect(findCreateItem(irB.operations, (o) => o.id === leafRefKey)).toBeUndefined();
+  });
+
+  it("two recipes sharing only a PREFIX (not the full path) reuse the intermediate but each emit their own leaf", () => {
+    // `Components/Card` + `Components/Tabs` — the `Components`
+    // intermediate is shared; `Card` and `Tabs` are sibling leaves.
+    const card = baseEnum({
+      handle: "card-padding@1",
+      name: "CardPadding",
+      location: { scope: "site", folder: "Components/Card" },
+    });
+    const tabs = baseEnum({
+      handle: "tabs-style@1",
+      name: "TabsStyle",
+      location: { scope: "site", folder: "Components/Tabs" },
+    });
+    const emittedFolders = new Set<string>();
+    const irCard = compileEnumerationRecipe(card, CONTEXT, emittedFolders);
+    const irTabs = compileEnumerationRecipe(tabs, CONTEXT, emittedFolders);
+
+    const componentsRefKey = enumerationsGroupingFolderId(SITE, "Components");
+    const cardLeafRefKey = enumerationsGroupingFolderId(SITE, "Components/Card");
+    const tabsLeafRefKey = enumerationsGroupingFolderId(SITE, "Components/Tabs");
+
+    // First recipe emits both `Components` and `Components/Card`.
+    expect(findCreateItem(irCard.operations, (o) => o.id === componentsRefKey)).toBeDefined();
+    expect(findCreateItem(irCard.operations, (o) => o.id === cardLeafRefKey)).toBeDefined();
+
+    // Second recipe SKIPS the shared `Components` intermediate but
+    // emits its own leaf `Components/Tabs` (parented under
+    // `Components` via ref-recipe).
+    expect(findCreateItem(irTabs.operations, (o) => o.id === componentsRefKey)).toBeUndefined();
+    const tabsLeaf = findCreateItem(irTabs.operations, (o) => o.id === tabsLeafRefKey);
+    expect(tabsLeaf).toBeDefined();
+    expect(tabsLeaf!.parent).toEqual({ kind: "ref-recipe", refKey: componentsRefKey });
   });
 });

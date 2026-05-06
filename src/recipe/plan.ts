@@ -115,6 +115,19 @@ export interface PlanOptions {
    * and yields an `error` action only if a site op is encountered.
    */
   sitesClient?: SitesApiClient;
+  /**
+   * Workspace-wide path → RemoteItem snapshot cache. When provided,
+   * `buildAction` consults it before issuing `client.getItem({ path })`
+   * for CreateItem ops. Cache hits skip the wire call entirely.
+   */
+  pathSnapshotCache?: Map<string, RemoteItem | null>;
+  /**
+   * Workspace-wide path → itemId cache (shared with the AuthoringApiClient).
+   * Threaded so `buildAction` can populate it after a successful read,
+   * and so the planner sees same path resolutions a sibling recipe
+   * already made earlier in the push.
+   */
+  pathItemIdCache?: Map<string, string>;
 }
 
 const lookupField = (
@@ -459,14 +472,30 @@ const lookupSelector = (
  *
  * Updates `capturedItemIds` when `getItem(by path)` finds an existing
  * item (so subsequent ops can resolve refs without dispatching).
+ *
+ * When a `pathSnapshotCache` is provided (workspace prefetch), each
+ * `getItem({ path })` call short-circuits to the cached value when the
+ * path is already known — `null` means "checked and missing", a
+ * `RemoteItem` means "use this snapshot". Non-path lookups (by itemId)
+ * still hit the wire.
  */
 export const buildAction = async (
   index: number,
   op: Operation,
   client: AuthoringApiClient,
   capturedItemIds: Map<string, string>,
-  sitesClient?: SitesApiClient
+  sitesClient?: SitesApiClient,
+  pathSnapshotCache?: Map<string, RemoteItem | null>
 ): Promise<PlannedAction> => {
+  const cachedReadByPath = async (path: string): Promise<RemoteItem | null> => {
+    if (pathSnapshotCache?.has(path)) {
+      return pathSnapshotCache.get(path) ?? null;
+    }
+    const remote = await client.getItem({ path });
+    pathSnapshotCache?.set(path, remote);
+    return remote;
+  };
+
   // Late-path resolution: SetField ops whose target is materialised
   // mid-push (e.g. dictionary phrases under a CreateSiteFromTemplate)
   // carry an optional `latePath`. If the op's itemRefKey isn't yet in
@@ -479,14 +508,18 @@ export const buildAction = async (
     op.latePath &&
     !capturedItemIds.has(op.itemRefKey)
   ) {
-    const lateRemote = await client.getItem({ path: op.latePath });
+    const lateRemote = await cachedReadByPath(op.latePath);
     if (lateRemote) {
       capturedItemIds.set(op.itemRefKey, lateRemote.itemId);
     }
   }
 
   const selector = lookupSelector(op, capturedItemIds);
-  const remote = selector ? await client.getItem(selector) : null;
+  const remote = await (async (): Promise<RemoteItem | null> => {
+    if (!selector) return null;
+    if (selector.path) return cachedReadByPath(selector.path);
+    return client.getItem(selector);
+  })();
   if (op.op === "CreateItem" && remote) {
     capturedItemIds.set(op.id, remote.itemId);
   }
@@ -498,7 +531,7 @@ export const buildAction = async (
   if (op.op === "CreateItem" && op.parent.kind === "ref-path") {
     const parentPath = op.parent.value;
     if (!capturedItemIds.has(parentPath)) {
-      const parentRemote = await client.getItem({ path: parentPath });
+      const parentRemote = await cachedReadByPath(parentPath);
       if (parentRemote) {
         capturedItemIds.set(parentPath, parentRemote.itemId);
       }
@@ -748,7 +781,14 @@ export const buildPlan = async (
     options.emit?.({ kind: "op-start", index, operation: op });
     let action: PlannedAction;
     try {
-      action = await buildAction(index, op, client, capturedItemIds, options.sitesClient);
+      action = await buildAction(
+        index,
+        op,
+        client,
+        capturedItemIds,
+        options.sitesClient,
+        options.pathSnapshotCache
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = {

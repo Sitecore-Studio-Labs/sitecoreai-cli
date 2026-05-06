@@ -31,7 +31,7 @@ export const createDeploySiteCommand = (): Command => {
   list.action(async (options) => runDeploySiteList(options));
 
   const bind = new Command("bind").description(
-    "Populate Site Grouping fields (HostName / TargetHostName / StartItem / RenderingHost) so the site appears in Pages / Channels"
+    "Populate Site Grouping fields (HostName / StartItem / RenderingHost) so the site appears in Pages / Channels"
   );
   addDeployBaseOptions(bind);
   bind
@@ -56,12 +56,6 @@ export const createDeploySiteCommand = (): Command => {
     )
     .addOption(
       new Option("--host-name-pattern <value>", "HostName field value. Default `*` (wildcard).")
-    )
-    .addOption(
-      new Option(
-        "--wait-for-rendering-host-seconds <seconds>",
-        "Max seconds to wait for the RenderingHost item to be auto-created. Default 180."
-      ).argParser(Number)
     )
     .addOption(
       new Option("--allow-write", "Apply changes (without it, the command runs in plan-only mode)")

@@ -1,7 +1,8 @@
 import { createCliError } from "@/shared/errors";
-import type { AuthoringApiClient } from "./api/client";
+import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "./api/client";
+import { renderRefValue } from "./api/ref-encoding";
 import type { SitesApiClient } from "./api/sites-client";
-import type { OperationIr } from "./ir/operations";
+import type { FieldValue, OperationIr } from "./ir/operations";
 import {
   buildAction,
   buildPlan,
@@ -103,6 +104,27 @@ export interface ExecuteOptions {
    * action at plan time and don't dispatch.
    */
   sitesClient?: SitesApiClient;
+  /**
+   * Workspace-wide path → itemId cache. When provided, the executor
+   * threads it into the planner so `getItem({ path })` short-circuits
+   * to a captured itemId when the path was already resolved (by an
+   * earlier recipe's create, by `seedCrossRecipeRefs`, or by a
+   * pre-execution prefetch). The same map is shared with the
+   * `AuthoringApiClient`'s `pathItemIdCache` (see
+   * `createAuthoringClient`) so `ensurePathExists` consults the same
+   * resolutions and skips redundant tree walks.
+   */
+  pathItemIdCache?: Map<string, string>;
+  /**
+   * Workspace-wide path → RemoteItem snapshot cache. Pre-populated by
+   * the workspace prefetch in `push.ts` (a single batched
+   * `getItemsByPaths` call covering every CreateItem path across every
+   * IR). The planner's per-op `getItem({ path })` reads consult this
+   * cache first; on a hit, no wire call. `null` values mean "checked
+   * and missing on the tenant" — also a cache hit, just one that
+   * indicates a CreateItem is needed.
+   */
+  pathSnapshotCache?: Map<string, RemoteItem | null>;
 }
 
 /**
@@ -150,19 +172,75 @@ const awaitSitesJob = async (
   );
 };
 
+/**
+ * Build a `RemoteItem` snapshot from a just-applied `createItem` so
+ * subsequent reads of the same path within the push hit the cache
+ * instead of querying Sitecore.
+ *
+ * Sitecore's Authoring API has a known read-after-write lag for
+ * path-keyed lookups: `createItem` returns a 200 + assigned itemId
+ * synchronously, but `getItem({ path })` for the new path can return
+ * null for a few seconds while the path index propagates. Within a
+ * single push, two recipes sharing a CreateOnly folder path (e.g.
+ * `<enumerationsRoot>/Layout`, `<componentsRoot>/<sectionName>`) both
+ * plan-then-apply against that path; without this synthetic snapshot,
+ * the second recipe's planner reads stale-null, plans another create,
+ * and Sitecore rejects with "name already defined on this level".
+ *
+ * The synthetic carries the input fields the executor just wrote, so
+ * `computeFieldDrift` against it returns no drift — both CreateOnly
+ * (skip) and CreateAndUpdate (also skip — same fields) yield correct
+ * idempotent behavior. Real-tenant snapshots replace the synthetic on
+ * the NEXT push (when the prefetch overrides it via `getItemsByPaths`).
+ */
+const synthesizeCreateSnapshot = (
+  itemId: string,
+  parentItemId: string,
+  templateId: string,
+  name: string,
+  path: string,
+  fields: readonly FieldValue[]
+): RemoteItem => {
+  const remoteFields: RemoteFieldValue[] = fields.map((f) => ({
+    fieldId: f.fieldId,
+    ...(f.fieldName !== undefined && { name: f.fieldName }),
+    value: renderRefValue(f.value),
+    ...(f.language !== undefined && { language: f.language }),
+    ...(f.version !== undefined && { version: f.version }),
+  }));
+  return { itemId, parentId: parentItemId, templateId, name, path, fields: remoteFields };
+};
+
 const dispatchMutation = async (
   client: AuthoringApiClient,
   sitesClient: SitesApiClient | undefined,
   action: PlannedAction,
   capturedItemIds: Map<string, string>,
+  pathItemIdCache: Map<string, string> | undefined,
+  pathSnapshotCache: Map<string, RemoteItem | null> | undefined,
   emit?: (event: ExecutionEvent) => void
 ): Promise<void> => {
   if (!action.mutation) return;
   if (action.mutation.kind === "createItem") {
     const result = await client.createItem(action.mutation.input);
-    // Capture the assigned itemId so subsequent ops can resolve refs.
     if (action.operation.op === "CreateItem") {
       capturedItemIds.set(action.operation.id, result.itemId);
+      pathItemIdCache?.set(action.operation.path, result.itemId);
+      // Replace the prefetch's null/stale entry with a synthetic snapshot
+      // built from the input we just wrote. Subsequent reads of this
+      // path within the push see "exists" via the cache, dodging
+      // Sitecore's path-index propagation lag.
+      pathSnapshotCache?.set(
+        action.operation.path,
+        synthesizeCreateSnapshot(
+          result.itemId,
+          action.mutation.input.parent,
+          action.mutation.input.templateId,
+          action.mutation.input.name,
+          action.operation.path,
+          action.mutation.input.fields
+        )
+      );
     }
     return;
   }
@@ -248,22 +326,57 @@ const emitFailed = (
  * dispatchMutation as the current recipe applies). Best-effort: a
  * missing item is fine — that ref won't resolve, the dependent op will
  * skip with a clear "refKey ... not in captured map" error.
+ *
+ * When a `pathSnapshotCache` is provided (workspace prefetch already
+ * ran), this short-circuits to in-memory lookups for every ref whose
+ * path is already cached — zero wire calls. Refs not yet cached fall
+ * through to a single batched `getItemsByPaths` round trip rather than
+ * the per-ref sequential `getItem` loop the original implementation
+ * used.
  */
 const seedCrossRecipeRefs = async (
   ir: OperationIr,
   client: AuthoringApiClient,
   refs: ReadonlyMap<string, string>,
-  capturedItemIds: Map<string, string>
+  capturedItemIds: Map<string, string>,
+  pathSnapshotCache?: Map<string, RemoteItem | null>
 ): Promise<void> => {
   const ownRefs = new Set<string>();
   for (const op of ir.operations) {
     if (op.op === "CreateItem") ownRefs.add(op.id);
   }
+
+  const pathsToFetch: string[] = [];
+  const refByPath = new Map<string, string[]>();
+
   for (const [refKey, expectedPath] of refs) {
     if (ownRefs.has(refKey)) continue;
     if (capturedItemIds.has(refKey)) continue;
-    const remote = await client.getItem({ path: expectedPath });
-    if (remote) capturedItemIds.set(refKey, remote.itemId);
+
+    // Cache hit on a previous prefetch / sibling-recipe seed — resolve
+    // without a wire call.
+    const snapshot = pathSnapshotCache?.get(expectedPath);
+    if (snapshot !== undefined) {
+      if (snapshot) capturedItemIds.set(refKey, snapshot.itemId);
+      continue;
+    }
+
+    pathsToFetch.push(expectedPath);
+    const bucket = refByPath.get(expectedPath);
+    if (bucket) bucket.push(refKey);
+    else refByPath.set(expectedPath, [refKey]);
+  }
+
+  if (pathsToFetch.length === 0) return;
+
+  const fetched = await client.getItemsByPaths(pathsToFetch);
+  for (const [path, item] of fetched) {
+    pathSnapshotCache?.set(path, item);
+    if (!item) continue;
+    const refKeys = refByPath.get(path) ?? [];
+    for (const refKey of refKeys) {
+      capturedItemIds.set(refKey, item.itemId);
+    }
   }
 };
 
@@ -274,13 +387,30 @@ export const executeIr = async (
 ): Promise<ExecutionResult> => {
   if (options.mode === "plan") {
     const capturedItemIds = new Map<string, string>();
+    // Pre-seed path-keyed entries from the workspace path-itemId cache
+    // (populated by the workspace prefetch in push.ts). The planner's
+    // ref-path parent resolution checks `capturedItemIds.get(path)` —
+    // a hit avoids the per-op `getItem({ path: parent })` round trip.
+    if (options.pathItemIdCache) {
+      for (const [path, itemId] of options.pathItemIdCache) {
+        if (!capturedItemIds.has(path)) capturedItemIds.set(path, itemId);
+      }
+    }
     if (options.crossRecipeRefs) {
-      await seedCrossRecipeRefs(ir, client, options.crossRecipeRefs, capturedItemIds);
+      await seedCrossRecipeRefs(
+        ir,
+        client,
+        options.crossRecipeRefs,
+        capturedItemIds,
+        options.pathSnapshotCache
+      );
     }
     const plan = await buildPlan(ir, client, {
       emit: options.emit,
       capturedItemIds,
       sitesClient: options.sitesClient,
+      pathItemIdCache: options.pathItemIdCache,
+      pathSnapshotCache: options.pathSnapshotCache,
     });
     return { plan, summary: plan.summary, aborted: false };
   }
@@ -289,8 +419,19 @@ export const executeIr = async (
   const applied: PlannedAction[] = [];
   const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0 };
   const capturedItemIds = new Map<string, string>();
+  if (options.pathItemIdCache) {
+    for (const [path, itemId] of options.pathItemIdCache) {
+      if (!capturedItemIds.has(path)) capturedItemIds.set(path, itemId);
+    }
+  }
   if (options.crossRecipeRefs) {
-    await seedCrossRecipeRefs(ir, client, options.crossRecipeRefs, capturedItemIds);
+    await seedCrossRecipeRefs(
+      ir,
+      client,
+      options.crossRecipeRefs,
+      capturedItemIds,
+      options.pathSnapshotCache
+    );
   }
 
   for (let index = 0; index < ir.operations.length; index += 1) {
@@ -299,7 +440,14 @@ export const executeIr = async (
 
     let action: PlannedAction;
     try {
-      action = await buildAction(index, op, client, capturedItemIds, options.sitesClient);
+      action = await buildAction(
+        index,
+        op,
+        client,
+        capturedItemIds,
+        options.sitesClient,
+        options.pathSnapshotCache
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = { index, operation: op, status: "error", reason: message };
@@ -319,11 +467,26 @@ export const executeIr = async (
 
     options.emit?.({ kind: "apply-start", action });
     try {
-      await dispatchMutation(client, options.sitesClient, action, capturedItemIds, options.emit);
+      await dispatchMutation(
+        client,
+        options.sitesClient,
+        action,
+        capturedItemIds,
+        options.pathItemIdCache,
+        options.pathSnapshotCache,
+        options.emit
+      );
       applied.push(action);
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Attach the apply-time error to the action so the top-level
+      // command summary surfaces the actual server message in
+      // `details[]`. The planner only sets `reason` for plan-time
+      // outcomes (skip/error during plan); apply-time errors emitted
+      // via `apply-error` were previously only on the event stream.
+      action.status = "error";
+      action.reason = message;
       options.emit?.({ kind: "apply-error", action, error: message });
       const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
       emitFailed(options, index, applied, rollbackResult, message);

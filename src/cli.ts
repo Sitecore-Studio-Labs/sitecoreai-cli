@@ -392,4 +392,33 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   }
 };
 
-void runCli(process.argv);
+// Force-exit after the command resolves. Without this, the process can
+// hang for tens of seconds (or indefinitely) waiting for undici's
+// keep-alive socket pool to close out the global dispatcher's idle
+// connections — Node only exits when the event loop is empty, and HTTP
+// keep-alive sockets count as live handles. Bind-site is the most
+// visible offender (it's the last step of the deploy pipeline, so the
+// hang isn't masked by a follow-up command), but every command that
+// makes Authoring API calls has the same exposure. Setting `exitCode`
+// alone (the previous behaviour) is necessary but not sufficient —
+// `process.exit` is the explicit teardown.
+//
+// Skipped under Vitest: the test suite dynamic-imports this module to
+// drive `runCli` directly, and `process.exit` inside a test worker
+// surfaces as an "Uncaught Exception" failure. `process.env.VITEST`
+// is set automatically by Vitest's runner.
+const shouldForceExit = !process.env.VITEST;
+const cliPromise = runCli(process.argv);
+if (shouldForceExit) {
+  void cliPromise.finally(() => {
+    // Allow stdout/stderr to drain before exiting. `process.stdout.write`
+    // with a callback flushes the writable buffer; we exit from inside
+    // the callback so logs emitted at the end of a command (the bind
+    // result, error hints) reach the parent process.
+    process.stdout.write("", () => {
+      process.exit(process.exitCode ?? 0);
+    });
+  });
+} else {
+  void cliPromise;
+}

@@ -2,12 +2,21 @@ import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createCliError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
+import type { RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
+import {
+  cachedSkipFor,
+  hashIr,
+  hashRoots,
+  loadRecipeCache,
+  recordCacheEntry,
+  saveRecipeCache,
+} from "../cache";
 import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
-import type { OperationIr } from "../ir/operations";
+import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
 import type { Recipe } from "../schema/recipe";
 import {
@@ -18,6 +27,53 @@ import {
   toLogger,
   type RecipePushOptions,
 } from "./shared";
+
+const DEFAULT_PLAN_CONCURRENCY = 4;
+
+/**
+ * Collect every Sitecore content-tree path the executor MIGHT need to
+ * read up-front, given a set of compiled IRs and the cross-recipe ref
+ * map. Used to fan a single batched `getItemsByPaths` call out before
+ * the per-op plan loop runs.
+ *
+ * Sources:
+ *   - Every CreateItem op's target path
+ *   - Every CreateItem op's ref-path parent path (e.g. configured
+ *     templatesRoot/renderingsRoot for top-level items)
+ *   - Every cross-recipe ref's expectedPath
+ *   - Every SetField/AppendToMultiList op's optional `latePath`
+ *
+ * De-duplicates within and across IRs — a single root path shared by
+ * 5 components ends up as one prefetch entry, not 5.
+ */
+const collectPrefetchPaths = (
+  irs: OperationIr[],
+  crossRecipeRefs: ReadonlyMap<string, string>
+): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (p: string | undefined): void => {
+    if (!p) return;
+    if (seen.has(p)) return;
+    seen.add(p);
+    out.push(p);
+  };
+
+  for (const ir of irs) {
+    for (const op of ir.operations as Operation[]) {
+      if (op.op === "CreateItem") {
+        add(op.path);
+        if (op.parent.kind === "ref-path") add(op.parent.value);
+      } else if (op.op === "SetField" || op.op === "AppendToMultiList") {
+        add(op.latePath);
+      }
+    }
+  }
+  for (const expectedPath of crossRecipeRefs.values()) {
+    add(expectedPath);
+  }
+  return out;
+};
 
 /**
  * `scai recipe push` — apply recipes to a tenant.
@@ -35,7 +91,16 @@ import {
  */
 export const runRecipePush = async (options: RecipePushOptions): Promise<ExecutionResult[]> => {
   const logger = toLogger(options);
-  const tenant = resolveTenant(options);
+  // Workspace-wide path → itemId cache. Shared between the AuthoringApiClient
+  // (for `ensurePathExists` fast-path) and the executor (for ref-path
+  // parent resolution and cross-recipe refs). Lifetime = one push.
+  const pathItemIdCache = new Map<string, string>();
+  // Workspace-wide path → RemoteItem snapshot cache. Pre-populated by the
+  // bulk prefetch (single batched `getItemsByPaths` call across every
+  // CreateItem path); consulted by `buildAction` for plan-time reads.
+  const pathSnapshotCache = new Map<string, RemoteItem | null>();
+
+  const tenant = resolveTenant(options, { pathItemIdCache });
 
   const isDryRun = Boolean(options.whatIf);
   if (!isDryRun) {
@@ -168,44 +233,173 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // separately if needed.
   const sourceRecipes = recipes;
 
+  // ─── Optional recipe-hash skip ────────────────────────────────────────
+  // When `--skip-unchanged-recipes` is on, compare each compiled IR's
+  // digest against the persisted cache. Cache hits short-circuit the
+  // recipe entirely (zero plan-time reads, zero mutations); cache
+  // misses fall through to the normal execute path.
+  const configDir = path.dirname(tenant.root.physicalPath);
+  const recipeCache = options.skipUnchangedRecipes ? await loadRecipeCache(configDir) : null;
+  const rootsHash = hashRoots({
+    templatesRoot,
+    renderingsRoot,
+    componentsRoot,
+    contentModelsRoot,
+    partialDesignsRoot,
+    pageDesignsRoot,
+    contentItemsRoot,
+    headlessVariantsRoot,
+    availableRenderingsRoot,
+    enumerationsRoot,
+  });
+  const irsToExecute: { ir: OperationIr; irHash: string; cached: false }[] = [];
+  const cachedSkips: {
+    ir: OperationIr;
+    irHash: string;
+    entry: ReturnType<typeof cachedSkipFor>;
+  }[] = [];
+
   for (const { ir } of irs) {
-    const result = await executeIr(ir, tenant.client, {
+    const irHash = hashIr(ir);
+    const cached =
+      recipeCache && cachedSkipFor(recipeCache, tenant.envName, rootsHash, ir.recipeHandle, irHash);
+    if (cached) {
+      cachedSkips.push({ ir, irHash, entry: cached });
+      continue;
+    }
+    irsToExecute.push({ ir, irHash, cached: false });
+  }
+
+  // Surface cache-skips as zero-effect ExecutionResults so downstream
+  // callers (orchestrator, JSON consumers) see a uniform shape across
+  // skipped + executed recipes.
+  for (const { ir, entry } of cachedSkips) {
+    const skipSummary = { create: 0, update: 0, skip: ir.operations.length, error: 0 };
+    results.push({
+      plan: {
+        schemaVersion: "1",
+        recipeHandle: ir.recipeHandle,
+        actions: [],
+        summary: skipSummary,
+      },
+      summary: skipSummary,
+      aborted: false,
+    });
+    if (!logger.isJson()) {
+      logger.info(
+        `Skipping ${ir.recipeHandle} on ${tenant.envName} (unchanged since ${entry?.lastApplied ?? "previous push"})`,
+        "green"
+      );
+    }
+  }
+
+  // ─── Workspace prefetch ────────────────────────────────────────────────
+  // One batched `getItemsByPaths` call covering every path the executor
+  // would otherwise read sequentially. On a re-push of an existing
+  // recipe set this collapses N×ops sequential reads into ~ceil(N/25)
+  // parallel batches, then the per-op plan loop hits the cache for
+  // every read. On a first push, missing paths are cached as `null`
+  // — buildAction sees that as "checked, missing → CreateItem applies".
+  const prefetchPaths = collectPrefetchPaths(
+    irsToExecute.map((e) => e.ir),
+    crossRecipeRefs
+  );
+  if (prefetchPaths.length > 0) {
+    const fetched = await tenant.client.getItemsByPaths(prefetchPaths);
+    for (const [p, item] of fetched) {
+      pathSnapshotCache.set(p, item);
+      if (item) pathItemIdCache.set(p, item.itemId);
+    }
+  }
+
+  // ─── Plan or apply ────────────────────────────────────────────────────
+  // Plan-mode reads are pure and have no cross-recipe ordering
+  // requirements once `crossRecipeRefs` + the prefetch have populated
+  // the workspace caches — so plan-mode IRs run concurrently. Apply
+  // mode stays sequential per-IR; mutations within and across recipes
+  // can have ordering dependencies that the topological IR encoding
+  // already respects in a serial walk.
+  const planConcurrency = options.planConcurrency ?? DEFAULT_PLAN_CONCURRENCY;
+  const runOne = async (ir: OperationIr): Promise<ExecutionResult> =>
+    executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
       emit: (event) => allEvents.push({ recipe: ir.recipeHandle, event }),
       crossRecipeRefs,
       sitesClient,
+      pathItemIdCache,
+      pathSnapshotCache,
     });
-    results.push(result);
 
-    if (!logger.isJson()) {
+  const renderResult = (ir: OperationIr, result: ExecutionResult): void => {
+    if (logger.isJson()) return;
+    logger.info(
+      `${isDryRun ? "Dry-run" : "Applying"} ${ir.recipeHandle} on ${tenant.envName}`,
+      "cyan"
+    );
+    for (const action of result.plan.actions) {
       logger.info(
-        `${isDryRun ? "Dry-run" : "Applying"} ${ir.recipeHandle} on ${tenant.envName}`,
-        "cyan"
-      );
-      for (const action of result.plan.actions) {
-        logger.info(
-          `  ${formatActionTag(action.status)} ${action.operation.label}${
-            action.reason ? ` — ${action.reason}` : ""
-          }`
-        );
-      }
-      if (result.aborted && result.rollback) {
-        logger.warn(
-          `  Push aborted at op ${
-            result.plan.actions[result.plan.actions.length - 1]?.index ?? "?"
-          }; rolled back ${result.rollback.rolledBack} of ${result.plan.actions.filter((a) => a.mutation).length} applied.`
-        );
-        for (const err of result.rollback.errors) {
-          logger.warn(`  ! rollback failed at ${err.label}: ${err.error}`);
-        }
-      }
-      logger.info(
-        `  Summary: ${result.summary.create} create / ${result.summary.update} update / ${result.summary.skip} skip${
-          result.summary.error ? ` / ${result.summary.error} error` : ""
-        }`,
-        result.summary.error || result.aborted ? "yellow" : "green"
+        `  ${formatActionTag(action.status)} ${action.operation.label}${
+          action.reason ? ` — ${action.reason}` : ""
+        }`
       );
     }
+    if (result.aborted && result.rollback) {
+      logger.warn(
+        `  Push aborted at op ${
+          result.plan.actions[result.plan.actions.length - 1]?.index ?? "?"
+        }; rolled back ${result.rollback.rolledBack} of ${result.plan.actions.filter((a) => a.mutation).length} applied.`
+      );
+      for (const err of result.rollback.errors) {
+        logger.warn(`  ! rollback failed at ${err.label}: ${err.error}`);
+      }
+    }
+    logger.info(
+      `  Summary: ${result.summary.create} create / ${result.summary.update} update / ${result.summary.skip} skip${
+        result.summary.error ? ` / ${result.summary.error} error` : ""
+      }`,
+      result.summary.error || result.aborted ? "yellow" : "green"
+    );
+  };
+
+  if (isDryRun) {
+    const planResults = await mapWithConcurrency(
+      irsToExecute,
+      ({ ir }) => runOne(ir),
+      planConcurrency
+    );
+    for (let i = 0; i < irsToExecute.length; i += 1) {
+      const { ir } = irsToExecute[i];
+      const result = planResults[i];
+      results.push(result);
+      renderResult(ir, result);
+    }
+  } else {
+    for (const { ir } of irsToExecute) {
+      const result = await runOne(ir);
+      results.push(result);
+      renderResult(ir, result);
+    }
+  }
+
+  // ─── Persist hash cache ────────────────────────────────────────────────
+  // Only after a successful (non-aborted, non-error) apply. Plan-mode
+  // (dry-run) doesn't update the cache — it can't validate that the
+  // tenant matches what the cache implies.
+  if (!isDryRun && options.skipUnchangedRecipes && recipeCache) {
+    for (const { ir, irHash } of irsToExecute) {
+      const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
+      if (!result || result.aborted || result.summary.error > 0) continue;
+      recordCacheEntry(recipeCache, tenant.envName, rootsHash, ir.recipeHandle, {
+        irHash,
+        lastApplied: new Date().toISOString(),
+        summary: {
+          create: result.summary.create,
+          update: result.summary.update,
+          skip: result.summary.skip,
+        },
+      });
+    }
+    await saveRecipeCache(configDir, recipeCache);
   }
 
   // Post-IR phase: register each component-template recipe's
@@ -217,8 +411,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // means no slots to walk.
   const placeholderRoots = tenant.environment.placeholderSettingsRoots ?? [];
   const anyComponentRecipeDeclaresPlaceholders = sourceRecipes.some(
-    (r) =>
-      r.kind === "component-template" && Array.isArray(r.placedIn) && r.placedIn.length > 0
+    (r) => r.kind === "component-template" && Array.isArray(r.placedIn) && r.placedIn.length > 0
   );
   let placeholderAllowSummary: PlaceholderAllowResult | null = null;
   if (

@@ -46,6 +46,19 @@ export class MockAuthoringClient implements AuthoringApiClient {
     return this.peek(selector) ?? null;
   }
 
+  /**
+   * Production behavior: one POST per ~25 paths via aliased GraphQL.
+   * Mock-side: just walk the in-memory map. Caller-key contract — the
+   * returned Map keys are the exact strings the caller passed in.
+   */
+  async getItemsByPaths(paths: readonly string[]): Promise<Map<string, RemoteItem | null>> {
+    const result = new Map<string, RemoteItem | null>();
+    for (const p of paths) {
+      result.set(p, this.peek({ path: p }) ?? null);
+    }
+    return result;
+  }
+
   async getChildren(parent: ItemSelector): Promise<RemoteItem[]> {
     const target = this.peek(parent);
     if (!target) return [];

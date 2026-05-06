@@ -1118,14 +1118,25 @@ export type SiteRecipe = z.infer<typeof SiteRecipeSchema>;
  * `Recipe` and dispatch on `kind`.
  */
 /**
- * One value in an `EnumerationRecipe`. The Sitecore item conforming to
- * this entry has its `__Display name` set to `displayName` (or `name`
- * when omitted) and is the target the editor's Droplink dropdown shows.
+ * One value in an `EnumerationRecipe`. Compiles to a Sitecore item that
+ * conforms to the per-site `Enumeration Value` template (NOT the
+ * `Enumeration` template — that one is for the per-enum container).
+ * `Enumeration Value` carries an `Enumeration` Template Section with a
+ * single `Value` Single-Line Text shared field — see
+ * `EnumerationRecipeSchema` for the full template structure.
  *
- * `name` is load-bearing — uuidv5 derives the value item's GUID from
- * it. Renaming `name` creates a *different* value item; existing
- * datasource items that referenced the old GUID become orphaned. Use
- * `displayName` to change the visible label without touching `name`.
+ *   `name`         — Sitecore item name and uuidv5 GUID seed for the
+ *                    value item. Load-bearing: renaming `name` creates
+ *                    a *different* value item and orphans every
+ *                    existing reference. Also written to the `Value`
+ *                    shared field on the value item, which is what
+ *                    SXA-aware consumers (XM Cloud Pages, JSS variants,
+ *                    custom Edge resolvers) read via the canonical
+ *                    "picked item's Value field" pattern.
+ *   `displayName`  — `__Display name` on the item, defaults to `name`.
+ *                    What the editor's Droplink dropdown shows. Use
+ *                    this to change the visible label without touching
+ *                    `name`.
  */
 export const EnumerationValueSchema = z.object({
   name: z.string().min(1),
@@ -1145,6 +1156,30 @@ export type EnumerationValue = z.infer<typeof EnumerationValueSchema>;
  * referencing field automatically (the Droplink Source resolves by
  * location at editor time, so consumer field-definitions don't need
  * to change).
+ *
+ * Underlying template structure (emitted once per site by
+ * `ensureEnumerationTemplates` — three distinct templates, each with
+ * its own role; never collapsed):
+ *
+ *   Enumerations Folder            (Template — folder layers in the
+ *                                   enum content tree: site enumerations
+ *                                   root + per-folder grouping items)
+ *     └── __Standard Values        Insert Options:
+ *                                    Enumeration, Enumerations Folder
+ *
+ *   Enumeration                    (Template — per-enum CONTAINER items
+ *                                   like `Color Scheme`, `Heading Size`)
+ *     └── __Standard Values        Insert Options: Enumeration Value
+ *
+ *   Enumeration Value              (Template — leaf VALUE items like
+ *                                   `primary`, `accent`, `lg`)
+ *     └── Enumeration              (Template Section)
+ *           └── Value               (Single-Line Text, shared)
+ *
+ * Each value item conforms to `Enumeration Value` and stores its `name`
+ * on the `Value` shared field. That payload is what Droplink consumers
+ * read via the SXA "picked item's Value field" pattern — without it,
+ * components wired against the enum stay empty.
  *
  * The matching consumer-side surface is `Type=Droplink` (the default
  * for `shape: "enum"`). Inline Droplink (`shape: "enum"` with `values`
@@ -1192,6 +1227,20 @@ export const EnumerationRecipeSchema = z.object({
     })
     .optional(),
   values: z.array(EnumerationValueSchema).min(1),
+  /**
+   * Default value for this enumeration. Compiled into the per-enum
+   * container item's `Value` shared field so Edge consumers querying
+   * the container directly receive a default when the picker hasn't
+   * been bound yet (the canonical Sitecore "carry the default on the
+   * enumeration item itself" pattern).
+   *
+   * Must match one of `values[].name`. Validated by
+   * `compileEnumerationRecipe` at compile time (cross-field validation
+   * can't go on the schema itself — `discriminatedUnion` doesn't accept
+   * `ZodEffects` members). Optional — omit to leave the default empty
+   * (consumers fall back to component-level defaults).
+   */
+  default: z.string().min(1).optional(),
 });
 
 export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;

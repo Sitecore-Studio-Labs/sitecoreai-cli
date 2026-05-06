@@ -6,7 +6,9 @@ import {
   enumerationsFolderTemplateId,
   enumerationTemplateId,
   enumerationTemplateSectionId,
+  enumerationTemplateStandardValuesId,
   enumerationTemplateValueFieldId,
+  enumerationValueTemplateId,
   enumValueId,
   fieldId,
   NAMESPACE_CONTENT_ITEM,
@@ -354,7 +356,7 @@ describe("recipe guids — enumeration ids are deterministic and site-scoped", (
     expect(inlinePrimary).not.toBe(sharedPrimary);
   });
 
-  it("enumerationTemplateSectionId / enumerationTemplateValueFieldId scope under the per-site Enumeration template", () => {
+  it("enumerationTemplateSectionId / enumerationTemplateValueFieldId scope under the per-site Enumeration Value template", () => {
     const sectionDefault = enumerationTemplateSectionId(DEFAULT_SITE);
     const sectionE2e = enumerationTemplateSectionId("e2e");
     const valueFieldDefault = enumerationTemplateValueFieldId(DEFAULT_SITE);
@@ -364,12 +366,32 @@ describe("recipe guids — enumeration ids are deterministic and site-scoped", (
     expect(sectionDefault).not.toBe(sectionE2e);
     expect(valueFieldDefault).not.toBe(valueFieldE2e);
 
-    // Distinct from the parent Enumeration template's own GUID and from
-    // the sibling Enumerations Folder template — the three live in the
-    // same namespace family but the seed differentiates them.
+    // Distinct from every other template in the trio — the section/field
+    // live UNDER the Enumeration Value template, not Enumeration or
+    // Enumerations Folder.
     expect(sectionDefault).not.toBe(enumerationTemplateId(DEFAULT_SITE));
-    expect(valueFieldDefault).not.toBe(enumerationTemplateId(DEFAULT_SITE));
-    expect(sectionDefault).not.toBe(valueFieldDefault);
+    expect(sectionDefault).not.toBe(enumerationValueTemplateId(DEFAULT_SITE));
     expect(sectionDefault).not.toBe(enumerationsFolderTemplateId(DEFAULT_SITE));
+    expect(valueFieldDefault).not.toBe(enumerationTemplateId(DEFAULT_SITE));
+    expect(valueFieldDefault).not.toBe(enumerationValueTemplateId(DEFAULT_SITE));
+    expect(valueFieldDefault).not.toBe(enumerationsFolderTemplateId(DEFAULT_SITE));
+    expect(sectionDefault).not.toBe(valueFieldDefault);
+  });
+
+  it("the three enumeration templates (Folder / Enumeration / Enumeration Value) are all distinct per site", () => {
+    const folder = enumerationsFolderTemplateId(DEFAULT_SITE);
+    const enumeration = enumerationTemplateId(DEFAULT_SITE);
+    const value = enumerationValueTemplateId(DEFAULT_SITE);
+    expect(folder).not.toBe(enumeration);
+    expect(folder).not.toBe(value);
+    expect(enumeration).not.toBe(value);
+    // Site-scoped on the new value template too.
+    expect(enumerationValueTemplateId("e2e")).not.toBe(value);
+  });
+
+  it("enumerationTemplateStandardValuesId is distinct per site and from the parent Enumeration template GUID", () => {
+    const sv = enumerationTemplateStandardValuesId(DEFAULT_SITE);
+    expect(sv).not.toBe(enumerationTemplateId(DEFAULT_SITE));
+    expect(sv).not.toBe(enumerationTemplateStandardValuesId("e2e"));
   });
 });

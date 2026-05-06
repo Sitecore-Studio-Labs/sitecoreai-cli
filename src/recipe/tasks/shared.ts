@@ -92,6 +92,22 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   enumerationsRoot?: string;
   whatIf?: boolean;
   allowWrite?: boolean;
+  /**
+   * When true, skip recipes whose compiled IR digest + env-profile roots
+   * digest both match the persisted `.scai/recipe-cache.json` entry from
+   * the previous successful push. Speedups re-pushes of an unchanged
+   * recipe set on warm tenants. Off by default — out-of-band CMS edits
+   * to recipe-owned items aren't auto-redetected until either the recipe
+   * source changes or the cache is invalidated.
+   */
+  skipUnchangedRecipes?: boolean;
+  /**
+   * Plan-mode parallelism across recipes. Plan reads are pure (no
+   * mutations, no shared mutable refs across recipes), so plan-mode
+   * IRs can run concurrently. Defaults to 4. Apply-mode always runs
+   * sequentially — within a push, mutations land in topological order.
+   */
+  planConcurrency?: number;
 }
 
 export const toLogger = (options: RecipeCommonOptions): Logger =>
@@ -110,11 +126,15 @@ export interface ResolvedTenant {
   client: AuthoringApiClient;
 }
 
-export const resolveTenant = (options: RecipeTenantOptions): ResolvedTenant => {
+export const resolveTenant = (
+  options: RecipeTenantOptions,
+  clientOptions?: { pathItemIdCache?: Map<string, string> }
+): ResolvedTenant => {
   const { envName, environment, root, timeoutMs } = resolveEnvironment(options);
   const client = createAuthoringClient({
     environment,
     request: { timeoutMs },
+    ...(clientOptions?.pathItemIdCache && { pathItemIdCache: clientOptions.pathItemIdCache }),
   });
   return { envName, environment, root, client };
 };

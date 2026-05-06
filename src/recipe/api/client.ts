@@ -83,6 +83,17 @@ export interface AuthoringApiClient {
    * `null` when the item does not exist.
    */
   getItem(selector: ItemSelector, options?: GetItemOptions): Promise<RemoteItem | null>;
+  /**
+   * Resolve many items at once by path. Returns a Map keyed by the SAME
+   * string the caller passed in (case-preserved) — value is the
+   * `RemoteItem` if found, `null` if the item does not exist on the
+   * tenant. Implementations should batch wire calls (e.g. via aliased
+   * GraphQL fields) so an N-path request is one or a small number of
+   * round trips, not N round trips. Used by the recipe executor's
+   * workspace-wide prefetch to populate the path → item snapshot cache
+   * before the per-op plan loop.
+   */
+  getItemsByPaths(paths: readonly string[]): Promise<Map<string, RemoteItem | null>>;
   /** List immediate children of `parent` (selectable by path or itemId). */
   getChildren(parent: ItemSelector, options?: GetItemOptions): Promise<RemoteItem[]>;
   /**

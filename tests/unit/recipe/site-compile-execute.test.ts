@@ -29,19 +29,32 @@ const COMPILE_CONTEXT: CompileContext = {
  * all. Throws on any unexpected call so a regression that adds
  * Authoring traffic to the site path surfaces loudly.
  */
-const makeStubAuthoringClient = (): AuthoringApiClient => ({
-  getItem: vi.fn(async () => null),
-  getChildren: vi.fn(async () => []),
-  createItem: vi.fn(async () => {
-    throw new Error("Authoring createItem must not run for a site-only IR");
-  }),
-  updateItem: vi.fn(async () => {
-    throw new Error("Authoring updateItem must not run for a site-only IR");
-  }),
-  deleteItem: vi.fn(async () => {
-    throw new Error("Authoring deleteItem must not run for a site-only IR");
-  }),
-});
+const makeStubAuthoringClient = (): AuthoringApiClient => {
+  const stub: AuthoringApiClient = {
+    getItem: vi.fn(async () => null),
+    // Delegate to stub.getItem so tests that override getItem (per-path
+    // mocking) automatically benefit. Without this, the executor's
+    // batched prefetch path bypasses the test's getItem mock.
+    getItemsByPaths: vi.fn(async (paths: readonly string[]) => {
+      const result = new Map();
+      for (const p of paths) {
+        result.set(p, await stub.getItem({ path: p }));
+      }
+      return result;
+    }),
+    getChildren: vi.fn(async () => []),
+    createItem: vi.fn(async () => {
+      throw new Error("Authoring createItem must not run for a site-only IR");
+    }),
+    updateItem: vi.fn(async () => {
+      throw new Error("Authoring updateItem must not run for a site-only IR");
+    }),
+    deleteItem: vi.fn(async () => {
+      throw new Error("Authoring deleteItem must not run for a site-only IR");
+    }),
+  };
+  return stub;
+};
 
 const makeStubSitesClient = (overrides: Partial<SitesApiClient> = {}): SitesApiClient => ({
   createSite: vi.fn(

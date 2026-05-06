@@ -6,7 +6,13 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import { runRecipeCompile, runRecipeDiff, runRecipePlan, runRecipePush } from "../../recipe/tasks";
+import {
+  runRecipeCompile,
+  runRecipeDiff,
+  runRecipePlan,
+  runRecipePruneDefaults,
+  runRecipePush,
+} from "../../recipe/tasks";
 import { createCliError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
@@ -140,6 +146,24 @@ const createPushCommand = (): Command => {
   addEnvironmentOption(command);
   addWhatIfOption(command);
   addAllowWriteOption(command);
+  command.addOption(
+    new Option(
+      "--skip-unchanged-recipes",
+      "Skip recipes whose compiled IR digest matches the cached entry from the previous successful push (.scai/recipe-cache.json). Off by default — opt in for fast re-pushes of an unchanged recipe set."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--plan-concurrency <n>",
+      "Number of recipes plan-mode (--what-if) runs concurrently. Defaults to 4. Apply mode is always sequential per-recipe."
+    ).argParser((value: string) => {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error("--plan-concurrency must be a positive integer.");
+      }
+      return parsed;
+    })
+  );
   addConfigOption(command);
   addVerbosityOptions(command);
 
@@ -151,16 +175,68 @@ const createPushCommand = (): Command => {
     // can't tell a successful push from a 100%-failed one.
     const failed = results.some((result) => result.aborted || result.summary.error > 0);
     if (failed) {
-      const aborted = results.filter((r) => r.aborted).length;
+      const abortedRecipes = results.filter((r) => r.aborted);
       const errored = results.reduce((acc, r) => acc + r.summary.error, 0);
+      // Pull each aborted recipe's last action's reason / rollback summary
+      // so the top-level error message names which recipes failed and (if
+      // the action's reason is set) why. Truncated event logs in
+      // orchestrator stdout often hide the apply-error events; surfacing
+      // it here makes diagnosis cheap.
+      const abortDetails = abortedRecipes.map((r) => {
+        const lastAction = r.plan.actions[r.plan.actions.length - 1];
+        const rollback = r.rollback
+          ? ` rolled back ${r.rollback.rolledBack} of ${
+              r.plan.actions.filter((a) => a.mutation).length
+            } applied`
+          : "";
+        return `${r.plan.recipeHandle}: ${lastAction?.operation.label ?? "(unknown op)"} — ${
+          lastAction?.reason ?? "apply error (see events[])"
+        }${rollback}`;
+      });
       throw createCliError(
-        `Recipe push failed: ${aborted} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
+        `Recipe push failed: ${abortedRecipes.length} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
         "DEPLOY_FAILED",
         {
           hint: "Inspect per-op `events[]` in the JSON output (or rerun with --verbose) to see which op aborted and why.",
+          details: abortDetails,
         }
       );
     }
+  });
+  return command;
+};
+
+const createPruneDefaultsCommand = (): Command => {
+  const command = new Command("prune-defaults").description(
+    "Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), and Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved). Keeps the parent folders. Idempotent — missing items are skipped, not errored."
+  );
+
+  command.addOption(
+    new Option(
+      "--headless-variants-root <path>",
+      "Override headlessVariantsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Headless Variants)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--available-renderings-root <path>",
+      "Override availableRenderingsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Available Renderings)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--content-items-root <path>",
+      "Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data)."
+    )
+  );
+  addEnvironmentOption(command);
+  addWhatIfOption(command);
+  addAllowWriteOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.action(async (options) => {
+    await runRecipePruneDefaults(options);
   });
   return command;
 };
@@ -174,6 +250,7 @@ export const createRecipeCommand = (): Command => {
   command.addCommand(createDiffCommand());
   command.addCommand(createPlanCommand());
   command.addCommand(createPushCommand());
+  command.addCommand(createPruneDefaultsCommand());
 
   command.addHelpText(
     "after",
@@ -197,6 +274,12 @@ export const createRecipeCommand = (): Command => {
       "",
       "  # Push a single recipe explicitly",
       "  $ scai recipe push -i ./recipes/cta-button.recipe.ts -n my-tenant --allow-write",
+      "",
+      "  # Preview the SXA OOTB prune (no mutations)",
+      "  $ scai recipe prune-defaults -n my-tenant --what-if",
+      "",
+      "  # Apply the SXA OOTB prune",
+      "  $ scai recipe prune-defaults -n my-tenant --allow-write",
     ].join("\n")
   );
 

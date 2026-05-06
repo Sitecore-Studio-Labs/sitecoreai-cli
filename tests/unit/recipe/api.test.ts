@@ -397,6 +397,79 @@ describe("createAuthoringClient — mutations", () => {
     expect(result.itemId).toMatch(/^bbbbbbbb-bbbb-bbbb-bbbb-/);
   });
 
+  it("auto-provisions a missing section folder under .../Presentation/Headless Variants/ with HEADLESS_VARIANTS_GROUPING (regression: SXA editor needs the right template to enumerate variants)", async () => {
+    // Reproduces the path shape SXA tenants live at:
+    //   /sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants
+    // The root exists (SXA created it on site provision), the section
+    // grouping (`UI`) doesn't yet — the auto-provisioner must use
+    // HEADLESS_VARIANTS_GROUPING, not generic FOLDER. With FOLDER, the
+    // SXA editor refuses to walk the variants underneath and authors
+    // see no variant options on their renderings.
+    const HV_ROOT_PATH =
+      "/sitecore/content/site-collection/sample-site/Presentation/Headless Variants";
+    const existing: Record<string, string> = {
+      [HV_ROOT_PATH]: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    };
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes("query") && body.variables?.path) {
+        const found = existing[body.variables.path];
+        if (!found) return okResponse({ data: { item: null } });
+        return okResponse({
+          data: {
+            item: {
+              itemId: found,
+              name: body.variables.path.split("/").pop()!,
+              path: body.variables.path,
+              parent: { itemId: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+              template: { templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING },
+              fields: { nodes: [] },
+            },
+          },
+        });
+      }
+      const callIndex = fetchMock.mock.calls.length;
+      const newItemId = `cccccccc-cccc-cccc-cccc-${String(callIndex).padStart(12, "0")}`;
+      // Track the auto-created UI folder so the subsequent leaf create
+      // resolves its parent correctly.
+      if (body.variables?.input?.name === "UI") {
+        existing[`${HV_ROOT_PATH}/UI`] = newItemId;
+      }
+      return okResponse({ data: { createItem: { item: { itemId: newItemId } } } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    // The leaf the test triggers: a per-rendering folder under UI.
+    // The compile pipeline normally emits the section-grouping CreateItem
+    // explicitly (with the right template), but on tenants that
+    // pre-date that emit, the auto-provisioner is the only thing
+    // standing between us and a wrong-template UI folder.
+    await client.createItem({
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+      parent: `${HV_ROOT_PATH}/UI`,
+      name: "AvatarBlock",
+      fields: [],
+    });
+
+    const createCalls = fetchMock.mock.calls.filter((call) => {
+      const body = JSON.parse(call[1].body);
+      return body.query.includes("createItem");
+    });
+    expect(createCalls).toHaveLength(2);
+
+    // The auto-created `UI` folder must conform to HEADLESS_VARIANTS_GROUPING,
+    // not generic FOLDER. This is the regression — pre-fix the test
+    // would see SITECORE_TEMPLATES.FOLDER here and SXA's variant
+    // enumeration would silently fail downstream.
+    const folderInput = JSON.parse(createCalls[0][1].body).variables.input;
+    expect(folderInput).toMatchObject({
+      name: "UI",
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING,
+      parent: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    });
+  });
+
   it("updateItem sends only itemId + fields", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okResponse({
@@ -553,5 +626,309 @@ describe("createAuthoringClient — getChildren", () => {
       fields: [{ fieldId: "06d5295c-ed2f-4a54-9bf2-26228d113318", name: "Title", value: "v1" }],
     });
     expect(children[1]).toMatchObject({ name: "child-2", fields: [] });
+  });
+});
+
+describe("createAuthoringClient — getItemsByPaths (batched aliased reads)", () => {
+  it("issues one POST per ~25 paths and maps aliased response keys back to caller paths", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      // Decode the request body so the mock can synthesise an
+      // alias-keyed response that matches the actual variables passed.
+      const body = JSON.parse((init as { body: string }).body) as {
+        query: string;
+        variables: Record<string, string>;
+      };
+      const data: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(body.variables)) {
+        const aliasIndex = key.replace(/^p/, "");
+        const alias = `i${aliasIndex}`;
+        data[alias] = {
+          itemId: `0000000${aliasIndex.padStart(1, "0")}-0000-0000-0000-000000000000`,
+          name: value.split("/").pop() ?? "",
+          path: value,
+          parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+          template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+          fields: { nodes: [] },
+        };
+      }
+      return okResponse({ data });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const paths = Array.from({ length: 60 }, (_, i) => `/sitecore/path-${i}`);
+    const client = createAuthoringClient({ environment: baseEnv, batchedReadSize: 25 });
+    const result = await client.getItemsByPaths(paths);
+
+    // 60 paths, batchSize 25 → 3 batches.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.size).toBe(60);
+    for (const p of paths) {
+      expect(result.get(p)).toMatchObject({ path: p });
+    }
+  });
+
+  it("returns null for missing paths and seeds the path → itemId cache for hits", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: {
+          i0: {
+            itemId: "11111111-1111-1111-1111-111111111111",
+            name: "found",
+            path: "/found",
+            parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+            template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+            fields: { nodes: [] },
+          },
+          i1: null,
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pathItemIdCache = new Map<string, string>();
+    const client = createAuthoringClient({
+      environment: baseEnv,
+      batchedReadSize: 25,
+      pathItemIdCache,
+    });
+    const result = await client.getItemsByPaths(["/found", "/missing"]);
+
+    expect(result.get("/found")).toMatchObject({ itemId: "11111111-1111-1111-1111-111111111111" });
+    expect(result.get("/missing")).toBeNull();
+    // Hit was seeded; miss was not.
+    expect(pathItemIdCache.get("/found")).toBe("11111111-1111-1111-1111-111111111111");
+    expect(pathItemIdCache.has("/missing")).toBe(false);
+  });
+
+  it("ensurePathExists short-circuits on a cached path → itemId entry (no wire call)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pathItemIdCache = new Map<string, string>([
+      ["/sitecore/templates/Project/sandbox/Components", "cached-parent-id"],
+    ]);
+    const client = createAuthoringClient({ environment: baseEnv, pathItemIdCache });
+
+    // Trigger ensurePathExists by creating an item under the cached parent path.
+    const previousFetchCount = fetchMock.mock.calls.length;
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: { createItem: { item: { itemId: "new-item-id" } } } })
+    );
+
+    const created = await client.createItem({
+      parent: "/sitecore/templates/Project/sandbox/Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      name: "NewTemplate",
+      fields: [],
+    });
+
+    // Exactly one wire call — the createItem mutation. NO getItem call
+    // for the parent path (it was cached). NO ensurePathExists walk.
+    expect(fetchMock.mock.calls.length - previousFetchCount).toBe(1);
+    expect(created.itemId).toBe("new-item-id");
+  });
+});
+
+describe("createAuthoringClient — idempotent createItem fallback", () => {
+  it("returns the existing itemId when Sitecore reports a name conflict on createItem", async () => {
+    // Sequence:
+    //   1. createItem mutation → GraphQL error "already defined on this level"
+    //   2. fallback fetchChildren by parent itemId → returns existing child
+    //      with the matching name; that itemId is returned as the create result.
+    const fetchMock = vi
+      .fn()
+      // resolveParentItemId: getItem by path resolves the parent.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      // createItem mutation → conflict.
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: 'The item name "Layout" is already defined on this level.' }],
+        })
+      )
+      // fallback fetchChildren by parent itemId.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "existing-child-id-bbbbbbbbbbbb",
+                    name: "Layout",
+                    path: "/sitecore/templates/parent/Layout",
+                    parent: { itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa" },
+                    template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      parent: "/sitecore/templates/parent",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      name: "Layout",
+      fields: [],
+    });
+
+    expect(result.itemId).toBe("existing-child-id-bbbbbbbbbbbb");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-throws the original error when no conflicting child is found", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: 'The item name "Other" is already defined on this level.' }],
+        })
+      )
+      // fetchChildren returns no matching name.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "different-id-cccccccccccc",
+                    name: "Different",
+                    path: "/sitecore/templates/parent/Different",
+                    parent: { itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa" },
+                    template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.createItem({
+        parent: "/sitecore/templates/parent",
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+        name: "Other",
+        fields: [],
+      })
+    ).rejects.toThrow(/already defined on this level/);
+  });
+
+  it("does not invoke the fallback when createItem fails for a non-conflict reason", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: "Validation failed: Some other error." }],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.createItem({
+        parent: "/sitecore/templates/parent",
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+        name: "X",
+        fields: [],
+      })
+    ).rejects.toThrow(/Validation failed/);
+    // No fetchChildren call — only the parent resolve + createItem.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("runAuthoringGraphQL — retry / backoff", () => {
+  it("retries on 503 with Retry-After and surfaces the eventual success", async () => {
+    const success = okResponse({ data: { ok: true } });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("temporarily unavailable", {
+          status: 503,
+          headers: { "retry-after": "0" },
+        })
+      )
+      .mockResolvedValue(success);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const data = await runAuthoringGraphQL<{ ok: boolean }>(
+      baseEnv,
+      "query {}",
+      undefined,
+      // Tighten retry to keep the test fast — the production default
+      // is exponential backoff with up to 5 attempts.
+      { retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 } }
+    );
+
+    expect(data).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on 429 then surfaces NETWORK after exhausting attempts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("rate limited", {
+        status: 429,
+        headers: { "retry-after": "0" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const error = await runAuthoringGraphQL(baseEnv, "query {}", undefined, {
+      retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
+    }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(error.code).toBe("NETWORK");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

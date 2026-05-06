@@ -1,5 +1,7 @@
 import type { EnvironmentConfiguration } from "@/config";
 import { createCliError } from "@/shared/errors";
+import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
 import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
 import { dashifyGuid, renderRefValue } from "./ref-encoding";
@@ -33,11 +35,36 @@ const isItemId = (value: string): boolean => GUID_PATTERN.test(value.trim());
  *                                        `/sitecore/layout/Renderings/Project/<site>/`
  *                                        all conform to this template,
  *                                        not generic `Folder`)
+ * - `.../Presentation/Headless Variants/...`
+ *                                     → `HeadlessVariantsGrouping` (every
+ *                                        folder under a site's Headless
+ *                                        Variants tree — section
+ *                                        groupings like `UI`, `Layout`,
+ *                                        etc. — must conform to this
+ *                                        template, otherwise SXA's editor
+ *                                        won't enumerate the variants
+ *                                        underneath. Per-rendering folders
+ *                                        (`<root>/UI/AvatarBlock`) are
+ *                                        always emitted explicitly with
+ *                                        `HEADLESS_VARIANTS`, so this
+ *                                        fallback only fires for the
+ *                                        section-grouping depth.)
  * - everything else                   → generic `Folder`
  *
  * Picking the wrong template here doesn't break createItem itself, but
  * it can leave SXA's editor UI unable to recognise the auto-created
  * folder when walking the tree.
+ *
+ * Hazard fixed by the Headless Variants branch: a previous scai version
+ * emitted variant items before the explicit section-grouping CreateItem
+ * was added. Tenants pushed under that version got their `UI` /
+ * `Layout` / etc. section folders auto-created here as generic
+ * `Folder`. Subsequent runs emit the section grouping with
+ * `HEADLESS_VARIANTS_GROUPING`, but `CreateOnly` policy skips updating
+ * the existing item, so the wrong template persists. Detecting the
+ * tree here at least keeps NEW installs correct; existing tenants
+ * still need a manual delete-and-republish (or a future template-
+ * correction migration) to fix the stale folder.
  */
 const folderTemplateForPath = (path: string): string => {
   const normalized = path.toLowerCase();
@@ -46,6 +73,9 @@ const folderTemplateForPath = (path: string): string => {
   }
   if (normalized.startsWith("/sitecore/layout/renderings/")) {
     return SITECORE_TEMPLATES.RENDERING_FOLDER;
+  }
+  if (normalized.includes("/presentation/headless variants/")) {
+    return SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING;
   }
   return SITECORE_TEMPLATES.FOLDER;
 };
@@ -204,10 +234,64 @@ const toAuthoringFieldsInput = (fields: FieldValue[]): Array<{ name: string; val
 export interface AuthoringClientOptions {
   environment: EnvironmentConfiguration;
   request?: AuthoringRequestOptions;
+  /**
+   * Optional shared path → itemId cache. When provided, the client uses
+   * it as a read-through layer for `ensurePathExists` (skipping a wire
+   * call when the parent path was already resolved by an earlier
+   * createItem in the same push) and writes new entries as it
+   * auto-provisions folder ancestors.
+   *
+   * The recipe executor passes a map shared with its `capturedItemIds`
+   * so the workspace prefetch can pre-seed path resolutions and the
+   * client picks them up without re-fetching. Paths and recipe-internal
+   * refKey GUIDs share the same map but never collide (paths start
+   * with `/`).
+   */
+  pathItemIdCache?: Map<string, string>;
+  /**
+   * Maximum number of paths bundled into one aliased `getItemsByPaths`
+   * GraphQL query. Defaults to 25 — picks a balance between request
+   * payload size and round-trip count. Tunable for tenants with
+   * unusually low or high request-size limits.
+   */
+  batchedReadSize?: number;
+  /**
+   * Number of batched-read queries dispatched in parallel. Defaults to 4.
+   * The shared GraphQL transport handles 429/503 backoff automatically,
+   * so safe to fan out — but kept conservative so a fresh push doesn't
+   * thunder-herd a cold tenant.
+   */
+  batchedReadConcurrency?: number;
 }
 
+const DEFAULT_BATCH_READ_SIZE = 25;
+const DEFAULT_BATCH_READ_CONCURRENCY = 4;
+
 export const createAuthoringClient = (options: AuthoringClientOptions): AuthoringApiClient => {
-  const { environment, request } = options;
+  const { environment, request, pathItemIdCache } = options;
+  const batchSize = options.batchedReadSize ?? DEFAULT_BATCH_READ_SIZE;
+  const batchConcurrency = options.batchedReadConcurrency ?? DEFAULT_BATCH_READ_CONCURRENCY;
+
+  /**
+   * Per-call request options for read operations — extends caller-supplied
+   * `request` with the broad retry status set. Reads are idempotent so
+   * retrying through 500/502/504 is safe and absorbs transient gateway
+   * errors without aborting the whole push.
+   */
+  const readRequest: AuthoringRequestOptions = {
+    ...request,
+    retry: { ...request?.retry, retryableStatuses: READ_RETRYABLE_STATUSES },
+  };
+
+  /**
+   * Per-call request options for write operations — uses the conservative
+   * default retry set (just throttle / never-reached-origin codes:
+   * 408/425/429/503). A 500/502/504 may indicate the server processed
+   * the request but failed to respond; retrying would create a duplicate
+   * with no idempotency key. The recipe rollback flow recovers from
+   * partial-write states by replay, not by silent retries.
+   */
+  const writeRequest: AuthoringRequestOptions = request ?? {};
 
   const fetchOne = async (selector: ItemSelector): Promise<RemoteItemNode | null> => {
     if (selector.itemId) {
@@ -215,7 +299,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         environment,
         GET_ITEM_BY_ID,
         { itemId: selector.itemId },
-        request
+        readRequest
       );
       return data.item;
     }
@@ -224,11 +308,50 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         environment,
         GET_ITEM_BY_PATH,
         { path: selector.path },
-        request
+        readRequest
       );
       return data.item;
     }
     throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+  };
+
+  /**
+   * Batched path→item read using GraphQL aliased fields. One POST returns
+   * up to `batchSize` items. Aliasing format:
+   *
+   *   query Batch($p0: String!, $p1: String!, ...) {
+   *     i0: item(where: { path: $p0 }) { ...ItemFragment }
+   *     i1: item(where: { path: $p1 }) { ...ItemFragment }
+   *     ...
+   *   }
+   *
+   * Aliases are stable per call (`i0`, `i1`, ...) so the response object
+   * keys map cleanly back to the input slice. Missing items return
+   * `null` under their alias — same shape as a single-path 404.
+   */
+  const fetchOneBatch = async (paths: readonly string[]): Promise<Array<RemoteItemNode | null>> => {
+    if (paths.length === 0) return [];
+    const variableDecls = paths.map((_, i) => `$p${i}: String!`).join(", ");
+    const aliasedSelections = paths
+      .map(
+        (_, i) => `
+  i${i}: item(where: { path: $p${i} }) {
+    ${ITEM_FRAGMENT}
+  }`
+      )
+      .join("");
+    const query = `query Batch(${variableDecls}) {${aliasedSelections}\n}`;
+    const variables: Record<string, string> = {};
+    for (let i = 0; i < paths.length; i += 1) {
+      variables[`p${i}`] = paths[i];
+    }
+    const data = await runAuthoringGraphQL<Record<string, RemoteItemNode | null>>(
+      environment,
+      query,
+      variables,
+      readRequest
+    );
+    return paths.map((_, i) => data[`i${i}`] ?? null);
   };
 
   const fetchChildren = async (selector: ItemSelector): Promise<RemoteItemNode[]> => {
@@ -237,7 +360,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         environment,
         GET_CHILDREN_BY_ID,
         { itemId: selector.itemId },
-        request
+        readRequest
       );
       return data.item?.children.nodes ?? [];
     }
@@ -246,7 +369,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         environment,
         GET_CHILDREN_BY_PATH,
         { path: selector.path },
-        request
+        readRequest
       );
       return data.item?.children.nodes ?? [];
     }
@@ -268,8 +391,17 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
    */
   const ensurePathExists = async (rawPath: string): Promise<string> => {
     const path = rawPath.replace(/\/+$/, "");
+    // Fast path: caller (or an earlier ensurePathExists) already resolved
+    // this path. Avoids the redundant `getItem` round trip every sibling
+    // createItem would otherwise pay under a shared section folder.
+    const cached = pathItemIdCache?.get(path);
+    if (cached) return cached;
+
     const existing = await fetchOne({ path });
-    if (existing) return existing.itemId;
+    if (existing) {
+      pathItemIdCache?.set(path, existing.itemId);
+      return existing.itemId;
+    }
 
     const lastSlash = path.lastIndexOf("/");
     if (lastSlash <= 0) {
@@ -299,7 +431,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
           fields: [],
         },
       },
-      request
+      writeRequest
     );
     const itemId = data.createItem?.item?.itemId;
     if (!itemId) {
@@ -308,7 +440,45 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         "UNKNOWN"
       );
     }
+    pathItemIdCache?.set(path, itemId);
     return itemId;
+  };
+
+  /**
+   * Detect Sitecore's name-conflict error class. Authoring GraphQL
+   * surfaces these as wrapped CliError messages of the form:
+   *
+   *   `Authoring GraphQL errors: The item name "X" is already defined on this level.`
+   *
+   * The variant `"is not unique"` and `"already exists"` are also
+   * known phrasings on adjacent server versions; match permissively
+   * so our idempotent-create fallback covers them all.
+   */
+  const isAlreadyExistsError = (error: unknown): boolean => {
+    if (!(error instanceof Error)) return false;
+    const msg = error.message;
+    return (
+      /already defined on this level/i.test(msg) ||
+      /is not unique/i.test(msg) ||
+      /already exists/i.test(msg) ||
+      /name is already in use/i.test(msg)
+    );
+  };
+
+  /**
+   * Look up a single direct child of `parentItemId` by name. Used by
+   * the idempotent-create fallback when `createItem` reports a
+   * name conflict — the parent-child relationship is not subject to
+   * Sitecore's path-index propagation lag, so this returns the
+   * correct existing item even when `getItem({path})` for the same
+   * path still reports null.
+   */
+  const findChildByName = async (
+    parentItemId: string,
+    name: string
+  ): Promise<RemoteItemNode | null> => {
+    const children = await fetchChildren({ itemId: parentItemId });
+    return children.find((c) => c.name === name) ?? null;
   };
 
   /**
@@ -335,6 +505,64 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       return node ? toRemoteItem(node) : null;
     },
 
+    async getItemsByPaths(paths): Promise<Map<string, RemoteItem | null>> {
+      const result = new Map<string, RemoteItem | null>();
+      if (paths.length === 0) return result;
+
+      // De-duplicate within a single call so repeated paths don't
+      // cost extra wire bytes; preserve the original strings for the
+      // returned map (caller-key contract).
+      const unique: string[] = [];
+      const seen = new Set<string>();
+      for (const p of paths) {
+        if (!seen.has(p)) {
+          seen.add(p);
+          unique.push(p);
+        }
+      }
+
+      const batches: string[][] = [];
+      for (let i = 0; i < unique.length; i += batchSize) {
+        batches.push(unique.slice(i, i + batchSize));
+      }
+
+      const batchResults = await mapWithConcurrency(
+        batches,
+        (batch) => fetchOneBatch(batch),
+        batchConcurrency
+      );
+
+      for (let b = 0; b < batches.length; b += 1) {
+        const batch = batches[b];
+        const nodes = batchResults[b];
+        for (let i = 0; i < batch.length; i += 1) {
+          const path = batch[i];
+          const node = nodes[i];
+          const item = node ? toRemoteItem(node) : null;
+          result.set(path, item);
+          // Side-effect: seed the path → itemId cache used by the
+          // recipe executor's `ensurePathExists` and parent-resolution
+          // fast paths. Skips writing nulls — `null` means "checked
+          // and missing", and ensurePathExists distinguishes "not
+          // cached" (must check) from "cached as missing" by re-reading
+          // anyway when it auto-creates.
+          if (item && pathItemIdCache && !pathItemIdCache.has(path)) {
+            pathItemIdCache.set(path, item.itemId);
+          }
+        }
+      }
+
+      // Re-emit caller-input keys (caller may have passed dupes — same
+      // value mapping back applies).
+      for (const p of paths) {
+        if (!result.has(p)) {
+          // Should not happen given the loop above + de-dupe, but defend.
+          result.set(p, null);
+        }
+      }
+      return result;
+    },
+
     async getChildren(parent, _options?: GetItemOptions): Promise<RemoteItem[]> {
       const nodes = await fetchChildren(parent);
       return nodes.map(toRemoteItem);
@@ -342,29 +570,54 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
     async createItem(input: CreateItemInput): Promise<CreateItemResult> {
       const parentItemId = await resolveParentItemId(input.parent);
-      const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
-        environment,
-        CREATE_ITEM_MUTATION,
-        {
-          input: {
-            parent: parentItemId,
-            templateId: input.templateId,
-            name: input.name,
-            database: input.database ?? "master",
-            language: input.language ?? "en",
-            fields: toAuthoringFieldsInput(input.fields),
+      try {
+        const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
+          environment,
+          CREATE_ITEM_MUTATION,
+          {
+            input: {
+              parent: parentItemId,
+              templateId: input.templateId,
+              name: input.name,
+              database: input.database ?? "master",
+              language: input.language ?? "en",
+              fields: toAuthoringFieldsInput(input.fields),
+            },
           },
-        },
-        request
-      );
-      const itemId = data.createItem?.item?.itemId;
-      if (!itemId) {
-        throw createCliError(
-          "createItem returned no itemId — Authoring API response was malformed.",
-          "UNKNOWN"
+          writeRequest
         );
+        const itemId = data.createItem?.item?.itemId;
+        if (!itemId) {
+          throw createCliError(
+            "createItem returned no itemId — Authoring API response was malformed.",
+            "UNKNOWN"
+          );
+        }
+        return { itemId };
+      } catch (error) {
+        // Idempotent-create fallback for the recurring "name already defined
+        // on this level" failure mode. Sitecore's path index (used by
+        // `getItem({path})` and the workspace prefetch) lags writes by
+        // seconds-to-minutes — so a planner that checks-by-path and sees
+        // "missing" can plan a create against a path that the tenant
+        // actually already has, either from an earlier op in the same
+        // push or from a previous push. The parent-child storage is
+        // not lag-prone, so we fall through to `getChildren(parent)`
+        // to locate the existing item by name and return its itemId
+        // as if the create succeeded. The caller's `dispatchMutation`
+        // captures it normally; for `CreateOnly` ops this is the
+        // intended behavior, for `CreateAndUpdate` we accept that the
+        // existing item's fields aren't updated in this push (the
+        // next push's prefetch will see the item via path lookup, the
+        // planner takes the update branch, and drift gets corrected).
+        if (isAlreadyExistsError(error)) {
+          const existing = await findChildByName(parentItemId, input.name);
+          if (existing) {
+            return { itemId: existing.itemId };
+          }
+        }
+        throw error;
       }
-      return { itemId };
     },
 
     async updateItem(input: UpdateItemInput): Promise<void> {
@@ -377,7 +630,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
             fields: toAuthoringFieldsInput(input.fields),
           },
         },
-        request
+        writeRequest
       );
     },
 
@@ -395,7 +648,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       else throw createCliError("deleteItem requires either path or itemId.", "INPUT_INVALID");
       const data = await runAuthoringGraphQL<{
         deleteItem: { successful: boolean } | null;
-      }>(environment, DELETE_ITEM_MUTATION, { input }, request);
+      }>(environment, DELETE_ITEM_MUTATION, { input }, writeRequest);
       if (!data.deleteItem?.successful) {
         throw createCliError(
           `deleteItem returned successful: ${data.deleteItem?.successful} for ${

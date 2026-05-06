@@ -5,13 +5,17 @@ import {
   compileEnumerationRecipe,
 } from "../../../src/recipe/compile";
 import {
+  enumerationContainerSectionId,
+  enumerationContainerValueFieldId,
   enumerationFolderId,
   enumerationsFolderTemplateId,
   enumerationsFolderTemplateStandardValuesId,
   enumerationsGroupingFolderId,
   enumerationTemplateId,
   enumerationTemplateSectionId,
+  enumerationTemplateStandardValuesId,
   enumerationTemplateValueFieldId,
+  enumerationValueTemplateId,
   enumValueId,
   paramsFieldId,
   paramsStandardValuesId,
@@ -76,39 +80,51 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     ],
   };
 
-  it("emits per-site template-ensure ops (incl. inner section/field + template-level SV) + 1 folder op + 1 op per value", () => {
+  it("emits per-site template-ensure ops (3 templates incl. inner section/field on both Enumeration + Enumeration Value + 2 SV blocks) + 1 container op + 1 op per value", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
     expect(ir.recipeHandle).toBe("color-scheme@1");
-    // ensureEnumerationTemplates: 2 template CreateItem + 2 SetBaseTemplates
-    // + 2 inner CreateItem (Enumeration section + Value field on the
-    // Enumeration template) + 1 SV CreateItem + 1 SetStandardValues
-    // + 1 Insert Options SetField.
-    // Per recipe: 1 folder CreateItem + 3 value CreateItems.
-    expect(ir.operations).toHaveLength(13);
+    // ensureEnumerationTemplates:
+    //   • 3 template CreateItem + 3 SetBaseTemplates       (= 6 ops)
+    //   • 4 inner CreateItem: Enumeration template's
+    //     Section + Value field + Enumeration Value
+    //     template's Section + Value field                  (= 4 ops)
+    //   • Standard Values block per insertable template
+    //     (Enumerations Folder + Enumeration), each:
+    //     CreateItem + SetStandardValues + SetField        (= 6 ops)
+    // Per recipe: 1 container CreateItem + 3 value CreateItems = 4 ops.
+    expect(ir.operations).toHaveLength(20);
     expect(ir.operations.map((op) => op.op)).toEqual([
       "CreateItem", // Enumerations Folder template
       "SetBaseTemplates",
-      "CreateItem", // Enumeration template
+      "CreateItem", // Enumeration template (per-enum container)
       "SetBaseTemplates",
-      "CreateItem", // Enumeration section (under Enumeration template)
-      "CreateItem", // Value field (under Enumeration section)
+      "CreateItem", // Enumeration Value template (leaf values)
+      "SetBaseTemplates",
+      "CreateItem", // Enumeration template's inner Enumeration section
+      "CreateItem", // Enumeration template's inner Value field (default carrier)
+      "CreateItem", // Enumeration Value template's inner Enumeration section
+      "CreateItem", // Enumeration Value template's inner Value field (leaf payload carrier)
       "CreateItem", // Enumerations Folder __Standard Values
       "SetStandardValues",
       "SetField", // Insert Options on Enumerations Folder SV
-      "CreateItem", // recipe data folder
+      "CreateItem", // Enumeration __Standard Values
+      "SetStandardValues",
+      "SetField", // Insert Options on Enumeration SV
+      "CreateItem", // per-enum container item (recipe)
       "CreateItem", // value 1
       "CreateItem", // value 2
       "CreateItem", // value 3
     ]);
   });
 
-  it("scaffolds the per-site Enumerations Folder + Enumeration templates under <templatesRoot>/Presentation", () => {
+  it("scaffolds the per-site Enumerations Folder + Enumeration + Enumeration Value templates under <templatesRoot>/Presentation", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
     const folderTpl = findCreateItem(
       ir.operations,
       (o) => o.id === enumerationsFolderTemplateId(SITE)
     );
-    const valueTpl = findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE));
+    const enumTpl = findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE));
+    const valueTpl = findCreateItem(ir.operations, (o) => o.id === enumerationValueTemplateId(SITE));
     expect(folderTpl).toBeDefined();
     expect(folderTpl!.name).toBe("Enumerations Folder");
     // Lands at the SITE templates root's `/Presentation` (sibling of
@@ -117,13 +133,22 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     expect(folderTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumerations Folder`);
     expect(folderTpl!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
     expect(folderTpl!.policy).toBe("CreateOnly");
+    expect(enumTpl).toBeDefined();
+    expect(enumTpl!.name).toBe("Enumeration");
+    expect(enumTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration`);
+    expect(enumTpl!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
+    expect(enumTpl!.policy).toBe("CreateOnly");
     expect(valueTpl).toBeDefined();
-    expect(valueTpl!.name).toBe("Enumeration");
-    expect(valueTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration`);
+    expect(valueTpl!.name).toBe("Enumeration Value");
+    expect(valueTpl!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration Value`);
     expect(valueTpl!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
     expect(valueTpl!.policy).toBe("CreateOnly");
-    // Both inherit Standard Template only.
-    for (const tplRefKey of [enumerationsFolderTemplateId(SITE), enumerationTemplateId(SITE)]) {
+    // All three inherit Standard Template only.
+    for (const tplRefKey of [
+      enumerationsFolderTemplateId(SITE),
+      enumerationTemplateId(SITE),
+      enumerationValueTemplateId(SITE),
+    ]) {
       const baseOp = ir.operations.find(
         (op) => op.op === "SetBaseTemplates" && op.itemRefKey === tplRefKey
       );
@@ -132,16 +157,18 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     }
   });
 
-  it("Enumeration template carries an inner `Enumeration` section with a single `Value` field (Single-Line Text, shared)", () => {
+  it("Enumeration Value template carries an inner `Enumeration` section with a single `Value` field (Single-Line Text, shared)", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
-    const valueTplRefKey = enumerationTemplateId(SITE);
+    const valueTplRefKey = enumerationValueTemplateId(SITE);
     const sectionRefKey = enumerationTemplateSectionId(SITE);
     const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
 
     const section = findCreateItem(ir.operations, (o) => o.id === sectionRefKey);
     expect(section).toBeDefined();
     expect(section!.name).toBe("Enumeration");
-    expect(section!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration`);
+    expect(section!.path).toBe(
+      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration Value/Enumeration`
+    );
     expect(section!.parent).toEqual({ kind: "ref-recipe", refKey: valueTplRefKey });
     expect(section!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_SECTION);
     expect(section!.policy).toBe("CreateOnly");
@@ -150,7 +177,7 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     expect(valueField).toBeDefined();
     expect(valueField!.name).toBe("Value");
     expect(valueField!.path).toBe(
-      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration/Value`
+      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration Value/Enumeration/Value`
     );
     expect(valueField!.parent).toEqual({ kind: "ref-recipe", refKey: sectionRefKey });
     expect(valueField!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_FIELD);
@@ -173,6 +200,85 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     });
   });
 
+  it("Enumeration template ALSO carries an inner `Enumeration` section with a `Value` field — for the per-enum container's default value", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const enumTplRefKey = enumerationTemplateId(SITE);
+    const sectionRefKey = enumerationContainerSectionId(SITE);
+    const valueFieldRefKey = enumerationContainerValueFieldId(SITE);
+
+    const section = findCreateItem(ir.operations, (o) => o.id === sectionRefKey);
+    expect(section).toBeDefined();
+    expect(section!.name).toBe("Enumeration");
+    expect(section!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration`);
+    expect(section!.parent).toEqual({ kind: "ref-recipe", refKey: enumTplRefKey });
+    expect(section!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_SECTION);
+
+    const valueField = findCreateItem(ir.operations, (o) => o.id === valueFieldRefKey);
+    expect(valueField).toBeDefined();
+    expect(valueField!.name).toBe("Value");
+    expect(valueField!.path).toBe(
+      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/Enumeration/Value`
+    );
+    expect(valueField!.parent).toEqual({ kind: "ref-recipe", refKey: sectionRefKey });
+    expect(valueField!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_FIELD);
+    // Same Single-Line Text shared shape as the Value field on the
+    // Enumeration Value template — consistent so Edge consumers query
+    // either container or leaf with `item.field("Value").value`.
+    expect(findField(valueField!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
+      kind: "string",
+      value: sitecoreFieldTypeLabel("single-line-text"),
+    });
+    expect(findField(valueField!.fields, TEMPLATE_FIELD_FIELDS.SHARED)?.value).toEqual({
+      kind: "string",
+      value: "1",
+    });
+
+    // Distinct GUID from the Enumeration Value template's `Value` field —
+    // they live on different templates with different paths, so different
+    // refKeys are expected.
+    expect(valueFieldRefKey).not.toBe(enumerationTemplateValueFieldId(SITE));
+  });
+
+  it("Enumeration template's __Standard Values has Insert Options pointing at Enumeration Value", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const enumSvRefKey = enumerationTemplateStandardValuesId(SITE);
+    const sv = findCreateItem(ir.operations, (o) => o.id === enumSvRefKey);
+    expect(sv).toBeDefined();
+    expect(sv!.name).toBe("__Standard Values");
+    expect(sv!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration/__Standard Values`);
+    expect(sv!.templateOf).toBe(enumerationTemplateId(SITE));
+
+    const insertOp = ir.operations.find(
+      (op) =>
+        op.op === "SetField" &&
+        op.itemRefKey === enumSvRefKey &&
+        op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS
+    );
+    expect(insertOp).toBeDefined();
+    // ref-recipe-list (NOT ref-guid-list) — executor resolves each
+    // refKey to the server-assigned template itemId before rendering.
+    expect((insertOp as { value: { kind: string; refKeys: string[] } }).value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [enumerationValueTemplateId(SITE)],
+    });
+  });
+
+  it("Enumerations Folder template's __Standard Values Insert Options allow Enumeration + nested Enumerations Folder", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const folderSvRefKey = enumerationsFolderTemplateStandardValuesId(SITE);
+    const insertOp = ir.operations.find(
+      (op) =>
+        op.op === "SetField" &&
+        op.itemRefKey === folderSvRefKey &&
+        op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS
+    );
+    expect(insertOp).toBeDefined();
+    expect((insertOp as { value: { kind: string; refKeys: string[] } }).value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [enumerationTemplateId(SITE), enumerationsFolderTemplateId(SITE)],
+    });
+  });
+
   it("dedups template-ensure ops across recipes when emittedFolders is shared", () => {
     const emittedFolders = new Set<string>();
     const first = compileEnumerationRecipe(recipe, CONTEXT, emittedFolders);
@@ -181,59 +287,100 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
       CONTEXT,
       emittedFolders
     );
-    // First IR carries the template scaffolding (incl. inner section +
-    // Value field); second IR doesn't.
+    // First IR carries the full template scaffolding; second IR doesn't.
     for (const refKey of [
       enumerationsFolderTemplateId(SITE),
       enumerationTemplateId(SITE),
+      enumerationValueTemplateId(SITE),
+      enumerationContainerSectionId(SITE),
+      enumerationContainerValueFieldId(SITE),
       enumerationTemplateSectionId(SITE),
       enumerationTemplateValueFieldId(SITE),
+      enumerationsFolderTemplateStandardValuesId(SITE),
+      enumerationTemplateStandardValuesId(SITE),
     ]) {
       expect(findCreateItem(first.operations, (o) => o.id === refKey)).toBeDefined();
       expect(findCreateItem(second.operations, (o) => o.id === refKey)).toBeUndefined();
     }
   });
 
-  it("folder lands at <enumerationsRoot>/<recipe.name> with the recipe's deterministic refKey", () => {
+  it("per-enum container item lands at <enumerationsRoot>/<recipe.name> conforming to the Enumeration template", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
-    const folder = findCreateItem(
+    const container = findCreateItem(
       ir.operations,
       (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
     );
-    expect(folder).toBeDefined();
-    expect(folder!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme`);
-    expect(folder!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
-    expect(folder!.templateOf).toBe(enumerationsFolderTemplateId(SITE));
-    expect(folder!.name).toBe("ColorScheme");
-    expect(findField(folder!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
+    expect(container).toBeDefined();
+    expect(container!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme`);
+    expect(container!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
+    // Container conforms to Enumeration (NOT Enumerations Folder, which
+    // is reserved for grouping items).
+    expect(container!.templateOf).toBe(enumerationTemplateId(SITE));
+    expect(container!.name).toBe("ColorScheme");
+    expect(findField(container!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
       kind: "string",
       value: "Color Scheme",
     });
   });
 
-  it("falls back displayName -> name when displayName is omitted on the recipe", () => {
-    const ir = compileEnumerationRecipe({ ...recipe, displayName: undefined }, CONTEXT);
-    const folder = findCreateItem(
+  it("does NOT write a Value field on the per-enum container when recipe.default is omitted", () => {
+    const ir = compileEnumerationRecipe(recipe, CONTEXT);
+    const container = findCreateItem(
       ir.operations,
       (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
     );
-    expect(findField(folder!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
+    const valueFieldRefKey = enumerationContainerValueFieldId(SITE);
+    expect(container!.fields.find((f) => f.fieldId === valueFieldRefKey)).toBeUndefined();
+  });
+
+  it("writes recipe.default to the per-enum container's Value shared field with fieldName='Value'", () => {
+    const withDefault: EnumerationRecipe = { ...recipe, default: "primary" };
+    const ir = compileEnumerationRecipe(withDefault, CONTEXT);
+    const container = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
+    );
+    const valueFieldRefKey = enumerationContainerValueFieldId(SITE);
+    const valueEntry = container!.fields.find((f) => f.fieldId === valueFieldRefKey);
+    expect(valueEntry).toBeDefined();
+    expect(valueEntry!.fieldName).toBe("Value");
+    expect(valueEntry!.language).toBeUndefined();
+    expect(valueEntry!.version).toBeUndefined();
+    expect(valueEntry!.value).toEqual({ kind: "string", value: "primary" });
+  });
+
+  it("throws INPUT_INVALID when recipe.default does not match any value.name", () => {
+    const bogus: EnumerationRecipe = { ...recipe, default: "not-a-real-value" };
+    expect(() => compileEnumerationRecipe(bogus, CONTEXT)).toThrowError(
+      /default='not-a-real-value'/
+    );
+  });
+
+  it("falls back displayName -> name when displayName is omitted on the recipe", () => {
+    const ir = compileEnumerationRecipe({ ...recipe, displayName: undefined }, CONTEXT);
+    const container = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationFolderId(SITE, "color-scheme@1")
+    );
+    expect(findField(container!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
       kind: "string",
       value: "ColorScheme",
     });
   });
 
-  it("each value item is parented under the folder via ref-recipe and conforms to per-site Enumeration template", () => {
+  it("each value item is parented under the container via ref-recipe and conforms to per-site Enumeration Value template", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
-    const folderRefKey = enumerationFolderId(SITE, "color-scheme@1");
+    const containerRefKey = enumerationFolderId(SITE, "color-scheme@1");
     const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
     for (const value of recipe.values) {
       const op = findCreateItem(ir.operations, (o) => o.name === value.name);
       expect(op).toBeDefined();
-      expect(op!.id).toBe(enumValueId(folderRefKey, value.name));
-      expect(op!.parent).toEqual({ kind: "ref-recipe", refKey: folderRefKey });
+      expect(op!.id).toBe(enumValueId(containerRefKey, value.name));
+      expect(op!.parent).toEqual({ kind: "ref-recipe", refKey: containerRefKey });
       expect(op!.path).toBe(`${ENUMERATIONS_ROOT}/ColorScheme/${value.name}`);
-      expect(op!.templateOf).toBe(enumerationTemplateId(SITE));
+      // Value items conform to Enumeration Value (NOT Enumeration, which
+      // is reserved for the per-enum container).
+      expect(op!.templateOf).toBe(enumerationValueTemplateId(SITE));
       expect(findField(op!.fields, SYSTEM_FIELDS.DISPLAY_NAME, "en")?.value).toEqual({
         kind: "string",
         value: value.displayName ?? value.name,
@@ -253,20 +400,19 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     }
   });
 
-  it("recipe-owned ops carry CreateAndUpdate; template-ensure ops (incl. inner section/field + template SV + link + insert-options) carry CreateOnly", () => {
+  it("template-ensure CreateItem + SetBaseTemplates ops carry CreateOnly; SV link + Insert Options carry CreateAndUpdate; recipe-owned ops carry CreateAndUpdate", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
-    const folderRefKey = enumerationFolderId(SITE, "color-scheme@1");
-    const folderTplRefKey = enumerationsFolderTemplateId(SITE);
-    const valueTplRefKey = enumerationTemplateId(SITE);
-    const sectionRefKey = enumerationTemplateSectionId(SITE);
-    const valueFieldRefKey = enumerationTemplateValueFieldId(SITE);
-    const folderSvRefKey = enumerationsFolderTemplateStandardValuesId(SITE);
+    const containerRefKey = enumerationFolderId(SITE, "color-scheme@1");
     const ensureRefKeys = new Set([
-      folderTplRefKey,
-      valueTplRefKey,
-      sectionRefKey,
-      valueFieldRefKey,
-      folderSvRefKey,
+      enumerationsFolderTemplateId(SITE),
+      enumerationTemplateId(SITE),
+      enumerationValueTemplateId(SITE),
+      enumerationContainerSectionId(SITE),
+      enumerationContainerValueFieldId(SITE),
+      enumerationTemplateSectionId(SITE),
+      enumerationTemplateValueFieldId(SITE),
+      enumerationsFolderTemplateStandardValuesId(SITE),
+      enumerationTemplateStandardValuesId(SITE),
     ]);
     for (const op of ir.operations) {
       const isTemplateEnsure =
@@ -274,11 +420,22 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
         ("id" in op && ensureRefKeys.has(op.id)) ||
         ("templateRefKey" in op && ensureRefKeys.has(op.templateRefKey)) ||
         ("standardValuesRefKey" in op && ensureRefKeys.has(op.standardValuesRefKey));
-      expect(op.policy).toBe(isTemplateEnsure ? "CreateOnly" : "CreateAndUpdate");
+      if (!isTemplateEnsure) {
+        expect(op.policy).toBe("CreateAndUpdate");
+        continue;
+      }
+      // SetStandardValues link + Insert Options SetField are recipe-
+      // controlled — CreateAndUpdate so re-pushes always reconcile.
+      // Everything else under template-ensure is CreateOnly (the
+      // template/section/field/SV items themselves).
+      const isReconcileOp =
+        op.op === "SetStandardValues" ||
+        (op.op === "SetField" && op.fieldId === SYSTEM_FIELDS.INSERT_OPTIONS);
+      expect(op.policy).toBe(isReconcileOp ? "CreateAndUpdate" : "CreateOnly");
     }
-    // Sanity-check the folder/value items are CreateAndUpdate.
-    const folder = findCreateItem(ir.operations, (o) => o.id === folderRefKey);
-    expect(folder!.policy).toBe("CreateAndUpdate");
+    // Sanity-check the per-enum container + value items are CreateAndUpdate.
+    const container = findCreateItem(ir.operations, (o) => o.id === containerRefKey);
+    expect(container!.policy).toBe("CreateAndUpdate");
   });
 
   it("throws INPUT_INVALID when context.enumerationsRoot is unset", () => {
@@ -462,6 +619,9 @@ describe("compileComponentTemplateRecipe — inline Droplist field (sitecore.typ
     ).toBeUndefined();
     expect(
       findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE))
+    ).toBeUndefined();
+    expect(
+      findCreateItem(ir.operations, (o) => o.id === enumerationValueTemplateId(SITE))
     ).toBeUndefined();
   });
 

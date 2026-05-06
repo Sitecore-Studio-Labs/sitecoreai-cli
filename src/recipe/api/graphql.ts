@@ -20,6 +20,18 @@ const resolveAuthoringPath = (): string =>
 
 export type AuthoringRequestOptions = GraphQLRequestOptions;
 
+/**
+ * Authoring GraphQL retry policy. Default 5 attempts with exponential
+ * backoff + jitter (honoring `Retry-After` on 429/503). The recipe
+ * executor fans out batched reads and serial mutations against XM
+ * Cloud — both paths benefit from absorbing transient throttling /
+ * gateway hiccups without aborting the whole push. Mutation idempotency
+ * is preserved by the executor's rollback semantics: a "succeeded but
+ * lost the response" duplicate retry surfaces as "item already exists",
+ * the executor rolls back, and the operator sees the failure.
+ */
+const DEFAULT_AUTHORING_RETRY = { maxAttempts: 5 } as const;
+
 export const runAuthoringGraphQL = <T>(
   environment: EnvironmentConfiguration,
   query: string,
@@ -36,5 +48,8 @@ export const runAuthoringGraphQL = <T>(
       requireToken: true,
       getAccessToken,
     },
-    options
+    {
+      ...options,
+      retry: { ...DEFAULT_AUTHORING_RETRY, ...(options?.retry ?? {}) },
+    }
   );

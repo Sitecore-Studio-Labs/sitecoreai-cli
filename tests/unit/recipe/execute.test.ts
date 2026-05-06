@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
 import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import type { CreateItemOp } from "../../../src/recipe/ir/operations";
+import type { RemoteItem } from "../../../src/recipe/api/client";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 const CONTEXT = {
@@ -274,5 +275,118 @@ describe("executeIr — crossRecipeRefs seeding", () => {
     });
     expect(result.aborted).toBe(false);
     expect(result.summary.create).toBeGreaterThan(0);
+  });
+});
+
+describe("executeIr — pathSnapshotCache short-circuit", () => {
+  it("the workspace prefetch eliminates per-op wire calls for cached paths", async () => {
+    const ir = compileCta();
+
+    // Run plan mode WITHOUT a cache to establish the baseline call count.
+    const baselineClient = new MockAuthoringClient();
+    const baselineSpy = vi.spyOn(baselineClient, "getItem");
+    await executeIr(ir, baselineClient, { mode: "plan" });
+    const baselineCalls = baselineSpy.mock.calls.length;
+    expect(baselineCalls).toBeGreaterThan(0);
+
+    // Now run plan mode WITH a fully primed snapshot cache. Every path
+    // the planner reads for a CreateItem op is pre-cached as `null`
+    // (missing on tenant). buildAction's cachedReadByPath short-circuits
+    // every cache hit; the only remaining wire calls are for parent
+    // path resolutions that weren't part of any op's `op.path`.
+    const cachedClient = new MockAuthoringClient();
+    const pathSnapshotCache = new Map<string, RemoteItem | null>();
+    for (const op of ir.operations) {
+      if (op.op === "CreateItem") pathSnapshotCache.set(op.path, null);
+    }
+    const cachedSpy = vi.spyOn(cachedClient, "getItem");
+    await executeIr(ir, cachedClient, { mode: "plan", pathSnapshotCache });
+
+    expect(cachedSpy.mock.calls.length).toBeLessThan(baselineCalls);
+  });
+
+  it("synthesizes a snapshot after dispatch so a sibling recipe sees the just-created item even if the tenant's path index lags", async () => {
+    // Reproduce the cross-recipe duplicate-create failure mode:
+    //   1. Recipe A creates `<componentsRoot>/ui` (CreateOnly section folder).
+    //   2. Recipe B's IR also has a CreateOnly op for the same path.
+    //   3. Sitecore's getItem({ path }) lags and still returns null.
+    //   Without the synthetic-snapshot fix, recipe B re-plans a create and
+    //   the tenant rejects with "name already defined on this level".
+    const ir = compileCta();
+    const sectionFolderOp = ir.operations.find(
+      (op): op is import("../../../src/recipe/ir/operations").CreateItemOp =>
+        op.op === "CreateItem"
+    )!;
+
+    const client = new MockAuthoringClient();
+    // Apply once — captures the synthetic snapshot in the shared cache.
+    const pathSnapshotCache = new Map<string, RemoteItem | null>();
+    const pathItemIdCache = new Map<string, string>();
+    pathSnapshotCache.set(sectionFolderOp.path, null);
+    await executeIr(ir, client, {
+      mode: "apply",
+      pathSnapshotCache,
+      pathItemIdCache,
+    });
+
+    // Now SIMULATE the path-index lag: pretend the tenant returns null for
+    // the just-created path even though a sibling recipe needs it to
+    // resolve as "exists". Override getItem to always return null —
+    // the synthetic snapshot in pathSnapshotCache must short-circuit.
+    const sndClient = new MockAuthoringClient();
+    sndClient.getItem = async () => null;
+    sndClient.getItemsByPaths = async (paths) => {
+      const result = new Map<string, RemoteItem | null>();
+      for (const p of paths) result.set(p, null);
+      return result;
+    };
+
+    // Re-run the same IR with the SHARED caches. Without the synthetic
+    // snapshot, this would plan a `create` for sectionFolderOp.path and
+    // dispatch a duplicate createItem. With the fix, pathSnapshotCache
+    // returns the synthetic and the planner emits skip (CreateOnly) or
+    // no-drift update.
+    const result = await executeIr(ir, sndClient, {
+      mode: "apply",
+      pathSnapshotCache,
+      pathItemIdCache,
+    });
+
+    // No mutations dispatched against the lagging tenant for the section
+    // folder op — the planner saw the synthetic and returned skip.
+    const sectionFolderAction = result.plan.actions.find(
+      (a) => a.operation === sectionFolderOp || a.operation.label === sectionFolderOp.label
+    );
+    expect(sectionFolderAction?.status).not.toBe("create");
+  });
+
+  it("a primed pathItemIdCache pre-seeds capturedItemIds for ref-path parents", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+
+    // Find the first CreateItem with a ref-path parent — that's the path
+    // the executor would otherwise fetch via getItem to resolve the
+    // parent itemId. Pre-prime the path → itemId cache and assert the
+    // planner doesn't issue a fetch for that path.
+    const refPathOp = ir.operations.find(
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.parent.kind === "ref-path"
+    );
+    expect(refPathOp).toBeTruthy();
+    const parentPath =
+      refPathOp!.parent.kind === "ref-path" ? refPathOp!.parent.value : undefined;
+    expect(parentPath).toBeTruthy();
+
+    const pathItemIdCache = new Map<string, string>([
+      [parentPath as string, "primed-parent-id"],
+    ]);
+    const getItemSpy = vi.spyOn(client, "getItem");
+
+    await executeIr(ir, client, { mode: "plan", pathItemIdCache });
+
+    // No getItem call against the primed parent path.
+    const fetchedParent = getItemSpy.mock.calls.some(
+      (call) => call[0].path === parentPath
+    );
+    expect(fetchedParent).toBe(false);
   });
 });

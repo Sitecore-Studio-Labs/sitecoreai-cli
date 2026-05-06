@@ -23,13 +23,12 @@ export type DeploySiteListOptions = DeployBaseOptions & {
 /**
  * Options for `scai deploy site bind` — populate the SXA Site
  * Grouping fields the Pages/Channels app requires (HostName,
- * TargetHostName, StartItem, RenderingHost) so a freshly-created
- * site appears in the Cloud Portal.
+ * StartItem, RenderingHost) so a freshly-created site appears in
+ * the Cloud Portal.
  *
- * The bind step runs after `editing-host deploy` completes — the
- * Cloud Portal's post-deploy registration creates the matching
- * RenderingHost item in CM asynchronously, so this command also
- * polls for that item before patching the Site Grouping.
+ * `RenderingHost` is a string-keyed lookup, so the bind has no
+ * dependency on the editing host deploy completing — it can run
+ * any time after the Site Grouping itself has been provisioned.
  */
 export type DeploySiteBindOptions = DeployBaseOptions & {
   /** SXA site name (e.g. `e2e`). Required. The Site Grouping item
@@ -41,8 +40,7 @@ export type DeploySiteBindOptions = DeployBaseOptions & {
   /** Editing host environment id from the Deploy API. Required —
    *  used to resolve the editing host URL via Deploy API GET. */
   editingHostId?: string;
-  /** Override the RenderingHost item name. Defaults to `siteName`
-   *  (matches the auto-creation convention from xmcloud.build.json). */
+  /** Override the RenderingHost field value. Defaults to `siteName`. */
   renderingHostName?: string;
   /** Override the StartItem name (relative to the site root).
    *  Default `Home`. */
@@ -50,10 +48,6 @@ export type DeploySiteBindOptions = DeployBaseOptions & {
   /** Override HostName field value. Default `*` (wildcard — the
    *  standard SXA Headless setting since routing is hostname-agnostic). */
   hostNamePattern?: string;
-  /** Max seconds to wait for the RenderingHost item to be auto-created
-   *  by the Cloud Portal post-deploy step. Default 180. Set to 0 to
-   *  skip the wait — bind will fail loudly if the item isn't there. */
-  waitForRenderingHostSeconds?: number;
   /** Bypass scai's allowWrite safety. Required to actually mutate the
    *  Site Grouping; without it the command runs in plan-mode and
    *  prints what it would change. */

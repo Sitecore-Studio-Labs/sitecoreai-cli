@@ -20,7 +20,10 @@ import {
  *
  * Idempotent by design: each target is `getItem`-ed first, so a missing
  * path is a clean skip rather than an error. Re-runs after a successful
- * prune produce zero deletions.
+ * prune produce zero deletions. The deletion call itself also tolerates
+ * a "not found" / "may have been deleted by another user" response from
+ * the Authoring API — that race shows up when a parallel prune (or an
+ * author) removed the item between getItem and deleteItem.
  */
 
 const DEFAULT_PRUNE_TARGETS = {
@@ -110,6 +113,22 @@ const buildTargets = (
   ];
 };
 
+/**
+ * Detect the Authoring GraphQL "item is gone" response. The shared
+ * graphql.ts wrapper joins all error.message strings into a single
+ * `Authoring GraphQL errors: <messages>` payload on a NETWORK CliError;
+ * we match the canonical Sitecore phrasing that fires when an itemId
+ * doesn't resolve at delete time.
+ */
+const isItemNotFoundError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const message = error.message;
+  return (
+    message.includes("was not found") ||
+    message.includes("may have been deleted by another user")
+  );
+};
+
 interface PruneCoreOptions {
   client: AuthoringApiClient;
   availableRenderingsRoot: string;
@@ -146,9 +165,22 @@ export const pruneDefaultsAgainstClient = async (
     // Delete by itemId — `deleteItem({ path })` works too, but we
     // already have the itemId from the existence check, and itemId
     // selectors avoid Sitecore's leaf-path resolution edge cases.
-    await client.deleteItem({ itemId: existing.itemId });
-    actions.push({ ...target, status: "deleted", itemId: existing.itemId });
-    logger?.info(`  [deleted] ${target.path}`, "green");
+    try {
+      await client.deleteItem({ itemId: existing.itemId });
+      actions.push({ ...target, status: "deleted", itemId: existing.itemId });
+      logger?.info(`  [deleted] ${target.path}`, "green");
+    } catch (error) {
+      // Authoring GraphQL surfaces concurrent-delete as a "was not found"
+      // / "may have been deleted by another user" message wrapped in a
+      // NETWORK CliError. Treat as a clean skip — the post-condition
+      // (item gone) is satisfied either way.
+      if (isItemNotFoundError(error)) {
+        actions.push({ ...target, status: "missing", itemId: existing.itemId });
+        logger?.info(`  [skip] ${target.path} — already deleted`, "gray");
+        continue;
+      }
+      throw error;
+    }
   }
 
   return actions;

@@ -163,6 +163,56 @@ describe("pruneDefaultsAgainstClient", () => {
     expect(client.deletes).toHaveLength(0);
   });
 
+  it("treats a between-getItem-and-deleteItem race as missing (concurrent prune / author cleanup)", async () => {
+    // Simulate the TOCTOU window: getItem resolves the item, but by the
+    // time deleteItem hits the Authoring API the item is gone (another
+    // prune ran in parallel, or an author deleted it). The Authoring
+    // GraphQL response carries the canonical "was not found ... may have
+    // been deleted by another user" message, wrapped by graphql.ts as a
+    // NETWORK CliError. The prune loop should report this as `missing`
+    // and continue rather than abort the whole task.
+    const presentPaths = [
+      `${ROOTS.availableRenderingsRoot}/Media`,
+      `${ROOTS.headlessVariantsRoot}/Image`,
+    ];
+    const client = makeClient(presentPaths);
+    const racedPath = `${ROOTS.availableRenderingsRoot}/Media`;
+    const racedItemId = (await client.getItem({ path: racedPath }))!.itemId;
+    const realDelete = client.deleteItem;
+    client.deleteItem = vi.fn(async (selector: ItemSelector) => {
+      if (selector.itemId === racedItemId) {
+        throw new Error(
+          `Authoring GraphQL errors: The item "${selector.itemId}" was not found.\n\nIt may have been deleted by another user.`,
+        );
+      }
+      return realDelete(selector);
+    });
+
+    const actions = await pruneDefaultsAgainstClient({
+      client,
+      ...ROOTS,
+      whatIf: false,
+    });
+
+    const racedAction = actions.find((a: PruneAction) => a.path === racedPath)!;
+    expect(racedAction.status).toBe("missing");
+    expect(racedAction.itemId).toBeDefined();
+    const otherDeleted = actions.find(
+      (a: PruneAction) => a.path === `${ROOTS.headlessVariantsRoot}/Image`,
+    )!;
+    expect(otherDeleted.status).toBe("deleted");
+  });
+
+  it("re-throws non-not-found delete errors", async () => {
+    const client = makeClient([`${ROOTS.availableRenderingsRoot}/Media`]);
+    client.deleteItem = vi.fn(async () => {
+      throw new Error("Authoring GraphQL errors: Internal server error");
+    });
+    await expect(
+      pruneDefaultsAgainstClient({ client, ...ROOTS, whatIf: false }),
+    ).rejects.toThrow(/Internal server error/);
+  });
+
   it("dry-run reports would-delete actions and skips deleteItem", async () => {
     const presentPaths = [
       `${ROOTS.availableRenderingsRoot}/Media`,

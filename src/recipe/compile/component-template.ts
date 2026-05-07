@@ -907,7 +907,7 @@ function emitVariants(
     parent: perRenderingParentRef,
     templateOf: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
     name: recipe.name,
-    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
+    fields: [],
   } satisfies CreateItemOp);
 
   for (const variant of recipe.variants) {

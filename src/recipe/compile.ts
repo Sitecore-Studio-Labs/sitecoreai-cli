@@ -1,6 +1,7 @@
 import {
   availableRenderingsSectionId,
   enumerationFolderId,
+  enumerationsRootId,
   enumerationsRootStandardValuesId,
   PAGE_DESIGNS_ROOT_REF_KEY,
   pageDesignId,
@@ -25,6 +26,7 @@ import {
   AVAILABLE_RENDERINGS_FIELDS,
   COMPOSITION_FIELDS,
   DEFAULT_ICON,
+  ENUMERATION_ICON,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
@@ -43,7 +45,7 @@ import { compileContentItemRecipe } from "./compile/content-item";
 import { compileSiteTemplateRecipe } from "./compile/site-template";
 import { compileSiteRecipe } from "./compile/site";
 import { compileEnumerationRecipe } from "./compile/enumeration";
-import { joinPath, siteOf, type CompileContext } from "./compile/shared";
+import { joinPath, sharedField, siteOf, type CompileContext } from "./compile/shared";
 
 // Re-export per-kind compile functions so existing import paths
 // (`import { compileComponentTemplateRecipe } from "@/recipe/compile"`)
@@ -571,17 +573,46 @@ const buildEnumerationsRootAggregate = (
 
   const sortedHandles = [...handles].sort((a, b) => a.localeCompare(b));
   const policy = defaultPolicyForRecipe("enumeration");
+  const rootRefKey = enumerationsRootId(site);
   const svRefKey = enumerationsRootStandardValuesId(site);
   const svPath = joinPath(context.enumerationsRoot, "__Standard Values");
 
+  // Derive the root's parent path + leaf name from `enumerationsRoot`
+  // (e.g. `<site>/Presentation/Enumerations` → parent
+  // `<site>/Presentation`, name `Enumerations`).
+  const lastSlash = context.enumerationsRoot.lastIndexOf("/");
+  const rootParentPath = context.enumerationsRoot.slice(0, lastSlash);
+  const rootName = context.enumerationsRoot.slice(lastSlash + 1);
+
   const operations: Operation[] = [];
+  // Explicit emit for the enumerations root item itself. Without this,
+  // the executor's path-walker auto-creates it as the generic `Folder`
+  // template the first time a child op lands, leaving the SXA editor
+  // showing the default folder icon. The explicit op stamps the
+  // enumeration glyph (matching `Enumeration` / `Enumerations Folder`
+  // templates) via `__Icon`, so the root visually reads as "the
+  // enumerations bucket" instead of a generic folder. Policy is
+  // CreateAndUpdate so the icon retroactively fixes tenants where the
+  // root already exists.
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `enumerations-root:${site}`,
+    id: rootRefKey,
+    path: context.enumerationsRoot,
+    parent: { kind: "ref-path", value: rootParentPath },
+    templateOf: SITECORE_TEMPLATES.FOLDER,
+    name: rootName,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: ENUMERATION_ICON })],
+  } satisfies CreateItemOp);
+
   operations.push({
     op: "CreateItem",
     policy: "CreateOnly",
     label: `enumerations-root-standard-values:${site}`,
     id: svRefKey,
     path: svPath,
-    parent: { kind: "ref-path", value: context.enumerationsRoot },
+    parent: { kind: "ref-recipe", refKey: rootRefKey },
     templateOf: SITECORE_TEMPLATES.FOLDER,
     name: "__Standard Values",
     fields: [],

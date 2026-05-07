@@ -484,13 +484,25 @@ export const siteDataRootStandardValuesId = (site: string): string =>
   uuidv5(`${site}::data-root-standard-values`, NAMESPACE_PROJECT);
 
 /**
+ * Recipe-internal refKey for the enumerations root ITEM (one per site
+ * — the `<enumerationsRoot>` content tree node, e.g.
+ * `<site>/Presentation/Enumerations`). The path-walker would otherwise
+ * auto-create this as the generic `Folder` template with the default
+ * folder icon when child ops first land; scai emits an explicit
+ * CreateAndUpdate CreateItem against this refKey so the item exists
+ * with the enumeration glyph icon, matching the per-site enumeration
+ * templates' icon.
+ */
+export const enumerationsRootId = (site: string): string =>
+  uuidv5(`${site}::enumerations-root`, NAMESPACE_PROJECT);
+
+/**
  * Recipe-internal refKey for the enumerations root's
  * `__Standard Values` item (one per site). Mirror of
- * `siteDataRootStandardValuesId` for the enumerations tree — the
- * `<enumerationsRoot>` item itself is tenant-pre-existing; scai writes
- * the SV directly under it via a CreateOnly CreateItem op so authors'
- * right-click → Insert UX is restricted to enumeration folders + the
- * generic Folder template.
+ * `siteDataRootStandardValuesId` for the enumerations tree — scai
+ * writes the SV directly under the root via a CreateOnly CreateItem op
+ * so authors' right-click → Insert UX is restricted to enumeration
+ * folders + the generic Folder template.
  */
 export const enumerationsRootStandardValuesId = (site: string): string =>
   uuidv5(`${site}::enumerations-root-standard-values`, NAMESPACE_PROJECT);

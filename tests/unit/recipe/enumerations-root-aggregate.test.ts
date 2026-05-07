@@ -10,10 +10,12 @@ import {
   enumerationsFolderTemplateId,
   enumerationsFolderTemplateStandardValuesId,
   enumerationsGroupingFolderId,
+  enumerationsRootId,
   enumerationsRootStandardValuesId,
   enumerationTemplateId,
 } from "../../../src/recipe/guids";
 import {
+  ENUMERATION_ICON,
   SITECORE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
@@ -62,20 +64,36 @@ const findCreateItem = (
   ops.find((op): op is CreateItemOp => op.op === "CreateItem" && predicate(op));
 
 describe("compileRecipeSet — enumerations root Standard Values aggregator", () => {
-  it("single enum → SV op + Insert Options [Folder, that enum's folder]", () => {
+  it("single enum → root + SV ops + Insert Options [Folder, that enum's folder]", () => {
     const recipe = baseEnum({});
     const irs = compileRecipeSet([recipe], CONTEXT);
     const aggregate = findAggregate(irs);
     expect(aggregate).toBeDefined();
-    expect(aggregate!.operations).toHaveLength(2);
+    expect(aggregate!.operations).toHaveLength(3);
 
-    const sv = findOp(
+    // Root item explicitly emitted with the enumeration glyph icon so
+    // the executor's path-walker doesn't auto-create it as a generic
+    // Folder with the default folder icon.
+    const root = findCreateItem(aggregate!.operations, (o) => o.id === enumerationsRootId(SITE));
+    expect(root).toBeDefined();
+    expect(root!.path).toBe(ENUMERATIONS_ROOT);
+    expect(root!.parent).toEqual({ kind: "ref-path", value: "/sitecore/content/test-tenant/test-site/Settings" });
+    expect(root!.name).toBe("Enumerations");
+    expect(root!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
+    expect(root!.policy).toBe("CreateAndUpdate");
+    expect(root!.fields).toEqual([
+      {
+        fieldId: SYSTEM_FIELDS.ICON,
+        value: { kind: "string", value: ENUMERATION_ICON },
+      },
+    ]);
+
+    const sv = findCreateItem(
       aggregate!.operations,
-      (op): op is CreateItemOp => op.op === "CreateItem"
+      (o) => o.id === enumerationsRootStandardValuesId(SITE)
     );
-    expect(sv!.id).toBe(enumerationsRootStandardValuesId(SITE));
     expect(sv!.path).toBe(`${ENUMERATIONS_ROOT}/__Standard Values`);
-    expect(sv!.parent).toEqual({ kind: "ref-path", value: ENUMERATIONS_ROOT });
+    expect(sv!.parent).toEqual({ kind: "ref-recipe", refKey: enumerationsRootId(SITE) });
     expect(sv!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
     expect(sv!.policy).toBe("CreateOnly");
     expect(sv!.fields).toEqual([]);

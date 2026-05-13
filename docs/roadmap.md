@@ -24,29 +24,42 @@ These are larger pieces of work scoped during the parity audit
 (see [parity-with-devex.md](./parity-with-devex.md)). Each one is
 sized for its own branch/PR.
 
-### `scai content` — content hygiene command group
+### ✅ `scai audit` + `scai cleanup` — shipped 2026-05-13
 
 Replaces the XM-Cloud-shaped subset of dotnet `sitecore dbcleanup` with
 operations expressible through the Authoring GraphQL API. SQL-level
 operations (`clean-blobs`, `clean-fields`, `rebuild-descendants`) remain
 out of scope — they aren't possible without direct DB access.
 
-Initial scope:
+The group was renamed from the originally-planned `scai content` to
+two command groups by intent: read-only diagnostics under `scai audit`,
+mutating cleanup under `scai cleanup`. "Content" was too broad — every
+verb in the set is hygiene/diagnostic, not "content" in general.
 
-- `scai content broken-links list` — internal links pointing to deleted
-  items (uses the link database query).
-- `scai content unused-media list` — media items with zero datasource
-  / rendering-parameter references.
-- `scai content orphans list` — items whose parents are gone.
-- `scai content versions prune --keep N` — trim per-language version
-  history.
-- `scai content language-data clean` — language entries without versions
-  (analogue of dotnet `clean-invalid-language-data`).
-- `scai content stale-workflow list` — items stuck in workflow steps.
+Shipped:
 
-All `list` variants are read-only. Mutating verbs (`prune`, `clean`)
-respect `--allow-write`, `--what-if`, and `--force`. Output piped as
-item lists for chaining with `ser pull` / `ser push`.
+- `scai audit broken-links list` — internal links pointing to deleted
+  items (search-index crawl + ref-resolution batch).
+- `scai audit unused-media list` — media items with zero references.
+- `scai audit orphans list` — items in the Sitecore archive (recycle
+  bin). XM Cloud doesn't produce true SQL-orphans because the schema
+  enforces parent integrity; the archive is the closest analogue.
+- `scai audit stale-workflow list` — items stuck in a non-final
+  workflow state past a `--days N` threshold.
+- `scai audit language-data list` — items with empty per-language
+  entries. **Read-only by design**: the XM Cloud Authoring API
+  exposes only `deleteLanguage` (tenant-wide, destructive) and
+  `deleteItemVersion` (single version) — no per-item, per-language
+  removal mutation. The on-prem `clean-invalid-language-data` shape
+  isn't portable; this command surfaces the data, operator cleans up
+  manually.
+- `scai cleanup versions prune --keep N --root <path>` — trim
+  per-(item, language) version history down to N most recent. Requires
+  `--root` (no tenant-wide form), refuses `/sitecore/system` and
+  `/sitecore/templates/System` without `--force`, honors
+  `--allow-write` / `--what-if`.
+
+All `list` verbs honor `--json` for piping into `ser pull` / `ser push`.
 
 ### `scai publish item` — Edge publish trigger
 

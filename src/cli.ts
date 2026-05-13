@@ -2,6 +2,8 @@
 
 import { Command } from "commander";
 import packageJson from "../package.json";
+import { createAuditCommand } from "./commands/audit";
+import { createCleanupCommand } from "./commands/cleanup";
 import { createSerializationCommand } from "./commands/serialization";
 import { normalizeArgs } from "./commands/shared";
 import { createStatusCommand } from "./commands/status";
@@ -239,6 +241,8 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
     .description("SitecoreAI Deploy & Sync CLI for serialization and deploy workflows")
     .version(packageJson.version, "-V, --version", "Display the CLI version");
 
+  program.addCommand(createAuditCommand());
+  program.addCommand(createCleanupCommand());
   program.addCommand(createConfigCommand());
   program.addCommand(createDeployCommand());
   program.addCommand(createHistoryCommand());

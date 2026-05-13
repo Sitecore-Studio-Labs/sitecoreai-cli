@@ -11,6 +11,8 @@ SitecoreAI Deploy & Sync CLI for serialization and deploy workflows
 
 **Top-level commands**
 
+- [`audit`](#scai-audit) — Read-only diagnostics over Sitecore content — links, media, archive, workflow, languages
+- [`cleanup`](#scai-cleanup) — Mutating hygiene operations — prune version history, etc. Honours --what-if and --allow-write.
 - [`config`](#scai-config) — Configuration utilities
 - [`deploy`](#scai-deploy) — XM Cloud Deploy API commands
 - [`history`](#scai-history) — Show CLI activity history
@@ -20,6 +22,258 @@ SitecoreAI Deploy & Sync CLI for serialization and deploy workflows
 - [`serialization`](#scai-serialization) — Item serialization commands
 - [`status`](#scai-status) — Show configured Sitecore environments for this CLI
 - [`telemetry`](#scai-telemetry) — Telemetry utilities
+
+## scai audit
+
+Read-only diagnostics over Sitecore content — links, media, archive, workflow, languages
+
+```
+scai audit [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit broken-links`](#scai-audit-broken-links) — Find content items with internal links that point to deleted items
+- [`scai audit language-data`](#scai-audit-language-data) — Find items with empty per-language entries (no versions) — read-only diagnostic
+- [`scai audit orphans`](#scai-audit-orphans) — Find items in the Sitecore archive (recycle bin) — the XM Cloud analogue of orphan items
+- [`scai audit stale-workflow`](#scai-audit-stale-workflow) — Find items stuck in a workflow state past a stale-after threshold
+- [`scai audit unused-media`](#scai-audit-unused-media) — Find media library items with zero references from content
+
+### scai audit broken-links
+
+Find content items with internal links that point to deleted items
+
+```
+scai audit broken-links [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit broken-links list`](#scai-audit-broken-links-list) — List items containing broken internal links (RichText, General Link, Multilist)
+
+#### scai audit broken-links list
+
+List items containing broken internal links (RichText, General Link, Multilist)
+
+```
+scai audit broken-links list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+- `--batch-size <count>` — Aliased GraphQL batch size for field reads
+
+### scai audit language-data
+
+Find items with empty per-language entries (no versions) — read-only diagnostic
+
+```
+scai audit language-data [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit language-data list`](#scai-audit-language-data-list) — List (item, language) pairs where the language entry exists but has zero versions
+
+#### scai audit language-data list
+
+List (item, language) pairs where the language entry exists but has zero versions
+
+```
+scai audit language-data list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+- `--languages <value>` — Comma-separated language codes to inspect (default: all languages found under --root) (default: `[]`)
+- `--concurrency <count>` — Per-pair version-probe concurrency
+
+### scai audit orphans
+
+Find items in the Sitecore archive (recycle bin) — the XM Cloud analogue of orphan items
+
+```
+scai audit orphans [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit orphans list`](#scai-audit-orphans-list) — List archived (orphan) items
+
+#### scai audit orphans list
+
+List archived (orphan) items
+
+```
+scai audit orphans list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--archive-name <name>` — Limit to a specific archive (default: all archives)
+- `--page-size <count>` — Page size for the archive listing
+- `--limit <count>` — Maximum number of archived items to return
+
+### scai audit stale-workflow
+
+Find items stuck in a workflow state past a stale-after threshold
+
+```
+scai audit stale-workflow [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit stale-workflow list`](#scai-audit-stale-workflow-list) — List items in a non-final workflow state with no updates in N days
+
+#### scai audit stale-workflow list
+
+List items in a non-final workflow state with no updates in N days
+
+```
+scai audit stale-workflow list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+- `--days <count>` — Stale threshold in days (default: 30)
+- `--concurrency <count>` — Per-item workflow-check concurrency
+
+### scai audit unused-media
+
+Find media library items with zero references from content
+
+```
+scai audit unused-media [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit unused-media list`](#scai-audit-unused-media-list) — List media items that aren't referenced by any content
+
+#### scai audit unused-media list
+
+List media items that aren't referenced by any content
+
+```
+scai audit unused-media list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--media-root <path>` — Media library root to scan (default: /sitecore/media library)
+- `--reference-root <path>` — Root under which media references are searched (default: /sitecore/content)
+- `--media-limit <count>` — Cap on the number of media items inspected
+- `--reference-limit <count>` — Cap on the number of reference-side items inspected
+- `--batch-size <count>` — Aliased GraphQL batch size for field reads
+
+## scai cleanup
+
+Mutating hygiene operations — prune version history, etc. Honours --what-if and --allow-write.
+
+```
+scai cleanup [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup versions`](#scai-cleanup-versions) — Prune per-item version history down to the N most recent versions
+
+### scai cleanup versions
+
+Prune per-item version history down to the N most recent versions
+
+```
+scai cleanup versions [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup versions prune`](#scai-cleanup-versions-prune) — Delete versions older than the N most recent per (item, language)
+
+#### scai cleanup versions prune
+
+Delete versions older than the N most recent per (item, language)
+
+```
+scai cleanup versions prune [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--keep <count>` — Number of most-recent versions to keep per (item, language)
+- `--root <path>` — Content-tree root to scope the prune (e.g. /sitecore/content/MySite)
+- `--language <code>` — Restrict pruning to one language (default: all languages found per item)
+- `--limit <count>` — Cap on the number of items inspected
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--concurrency <count>` — Concurrency for version reads and deletes
+- `--include-system` — Include /sitecore/system and platform items in the prune
 
 ## scai config
 
@@ -411,6 +665,7 @@ scai deploy environments [options] [command]
 - [`scai deploy environments get`](#scai-deploy-environments-get) — Get an environment by name or ID
 - [`scai deploy environments get-edge-token`](#scai-deploy-environments-get-edge-token) — Get edge token for an environment
 - [`scai deploy environments get-editing-secret`](#scai-deploy-environments-get-editing-secret) — Get editing secret for an environment
+- [`scai deploy environments health`](#scai-deploy-environments-health) — Probe environment health (GET <cmHost>/healthz/ready)
 - [`scai deploy environments limitation`](#scai-deploy-environments-limitation) — Get environment limitations
 - [`scai deploy environments link-repository`](#scai-deploy-environments-link-repository) — Link a repository to an environment
 - [`scai deploy environments list`](#scai-deploy-environments-list) — List environments
@@ -580,6 +835,29 @@ Get editing secret for an environment
 
 ```
 scai deploy environments get-editing-secret [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--id <id>` — Environment ID
+- `--name <name>` — Environment name
+- `--project <value>` — Project name or ID
+
+#### scai deploy environments health
+
+Probe environment health (GET <cmHost>/healthz/ready)
+
+```
+scai deploy environments health [options]
 ```
 
 **Options**

@@ -14,6 +14,8 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command, Option } from "commander";
 
+import { createAuditCommand } from "../src/commands/audit";
+import { createCleanupCommand } from "../src/commands/cleanup";
 import { createConfigCommand } from "../src/commands/config";
 import { createDeployCommand } from "../src/commands/deploy";
 import { createHistoryCommand } from "../src/commands/history";
@@ -35,6 +37,8 @@ const buildProgram = (): Command => {
 
   // `shell` is intentionally excluded — it takes a runCli callback and is
   // an interactive REPL; documenting it inline doesn't help.
+  program.addCommand(createAuditCommand());
+  program.addCommand(createCleanupCommand());
   program.addCommand(createConfigCommand());
   program.addCommand(createDeployCommand());
   program.addCommand(createHistoryCommand());
@@ -58,8 +62,7 @@ const isMachineSpecific = (value: unknown): boolean => {
 const renderOption = (option: Option): string => {
   const flags = `\`${option.flags}\``;
   const description = option.description || "";
-  const showDefault =
-    option.defaultValue !== undefined && !isMachineSpecific(option.defaultValue);
+  const showDefault = option.defaultValue !== undefined && !isMachineSpecific(option.defaultValue);
   const defaultValue = showDefault ? ` (default: \`${JSON.stringify(option.defaultValue)}\`)` : "";
   return `${flags} — ${escapePipe(description)}${defaultValue}`;
 };
@@ -163,7 +166,11 @@ const main = (): void => {
     renderCommand(top, 1, lines);
   }
 
-  const output = lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  const output =
+    lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trimEnd() + "\n";
   const outputPath = resolve(__dirname, "..", "docs", "commands.md");
   writeFileSync(outputPath, output);
   process.stdout.write(`Wrote ${outputPath}\n`);

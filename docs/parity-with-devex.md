@@ -12,23 +12,23 @@ Those are out of scope by design, not by oversight.
 
 ## Covered
 
-| dotnet surface | scai equivalent | Notes |
-| --- | --- | --- |
-| `sitecore ser pull` | `scai ser pull` | Same semantics. |
-| `sitecore ser push` | `scai ser push` | Same semantics. `--publish` chain is out of scope (see Publishing below). |
-| `sitecore ser diff` (local vs remote) | `scai ser diff` | Same semantics for the local-vs-remote case. |
-| `sitecore ser diff --source A --destination B [--push]` | _Planned_ | Roadmap entry: `--source-env` / `--target-env` / `--push`. Implementation: temp-dir pivot reusing the existing diff + push engines. |
-| `sitecore ser info`, `explain`, `validate`, `watch` | `scai ser info|explain|validate|watch` | Same. `--fix` auto-correct on `validate` is not implemented. |
-| `sitecore ser package create|install` | `scai ser package create|install` | Same. |
-| `sitecore cloud organization {info,health,license}` | `scai deploy org {get,health,license,launch-demo}` | scai adds `launch-demo`. |
-| `sitecore cloud project {create,list,info,update,delete}` | `scai deploy proj {…}` | scai adds `limitation`, `validate-name`, `link-repository`, `unlink-repository`. |
-| `sitecore cloud environment {create,list,info,update,delete,health,restart,promote}` | `scai deploy env {…}` including `health` | scai adds `get-edge-token`, `get-editing-secret`, `regenerate-context`, repo linking. `env health` probes `<cmHost>/healthz/ready`. |
-| `sitecore cloud environment variable {list,upsert,delete}` | `scai deploy env variables {…}` | Same. |
-| `sitecore cloud deployment {create,list,info,start,watch,cancel}` | `scai deploy dep {…}` | Same. |
-| `sitecore cloud editinghost {create,update,delete,deploy}` | `scai deploy editing-host {list,create,update,delete,deploy}` | scai adds `list`. |
-| `sitecore cloud logs {list,view,download}` + `deployment log` | `scai deploy logs {list,view,data}` | Same. |
-| `sitecore cloud login|logout` | `scai login` / `scai logout` | Top-level on scai; OS keychain instead of `user.json`. |
-| `sitecore init` (sitecore.json) | `scai init` | Different config file (`sitecoreai.cli.json`) and an interactive wizard. |
+| dotnet surface                                                                       | scai equivalent                                               | Notes                                                                                                                               |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------ | ------------------------------------------------------------ |
+| `sitecore ser pull`                                                                  | `scai ser pull`                                               | Same semantics.                                                                                                                     |
+| `sitecore ser push`                                                                  | `scai ser push`                                               | Same semantics. `--publish` chain is out of scope (see Publishing below).                                                           |
+| `sitecore ser diff` (local vs remote)                                                | `scai ser diff`                                               | Same semantics for the local-vs-remote case.                                                                                        |
+| `sitecore ser diff --source A --destination B [--push]`                              | _Planned_                                                     | Roadmap entry: `--source-env` / `--target-env` / `--push`. Implementation: temp-dir pivot reusing the existing diff + push engines. |
+| `sitecore ser info`, `explain`, `validate`, `watch`                                  | `scai ser info                                                | explain                                                                                                                             | validate                                               | watch` | Same. `--fix` auto-correct on `validate` is not implemented. |
+| `sitecore ser package create                                                         | install`                                                      | `scai ser package create                                                                                                            | install`                                               | Same.  |
+| `sitecore cloud organization {info,health,license}`                                  | `scai deploy org {get,health,license,launch-demo}`            | scai adds `launch-demo`.                                                                                                            |
+| `sitecore cloud project {create,list,info,update,delete}`                            | `scai deploy proj {…}`                                        | scai adds `limitation`, `validate-name`, `link-repository`, `unlink-repository`.                                                    |
+| `sitecore cloud environment {create,list,info,update,delete,health,restart,promote}` | `scai deploy env {…}` including `health`                      | scai adds `get-edge-token`, `get-editing-secret`, `regenerate-context`, repo linking. `env health` probes `<cmHost>/healthz/ready`. |
+| `sitecore cloud environment variable {list,upsert,delete}`                           | `scai deploy env variables {…}`                               | Same.                                                                                                                               |
+| `sitecore cloud deployment {create,list,info,start,watch,cancel}`                    | `scai deploy dep {…}`                                         | Same.                                                                                                                               |
+| `sitecore cloud editinghost {create,update,delete,deploy}`                           | `scai deploy editing-host {list,create,update,delete,deploy}` | scai adds `list`.                                                                                                                   |
+| `sitecore cloud logs {list,view,download}` + `deployment log`                        | `scai deploy logs {list,view,data}`                           | Same.                                                                                                                               |
+| `sitecore cloud login                                                                | logout`                                                       | `scai login` / `scai logout`                                                                                                        | Top-level on scai; OS keychain instead of `user.json`. |
+| `sitecore init` (sitecore.json)                                                      | `scai init`                                                   | Different config file (`sitecoreai.cli.json`) and an interactive wizard.                                                            |
 
 ## Added in scai
 
@@ -74,19 +74,43 @@ triggers an Edge publish for a specific item / subtree via the
 Authoring GraphQL API. The rest of the dotnet surface
 (`list-targets`, multi-target, republish-all) is on-prem-only.
 
-### `sitecore dbcleanup` (Database plugin) — ❌ replaced by `scai content` hygiene group
+### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 
 The dotnet plugin's `clean-blobs`, `clean-fields`, `clean-orphan-fields`,
 and `rebuild-descendants` operate at the SQL layer. None of those are
 possible on XM Cloud. But several of its operations
 (`clean-orphan-items`, `clean-cyclic-dependencies`,
-`clean-invalid-language-data`) are content-shaped and *are* expressible
+`clean-invalid-language-data`) are content-shaped and _are_ expressible
 through the Authoring GraphQL API.
 
-**Decision:** rather than port `dbcleanup`, build a `scai content`
-command group focused on XM-Cloud-shaped content hygiene operations
-(broken links, unused media, orphans, version pruning, etc.). See the
-roadmap. The SQL-only operations remain explicitly out of scope.
+**Decision (shipped):** rather than port `dbcleanup`, the parity work
+landed as two intent-shaped command groups:
+
+- `scai audit` (read-only diagnostics) — broken-links, unused-media,
+  orphans (= XM Cloud archive listing), stale-workflow, language-data.
+- `scai cleanup` (mutating) — versions prune with `--root` /
+  `--keep` / `--what-if` / `--allow-write`.
+
+Originally planned as `scai content`; renamed during scoping because
+"content" was too broad — every verb is hygiene-shaped, not
+content-shaped in any general sense.
+
+**XM Cloud limits surfaced during the build:**
+
+- `clean-invalid-language-data` analogue is **read-only** (`scai audit
+language-data list`). The Authoring API exposes only tenant-wide
+  `deleteLanguage` (destructive) and per-version `deleteItemVersion` —
+  no per-item, per-language entry removal. The on-prem mutation
+  isn't portable.
+- True SQL-orphans (items whose parent rows are missing) don't exist
+  on XM Cloud — the GraphQL schema enforces parent integrity. The
+  closest analogue is items in the archive (recycle bin), surfaced via
+  `archivedItems`.
+- `broken-links` and `unused-media` are tree-crawl-and-scan operations
+  on XM Cloud (no link-database query exposed). The `--limit` flag
+  guards against very large tenants.
+
+The SQL-only operations remain explicitly out of scope.
 
 ### `sitecore itemres` (ResourcePackage plugin) — 🗓️ planned
 
@@ -119,7 +143,7 @@ Rationale:
 - The dotnet plugin model exists mostly so Sitecore can ship XmCloud
   separately from the host — that's a Sitecore-team coordination
   boundary, not a user-facing benefit. scai bundles all of that into
-  one binary, which is a *simpler* story for end users (one install,
+  one binary, which is a _simpler_ story for end users (one install,
   one version, one audit surface).
 - Most user-shaped extension needs (custom template / rendering
   definitions, project-specific content patterns) are covered by

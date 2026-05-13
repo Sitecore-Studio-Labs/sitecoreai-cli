@@ -4,10 +4,12 @@ import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
 import { createAuditDuplicatesCommand } from "./duplicates";
 import { createAuditEmptyItemsCommand } from "./empty-items";
+import { createAuditFindReplaceCommand } from "./find-replace";
 import { createAuditLanguageDataCommand } from "./language-data";
 import { createAuditOrphansCommand } from "./orphans";
 import { createAuditPageDesignOrphansCommand } from "./page-design-orphans";
 import { createAuditPersonalizationBrokenCommand } from "./personalization-broken";
+import { createAuditStaleContentCommand } from "./stale-content";
 import { createAuditStaleWorkflowCommand } from "./stale-workflow";
 import { createAuditUnusedMediaCommand } from "./unused-media";
 
@@ -21,10 +23,12 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditDeadTemplatesCommand());
   command.addCommand(createAuditDuplicatesCommand());
   command.addCommand(createAuditEmptyItemsCommand());
+  command.addCommand(createAuditFindReplaceCommand());
   command.addCommand(createAuditLanguageDataCommand());
   command.addCommand(createAuditOrphansCommand());
   command.addCommand(createAuditPageDesignOrphansCommand());
   command.addCommand(createAuditPersonalizationBrokenCommand());
+  command.addCommand(createAuditStaleContentCommand());
   command.addCommand(createAuditStaleWorkflowCommand());
   command.addCommand(createAuditUnusedMediaCommand());
 

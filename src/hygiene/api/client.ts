@@ -207,6 +207,15 @@ export interface HygieneApiClient {
   }): Promise<ItemTemplateSummary[]>;
   /** Direct children of an item (one level), keyed for folder-empty checks. */
   getChildren(selector: { itemId?: string; path?: string }): Promise<ChildSummary[]>;
+  /**
+   * Apply field updates to a single item. Fields are passed by name +
+   * new value. Used by `cleanup find-replace`. Authoring API resolves
+   * field names against the item's template.
+   */
+  updateItemFields(input: {
+    itemId: string;
+    fields: Array<{ name: string; value: string }>;
+  }): Promise<void>;
 }
 
 export interface HygieneClientOptions {
@@ -395,6 +404,13 @@ mutation($input: DeleteItemTemplateInput!) {
   }
 }`;
 
+const UPDATE_ITEM_MUTATION = `
+mutation($input: UpdateItemInput!) {
+  updateItem(input: $input) {
+    item { itemId }
+  }
+}`;
+
 const DELETE_ARCHIVED_ITEM_MUTATION = `
 mutation($input: DeleteArchivedItemInput!) {
   deleteArchivedItem(input: $input) {
@@ -479,6 +495,9 @@ type GraphQLDeleteTemplateResponse = {
 };
 type GraphQLDeleteArchivedItemResponse = {
   deleteArchivedItem: { successful: boolean } | null;
+};
+type GraphQLUpdateItemResponse = {
+  updateItem: { item: { itemId: string } | null } | null;
 };
 type GraphQLArchiveVersionResponse = {
   archiveVersion: { archiveVersionId: string | null } | null;
@@ -1029,6 +1048,33 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     throw createScaiError("getChildren requires itemId or path.", "INPUT_INVALID");
   };
 
+  const updateItemFields = async (input: {
+    itemId: string;
+    fields: Array<{ name: string; value: string }>;
+  }): Promise<void> => {
+    if (!input.itemId) {
+      throw createScaiError("updateItemFields requires itemId.", "INPUT_INVALID");
+    }
+    if (!input.fields.length) {
+      // No-op for empty field updates — saves a wire call.
+      return;
+    }
+    const data = await runHygieneAuthoringGraphQL<GraphQLUpdateItemResponse>(
+      environment,
+      UPDATE_ITEM_MUTATION,
+      {
+        input: {
+          itemId: input.itemId,
+          fields: input.fields,
+        },
+      },
+      writeRequest
+    );
+    if (!data.updateItem?.item?.itemId) {
+      throw createScaiError(`updateItem returned no itemId for ${input.itemId}.`, "UNKNOWN");
+    }
+  };
+
   return {
     search,
     searchAll,
@@ -1046,6 +1092,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     archiveVersion,
     listItemTemplates,
     getChildren,
+    updateItemFields,
   };
 };
 

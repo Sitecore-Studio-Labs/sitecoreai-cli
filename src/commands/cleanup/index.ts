@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { createCleanupArchiveCommand } from "./archive";
 import { createCleanupDeadTemplatesCommand } from "./dead-templates";
 import { createCleanupDuplicatesCommand } from "./duplicates";
+import { createCleanupFindReplaceCommand } from "./find-replace";
 import { createCleanupVersionsCommand } from "./versions";
 
 export const createCleanupCommand = (): Command => {
@@ -12,6 +13,7 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupArchiveCommand());
   command.addCommand(createCleanupDeadTemplatesCommand());
   command.addCommand(createCleanupDuplicatesCommand());
+  command.addCommand(createCleanupFindReplaceCommand());
   command.addCommand(createCleanupVersionsCommand());
 
   command.addHelpText(

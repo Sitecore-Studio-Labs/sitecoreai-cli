@@ -66,4 +66,13 @@ export type {
   VersionArchiveAction,
 } from "./cleanup-versions-archive";
 
+export { runAuditFindReplace } from "./audit-find-replace";
+export type { AuditFindReplaceOptions, FindReplaceMatch } from "./audit-find-replace";
+
+export { runAuditStaleContent } from "./audit-stale-content";
+export type { AuditStaleContentOptions, StaleContentReport } from "./audit-stale-content";
+
+export { runCleanupFindReplace } from "./cleanup-find-replace";
+export type { CleanupFindReplaceOptions, FindReplaceAction } from "./cleanup-find-replace";
+
 export type { HygieneCommonOptions } from "./shared";

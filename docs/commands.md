@@ -38,10 +38,12 @@ scai audit [options] [command]
 - [`scai audit dead-templates`](#scai-audit-dead-templates) — Find item templates with zero items derived from them
 - [`scai audit duplicates`](#scai-audit-duplicates) — Find items with byte-identical authored content
 - [`scai audit empty-items`](#scai-audit-empty-items) — Find items with no authored field values
+- [`scai audit find-replace`](#scai-audit-find-replace) — Search content field values for a pattern (regex or literal). Read-only counterpart to `cleanup find-replace`.
 - [`scai audit language-data`](#scai-audit-language-data) — Find items with empty per-language entries (no versions) — read-only diagnostic
 - [`scai audit orphans`](#scai-audit-orphans) — Find items in the Sitecore archive (recycle bin) — the XM Cloud analogue of orphan items
 - [`scai audit page-design-orphans`](#scai-audit-page-design-orphans) — Find pages referencing missing page designs (XM Cloud SXA)
 - [`scai audit personalization-broken`](#scai-audit-personalization-broken) — Find pages with personalization rules referencing missing items
+- [`scai audit stale-content`](#scai-audit-stale-content) — Find content items not updated in N days — the abandoned-content (graveyard) signal
 - [`scai audit stale-workflow`](#scai-audit-stale-workflow) — Find items stuck in a workflow state past a stale-after threshold
 - [`scai audit unused-media`](#scai-audit-unused-media) — Find media library items with zero references from content
 
@@ -245,6 +247,53 @@ scai audit empty-items list [options]
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 
+### scai audit find-replace
+
+Search content field values for a pattern (regex or literal). Read-only counterpart to `cleanup find-replace`.
+
+```
+scai audit find-replace [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit find-replace list`](#scai-audit-find-replace-list) — List items whose fields contain matches for --pattern
+
+#### scai audit find-replace list
+
+List items whose fields contain matches for --pattern
+
+```
+scai audit find-replace list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--pattern <regex>` — Regex pattern (or literal string with --literal) to match against field values
+- `--literal` — Treat --pattern as a literal string (regex special chars escaped)
+- `--ignore-case` — Case-insensitive match (sets the i regex flag)
+- `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
+- `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
+- `--include-system-fields` — Include \_\_-prefixed system fields in the search (off by default)
+- `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+- `--language <code>` — Restrict to one language
+- `--max-matches-per-item <count>` — Maximum number of sample snippets captured per matching item (default 10)
+
 ### scai audit language-data
 
 Find items with empty per-language entries (no versions) — read-only diagnostic
@@ -397,6 +446,48 @@ scai audit personalization-broken list [options]
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 
+### scai audit stale-content
+
+Find content items not updated in N days — the abandoned-content (graveyard) signal
+
+```
+scai audit stale-content [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit stale-content list`](#scai-audit-stale-content-list) — List items not updated in --not-updated-in-days, optionally excluding items currently in a workflow
+
+#### scai audit stale-content list
+
+List items not updated in --not-updated-in-days, optionally excluding items currently in a workflow
+
+```
+scai audit stale-content list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+- `--not-updated-in-days <count>` — Threshold in days (default: 365)
+- `--language <code>` — Restrict to one language
+- `--no-exclude-workflow-items` — Include items currently in a non-final workflow state (off by default to keep this distinct from `audit stale-workflow`)
+
 ### scai audit stale-workflow
 
 Find items stuck in a workflow state past a stale-after threshold
@@ -492,6 +583,7 @@ scai cleanup [options] [command]
 - [`scai cleanup archive`](#scai-cleanup-archive) — Operations against the Sitecore archive (recycle bin)
 - [`scai cleanup dead-templates`](#scai-cleanup-dead-templates) — Delete templates that have zero items derived from them
 - [`scai cleanup duplicates`](#scai-cleanup-duplicates) — Delete duplicate-content items, keeping one per group per --keep-rule
+- [`scai cleanup find-replace`](#scai-cleanup-find-replace) — Apply a find-replace operation across content field values
 - [`scai cleanup versions`](#scai-cleanup-versions) — Prune or archive per-item version history down to the N most recent versions
 
 ### scai cleanup archive
@@ -615,6 +707,54 @@ scai cleanup duplicates purge [options]
 - `--keep-rule <rule>` — Which member of each duplicate group survives (default: `"oldest"`)
 - `--concurrency <count>` — Delete concurrency (default: 4)
 - `--batch-size <count>` — Aliased GraphQL batch size for field reads
+
+### scai cleanup find-replace
+
+Apply a find-replace operation across content field values
+
+```
+scai cleanup find-replace [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup find-replace apply`](#scai-cleanup-find-replace-apply) — Replace --pattern with --replacement in matching field values
+
+#### scai cleanup find-replace apply
+
+Replace --pattern with --replacement in matching field values
+
+```
+scai cleanup find-replace apply [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--pattern <regex>` — Regex pattern (or literal with --literal) to match against field values
+- `--replacement <text>` — Replacement string. Supports JS regex backreferences ($1, $&, $<name>)
+- `--literal` — Treat --pattern as a literal string
+- `--ignore-case` — Case-insensitive match
+- `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
+- `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
+- `--include-system-fields` — Include **-prefixed system fields in the search (off by default; touching **Renderings via regex will mangle XML)
+- `--root <path>` — Content-tree root (default: /sitecore/content)
+- `--language <code>` — Restrict to one language
+- `--limit <count>` — Cap on items inspected (default: 5000)
+- `--max-mutations <count>` — Maximum number of items to mutate per run (default: 100). Defends against runaway regex matches
+- `--index <name>` — Override the search index name
+- `--include-system` — Include /sitecore/system items in the scan (off by default)
+- `--cache` — Use the on-disk field cache for the discovery phase
 
 ### scai cleanup versions
 

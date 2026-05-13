@@ -1,8 +1,8 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 
 export const isWildcard = (candidate: string): boolean => {
   if (candidate == null) {
-    throw createCliError("Wildcard candidate is null or undefined.", "INPUT_INVALID");
+    throw createScaiError("Wildcard candidate is null or undefined.", "INPUT_INVALID");
   }
 
   return candidate.includes("*") || candidate.includes("?");
@@ -14,7 +14,7 @@ export const isWildcardMatch = (
   caseSensitive = false
 ): boolean => {
   if (input == null) {
-    throw createCliError("Input is null or undefined.", "INPUT_INVALID");
+    throw createScaiError("Input is null or undefined.", "INPUT_INVALID");
   }
 
   if (isWildcard(wildcards)) {

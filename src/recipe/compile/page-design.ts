@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { contentItemId, pageDesignId, partialDesignId, renderingId } from "../guids";
 import {
   type CreateItemOp,
@@ -43,7 +43,7 @@ export function compilePageDesignRecipe(
 ): OperationIr {
   const recipe = PageDesignRecipeSchema.parse(input);
   if (!context.pageDesignsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `compilePageDesignRecipe requires context.pageDesignsRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
     );

@@ -15,7 +15,7 @@
  */
 
 import type { EnvironmentConfiguration } from "@/config";
-import { createCliError } from "./errors";
+import { createScaiError } from "./errors";
 import { redactSecrets } from "./redact";
 
 type GetAccessToken = (environment: EnvironmentConfiguration) => Promise<string | undefined>;
@@ -169,7 +169,7 @@ export const runSitecoreGraphQL = async <T>(
   options?: GraphQLRequestOptions
 ): Promise<T> => {
   if (!environment.host) {
-    throw createCliError("Environment host is not configured.", "INPUT_INVALID", {
+    throw createScaiError("Environment host is not configured.", "INPUT_INVALID", {
       hint: "Set a CM host with 'scai init' or pass --host.",
     });
   }
@@ -178,7 +178,7 @@ export const runSitecoreGraphQL = async <T>(
 
   const token = await transport.getAccessToken(environment);
   if (transport.requireToken && !token) {
-    throw createCliError(
+    throw createScaiError(
       `Sitecore ${transport.label} API requires an access token.`,
       "AUTH_REQUIRED",
       { hint: "Run 'scai login' to authenticate." }
@@ -240,7 +240,7 @@ export const runSitecoreGraphQL = async <T>(
 
       const parsed = await parseJsonIfPossible(response);
       if (!parsed || typeof parsed !== "object") {
-        throw createCliError(
+        throw createScaiError(
           `${transport.label} GraphQL response did not contain JSON data.`,
           "NETWORK"
         );
@@ -248,13 +248,13 @@ export const runSitecoreGraphQL = async <T>(
       const result = parsed as GraphQLResponse<T>;
       if (result.errors?.length) {
         const message = result.errors.map((error) => error.message).join("; ");
-        throw createCliError(
+        throw createScaiError(
           redactSecrets(`${transport.label} GraphQL errors: ${message}`),
           "NETWORK"
         );
       }
       if (!result.data) {
-        throw createCliError(
+        throw createScaiError(
           `${transport.label} GraphQL response did not contain data.`,
           "NETWORK"
         );
@@ -304,27 +304,27 @@ export const runSitecoreGraphQL = async <T>(
     }
   }
 
-  // Final mapping to CliError. HttpError → NETWORK; AbortError → timeout hint;
+  // Final mapping to ScaiError. HttpError → NETWORK; AbortError → timeout hint;
   // everything else → generic NETWORK with the original message.
   if (lastError instanceof HttpError) {
-    throw createCliError(lastError.message, "NETWORK");
+    throw createScaiError(lastError.message, "NETWORK");
   }
   if (lastError instanceof Error && lastError.name === "AbortError") {
-    throw createCliError(`Sitecore ${transport.label} API request timed out.`, "NETWORK", {
+    throw createScaiError(`Sitecore ${transport.label} API request timed out.`, "NETWORK", {
       hint: "Increase settings.apiClientTimeoutInMinutes if needed.",
     });
   }
   if (lastError instanceof Error) {
     if ("code" in lastError && (lastError as { code?: unknown }).code) {
-      // Already a CliError-shaped object — re-throw as-is.
+      // Already a ScaiError-shaped object — re-throw as-is.
       throw lastError;
     }
-    throw createCliError(
+    throw createScaiError(
       redactSecrets(`Sitecore ${transport.label} API request failed: ${lastError.message}`),
       "NETWORK"
     );
   }
-  throw createCliError(
+  throw createScaiError(
     redactSecrets(`Sitecore ${transport.label} API request failed: ${String(lastError)}`),
     "NETWORK"
   );

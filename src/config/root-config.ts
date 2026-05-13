@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createCliError } from "../shared/errors";
+import { createScaiError } from "../shared/errors";
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_RECIPES_GLOBS,
@@ -24,7 +24,7 @@ export const readRootConfigurationFile = (
     rootJson = readJsonFile<RootConfigurationFile>(rootPath);
   } catch (error) {
     const details = error instanceof Error && error.message ? [error.message] : undefined;
-    throw createCliError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
+    throw createScaiError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
       hint: "Fix the configuration or re-run 'scai init' to regenerate it.",
       details,
     });
@@ -34,7 +34,7 @@ export const readRootConfigurationFile = (
     const details = validateRootConfig.errors
       ? formatValidationErrors(validateRootConfig.errors)
       : undefined;
-    throw createCliError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
+    throw createScaiError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
       hint: "Fix the configuration or re-run 'scai init' to regenerate it.",
       details,
     });
@@ -160,13 +160,17 @@ const resolveEnvironmentReferences = (
 
   const resolveOne = (name: string): EnvironmentConfiguration => {
     if (resolving.has(name)) {
-      throw createCliError(`Environment references are circular for '${name}'.`, "CONFIG_INVALID", {
-        hint: "Remove circular refs in envProfiles.",
-      });
+      throw createScaiError(
+        `Environment references are circular for '${name}'.`,
+        "CONFIG_INVALID",
+        {
+          hint: "Remove circular refs in envProfiles.",
+        }
+      );
     }
     const current = environments[name];
     if (!current) {
-      throw createCliError(`Referenced environment '${name}' was not found.`, "CONFIG_INVALID", {
+      throw createScaiError(`Referenced environment '${name}' was not found.`, "CONFIG_INVALID", {
         hint: "Update envProfiles to reference a valid environment name.",
       });
     }

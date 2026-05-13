@@ -4,7 +4,7 @@ import { createFieldFilterSet } from "../../field-filter";
 import { ItemData, ItemMetadata } from "../../types";
 import { fetchItemData, fetchItemMetadata } from "../../sitecore-api";
 import { resolveApiTimeoutMs } from "../shared";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/concurrency";
 
 export const collectItemData = async (
@@ -15,7 +15,7 @@ export const collectItemData = async (
 ): Promise<{ items: ItemData[]; metadata: ItemMetadata[] }> => {
   const env = root.environments[environmentName];
   if (!env) {
-    throw createCliError(`Environment ${environmentName} was not defined.`, "ENV_NOT_FOUND");
+    throw createScaiError(`Environment ${environmentName} was not defined.`, "ENV_NOT_FOUND");
   }
   const apiTimeoutMs = resolveApiTimeoutMs(root);
   // Hoist filter creation: `excludedFields` is invariant across this call,

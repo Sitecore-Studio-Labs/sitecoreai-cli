@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { contentItemId, partialDesignId, renderingId } from "../guids";
 import {
   type CreateItemOp,
@@ -38,7 +38,7 @@ export function compilePartialDesignRecipe(
 ): OperationIr {
   const recipe = PartialDesignRecipeSchema.parse(input);
   if (!context.partialDesignsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `compilePartialDesignRecipe requires context.partialDesignsRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
     );

@@ -6,7 +6,7 @@ import {
   startDeploySpinner,
   withOrganizationHeaders,
 } from "../../../../src/deploy/api/common";
-import { CliError } from "../../../../src/shared/errors";
+import { ScaiError } from "../../../../src/shared/errors";
 
 const oraMocks = vi.hoisted(() => {
   const spinner = {
@@ -94,13 +94,13 @@ describe("deployRequest", () => {
     });
   });
 
-  it("retries GET requests on network errors and throws a CliError", async () => {
+  it("retries GET requests on network errors and throws a ScaiError", async () => {
     process.env.SITECOREAI_HTTP_RETRIES = "1";
     const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(deployRequest({ accessToken: "token" }, "/api/test")).rejects.toBeInstanceOf(
-      CliError
+      ScaiError
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -279,7 +279,7 @@ describe("deployRequest library transport overrides", () => {
       deployRequest({ accessToken: "token" }, "/api/noretry", undefined, {
         transport: { maxRetries: 0 },
       })
-    ).rejects.toBeInstanceOf(CliError);
+    ).rejects.toBeInstanceOf(ScaiError);
     // Only the initial attempt, no retries.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -322,7 +322,7 @@ describe("deployRequest library transport overrides", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(deployRequest({ accessToken: "token" }, "/api/envretry")).rejects.toBeInstanceOf(
-      CliError
+      ScaiError
     );
     // 1 initial + 1 retry.
     expect(fetchMock).toHaveBeenCalledTimes(2);

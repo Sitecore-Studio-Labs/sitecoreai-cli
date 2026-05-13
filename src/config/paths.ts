@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import { createCliError } from "../shared/errors";
+import { createScaiError } from "../shared/errors";
 
 export const resolveRootConfigurationPath = (currentPath: string): string => {
   const stat = fs.existsSync(currentPath) ? fs.statSync(currentPath) : null;
@@ -42,7 +42,7 @@ export const resolveRootConfigurationPath = (currentPath: string): string => {
   }
 
   const cwd = process.cwd();
-  throw createCliError(
+  throw createScaiError(
     `Couldn't resolve a root configuration file (sitecoreai.cli.json) from ${cwd} or any parent directory.`,
     "CONFIG_NOT_FOUND",
     {

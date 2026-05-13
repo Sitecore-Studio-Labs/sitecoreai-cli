@@ -18,7 +18,7 @@ import {
   readRootConfiguration,
   readRootConfigurationFile,
 } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { resolveApiTimeoutMs } from "./cli-tasks";
 
 export interface ResolvedEnvironment {
@@ -40,14 +40,14 @@ export const resolveEnvironment = (options: ResolveEnvironmentOptions): Resolved
   const rootFile = readRootConfigurationFile(configPath);
   const envName = options.environmentName ?? rootFile.config.defaultEnvProfile;
   if (!envName) {
-    throw createCliError("Environment name is required.", "INPUT_INVALID", {
+    throw createScaiError("Environment name is required.", "INPUT_INVALID", {
       hint: "Pass --environment-name or set defaultEnvProfile in the config.",
     });
   }
   const root = readRootConfiguration(configPath, envName);
   const environment = root.environments[envName];
   if (!environment) {
-    throw createCliError(`Environment '${envName}' is not configured.`, "ENV_NOT_FOUND", {
+    throw createScaiError(`Environment '${envName}' is not configured.`, "ENV_NOT_FOUND", {
       hint: "Run 'scai init' to configure the environment.",
     });
   }

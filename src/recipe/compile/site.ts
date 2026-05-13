@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { dictionaryPhraseId, siteId, templateId } from "../guids";
 import {
   type CreateSiteFromTemplateOp,
@@ -57,7 +57,7 @@ export function compileSiteRecipe(input: SiteRecipe, context: CompileContext): O
   const hasCollectionId = recipe.collectionId !== undefined;
   const hasCollectionName = recipe.collectionName !== undefined;
   if (hasCollectionId === hasCollectionName) {
-    throw createCliError(
+    throw createScaiError(
       `SiteRecipe '${recipe.handle}' must specify exactly one of collectionId / collectionName, not ${hasCollectionId ? "both" : "neither"}.`,
       "INPUT_INVALID"
     );

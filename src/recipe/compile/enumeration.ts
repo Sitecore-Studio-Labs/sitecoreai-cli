@@ -6,7 +6,7 @@ import {
   OperationIrSchema,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../policy";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";
 import {
@@ -79,7 +79,7 @@ export function compileEnumerationRecipe(
 ): OperationIr {
   const recipe = EnumerationRecipeSchema.parse(input);
   if (!context.enumerationsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${recipe.handle}' is an enumeration but no enumerationsRoot is configured.`,
       "INPUT_INVALID",
       {
@@ -106,7 +106,7 @@ export function compileEnumerationRecipe(
   if (recipe.default !== undefined) {
     const valueNames = new Set(recipe.values.map((v) => v.name));
     if (!valueNames.has(recipe.default)) {
-      throw createCliError(
+      throw createScaiError(
         `Recipe '${recipe.handle}' declares default='${recipe.default}' but no matching value.name.`,
         "INPUT_INVALID",
         {
@@ -122,7 +122,7 @@ export function compileEnumerationRecipe(
   // that doesn't exist yet. Reject explicitly so authors don't get a
   // surprise misplacement.
   if (recipe.location?.scope === "siteCollection") {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${recipe.handle}' declares location.scope='siteCollection' but the siteCollection enumerations root isn't wired up yet.`,
       "INPUT_INVALID",
       {
@@ -161,7 +161,7 @@ export function compileEnumerationRecipe(
       .map((s) => s.trim())
       .filter(Boolean);
     if (folderSegments.length === 0) {
-      throw createCliError(
+      throw createScaiError(
         `Recipe '${recipe.handle}' declares location.folder that is empty after trimming.`,
         "INPUT_INVALID",
         {

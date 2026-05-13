@@ -24,6 +24,14 @@
       "types": "./dist/recipe/index.d.ts",
       "default": "./dist/recipe/index.js"
     },
+    "./deploy": {
+      "types": "./dist/deploy/lib.d.ts",
+      "default": "./dist/deploy/lib.js"
+    },
+    "./errors": {
+      "types": "./dist/shared/lib-errors.d.ts",
+      "default": "./dist/shared/lib-errors.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {

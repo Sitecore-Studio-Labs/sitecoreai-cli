@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { createCliError } from "./errors";
+import { createScaiError } from "./errors";
 
 export const assertInteractive = (message: string, hint?: string): void => {
   const nonInteractive = process.env.SITECOREAI_NON_INTERACTIVE === "1";
@@ -11,7 +11,7 @@ export const assertInteractive = (message: string, hint?: string): void => {
       : message;
     const finalHint =
       hint ?? "Provide required flags or environment variables for non-interactive use.";
-    throw createCliError(finalMessage, "INPUT_INVALID", finalHint ? { hint: finalHint } : {});
+    throw createScaiError(finalMessage, "INPUT_INVALID", finalHint ? { hint: finalHint } : {});
   }
 };
 
@@ -60,7 +60,7 @@ export const promptSecret = async (label: string, allowEmpty = false): Promise<s
         if (!allowEmpty && value.length === 0) {
           const cleaned = label.trim().replace(/:$/, "");
           reject(
-            createCliError(`${cleaned || "Secret"} is required.`, "INPUT_INVALID", {
+            createScaiError(`${cleaned || "Secret"} is required.`, "INPUT_INVALID", {
               hint: "Provide a non-empty value.",
             })
           );

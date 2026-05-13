@@ -176,9 +176,9 @@ describe("cli entrypoint", () => {
   it("emits JSON errors with exit code on failure", async () => {
     process.argv = ["node", "scai", "status", "--json"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     actionMock.mockRejectedValueOnce(
-      createCliError("Deploy token not found", "AUTH_REQUIRED", {
+      createScaiError("Deploy token not found", "AUTH_REQUIRED", {
         hint: "Run 'scai login' to authenticate.",
       })
     );
@@ -195,7 +195,7 @@ describe("cli entrypoint", () => {
     expect(payload.hint).toBe("Run 'scai login' to authenticate.");
   });
 
-  it("emits UNKNOWN code for bare Errors thrown outside CliError contract", async () => {
+  it("emits UNKNOWN code for bare Errors thrown outside ScaiError contract", async () => {
     actionMock.mockRejectedValueOnce(new Error("Some unexpected failure"));
     process.argv = ["node", "scai", "status", "--json"];
     vi.resetModules();
@@ -212,9 +212,9 @@ describe("cli entrypoint", () => {
   it("prints non-JSON errors with details and hints", async () => {
     process.argv = ["node", "scai", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     actionMock.mockRejectedValueOnce(
-      createCliError("Input required", "INPUT_INVALID", {
+      createScaiError("Input required", "INPUT_INVALID", {
         hint: "Use --environment-name",
         details: ["Missing configuration"],
       })
@@ -262,9 +262,9 @@ describe("cli entrypoint", () => {
   it("runs init wizard when config is missing", async () => {
     process.argv = ["node", "scai", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );
@@ -278,9 +278,9 @@ describe("cli entrypoint", () => {
   it("runs init wizard when config is invalid", async () => {
     process.argv = ["node", "scai", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Invalid configuration file at /tmp/sitecoreai.cli.json.",
         "CONFIG_INVALID"
       );
@@ -293,9 +293,9 @@ describe("cli entrypoint", () => {
   it("runs init wizard when no command is provided", async () => {
     process.argv = ["node", "scai"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );
@@ -340,9 +340,9 @@ describe("cli entrypoint", () => {
     setTty(false);
     process.env.SITECOREAI_NON_INTERACTIVE = "1";
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );

@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "./api/client";
 import { renderRefValue } from "./api/ref-encoding";
 import type { SitesApiClient } from "./api/sites-client";
@@ -159,14 +159,14 @@ const awaitSitesJob = async (
       return;
     }
     if (phase === "Failed" || phase === "Errored") {
-      throw createCliError(
+      throw createScaiError(
         `Sites API job ${jobHandle} reported terminal state '${phase}'.`,
         "SITES_API_FAILED"
       );
     }
     await new Promise((resolve) => setTimeout(resolve, SITES_JOB_POLL_INTERVAL_MS));
   }
-  throw createCliError(
+  throw createScaiError(
     `Sites API job ${jobHandle} did not finish within ${SITES_JOB_POLL_BUDGET_MS}ms.`,
     "SITES_API_FAILED"
   );
@@ -253,7 +253,7 @@ const dispatchMutation = async (
   // subsequent SetField overrides (dictionary, taxonomy) targeting
   // items under the site can resolve via late-path seeding.
   if (!sitesClient) {
-    throw createCliError(
+    throw createScaiError(
       "createSite mutation requires a SitesApiClient — none threaded into the executor.",
       "UNKNOWN"
     );
@@ -262,7 +262,7 @@ const dispatchMutation = async (
   const jobResponse = await sitesClient.createSite(input);
   const jobHandle = jobResponse.handle ?? jobResponse.jobHandle;
   if (!jobHandle) {
-    throw createCliError(
+    throw createScaiError(
       `createSite for '${input.siteName}' returned a JobResponse with no handle: ${JSON.stringify(jobResponse)}`,
       "SITES_API_FAILED"
     );
@@ -276,7 +276,7 @@ const dispatchMutation = async (
   if (created?.id) {
     capturedItemIds.set(siteRefKey, created.id);
   } else {
-    throw createCliError(
+    throw createScaiError(
       `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`,
       "SITES_API_FAILED"
     );

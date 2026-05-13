@@ -7,7 +7,7 @@
 import type { RootConfiguration } from "@/config";
 import { Logger } from "@/shared/logger";
 import { promptConfirm, promptText } from "@/shared/prompt";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "./cli-options";
 
 export const toLogger = (options: CommonOptions): Logger => {
@@ -28,14 +28,14 @@ export const applyIfDefined = <T>(target: T, key: keyof T, value: T[keyof T] | u
 };
 
 export const inputError = (message: string, hint?: string): Error =>
-  createCliError(message, "INPUT_INVALID", hint ? { hint } : {});
+  createScaiError(message, "INPUT_INVALID", hint ? { hint } : {});
 
 export const confirmDestructive = async (message: string, force?: boolean): Promise<boolean> => {
   if (force) {
     return true;
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw createCliError("Confirmation required for destructive action.", "INPUT_INVALID", {
+    throw createScaiError("Confirmation required for destructive action.", "INPUT_INVALID", {
       hint: "Re-run with --force to skip the confirmation prompt.",
     });
   }

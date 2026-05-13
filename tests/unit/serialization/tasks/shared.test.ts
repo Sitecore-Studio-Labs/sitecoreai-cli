@@ -97,7 +97,7 @@ describe("serialization task helpers", () => {
     ).toBeUndefined();
   });
 
-  it("wraps input errors with CliError code", () => {
+  it("wraps input errors with ScaiError code", () => {
     const error = inputError("Bad input");
     expect(error).toBeInstanceOf(Error);
     expect((error as { code?: string }).code).toBe("INPUT_INVALID");

@@ -5,7 +5,7 @@ import {
 } from "@/config";
 import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { setDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import {
@@ -64,7 +64,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     }
     if (!clientSecret) {
       if (!isInteractive) {
-        throw createCliError(
+        throw createScaiError(
           "Client ID and client secret are required for client credentials.",
           "INPUT_INVALID",
           {
@@ -81,7 +81,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   let token: { accessToken: string; expiresIn?: number };
   if (wantsClientCredentials) {
     if (!authority || !clientId || !clientSecret) {
-      throw createCliError(
+      throw createScaiError(
         "Client ID and client secret are required for client credentials.",
         "AUTH_REQUIRED",
         {
@@ -100,7 +100,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     );
   } else {
     if (!authority || !clientId) {
-      throw createCliError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
+      throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
         hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
       });
     }

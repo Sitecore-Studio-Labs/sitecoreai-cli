@@ -1,6 +1,6 @@
 import { readRootConfigurationFile, writeRootConfigurationFile } from "@/config";
 import { clearCmTokens, clearDeployToken } from "@/shared/keychain";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { toLogger } from "../shared";
 import type { LogoutOptions } from "../types";
 
@@ -40,14 +40,14 @@ export const runLogout = async (options: LogoutOptions): Promise<void> => {
 
   const envName = options.environmentName;
   if (!envName) {
-    throw createCliError(
+    throw createScaiError(
       "Environment name is required. Use --environment-name or --all.",
       "INPUT_INVALID"
     );
   }
   const env = envProfiles[envName];
   if (!env) {
-    throw createCliError(`Environment '${envName}' does not exist.`, "ENV_NOT_FOUND");
+    throw createScaiError(`Environment '${envName}' does not exist.`, "ENV_NOT_FOUND");
   }
   envProfiles[envName] = {
     ...env,

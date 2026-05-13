@@ -29,7 +29,7 @@ import {
   type SetStandardValuesOp,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../policy";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_ICON,
   FOLDER_ICON,
@@ -671,7 +671,7 @@ function emitRendering(
       }
       // location.scope === "site"
       if (!context.contentItemsRoot) {
-        throw createCliError(
+        throw createScaiError(
           `Recipe '${recipe.handle}' declares a site-scoped datasource location but no contentItemsRoot is configured.`,
           "INPUT_INVALID",
           {
@@ -704,7 +704,7 @@ function emitRendering(
             .map((s) => s.trim())
             .filter(Boolean);
           if (subfolderSegments.length === 0) {
-            throw createCliError(
+            throw createScaiError(
               `Recipe '${recipe.handle}' declares a site-scoped datasource subfolder that is empty after trimming.`,
               "INPUT_INVALID",
               {
@@ -844,7 +844,7 @@ function emitVariants(
   emittedFolders: Set<string>
 ): void {
   if (!context.headlessVariantsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${recipe.handle}' declares ${recipe.variants.length} variants but no headlessVariantsRoot is configured.`,
       "INPUT_INVALID",
       {

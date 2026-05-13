@@ -1,5 +1,5 @@
 import type { EnvironmentConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
@@ -321,7 +321,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item;
     }
-    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
   };
 
   /**
@@ -382,7 +382,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item?.children.nodes ?? [];
     }
-    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
   };
 
   /**
@@ -414,7 +414,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
     const lastSlash = path.lastIndexOf("/");
     if (lastSlash <= 0) {
-      throw createCliError(
+      throw createScaiError(
         `Cannot auto-create root path '${path}'. The Sitecore root must already exist on the tenant.`,
         "INPUT_INVALID"
       );
@@ -422,7 +422,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const parentPath = path.slice(0, lastSlash);
     const name = path.slice(lastSlash + 1);
     if (!name) {
-      throw createCliError(`Path '${rawPath}' has no leaf segment to create.`, "INPUT_INVALID");
+      throw createScaiError(`Path '${rawPath}' has no leaf segment to create.`, "INPUT_INVALID");
     }
     const parentItemId = await ensurePathExists(parentPath);
     const templateId = folderTemplateForPath(path);
@@ -444,7 +444,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     );
     const itemId = data.createItem?.item?.itemId;
     if (!itemId) {
-      throw createCliError(
+      throw createScaiError(
         `Auto-provisioning failed: Authoring API returned no itemId after creating folder '${path}'.`,
         "UNKNOWN"
       );
@@ -455,7 +455,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
   /**
    * Detect Sitecore's name-conflict error class. Authoring GraphQL
-   * surfaces these as wrapped CliError messages of the form:
+   * surfaces these as wrapped ScaiError messages of the form:
    *
    *   `Authoring GraphQL errors: The item name "X" is already defined on this level.`
    *
@@ -502,7 +502,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const trimmed = parent.trim();
     if (isItemId(trimmed)) return trimmed.replace(/[{}]/g, "");
     if (trimmed.startsWith("/")) return ensurePathExists(trimmed);
-    throw createCliError(
+    throw createScaiError(
       `createItem.input.parent must be a Sitecore itemId or content-tree path; got: '${trimmed}'.`,
       "INPUT_INVALID"
     );
@@ -597,7 +597,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         );
         const itemId = data.createItem?.item?.itemId;
         if (!itemId) {
-          throw createCliError(
+          throw createScaiError(
             "createItem returned no itemId — Authoring API response was malformed.",
             "UNKNOWN"
           );
@@ -654,12 +654,12 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       } = { permanently: true };
       if (selector.itemId) input.itemId = selector.itemId;
       else if (selector.path) input.path = selector.path;
-      else throw createCliError("deleteItem requires either path or itemId.", "INPUT_INVALID");
+      else throw createScaiError("deleteItem requires either path or itemId.", "INPUT_INVALID");
       const data = await runAuthoringGraphQL<{
         deleteItem: { successful: boolean } | null;
       }>(environment, DELETE_ITEM_MUTATION, { input }, writeRequest);
       if (!data.deleteItem?.successful) {
-        throw createCliError(
+        throw createScaiError(
           `deleteItem returned successful: ${data.deleteItem?.successful} for ${
             selector.itemId ?? selector.path ?? "(no selector)"
           }`,

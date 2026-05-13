@@ -1,5 +1,5 @@
 import { Logger } from "@/shared/logger";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
 import { createHygieneApiClient, type HygieneApiClient } from "../api/client";
@@ -331,7 +331,7 @@ export const ensureAllowWriteForCleanup = (
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  throw createCliError(
+  throw createScaiError(
     `Environment ${envName} is not configured to allow writing data.`,
     "INPUT_INVALID",
     {

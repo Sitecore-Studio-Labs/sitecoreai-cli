@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { extractErrorMessage, parseJsonIfPossible } from "./common";
 
 const DEFAULT_DEPLOY_MONITORING_BASE = "https://xmcloud-monitoring-api.sitecorecloud.io";
@@ -18,7 +18,7 @@ export const fetchDeploymentLogs = async (
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
-    throw createCliError(
+    throw createScaiError(
       message ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

@@ -30,7 +30,7 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "../ir/operations";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
@@ -259,7 +259,7 @@ export const resolveEnumFolderPath = (
   consumerHandle: string
 ): string => {
   if (!context.enumerationsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no enumerationsRoot is configured.`,
       "INPUT_INVALID",
       {
@@ -269,7 +269,7 @@ export const resolveEnumFolderPath = (
   }
   const enumRecipe = context.enumsByHandle?.get(enumHandle);
   if (!enumRecipe) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no EnumerationRecipe with that handle is in the set.`,
       "INPUT_INVALID",
       {
@@ -1134,7 +1134,7 @@ function encodeStandardValueDefaultForField(
       // upstream call site, so this branch only fires if an enum field
       // somehow reached SV emission without going through field-op
       // construction. Throw rather than emit a broken default.
-      throw createCliError(
+      throw createScaiError(
         `Field '${field.name}' on recipe '${handle}' is shape=enum + Type=Droplink but declares no sitecore.enumHandle; inline Droplink isn't supported.`,
         "INPUT_INVALID",
         {
@@ -1240,7 +1240,7 @@ function resolveFieldSource(
       };
     }
     const rendered = renderSourceFields(fields, () => {
-      throw createCliError("compile-time render should not need handle resolution", "UNKNOWN");
+      throw createScaiError("compile-time render should not need handle resolution", "UNKNOWN");
     });
     if (rendered !== undefined) {
       return { kind: "string", value: rendered };
@@ -1252,7 +1252,7 @@ function resolveFieldSource(
     // enumerates the string directly and never reads a folder.
     if (type === "droplist") {
       if (!field.values || field.values.length === 0) {
-        throw createCliError(
+        throw createScaiError(
           `Field '${field.name}' on recipe '${recipeHandle}' overrides sitecore.type to 'droplist' but declares no inline values; Droplist needs an inline value list.`,
           "INPUT_INVALID",
           {
@@ -1270,7 +1270,7 @@ function resolveFieldSource(
       // Path is computable at compile time from the EnumerationRecipe
       // looked up via `context.enumsByHandle`.
       if (!context) {
-        throw createCliError(
+        throw createScaiError(
           `Field '${field.name}' on recipe '${recipeHandle}' uses sitecore.enumHandle='${sc.enumHandle}' but the field-op builder was invoked without a CompileContext.`,
           "INPUT_INVALID",
           {
@@ -1287,7 +1287,7 @@ function resolveFieldSource(
     // dropdown stayed empty in Pages. Force the author to commit:
     //   - Inline scale → `sitecore.type: "droplist"` + inline `values`.
     //   - Shared scale → `sitecore.enumHandle: "<EnumerationRecipe>@<v>"`.
-    throw createCliError(
+    throw createScaiError(
       `Field '${field.name}' on recipe '${recipeHandle}' is shape=enum but declares neither sitecore.type='droplist' (with inline values) nor sitecore.enumHandle (pointing at a shared EnumerationRecipe); inline Droplink isn't supported.`,
       "INPUT_INVALID",
       {

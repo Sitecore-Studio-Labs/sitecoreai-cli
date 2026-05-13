@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import {
   type HygieneCommonOptions,
@@ -144,7 +144,7 @@ export const runCleanupDeadTemplates = async (
 
   const root = options.root ?? "/sitecore/templates/Project";
   if (!options.force && PROTECTED_TEMPLATE_ROOTS.some((p) => root.startsWith(p))) {
-    throw createCliError(
+    throw createScaiError(
       `Refusing to operate on protected template root '${root}'.`,
       "INPUT_INVALID",
       { hint: "Pass --force to override (only when you intentionally target a system tree)." }

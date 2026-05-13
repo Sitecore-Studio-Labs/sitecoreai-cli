@@ -7,7 +7,7 @@ import {
   parseJsonIfPossible,
   withOrganizationHeaders,
 } from "./common";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 
 export const fetchDeployments = async (
   options: DeployApiClientOptions,
@@ -90,7 +90,7 @@ export const uploadDeploymentSource = async (
       body,
     });
   } catch {
-    throw createCliError("Deploy API request failed due to a network error.", "NETWORK", {
+    throw createScaiError("Deploy API request failed due to a network error.", "NETWORK", {
       hint: "Check network connectivity or try again later.",
     });
   }
@@ -98,7 +98,7 @@ export const uploadDeploymentSource = async (
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
-    throw createCliError(
+    throw createScaiError(
       message ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

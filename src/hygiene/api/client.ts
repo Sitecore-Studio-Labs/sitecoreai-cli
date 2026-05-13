@@ -1,5 +1,5 @@
 import type { EnvironmentConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import { runHygieneAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
 
@@ -10,7 +10,7 @@ import { runHygieneAuthoringGraphQL, type AuthoringRequestOptions } from "./grap
  * (2026-05-13). The shape of `SearchQueryInput`, `Item.versions`,
  * `ItemWorkflow`, `archivedItems`, and `deleteItemVersion` are pinned
  * here; if a tenant exposes a divergent schema, the call surfaces as
- * a `NETWORK` `CliError` with the upstream message preserved.
+ * a `NETWORK` `ScaiError` with the upstream message preserved.
  *
  * Index name: `sitecore_master_index` is the conventional master-DB
  * index name on XM Cloud. Indexes are not user-renameable on XM Cloud,
@@ -578,7 +578,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       );
       return data.item ? fieldsFromNode(data.item) : null;
     }
-    throw createCliError("getItemFields requires path or itemId.", "INPUT_INVALID");
+    throw createScaiError("getItemFields requires path or itemId.", "INPUT_INVALID");
   };
 
   /**
@@ -682,7 +682,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       );
       return data.item?.versions ?? [];
     }
-    throw createCliError("getItemVersions requires path or itemId.", "INPUT_INVALID");
+    throw createScaiError("getItemVersions requires path or itemId.", "INPUT_INVALID");
   };
 
   const getItemWorkflow = async (
@@ -739,7 +739,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
 
   const deleteItemVersion = async (input: DeleteItemVersionInput): Promise<void> => {
     if (!input.itemId && !input.path) {
-      throw createCliError("deleteItemVersion requires either itemId or path.", "INPUT_INVALID");
+      throw createScaiError("deleteItemVersion requires either itemId or path.", "INPUT_INVALID");
     }
     const payload: Record<string, unknown> = {
       language: input.language,
@@ -755,7 +755,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       writeRequest
     );
     if (!data.deleteItemVersion?.successful) {
-      throw createCliError(
+      throw createScaiError(
         `deleteItemVersion returned successful=${data.deleteItemVersion?.successful} for ${
           input.itemId ?? input.path
         } @${input.language} v${input.version}`,
@@ -766,7 +766,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
 
   const deleteItem = async (input: DeleteItemInput): Promise<void> => {
     if (!input.itemId && !input.path) {
-      throw createCliError("deleteItem requires either itemId or path.", "INPUT_INVALID");
+      throw createScaiError("deleteItem requires either itemId or path.", "INPUT_INVALID");
     }
     const payload: Record<string, unknown> = {
       database: input.database ?? "master",
@@ -781,7 +781,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       writeRequest
     );
     if (!data.deleteItem?.successful) {
-      throw createCliError(
+      throw createScaiError(
         `deleteItem returned successful=${data.deleteItem?.successful} for ${
           input.itemId ?? input.path
         }`,
@@ -798,7 +798,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       writeRequest
     );
     if (!data.deleteItemTemplate?.successful) {
-      throw createCliError(
+      throw createScaiError(
         `deleteItemTemplate returned successful=${data.deleteItemTemplate?.successful} for template ${templateId}`,
         "UNKNOWN"
       );
@@ -815,7 +815,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       writeRequest
     );
     if (!data.deleteArchivedItem?.successful) {
-      throw createCliError(
+      throw createScaiError(
         `deleteArchivedItem returned successful=${data.deleteArchivedItem?.successful} for ${archivalId}`,
         "UNKNOWN"
       );
@@ -824,7 +824,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
 
   const archiveVersion = async (input: ArchiveVersionInput): Promise<string | null> => {
     if (!input.itemId && !input.itemPath) {
-      throw createCliError("archiveVersion requires either itemId or itemPath.", "INPUT_INVALID");
+      throw createScaiError("archiveVersion requires either itemId or itemPath.", "INPUT_INVALID");
     }
     const payload: Record<string, unknown> = {
       language: input.language,
@@ -959,7 +959,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       );
       return data.item ? map(data.item.children.nodes) : [];
     }
-    throw createCliError("getChildren requires itemId or path.", "INPUT_INVALID");
+    throw createScaiError("getChildren requires itemId or path.", "INPUT_INVALID");
   };
 
   return {

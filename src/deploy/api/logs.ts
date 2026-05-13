@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   DEFAULT_MONITORING_API_BASE,
   DeployApiClientOptions,
@@ -47,7 +47,7 @@ export const fetchLogFile = async (
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
-    throw createCliError(
+    throw createScaiError(
       message ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

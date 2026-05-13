@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { contentItemId, fieldId, templateId } from "../guids";
 import {
   type CreateItemOp,
@@ -54,7 +54,7 @@ export function compileContentItemRecipe(
 ): OperationIr {
   const recipe = ContentItemRecipeSchema.parse(input);
   if (!context.contentItemsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `compileContentItemRecipe requires context.contentItemsRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
     );
@@ -124,7 +124,7 @@ export function compileContentItemRecipe(
 const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) {
-    throw createCliError(
+    throw createScaiError(
       `ContentFieldValue ${kind}: '${iso}' is not a valid ISO date`,
       "INPUT_INVALID"
     );
@@ -217,7 +217,7 @@ const encodeContentFieldValue = (
       // Deferred: General Link XML wrapping a refKey-resolved GUID needs
       // a new RefValue kind. Recipe authors targeting Phase 4 should use
       // `reference` (single-element refs[]) for Droplink-shaped fields.
-      throw createCliError(
+      throw createScaiError(
         `ContentItemRecipe '${recipeHandle}': link-internal is deferred to Phase 5. ` +
           `Use 'reference' shape with a single-element refs[] for Droplink/Reference fields, ` +
           `or 'link-external' with an absolute URL for now.`,

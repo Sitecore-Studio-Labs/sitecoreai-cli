@@ -1,6 +1,6 @@
 import readline from "node:readline";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { runAuditDuplicates, type DuplicatesGroup } from "./audit-duplicates";
 import {
   type HygieneCommonOptions,
@@ -101,7 +101,7 @@ const promptForKeep = async (
     }
     const idx = parseInt(answer, 10) - 1;
     if (!Number.isFinite(idx) || idx < 0 || idx >= group.members.length) {
-      throw createCliError(
+      throw createScaiError(
         `Invalid selection '${answer}' for group ${group.contentHash}.`,
         "INPUT_INVALID"
       );
@@ -139,7 +139,7 @@ export const runCleanupDuplicates = async (
 
   if (keepRule === "interactive") {
     if (!process.stdin.isTTY || options.nonInteractive) {
-      throw createCliError(
+      throw createScaiError(
         "--keep-rule interactive requires a TTY (cannot run with --non-interactive or piped stdin).",
         "INPUT_INVALID",
         { hint: "Pass --keep-rule oldest|newest|shortest-path for CI / agent use." }

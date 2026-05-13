@@ -18,7 +18,7 @@
  */
 
 import { createAuthoringClient } from "@/recipe/api/authoring-client";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { printDeployResultWithContext, toLogger } from "./shared";
 import type { DeploySiteBindOptions } from "./types";
@@ -40,12 +40,12 @@ interface BindResult {
 export const runDeploySiteBind = async (options: DeploySiteBindOptions): Promise<void> => {
   const logger = toLogger(options);
   if (!options.siteName) {
-    throw createCliError("Site name is required.", "INPUT_INVALID", {
+    throw createScaiError("Site name is required.", "INPUT_INVALID", {
       hint: "Pass --site-name (e.g. `e2e`).",
     });
   }
   if (!options.siteCollection) {
-    throw createCliError("Site collection is required.", "INPUT_INVALID", {
+    throw createScaiError("Site collection is required.", "INPUT_INVALID", {
       hint: "Pass --site-collection (the Headless Tenant the site lives under).",
     });
   }
@@ -65,7 +65,7 @@ export const runDeploySiteBind = async (options: DeploySiteBindOptions): Promise
 
   const siteGrouping = await client.getItem({ path: siteGroupingPath });
   if (!siteGrouping) {
-    throw createCliError(
+    throw createScaiError(
       `Site Grouping item '${siteGroupingPath}' was not found.`,
       "INPUT_INVALID",
       {
@@ -112,7 +112,7 @@ export const runDeploySiteBind = async (options: DeploySiteBindOptions): Promise
 
   const startItem = await client.getItem({ path: startItemPath });
   if (!startItem) {
-    throw createCliError(`Start item '${startItemPath}' was not found.`, "INPUT_INVALID", {
+    throw createScaiError(`Start item '${startItemPath}' was not found.`, "INPUT_INVALID", {
       hint: `Create a '${startItemName}' page under ${siteRoot} (or pass --start-item-name to point at the page that already exists). Without a Start Item the site won't render.`,
     });
   }

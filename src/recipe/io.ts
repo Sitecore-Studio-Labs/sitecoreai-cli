@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { CliError, createCliError } from "@/shared/errors";
+import { ScaiError, createScaiError } from "@/shared/errors";
 import { type Recipe, RecipeSchema } from "./schema/recipe";
 import { OperationIrSchema, type OperationIr } from "./ir/operations";
 import type { Plan } from "./plan";
@@ -21,11 +21,11 @@ const readJson = async (filePath: string): Promise<unknown> => {
     raw = await fs.readFile(filePath, "utf8");
   } catch (error) {
     if ((error as { code?: string }).code === "ENOENT") {
-      throw createCliError(`File not found: ${filePath}`, "INPUT_INVALID", {
+      throw createScaiError(`File not found: ${filePath}`, "INPUT_INVALID", {
         hint: "Check the path spelling and that the file exists.",
       });
     }
-    throw createCliError(
+    throw createScaiError(
       `Failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
       "INPUT_INVALID"
     );
@@ -33,7 +33,7 @@ const readJson = async (filePath: string): Promise<unknown> => {
   try {
     return JSON.parse(raw);
   } catch (error) {
-    throw createCliError(
+    throw createScaiError(
       `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
       "INPUT_INVALID",
       { hint: "Ensure the file contains a valid JSON document." }
@@ -66,7 +66,7 @@ export const loadRecipe = async (filePath: string): Promise<Recipe> => {
 
   const result = RecipeSchema.safeParse(raw);
   if (!result.success) {
-    throw createCliError(`Invalid recipe at ${filePath}.`, "INPUT_INVALID", {
+    throw createScaiError(`Invalid recipe at ${filePath}.`, "INPUT_INVALID", {
       hint: "Ensure the file exports a `ComponentTemplateRecipe` or `ContentTemplateRecipe`.",
       details: result.error.issues.map(
         (issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`
@@ -117,15 +117,15 @@ const loadRecipeFromTypeScript = async (filePath: string): Promise<unknown> => {
         return mod[key];
       }
     }
-    throw createCliError(`Recipe at ${filePath} has no exports.`, "INPUT_INVALID", {
+    throw createScaiError(`Recipe at ${filePath} has no exports.`, "INPUT_INVALID", {
       hint: "Add `export default <recipe>` (or any named export) to the file.",
     });
   } catch (error) {
     // Don't double-wrap our own CliErrors (e.g. "Recipe at <path> has no exports.").
-    if (error instanceof CliError) {
+    if (error instanceof ScaiError) {
       throw error;
     }
-    throw createCliError(
+    throw createScaiError(
       `Failed to load recipe TypeScript file ${filePath}: ${
         error instanceof Error ? error.message : String(error)
       }`,
@@ -143,7 +143,7 @@ export const loadIr = async (filePath: string): Promise<OperationIr> => {
   const json = await readJson(filePath);
   const result = OperationIrSchema.safeParse(json);
   if (!result.success) {
-    throw createCliError(`Invalid Operation IR at ${filePath}.`, "INPUT_INVALID", {
+    throw createScaiError(`Invalid Operation IR at ${filePath}.`, "INPUT_INVALID", {
       hint: "Re-run `scai recipe compile` to regenerate the IR.",
       details: result.error.issues.map(
         (issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`

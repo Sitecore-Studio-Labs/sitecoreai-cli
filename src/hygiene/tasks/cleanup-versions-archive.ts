@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
@@ -81,13 +81,13 @@ export const runCleanupVersionsArchive = async (
   const logger = toLogger(options);
 
   if (!options.root) {
-    throw createCliError("--root is required for versions archive.", "INPUT_INVALID");
+    throw createScaiError("--root is required for versions archive.", "INPUT_INVALID");
   }
   if (!Number.isFinite(options.keep) || options.keep < 1) {
-    throw createCliError("--keep must be an integer >= 1.", "INPUT_INVALID");
+    throw createScaiError("--keep must be an integer >= 1.", "INPUT_INVALID");
   }
   if (!options.force && PROTECTED_ROOTS.some((p) => options.root.startsWith(p))) {
-    throw createCliError(
+    throw createScaiError(
       `Refusing to archive versions under protected path '${options.root}'.`,
       "INPUT_INVALID",
       { hint: "Pass --force to override the safety guard for system / template paths." }
@@ -114,7 +114,10 @@ export const runCleanupVersionsArchive = async (
   });
   const rootItemId = rootSearch.results[0]?.itemId;
   if (!rootItemId) {
-    throw createCliError(`Root path '${options.root}' not found in search index.`, "INPUT_INVALID");
+    throw createScaiError(
+      `Root path '${options.root}' not found in search index.`,
+      "INPUT_INVALID"
+    );
   }
 
   const pairs = new Map<string, { itemId: string; path: string; language: string }>();

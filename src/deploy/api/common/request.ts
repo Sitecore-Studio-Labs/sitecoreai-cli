@@ -1,6 +1,6 @@
 import { consola } from "consola";
 import { redactSecrets } from "../../../shared/redact";
-import { createCliError } from "../../../shared/errors";
+import { createScaiError } from "../../../shared/errors";
 import {
   DEFAULT_DEPLOY_API_BASE,
   DeployApiClientOptions,
@@ -250,7 +250,7 @@ export const deployRequest = async <T>(
         continue;
       }
       spinner?.fail();
-      throw createCliError("Deploy API request failed due to a network error.", "NETWORK", {
+      throw createScaiError("Deploy API request failed due to a network error.", "NETWORK", {
         hint: "Check network connectivity or try again later.",
       });
     }
@@ -270,7 +270,7 @@ export const deployRequest = async <T>(
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
     const sanitized = message ? redactSecrets(message) : undefined;
-    throw createCliError(
+    throw createScaiError(
       sanitized ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

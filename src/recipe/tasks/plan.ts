@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { defaultPlanPath, loadIr, writePlan } from "../io";
 import { buildPlan, type Plan } from "../plan";
 import { resolveTenant, toLogger, type RecipePlanOptions } from "./shared";
@@ -15,7 +15,7 @@ export const runRecipePlan = async (options: RecipePlanOptions): Promise<Plan> =
   const logger = toLogger(options);
   const tenant = resolveTenant(options);
   if (!options.input) {
-    throw createCliError("--input <ir.json> is required for `recipe plan`.", "INPUT_INVALID", {
+    throw createScaiError("--input <ir.json> is required for `recipe plan`.", "INPUT_INVALID", {
       hint: "Run `scai recipe compile` first, or use `scai recipe push --what-if` to plan from a recipe source.",
     });
   }

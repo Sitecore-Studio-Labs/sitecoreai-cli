@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
   ensureAllowWriteForCleanup,
@@ -66,7 +66,7 @@ export const runCleanupArchivePurge = async (
 
   const olderThanDays = options.olderThanDays ?? 30;
   if (!Number.isFinite(olderThanDays) || olderThanDays < 0) {
-    throw createCliError("--older-than-days must be a non-negative integer.", "INPUT_INVALID");
+    throw createScaiError("--older-than-days must be a non-negative integer.", "INPUT_INVALID");
   }
   if (olderThanDays === 0 && !logger.isJson()) {
     logger.warn("--older-than-days=0 will purge the entire archive.");

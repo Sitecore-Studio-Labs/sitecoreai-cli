@@ -15,7 +15,7 @@ import {
   SerializationModuleConfiguration,
 } from "@/config";
 import { FilesystemTreeSpec } from "../tree-spec";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "./types";
 
 // Re-exports preserve the existing barrel surface; new code should
@@ -65,7 +65,7 @@ export const ensureAllowWrite = (root: RootConfiguration, environmentName: strin
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
-    throw createCliError(
+    throw createScaiError(
       `Environment ${environmentName} is not configured to allow writing data.`,
       "INPUT_INVALID",
       {

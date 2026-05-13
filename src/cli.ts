@@ -26,7 +26,7 @@ import {
 } from "./shared/telemetry";
 import { resolveOutputOptionsFromArgs } from "./shared/output";
 import { redactSecrets } from "./shared/redact";
-import { toCliError } from "./shared/errors";
+import { toScaiError } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
 import { readRootConfiguration, readRootConfigurationFile } from "./config";
@@ -102,7 +102,7 @@ const resolveAutoWizardNeed = async (
   try {
     configFile = readRootConfigurationFile(configBasePath);
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_NOT_FOUND") {
       return {
         kind: "init",
@@ -147,7 +147,7 @@ const resolveAutoWizardNeed = async (
     const root = readRootConfiguration(configBasePath, envName);
     resolvedEnv = root.environments[envName] ?? envProfiles[envName];
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_INVALID") {
       return {
         kind: "init",
@@ -370,7 +370,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
       Boolean(outputOptions.quiet),
       outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
     );
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     const redactedMessage = redactSecrets(cliError.message);
     const finalError = cliError;
     if (baseLogger.isJson()) {

@@ -1,6 +1,6 @@
 import { v5 as uuidv5 } from "uuid";
 
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 
 /**
  * Emit a Sitecore layout XML string from a structural `Layout` shape.
@@ -138,7 +138,7 @@ const resolvePlacement = (
         break;
       case "scoped":
         if (!ctx.allowScoped) {
-          throw createCliError(
+          throw createScaiError(
             `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`,
             "INPUT_INVALID"
           );

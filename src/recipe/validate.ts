@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { Recipe } from "./schema/recipe";
 
 /**
@@ -478,7 +478,7 @@ function detectInsertOptionsCycles(
 export function validateRecipeSetOrThrow(recipes: readonly Recipe[]): void {
   const result = validateRecipeSet(recipes);
   if (!isValid(result)) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe set validation failed:\n${formatValidationErrors(result)}`,
       "INPUT_INVALID"
     );

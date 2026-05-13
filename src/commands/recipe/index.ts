@@ -13,7 +13,7 @@ import {
   runRecipePruneDefaults,
   runRecipePush,
 } from "../../recipe/tasks";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
   command.addOption(
@@ -193,7 +193,7 @@ const createPushCommand = (): Command => {
           lastAction?.reason ?? "apply error (see events[])"
         }${rollback}`;
       });
-      throw createCliError(
+      throw createScaiError(
         `Recipe push failed: ${abortedRecipes.length} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
         "DEPLOY_FAILED",
         {

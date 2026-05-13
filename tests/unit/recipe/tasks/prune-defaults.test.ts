@@ -169,7 +169,7 @@ describe("pruneDefaultsAgainstClient", () => {
     // prune ran in parallel, or an author deleted it). The Authoring
     // GraphQL response carries the canonical "was not found ... may have
     // been deleted by another user" message, wrapped by graphql.ts as a
-    // NETWORK CliError. The prune loop should report this as `missing`
+    // NETWORK ScaiError. The prune loop should report this as `missing`
     // and continue rather than abort the whole task.
     const presentPaths = [
       `${ROOTS.availableRenderingsRoot}/Media`,
@@ -182,7 +182,7 @@ describe("pruneDefaultsAgainstClient", () => {
     client.deleteItem = vi.fn(async (selector: ItemSelector) => {
       if (selector.itemId === racedItemId) {
         throw new Error(
-          `Authoring GraphQL errors: The item "${selector.itemId}" was not found.\n\nIt may have been deleted by another user.`,
+          `Authoring GraphQL errors: The item "${selector.itemId}" was not found.\n\nIt may have been deleted by another user.`
         );
       }
       return realDelete(selector);
@@ -198,7 +198,7 @@ describe("pruneDefaultsAgainstClient", () => {
     expect(racedAction.status).toBe("missing");
     expect(racedAction.itemId).toBeDefined();
     const otherDeleted = actions.find(
-      (a: PruneAction) => a.path === `${ROOTS.headlessVariantsRoot}/Image`,
+      (a: PruneAction) => a.path === `${ROOTS.headlessVariantsRoot}/Image`
     )!;
     expect(otherDeleted.status).toBe("deleted");
   });
@@ -208,9 +208,9 @@ describe("pruneDefaultsAgainstClient", () => {
     client.deleteItem = vi.fn(async () => {
       throw new Error("Authoring GraphQL errors: Internal server error");
     });
-    await expect(
-      pruneDefaultsAgainstClient({ client, ...ROOTS, whatIf: false }),
-    ).rejects.toThrow(/Internal server error/);
+    await expect(pruneDefaultsAgainstClient({ client, ...ROOTS, whatIf: false })).rejects.toThrow(
+      /Internal server error/
+    );
   });
 
   it("dry-run reports would-delete actions and skips deleteItem", async () => {

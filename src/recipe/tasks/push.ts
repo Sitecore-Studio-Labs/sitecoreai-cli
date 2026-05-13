@@ -1,6 +1,6 @@
 import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
 import type { RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
@@ -218,7 +218,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   if (hasSiteOp) {
     const accessToken = await getAccessToken(tenant.environment);
     if (!accessToken) {
-      throw createCliError(
+      throw createScaiError(
         `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai login' or set client credentials, then retry.`,
         "AUTH_REQUIRED"
       );

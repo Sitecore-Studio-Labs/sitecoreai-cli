@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readRootConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { compileRecipe } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";
 import {
@@ -46,17 +46,15 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const partialDesignsRoot = options.partialDesignsRoot ?? environment?.partialDesignsRoot;
   const pageDesignsRoot = options.pageDesignsRoot ?? environment?.pageDesignsRoot;
   const contentItemsRoot = options.contentItemsRoot ?? environment?.contentItemsRoot;
-  const headlessVariantsRoot =
-    options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
+  const headlessVariantsRoot = options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
   const availableRenderingsRoot =
     options.availableRenderingsRoot ?? environment?.availableRenderingsRoot;
-  const enumerationsRoot =
-    options.enumerationsRoot ?? environment?.enumerationsRoot;
+  const enumerationsRoot = options.enumerationsRoot ?? environment?.enumerationsRoot;
 
   const { files, source } = await resolveRecipeInputs(options, root);
 
   if (options.output && files.length > 1) {
-    throw createCliError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
+    throw createScaiError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
       hint: "Compile a single recipe with --input <file> --output <ir>, or omit --output to write per-recipe IRs to <dir>/<handle>.ir.json.",
     });
   }

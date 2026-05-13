@@ -9,7 +9,7 @@ import {
   linkProjectRepository,
   unlinkProjectRepository,
 } from "@/deploy/api";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   confirmDestructive,
   getDeployContext,
@@ -120,7 +120,7 @@ export const runDeployProjectsDelete = async (
   }
   if (options.whatIf) {
     if (!options.id) {
-      throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+      throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
         hint: "Provide an explicit project ID to avoid lookup calls.",
       });
     }
@@ -168,7 +168,7 @@ export const runDeployProjectsUpdate = async (
     throw inputError("Project name or ID is required. Use --name or --id.");
   }
   if (options.whatIf && !options.id) {
-    throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit project ID to avoid lookup calls.",
     });
   }
@@ -287,7 +287,7 @@ export const runDeployProjectsUnlinkRepository = async (
     throw inputError("Project name or ID is required. Use --name or --id.");
   }
   if (options.whatIf && !options.id) {
-    throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit project ID to avoid lookup calls.",
     });
   }

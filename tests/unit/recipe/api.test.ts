@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration } from "../../../src/config";
-import { CliError } from "../../../src/shared/errors";
+import { ScaiError } from "../../../src/shared/errors";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
 import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
@@ -104,7 +104,7 @@ describe("runAuthoringGraphQL — error mapping", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const error = await runAuthoringGraphQL(baseEnv, "query {}").catch((e) => e);
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(error.message).toContain("401");
   });
@@ -116,7 +116,7 @@ describe("runAuthoringGraphQL — error mapping", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const error = await runAuthoringGraphQL(baseEnv, "query {}").catch((e) => e);
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(error.message).toContain("no such field 'foo'");
   });
@@ -927,7 +927,7 @@ describe("runAuthoringGraphQL — retry / backoff", () => {
       retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
     }).catch((e) => e);
 
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });

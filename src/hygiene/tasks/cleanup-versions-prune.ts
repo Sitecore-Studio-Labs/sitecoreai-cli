@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
@@ -100,15 +100,15 @@ export const runCleanupVersionsPrune = async (
   const logger = toLogger(options);
 
   if (!options.root) {
-    throw createCliError("--root is required for versions prune.", "INPUT_INVALID", {
+    throw createScaiError("--root is required for versions prune.", "INPUT_INVALID", {
       hint: "Pass --root '/sitecore/content/<site>' to scope the prune.",
     });
   }
   if (!Number.isFinite(options.keep) || options.keep < 1) {
-    throw createCliError("--keep must be an integer >= 1.", "INPUT_INVALID");
+    throw createScaiError("--keep must be an integer >= 1.", "INPUT_INVALID");
   }
   if (!options.force && PROTECTED_ROOTS.some((p) => options.root.startsWith(p))) {
-    throw createCliError(
+    throw createScaiError(
       `Refusing to prune versions under protected path '${options.root}'.`,
       "INPUT_INVALID",
       {
@@ -144,7 +144,7 @@ export const runCleanupVersionsPrune = async (
   });
   const rootItemId = rootSearch.results[0]?.itemId;
   if (!rootItemId) {
-    throw createCliError(
+    throw createScaiError(
       `Root path '${options.root}' not found in search index.`,
       "INPUT_INVALID",
       {

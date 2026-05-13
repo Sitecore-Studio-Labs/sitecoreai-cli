@@ -2,7 +2,7 @@ import path from "node:path";
 import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
 import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient } from "../api/client";
@@ -170,7 +170,7 @@ export const resolveRecipeRoots = (
         : !templatesRoot
           ? "templatesRoot"
           : "renderingsRoot";
-    throw createCliError(
+    throw createScaiError(
       `Recipe parent path missing: ${missing} not configured for environment '${envName}'.`,
       "INPUT_INVALID",
       {
@@ -215,7 +215,7 @@ export const resolveRecipeInputs = async (
   // directory (e.g. via `..` segments in the glob input).
   const escaped = matched.filter((p) => path.relative(configDir, p).startsWith(".."));
   if (escaped.length > 0) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe glob resolved to ${escaped.length} path(s) outside the config directory: ${escaped.slice(0, 3).join(", ")}${escaped.length > 3 ? `, +${escaped.length - 3} more` : ""}.`,
       "INPUT_INVALID",
       {
@@ -224,7 +224,7 @@ export const resolveRecipeInputs = async (
     );
   }
   if (matched.length === 0) {
-    throw createCliError(
+    throw createScaiError(
       `No recipe files matched the config glob: ${root.recipes.join(", ")}.`,
       "INPUT_INVALID",
       {
@@ -249,7 +249,7 @@ export const ensureAllowWrite = (
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  throw createCliError(
+  throw createScaiError(
     `Environment ${envName} is not configured to allow writing data.`,
     "INPUT_INVALID",
     {

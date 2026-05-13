@@ -8,7 +8,7 @@
  */
 
 import { Logger } from "@/shared/logger";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { inputError, selectMatch } from "@/shared/cli-tasks";
 import { resolveEnvironment } from "@/shared/env";
@@ -51,7 +51,7 @@ export const getDeployContext = async (options: {
   const { envName, environment } = resolveEnvironment(options);
   const token = (await getDeployToken(envName)) ?? environment.deployToken;
   if (!token) {
-    throw createCliError(`Deploy token not found for environment '${envName}'.`, "AUTH_REQUIRED", {
+    throw createScaiError(`Deploy token not found for environment '${envName}'.`, "AUTH_REQUIRED", {
       hint: "Run 'scai init' or 'scai login' to authenticate.",
     });
   }
@@ -244,7 +244,7 @@ export const resolveDeployEnvironmentId = async (
     if (context.environmentId) {
       return context.environmentId;
     }
-    throw createCliError("Environment ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Environment ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit environment ID to avoid lookup calls.",
     });
   }

@@ -1,4 +1,8 @@
-import { paramsFieldId, paramsSectionId, paramsTemplateId } from "../guids";
+import {
+  designParameterFieldId,
+  designParametersSectionId,
+  designParametersTemplateId,
+} from "../guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -13,14 +17,17 @@ import {
   SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
-import { type ParametersTemplateRecipe, ParametersTemplateRecipeSchema } from "../schema/recipe";
+import {
+  type DesignParametersTemplateRecipe,
+  DesignParametersTemplateRecipeSchema,
+} from "../schema/recipe";
 import {
   PARAMS_SECTION_NAME,
   buildFieldOp,
-  ensurePresentationParametersBucket,
+  ensurePresentationDesignParametersBucket,
   ensureSectionFolder,
   joinPath,
-  resolvePresentationParametersBucketPath,
+  resolvePresentationDesignParametersBucketPath,
   sharedField,
   siteOf,
   versionedField,
@@ -28,7 +35,7 @@ import {
 } from "./shared";
 
 /**
- * Compile a standalone `ParametersTemplateRecipe` to an Operation IR.
+ * Compile a standalone `DesignParametersTemplateRecipe` to an Operation IR.
  *
  * Lands at
  * `<componentsRoot>/<section>/Presentation Parameters/<name>` —
@@ -36,30 +43,30 @@ import {
  * uses, so a standalone recipe and an inline-hoisted one occupy the
  * same Sitecore path.
  */
-export function compileParametersTemplateRecipe(
-  input: ParametersTemplateRecipe,
+export function compileDesignParametersTemplateRecipe(
+  input: DesignParametersTemplateRecipe,
   context: CompileContext,
   emittedFolders: Set<string> = new Set()
 ): OperationIr {
-  const recipe = ParametersTemplateRecipeSchema.parse(input);
+  const recipe = DesignParametersTemplateRecipeSchema.parse(input);
   const operations: Operation[] = [];
   const policy = defaultPolicyForRecipe(recipe.kind);
   const icon = recipe.icon ?? DEFAULT_ICON;
   const site = siteOf(context);
 
   ensureSectionFolder(operations, context, recipe.section, emittedFolders);
-  const bucketRefKey = ensurePresentationParametersBucket(
+  const bucketRefKey = ensurePresentationDesignParametersBucket(
     operations,
     context,
     recipe.section,
     emittedFolders
   );
-  const parentPath = resolvePresentationParametersBucketPath(context, recipe.section);
+  const parentPath = resolvePresentationDesignParametersBucketPath(context, recipe.section);
 
   // The standalone parameters template lands at the same identity
-  // (paramsTemplateId) as inline-hoisted ones — keeps re-pushes
+  // (designParametersTemplateId) as inline-hoisted ones — keeps re-pushes
   // idempotent if a recipe migrates from inline to standalone.
-  const tplRefKey = paramsTemplateId(site, recipe.handle);
+  const tplRefKey = designParametersTemplateId(site, recipe.handle);
   const tplPath = joinPath(parentPath, recipe.name);
 
   operations.push({
@@ -91,7 +98,7 @@ export function compileParametersTemplateRecipe(
     baseTemplates: [...SXA_HEADLESS_PARAMS_BASE_TEMPLATES],
   } satisfies SetBaseTemplatesOp);
 
-  const secRefKey = paramsSectionId(site, recipe.handle, PARAMS_SECTION_NAME);
+  const secRefKey = designParametersSectionId(site, recipe.handle, PARAMS_SECTION_NAME);
   const secPath = joinPath(tplPath, PARAMS_SECTION_NAME);
   operations.push({
     op: "CreateItem",
@@ -109,7 +116,7 @@ export function compileParametersTemplateRecipe(
     operations.push(
       ...buildFieldOp({
         recipeHandle: recipe.handle,
-        fieldRefKey: paramsFieldId(site, recipe.handle, param.name),
+        fieldRefKey: designParameterFieldId(site, recipe.handle, param.name),
         fieldPath: joinPath(secPath, param.name),
         parentRefKey: secRefKey,
         labelPrefix: `parameters-field:${recipe.handle}`,

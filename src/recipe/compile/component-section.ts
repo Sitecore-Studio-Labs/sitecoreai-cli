@@ -11,22 +11,9 @@ import {
   OperationIrSchema,
 } from "../ir/operations";
 import { createCliError } from "../../shared/errors";
-import {
-  FOLDER_ICON,
-  SITECORE_TEMPLATES,
-  SYSTEM_FIELDS,
-} from "../ir/sitecore-templates";
-import {
-  type ComponentSectionRecipe,
-  ComponentSectionRecipeSchema,
-} from "../schema/recipe";
-import {
-  joinPath,
-  sharedField,
-  siteOf,
-  versionedField,
-  type CompileContext,
-} from "./shared";
+import { FOLDER_ICON, SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
+import { type ComponentSectionRecipe, ComponentSectionRecipeSchema } from "../schema/recipe";
+import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 
 /**
  * Compile a `ComponentSectionRecipe` to an Operation IR.
@@ -48,7 +35,7 @@ import {
  *
  * The two SUBORDINATE buckets (#2 Component Folders, #3 Presentation
  * Parameters) are NOT emitted here — they're emitted lazily by
- * `ensureComponentFoldersBucket` / `ensurePresentationParametersBucket`
+ * `ensureComponentFoldersBucket` / `ensurePresentationDesignParametersBucket`
  * when a component recipe in the section actually needs them. They live
  * under the section folder so they inherit positional context but get
  * the default `FOLDER_ICON` (no per-bucket rich fields by design).

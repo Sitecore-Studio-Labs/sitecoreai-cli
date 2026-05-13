@@ -19,7 +19,7 @@ import {
   NAMESPACE_SITE_BRANCH,
   NAMESPACE_TEMPLATE,
   pageDesignId,
-  paramsTemplateId,
+  designParametersTemplateId,
   partialDesignId,
   renderingId,
   sectionId,
@@ -137,7 +137,9 @@ describe("recipe guids — derivation is deterministic", () => {
   });
 
   it("params template ids segregate from regular template ids", () => {
-    expect(paramsTemplateId(DEFAULT_SITE, handle)).not.toBe(templateId(DEFAULT_SITE, handle));
+    expect(designParametersTemplateId(DEFAULT_SITE, handle)).not.toBe(
+      templateId(DEFAULT_SITE, handle)
+    );
   });
 
   it("different handles yield different template ids", () => {
@@ -217,7 +219,7 @@ describe("recipe guids — snapshots for all registry handles (site=default)", (
     (handle, expected) => {
       expect(templateId(DEFAULT_SITE, handle)).toBe(expected.template);
       expect(renderingId(DEFAULT_SITE, handle)).toBe(expected.rendering);
-      expect(paramsTemplateId(DEFAULT_SITE, handle)).toBe(expected.paramsTemplate);
+      expect(designParametersTemplateId(DEFAULT_SITE, handle)).toBe(expected.paramsTemplate);
       expect(standardValuesId(DEFAULT_SITE, handle)).toBe(expected.standardValues);
     }
   );
@@ -280,13 +282,15 @@ describe("recipe guids — site-scoping yields distinct ids per site", () => {
     (handle, expected) => {
       expect(templateId("e2e", handle)).toBe(expected.template);
       expect(renderingId("e2e", handle)).toBe(expected.rendering);
-      expect(paramsTemplateId("e2e", handle)).toBe(expected.paramsTemplate);
+      expect(designParametersTemplateId("e2e", handle)).toBe(expected.paramsTemplate);
       expect(standardValuesId("e2e", handle)).toBe(expected.standardValues);
 
       // And: the e2e ids must not collide with the default ones.
       expect(templateId("e2e", handle)).not.toBe(templateId(DEFAULT_SITE, handle));
       expect(renderingId("e2e", handle)).not.toBe(renderingId(DEFAULT_SITE, handle));
-      expect(paramsTemplateId("e2e", handle)).not.toBe(paramsTemplateId(DEFAULT_SITE, handle));
+      expect(designParametersTemplateId("e2e", handle)).not.toBe(
+        designParametersTemplateId(DEFAULT_SITE, handle)
+      );
       expect(standardValuesId("e2e", handle)).not.toBe(standardValuesId(DEFAULT_SITE, handle));
     }
   );

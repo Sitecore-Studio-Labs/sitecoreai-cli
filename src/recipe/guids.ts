@@ -60,7 +60,7 @@ export const templateId = (site: string, handle: string): string =>
 export const renderingId = (site: string, handle: string): string =>
   uuidv5(`${site}::${handle}`, NAMESPACE_RENDERING);
 
-export const paramsTemplateId = (site: string, handle: string): string =>
+export const designParametersTemplateId = (site: string, handle: string): string =>
   uuidv5(`${site}::${handle}::params`, NAMESPACE_TEMPLATE);
 
 export const partialDesignId = (site: string, handle: string): string =>
@@ -130,13 +130,16 @@ export const sectionId = (site: string, handle: string, sectionName: string): st
 export const fieldId = (site: string, handle: string, fieldName: string): string =>
   uuidv5(fieldName, templateId(site, handle));
 
-/** Sections of the parameters template scope under (site-scoped) `paramsTemplateId`. */
-export const paramsSectionId = (site: string, handle: string, sectionName: string): string =>
-  uuidv5(`section:${sectionName}`, paramsTemplateId(site, handle));
+/** Sections of the parameters template scope under (site-scoped) `designParametersTemplateId`. */
+export const designParametersSectionId = (
+  site: string,
+  handle: string,
+  sectionName: string
+): string => uuidv5(`section:${sectionName}`, designParametersTemplateId(site, handle));
 
-/** Fields of the parameters template scope under (site-scoped) `paramsTemplateId`. */
-export const paramsFieldId = (site: string, handle: string, fieldName: string): string =>
-  uuidv5(fieldName, paramsTemplateId(site, handle));
+/** Fields of the parameters template scope under (site-scoped) `designParametersTemplateId`. */
+export const designParameterFieldId = (site: string, handle: string, fieldName: string): string =>
+  uuidv5(fieldName, designParametersTemplateId(site, handle));
 
 /**
  * Per-rendering Headless Variants folder. Lives at
@@ -168,11 +171,11 @@ export const standardValuesId = (site: string, handle: string): string =>
 /**
  * Standard values for a parameters template. Same `__standard-values`
  * seed pattern as `standardValuesId` but scoped under
- * `paramsTemplateId(site, handle)` so params-template SV items don't
+ * `designParametersTemplateId(site, handle)` so params-template SV items don't
  * collide with the component-template SV under the same handle.
  */
-export const paramsStandardValuesId = (site: string, handle: string): string =>
-  uuidv5("__standard-values", paramsTemplateId(site, handle));
+export const designParametersStandardValuesId = (site: string, handle: string): string =>
+  uuidv5("__standard-values", designParametersTemplateId(site, handle));
 
 /**
  * Enumeration root item — backs an `EnumerationRecipe`. Lives at
@@ -377,7 +380,7 @@ export const componentFoldersBucketId = (site: string, section: string): string 
  * a site's `Components/<section>/` — an idempotent parent for
  * standalone (and synthesised) Parameters templates.
  */
-export const presentationParametersBucketId = (site: string, section: string): string =>
+export const presentationDesignParametersBucketId = (site: string, section: string): string =>
   uuidv5(`${site}:Components:${section}:Presentation Parameters`, NAMESPACE_PROJECT);
 
 /**

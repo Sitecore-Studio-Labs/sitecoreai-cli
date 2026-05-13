@@ -21,7 +21,7 @@ describe("public recipe API surface", () => {
     "FieldDefinitionSchema",
     "LayoutSchema",
     "PageDesignRecipeSchema",
-    "ParamDefinitionSchema",
+    "DesignParameterSchema",
     "PartialDesignRecipeSchema",
     "PlaceholderDefinitionSchema",
     "RecipeSchema",
@@ -60,7 +60,7 @@ describe("public recipe API surface", () => {
     "renderingId",
     "fieldId",
     "sectionId",
-    "paramsTemplateId",
+    "designParametersTemplateId",
     "variantId",
     "variantsFolderId",
     "contentItemId",
@@ -146,8 +146,7 @@ describe("public recipe API surface", () => {
       {
         templatesRoot: "/sitecore/templates/Project/test/Components",
         renderingsRoot: "/sitecore/layout/Renderings/Project/test",
-        headlessVariantsRoot:
-          "/sitecore/content/test-tenant/test/Presentation/Headless Variants",
+        headlessVariantsRoot: "/sitecore/content/test-tenant/test/Presentation/Headless Variants",
       }
     );
     expect(ir.schemaVersion).toBe("1");

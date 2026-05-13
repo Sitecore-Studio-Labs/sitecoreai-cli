@@ -45,7 +45,7 @@ const TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template", "content-te
 const COMPONENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template"];
 const CONTENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["content-template"];
 const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
-const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["parameters-template"];
+const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["design-parameters-template"];
 const SECTION_DEFINITION_KINDS: readonly RecipeKind[] = ["section-definition"];
 const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
 const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
@@ -54,7 +54,7 @@ const ANY_KINDS: readonly RecipeKind[] = [
   "component-template",
   "content-template",
   "content-item",
-  "parameters-template",
+  "design-parameters-template",
   "section-definition",
   "partial-design",
   "page-design",
@@ -244,7 +244,7 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
           checkRef(recipe.handle, `availableIn.${idx}`, handle, SECTION_DEFINITION_KINDS);
         });
         break;
-      case "parameters-template":
+      case "design-parameters-template":
         recipe.params.forEach((param, idx) => {
           param.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
             checkRef(

@@ -2,10 +2,10 @@ import {
   componentFolderStandardValuesId,
   componentFolderTemplateId,
   headlessVariantsSectionFolderId,
-  paramsFieldId,
-  paramsSectionId,
-  paramsStandardValuesId,
-  paramsTemplateId,
+  designParameterFieldId,
+  designParametersSectionId,
+  designParametersStandardValuesId,
+  designParametersTemplateId,
   renderingId,
   sectionDefinitionId,
   sharedDataFolderTemplateId,
@@ -49,13 +49,13 @@ import {
   buildStandardValuesFieldEntries,
   emitDatasourceTemplate,
   ensureComponentFoldersBucket,
-  ensurePresentationParametersBucket,
+  ensurePresentationDesignParametersBucket,
   ensureRenderingsSectionFolder,
   ensureSectionFolder,
   joinPath,
   resolveComponentFoldersBucketPath,
   resolveComponentTemplateParent,
-  resolvePresentationParametersBucketPath,
+  resolvePresentationDesignParametersBucketPath,
   resolveRenderingParent,
   sharedField,
   siteOf,
@@ -88,11 +88,7 @@ const resolveSectionName = (
   context: CompileContext
 ): string | undefined => {
   if (!recipe.section) return undefined;
-  return resolveSectionRecipe(
-    recipe.handle,
-    recipe.section.handle,
-    context.sectionsByHandle
-  ).name;
+  return resolveSectionRecipe(recipe.handle, recipe.section.handle, context.sectionsByHandle).name;
 };
 
 /**
@@ -494,7 +490,7 @@ function emitParamsTemplate(
   emittedFolders: Set<string>
 ): void {
   const site = siteOf(context);
-  const paramsTplRefKey = paramsTemplateId(site, recipe.handle);
+  const paramsTplRefKey = designParametersTemplateId(site, recipe.handle);
   const paramsName = `${recipe.name} Parameters`;
   const paramsDisplayName = `${recipe.displayName} Parameters`;
 
@@ -502,14 +498,14 @@ function emitParamsTemplate(
   let paramsParent: CreateItemOp["parent"];
   let paramsParentPath: string;
   if (sectionName) {
-    const bucketRefKey = ensurePresentationParametersBucket(
+    const bucketRefKey = ensurePresentationDesignParametersBucket(
       operations,
       context,
       sectionName,
       emittedFolders
     );
     paramsParent = { kind: "ref-recipe", refKey: bucketRefKey };
-    paramsParentPath = resolvePresentationParametersBucketPath(context, sectionName);
+    paramsParentPath = resolvePresentationDesignParametersBucketPath(context, sectionName);
   } else {
     paramsParent = { kind: "ref-path", value: context.templatesRoot };
     paramsParentPath = context.templatesRoot;
@@ -544,7 +540,7 @@ function emitParamsTemplate(
     baseTemplates: [...SXA_HEADLESS_PARAMS_BASE_TEMPLATES],
   } satisfies SetBaseTemplatesOp);
 
-  const paramsSecRefKey = paramsSectionId(site, recipe.handle, PARAMS_SECTION_NAME);
+  const paramsSecRefKey = designParametersSectionId(site, recipe.handle, PARAMS_SECTION_NAME);
   const paramsSecPath = joinPath(paramsTplPath, PARAMS_SECTION_NAME);
   operations.push({
     op: "CreateItem",
@@ -562,7 +558,7 @@ function emitParamsTemplate(
     operations.push(
       ...buildFieldOp({
         recipeHandle: recipe.handle,
-        fieldRefKey: paramsFieldId(site, recipe.handle, param.name),
+        fieldRefKey: designParameterFieldId(site, recipe.handle, param.name),
         fieldPath: joinPath(paramsSecPath, param.name),
         parentRefKey: paramsSecRefKey,
         labelPrefix: `params-field:${recipe.handle}`,
@@ -585,10 +581,10 @@ function emitParamsTemplate(
     site,
     recipe.handle,
     recipe.params,
-    paramsFieldId
+    designParameterFieldId
   );
   if (paramsSvFieldEntries.length > 0) {
-    const paramsSvRefKey = paramsStandardValuesId(site, recipe.handle);
+    const paramsSvRefKey = designParametersStandardValuesId(site, recipe.handle);
     const paramsSvPath = joinPath(paramsTplPath, "__Standard Values");
     operations.push({
       op: "CreateItem",
@@ -647,10 +643,10 @@ function emitRendering(
   if (hasParams) {
     // Prefer the explicit `parameters: { handle }` reference when set,
     // else point at the synthesised inline params template (whose
-    // refKey is `paramsTemplateId(site, recipe.handle)`).
+    // refKey is `designParametersTemplateId(site, recipe.handle)`).
     const paramsRefKey = recipe.parameters
-      ? paramsTemplateId(site, recipe.parameters.handle)
-      : paramsTemplateId(site, recipe.handle);
+      ? designParametersTemplateId(site, recipe.parameters.handle)
+      : designParametersTemplateId(site, recipe.handle);
     fields.push(
       sharedField(RENDERING_FIELDS.PARAMETERS_TEMPLATE, {
         kind: "ref-recipe",
@@ -719,17 +715,14 @@ function emitRendering(
           const leafName = subfolderSegments[subfolderSegments.length - 1];
           const intermediateSegments = subfolderSegments.slice(0, -1);
           const parentPath =
-            intermediateSegments.length > 0
-              ? joinPath(base, intermediateSegments.join("/"))
-              : base;
+            intermediateSegments.length > 0 ? joinPath(base, intermediateSegments.join("/")) : base;
           const folderPath = joinPath(base, subfolderSegments.join("/"));
           // Shared-subfolder coalescer signal: when this subfolder is
           // populated by ≥2 recipes in the set, the folder ITEM
           // conforms to the SHARED template (whose Insert Options is
           // the union of all contributing recipes' datasource
           // templates). Singletons keep using the per-recipe template.
-          const isShared =
-            context.sharedSubfolders?.has(location.subfolder) === true;
+          const isShared = context.sharedSubfolders?.has(location.subfolder) === true;
           const folderTemplateOf = isShared
             ? sharedDataFolderTemplateId(site, location.subfolder)
             : siteDataFolderTemplateId(site, recipe.handle);
@@ -920,9 +913,7 @@ function emitVariants(
       parent: { kind: "ref-recipe", refKey: folderRefKey },
       templateOf: SITECORE_TEMPLATES.VARIANT_DEFINITION,
       name: variant.name,
-      fields: [
-        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: variant.name }),
-      ],
+      fields: [versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: variant.name })],
     } satisfies CreateItemOp);
   }
 }

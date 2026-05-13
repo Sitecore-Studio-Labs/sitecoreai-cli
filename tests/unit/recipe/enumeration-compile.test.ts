@@ -17,9 +17,9 @@ import {
   enumerationTemplateValueFieldId,
   enumerationValueTemplateId,
   enumValueId,
-  paramsFieldId,
-  paramsStandardValuesId,
-  paramsTemplateId,
+  designParameterFieldId,
+  designParametersStandardValuesId,
+  designParametersTemplateId,
 } from "../../../src/recipe/guids";
 import {
   SITECORE_TEMPLATES,
@@ -124,7 +124,10 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
       (o) => o.id === enumerationsFolderTemplateId(SITE)
     );
     const enumTpl = findCreateItem(ir.operations, (o) => o.id === enumerationTemplateId(SITE));
-    const valueTpl = findCreateItem(ir.operations, (o) => o.id === enumerationValueTemplateId(SITE));
+    const valueTpl = findCreateItem(
+      ir.operations,
+      (o) => o.id === enumerationValueTemplateId(SITE)
+    );
     expect(folderTpl).toBeDefined();
     expect(folderTpl!.name).toBe("Enumerations Folder");
     // Lands at the SITE templates root's `/Presentation` (sibling of
@@ -166,9 +169,7 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     const section = findCreateItem(ir.operations, (o) => o.id === sectionRefKey);
     expect(section).toBeDefined();
     expect(section!.name).toBe("Enumeration");
-    expect(section!.path).toBe(
-      `${SITE_TEMPLATES_ROOT}/Presentation/Enumeration Value/Enumeration`
-    );
+    expect(section!.path).toBe(`${SITE_TEMPLATES_ROOT}/Presentation/Enumeration Value/Enumeration`);
     expect(section!.parent).toEqual({ kind: "ref-recipe", refKey: valueTplRefKey });
     expect(section!.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE_SECTION);
     expect(section!.policy).toBe("CreateOnly");
@@ -683,7 +684,7 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const fieldOp = findCreateItem(
       ir.operations,
-      (o) => o.id === paramsFieldId(SITE, recipe.handle, "ColorScheme")
+      (o) => o.id === designParameterFieldId(SITE, recipe.handle, "ColorScheme")
     );
     expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
       kind: "string",
@@ -695,7 +696,7 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const fieldOp = findCreateItem(
       ir.operations,
-      (o) => o.id === paramsFieldId(SITE, recipe.handle, "ColorScheme")
+      (o) => o.id === designParameterFieldId(SITE, recipe.handle, "ColorScheme")
     );
     expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual<RefValue>({
       kind: "string",
@@ -714,7 +715,7 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const paramsSv = findCreateItem(
       ir.operations,
-      (o) => o.id === paramsStandardValuesId(SITE, recipe.handle)
+      (o) => o.id === designParametersStandardValuesId(SITE, recipe.handle)
     );
     expect(paramsSv).toBeDefined();
     const colorEntry = paramsSv!.fields.find((f) => f.fieldName === "ColorScheme");
@@ -723,11 +724,11 @@ describe("compileComponentTemplateRecipe — shared enum field (sitecore.enumHan
       kind: "ref-recipe",
       refKey: enumValueId(enumerationFolderId(SITE, "color-scheme@1"), "primary"),
     });
-    // Avoid an unused-import warning on paramsTemplateId — the SV's
+    // Avoid an unused-import warning on designParametersTemplateId — the SV's
     // parent is the params template by construction.
     expect(paramsSv!.parent).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(SITE, recipe.handle),
+      refKey: designParametersTemplateId(SITE, recipe.handle),
     });
   });
 });

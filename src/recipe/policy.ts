@@ -39,7 +39,7 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // Standalone parameters templates and the synthesised inline-hoisted
   // ones share the same policy as component templates — they're
   // registry-owned and should overwrite tenant edits.
-  "parameters-template": "template-structure",
+  "design-parameters-template": "template-structure",
   // Section definitions are typically tenant-pre-existing; the
   // compiler emits AppendToMultiList ops against them rather than
   // CreateItem. Treat as composition-structure so any future

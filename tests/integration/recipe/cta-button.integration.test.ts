@@ -4,7 +4,7 @@ import { describeIfDeployAuth, getEnv, requireEnv, resolveDeployToken } from "..
 import type { EnvironmentConfiguration } from "../../../src/config";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
-import { paramsTemplateId, renderingId, templateId } from "../../../src/recipe/guids";
+import { designParametersTemplateId, renderingId, templateId } from "../../../src/recipe/guids";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
 import type { AuthoringApiClient } from "../../../src/recipe/api/client";
 import type { ComponentTemplateRecipe } from "../../../src/recipe/schema/recipe";
@@ -99,7 +99,7 @@ describe("recipe cta-button — sandbox round-trip", () => {
     if (!client) return;
     // Best-effort cleanup. Sitecore deleteItem on a missing item may throw —
     // ignore so a half-completed test still cleans up the rest.
-    const ids = [templateId(HANDLE), paramsTemplateId(HANDLE), renderingId(HANDLE)];
+    const ids = [templateId(HANDLE), designParametersTemplateId(HANDLE), renderingId(HANDLE)];
     for (const id of ids) {
       try {
         await client.deleteItem(id);
@@ -123,15 +123,15 @@ describe("recipe cta-button — sandbox round-trip", () => {
       const applyError = events.find((e) => e.kind === "apply-error");
       const opErrors = events.filter((e) => e.kind === "op-error");
       const rollback = events.filter((e) => e.kind.startsWith("rollback-"));
-       
+
       console.error("\n=== INTEGRATION TEST FAILURE DIAGNOSTICS ===");
-       
+
       console.error("mode:", mode, "summary:", result.summary, "aborted:", result.aborted);
       if (failedEvent) console.error("failed:", JSON.stringify(failedEvent, null, 2));
       if (applyError) console.error("apply-error:", JSON.stringify(applyError, null, 2));
       if (opErrors.length > 0) console.error("op-errors:", JSON.stringify(opErrors, null, 2));
       if (rollback.length > 0) console.error("rollback events:", JSON.stringify(rollback, null, 2));
-       
+
       console.error("=== END DIAGNOSTICS ===\n");
     }
     return { ir, result, events };
@@ -148,7 +148,7 @@ describe("recipe cta-button — sandbox round-trip", () => {
     expect(tpl).not.toBeNull();
     expect(tpl?.itemId.toLowerCase()).toBe(templateId(HANDLE));
 
-    const paramsTpl = await client.getItem(paramsTemplateId(HANDLE));
+    const paramsTpl = await client.getItem(designParametersTemplateId(HANDLE));
     expect(paramsTpl).not.toBeNull();
 
     const rend = await client.getItem(renderingId(HANDLE));

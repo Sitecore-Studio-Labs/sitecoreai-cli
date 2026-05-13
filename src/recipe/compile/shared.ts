@@ -13,7 +13,7 @@ import {
   enumerationValueTemplateId,
   enumValueId,
   fieldId,
-  presentationParametersBucketId,
+  presentationDesignParametersBucketId,
   renderingsSectionFolderId,
   sectionFolderId,
   sectionId,
@@ -41,7 +41,7 @@ import {
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
 } from "../ir/sitecore-templates";
-import { type FieldDefinition, type ParamDefinition } from "../schema/recipe";
+import { type FieldDefinition, type DesignParameter } from "../schema/recipe";
 import {
   defaultSitecoreFieldType,
   type SitecoreFieldType,
@@ -159,7 +159,7 @@ export interface CompileContext {
    * Each `EnumerationRecipe` lands at `<enumerationsRoot>/<EnumName>`
    * with one child item per value. Required for `EnumerationRecipe`
    * compilation; required for `ComponentTemplateRecipe`/
-   * `ParametersTemplateRecipe` compilation when any field carries
+   * `DesignParametersTemplateRecipe` compilation when any field carries
    * `sitecore.enumHandle`. Compiler throws INPUT_INVALID with a clear
    * message when needed but missing.
    */
@@ -334,7 +334,7 @@ export const resolveComponentFoldersBucketPath = (
  * section (legacy callers), parameters templates land directly under
  * `templatesRoot` to match the old flat layout.
  */
-export const resolvePresentationParametersBucketPath = (
+export const resolvePresentationDesignParametersBucketPath = (
   context: CompileContext,
   section: string | undefined
 ): string => {
@@ -425,14 +425,14 @@ export const ensureComponentFoldersBucket = (
  * Ensure a "Presentation Parameters" subfolder exists under the section
  * folder. Idempotent.
  */
-export const ensurePresentationParametersBucket = (
+export const ensurePresentationDesignParametersBucket = (
   operations: Operation[],
   context: CompileContext,
   section: string,
   emittedFolders: Set<string>
 ): string => {
   const site = siteOf(context);
-  const refKey = presentationParametersBucketId(site, section);
+  const refKey = presentationDesignParametersBucketId(site, section);
   if (emittedFolders.has(refKey)) return refKey;
   emittedFolders.add(refKey);
   const sectionRefKey = ensureSectionFolder(operations, context, section, emittedFolders);
@@ -946,7 +946,7 @@ export interface BuildFieldOpInput {
   fieldPath: string;
   parentRefKey: string;
   labelPrefix: string;
-  field: FieldDefinition | ParamDefinition;
+  field: FieldDefinition | DesignParameter;
   zeroBasedIndex: number;
   policy: PushPolicy;
   /**
@@ -1035,7 +1035,7 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
   ];
 }
 
-function resolveSitecoreType(field: FieldDefinition | ParamDefinition): SitecoreFieldType {
+function resolveSitecoreType(field: FieldDefinition | DesignParameter): SitecoreFieldType {
   if (field.sitecore?.type) {
     return field.sitecore.type;
   }
@@ -1076,11 +1076,11 @@ function resolveSitecoreType(field: FieldDefinition | ParamDefinition): Sitecore
 export function buildStandardValuesFieldEntries(
   site: string,
   handle: string,
-  fields: ReadonlyArray<FieldDefinition | ParamDefinition>,
+  fields: ReadonlyArray<FieldDefinition | DesignParameter>,
   // Resolver for the field-definition refKey. Defaults to `fieldId`
-  // (component/content templates); pass `paramsFieldId` when emitting
+  // (component/content templates); pass `designParameterFieldId` when emitting
   // SV defaults for a parameters template (which uses a different
-  // GUID family scoped under `paramsTemplateId`).
+  // GUID family scoped under `designParametersTemplateId`).
   fieldIdResolver: (site: string, handle: string, fieldName: string) => string = fieldId
 ): FieldValue[] {
   const entries: FieldValue[] = [];
@@ -1117,7 +1117,7 @@ export function buildStandardValuesFieldEntries(
  */
 function encodeStandardValueDefaultForField(
   raw: string,
-  field: FieldDefinition | ParamDefinition,
+  field: FieldDefinition | DesignParameter,
   site: string,
   handle: string
 ): RefValue | undefined {
@@ -1216,7 +1216,7 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
  * without a lookup.
  */
 function resolveFieldSource(
-  field: FieldDefinition | ParamDefinition,
+  field: FieldDefinition | DesignParameter,
   type: SitecoreFieldType,
   site: string,
   recipeHandle: string,

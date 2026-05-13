@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { type CompileContext, compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import {
   fieldId,
-  paramsFieldId,
-  paramsSectionId,
-  paramsTemplateId,
+  designParameterFieldId,
+  designParametersSectionId,
+  designParametersTemplateId,
   renderingId,
   sectionId,
   standardValuesId,
@@ -162,7 +162,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("params template lands under the templates root with `<name> Parameters`", () => {
     const op = ir.operations[6] as CreateItemOp;
-    expect(op.id).toBe(paramsTemplateId(SITE, HANDLE));
+    expect(op.id).toBe(designParametersTemplateId(SITE, HANDLE));
     expect(op.parent).toEqual({ kind: "ref-path", value: CONTEXT.templatesRoot });
     expect(op.path).toBe(`${CONTEXT.templatesRoot}/CtaButton Parameters`);
     expect(op.name).toBe("CtaButton Parameters");
@@ -172,10 +172,10 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
 
   it("params section is parented under the params template", () => {
     const op = ir.operations[8] as CreateItemOp;
-    expect(op.id).toBe(paramsSectionId(SITE, HANDLE, "Parameters"));
+    expect(op.id).toBe(designParametersSectionId(SITE, HANDLE, "Parameters"));
     expect(op.parent).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(SITE, HANDLE),
+      refKey: designParametersTemplateId(SITE, HANDLE),
     });
     expect(op.name).toBe("Parameters");
   });
@@ -187,9 +187,9 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
       (o) =>
         o.name === "Size" &&
         o.parent.kind === "ref-recipe" &&
-        o.parent.refKey === paramsSectionId(SITE, HANDLE, "Parameters")
+        o.parent.refKey === designParametersSectionId(SITE, HANDLE, "Parameters")
     );
-    expect(op.id).toBe(paramsFieldId(SITE, HANDLE, "Size"));
+    expect(op.id).toBe(designParameterFieldId(SITE, HANDLE, "Size"));
     // sitecore.type: "droplist" override → Type=Droplist + Source as a
     // pipe-separated value list. The Droplist field reads its options
     // straight from the Source string; no folder lookup, no per-field
@@ -218,7 +218,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
     });
     expect(findField(op.fields, RENDERING_FIELDS.PARAMETERS_TEMPLATE)?.value).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(SITE, HANDLE),
+      refKey: designParametersTemplateId(SITE, HANDLE),
     });
   });
 

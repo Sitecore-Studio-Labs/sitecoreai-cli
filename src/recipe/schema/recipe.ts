@@ -139,7 +139,7 @@ export const FieldDefinitionSchema = z.object({
 
 export type FieldDefinition = z.infer<typeof FieldDefinitionSchema>;
 
-export const ParamDefinitionSchema = z.object({
+export const DesignParameterSchema = z.object({
   name: z.string().min(1),
   shape: FieldShapeSchema,
   values: z.array(z.string()).optional(),
@@ -147,7 +147,7 @@ export const ParamDefinitionSchema = z.object({
   sitecore: SitecoreFieldAugmentSchema.optional(),
 });
 
-export type ParamDefinition = z.infer<typeof ParamDefinitionSchema>;
+export type DesignParameter = z.infer<typeof DesignParameterSchema>;
 
 /**
  * Phase 1 = Variants Lite: bare Variant item per `name`, no internal
@@ -383,7 +383,7 @@ export const ComponentTemplateRecipeSchema = z.object({
    */
   datasource: RecipeDatasourceSchema.optional(),
   /**
-   * Reference to a separate `ParametersTemplateRecipe`. When present,
+   * Reference to a separate `DesignParametersTemplateRecipe`. When present,
    * the rendering's Parameters Template field points at this template
    * and the compiler does NOT synthesise an anonymous parameters
    * template from inline `params:`.
@@ -421,7 +421,7 @@ export const ComponentTemplateRecipeSchema = z.object({
    */
   availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
   variants: z.array(RenderingVariantDefinitionSchema).default([]),
-  params: z.array(ParamDefinitionSchema).default([]),
+  params: z.array(DesignParameterSchema).default([]),
   /**
    * SXA placeholder keys this rendering can be PLACED INTO — the
    * allow-list. At apply time scai walks the configured Placeholder
@@ -556,15 +556,15 @@ export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
  * into an anonymous parameters template owned by one component);
  * standalone parameters templates are reusable across components.
  *
- * Identity: `paramsTemplateId(handle)` derives the deterministic GUID.
+ * Identity: `designParametersTemplateId(handle)` derives the deterministic GUID.
  * Same identity scheme as the inline-hoisted variant — the seed is the
  * recipe handle, and the namespace is `NAMESPACE_TEMPLATE`. The seed
  * suffix is `::params`, identical between inline and standalone forms,
  * which keeps re-pushes idempotent if a recipe migrates from inline to
  * standalone (the GUID stays the same).
  */
-export const ParametersTemplateRecipeSchema = z.object({
-  kind: z.literal("parameters-template"),
+export const DesignParametersTemplateRecipeSchema = z.object({
+  kind: z.literal("design-parameters-template"),
   schemaVersion: z.literal("1"),
   handle: z.string().regex(HANDLE_PATTERN, {
     message: "handle must match `<kebab-name>@<major>`, e.g. cta-button-params@1",
@@ -580,10 +580,10 @@ export const ParametersTemplateRecipeSchema = z.object({
    * presentation parameters are organised per-section by convention.
    */
   section: z.string().min(1),
-  params: z.array(ParamDefinitionSchema).default([]),
+  params: z.array(DesignParameterSchema).default([]),
 });
 
-export type ParametersTemplateRecipe = z.infer<typeof ParametersTemplateRecipeSchema>;
+export type DesignParametersTemplateRecipe = z.infer<typeof DesignParametersTemplateRecipeSchema>;
 
 /**
  * Available Rendering Section Definition — declares an SXA section
@@ -1250,7 +1250,7 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   ContentItemRecipeSchema,
-  ParametersTemplateRecipeSchema,
+  DesignParametersTemplateRecipeSchema,
   SectionDefinitionRecipeSchema,
   PartialDesignRecipeSchema,
   PageDesignRecipeSchema,

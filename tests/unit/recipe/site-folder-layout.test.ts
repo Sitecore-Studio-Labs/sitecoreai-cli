@@ -3,7 +3,7 @@ import {
   type CompileContext,
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
-  compileParametersTemplateRecipe,
+  compileDesignParametersTemplateRecipe,
   compileRecipeSet,
   compileSectionDefinitionRecipe,
 } from "../../../src/recipe/compile";
@@ -12,8 +12,8 @@ import {
   componentFolderTemplateId,
   componentFoldersBucketId,
   contentModelsGroupFolderId,
-  paramsTemplateId,
-  presentationParametersBucketId,
+  designParametersTemplateId,
+  presentationDesignParametersBucketId,
   renderingId,
   renderingsSectionFolderId,
   sectionDefinitionId,
@@ -33,7 +33,7 @@ import {
 import {
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
-  ParametersTemplateRecipeSchema,
+  DesignParametersTemplateRecipeSchema,
   RecipeSchema,
   SectionDefinitionRecipeSchema,
   type ComponentSectionRecipe,
@@ -131,10 +131,10 @@ describe("ContentTemplateRecipe schema — meta.tax", () => {
   });
 });
 
-describe("ParametersTemplateRecipe schema", () => {
+describe("DesignParametersTemplateRecipe schema", () => {
   it("accepts a minimal parameters-template recipe", () => {
-    const result = ParametersTemplateRecipeSchema.safeParse({
-      kind: "parameters-template",
+    const result = DesignParametersTemplateRecipeSchema.safeParse({
+      kind: "design-parameters-template",
       schemaVersion: "1",
       handle: "accordion-params@1",
       name: "Accordion Parameters",
@@ -146,8 +146,8 @@ describe("ParametersTemplateRecipe schema", () => {
   });
 
   it("rejects missing `section` (required for layout)", () => {
-    const result = ParametersTemplateRecipeSchema.safeParse({
-      kind: "parameters-template",
+    const result = DesignParametersTemplateRecipeSchema.safeParse({
+      kind: "design-parameters-template",
       schemaVersion: "1",
       handle: "accordion-params@1",
       name: "Accordion Parameters",
@@ -186,7 +186,7 @@ describe("Recipe discriminated union — new kinds", () => {
   it("RecipeSchema accepts parameters-template and section-definition", () => {
     expect(
       RecipeSchema.safeParse({
-        kind: "parameters-template",
+        kind: "design-parameters-template",
         schemaVersion: "1",
         handle: "p@1",
         name: "P",
@@ -210,7 +210,10 @@ describe("Recipe discriminated union — new kinds", () => {
 
 describe("Component template path — section-aware emission", () => {
   it("emits the template under <componentsRoot>/<section>/<Component>", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(
+      minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }),
+      CONTEXT
+    );
     const tplOp = findCreates(ir.operations, (op) => op.label === "template:accordion-block@1")[0];
     expect(tplOp.path).toBe(`${COMPONENTS_ROOT}/ui/AccordionBlock`);
   });
@@ -222,7 +225,10 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits the rendering at <renderingsRoot>/<section>/<Component>", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(
+      minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }),
+      CONTEXT
+    );
     const renderingOp = findCreates(
       ir.operations,
       (op) => op.id === renderingId(SITE, "accordion-block@1")
@@ -231,7 +237,10 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits a section folder CreateOnly op once for a (site, section) pair", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(
+      minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }),
+      CONTEXT
+    );
     const sectionFolders = ir.operations.filter(
       (op) => op.op === "CreateItem" && op.id === sectionFolderId(SITE, "ui")
     );
@@ -242,7 +251,10 @@ describe("Component template path — section-aware emission", () => {
   });
 
   it("emits a renderings-side section folder distinct from the templates-side one", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(
+      minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }),
+      CONTEXT
+    );
     const tplFolderId = sectionFolderId(SITE, "ui");
     const renderingFolderId = renderingsSectionFolderId(SITE, "ui");
     expect(tplFolderId).not.toBe(renderingFolderId);
@@ -302,9 +314,13 @@ describe("Component Folder template — emitted when children: declared", () => 
   });
 
   it("does NOT emit a Component Folder template when children is absent", () => {
-    const ir = compileComponentTemplateRecipe(minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }), CONTEXT);
+    const ir = compileComponentTemplateRecipe(
+      minimalComponentRecipe({ section: { handle: UI_SECTION_RECIPE.handle } }),
+      CONTEXT
+    );
     const folderTpl = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === componentFolderTemplateId(SITE, "accordion-block@1")
+      (op) =>
+        op.op === "CreateItem" && op.id === componentFolderTemplateId(SITE, "accordion-block@1")
     );
     expect(folderTpl).toBeUndefined();
   });
@@ -318,7 +334,7 @@ describe("Parameters template path — section-aware emission", () => {
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const paramsTpl = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === designParametersTemplateId(SITE, recipe.handle)
     ) as CreateItemOp | undefined;
     expect(paramsTpl).toBeDefined();
     expect(paramsTpl!.path).toBe(
@@ -333,7 +349,7 @@ describe("Parameters template path — section-aware emission", () => {
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
     const buckets = ir.operations.filter(
-      (op) => op.op === "CreateItem" && op.id === presentationParametersBucketId(SITE, "ui")
+      (op) => op.op === "CreateItem" && op.id === presentationDesignParametersBucketId(SITE, "ui")
     );
     expect(buckets).toHaveLength(1);
   });
@@ -345,10 +361,10 @@ describe("Parameters template path — section-aware emission", () => {
       parameters: { handle: "shared-params@1" },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
-    // The recipe's own paramsTemplateId should NOT be emitted — the
+    // The recipe's own designParametersTemplateId should NOT be emitted — the
     // rendering points at the external one instead.
     const ownParams = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, recipe.handle)
+      (op) => op.op === "CreateItem" && op.id === designParametersTemplateId(SITE, recipe.handle)
     );
     expect(ownParams).toBeUndefined();
   });
@@ -369,16 +385,16 @@ describe("Parameters template path — section-aware emission", () => {
     );
     expect(paramsField?.value).toEqual({
       kind: "ref-recipe",
-      refKey: paramsTemplateId(SITE, "shared-params@1"),
+      refKey: designParametersTemplateId(SITE, "shared-params@1"),
     });
   });
 });
 
-describe("Standalone ParametersTemplateRecipe compile", () => {
+describe("Standalone DesignParametersTemplateRecipe compile", () => {
   it("emits at <componentsRoot>/<section>/Presentation Parameters/<name>", () => {
-    const ir = compileParametersTemplateRecipe(
+    const ir = compileDesignParametersTemplateRecipe(
       {
-        kind: "parameters-template",
+        kind: "design-parameters-template",
         schemaVersion: "1",
         handle: "shared-params@1",
         name: "SharedParams",
@@ -389,7 +405,8 @@ describe("Standalone ParametersTemplateRecipe compile", () => {
       CONTEXT
     );
     const tplOp = ir.operations.find(
-      (op) => op.op === "CreateItem" && op.id === paramsTemplateId(SITE, "shared-params@1")
+      (op) =>
+        op.op === "CreateItem" && op.id === designParametersTemplateId(SITE, "shared-params@1")
     ) as CreateItemOp | undefined;
     expect(tplOp).toBeDefined();
     expect(tplOp!.path).toBe(`${COMPONENTS_ROOT}/ui/Presentation Parameters/SharedParams`);
@@ -537,7 +554,7 @@ describe("compileRecipeSet — folder dedup across recipes in the same section",
     expect(componentFoldersBucket).toHaveLength(1);
 
     const presentationParamsBucket = allOps.filter(
-      (op) => op.op === "CreateItem" && op.id === presentationParametersBucketId(SITE, "ui")
+      (op) => op.op === "CreateItem" && op.id === presentationDesignParametersBucketId(SITE, "ui")
     );
     expect(presentationParamsBucket).toHaveLength(1);
   });

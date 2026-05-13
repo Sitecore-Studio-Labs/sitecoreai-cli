@@ -37,7 +37,7 @@ import { encodeTemplatesMapping } from "./layout/templates-mapping";
 import { compileComponentSectionRecipe } from "./compile/component-section";
 import { compileComponentTemplateRecipe } from "./compile/component-template";
 import { compileContentTemplateRecipe } from "./compile/content-template";
-import { compileParametersTemplateRecipe } from "./compile/parameters-template";
+import { compileDesignParametersTemplateRecipe } from "./compile/design-parameters-template";
 import { compileSectionDefinitionRecipe } from "./compile/section-definition";
 import { compilePartialDesignRecipe } from "./compile/partial-design";
 import { compilePageDesignRecipe } from "./compile/page-design";
@@ -54,7 +54,7 @@ export {
   compileComponentSectionRecipe,
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
-  compileParametersTemplateRecipe,
+  compileDesignParametersTemplateRecipe,
   compileSectionDefinitionRecipe,
   compilePartialDesignRecipe,
   compilePageDesignRecipe,
@@ -157,10 +157,7 @@ const buildAvailableRenderingsAggregate = (
   // Build the section handle → recipe map so we can resolve component
   // recipes' `section.handle` references to section names (and pick up
   // each section's `displayName` for the toolbox label).
-  const sectionsByHandle = new Map<
-    string,
-    import("./schema/recipe").ComponentSectionRecipe
-  >();
+  const sectionsByHandle = new Map<string, import("./schema/recipe").ComponentSectionRecipe>();
   for (const recipe of recipes) {
     if (recipe.kind === "component-section") {
       sectionsByHandle.set(recipe.handle, recipe);
@@ -187,10 +184,7 @@ const buildAvailableRenderingsAggregate = (
   // Reverse-lookup name → section recipe so we can stamp the section's
   // `displayName` (and icon, when present) on the Available Renderings
   // section item — that's what shows in the SXA Pages toolbox.
-  const sectionByName = new Map<
-    string,
-    import("./schema/recipe").ComponentSectionRecipe
-  >();
+  const sectionByName = new Map<string, import("./schema/recipe").ComponentSectionRecipe>();
   for (const section of sectionsByHandle.values()) {
     sectionByName.set(section.name, section);
   }
@@ -346,7 +340,10 @@ const buildSharedDataFoldersAggregate = (
     const sepIdx = key.indexOf("::");
     const subfolder = key.slice(sepIdx + 2);
 
-    const segments = subfolder.split("/").map((s) => s.trim()).filter(Boolean);
+    const segments = subfolder
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean);
     // Pre-pass already filters out empty subfolders (the `!!l.subfolder`
     // check), but defend against authored multi-`/` strings collapsing
     // to nothing after trim — skip rather than emitting a malformed op.
@@ -678,17 +675,12 @@ export function compileRecipeSet(
   const setSiteForShared = siteOf(context);
   const sharedSubfolderContributions = detectSharedSubfolders(recipes, setSiteForShared);
   const sharedSubfolders: ReadonlySet<string> = new Set(
-    [...sharedSubfolderContributions.keys()].map(
-      (k) => k.slice(k.indexOf("::") + 2)
-    )
+    [...sharedSubfolderContributions.keys()].map((k) => k.slice(k.indexOf("::") + 2))
   );
   // Build the cross-recipe section map so component recipes can resolve
   // `section.handle` → ComponentSectionRecipe at compile time. Threaded
   // into perRecipeContext below.
-  const sectionsByHandle = new Map<
-    string,
-    import("./schema/recipe").ComponentSectionRecipe
-  >();
+  const sectionsByHandle = new Map<string, import("./schema/recipe").ComponentSectionRecipe>();
   for (const recipe of recipes) {
     if (recipe.kind === "component-section") {
       sectionsByHandle.set(recipe.handle, recipe);
@@ -700,10 +692,7 @@ export function compileRecipeSet(
   // path (the form Sitecore's Droplink Source needs; bare `{GUID}`
   // doesn't reliably surface picker options in SXA Headless's
   // rendering parameter dialog).
-  const enumsByHandle = new Map<
-    string,
-    import("./schema/recipe").EnumerationRecipe
-  >();
+  const enumsByHandle = new Map<string, import("./schema/recipe").EnumerationRecipe>();
   for (const recipe of recipes) {
     if (recipe.kind === "enumeration") {
       enumsByHandle.set(recipe.handle, recipe);
@@ -740,8 +729,8 @@ export function compileRecipeSet(
       case "content-template":
         ir = compileContentTemplateRecipe(recipe, perRecipeContext, emittedFolders);
         break;
-      case "parameters-template":
-        ir = compileParametersTemplateRecipe(recipe, perRecipeContext, emittedFolders);
+      case "design-parameters-template":
+        ir = compileDesignParametersTemplateRecipe(recipe, perRecipeContext, emittedFolders);
         break;
       case "enumeration":
         ir = compileEnumerationRecipe(recipe, perRecipeContext, emittedFolders);
@@ -838,11 +827,7 @@ export function compileRecipeSet(
   // restrict authors' right-click → Insert at `<enumerationsRoot>` to
   // the generic Folder template + each EnumerationRecipe's folder
   // item. Without this, authors see every template in Sitecore.
-  const enumerationsRoot = buildEnumerationsRootAggregate(
-    recipes,
-    context,
-    setSiteForShared
-  );
+  const enumerationsRoot = buildEnumerationsRootAggregate(recipes, context, setSiteForShared);
   if (enumerationsRoot) {
     irs.push(enumerationsRoot);
   }
@@ -862,8 +847,8 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileContentTemplateRecipe(recipe, context);
     case "content-item":
       return compileContentItemRecipe(recipe, context);
-    case "parameters-template":
-      return compileParametersTemplateRecipe(recipe, context);
+    case "design-parameters-template":
+      return compileDesignParametersTemplateRecipe(recipe, context);
     case "section-definition":
       return compileSectionDefinitionRecipe(recipe, context);
     case "partial-design":

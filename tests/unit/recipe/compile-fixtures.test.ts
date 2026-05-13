@@ -6,7 +6,7 @@ import {
 } from "../../../src/recipe/compile";
 import {
   fieldId,
-  paramsFieldId,
+  designParameterFieldId,
   templateId,
   variantId,
   variantsFolderId,
@@ -31,8 +31,7 @@ const ENUMERATIONS_ROOT = "/sitecore/content/test-tenant/test-site/Settings/Enum
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/test-site/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
-  headlessVariantsRoot:
-    "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
   enumerationsRoot: ENUMERATIONS_ROOT,
 };
 
@@ -209,13 +208,15 @@ describe("compile fixtures — cross-recipe deterministic ID linkage", () => {
   });
 });
 
-describe("compile fixtures — paramsField IDs scope under paramsTemplateId", () => {
+describe("compile fixtures — paramsField IDs scope under designParametersTemplateId", () => {
   it("rich-text-block params land under the params template, not the datasource template", () => {
     const ir = compileComponentTemplateRecipe(richTextBlockRecipe, CONTEXT);
     const useSectionWrapper = ir.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name === "UseSectionWrapper"
     );
-    expect(useSectionWrapper?.id).toBe(paramsFieldId(SITE, "rich-text-block@1", "UseSectionWrapper"));
+    expect(useSectionWrapper?.id).toBe(
+      designParameterFieldId(SITE, "rich-text-block@1", "UseSectionWrapper")
+    );
     // Sanity: the field id is NOT the datasource-template's fieldId
     expect(useSectionWrapper?.id).not.toBe(fieldId(SITE, "rich-text-block@1", "UseSectionWrapper"));
   });

@@ -144,7 +144,12 @@ const resolveTelemetryStatus = (configPath?: string): { enabled: boolean; source
   };
 };
 
-const DEFAULT_TELEMETRY_URL = "https://telemetry-api-ten.vercel.app/v1/t";
+// Hostname under a domain the project controls (cf. the $id schema URL at
+// https://schemas.sitecoreai.dev/v1/telemetry.schema.json — DNS is in the
+// same zone). Replaces the previous telemetry-api-ten.vercel.app default,
+// which was a Vercel preview-style subdomain and therefore squattable.
+// Override per-invocation with SITECOREAI_TELEMETRY_URL.
+const DEFAULT_TELEMETRY_URL = "https://cli-telemetry.sitecoreai.dev/v1/t";
 const getTelemetryUrl = (): string => process.env.SITECOREAI_TELEMETRY_URL ?? DEFAULT_TELEMETRY_URL;
 
 export const setTelemetryVersion = (version: string): void => {

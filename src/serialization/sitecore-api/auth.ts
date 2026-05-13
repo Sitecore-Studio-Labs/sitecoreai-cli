@@ -28,6 +28,36 @@ const fetchDiscovery = async (authority: string): Promise<Response> => {
   }
 };
 
+/**
+ * Defense against a tampered OpenID discovery document redirecting OAuth
+ * traffic to an attacker-controlled endpoint. The discovery URL is trusted
+ * (operator-supplied authority), but the JSON it returns is server-provided
+ * data — and a compromised authority could rewrite `token_endpoint` to point
+ * elsewhere, harvesting client credentials on every token exchange.
+ */
+const assertSameHost = (endpointUrl: string, authority: string, label: string): void => {
+  let parsedEndpoint: URL;
+  let parsedAuthority: URL;
+  try {
+    parsedEndpoint = new URL(endpointUrl);
+    parsedAuthority = new URL(authority);
+  } catch {
+    throw createCliError(
+      `Discovery document returned an invalid ${label}: ${endpointUrl}.`,
+      "NETWORK"
+    );
+  }
+  if (parsedEndpoint.hostname.toLowerCase() !== parsedAuthority.hostname.toLowerCase()) {
+    throw createCliError(
+      `Discovery document's ${label} hostname (${parsedEndpoint.hostname}) does not match the authority hostname (${parsedAuthority.hostname}).`,
+      "NETWORK",
+      {
+        hint: "The OpenID discovery document may have been tampered with. Verify the authority URL or reach out to your identity provider.",
+      }
+    );
+  }
+};
+
 const getTokenEndpoint = async (authority: string): Promise<string> => {
   const response = await fetchDiscovery(authority);
   if (!response.ok) {
@@ -40,6 +70,7 @@ const getTokenEndpoint = async (authority: string): Promise<string> => {
   if (!json.token_endpoint) {
     throw createCliError("Token endpoint not found in discovery document.", "NETWORK");
   }
+  assertSameHost(json.token_endpoint, authority, "token_endpoint");
   return json.token_endpoint;
 };
 
@@ -53,6 +84,7 @@ const getDeviceAuthorizationEndpoint = async (authority: string): Promise<string
   }
   const json = (await response.json()) as { device_authorization_endpoint?: string };
   if (json.device_authorization_endpoint) {
+    assertSameHost(json.device_authorization_endpoint, authority, "device_authorization_endpoint");
     return json.device_authorization_endpoint;
   }
   return `${authority.replace(/\/$/, "")}/oauth/device/code`;

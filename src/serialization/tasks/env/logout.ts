@@ -24,6 +24,10 @@ export const runLogout = async (options: LogoutOptions): Promise<void> => {
         deployToken: undefined,
         deployTokenExpiresIn: undefined,
         deployTokenLastUpdated: undefined,
+        // clientSecret is a token-minting credential — clearing it on
+        // logout matches the "no creds left on disk" mental model.
+        // clientId is left in place (identifier, not secret).
+        clientSecret: undefined,
       };
       await clearCmTokens(name);
       await clearDeployToken(name);

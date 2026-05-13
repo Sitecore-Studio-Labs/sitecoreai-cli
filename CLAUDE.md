@@ -106,11 +106,13 @@ Hooks treat **only** `agent/*` as a session branch. Other branch prefixes
 
 ## Where to find docs (not skills)
 
-- [README.md](README.md) — end-user CLI documentation
+- [README.md](README.md) — landing page for the CLI (install + quick start)
 - [AGENTS.md](AGENTS.md) — guidance for AI agents _using_ scai
   (consumer-facing); distinct from this harness which is for agents
-  _working on_ scai
-- [AGENT_CI.md](AGENT_CI.md) — non-interactive / CI usage patterns
-- [ROADMAP.md](ROADMAP.md) — planned CLI features
+  _working on_ scai. Includes the CI / non-interactive contract.
+- [docs/](docs/) — reference docs (configuration, serialization, deploy,
+  telemetry-and-privacy, release, quality-gates, roadmap)
+- [docs/commands.md](docs/commands.md) — full command tree, auto-generated
+  from `src/commands/` via `pnpm docs:commands`
 - [skills/](skills/) — bundled SKILL files for AI agents _using_ scai
   (also consumer-facing); not the same as `.claude/skills/`

@@ -20,6 +20,10 @@
   "main": "dist/cli.js",
   "exports": {
     ".": "./dist/cli.js",
+    "./recipe": {
+      "types": "./dist/recipe/index.d.ts",
+      "default": "./dist/recipe/index.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {

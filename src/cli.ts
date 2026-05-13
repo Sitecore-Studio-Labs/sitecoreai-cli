@@ -10,6 +10,7 @@ import { createDeployCommand } from "./commands/deploy";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
+import { createRecipeCommand } from "./commands/recipe";
 import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
 import { showBanner } from "./shared/style";
@@ -244,6 +245,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createInitCommand());
   program.addCommand(createLoginCommand());
   program.addCommand(createLogoutCommand());
+  program.addCommand(createRecipeCommand());
   program.addCommand(createSerializationCommand());
   program.addCommand(createStatusCommand());
   program.addCommand(createTelemetryCommand());

@@ -4,14 +4,16 @@ const replaceAll = (value: string, pattern: RegExp, replacement: string): string
 export const redactSecrets = (value: string): string => {
   let output = value;
   output = replaceAll(output, /Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, "Bearer <redacted>");
+  // Match both snake_case (access_token) and camelCase (accessToken) via
+  // optional underscore. Case-insensitive flag covers PascalCase/UPPER.
   output = replaceAll(
     output,
-    /(\b(access_token|refresh_token|client_secret|deployToken|token)\b\s*[=:]\s*)([^&\s"]+)/gi,
+    /(\b(access_?token|refresh_?token|client_?secret|client_?id|deploy_?token|password|token|secret)\b\s*[=:]\s*)([^&\s"]+)/gi,
     "$1<redacted>"
   );
   output = replaceAll(
     output,
-    /("(?:access_token|refresh_token|client_secret|deployToken|token)"\s*:\s*")([^"]+)/gi,
+    /("(?:access_?token|refresh_?token|client_?secret|client_?id|deploy_?token|password|token|secret)"\s*:\s*")([^"]+)/gi,
     "$1<redacted>"
   );
   return output;

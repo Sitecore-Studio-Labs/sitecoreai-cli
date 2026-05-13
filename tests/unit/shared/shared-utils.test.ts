@@ -43,6 +43,16 @@ describe("shared utilities", () => {
     expect(redactSecrets("Bearer abc.def")).toContain("<redacted>");
     expect(redactSecrets("access_token=secret")).toContain("<redacted>");
     expect(redactSecrets('{"refresh_token":"secret"}')).toContain("<redacted>");
+    // camelCase variants (formerly missed)
+    expect(redactSecrets("accessToken=hush")).toContain("<redacted>");
+    expect(redactSecrets("accessToken=hush")).not.toContain("hush");
+    expect(redactSecrets("refreshToken: hush")).not.toContain("hush");
+    expect(redactSecrets("clientSecret=hush")).not.toContain("hush");
+    expect(redactSecrets('{"clientSecret":"hush"}')).not.toContain("hush");
+    expect(redactSecrets("password=hush")).not.toContain("hush");
+    expect(redactSecrets("client_id=visible-but-still-redacted")).not.toContain(
+      "visible-but-still-redacted"
+    );
   });
 
   it("redacts sensitive CLI args", () => {

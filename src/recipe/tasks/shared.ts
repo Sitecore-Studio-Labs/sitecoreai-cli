@@ -202,7 +202,27 @@ export const resolveRecipeInputs = async (
     return { files: [path.resolve(options.input)], source: "input-flag" };
   }
   const configDir = path.dirname(root.physicalPath);
-  const matched = await fastGlob(root.recipes, { cwd: configDir, absolute: true });
+  // followSymbolicLinks: false defends against an attacker-planted symlink
+  // in recipes/ pointing at /etc/, ~/.aws/, or any other sensitive TS file
+  // — those files would otherwise be executed by tsx when the recipe gets
+  // loaded (.recipe.ts is code, not data).
+  const matched = await fastGlob(root.recipes, {
+    cwd: configDir,
+    absolute: true,
+    followSymbolicLinks: false,
+  });
+  // Defense in depth: reject any resolved path that escapes the config
+  // directory (e.g. via `..` segments in the glob input).
+  const escaped = matched.filter((p) => path.relative(configDir, p).startsWith(".."));
+  if (escaped.length > 0) {
+    throw createCliError(
+      `Recipe glob resolved to ${escaped.length} path(s) outside the config directory: ${escaped.slice(0, 3).join(", ")}${escaped.length > 3 ? `, +${escaped.length - 3} more` : ""}.`,
+      "INPUT_INVALID",
+      {
+        hint: "Recipe paths must live under the directory containing sitecoreai.cli.json.",
+      }
+    );
+  }
   if (matched.length === 0) {
     throw createCliError(
       `No recipe files matched the config glob: ${root.recipes.join(", ")}.`,

@@ -24,6 +24,16 @@ export const resolveRootConfigurationPath = (currentPath: string): string => {
       return candidate;
     }
 
+    // Bound the upward walk at the nearest workspace marker (.git
+    // directory or package.json). This prevents silent pickup of an
+    // attacker-planted sitecoreai.cli.json from above an unrelated
+    // checkout (e.g. /tmp/sitecoreai.cli.json when the user is cd'd
+    // somewhere under /tmp). A weaponized config can redirect the
+    // recipes glob (.recipe.ts files are executed code, see io.ts).
+    if (fs.existsSync(path.join(dir, ".git")) || fs.existsSync(path.join(dir, "package.json"))) {
+      break;
+    }
+
     const parent = path.dirname(dir);
     if (parent === dir) {
       break;

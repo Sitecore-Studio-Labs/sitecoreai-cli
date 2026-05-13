@@ -22,9 +22,6 @@ export const createAuditDuplicatesCommand = (): Command => {
     "--include-system-fields",
     "Include __-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)"
   );
-  list.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
-    parseInt(v, 10)
-  );
   list.action(async (options) => {
     await runAuditDuplicates(options);
   });

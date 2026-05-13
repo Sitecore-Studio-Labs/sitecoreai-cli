@@ -78,8 +78,11 @@ scai audit broken-links list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ### scai audit datasource-missing
 
@@ -114,8 +117,11 @@ scai audit datasource-missing list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 - `--report-query-datasources` — Also report Sitecore query: and local: datasources (which can't be resolved statically)
 
 ### scai audit dead-templates
@@ -151,8 +157,11 @@ scai audit dead-templates list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--root <path>` — Template-tree root to scan (default: /sitecore/templates/Project)
-- `--concurrency <count>` — Per-template item-count concurrency
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--root <path>` — Template-tree root to scan (default: /sitecore/templates)
 
 ### scai audit duplicates
 
@@ -187,11 +196,14 @@ scai audit duplicates list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 - `--min-group-size <count>` — Only report groups with at least this many duplicates (default: 2)
 - `--include-system-fields` — Include \_\_-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ### scai audit empty-items
 
@@ -226,9 +238,12 @@ scai audit empty-items list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ### scai audit language-data
 
@@ -263,9 +278,12 @@ scai audit language-data list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--languages <value>` — Comma-separated language codes to inspect (default: all languages found under --root) (default: `[]`)
-- `--concurrency <count>` — Per-pair version-probe concurrency
 
 ### scai audit orphans
 
@@ -334,8 +352,11 @@ scai audit page-design-orphans list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ### scai audit personalization-broken
 
@@ -370,8 +391,11 @@ scai audit personalization-broken list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ### scai audit stale-workflow
 
@@ -406,9 +430,12 @@ scai audit stale-workflow list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--days <count>` — Stale threshold in days (default: 30)
-- `--concurrency <count>` — Per-item workflow-check concurrency
 
 ### scai audit unused-media
 
@@ -443,11 +470,14 @@ scai audit unused-media list [options]
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--media-root <path>` — Media library root to scan (default: /sitecore/media library)
 - `--reference-root <path>` — Root under which media references are searched (default: /sitecore/content)
 - `--media-limit <count>` — Cap on the number of media items inspected
 - `--reference-limit <count>` — Cap on the number of reference-side items inspected
-- `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
 ## scai cleanup
 

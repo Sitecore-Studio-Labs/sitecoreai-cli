@@ -12,9 +12,6 @@ export const createAuditDatasourceMissingCommand = (): Command => {
   );
   addAuditBaseOptions(list);
   list.option("--root <path>", "Content-tree root to scan (default: /sitecore/content)");
-  list.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
-    parseInt(v, 10)
-  );
   list.option(
     "--report-query-datasources",
     "Also report Sitecore query: and local: datasources (which can't be resolved statically)"

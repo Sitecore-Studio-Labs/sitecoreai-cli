@@ -19,9 +19,6 @@ export const createAuditLanguageDataCommand = (): Command => {
     collectList,
     []
   );
-  list.option("--concurrency <count>", "Per-pair version-probe concurrency", (v) =>
-    parseInt(v, 10)
-  );
   list.addHelpText(
     "after",
     "\nNote: XM Cloud Authoring API does not expose per-item language-entry removal,\n" +

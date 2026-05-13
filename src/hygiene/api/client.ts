@@ -160,7 +160,21 @@ export interface ChildSummary {
 
 export interface HygieneApiClient {
   search(query: SearchQuery): Promise<SearchPage>;
-  searchAll(query: SearchQuery, perPage?: number): AsyncIterable<SearchResultItem>;
+  /**
+   * Paged iteration over a search query.
+   *
+   * `parallel` controls how many page-windows are fetched
+   * concurrently after the first page reveals `totalCount`. Defaults
+   * to 1 (serial, the original behavior). Set to 4+ for big tenants
+   * where the search-crawl phase dominates wall-clock. Result order
+   * is NOT stable across parallel runs — callers that need ordered
+   * results should sort the final accumulated set.
+   */
+  searchAll(
+    query: SearchQuery,
+    perPage?: number,
+    parallel?: number
+  ): AsyncIterable<SearchResultItem>;
   getItemFields(selector: { itemId?: string; path?: string }): Promise<ItemField[] | null>;
   getItemFieldsBatch(itemIds: readonly string[]): Promise<Map<string, ItemField[] | null>>;
   itemExists(itemId: string): Promise<boolean>;
@@ -529,19 +543,72 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     };
   };
 
-  async function* searchAll(query: SearchQuery, perPage = 100): AsyncIterable<SearchResultItem> {
-    let pageIndex = query.paging?.pageIndex ?? 0;
+  async function* searchAll(
+    query: SearchQuery,
+    perPage = 100,
+    parallel = 1
+  ): AsyncIterable<SearchResultItem> {
+    const startIndex = query.paging?.pageIndex ?? 0;
     const pageSize = query.paging?.pageSize ?? perPage;
-    let seen = 0;
-    while (true) {
-      const page = await search({
-        ...query,
-        paging: { pageIndex, pageSize },
-      });
-      for (const r of page.results) yield r;
-      seen += page.results.length;
-      if (page.results.length < pageSize || seen >= page.totalCount) break;
-      pageIndex += 1;
+    // Sanitise: parallel must be >= 1.
+    const fanout = Math.max(1, Math.floor(parallel));
+
+    // Always fetch the first page sequentially. We need its `totalCount`
+    // to know how many pages to schedule in parallel mode; in serial
+    // mode we use it both for results and for the termination test.
+    const firstPage = await search({
+      ...query,
+      paging: { pageIndex: startIndex, pageSize },
+    });
+    for (const r of firstPage.results) yield r;
+    if (firstPage.results.length < pageSize || firstPage.totalCount <= pageSize) {
+      // No further pages needed.
+      return;
+    }
+
+    const totalPages = Math.ceil(firstPage.totalCount / pageSize);
+    // First page already consumed; remaining pages are [startIndex+1 ... totalPages-1+startIndex].
+    const remainingStart = startIndex + 1;
+    const remainingEnd = startIndex + totalPages - 1;
+
+    if (fanout === 1) {
+      // Serial path — preserves the original ordering guarantee that
+      // existing callers may rely on (e.g. test fixtures).
+      let seen = firstPage.results.length;
+      for (let pageIndex = remainingStart; pageIndex <= remainingEnd; pageIndex += 1) {
+        const page = await search({
+          ...query,
+          paging: { pageIndex, pageSize },
+        });
+        for (const r of page.results) yield r;
+        seen += page.results.length;
+        if (page.results.length < pageSize || seen >= firstPage.totalCount) break;
+      }
+      return;
+    }
+
+    // Parallel path — fetch pages in windows of size `fanout`. Within
+    // a window, pages resolve concurrently; the window's results are
+    // yielded in pageIndex order so per-window ordering is stable, but
+    // cross-window order remains the page-index order.
+    for (let windowStart = remainingStart; windowStart <= remainingEnd; windowStart += fanout) {
+      const windowEnd = Math.min(windowStart + fanout - 1, remainingEnd);
+      const indices: number[] = [];
+      for (let i = windowStart; i <= windowEnd; i += 1) indices.push(i);
+      const pages = await Promise.all(
+        indices.map((pageIndex) =>
+          search({
+            ...query,
+            paging: { pageIndex, pageSize },
+          })
+        )
+      );
+      for (const page of pages) {
+        for (const r of page.results) yield r;
+      }
+      // Early stop: if the last page of this window returned a short
+      // page, no further pages exist regardless of totalCount drift.
+      if (pages[pages.length - 1].results.length < pageSize) return;
     }
   }
 

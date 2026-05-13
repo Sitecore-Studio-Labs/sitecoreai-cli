@@ -13,9 +13,6 @@ export const createAuditEmptyItemsCommand = (): Command => {
   addAuditBaseOptions(list);
   list.option("--root <path>", "Content-tree root to scan (default: /sitecore/content)");
   list.option("--language <code>", "Restrict to one language (default: include all)");
-  list.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
-    parseInt(v, 10)
-  );
   list.action(async (options) => {
     await runAuditEmptyItems(options);
   });

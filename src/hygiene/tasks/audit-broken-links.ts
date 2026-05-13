@@ -1,12 +1,10 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import {
   type HygieneCommonOptions,
-  buildPathFilterStatement,
   extractInternalRefs,
-  isSystemPath,
-  normalizeItemId,
   printReport,
   resolveTenant,
+  scanItemsAndFields,
   toLogger,
 } from "./shared";
 
@@ -17,14 +15,14 @@ export interface AuditBrokenLinksOptions extends HygieneCommonOptions {
    * and scanning the full master DB is rarely useful.
    */
   root?: string;
-  /** Override the search index. Defaults to `sitecore_master_index`. */
   index?: string;
-  /** Maximum number of items to scan. Default 5000 — guards against very large tenants. */
   limit?: number;
-  /** Include `/sitecore/system` items in the scan. Off by default. */
   includeSystem?: boolean;
-  /** Batch size for item-fields and item-exists lookups. Default 25. */
   batchSize?: number;
+  concurrency?: number;
+  pageParallelism?: number;
+  /** Opt-in to the on-disk field cache for this run. */
+  cache?: boolean;
 }
 
 export interface BrokenLinkReport {
@@ -40,17 +38,15 @@ export interface BrokenLinkReport {
  *
  * Strategy (XM Cloud Authoring API only — no direct link-database query):
  *
- *   1. Page through `search` to enumerate items under `--root` (default
- *      `/sitecore/content`). Optionally include `/sitecore/system`.
- *   2. For each batch, fetch every field via `getItemFieldsBatch` (aliased
- *      GraphQL — one round trip per ~25 items).
- *   3. Run `extractInternalRefs` over field values to collect referenced
+ *   1. Use `scanItemsAndFields` to page through `search` and batch-fetch
+ *      fields. The helper applies the active perf knobs (concurrency,
+ *      batchSize, pageParallelism) and the optional on-disk field cache.
+ *   2. Run `extractInternalRefs` over field values to collect referenced
  *      itemIds (RichText `<link>` tags, bare GUIDs, pipe-delimited
  *      Multilist values).
- *   4. Resolve refs in bulk via `itemsExistBatch` — one aliased query per
- *      ~25 distinct refs. Cache the resolution across the audit so the
- *      same id doesn't get re-asked.
- *   5. Emit a report row for every (item, field, ref) where ref doesn't
+ *   3. Resolve refs in bulk via `itemsExistBatch` — same concurrency as
+ *      field reads.
+ *   4. Emit a report row for every (item, field, ref) where ref doesn't
  *      resolve.
  *
  * Notes:
@@ -68,93 +64,30 @@ export const runAuditBrokenLinks = async (
   const logger = toLogger(options);
   const { envName, client } = resolveTenant(options);
   const root = options.root ?? "/sitecore/content";
-  const limit = options.limit ?? 5000;
-  const batchSize = options.batchSize ?? 25;
-  const includeSystem = Boolean(options.includeSystem);
 
-  logger.verbose(`Scanning under ${root} (limit ${limit}, batch ${batchSize}).`);
-
-  // Resolve the root path to an itemId so we can filter the search index
-  // by `_path: CONTAINS <rootItemId>`. We don't need fields here — just the
-  // id. A single `item(where: {path}) { itemId }` query does it.
-  const rootItem = await client.search({
-    index: options.index,
-    paging: { pageIndex: 0, pageSize: 1 },
-    searchStatement: {
-      criteria: {
-        field: "_fullpath",
-        value: root.toLowerCase(),
-        criteriaType: "EXACT",
-      },
-    },
+  const { scanned, fieldsByItemId, cache, knobs } = await scanItemsAndFields({
+    client,
+    envName,
+    root,
+    logger,
+    options,
   });
-  if (rootItem.totalCount === 0 || !rootItem.results[0]?.itemId) {
-    logger.warn(`Root path '${root}' not found in search index — scanning entire master DB.`);
-  }
-  const rootItemId = rootItem.results[0]?.itemId;
-
-  const scanned: Array<{
-    itemId: string;
-    path: string;
-    templateName: string | null;
-    language: string | null;
-  }> = [];
-  let count = 0;
-  for await (const result of client.searchAll(
-    {
-      index: options.index,
-      latestVersionOnly: true,
-      ...(rootItemId && {
-        searchStatement: buildPathFilterStatement(rootItemId),
-      }),
-    },
-    100
-  )) {
-    if (!includeSystem && isSystemPath(result.path)) continue;
-    scanned.push({
-      itemId: normalizeItemId(result.itemId),
-      path: result.path,
-      templateName: result.templateName ?? null,
-      language: result.language?.name ?? null,
-    });
-    count += 1;
-    if (count >= limit) break;
-  }
-  logger.verbose(`Scanned ${scanned.length} items; fetching fields in batches.`);
-
-  const fieldsByItemId = new Map<string, Awaited<ReturnType<typeof client.getItemFieldsBatch>>>();
-  const batches: string[][] = [];
-  for (let i = 0; i < scanned.length; i += batchSize) {
-    batches.push(scanned.slice(i, i + batchSize).map((s) => s.itemId));
-  }
-  // Fan out the field reads with bounded concurrency. The transport's
-  // backoff handles 429/503; we keep it conservative at 4 so a fresh
-  // tenant doesn't get thundered.
-  const fieldBatchResults = await mapWithConcurrency(
-    batches,
-    (ids) => client.getItemFieldsBatch(ids),
-    4
-  );
-  for (const m of fieldBatchResults) {
-    for (const [id, fields] of m) fieldsByItemId.set(id, fields as never);
-  }
 
   // Collect every referenced itemId across all scanned items. De-dup to
   // avoid asking the API more than once for the same id.
   const allRefs = new Set<string>();
   type Pending = { itemId: string; path: string; fieldName: string; refItemId: string };
   const pendingRefs: Pending[] = [];
+  const scannedById = new Map(scanned.map((s) => [s.itemId, s]));
   for (const item of scanned) {
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
     for (const field of fields) {
-      // Skip empty values + Sitecore system fields (start with __ and
-      // mostly hold metadata, not authored links).
       if (!field.value) continue;
       if (field.name.startsWith("__") && field.name !== "__Source Item") continue;
       const refs = extractInternalRefs(field.value);
       for (const ref of refs) {
-        if (ref === item.itemId) continue; // self-ref is fine
+        if (ref === item.itemId) continue;
         allRefs.add(ref);
         pendingRefs.push({
           itemId: item.itemId,
@@ -166,17 +99,17 @@ export const runAuditBrokenLinks = async (
     }
   }
 
-  // Resolve refs in batches.
+  // Resolve refs in batches with the same perf knobs.
   const refExists = new Map<string, boolean>();
   const refIds = Array.from(allRefs);
   const refBatches: string[][] = [];
-  for (let i = 0; i < refIds.length; i += batchSize) {
-    refBatches.push(refIds.slice(i, i + batchSize));
+  for (let i = 0; i < refIds.length; i += knobs.batchSize) {
+    refBatches.push(refIds.slice(i, i + knobs.batchSize));
   }
   const existResults = await mapWithConcurrency(
     refBatches,
     (ids) => client.itemsExistBatch(ids),
-    4
+    knobs.concurrency
   );
   for (const m of existResults) {
     for (const [id, exists] of m) refExists.set(id, exists);
@@ -186,7 +119,7 @@ export const runAuditBrokenLinks = async (
   const byItem = new Map<string, BrokenLinkReport>();
   for (const p of pendingRefs) {
     if (refExists.get(p.refItemId) !== false) continue;
-    const meta = scanned.find((s) => s.itemId === p.itemId);
+    const meta = scannedById.get(p.itemId);
     if (!meta) continue;
     const existing = byItem.get(p.itemId);
     if (existing) {
@@ -203,6 +136,8 @@ export const runAuditBrokenLinks = async (
   }
   const reports = Array.from(byItem.values()).sort((a, b) => a.path.localeCompare(b.path));
 
+  await cache?.flush();
+
   printReport({
     logger,
     command: "audit.broken-links.list",
@@ -214,7 +149,7 @@ export const runAuditBrokenLinks = async (
         .slice(0, 3)
         .map((b) => `${b.fieldName}→${b.refItemId.slice(0, 8)}`)
         .join(", ")}${r.brokenRefs.length > 3 ? "…" : ""})`,
-    extra: { root, limit, scannedCount: scanned.length },
+    extra: { root, scannedCount: scanned.length },
   });
 
   return reports;

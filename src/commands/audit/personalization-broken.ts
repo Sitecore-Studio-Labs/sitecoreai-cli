@@ -12,9 +12,6 @@ export const createAuditPersonalizationBrokenCommand = (): Command => {
   );
   addAuditBaseOptions(list);
   list.option("--root <path>", "Content-tree root to scan (default: /sitecore/content)");
-  list.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
-    parseInt(v, 10)
-  );
   list.action(async (options) => {
     await runAuditPersonalizationBroken(options);
   });

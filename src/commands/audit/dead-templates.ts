@@ -9,10 +9,7 @@ export const createAuditDeadTemplatesCommand = (): Command => {
 
   const list = new Command("list").description("List unused item templates");
   addAuditBaseOptions(list);
-  list.option("--root <path>", "Template-tree root to scan (default: /sitecore/templates/Project)");
-  list.option("--concurrency <count>", "Per-template item-count concurrency", (v) =>
-    parseInt(v, 10)
-  );
+  list.option("--root <path>", "Template-tree root to scan (default: /sitecore/templates)");
   list.action(async (options) => {
     await runAuditDeadTemplates(options);
   });

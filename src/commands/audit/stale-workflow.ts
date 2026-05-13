@@ -13,9 +13,6 @@ export const createAuditStaleWorkflowCommand = (): Command => {
   addAuditBaseOptions(list);
   list.option("--root <path>", "Content-tree root to scan (default: /sitecore/content)");
   list.option("--days <count>", "Stale threshold in days (default: 30)", (v) => parseInt(v, 10));
-  list.option("--concurrency <count>", "Per-item workflow-check concurrency", (v) =>
-    parseInt(v, 10)
-  );
   list.action(async (options) => {
     await runAuditStaleWorkflow(options);
   });

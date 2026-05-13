@@ -1,4 +1,3 @@
-import { mapWithConcurrency } from "@/shared/cli-tasks";
 import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
@@ -7,7 +6,9 @@ import {
   isSystemPath,
   normalizeItemId,
   printReport,
+  resolveHygieneKnobs,
   resolveTenant,
+  scanItemsAndFields,
   toLogger,
 } from "./shared";
 import { MEDIA_LIBRARY_ROOT } from "../api/client";
@@ -79,7 +80,7 @@ export const runAuditUnusedMedia = async (
   const referenceRoot = options.referenceRoot ?? "/sitecore/content";
   const mediaLimit = options.mediaLimit ?? 5000;
   const referenceLimit = options.referenceLimit ?? 10000;
-  const batchSize = options.batchSize ?? 25;
+  const knobs = resolveHygieneKnobs(options);
 
   // Resolve roots → itemIds for `_path` filter.
   const resolveRootItemId = async (path: string): Promise<string | undefined> => {
@@ -103,7 +104,7 @@ export const runAuditUnusedMedia = async (
     logger.warn(`Reference root '${referenceRoot}' not found in index; scanning full master DB.`);
   }
 
-  // Pass 1 — enumerate media item candidates.
+  // Pass 1 — enumerate media item candidates (no fields needed).
   const candidates = new Map<string, UnusedMediaReport>();
   let mediaCount = 0;
   for await (const r of client.searchAll(
@@ -112,7 +113,8 @@ export const runAuditUnusedMedia = async (
       latestVersionOnly: true,
       ...(mediaRootId && { searchStatement: buildPathFilterStatement(mediaRootId) }),
     },
-    100
+    100,
+    knobs.pageParallelism
   )) {
     // The `_path` CONTAINS filter on `mediaRootId` already restricts the
     // result set to descendants of the media library. We do NOT add a
@@ -136,52 +138,36 @@ export const runAuditUnusedMedia = async (
   }
   logger.verbose(`Pass 1: ${candidates.size} media-item candidates.`);
 
-  // Pass 2 — enumerate reference-side items, collect media refs.
-  const referenced = new Set<string>();
-  const referenceItems: string[] = [];
-  let refCount = 0;
-  for await (const r of client.searchAll(
-    {
-      index: options.index,
-      latestVersionOnly: true,
-      ...(referenceRootId && { searchStatement: buildPathFilterStatement(referenceRootId) }),
-    },
-    100
-  )) {
-    if (isSystemPath(r.path)) continue;
-    referenceItems.push(normalizeItemId(r.itemId));
-    refCount += 1;
-    if (refCount >= referenceLimit) break;
-  }
-  logger.verbose(`Pass 2: ${referenceItems.length} reference-side items to inspect.`);
+  // Pass 2 — enumerate reference-side items + fields via the perf-tuned helper.
+  const {
+    scanned: referenceItems,
+    fieldsByItemId,
+    cache,
+  } = await scanItemsAndFields({
+    client,
+    envName,
+    root: referenceRoot,
+    logger,
+    options: { ...options, limit: referenceLimit, includeSystem: false },
+  });
+  logger.verbose(`Pass 2: ${referenceItems.length} reference-side items inspected.`);
 
-  const batches: string[][] = [];
-  for (let i = 0; i < referenceItems.length; i += batchSize) {
-    batches.push(referenceItems.slice(i, i + batchSize));
-  }
-  const fieldBatches = await mapWithConcurrency(
-    batches,
-    (ids) => client.getItemFieldsBatch(ids),
-    4
-  );
-  for (const m of fieldBatches) {
-    for (const fields of m.values()) {
-      if (!Array.isArray(fields)) continue;
-      for (const field of fields) {
-        if (!field.value) continue;
-        // Mediaref recognisers (Image field XML, RichText link[type=media]).
-        for (const ref of extractMediaRefs(field.value)) referenced.add(ref);
-        // Bare GUIDs (Multilist/Treelist targeting media). We don't know
-        // the field's source list root at this layer — to keep false
-        // positives down, only count refs that match a candidate
-        // mediaId. We do the intersection in the subtraction step.
-        for (const ref of extractInternalRefs(field.value)) {
-          if (candidates.has(ref)) referenced.add(ref);
-        }
+  const referenced = new Set<string>();
+  for (const item of referenceItems) {
+    if (isSystemPath(item.path)) continue;
+    const fields = fieldsByItemId.get(item.itemId);
+    if (!fields || !Array.isArray(fields)) continue;
+    for (const field of fields) {
+      if (!field.value) continue;
+      for (const ref of extractMediaRefs(field.value)) referenced.add(ref);
+      // Multilist/Treelist GUIDs that happen to point at media candidates.
+      for (const ref of extractInternalRefs(field.value)) {
+        if (candidates.has(ref)) referenced.add(ref);
       }
     }
   }
   logger.verbose(`Found ${referenced.size} distinct media refs across reference items.`);
+  await cache?.flush();
 
   const unused: UnusedMediaReport[] = [];
   for (const [id, candidate] of candidates) {

@@ -1,8 +1,15 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
+import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
 import { createHygieneApiClient, type HygieneApiClient } from "../api/client";
+import {
+  createFieldCache,
+  isAuditCacheEnabled,
+  wrapFieldsBatchWithCache,
+  type FieldCache,
+} from "../cache";
 
 /**
  * Shared option shape, tenant resolution, and link-extraction helpers for
@@ -196,6 +203,51 @@ export const isSystemPath = (path: string): boolean =>
   SYSTEM_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 
 /**
+ * Resolved performance knobs for hygiene audits. Reads precedence:
+ *
+ *   1. Explicit per-call option (when `--concurrency` / `--batch-size`
+ *      is passed on the command line).
+ *   2. Environment variable (`SITECOREAI_HYGIENE_CONCURRENCY`,
+ *      `SITECOREAI_HYGIENE_BATCH_SIZE`, `SITECOREAI_HYGIENE_PAGE_PARALLELISM`).
+ *   3. Built-in defaults — biased toward parallelism since XM Cloud
+ *      tolerates moderate fan-out and the transport already absorbs
+ *      429/503 backoff.
+ *
+ * Defaults vs. the original 4/25:
+ *   - concurrency 8 (was 4) — doubles field-read throughput.
+ *   - batchSize 50 (was 25) — halves the number of aliased queries
+ *     for the same item set; payload stays under the typical 1-2MB
+ *     GraphQL request cap.
+ *   - pageParallelism 4 (was 1, i.e. serial) — once the first page
+ *     reveals totalCount, fetch up to 4 page-windows concurrently.
+ *
+ * Operators can dial these down for restricted tenants or up for
+ * faster cold runs.
+ */
+export interface HygienePerfKnobs {
+  concurrency: number;
+  batchSize: number;
+  pageParallelism: number;
+}
+
+const parseIntEnv = (value: string | undefined, fallback: number): number => {
+  if (!value) return fallback;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+};
+
+export const resolveHygieneKnobs = (options: {
+  concurrency?: number;
+  batchSize?: number;
+  pageParallelism?: number;
+}): HygienePerfKnobs => ({
+  concurrency: options.concurrency ?? parseIntEnv(process.env.SITECOREAI_HYGIENE_CONCURRENCY, 8),
+  batchSize: options.batchSize ?? parseIntEnv(process.env.SITECOREAI_HYGIENE_BATCH_SIZE, 50),
+  pageParallelism:
+    options.pageParallelism ?? parseIntEnv(process.env.SITECOREAI_HYGIENE_PAGE_PARALLELISM, 4),
+});
+
+/**
  * Sitecore field names that hold layout rendering XML. These are the
  * fields parsed by `extractRenderingDatasources` and
  * `extractPersonalizationVariantRefs`.
@@ -318,6 +370,167 @@ export const PAGE_DESIGN_FIELDS = ["__Final Page Design", "__Page Design"];
 
 export const isPageDesignField = (fieldName: string): boolean =>
   PAGE_DESIGN_FIELDS.includes(fieldName);
+
+/**
+ * Common scan-then-fetch pipeline used by every field-reading audit.
+ *
+ * Combines:
+ *   1. Root-path → itemId resolution (one search call).
+ *   2. Paged enumeration via `searchAll(parallel: knobs.pageParallelism)`,
+ *      with system-path filter applied at gather time.
+ *   3. Batched field reads with bounded concurrency (`knobs.concurrency`)
+ *      and `knobs.batchSize` per aliased GraphQL query.
+ *   4. Optional cross-audit field cache (opt-in via `--cache` / env).
+ *
+ * Returns the scanned item set and the fields-by-itemId map. The cache
+ * is also returned so callers can `await cache.flush()` at audit end.
+ *
+ * Callers that DON'T need fields (e.g. `audit dead-templates` enumerates
+ * templates, not field-bearing items) should not use this helper.
+ */
+export interface ScanItem {
+  itemId: string;
+  path: string;
+  name: string;
+  templateName: string | null;
+  templateId: string | null;
+  language: string | null;
+  version: number | null;
+  createdDate: string | null;
+  updatedDate: string | null;
+}
+
+export interface ScanFieldsResult {
+  scanned: ScanItem[];
+  fieldsByItemId: Map<string, ItemFieldRecord[] | null>;
+  cache: FieldCache | null;
+  knobs: HygienePerfKnobs;
+}
+
+export interface ItemFieldRecord {
+  fieldId: string;
+  name: string;
+  value: string;
+}
+
+export interface ScanItemsAndFieldsParams {
+  client: import("../api/client").HygieneApiClient;
+  envName: string;
+  root: string;
+  logger: Logger;
+  options: HygieneCommonOptions & {
+    limit?: number;
+    batchSize?: number;
+    concurrency?: number;
+    pageParallelism?: number;
+    includeSystem?: boolean;
+    language?: string;
+    index?: string;
+    cache?: boolean;
+  };
+  /** Override `latestVersionOnly` on the search. Default true. */
+  latestVersionOnly?: boolean;
+  /** Skip the field-fetch phase entirely (returns empty fields map). */
+  skipFields?: boolean;
+}
+
+export const scanItemsAndFields = async ({
+  client,
+  envName,
+  root,
+  logger,
+  options,
+  latestVersionOnly = true,
+  skipFields = false,
+}: ScanItemsAndFieldsParams): Promise<ScanFieldsResult> => {
+  const knobs = resolveHygieneKnobs(options);
+  const cacheEnabled = options.cache ?? isAuditCacheEnabled();
+  const cache = cacheEnabled ? createFieldCache({ envName, logger }) : null;
+  const limit = options.limit ?? 5000;
+  const includeSystem = Boolean(options.includeSystem);
+
+  // Resolve root path → itemId.
+  let rootItemId: string | undefined;
+  if (root) {
+    const r = await client.search({
+      index: options.index,
+      paging: { pageSize: 1 },
+      searchStatement: {
+        criteria: { field: "_fullpath", value: root.toLowerCase(), criteriaType: "EXACT" },
+      },
+    });
+    rootItemId = r.results[0]?.itemId;
+    if (!rootItemId) {
+      logger.warn(`Root path '${root}' not found in search index — scanning entire master DB.`);
+    }
+  }
+
+  // Paged enumeration with optional parallel page-windows.
+  const scanned: ScanItem[] = [];
+  for await (const r of client.searchAll(
+    {
+      index: options.index,
+      latestVersionOnly,
+      ...(options.language && { language: options.language }),
+      ...(rootItemId && { searchStatement: buildPathFilterStatement(rootItemId) }),
+    },
+    100,
+    knobs.pageParallelism
+  )) {
+    if (!includeSystem && isSystemPath(r.path)) continue;
+    scanned.push({
+      itemId: normalizeItemId(r.itemId),
+      path: r.path,
+      name: r.name,
+      templateName: r.templateName ?? null,
+      templateId: r.templateId ?? null,
+      language: r.language?.name ?? null,
+      version: r.version ?? null,
+      createdDate: r.createdDate ?? null,
+      updatedDate: r.updatedDate ?? null,
+    });
+    if (scanned.length >= limit) break;
+  }
+  logger.verbose(
+    `Scanned ${scanned.length} items (concurrency=${knobs.concurrency}, batchSize=${knobs.batchSize}, pageParallel=${knobs.pageParallelism}${cache ? ", cache=on" : ""}).`
+  );
+
+  // Skip the field-fetch phase if caller doesn't need fields.
+  if (skipFields) {
+    return { scanned, fieldsByItemId: new Map(), cache, knobs };
+  }
+
+  // Build per-item updatedDate map for cache freshness.
+  const updatedDateByItemId = new Map<string, string | null>();
+  for (const s of scanned) updatedDateByItemId.set(s.itemId, s.updatedDate);
+
+  // Choose the underlying fetcher — either direct, or cache-wrapped.
+  const getFieldsBatch = cache
+    ? wrapFieldsBatchWithCache((ids) => client.getItemFieldsBatch(ids), cache, updatedDateByItemId)
+    : (ids: readonly string[]) => client.getItemFieldsBatch(ids);
+
+  // Batch + fan out.
+  const batches: string[][] = [];
+  for (let i = 0; i < scanned.length; i += knobs.batchSize) {
+    batches.push(scanned.slice(i, i + knobs.batchSize).map((s) => s.itemId));
+  }
+  const batchResults = await mapWithConcurrency(
+    batches,
+    (ids) => getFieldsBatch(ids),
+    knobs.concurrency
+  );
+  const fieldsByItemId = new Map<string, ItemFieldRecord[] | null>();
+  for (const m of batchResults) {
+    for (const [id, fields] of m) fieldsByItemId.set(id, fields ?? null);
+  }
+  if (cache) {
+    const stats = cache.stats();
+    logger.verbose(
+      `Cache stats: ${stats.hits} hits / ${stats.misses} misses (${stats.size} stored).`
+    );
+  }
+  return { scanned, fieldsByItemId, cache, knobs };
+};
 
 export const ensureAllowWriteForCleanup = (
   root: RootConfiguration,

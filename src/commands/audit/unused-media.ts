@@ -27,9 +27,6 @@ export const createAuditUnusedMediaCommand = (): Command => {
     "Cap on the number of reference-side items inspected",
     (v) => parseInt(v, 10)
   );
-  list.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
-    parseInt(v, 10)
-  );
   list.action(async (options) => {
     await runAuditUnusedMedia(options);
   });

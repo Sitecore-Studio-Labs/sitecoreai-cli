@@ -5,6 +5,7 @@ import {
   isSystemPath,
   normalizeItemId,
   printReport,
+  resolveHygieneKnobs,
   resolveTenant,
   toLogger,
 } from "./shared";
@@ -72,7 +73,8 @@ export const runAuditLanguageData = async (
 
   const root = options.root ?? "/sitecore/content";
   const limit = options.limit ?? 5000;
-  const concurrency = options.concurrency ?? 4;
+  const knobs = resolveHygieneKnobs(options);
+  const concurrency = options.concurrency ?? knobs.concurrency;
   const includeSystem = Boolean(options.includeSystem);
 
   const rootSearch = await client.search({
@@ -98,7 +100,8 @@ export const runAuditLanguageData = async (
       latestVersionOnly: false,
       ...(rootItemId && { searchStatement: buildPathFilterStatement(rootItemId) }),
     },
-    100
+    100,
+    knobs.pageParallelism
   )) {
     if (!includeSystem && isSystemPath(r.path)) continue;
     const id = normalizeItemId(r.itemId);

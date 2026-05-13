@@ -24,7 +24,7 @@ These are larger pieces of work scoped during the parity audit
 (see [parity-with-devex.md](./parity-with-devex.md)). Each one is
 sized for its own branch/PR.
 
-### ✅ `scai audit` + `scai cleanup` — shipped 2026-05-13
+### ✅ `scai audit` + `scai cleanup` — shipped 2026-05-13, expanded 2026-05-14
 
 Replaces the XM-Cloud-shaped subset of dotnet `sitecore dbcleanup` with
 operations expressible through the Authoring GraphQL API. SQL-level
@@ -53,6 +53,29 @@ Shipped:
   removal mutation. The on-prem `clean-invalid-language-data` shape
   isn't portable; this command surfaces the data, operator cleans up
   manually.
+- `scai audit dead-templates list` — templates with zero items
+  derived from them (search-indexed `_template` lookup).
+- `scai audit datasource-missing list` — pages whose rendering
+  XML references datasources (path or itemId) that don't resolve.
+- `scai audit duplicates list` — items with byte-identical
+  authored content (SHA-256 hash; system fields excluded).
+- `scai audit empty-items list` — items with no author-facing
+  field values.
+- `scai audit page-design-orphans list` — XM Cloud SXA pages
+  referencing missing page designs.
+- `scai audit personalization-broken list` — pages with
+  personalization rules pointing to missing variants/rule sets.
+- `scai cleanup archive purge --older-than-days N` — purge old
+  records from the Sitecore archive.
+- `scai cleanup dead-templates purge --root <path>` — delete
+  templates with zero items, then recursively clean up empty
+  template folders.
+- `scai cleanup duplicates purge --keep-rule <…>` — delete
+  duplicate items, keeping one per group via oldest / newest /
+  shortest-path / interactive rule.
+- `scai cleanup versions archive --keep N --root <path>` — soft
+  alternative to versions prune; moves older versions to the
+  Sitecore archive (reversible via `restoreArchivedVersion`).
 - `scai cleanup versions prune --keep N --root <path>` — trim
   per-(item, language) version history down to N most recent. Requires
   `--root` (no tenant-wide form), refuses `/sitecore/system` and

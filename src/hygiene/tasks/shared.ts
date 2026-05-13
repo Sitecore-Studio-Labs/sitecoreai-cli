@@ -195,6 +195,130 @@ export const SYSTEM_PATH_PREFIXES = [
 export const isSystemPath = (path: string): boolean =>
   SYSTEM_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 
+/**
+ * Sitecore field names that hold layout rendering XML. These are the
+ * fields parsed by `extractRenderingDatasources` and
+ * `extractPersonalizationVariantRefs`.
+ *
+ * - `__Renderings`        — shared (multi-language) presentation layer.
+ * - `__Final Renderings`  — per-language presentation overlay.
+ * - `__Renderings (Page)` — page-design-tier layout (rare; only on Page
+ *                           Design items).
+ */
+export const RENDERING_FIELDS = ["__Renderings", "__Final Renderings", "__Renderings (Page)"];
+
+export const isRenderingField = (fieldName: string): boolean =>
+  RENDERING_FIELDS.includes(fieldName);
+
+/**
+ * Extract datasource references from a rendering-layout XML value.
+ *
+ * Sitecore stores rendering presentation as XML like:
+ *
+ *   <r uid="{...}" id="{rendering-id}" ds="/sitecore/content/Home/DS"
+ *      s:ds="{...}" par="..." />
+ *
+ * The `ds` (or sometimes `s:ds`) attribute on each `<r>` element holds
+ * the datasource — either a content-tree path, a bare itemId, or a
+ * Sitecore query (`query:./ancestor-or-self::*[@@templatename='Site']/Data`).
+ * Queries are dynamic; they're returned with a `query:` prefix so the
+ * caller can decide whether to skip them. Empty `ds` values are
+ * omitted from the result.
+ *
+ * Returns values verbatim (path / itemId / `query:…`) for the caller to
+ * resolve.
+ */
+export const extractRenderingDatasources = (
+  renderingsXml: string
+): Array<{ datasource: string; renderingId: string | null }> => {
+  if (!renderingsXml) return [];
+  const out: Array<{ datasource: string; renderingId: string | null }> = [];
+  // Match every <r ...> element start tag — attribute order is unstable.
+  const rPattern = /<r\b([^>]*)>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = rPattern.exec(renderingsXml))) {
+    const attrs = m[1];
+    // Prefer `s:ds` if present, fall back to bare `ds`. Some tenants
+    // emit both with the namespaced form taking precedence at runtime.
+    const dsMatch = /\bs?:?ds=["']([^"']*)["']/i.exec(attrs);
+    if (!dsMatch || !dsMatch[1]) continue;
+    const idMatch = /\bs?:?id=["']([^"']*)["']/i.exec(attrs);
+    out.push({
+      datasource: dsMatch[1],
+      renderingId: idMatch?.[1] ?? null,
+    });
+  }
+  return out;
+};
+
+/**
+ * Extract personalization variant + rule references from a rendering-layout
+ * XML value.
+ *
+ * Personalization is stored in `<rules>` elements nested under `<r>`:
+ *
+ *   <r ...>
+ *     <rules s:set="{xyz}">
+ *       <rule s:uid="{...}" s:name="..." s:templateid="{variant-tid}">
+ *         <conditions>...</conditions>
+ *         <actions>
+ *           <action id="{...}" datasource="{variant-itemId}" />
+ *         </actions>
+ *       </rule>
+ *     </rules>
+ *   </r>
+ *
+ * Returns refs found in `datasource=` attributes of `<action>` elements
+ * AND in rule `s:set=` attributes (the rule-set itemId).
+ */
+export const extractPersonalizationRefs = (renderingsXml: string): string[] => {
+  if (!renderingsXml) return [];
+  const refs: string[] = [];
+  const actionDs = /<action\b[^>]*\bdatasource=["']([^"']*)["']/gi;
+  const ruleSet = /<rules\b[^>]*\bs:set=["']([^"']*)["']/gi;
+  for (const pattern of [actionDs, ruleSet]) {
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(renderingsXml))) {
+      if (m[1]) refs.push(m[1]);
+    }
+  }
+  return refs;
+};
+
+/**
+ * Compute a content hash over an item's authored fields, suitable for
+ * exact-duplicate detection.
+ *
+ * Includes only authored fields (not `__`-prefixed system fields, which
+ * carry per-item metadata like `__Created`, `__Updated`, `__Lock`).
+ * Field name + trimmed value joined by `\0`, fields sorted by name for
+ * determinism. SHA-256, returned as 16-char hex (sufficient to bucket
+ * tenant-scale item counts without realistic collision).
+ */
+export const computeContentHash = async (
+  fields: ReadonlyArray<{ name: string; value: string }>,
+  options: { includeSystem?: boolean } = {}
+): Promise<string> => {
+  const crypto = await import("node:crypto");
+  const filtered = fields
+    .filter((f) => options.includeSystem || !f.name.startsWith("__"))
+    .map((f) => ({ name: f.name, value: (f.value ?? "").trim() }))
+    .filter((f) => f.value.length > 0);
+  filtered.sort((a, b) => a.name.localeCompare(b.name));
+  const input = filtered.map((f) => `${f.name}\0${f.value}`).join("");
+  return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
+};
+
+/**
+ * Sitecore's `__Final Page Design` (or fallback `__Page Design`) field
+ * holds a page design itemId GUID. Empty string means "inherit from
+ * ancestor / no override."
+ */
+export const PAGE_DESIGN_FIELDS = ["__Final Page Design", "__Page Design"];
+
+export const isPageDesignField = (fieldName: string): boolean =>
+  PAGE_DESIGN_FIELDS.includes(fieldName);
+
 export const ensureAllowWriteForCleanup = (
   root: RootConfiguration,
   envName: string,

@@ -125,6 +125,39 @@ export interface DeleteItemVersionInput {
   database?: string;
 }
 
+export interface DeleteItemInput {
+  itemId?: string;
+  path?: string;
+  database?: string;
+  /** When false, item moves to archive instead of full delete. Default true. */
+  permanently?: boolean;
+}
+
+export interface ArchiveVersionInput {
+  itemId?: string;
+  itemPath?: string;
+  language: string;
+  version: number;
+  archiveName?: string;
+}
+
+export interface ItemTemplateSummary {
+  templateId: string;
+  name: string;
+  fullName: string | null;
+  /** itemId of the standard-values item, if one exists. Used to exclude
+   *  the SV item from the "item-count" check for dead-template detection. */
+  standardValuesItemId: string | null;
+}
+
+export interface ChildSummary {
+  itemId: string;
+  name: string;
+  path: string;
+  templateId: string | null;
+  templateName: string | null;
+}
+
 export interface HygieneApiClient {
   search(query: SearchQuery): Promise<SearchPage>;
   searchAll(query: SearchQuery, perPage?: number): AsyncIterable<SearchResultItem>;
@@ -144,6 +177,22 @@ export interface HygieneApiClient {
     pageSize?: number;
   }): Promise<ArchivedItem[]>;
   deleteItemVersion(input: DeleteItemVersionInput): Promise<void>;
+  /** Permanently delete an item (or move to archive when `permanently: false`). */
+  deleteItem(input: DeleteItemInput): Promise<void>;
+  /** Delete an item template (master DB). Throws if items still derive from it. */
+  deleteItemTemplate(templateId: string, database?: string): Promise<void>;
+  /** Purge a single record from the archive. */
+  deleteArchivedItem(archivalId: string, archiveName?: string): Promise<void>;
+  /** Archive a version (soft alternative to deleteItemVersion). */
+  archiveVersion(input: ArchiveVersionInput): Promise<string | null>;
+  /** List item templates under a content-tree root. */
+  listItemTemplates(options?: {
+    rootPath?: string;
+    database?: string;
+    pageSize?: number;
+  }): Promise<ItemTemplateSummary[]>;
+  /** Direct children of an item (one level), keyed for folder-empty checks. */
+  getChildren(selector: { itemId?: string; path?: string }): Promise<ChildSummary[]>;
 }
 
 export interface HygieneClientOptions {
@@ -318,6 +367,67 @@ mutation($input: DeleteItemVersionInput!) {
   }
 }`;
 
+const DELETE_ITEM_MUTATION = `
+mutation($input: DeleteItemInput!) {
+  deleteItem(input: $input) {
+    successful
+  }
+}`;
+
+const DELETE_ITEM_TEMPLATE_MUTATION = `
+mutation($input: DeleteItemTemplateInput!) {
+  deleteItemTemplate(input: $input) {
+    successful
+  }
+}`;
+
+const DELETE_ARCHIVED_ITEM_MUTATION = `
+mutation($input: DeleteArchivedItemInput!) {
+  deleteArchivedItem(input: $input) {
+    successful
+  }
+}`;
+
+const ARCHIVE_VERSION_MUTATION = `
+mutation($input: ArchiveVersionInput!) {
+  archiveVersion(input: $input) {
+    archiveVersionId
+  }
+}`;
+
+/**
+ * Sitecore's well-known "Template" template id. Items based on this
+ * template ARE themselves templates; using it as a `_template` filter
+ * via search lets us enumerate templates under any content-tree subtree
+ * (the Authoring API's `itemTemplates` connection doesn't accept a
+ * subtree scope, only a single-template `path`).
+ */
+const TEMPLATE_TEMPLATE_ID = "ab86861a603046c5b394e8f99e8b87db";
+
+const CHILD_FRAGMENT = `
+itemId
+name
+path
+template { templateId }`;
+
+const GET_CHILDREN_BY_PATH = `
+query($path: String!) {
+  item(where: { path: $path }) {
+    children {
+      nodes { ${CHILD_FRAGMENT} }
+    }
+  }
+}`;
+
+const GET_CHILDREN_BY_ID = `
+query($itemId: ID!) {
+  item(where: { itemId: $itemId }) {
+    children {
+      nodes { ${CHILD_FRAGMENT} }
+    }
+  }
+}`;
+
 type GraphQLSearchResponse = { search: SearchPage };
 type GraphQLFieldsResponse = {
   item: {
@@ -348,6 +458,28 @@ type GraphQLWorkflowResponse = {
 type GraphQLArchivedResponse = { archivedItems: ArchivedItem[] | null };
 type GraphQLDeleteVersionResponse = {
   deleteItemVersion: { successful: boolean } | null;
+};
+type GraphQLDeleteItemResponse = { deleteItem: { successful: boolean } | null };
+type GraphQLDeleteTemplateResponse = {
+  deleteItemTemplate: { successful: boolean } | null;
+};
+type GraphQLDeleteArchivedItemResponse = {
+  deleteArchivedItem: { successful: boolean } | null;
+};
+type GraphQLArchiveVersionResponse = {
+  archiveVersion: { archiveVersionId: string | null } | null;
+};
+type GraphQLChildrenResponse = {
+  item: {
+    children: {
+      nodes: Array<{
+        itemId: string;
+        name: string;
+        path: string;
+        template: { templateId: string } | null;
+      }>;
+    };
+  } | null;
 };
 type GraphQLExistsResponse = { item: { itemId: string } | null };
 
@@ -632,6 +764,204 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     }
   };
 
+  const deleteItem = async (input: DeleteItemInput): Promise<void> => {
+    if (!input.itemId && !input.path) {
+      throw createCliError("deleteItem requires either itemId or path.", "INPUT_INVALID");
+    }
+    const payload: Record<string, unknown> = {
+      database: input.database ?? "master",
+      permanently: input.permanently ?? true,
+    };
+    if (input.itemId) payload.itemId = input.itemId;
+    else if (input.path) payload.path = input.path;
+    const data = await runHygieneAuthoringGraphQL<GraphQLDeleteItemResponse>(
+      environment,
+      DELETE_ITEM_MUTATION,
+      { input: payload },
+      writeRequest
+    );
+    if (!data.deleteItem?.successful) {
+      throw createCliError(
+        `deleteItem returned successful=${data.deleteItem?.successful} for ${
+          input.itemId ?? input.path
+        }`,
+        "UNKNOWN"
+      );
+    }
+  };
+
+  const deleteItemTemplate = async (templateId: string, database = "master"): Promise<void> => {
+    const data = await runHygieneAuthoringGraphQL<GraphQLDeleteTemplateResponse>(
+      environment,
+      DELETE_ITEM_TEMPLATE_MUTATION,
+      { input: { templateId, database } },
+      writeRequest
+    );
+    if (!data.deleteItemTemplate?.successful) {
+      throw createCliError(
+        `deleteItemTemplate returned successful=${data.deleteItemTemplate?.successful} for template ${templateId}`,
+        "UNKNOWN"
+      );
+    }
+  };
+
+  const deleteArchivedItem = async (archivalId: string, archiveName?: string): Promise<void> => {
+    const input: Record<string, unknown> = { archivalId };
+    if (archiveName !== undefined) input.archiveName = archiveName;
+    const data = await runHygieneAuthoringGraphQL<GraphQLDeleteArchivedItemResponse>(
+      environment,
+      DELETE_ARCHIVED_ITEM_MUTATION,
+      { input },
+      writeRequest
+    );
+    if (!data.deleteArchivedItem?.successful) {
+      throw createCliError(
+        `deleteArchivedItem returned successful=${data.deleteArchivedItem?.successful} for ${archivalId}`,
+        "UNKNOWN"
+      );
+    }
+  };
+
+  const archiveVersion = async (input: ArchiveVersionInput): Promise<string | null> => {
+    if (!input.itemId && !input.itemPath) {
+      throw createCliError("archiveVersion requires either itemId or itemPath.", "INPUT_INVALID");
+    }
+    const payload: Record<string, unknown> = {
+      language: input.language,
+      version: input.version,
+    };
+    if (input.itemId) payload.itemId = input.itemId;
+    else if (input.itemPath) payload.itemPath = input.itemPath;
+    if (input.archiveName !== undefined) payload.archiveName = input.archiveName;
+    const data = await runHygieneAuthoringGraphQL<GraphQLArchiveVersionResponse>(
+      environment,
+      ARCHIVE_VERSION_MUTATION,
+      { input: payload },
+      writeRequest
+    );
+    return data.archiveVersion?.archiveVersionId ?? null;
+  };
+
+  /**
+   * Enumerate item templates, optionally scoped to a content-tree subtree.
+   *
+   * Implementation note: the Authoring API's `itemTemplates(where: {path})`
+   * matches one template by path (not a subtree), and `standardValuesItem`
+   * requires a `language` argument that's awkward to thread through here.
+   * Instead, we use the search index — items where `_template` is the
+   * well-known "Template" template id ARE themselves templates. Adding a
+   * `_path` filter scopes to a subtree. Name + path are pulled from the
+   * search result; `fullName` is derived from the path by stripping the
+   * `/sitecore/templates/` prefix.
+   */
+  const listItemTemplates = async (
+    opts: { rootPath?: string; database?: string; pageSize?: number } = {}
+  ): Promise<ItemTemplateSummary[]> => {
+    const results: ItemTemplateSummary[] = [];
+    let rootItemId: string | undefined;
+    if (opts.rootPath) {
+      const r = await search({
+        paging: { pageSize: 1 },
+        searchStatement: {
+          criteria: {
+            field: "_fullpath",
+            value: opts.rootPath.toLowerCase(),
+            criteriaType: "EXACT",
+          },
+        },
+      });
+      rootItemId = r.results[0]?.itemId;
+      if (!rootItemId) {
+        // Path doesn't resolve in the index — caller-error-shaped, but
+        // not fatal here; we just return an empty list with no items.
+        return [];
+      }
+    }
+    const statement = rootItemId
+      ? {
+          operator: "MUST" as const,
+          subStatements: [
+            {
+              criteria: {
+                field: "_template",
+                value: TEMPLATE_TEMPLATE_ID,
+                criteriaType: "EXACT" as const,
+              },
+            },
+            {
+              criteria: {
+                field: "_path",
+                value: rootItemId.toLowerCase().replace(/[-{}]/g, ""),
+                criteriaType: "CONTAINS" as const,
+              },
+            },
+          ],
+        }
+      : {
+          criteria: {
+            field: "_template",
+            value: TEMPLATE_TEMPLATE_ID,
+            criteriaType: "EXACT" as const,
+          },
+        };
+    for await (const r of searchAll(
+      {
+        latestVersionOnly: true,
+        searchStatement: statement,
+      },
+      opts.pageSize ?? 100
+    )) {
+      const fullName = r.path ? r.path.replace(/^\/sitecore\/templates\//i, "") : null;
+      results.push({
+        templateId: r.itemId,
+        name: r.name,
+        fullName,
+        standardValuesItemId: null,
+      });
+    }
+    return results;
+  };
+
+  const getChildren = async (selector: {
+    itemId?: string;
+    path?: string;
+  }): Promise<ChildSummary[]> => {
+    const map = (
+      nodes: Array<{
+        itemId: string;
+        name: string;
+        path: string;
+        template: { templateId: string } | null;
+      }>
+    ): ChildSummary[] =>
+      nodes.map((n) => ({
+        itemId: n.itemId,
+        name: n.name,
+        path: n.path,
+        templateId: n.template?.templateId ?? null,
+        templateName: null,
+      }));
+    if (selector.itemId) {
+      const data = await runHygieneAuthoringGraphQL<GraphQLChildrenResponse>(
+        environment,
+        GET_CHILDREN_BY_ID,
+        { itemId: selector.itemId },
+        readRequest
+      );
+      return data.item ? map(data.item.children.nodes) : [];
+    }
+    if (selector.path) {
+      const data = await runHygieneAuthoringGraphQL<GraphQLChildrenResponse>(
+        environment,
+        GET_CHILDREN_BY_PATH,
+        { path: selector.path },
+        readRequest
+      );
+      return data.item ? map(data.item.children.nodes) : [];
+    }
+    throw createCliError("getChildren requires itemId or path.", "INPUT_INVALID");
+  };
+
   return {
     search,
     searchAll,
@@ -643,6 +973,12 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     getItemWorkflow,
     listArchivedItems,
     deleteItemVersion,
+    deleteItem,
+    deleteItemTemplate,
+    deleteArchivedItem,
+    archiveVersion,
+    listItemTemplates,
+    getChildren,
   };
 };
 

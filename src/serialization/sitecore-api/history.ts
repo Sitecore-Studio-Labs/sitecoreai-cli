@@ -1,4 +1,4 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { HistoryEntry } from "../types";
 import { GraphQLRequestOptions, runGraphQL } from "./graphql";
 
@@ -24,7 +24,7 @@ query Entries($timestamp: String!) {
 }`;
 
 export const fetchHistoryTimestamp = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   options?: GraphQLRequestOptions
 ): Promise<string> => {
   const data = await runGraphQL<{ history: { currentTimestamp: string } }>(
@@ -37,7 +37,7 @@ export const fetchHistoryTimestamp = async (
 };
 
 export const fetchHistoryEntries = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   timestamp: string,
   options?: GraphQLRequestOptions
 ): Promise<{ timestamp: string; entries: HistoryEntry[] }> => {

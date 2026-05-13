@@ -1,4 +1,4 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { UserData } from "../types";
 import { GraphQLRequestOptions, runGraphQL } from "./graphql";
 
@@ -38,7 +38,7 @@ mutation($commands: [UserCommand]) {
 }`;
 
 export const fetchUsers = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   predicates: Array<{ domain: string; pattern: string }>,
   options?: GraphQLRequestOptions
 ): Promise<UserData[]> => {
@@ -76,7 +76,7 @@ export const fetchUsers = async (
 };
 
 export const pushUserCommands = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   commands: unknown[],
   options?: GraphQLRequestOptions
 ): Promise<unknown[]> => {

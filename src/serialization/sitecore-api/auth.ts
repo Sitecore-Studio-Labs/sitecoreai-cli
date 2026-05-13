@@ -1,4 +1,4 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { getCmTokens, setCmTokens } from "@/shared/keychain";
 import { createScaiError } from "@/shared/errors";
 
@@ -165,7 +165,7 @@ const requestToken = async (
 };
 
 export const requestDeviceAuthorization = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   scope?: string
 ): Promise<DeviceAuthorizationResult> => {
   if (!environment.authority || !environment.clientId) {
@@ -228,7 +228,7 @@ const delay = (ms: number): Promise<void> =>
   });
 
 export const pollDeviceToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   device: DeviceAuthorizationResult
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId) {
@@ -314,7 +314,7 @@ export const pollDeviceToken = async (
 export const DEFAULT_SITECORE_API_AUDIENCE = "https://api.sitecorecloud.io";
 
 export const requestClientCredentialsToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   scope?: string
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId || !environment.clientSecret) {
@@ -338,7 +338,7 @@ export const requestClientCredentialsToken = async (
 };
 
 export const requestPasswordToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   username: string,
   password: string,
   scope?: string
@@ -370,7 +370,7 @@ export const requestPasswordToken = async (
 };
 
 const requestRefreshToken = async (
-  environment: EnvironmentConfiguration
+  environment: SitecoreApiClientOptions
 ): Promise<AccessTokenResult | undefined> => {
   if (!environment.authority || !environment.refreshToken) {
     return undefined;
@@ -411,7 +411,7 @@ const requestRefreshToken = async (
  * which adds keychain-backed caching on top.
  */
 export const acquireAccessToken = async (
-  environment: EnvironmentConfiguration
+  environment: SitecoreApiClientOptions
 ): Promise<AccessTokenResult | undefined> => {
   const refreshed = await requestRefreshToken(environment);
   if (refreshed?.accessToken) {
@@ -424,7 +424,7 @@ export const acquireAccessToken = async (
 };
 
 export const getAccessToken = async (
-  environment: EnvironmentConfiguration
+  environment: SitecoreApiClientOptions
 ): Promise<string | undefined> => {
   const envName = environment.name;
   const shouldCache = environment.cacheAuthenticationToken !== false && Boolean(envName);

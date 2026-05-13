@@ -25,12 +25,16 @@
       "default": "./dist/recipe/index.js"
     },
     "./deploy": {
-      "types": "./dist/deploy/lib.d.ts",
-      "default": "./dist/deploy/lib.js"
+      "types": "./dist/deploy/api/index.d.ts",
+      "default": "./dist/deploy/api/index.js"
+    },
+    "./serialization": {
+      "types": "./dist/serialization/sitecore-api/index.d.ts",
+      "default": "./dist/serialization/sitecore-api/index.js"
     },
     "./errors": {
-      "types": "./dist/shared/lib-errors.d.ts",
-      "default": "./dist/shared/lib-errors.js"
+      "types": "./dist/shared/errors.d.ts",
+      "default": "./dist/shared/errors.js"
     },
     "./package.json": "./package.json"
   },

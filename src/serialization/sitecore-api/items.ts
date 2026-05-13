@@ -1,7 +1,7 @@
 import { ItemData, ItemMetadata } from "../types";
 import { ItemPath } from "../item-path";
 import { createDataSignatureBase, createSignature } from "../signature";
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { createScaiError } from "@/shared/errors";
 import { FieldFilterSet } from "../field-filter";
 import { GraphQLRequestOptions, runGraphQL } from "./graphql";
@@ -106,7 +106,7 @@ const parseItemData = (data: unknown, database?: string): ItemData => {
 };
 
 export const fetchItemMetadata = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   database: string,
   pathOrId: string,
   scope: string,
@@ -151,7 +151,7 @@ export const fetchItemMetadata = async (
 };
 
 export const fetchItemData = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   database: string,
   pathOrId: string,
   scope: string,
@@ -176,7 +176,7 @@ export const fetchItemData = async (
 };
 
 export const executeSerializationCommands = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   commands: unknown[],
   minimumLogLevel: string,
   options?: GraphQLRequestOptions

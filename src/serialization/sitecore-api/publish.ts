@@ -1,4 +1,4 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { GraphQLRequestOptions, runGraphQL } from "./graphql";
 
 const publishMutation = `
@@ -29,7 +29,7 @@ query {
 }`;
 
 export const publishItems = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   itemIds: string[],
   target?: string,
   options?: GraphQLRequestOptions
@@ -41,7 +41,7 @@ export const publishItems = async (
 };
 
 export const checkPublishStatus = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   publishId: string,
   options?: GraphQLRequestOptions
 ): Promise<{ id: string; processedCount: number; stateName: string }> => {
@@ -52,7 +52,7 @@ export const checkPublishStatus = async (
 };
 
 export const fetchPublishingTargets = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   options?: GraphQLRequestOptions
 ): Promise<string[]> => {
   const data = await runGraphQL<{ listOfTargets: string[] }>(

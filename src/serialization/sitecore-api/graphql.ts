@@ -6,7 +6,7 @@
  * targets the Authoring endpoint.
  */
 
-import type { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { runSitecoreGraphQL, type GraphQLRequestOptions } from "@/shared/graphql";
 import { getAccessToken } from "./auth";
 
@@ -15,7 +15,7 @@ const SERVICE_PATH = "/sitecore/api/management";
 export type { GraphQLRequestOptions };
 
 export const runGraphQL = <T>(
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   query: string,
   variables?: Record<string, unknown>,
   options?: GraphQLRequestOptions

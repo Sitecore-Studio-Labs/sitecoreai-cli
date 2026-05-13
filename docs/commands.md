@@ -2419,12 +2419,15 @@ scai serialization diff [options]
 
 **Options**
 
-- `-s, --source <name>` — Named Sitecore endpoint to use as a source for comparison
-- `-d, --destination <name>` — Named Sitecore endpoint to use as a destination for comparison
+- `-s, --source <name>` — Named Sitecore endpoint to use as a source for comparison (alias: --source-env)
+- `-d, --destination <name>` — Named Sitecore endpoint to use as a destination for comparison (alias: --target-env)
 - `-p, --path <path>` — Item path to compare (instead of include/exclude)
 - `--source-database <database>` — Source database (when used with --path)
 - `--destination-database <database>` — Destination database (when used with --path)
 - `--push` — Applies the differences detected to the destination (diff + push)
+- `-w, --what-if` — With --push: builds the plan and prints it without writing to the destination
+- `--allow-write` — With --push: allow writes to the destination for this invocation without updating config
+- `--force` — With --push: skip the empty-source confirmation guard. Required if source has zero items.
 - `-i, --include <value>` — Module configurations to include. Wildcards and multiple values are allowed (default: `[]`)
 - `-e, --exclude <value>` — Module configurations to explicitly exclude. Wildcards and multiple values are allowed (default: `[]`)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).

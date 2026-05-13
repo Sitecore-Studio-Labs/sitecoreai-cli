@@ -10,11 +10,11 @@ serialization commands, but runs natively (no .NET dependency).
 
 ## What gets serialized
 
-| Surface      | Source                                           |
-| ------------ | ------------------------------------------------ |
-| Items        | GraphQL item / metadata / history queries        |
-| Roles, users | GraphQL role + user queries                      |
-| Filesystem   | YAML files in module serialization paths         |
+| Surface      | Source                                    |
+| ------------ | ----------------------------------------- |
+| Items        | GraphQL item / metadata / history queries |
+| Roles, users | GraphQL role + user queries               |
+| Filesystem   | YAML files in module serialization paths  |
 
 Output uses deterministic YAML so diffs are stable across machines.
 
@@ -44,26 +44,70 @@ scai serialization package create   # create a package (alias: pkg)
 scai serialization package install  # install a package (alias: pkg)
 ```
 
-### `diff` semantics — different from `Sitecore.DevEx`
+### `diff` modes
 
-`scai serialization diff` compares **the local SCS store against a single
-remote CM** (the configured environment). It does **not** support the
-dotnet `sitecore ser diff --source <A> --destination <B>` mode that
-compares two live Sitecore instances against each other.
+`scai serialization diff` runs in one of two modes depending on flags:
 
-If you need instance-to-instance comparison, the workflow is:
+| Mode                   | Trigger                                                                   | What it compares                                                |
+| ---------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `local-vs-instance`    | No `--source` / `--destination` (or both set to the same env name)        | Local SCS store vs the configured environment                   |
+| `instance-vs-instance` | `--source <A> --destination <B>` (or `--source-env <A> --target-env <B>`) | Two live Sitecore environments, fetched in parallel via GraphQL |
+
+Flag aliases (matching dotnet `Sitecore.DevEx`):
+
+- `-s, --source <name>` ↔ `--source-env <name>`
+- `-d, --destination <name>` ↔ `--target-env <name>`
 
 ```sh
-scai ser pull -n source-env       # serialize source instance to disk
-scai ser diff -n destination-env  # diff that disk state against destination
+# Two-environment diff (read-only)
+scai ser diff --source-env staging --target-env prod
+
+# Apply the diff: bring prod in line with staging
+scai ser diff --source-env staging --target-env prod --push
+
+# Dry-run the push (build the plan, don't write)
+scai ser diff --source-env staging --target-env prod --push --what-if
+
+# Allow writes for this invocation without editing sitecoreai.cli.json
+scai ser diff --source-env staging --target-env prod --push --allow-write
 ```
 
-Two-instance diff is on the roadmap (see [roadmap](./roadmap.md)) with a
-`--source-env` / `--target-env` flag pair and a `--push` variant that
-mirrors dotnet's `ser diff --source A --destination B --push`.
+Notes:
+
+- **Module config comes from the local project.** The `*.module.json`
+  includes/excludes that scope the comparison are read from the project
+  the CLI is invoked from — not from either environment. Use `-p <path>`
+  to diff a specific subtree without modules.
+- **Empty-source guard.** `--push` with a source that has zero items
+  against a populated destination would recycle every item in the
+  destination. The diff refuses to proceed without `--force`.
+- **Concurrency-bounded.** Source + destination metadata fetches run
+  concurrently; per-item body fetches are bounded by
+  `SITECOREAI_HTTP_CONCURRENCY` (default 8). See [Performance](#performance).
+- **`--json` output** includes `mode`, `source`, `destination`, and a
+  per-database `differences` count. Add `--verbose` to include a
+  `changes` block per database with the create / update / recycle /
+  move / rename targets.
 
 For the full surface — flags, defaults, exit codes — see
 [`commands.md`](./commands.md).
+
+## Performance
+
+The two-environment diff path is shaped for concurrency:
+
+- Source and destination metadata fetches run in parallel (`Promise.all`).
+- Within each environment, per-subtree metadata fetches run with bounded
+  concurrency (default 8, override via `SITECOREAI_HTTP_CONCURRENCY`).
+- On `--push`, source and destination item-body collection
+  (`collectItemData`) run in parallel.
+- The per-item `fetchItemData` fanout inside `collectItemData` is also
+  bounded-concurrent — the biggest wall-clock win for trees with many
+  items, and the same speedup applies to `ser pull` and `ser push`.
+
+Concurrency is deliberately bounded to avoid hitting rate limits or
+exhausting sockets. For very large tenants, narrow the diff with
+`-p <path>` before increasing concurrency.
 
 ## Safety
 

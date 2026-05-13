@@ -28,6 +28,9 @@ export type DiffOptions = CommonOptions & {
   source: string;
   destination: string;
   push?: boolean;
+  whatIf?: boolean;
+  allowWrite?: boolean;
+  force?: boolean;
   path?: string;
   sourceDatabase?: string;
   destinationDatabase?: string;

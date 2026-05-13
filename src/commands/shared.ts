@@ -20,6 +20,14 @@ export const normalizeArgs = (argv: string[]): string[] =>
     if (arg === "-q") {
       return "--quiet";
     }
+    // `ser diff` aliases that match dotnet `Sitecore.DevEx`
+    // `ser diff --source-env / --target-env [--push]`.
+    if (arg === "--source-env") {
+      return "--source";
+    }
+    if (arg === "--target-env") {
+      return "--destination";
+    }
     return arg;
   });
 
@@ -113,15 +121,30 @@ export const addExplainOptions = (command: Command): Command =>
 
 export const addDiffOptions = (command: Command): Command =>
   command
-    .option("-s, --source <name>", "Named Sitecore endpoint to use as a source for comparison")
+    .option(
+      "-s, --source <name>",
+      "Named Sitecore endpoint to use as a source for comparison (alias: --source-env)"
+    )
     .option(
       "-d, --destination <name>",
-      "Named Sitecore endpoint to use as a destination for comparison"
+      "Named Sitecore endpoint to use as a destination for comparison (alias: --target-env)"
     )
     .option("-p, --path <path>", "Item path to compare (instead of include/exclude)")
     .option("--source-database <database>", "Source database (when used with --path)")
     .option("--destination-database <database>", "Destination database (when used with --path)")
-    .option("--push", "Applies the differences detected to the destination (diff + push)");
+    .option("--push", "Applies the differences detected to the destination (diff + push)")
+    .option(
+      "-w, --what-if",
+      "With --push: builds the plan and prints it without writing to the destination"
+    )
+    .option(
+      "--allow-write",
+      "With --push: allow writes to the destination for this invocation without updating config"
+    )
+    .option(
+      "--force",
+      "With --push: skip the empty-source confirmation guard. Required if source has zero items."
+    );
 
 export const addValidateOptions = (command: Command): Command =>
   command.option(

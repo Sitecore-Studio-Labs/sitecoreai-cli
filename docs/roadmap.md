@@ -11,12 +11,15 @@ flight" for new contributors.
   fixes.
 - Configuration options for `sitecoreai.cli.json` storage location
   (currently fixed at the project root with `--config` as the override).
-- **Two-environment `ser diff`** — add `--source-env` / `--target-env`
-  to `scai serialization diff`. Implementation: pull source to a temp
-  dir, run existing local-vs-remote diff against target, cleanup.
-  Includes a `--push` variant that propagates the diff source → target
-  (gated by target env `allowWrite`; supports `--what-if`). Matches
-  dotnet's `sitecore ser diff --source --destination [--push]`.
+- ~~Two-environment `ser diff`~~ — **shipped 2026-05-14.** The
+  `scai serialization diff` engine already operated instance-to-instance
+  in memory; the work landed as flag aliasing (`--source-env` /
+  `--target-env`), `--what-if` + `--allow-write` + `--force` wiring,
+  empty-source push guard, augmented JSON output (`mode` + optional
+  `changes` block under `--verbose`), and a concurrency refactor that
+  parallelizes source/destination fetches and bounds per-item fetch
+  fanout via `SITECOREAI_HTTP_CONCURRENCY`. See
+  [docs/serialization.md](./serialization.md#diff-modes).
 
 ## Feature areas
 

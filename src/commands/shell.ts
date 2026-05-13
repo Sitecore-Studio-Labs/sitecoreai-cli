@@ -131,7 +131,7 @@ export const createShellCommand = (runCli: RunCli): Command => {
             return;
           }
           const [firstArg] = inputArgs;
-          if (firstArg === "scai" || firstArg === "sitecoreai-deploy-sync") {
+          if (firstArg === "scai" || firstArg === "sitecoreai-cli") {
             inputArgs.shift();
           }
           if (inputArgs[0] === "shell") {

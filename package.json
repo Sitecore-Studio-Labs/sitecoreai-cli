@@ -1,29 +1,25 @@
 {
-  "name": "@sitecoreai-demo/sitecoreai-deploy-and-sync",
-  "version": "0.0.3",
+  "name": "@sitecoreai-labs/sitecoreai-cli",
+  "version": "0.0.4",
   "description": "SitecoreAI Deploy & Sync CLI for serialization and deployment workflows",
   "license": "MIT",
   "type": "commonjs",
   "author": "Liz Nelson <liz.nelson@sitecore.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync.git"
+    "url": "git+https://github.com/sitecore-studio-labs/sitecoreai-cli.git"
   },
-  "homepage": "https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync",
+  "homepage": "https://github.com/sitecore-studio-labs/sitecoreai-cli",
   "bugs": {
-    "url": "https://github.com/sitecoreai-demo/sitecoreai-deploy-and-sync/issues"
+    "url": "https://github.com/sitecore-studio-labs/sitecoreai-cli/issues"
   },
   "bin": {
-    "sitecoreai-deploy-sync": "bin/sitecoreai-deploy-sync",
-    "scai": "bin/sitecoreai-deploy-sync"
+    "sitecoreai-cli": "bin/sitecoreai-cli",
+    "scai": "bin/sitecoreai-cli"
   },
   "main": "dist/cli.js",
   "exports": {
     ".": "./dist/cli.js",
-    "./recipe": {
-      "types": "./dist/recipe/index.d.ts",
-      "default": "./dist/recipe/index.js"
-    },
     "./package.json": "./package.json"
   },
   "engines": {

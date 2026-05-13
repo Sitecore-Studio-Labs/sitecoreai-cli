@@ -1,5 +1,5 @@
 {
-  "name": "sitecoreai-deploy-sync-cli",
+  "name": "sitecoreai-cli",
   "description": "Agent configuration and skill inventory for the SitecoreAI Deploy & Sync CLI.",
   "skillsPath": "skills",
   "docs": {

@@ -17,7 +17,7 @@ Models the dotnet `Sitecore.DevEx` CLI conceptually but runs natively
 (no .NET dependency). Built with first-class agent integration —
 `--non-interactive`, `--json`, `--quiet`, `SITECOREAI_AUTO_WIZARD=0`.
 
-CLI command: `scai` (alias: `sitecoreai-deploy-sync`).
+CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers
 

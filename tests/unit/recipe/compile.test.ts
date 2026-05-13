@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { type CompileContext, compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import {
   fieldId,
-  inlineEnumFolderId,
   paramsFieldId,
   paramsSectionId,
   paramsTemplateId,
@@ -34,8 +33,7 @@ const ENUMERATIONS_ROOT = "/sitecore/content/test-tenant/test-site/Settings/Enum
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/test-site/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/test-site",
-  headlessVariantsRoot:
-    "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/test-site/Presentation/Headless Variants",
   enumerationsRoot: ENUMERATIONS_ROOT,
 };
 
@@ -117,10 +115,7 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   it("template inherits Standard Template + the SXA Foundation bases (per-site SVs, Horizon datasource grouping, publishing grouping)", () => {
     const op = ir.operations[1] as SetBaseTemplatesOp;
     expect(op.itemRefKey).toBe(templateId(SITE, HANDLE));
-    expect(op.baseTemplates).toEqual([
-      STANDARD_TEMPLATE_ID,
-      ...SXA_COMPONENT_BASE_TEMPLATES,
-    ]);
+    expect(op.baseTemplates).toEqual([STANDARD_TEMPLATE_ID, ...SXA_COMPONENT_BASE_TEMPLATES]);
   });
 
   it("section 'Content' is parented under the template", () => {

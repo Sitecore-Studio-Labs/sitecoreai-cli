@@ -1,5 +1,5 @@
 /**
- * Public recipe API — `import { ... } from "@sitecoreai-demo/sitecoreai-deploy-and-sync/recipe"`.
+ * Public recipe API — `import { ... } from "@sitecoreai-labs/sitecoreai-cli/recipe"`.
  *
  * The registry (and any other consumer) imports recipe types and the
  * compiler from this entry. Internal CLI plumbing (config loading,

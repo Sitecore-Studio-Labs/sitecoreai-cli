@@ -4,30 +4,10 @@ TypeScript CLI modeled after the Sitecore DotNet SDK and aligned with the serial
 This implementation runs natively (no dependency on the official `sitecore` CLI).
 It also includes a first-class SitecoreAI Deploy API client.
 
-CLI command: `scai` (alias: `sitecoreai-deploy-sync`)
+CLI command: `scai` (alias: `sitecoreai-cli`)
 
-Examples below use the installed CLI command `scai` (alias: `sitecoreai-deploy-sync`).
+Examples below use the installed CLI command `scai` (alias: `sitecoreai-cli`).
 For local development without installation, replace `scai` with `npm run dev --`.
-
-## Recipes
-
-Declarative Sitecore template + rendering definitions, authored as TypeScript
-files alongside React components and pushed to the CMS via the Authoring
-GraphQL API. Two recipe kinds:
-
-- **`ComponentTemplateRecipe`** — placeable component (datasource template +
-  rendering item + optional Variants/params).
-- **`ContentTemplateRecipe`** — content shape only (template + fields), used
-  as a Treelist source or `insertOptions` child of another recipe.
-
-Authors use `shape` (text / richText / image / link / enum / reference / …)
-on each field; the compiler maps to the canonical Sitecore field-type strings.
-Cross-recipe references use `sitecore.source: "template:<handle>"` (resolved
-to deterministic GUIDs at compile time).
-
-Locate recipes via the `recipes` glob in `sitecoreai.cli.json` (defaults to
-`recipes/**/*.recipe.ts`). `scai recipe push -n <env>` discovers, compiles,
-plans, and applies every match — second push is idempotent (zero mutations).
 
 ## Quick start
 
@@ -79,41 +59,6 @@ Run a serialization command:
 ```
 scai serialization pull --environment-name local
 ```
-
-Push declarative recipes (templates + renderings) to the CMS:
-
-```
-# 1. Add a recipe to the project. Default location: ./recipes/<name>.recipe.ts
-mkdir -p recipes
-cat > recipes/cta-button.recipe.ts <<'EOF'
-import type { ComponentTemplateRecipe } from "@sitecoreai-demo/sitecoreai-deploy-and-sync/recipe";
-
-export default {
-  kind: "component-template",
-  schemaVersion: "1",
-  handle: "cta-button@1",
-  name: "CtaButton",
-  displayName: "CTA Button",
-  fields: [
-    { name: "Link", shape: "link", sitecore: { type: "general-link", required: true } },
-  ],
-  variants: [{ name: "default" }, { name: "outline" }, { name: "ghost" }, { name: "link" }],
-  params: [
-    { name: "Size", shape: "enum", values: ["sm", "md", "lg"], default: "md" },
-  ],
-  rendering: { datasourceLocation: "current-item", openPropertiesAfterAdd: false },
-} satisfies ComponentTemplateRecipe;
-EOF
-
-# 2. Dry-run against your tenant to preview the plan.
-scai recipe push --environment-name local --what-if
-
-# 3. Apply for real.
-scai recipe push --environment-name local --allow-write
-```
-
-A second push is idempotent (zero mutations); a partial failure rolls back
-the ops it already applied (LIFO, best-effort).
 
 List environments from the Deploy API:
 
@@ -264,14 +209,6 @@ Serialization commands (alias: `ser`):
 - `serialization package create` (alias: `pkg`)
 - `serialization package install` (alias: `pkg`)
 
-Recipe commands — declarative templates + renderings via the Authoring GraphQL API:
-
-- `recipe compile` — compile a `.recipe.ts` / `.recipe.json` to an Operation IR
-- `recipe plan` — read-then-diff a compiled IR against a tenant (`--what-if` analog)
-- `recipe push` — apply recipes to a tenant; idempotent across re-pushes; best-effort
-  rollback on partial failure. Reads recipes from `--input <file>` or the
-  `recipes` glob in `sitecoreai.cli.json` (default `recipes/**/*.recipe.ts`).
-
 Environment commands:
 
 - `init`
@@ -406,19 +343,6 @@ Integration tests (requires env vars):
 ```
 npm run test:integration
 ```
-
-The recipe sandbox integration test (`tests/integration/recipe/cta-button.integration.test.ts`)
-additionally requires:
-
-```
-RECIPE_TEST_CM_HOST=https://<sandbox-tenant>.sitecorecloud.io
-RECIPE_TEST_TEMPLATES_ROOT=/sitecore/templates/Project/<site>/Components
-RECIPE_TEST_RENDERINGS_ROOT=/sitecore/layout/Renderings/Project/<site>
-```
-
-It exercises a fresh push, verifies idempotency on a second push, and
-runs `--what-if` against the populated tenant. Cleanup is best-effort
-on `deleteItem` for the run-scoped handle (`recipe-test-cta-<runId>@1`).
 
 Watch tests:
 

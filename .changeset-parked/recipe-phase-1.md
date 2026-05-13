@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-demo/sitecoreai-deploy-and-sync": minor
+"@sitecoreai-labs/sitecoreai-cli": minor
 ---
 
 Add `recipe` command group: declarative templates, renderings, and
@@ -9,7 +9,7 @@ SXA Variants for Sitecore via the Authoring GraphQL API.
 - Two recipe kinds: `ComponentTemplateRecipe` (rendering + datasource +
   Variants + params) and `ContentTemplateRecipe` (data shape only)
 - Authoring surface mirrors the registry's `sitecore-recipes.ts` schema;
-  `import { ComponentTemplateRecipeSchema } from "@sitecoreai-demo/sitecoreai-deploy-and-sync/recipe"`
+  `import { ComponentTemplateRecipeSchema } from "@sitecoreai-labs/sitecoreai-cli/recipe"`
   is now the source-of-truth subpath export
 - Deterministic uuidv5 GUIDs from each recipe `handle@<version>`; pinned
   forever once pushed (snapshot-tested for the seven Sitecore Blocks UI

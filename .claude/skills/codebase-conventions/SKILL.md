@@ -149,7 +149,8 @@ Anonymous, opt-in. The CLI prompts for consent on first use.
    `tests/integration/`
 7. If the command writes tokens or sensitive data, double-check no log
    path leaks them
-8. Update `README.md`'s command list
+8. Regenerate the command reference: `pnpm docs:commands` (writes
+   `docs/commands.md`)
 9. Run a changeset: `pnpm changeset`
 
 ## Common pitfalls

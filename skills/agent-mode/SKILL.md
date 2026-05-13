@@ -27,4 +27,4 @@ description: Run the CLI safely in non-interactive or CI environments. Use when 
 
 ## Reference
 
-- See `AGENT_CI.md` for full CI guidance and exit codes.
+- See `AGENTS.md` for the full agent/CI contract, exit codes, and recipes.

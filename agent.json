@@ -4,39 +4,18 @@
   "skillsPath": "skills",
   "docs": {
     "agents": "AGENTS.md",
-    "agentCi": "AGENT_CI.md",
+    "commands": "docs/commands.md",
+    "configuration": "docs/configuration.md",
+    "serialization": "docs/serialization.md",
+    "deploy": "docs/deploy.md",
+    "telemetryAndPrivacy": "docs/telemetry-and-privacy.md",
     "skillsIndex": "skills/README.md"
   },
   "skills": [
     {
-      "id": "config-bootstrap",
-      "path": "skills/config-bootstrap/SKILL.md",
-      "summary": "Create and validate sitecoreai.cli.json."
-    },
-    {
-      "id": "environment-setup",
-      "path": "skills/environment-setup/SKILL.md",
-      "summary": "Authentication and environment setup."
-    },
-    {
-      "id": "serialization-ops",
-      "path": "skills/serialization-ops/SKILL.md",
-      "summary": "Serialization pull/push/diff/validate/watch."
-    },
-    {
-      "id": "deploy-ops",
-      "path": "skills/deploy-ops/SKILL.md",
-      "summary": "Deploy API operations."
-    },
-    {
       "id": "agent-mode",
       "path": "skills/agent-mode/SKILL.md",
-      "summary": "Non-interactive and CI usage defaults."
-    },
-    {
-      "id": "troubleshooting",
-      "path": "skills/troubleshooting/SKILL.md",
-      "summary": "Diagnose common CLI errors."
+      "summary": "Run the CLI safely in non-interactive or CI environments."
     },
     {
       "id": "ci-smoke-test",
@@ -44,14 +23,64 @@
       "summary": "Run the CLI smoke test in CI."
     },
     {
+      "id": "config-bootstrap",
+      "path": "skills/config-bootstrap/SKILL.md",
+      "summary": "Bootstrap and validate sitecoreai.cli.json configuration."
+    },
+    {
+      "id": "deploy-ops",
+      "path": "skills/deploy-ops/SKILL.md",
+      "summary": "Run Deploy API commands for projects, environments, and deployments."
+    },
+    {
+      "id": "environment-setup",
+      "path": "skills/environment-setup/SKILL.md",
+      "summary": "Configure authentication for environments (deploy token or client credentials)."
+    },
+    {
       "id": "redaction-logs",
       "path": "skills/redaction-logs/SKILL.md",
-      "summary": "Logging, JSON output, and redaction guidance."
+      "summary": "Manage logging, redaction, and output formats safely."
     },
     {
       "id": "release-workflow",
       "path": "skills/release-workflow/SKILL.md",
-      "summary": "Changesets and release steps."
+      "summary": "Guide the release flow using changesets and npm provenance."
+    },
+    {
+      "id": "serialization-config-authoring",
+      "path": "skills/serialization-config-authoring/SKILL.md",
+      "summary": "Author and validate serialization module configuration, includes/rules/aliases."
+    },
+    {
+      "id": "serialization-conflict-resolution",
+      "path": "skills/serialization-conflict-resolution/SKILL.md",
+      "summary": "Resolve serialization conflicts and move/rename/update issues safely."
+    },
+    {
+      "id": "serialization-migration-bootstrap",
+      "path": "skills/serialization-migration-bootstrap/SKILL.md",
+      "summary": "Bootstrap new serialization modules and migrations from existing items."
+    },
+    {
+      "id": "serialization-ops",
+      "path": "skills/serialization-ops/SKILL.md",
+      "summary": "Run serialization pull/push/diff/validate/watch workflows."
+    },
+    {
+      "id": "serialization-performance",
+      "path": "skills/serialization-performance/SKILL.md",
+      "summary": "Optimize serialization performance using include/exclude, field filters, and watch options."
+    },
+    {
+      "id": "serialization-troubleshooting",
+      "path": "skills/serialization-troubleshooting/SKILL.md",
+      "summary": "Diagnose serialization errors and validation failures."
+    },
+    {
+      "id": "troubleshooting",
+      "path": "skills/troubleshooting/SKILL.md",
+      "summary": "Diagnose common CLI failures and recommend fixes."
     }
   ]
 }

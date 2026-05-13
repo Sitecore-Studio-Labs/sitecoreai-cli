@@ -15,4 +15,5 @@ description: Guide the release flow using changesets and npm provenance. Use whe
 
 - Ensure CI is green before release.
 - Verify provenance settings in CI.
-- Review `RELEASE.md` for current release steps.
+- Full release process: `docs/release.md` in the repo.
+- Quality gates and enforcement points: `docs/quality-gates.md`.

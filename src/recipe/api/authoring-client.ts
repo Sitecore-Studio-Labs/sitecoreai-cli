@@ -284,14 +284,23 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
   };
 
   /**
-   * Per-call request options for write operations — uses the conservative
-   * default retry set (just throttle / never-reached-origin codes:
-   * 408/425/429/503). A 500/502/504 may indicate the server processed
-   * the request but failed to respond; retrying would create a duplicate
-   * with no idempotency key. The recipe rollback flow recovers from
-   * partial-write states by replay, not by silent retries.
+   * Per-call request options for write operations — hard-disables retries
+   * (maxAttempts: 1). The Authoring GraphQL endpoint has no idempotency-key
+   * mechanism, so ANY retry on a write is a duplicate-mutation risk: 408,
+   * 425, 429 and 503 can all be returned AFTER the upstream applied the
+   * mutation, leading the retry to silently double-apply (especially on
+   * updateItem, where the "already exists" suppression in createItem doesn't
+   * help). The recipe rollback flow recovers from partial-write states by
+   * replay, not by silent retries — so making writes fail fast on first
+   * error is what the rollback layer actually expects.
+   *
+   * If 429 throttling becomes a real operational issue, add an
+   * `Idempotency-Key` header on writes BEFORE re-enabling retries here.
    */
-  const writeRequest: AuthoringRequestOptions = request ?? {};
+  const writeRequest: AuthoringRequestOptions = {
+    ...(request ?? {}),
+    retry: { maxAttempts: 1 },
+  };
 
   const fetchOne = async (selector: ItemSelector): Promise<RemoteItemNode | null> => {
     if (selector.itemId) {

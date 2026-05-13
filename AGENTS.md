@@ -65,3 +65,27 @@ npm run dev -- shell
 - Writes require `allowWrite: true` in the environment config.
 - Use `--what-if` on serialization commands to preview changes.
 - In CI/non-TTY, prefer `--non-interactive` and set `SITECOREAI_AUTO_WIZARD=0`.
+
+## Recipes (preview — graduates in 0.1.0)
+
+The `recipe` command group is present in the source tree but **un-advertised**
+in 0.0.x — neither `package.json` `exports` nor `scai --help` surface it. It
+graduates in the 0.1.0 release; the parked changeset under
+`.changeset-parked/` describes the surface coming online.
+
+When `scai recipe` runs (today via internal code paths, in 0.1.0 via the
+`scai recipe compile|plan|diff|push` commands), it loads `.recipe.ts` files
+through the `tsx` runtime. **These files are executed code, not data.**
+
+> **`.recipe.ts` files are executed code, not data.** When you run any
+> `scai recipe` command (including `recipe diff` and `recipe push --what-if`),
+> every matched `.recipe.ts` file is imported and its top-level code runs
+> with the full privileges of your shell — including filesystem access,
+> network, and environment variables. Treat recipe files like any other
+> build script (e.g. `webpack.config.js`, `vite.config.ts`): only run
+> `scai recipe` against repos and recipe files you trust. If you need to
+> inspect an untrusted recipe set, compile it to `.recipe.json` in a
+> sandboxed environment first and operate on the JSON form.
+
+This trust model also belongs in the user-facing README's Recipes section
+when 0.1.0 ships; track that integration in the release PR.

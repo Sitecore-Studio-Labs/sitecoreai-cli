@@ -240,4 +240,91 @@ describe("startDeploySpinner", () => {
     expect(oraMocks.spinner.succeed).toHaveBeenCalled();
     expect(oraMocks.spinner.fail).toHaveBeenCalled();
   });
+
+  it("returns null in TTY mode when silent: true is passed (library callers)", async () => {
+    const result = await startDeploySpinner("GET /silent", { silent: true });
+    expect(result).toBeNull();
+    expect(oraMocks.ora).not.toHaveBeenCalled();
+  });
+});
+
+describe("deployRequest library transport overrides", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("silent: true suppresses the spinner even on a TTY", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deployRequest({ accessToken: "token" }, "/api/silent", undefined, { silent: true });
+
+    expect(oraMocks.ora).not.toHaveBeenCalled();
+  });
+
+  it("init.transport.maxRetries wins over SITECOREAI_HTTP_RETRIES env var", async () => {
+    // Env says 5 retries, caller says 0 — caller wins.
+    process.env.SITECOREAI_HTTP_RETRIES = "5";
+    const fetchMock = vi.fn().mockRejectedValue(new Error("boom"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      deployRequest({ accessToken: "token" }, "/api/noretry", undefined, {
+        transport: { maxRetries: 0 },
+      })
+    ).rejects.toBeInstanceOf(CliError);
+    // Only the initial attempt, no retries.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("init.transport.traceHttp: true forces trace logging without env var", async () => {
+    delete process.env.SITECOREAI_TRACE_HTTP;
+    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deployRequest({ accessToken: "token" }, "/api/trace", undefined, {
+      transport: { traceHttp: true },
+    });
+
+    expect(debugSpy).toHaveBeenCalled();
+    debugSpy.mockRestore();
+  });
+
+  it("init.transport.traceHttp: false suppresses trace logging even when env var is set", async () => {
+    process.env.SITECOREAI_TRACE_HTTP = "1";
+    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deployRequest({ accessToken: "token" }, "/api/trace-off", undefined, {
+      transport: { traceHttp: false },
+    });
+
+    expect(debugSpy).not.toHaveBeenCalled();
+    debugSpy.mockRestore();
+  });
+
+  it("falls back to env var when init.transport.maxRetries is undefined", async () => {
+    process.env.SITECOREAI_HTTP_RETRIES = "1";
+    const fetchMock = vi.fn().mockRejectedValue(new Error("boom"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deployRequest({ accessToken: "token" }, "/api/envretry")).rejects.toBeInstanceOf(
+      CliError
+    );
+    // 1 initial + 1 retry.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

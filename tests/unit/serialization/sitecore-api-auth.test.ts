@@ -254,3 +254,70 @@ describe("sitecore api auth", () => {
     expect(keychainMocks.setCmTokens).toHaveBeenCalled();
   });
 });
+
+describe("acquireAccessToken (pure, no keychain)", () => {
+  beforeEach(() => {
+    keychainMocks.getCmTokens.mockReset();
+    keychainMocks.setCmTokens.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns client-credentials token when useClientCredentials is set", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ token_endpoint: "https://auth.example/token" }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "cc-pure", expires_in: 3600 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const result = await acquireAccessToken(makeEnv({ useClientCredentials: true }));
+
+    expect(result?.accessToken).toBe("cc-pure");
+    expect(result?.expiresIn).toBe(3600);
+    // Crucial: keychain MUST NOT be touched.
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+    expect(keychainMocks.setCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("returns refresh-token result when env has a refresh token", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ token_endpoint: "https://auth.example/token" }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "refreshed", refresh_token: "rt" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const result = await acquireAccessToken(makeEnv({ refreshToken: "rt-old" }));
+
+    expect(result?.accessToken).toBe("refreshed");
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+    expect(keychainMocks.setCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when no acquisition path is available", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    // No refreshToken, no useClientCredentials, no accessToken — nothing to do.
+    const result = await acquireAccessToken(makeEnv());
+
+    expect(result).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("does NOT return the env's embedded accessToken literal (that's getAccessToken's job)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    // Embedded accessToken on env — acquireAccessToken does not consider it.
+    const result = await acquireAccessToken(makeEnv({ accessToken: "literal" }));
+
+    expect(result).toBeUndefined();
+  });
+});

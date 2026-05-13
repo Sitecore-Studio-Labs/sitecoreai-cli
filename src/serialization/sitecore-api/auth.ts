@@ -400,6 +400,29 @@ const requestRefreshToken = async (
   return requestToken(environment.authority, params);
 };
 
+/**
+ * Pure OAuth acquisition: refresh-token-on-env, then client-credentials.
+ * Does NOT read or write the keychain, and does NOT return the env's
+ * embedded `accessToken` literal — callers wanting the literal-or-acquired
+ * union should check `environment.accessToken` themselves first.
+ *
+ * Library callers (orchestrators, MCP servers, tests) that bring their
+ * own token cache should call this directly. The CLI uses `getAccessToken`
+ * which adds keychain-backed caching on top.
+ */
+export const acquireAccessToken = async (
+  environment: EnvironmentConfiguration
+): Promise<AccessTokenResult | undefined> => {
+  const refreshed = await requestRefreshToken(environment);
+  if (refreshed?.accessToken) {
+    return refreshed;
+  }
+  if (environment.useClientCredentials) {
+    return requestClientCredentialsToken(environment);
+  }
+  return undefined;
+};
+
 export const getAccessToken = async (
   environment: EnvironmentConfiguration
 ): Promise<string | undefined> => {
@@ -434,32 +457,18 @@ export const getAccessToken = async (
     return environment.accessToken;
   }
 
-  const refreshed = await requestRefreshToken(environment);
-  if (refreshed?.accessToken) {
+  const acquired = await acquireAccessToken(environment);
+  if (acquired?.accessToken) {
     if (shouldCache && envName) {
       await setCmTokens(envName, {
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken ?? environment.refreshToken,
+        accessToken: acquired.accessToken,
+        refreshToken: acquired.refreshToken ?? environment.refreshToken,
         refreshTokenParameters: environment.refreshTokenParameters,
-        expiresIn: refreshed.expiresIn,
+        expiresIn: acquired.expiresIn,
         lastUpdated: new Date().toISOString(),
       });
     }
-    return refreshed.accessToken;
-  }
-
-  if (environment.useClientCredentials) {
-    const token = await requestClientCredentialsToken(environment);
-    if (shouldCache && envName) {
-      await setCmTokens(envName, {
-        accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
-        refreshTokenParameters: environment.refreshTokenParameters,
-        expiresIn: token.expiresIn,
-        lastUpdated: new Date().toISOString(),
-      });
-    }
-    return token.accessToken;
+    return acquired.accessToken;
   }
 
   return undefined;

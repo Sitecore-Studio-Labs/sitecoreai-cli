@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package-manager: [npm, pnpm, yarn, bun]
+        # Only the two PMs the project actually uses: npm (release.yml,
+        # package-lock.json) and pnpm (local dev). yarn + bun were dropped
+        # — neither has a lockfile in the repo, and each adds an install-
+        # script attack surface for zero meaningful coverage.
+        package-manager: [npm, pnpm]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,26 +32,16 @@ jobs:
         with:
           version: 9
 
-      - name: Setup bun
-        if: matrix.package-manager == 'bun'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Enable Corepack
-        if: matrix.package-manager == 'pnpm' || matrix.package-manager == 'yarn'
+        if: matrix.package-manager == 'pnpm'
         run: corepack enable
 
       - name: Install dependencies
         run: |
           if [ "${{ matrix.package-manager }}" = "npm" ]; then
             npm install
-          elif [ "${{ matrix.package-manager }}" = "pnpm" ]; then
-            pnpm install --no-frozen-lockfile
-          elif [ "${{ matrix.package-manager }}" = "yarn" ]; then
-            yarn install --no-immutable
           else
-            bun install
+            pnpm install --no-frozen-lockfile
           fi
 
       - name: Lint

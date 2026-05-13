@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  # npm dependencies — track package-lock.json (the canonical lockfile;
+  # pnpm-lock.yaml is gitignored per .gitignore:27).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # Group every security update so they ship in a single PR — easier
+      # to triage than one PR per advisory.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # Group minor + patch dev-tree bumps. Production deps get their own
+      # PR per package so reviewers can scrutinize.
+      dev-minor:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - "*"
+
+  # GitHub Actions — keeps action SHAs (when we pin them) current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"

@@ -191,9 +191,17 @@ export const runSitecoreGraphQL = async <T>(
   };
 
   const sendOnce = async (): Promise<T> => {
-    const controller = options?.timeoutMs ? new AbortController() : undefined;
+    // Default to 60s if neither the caller nor SITECOREAI_REQUEST_TIMEOUT_MS
+    // sets one. Defends against slowloris / black-hole upstreams that send
+    // response headers then stall the body indefinitely. `options.timeoutMs`
+    // stays undefined when defaulting — the retry-on-abort heuristic at the
+    // outer attempt loop (~L281) still treats explicit caller timeouts as
+    // "definitive" and default-timeouts as "probably transient, safe to retry".
+    const resolvedTimeoutMs =
+      options?.timeoutMs ?? Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
+    const controller = resolvedTimeoutMs > 0 ? new AbortController() : undefined;
     const timeout = controller
-      ? setTimeout(() => controller.abort(), Math.max(options?.timeoutMs ?? 0, 0))
+      ? setTimeout(() => controller.abort(), resolvedTimeoutMs)
       : undefined;
 
     try {

@@ -186,9 +186,15 @@ export const deployRequest = async <T>(
   const shouldRetry = (status?: number): boolean =>
     method === "GET" && (status === 429 || (status !== undefined && status >= 500));
 
+  // Default 60s per-attempt timeout. Override via SITECOREAI_REQUEST_TIMEOUT_MS
+  // (0 disables). Defends against slowloris / black-hole upstreams.
+  const timeoutMs = Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
+
   let response: Response;
   let attempt = 0;
   while (true) {
+    const controller = timeoutMs > 0 ? new AbortController() : undefined;
+    const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
     try {
       if (traceEnabled) {
         consola.debug(`HTTP ${method} ${url}`);
@@ -197,8 +203,10 @@ export const deployRequest = async <T>(
         method,
         headers,
         body,
+        signal: controller?.signal,
       });
     } catch {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (attempt < maxRetries && method === "GET") {
         attempt += 1;
         const delay = withJitter(retryBaseMs * Math.pow(2, attempt - 1));
@@ -211,6 +219,7 @@ export const deployRequest = async <T>(
       });
     }
 
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     if (!response.ok && shouldRetry(response.status) && attempt < maxRetries) {
       attempt += 1;
       const delay = withJitter(retryBaseMs * Math.pow(2, attempt - 1));

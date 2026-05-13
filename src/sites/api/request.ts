@@ -85,9 +85,15 @@ export const sitesRequest = async <TResponse>(
     body = typeof init.body === "string" ? init.body : JSON.stringify(init.body);
   }
 
+  // Default 60s timeout. Override via SITECOREAI_REQUEST_TIMEOUT_MS (0 disables).
+  // Defends against slowloris / black-hole upstreams.
+  const timeoutMs = Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
+  const controller = timeoutMs > 0 ? new AbortController() : undefined;
+  const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
   let response: Response;
   try {
-    response = await fetch(url, { method, headers, body });
+    response = await fetch(url, { method, headers, body, signal: controller?.signal });
   } catch (error) {
     throw createCliError(
       redactSecrets(
@@ -96,6 +102,8 @@ export const sitesRequest = async <TResponse>(
       "NETWORK",
       { hint: "Check network connectivity or try again later." }
     );
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 
   if (!response.ok) {

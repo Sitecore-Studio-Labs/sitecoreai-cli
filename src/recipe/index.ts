@@ -190,7 +190,8 @@ export type {
 export { executeIr } from "./execute";
 export type { ExecuteOptions, ExecutionEvent, ExecutionMode, ExecutionResult } from "./execute";
 
-// Authoring API client seam (interface only — bring your own implementation)
+// Authoring API client seam (interface — bring your own implementation,
+// OR use `createAuthoringClient` below for scai's production client).
 export type {
   AuthoringApiClient,
   CreateItemInput,
@@ -198,6 +199,33 @@ export type {
   RemoteItem,
   UpdateItemInput,
 } from "./api/client";
+
+// Production AuthoringApiClient factory. Library callers use this when
+// they want scai's implementation (path resolution, parent-folder
+// auto-creation, retry-on-throttle for read GETs) without re-implementing
+// the wire-protocol semantics from scratch.
+export { createAuthoringClient, type AuthoringClientOptions } from "./api/authoring-client";
+
+// Authoring GraphQL transport. `runAuthoringGraphQL` is the escape hatch
+// for ad-hoc queries scai's typed clients don't cover; it shares retry +
+// timeout + auth + redaction with `createAuthoringClient`.
+export { runAuthoringGraphQL, type AuthoringRequestOptions } from "./api/graphql";
+
+// Sites API client seam + factory + types. Parallels the Authoring
+// client pair: the interface is what the recipe planner depends on,
+// `createSitesApiClient` is the production adapter over the Sites HTTP
+// API, and the re-exported types describe the values flowing across.
+export {
+  createSitesApiClient,
+  type SitesApiClient,
+  type Job,
+  type JobResponse,
+  type Language,
+  type NewSiteInput,
+  type Site,
+  type SiteCollection,
+  type SiteTemplate,
+} from "./api/sites-client";
 
 // Reference encoding (RefValue → canonical Sitecore string) -------------
 export { renderRefValue } from "./api/ref-encoding";

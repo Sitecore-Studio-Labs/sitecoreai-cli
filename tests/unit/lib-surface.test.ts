@@ -128,11 +128,26 @@ describe("public library surface — /serialization", () => {
   });
 });
 
-describe("public library surface — /recipe (existing export, unchanged)", () => {
-  it("recipe export still resolves", async () => {
+describe("public library surface — /recipe", () => {
+  it("compiler + planner + executor entry points resolve", async () => {
     const recipe = await import("../../src/recipe/index");
-    // The recipe entry has ~80 named exports. Spot-check a few stable ones.
     expect(typeof recipe.compileRecipeSet).toBe("function");
     expect(typeof recipe.buildPlan).toBe("function");
+    expect(typeof recipe.executeIr).toBe("function");
+    expect(typeof recipe.renderRefValue).toBe("function");
+  });
+
+  it("Phase D — Authoring + Sites client factories and the GraphQL escape hatch are reachable", async () => {
+    const recipe = await import("../../src/recipe/index");
+
+    // Production AuthoringApiClient factory.
+    expect(typeof recipe.createAuthoringClient).toBe("function");
+
+    // Production SitesApiClient factory.
+    expect(typeof recipe.createSitesApiClient).toBe("function");
+
+    // Ad-hoc Authoring GraphQL escape hatch — shares retry / auth /
+    // redaction with the typed clients.
+    expect(typeof recipe.runAuthoringGraphQL).toBe("function");
   });
 });

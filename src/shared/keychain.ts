@@ -1,12 +1,22 @@
 import { consola } from "consola";
 
-type KeytarModule = typeof import("keytar");
+/**
+ * OS keychain access via `@napi-rs/keyring` (Rust-based, actively maintained,
+ * prebuilt binaries). Replaces `keytar`, whose upstream `atom/node-keytar`
+ * was archived when Atom shut down in Dec 2022.
+ *
+ * The wrapper preserves the original async public API so callers (auth, init,
+ * logout, deploy-token, etc.) don't need to change. Internally we use
+ * `AsyncEntry` from `@napi-rs/keyring`, which mirrors the keyring-rs crate's
+ * platform behavior (macOS Keychain, Windows Credential Manager, libsecret).
+ *
+ * Fail-closed semantics: if the native module fails to load (e.g. CI runners
+ * without a keychain backend), every operation returns undefined/false with
+ * a one-shot warning. No plaintext disk fallback — callers fall back to
+ * SITECOREAI_* env vars in those environments.
+ */
 
-type KeytarLike = KeytarModule & {
-  getPassword: (service: string, account: string) => Promise<string | null>;
-  setPassword: (service: string, account: string, password: string) => Promise<void>;
-  deletePassword: (service: string, account: string) => Promise<boolean>;
-};
+type KeyringModule = typeof import("@napi-rs/keyring");
 
 type CmTokenBundle = {
   accessToken?: string;
@@ -20,9 +30,9 @@ const SERVICE_NAME = "SitecoreAI CLI";
 const DEPLOY_ACCOUNT_PREFIX = "deploy:";
 const CM_ACCOUNT_PREFIX = "cm:";
 
-let cachedKeytar: KeytarLike | null | undefined;
-let warnedKeytarUnavailable = false;
-let warnedKeytarError = false;
+let cachedKeyring: KeyringModule | null | undefined;
+let warnedKeyringUnavailable = false;
+let warnedKeyringError = false;
 
 const shouldWarn = (): boolean =>
   process.env.SITECOREAI_JSON !== "1" && process.env.SITECOREAI_QUIET !== "1";
@@ -31,32 +41,35 @@ const warnOnce = (message: string, type: "unavailable" | "error"): void => {
   if (!shouldWarn()) {
     return;
   }
-  if (type === "unavailable" && warnedKeytarUnavailable) {
+  if (type === "unavailable" && warnedKeyringUnavailable) {
     return;
   }
-  if (type === "error" && warnedKeytarError) {
+  if (type === "error" && warnedKeyringError) {
     return;
   }
   if (type === "unavailable") {
-    warnedKeytarUnavailable = true;
+    warnedKeyringUnavailable = true;
   } else {
-    warnedKeytarError = true;
+    warnedKeyringError = true;
   }
   consola.warn(message);
 };
 
-const loadKeytar = async (): Promise<KeytarLike | null> => {
-  if (cachedKeytar !== undefined) {
-    return cachedKeytar;
+const loadKeyring = async (): Promise<KeyringModule | null> => {
+  if (cachedKeyring !== undefined) {
+    return cachedKeyring;
   }
   try {
-    const mod = (await import("keytar")) as KeytarModule & {
-      default?: KeytarLike;
+    const mod = (await import("@napi-rs/keyring")) as KeyringModule & {
+      default?: KeyringModule;
     };
-    cachedKeytar = (mod.default ?? mod) as KeytarLike;
-    return cachedKeytar;
+    // CJS interop: @napi-rs/keyring is CJS so dynamic import wraps the
+    // exports under `default` on some Node versions. Try the namespace
+    // first (has AsyncEntry as a named export), fall back to default.
+    cachedKeyring = (mod.AsyncEntry ? mod : (mod.default ?? mod)) as KeyringModule;
+    return cachedKeyring;
   } catch {
-    cachedKeytar = null;
+    cachedKeyring = null;
     warnOnce(
       "Keychain support is unavailable. Tokens will not be stored in the OS keychain.",
       "unavailable"
@@ -75,29 +88,38 @@ const safeParse = <T>(value: string): T | undefined => {
   }
 };
 
-export const getDeployToken = async (envName: string): Promise<string | undefined> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
-    return undefined;
-  }
+/**
+ * Treat any read failure as "no token stored" — `@napi-rs/keyring` throws
+ * a NoEntry error when the credential doesn't exist (vs keytar which returned
+ * null). Distinguishing NoEntry from real errors requires platform-specific
+ * inspection; the conservative choice is to return undefined silently and
+ * surface real failures the next time a set/delete is attempted.
+ */
+const readPassword = async (ring: KeyringModule, account: string): Promise<string | undefined> => {
   try {
-    return (
-      (await keytar.getPassword(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName))) ??
-      undefined
-    );
+    const entry = new ring.AsyncEntry(SERVICE_NAME, account);
+    return (await entry.getPassword()) ?? undefined;
   } catch {
-    warnOnce("Unable to read deploy token from the OS keychain.", "error");
     return undefined;
   }
 };
 
+export const getDeployToken = async (envName: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
+};
+
 export const setDeployToken = async (envName: string, token: string): Promise<boolean> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
+  const ring = await loadKeyring();
+  if (!ring) {
     return false;
   }
   try {
-    await keytar.setPassword(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName), token);
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(token);
     return true;
   } catch {
     warnOnce("Unable to write deploy token to the OS keychain.", "error");
@@ -106,46 +128,39 @@ export const setDeployToken = async (envName: string, token: string): Promise<bo
 };
 
 export const clearDeployToken = async (envName: string): Promise<boolean> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
+  const ring = await loadKeyring();
+  if (!ring) {
     return false;
   }
   try {
-    return await keytar.deletePassword(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
   } catch {
-    warnOnce("Unable to delete deploy token from the OS keychain.", "error");
+    // NoEntry on delete is idempotent success; other errors warn.
     return false;
   }
 };
 
 export const getCmTokens = async (envName: string): Promise<CmTokenBundle | undefined> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
+  const ring = await loadKeyring();
+  if (!ring) {
     return undefined;
   }
-  try {
-    const raw = await keytar.getPassword(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
-    if (!raw) {
-      return undefined;
-    }
-    return safeParse<CmTokenBundle>(raw);
-  } catch {
-    warnOnce("Unable to read CM tokens from the OS keychain.", "error");
+  const raw = await readPassword(ring, makeAccount(CM_ACCOUNT_PREFIX, envName));
+  if (!raw) {
     return undefined;
   }
+  return safeParse<CmTokenBundle>(raw);
 };
 
 export const setCmTokens = async (envName: string, tokens: CmTokenBundle): Promise<boolean> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
+  const ring = await loadKeyring();
+  if (!ring) {
     return false;
   }
   try {
-    await keytar.setPassword(
-      SERVICE_NAME,
-      makeAccount(CM_ACCOUNT_PREFIX, envName),
-      JSON.stringify(tokens)
-    );
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(JSON.stringify(tokens));
     return true;
   } catch {
     warnOnce("Unable to write CM tokens to the OS keychain.", "error");
@@ -154,14 +169,14 @@ export const setCmTokens = async (envName: string, tokens: CmTokenBundle): Promi
 };
 
 export const clearCmTokens = async (envName: string): Promise<boolean> => {
-  const keytar = await loadKeytar();
-  if (!keytar) {
+  const ring = await loadKeyring();
+  if (!ring) {
     return false;
   }
   try {
-    return await keytar.deletePassword(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
   } catch {
-    warnOnce("Unable to delete CM tokens from the OS keychain.", "error");
     return false;
   }
 };

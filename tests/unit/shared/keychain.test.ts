@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 describe("keychain helpers", () => {
-  it("returns defaults when keytar is unavailable", async () => {
+  it("returns defaults when the keyring module is unavailable", async () => {
     vi.resetModules();
-    vi.doMock("keytar", () => {
+    vi.doMock("@napi-rs/keyring", () => {
       throw new Error("missing");
     });
     const keychain = await import("../../../src/shared/keychain");
@@ -13,16 +13,31 @@ describe("keychain helpers", () => {
     expect(await keychain.getCmTokens("demo")).toBeUndefined();
   });
 
-  it("parses cm tokens and clears them", async () => {
+  it("parses cm tokens and clears them via AsyncEntry", async () => {
     vi.resetModules();
-    vi.doMock("keytar", () => ({
-      default: {
-        getPassword: vi
-          .fn()
-          .mockResolvedValueOnce("not-json")
-          .mockResolvedValueOnce(JSON.stringify({ accessToken: "token" })),
-        setPassword: vi.fn().mockResolvedValue(undefined),
-        deletePassword: vi.fn().mockResolvedValue(true),
+    // First call returns invalid JSON (safeParse → undefined); second returns
+    // a valid bundle. The mock shares one getPassword across AsyncEntry
+    // instances so the chained returns line up with sequential calls.
+    const getPassword = vi
+      .fn()
+      .mockResolvedValueOnce("not-json")
+      .mockResolvedValueOnce(JSON.stringify({ accessToken: "token" }));
+    const setPassword = vi.fn().mockResolvedValue(undefined);
+    const deleteCredential = vi.fn().mockResolvedValue(true);
+    vi.doMock("@napi-rs/keyring", () => ({
+      // Explicit ES class so `new AsyncEntry(...)` constructs correctly across
+      // vitest versions. The methods delegate to the shared mock fns so the
+      // chained mockResolvedValueOnce returns advance across instances.
+      AsyncEntry: class {
+        getPassword() {
+          return getPassword();
+        }
+        setPassword(password: string) {
+          return setPassword(password);
+        }
+        deleteCredential() {
+          return deleteCredential();
+        }
       },
     }));
     const keychain = await import("../../../src/shared/keychain");

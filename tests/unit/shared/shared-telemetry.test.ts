@@ -3,11 +3,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-vi.mock("keytar", () => ({
-  default: {
-    getPassword: vi.fn().mockResolvedValue("token"),
-    setPassword: vi.fn().mockResolvedValue(undefined),
-    deletePassword: vi.fn().mockResolvedValue(true),
+vi.mock("@napi-rs/keyring", () => ({
+  AsyncEntry: class {
+    getPassword() {
+      return Promise.resolve("token");
+    }
+    setPassword() {
+      return Promise.resolve();
+    }
+    deleteCredential() {
+      return Promise.resolve(true);
+    }
   },
 }));
 

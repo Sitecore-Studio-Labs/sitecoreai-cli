@@ -82,6 +82,10 @@ scai deploy organizations get
 scai deploy projects list
 scai deploy environments list --project "My Project"
 
+# Probe a CM's readiness endpoint (resolves the host from the env metadata,
+# then GETs /healthz/ready). Useful for post-deploy smoke checks.
+scai deploy environments health --name <env>
+
 # Upload a deployment from a directory (zips on the fly)
 scai deploy deployments source --id <deploymentId> --directory ./my-app
 

@@ -5,6 +5,7 @@ import {
   createEnvironmentsGetCommand,
   createEnvironmentsGetEdgeTokenCommand,
   createEnvironmentsGetEditingSecretCommand,
+  createEnvironmentsHealthCommand,
 } from "./queries";
 import { createEnvironmentsVariablesCommand } from "./variables";
 import { createEnvironmentsDeploymentsCommand } from "./deployments";
@@ -29,6 +30,7 @@ export const createDeployEnvironmentsCommand = (): Command => {
   environments.addCommand(createEnvironmentsGetCommand());
   environments.addCommand(createEnvironmentsGetEdgeTokenCommand());
   environments.addCommand(createEnvironmentsGetEditingSecretCommand());
+  environments.addCommand(createEnvironmentsHealthCommand());
   environments.addCommand(createEnvironmentsLimitationCommand());
   environments.addCommand(createEnvironmentsLinkRepositoryCommand());
   environments.addCommand(createEnvironmentsListCommand());

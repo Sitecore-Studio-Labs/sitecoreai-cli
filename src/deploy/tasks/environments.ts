@@ -18,6 +18,8 @@ import {
   fetchEnvironmentRestartStatus,
   restartEnvironment,
   promoteEnvironmentDeployment,
+  probeEnvironmentHealth,
+  resolveHostFromEnvironment,
 } from "@/deploy/api";
 import type { DeployEnvironment } from "@/deploy/api";
 import {
@@ -486,6 +488,26 @@ export const runDeployEnvironmentsUnlinkRepository = async (
     environmentId
   );
   printDeployResultWithContext(logger, context, "deploy.environments.repository.unlink", result);
+};
+
+export const runDeployEnvironmentsHealth = async (
+  options: DeployEnvironmentOptions
+): Promise<void> => {
+  const logger = toLogger(options);
+  const context = await getDeployContext(options);
+  const environmentId = await resolveDeployEnvironmentId(context, options);
+  const environment = await fetchEnvironment(
+    { accessToken: context.token, baseUrl: context.baseUrl },
+    environmentId
+  );
+  const host = resolveHostFromEnvironment(environment);
+  if (!host) {
+    throw inputError(
+      `Environment '${environmentId}' has no resolvable host. The Deploy API returned no cmUrl/cmHost/host/url. Cannot probe /healthz/ready.`
+    );
+  }
+  const result = await probeEnvironmentHealth(host);
+  printDeployResultWithContext(logger, context, "deploy.environments.health", result);
 };
 
 export const runDeployEnvironmentsRestartStatus = async (

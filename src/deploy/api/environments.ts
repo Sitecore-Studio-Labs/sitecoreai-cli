@@ -163,6 +163,41 @@ export const restartEnvironment = async (
     method: "POST",
   });
 
+export type EnvironmentHealthResult = {
+  host: string;
+  url: string;
+  status: number;
+  ok: boolean;
+  body: string;
+};
+
+export const probeEnvironmentHealth = async (
+  host: string,
+  timeoutMs: number = 30_000
+): Promise<EnvironmentHealthResult> => {
+  const normalized = host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`;
+  const url = `${normalized.replace(/\/$/, "")}/healthz/ready`;
+  const controller = timeoutMs > 0 ? new AbortController() : undefined;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "text/plain, application/json" },
+      signal: controller?.signal,
+    });
+    const body = await response.text();
+    return {
+      host: normalized,
+      url,
+      status: response.status,
+      ok: response.ok,
+      body: body.trim(),
+    };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
+
 export const resolveHostFromEnvironment = (environment: DeployEnvironment): string | undefined => {
   const direct = environment.cmUrl ?? environment.cmHost ?? environment.host ?? environment.url;
   if (direct) {

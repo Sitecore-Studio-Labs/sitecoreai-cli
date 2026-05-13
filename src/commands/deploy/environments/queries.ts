@@ -5,6 +5,7 @@ import {
   runDeployEnvironmentsGet,
   runDeployEnvironmentsGetEdgeToken,
   runDeployEnvironmentsGetEditingSecret,
+  runDeployEnvironmentsHealth,
 } from "@/deploy/tasks";
 import { addDeployBaseOptions } from "../shared";
 
@@ -49,6 +50,19 @@ export const createEnvironmentsGetEdgeTokenCommand = (): Command => {
     .addOption(new Option("--project <value>", "Project name or ID"));
   environmentsGetEdgeToken.action(async (options) => runDeployEnvironmentsGetEdgeToken(options));
   return environmentsGetEdgeToken;
+};
+
+export const createEnvironmentsHealthCommand = (): Command => {
+  const environmentsHealth = new Command("health").description(
+    "Probe environment health (GET <cmHost>/healthz/ready)"
+  );
+  addDeployBaseOptions(environmentsHealth);
+  environmentsHealth
+    .addOption(new Option("--id <id>", "Environment ID"))
+    .addOption(new Option("--name <name>", "Environment name"))
+    .addOption(new Option("--project <value>", "Project name or ID"));
+  environmentsHealth.action(async (options) => runDeployEnvironmentsHealth(options));
+  return environmentsHealth;
 };
 
 export const createEnvironmentsGetEditingSecretCommand = (): Command => {

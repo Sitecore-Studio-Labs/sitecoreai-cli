@@ -20,6 +20,35 @@ keychain-only credential storage).
 
 CLI command: `scai` (alias: `sitecoreai-cli`).
 
+## What `scai` adds beyond `Sitecore.DevEx`
+
+`scai` covers the dotnet CLI's Serialization and XM Cloud surfaces, and
+adds capabilities that have no dotnet counterpart:
+
+- **Recipes** — declarative TypeScript template + rendering definitions
+  pushed via the Authoring GraphQL API, with deterministic GUIDs,
+  idempotent re-push, and LIFO rollback. See
+  [docs/recipes.md](./docs/recipes.md).
+- **Deploy API extras** — `deploy env get-edge-token`,
+  `get-editing-secret`, `regenerate-context`, `link-repository` /
+  `unlink-repository` (on projects and environments), project
+  `limitation` and `validate-name`, and the `deploy site` and
+  `deploy source-control` command groups.
+- **Agent / CI ergonomics** — `--json`, `--non-interactive`, stable exit
+  codes, OS keychain credential storage (no plaintext on disk),
+  per-environment env-var overrides
+  (`SITECOREAI_ENV_<NAME>_*`), and `SITECOREAI_AUTO_WIZARD=0` to suppress
+  interactive prompts.
+- **Local activity log** — `scai history` records redacted command
+  history at `~/.sitecoreai/cli-history.log`.
+- **Interactive REPL** — `scai shell` for chained commands in one session.
+- **Telemetry honoring `DO_NOT_TRACK`** — opt-out via the standard env
+  var, plus `DISABLE_TELEMETRY` and `SITECOREAI_TELEMETRY=false`.
+
+See [docs/parity-with-devex.md](./docs/parity-with-devex.md) for the
+full mapping against `Sitecore.DevEx` and a record of what was
+deliberately not ported.
+
 ## Install
 
 ```sh
@@ -117,6 +146,9 @@ ContentItem — present in source, not in the 0.1.0 stability promise).
 - [Release process](./docs/release.md) — versioning and publishing.
 - [Quality gates](./docs/quality-gates.md) — where each gate is enforced.
 - [Roadmap](./docs/roadmap.md) — what's coming next.
+- [Parity with `Sitecore.DevEx`](./docs/parity-with-devex.md) — full
+  mapping against the dotnet CLI and a record of what was deliberately
+  not ported.
 
 For agent / CI usage, see [AGENTS.md](./AGENTS.md).
 

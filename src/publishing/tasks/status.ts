@@ -1,8 +1,8 @@
 import { Logger } from "@/shared/logger";
-import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
-import { checkPublishStatus } from "@/serialization/sitecore-api/publish";
-import { normalizePublishJob, type GraphQLPublishStatus } from "../sitecore-api/normalize";
+import { acquirePublishingToken } from "../sitecore-api/auth";
+import { getPublishJob, listPublishJobs } from "../sitecore-api/client";
+import type { PublishJob, PublishingApiClientOptions } from "../sitecore-api/types";
 
 export interface RunPublishStatusOptions {
   config?: string;
@@ -24,38 +24,64 @@ const toLogger = (options: RunPublishStatusOptions): Logger =>
     options.logFile ?? process.env.SITECOREAI_LOG_FILE
   );
 
+const formatJobLine = (job: PublishJob): string => {
+  const parts: string[] = [job.id, job.state];
+  if (job.processedCount !== undefined) {
+    parts.push(`${job.processedCount} processed`);
+  }
+  if (job.startedAt) {
+    parts.push(`started ${job.startedAt}`);
+  }
+  return parts.join("  ");
+};
+
 export const runPublishStatus = async (options: RunPublishStatusOptions): Promise<void> => {
   const logger = toLogger(options);
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
 
-  if (!options.jobId) {
-    // Authoring GraphQL surfaces only `publishingStatus(id)` — no
-    // list-running-jobs endpoint. CLI keeps a running-jobs view as
-    // a future enhancement backed by the audit log (when that ships
-    // in PR 2b); for now, the verb requires an explicit job id.
-    throw createScaiError(
-      "A publish job id is required.",
-      "INPUT_INVALID",
-      {
-        hint: "Capture the id printed by `scai publish item` or `scai publish all`. The Authoring GraphQL surface does not expose a list-jobs endpoint; track jobs via the audit log in `~/.sitecoreai/audit.log` once PR 2b ships.",
-      }
-    );
-  }
-
-  const raw = (await checkPublishStatus(environment, options.jobId, {
+  const accessToken = await acquirePublishingToken({ envName, environment });
+  const client: PublishingApiClientOptions = {
+    accessToken,
     timeoutMs,
-  })) as GraphQLPublishStatus;
-  const job = normalizePublishJob(raw);
+  };
 
-  if (logger.isJson()) {
-    process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+  if (options.jobId) {
+    const job = await getPublishJob(client, options.jobId);
+    if (logger.isJson()) {
+      // stdout is reserved for the JSON payload when --json is set;
+      // logger.info() suppresses output in json mode.
+      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      return;
+    }
+    logger.info(`Job ${job.id}: ${job.state}`, "cyan");
+    if (job.processedCount !== undefined) {
+      logger.info(`  Processed: ${job.processedCount}`);
+    }
+    if (job.totalCount !== undefined) {
+      logger.info(`  Total:     ${job.totalCount}`);
+    }
+    if (job.startedAt) {
+      logger.info(`  Started:   ${job.startedAt}`);
+    }
+    if (job.completedAt) {
+      logger.info(`  Completed: ${job.completedAt}`);
+    }
     return;
   }
-  logger.info(`Job ${job.id} (env '${envName}'): ${job.state}`, "cyan");
-  if (job.processedCount !== undefined) {
-    logger.info(`  Processed: ${job.processedCount}`);
+
+  const running = await listPublishJobs(client, {
+    states: ["queued", "running"],
+  });
+  if (logger.isJson()) {
+    process.stdout.write(`${JSON.stringify(running, null, 2)}\n`);
+    return;
   }
-  if (job.stateCode !== undefined) {
-    logger.info(`  State code: ${job.stateCode}`);
+  if (running.length === 0) {
+    logger.info(`No publish jobs queued or running in environment '${envName}'.`, "yellow");
+    return;
+  }
+  logger.info(`Running publish jobs in '${envName}':`, "cyan");
+  for (const job of running) {
+    logger.info(`  ${formatJobLine(job)}`);
   }
 };

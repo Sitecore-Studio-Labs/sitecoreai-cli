@@ -5,11 +5,11 @@ import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../s
 export const createPublishStatusCommand = (): Command => {
   const command = new Command("status")
     .description(
-      "Show the state of a publish job by id. The Authoring GraphQL surface does not expose a list-jobs endpoint; capture the id from the publish call that started the job, or read it from `~/.sitecoreai/audit.log` once that subsystem ships (PR 2b)."
+      "Show the state of a publish job, or list queued/running jobs when no jobId is given."
     )
     .argument(
-      "<jobId>",
-      "Publish job id returned by `scai publish item` / `scai publish all` (or recorded in the audit log)."
+      "[jobId]",
+      "Publish job id (e.g. job_4F2B1). When omitted, lists jobs currently queued or running."
     );
 
   addEnvironmentOption(command);

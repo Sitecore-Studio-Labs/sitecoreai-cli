@@ -555,6 +555,23 @@ export const templatePathRefKey = (path: string): string =>
   uuidv5(path, NAMESPACE_TEMPLATE_BY_PATH);
 
 /**
+ * Deterministic refKey for the `__Standard Values` item under a
+ * tenant-existing template referenced by content-tree path. Used by
+ * `WorkflowRecipe.bindings.templates` entries that point at an absolute
+ * template path (not an intra-recipe handle): the compiler emits a
+ * `SetField` op with `latePath: "<templatePath>/__Standard Values"`,
+ * and the executor's late-path resolution walks the path to seed the
+ * captured-itemId map before planning the field write. Same identity
+ * for the same path forever.
+ */
+export const NAMESPACE_STANDARD_VALUES_BY_PATH = uuidv5(
+  "standard-values-by-path",
+  NAMESPACE_ROOT
+);
+export const standardValuesPathRefKey = (templatePath: string): string =>
+  uuidv5(templatePath, NAMESPACE_STANDARD_VALUES_BY_PATH);
+
+/**
  * Workflow recipe identities.
  *
  * Workflows live at `/sitecore/system/Workflows/[<group>/]<name>` and

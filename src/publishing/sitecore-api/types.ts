@@ -1,36 +1,49 @@
 /**
- * Publishing job shapes — surfaced through the Authoring GraphQL
- * `publish()` mutation and `publishingStatus(id)` query (see
- * [src/serialization/sitecore-api/publish.ts]).
+ * SAI Publishing API — type shapes for the REST surface documented at
+ * https://api-docs.sitecore.com/sai/publishing-api. Backed by host
+ * `https://edge-platform.sitecorecloud.io`, path prefix
+ * `/authoring/publishing/v1/jobs`. Bearer JWT (automation-client
+ * client-credentials), same auth flow as the Sites + Pages APIs.
  *
- * scai uses the GraphQL surface rather than the SAI Publishing REST
- * API because:
- *   - it auth's with the existing `xmcloud.cm:admin` scope (no
- *     extra Auth0 client-grant needed)
- *   - it's the same surface the legacy dotnet `Sitecore.DevEx` CLI
- *     uses
- *
- * See `docs/parity-with-devex.md` § "Why not the SAI Publishing
- * REST API" for the full decision record.
+ * PR 1 covers the read shapes only. Submit / cancel land in later PRs
+ * once a real-tenant request body capture pins the POST /jobs schema.
  */
 
 /**
- * Lifecycle states the Authoring GraphQL `publishingStatus(id)` query
- * returns via `stateName` (and a numeric `stateCode`). Strings vary
- * across deployments — normalize to this union when reading.
+ * Job state vocabulary. The catalog page lists "queued, running,
+ * completed, failed, cancelled" but does not pin the exact wire form
+ * (string casing, numeric code, etc.). The client normalizes whatever
+ * the API returns to this union — keep the rest of the codebase
+ * insulated from a future field-name change.
  */
-export type PublishJobState =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type PublishJobState = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export interface PublishJob {
   id: string;
   state: PublishJobState;
-  /** Raw state code from GraphQL (kept for diagnostics). */
-  stateCode?: number;
-  /** Items processed so far. Populated as the job progresses. */
   processedCount?: number;
+  totalCount?: number;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface PublishingApiClientOptions {
+  /**
+   * Bearer JWT for the Publishing API. Acquired via
+   * `getAccessToken(environment)` in
+   * `src/serialization/sitecore-api/auth.ts`. Required — no anonymous
+   * access.
+   */
+  accessToken: string;
+  /**
+   * Base host override. Defaults to
+   * `https://edge-platform.sitecorecloud.io`. Tests point this at a
+   * fixture server; ops typically don't override it.
+   */
+  baseUrl?: string;
+  /**
+   * Optional client-side fetch timeout in ms. When undefined, only
+   * the server-side timeout applies.
+   */
+  timeoutMs?: number;
 }

@@ -28,11 +28,9 @@ export const lookupSiteLanguages = async (
 ): Promise<string[]> => {
   const accessToken = await getAccessToken(environment);
   if (!accessToken) {
-    throw createScaiError(
-      `Could not acquire an access token for site lookup.`,
-      "AUTH_REQUIRED",
-      { hint: `Run 'scai login -n <env>' first; the Sites API needs the same xmcloud.cm:admin scope scai uses for deploy.` }
-    );
+    throw createScaiError(`Could not acquire an access token for site lookup.`, "AUTH_REQUIRED", {
+      hint: `Run 'scai login -n <env>' first; the Sites API needs the same xmcloud.cm:admin scope scai uses for deploy.`,
+    });
   }
   const sites = await listSites({ accessToken });
   const match = sites.find((s) => s.name === siteName);
@@ -41,15 +39,11 @@ export const lookupSiteLanguages = async (
       .map((s) => s.name)
       .filter((n): n is string => Boolean(n))
       .slice(0, 12);
-    throw createScaiError(
-      `Site '${siteName}' not found in this env.`,
-      "INPUT_INVALID",
-      {
-        hint: `Available sites: ${available.join(", ")}${
-          sites.length > available.length ? ` (and ${sites.length - available.length} more)` : ""
-        }.`,
-      }
-    );
+    throw createScaiError(`Site '${siteName}' not found in this env.`, "INPUT_INVALID", {
+      hint: `Available sites: ${available.join(", ")}${
+        sites.length > available.length ? ` (and ${sites.length - available.length} more)` : ""
+      }.`,
+    });
   }
   return (match.languages ?? []).filter((l): l is string => Boolean(l));
 };
@@ -121,7 +115,10 @@ export const resolvePublishingLocales = async (
         { hint: "Add a language to the site or pass --languages explicitly." }
       );
     }
-    logger.info(`Locales: ${resolved.join(", ")} (from site '${options.languagesFromSite}')`, "cyan");
+    logger.info(
+      `Locales: ${resolved.join(", ")} (from site '${options.languagesFromSite}')`,
+      "cyan"
+    );
     return resolved;
   }
 
@@ -129,10 +126,7 @@ export const resolvePublishingLocales = async (
     logger.info(`Locales: resolving from tenant-wide listLanguages...`, "gray");
     const resolved = await lookupTenantLanguages(environment);
     if (resolved.length === 0) {
-      throw createScaiError(
-        "Tenant has no registered languages.",
-        "INPUT_INVALID"
-      );
+      throw createScaiError("Tenant has no registered languages.", "INPUT_INVALID");
     }
     logger.info(`Locales: ${resolved.join(", ")} (tenant-wide)`, "cyan");
     return resolved;

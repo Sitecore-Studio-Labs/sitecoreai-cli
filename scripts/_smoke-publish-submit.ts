@@ -35,14 +35,14 @@ const main = async (): Promise<void> => {
   const clientId = process.env[`SITECOREAI_ENV_${envSlug}_CLIENT_ID`];
   const clientSecret = process.env[`SITECOREAI_ENV_${envSlug}_CLIENT_SECRET`];
   if (!clientId || !clientSecret) {
-    process.stderr.write(
-      `Set SITECOREAI_ENV_${envSlug}_CLIENT_ID and _CLIENT_SECRET first.\n`
-    );
+    process.stderr.write(`Set SITECOREAI_ENV_${envSlug}_CLIENT_ID and _CLIENT_SECRET first.\n`);
     process.exit(2);
   }
 
   process.stderr.write(`> env: ${envName}\n`);
-  process.stderr.write(`> item id: ${itemId}${isFake ? " (FAKE — no real publish will fire)" : " (REAL — this WILL publish if the API accepts it)"}\n`);
+  process.stderr.write(
+    `> item id: ${itemId}${isFake ? " (FAKE — no real publish will fire)" : " (REAL — this WILL publish if the API accepts it)"}\n`
+  );
   if (!isFake) {
     process.stderr.write(`> ⚠️  this will trigger a REAL publish job on env '${envName}'\n`);
   }
@@ -68,11 +68,15 @@ const main = async (): Promise<void> => {
     throw err;
   }
 
-  process.stderr.write(`\n> [2/2] POST /authoring/publishing/v1/jobs via scai's submitPublishJob\n`);
+  process.stderr.write(
+    `\n> [2/2] POST /authoring/publishing/v1/jobs via scai's submitPublishJob\n`
+  );
   const request: CreatePublishJobRequest = {
     name: isFake ? `scai-smoke ${new Date().toISOString()}` : `scai-smoke real ${itemId}`,
     source: "scai",
-    description: isFake ? "Smoke test against fake item id — expected to fail validation." : undefined,
+    description: isFake
+      ? "Smoke test against fake item id — expected to fail validation."
+      : undefined,
     options: {
       items: [{ id: itemId, type: "item" }],
       xmc: {

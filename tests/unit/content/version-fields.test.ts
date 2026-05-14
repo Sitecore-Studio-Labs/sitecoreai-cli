@@ -34,14 +34,14 @@ afterEach(() => {
 });
 
 describe("parseBoolean / formatBoolean", () => {
-  it("parses Sitecore wire form `\"1\"` as true and `\"\"` as false", () => {
+  it('parses Sitecore wire form `"1"` as true and `""` as false', () => {
     expect(parseBoolean("1")).toBe(true);
     expect(parseBoolean("")).toBe(false);
     expect(parseBoolean("0")).toBe(false);
     expect(parseBoolean(null)).toBe(false);
     expect(parseBoolean(undefined)).toBe(false);
   });
-  it("formats true → `\"1\"` and false → `\"\"`", () => {
+  it('formats true → `"1"` and false → `""`', () => {
     expect(formatBoolean(true)).toBe("1");
     expect(formatBoolean(false)).toBe("");
   });

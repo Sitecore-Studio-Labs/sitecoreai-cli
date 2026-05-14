@@ -108,8 +108,7 @@ const normalizeJob = (raw: PublishJobResponse): PublishJob => {
   const itemsProcessed =
     typeof stats.itemsProcessed === "number" ? stats.itemsProcessed : undefined;
   const itemsSent = typeof stats.itemsSent === "number" ? stats.itemsSent : undefined;
-  const flatProcessed =
-    typeof stats.processedCount === "number" ? stats.processedCount : undefined;
+  const flatProcessed = typeof stats.processedCount === "number" ? stats.processedCount : undefined;
   const flatTotal = typeof stats.totalCount === "number" ? stats.totalCount : undefined;
 
   const state = normalizeState(raw.system?.status);

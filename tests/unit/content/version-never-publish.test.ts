@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-  EnvironmentConfiguration,
-  RootConfiguration,
-} from "../../../src/config/types";
+import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
 vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
@@ -139,9 +136,7 @@ describe("runContentVersionSetNeverPublish", () => {
     const entry = JSON.parse(fs.readFileSync(auditPath, "utf8").trim());
     expect(entry.command).toBe("content version set-never-publish");
     expect(entry.outcome).toBe("ok");
-    expect(entry.fieldChanges).toEqual([
-      { name: "__Never publish", before: "", after: "1" },
-    ]);
+    expect(entry.fieldChanges).toEqual([{ name: "__Never publish", before: "", after: "1" }]);
     expect(entry.scope.kind).toBe("never-publish");
     expect(entry.scope.version).toBe(1);
   });

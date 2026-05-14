@@ -32,7 +32,9 @@ const main = async (): Promise<void> => {
 
   process.stderr.write(`> [1/2] listPublishJobs (no filter, pageSize 10)\n`);
   const all = await listPublishJobs(client, { pageSize: 10 });
-  process.stdout.write(`${JSON.stringify({ count: all.length, jobs: all.map((j) => ({ id: j.id, state: j.state, name: j.name, source: j.source, started: j.startedAt, finished: j.completedAt })) }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ count: all.length, jobs: all.map((j) => ({ id: j.id, state: j.state, name: j.name, source: j.source, started: j.startedAt, finished: j.completedAt })) }, null, 2)}\n`
+  );
 
   if (all.length === 0) {
     process.stderr.write(`\nNo existing jobs to test getPublishJob against. Done.\n`);

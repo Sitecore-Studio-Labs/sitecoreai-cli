@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-  EnvironmentConfiguration,
-  RootConfiguration,
-} from "../../../src/config/types";
+import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
 vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
@@ -175,9 +172,7 @@ describe("runPublishUnpublish", () => {
     expect(lines).toHaveLength(2);
     const writeEntry = JSON.parse(lines[0]);
     expect(writeEntry.command).toBe("publish unpublish");
-    expect(writeEntry.fieldChanges).toEqual([
-      { name: "__Never publish", before: "", after: "1" },
-    ]);
+    expect(writeEntry.fieldChanges).toEqual([{ name: "__Never publish", before: "", after: "1" }]);
     const submitEntry = JSON.parse(lines[1]);
     expect(submitEntry.jobId).toBe("job-9");
     expect(submitEntry.outcome).toBe("ok");

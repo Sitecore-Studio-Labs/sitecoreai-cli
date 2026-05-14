@@ -79,9 +79,7 @@ describe("resolveSiteRoot", () => {
   });
 
   it("propagates path-resolver errors (e.g. permission denied on /sitecore/content)", async () => {
-    mockDiscoverSites.mockResolvedValue([
-      { name: "marketing", path: "/p", tenantName: "T" },
-    ]);
+    mockDiscoverSites.mockResolvedValue([{ name: "marketing", path: "/p", tenantName: "T" }]);
     mockResolvePaths.mockRejectedValue(
       new ScaiError("Could not resolve 1 item path(s) to IDs.", { code: "INPUT_INVALID" })
     );

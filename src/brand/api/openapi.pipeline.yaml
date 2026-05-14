@@ -123,39 +123,39 @@ paths:
             description: |-
               The unique identifier of your organization.
 
-               To get this value, from the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` is what comes after `organization=` . 
+               To get this value, from the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` is what comes after `organization=` .
             example: org_ABCDef123456​
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreatePipelineRunBrandIngestionRequest'
+              $ref: "#/components/schemas/CreatePipelineRunBrandIngestionRequest"
       responses:
-        '201':
+        "201":
           description: Brand ingestion successfully ran
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreatePipelineRunResponse'
-        '400':
+                $ref: "#/components/schemas/CreatePipelineRunResponse"
+        "400":
           description: Invalid request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
-        '422':
+                $ref: "#/components/schemas/HTTPError"
+        "422":
           description: Unprocessable entity
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '500':
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
           description: Brand kit ingestion failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
+                $ref: "#/components/schemas/HTTPError"
       security:
         - HTTPBearer: []
   /api/data/v1/organizations/{organizationId}/pipeline/EnrichSectionsPipeline:
@@ -196,32 +196,32 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreatePipelineRunEnrichSectionsRequest'
+              $ref: "#/components/schemas/CreatePipelineRunEnrichSectionsRequest"
       responses:
-        '201':
+        "201":
           description: Brand kit enrichment successfully ran
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreatePipelineRunResponse'
-        '400':
+                $ref: "#/components/schemas/CreatePipelineRunResponse"
+        "400":
           description: Invalid request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
-        '422':
+                $ref: "#/components/schemas/HTTPError"
+        "422":
           description: Unprocessable entity
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '500':
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
           description: Brand kit enrichment failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
+                $ref: "#/components/schemas/HTTPError"
       security:
         - HTTPBearer: []
 components:
@@ -241,7 +241,7 @@ components:
         populateSections:
           type:
             - boolean
-            - 'null'
+            - "null"
           description: >-
             Whether to populate the brand kit sections with the ingested brand
             knowledge.
@@ -252,7 +252,7 @@ components:
         documentIdsList:
           type:
             - string
-            - 'null'
+            - "null"
           description: >-
             A comma-separated list of document IDs to be processed by the
             pipeline. Each ID represents a unique document, which you can
@@ -268,7 +268,7 @@ components:
     CreatePipelineRunBrandIngestionRequest:
       properties:
         parameters:
-          $ref: '#/components/schemas/BrandIngestionPipelineParameters'
+          $ref: "#/components/schemas/BrandIngestionPipelineParameters"
       type: object
       required:
         - parameters
@@ -276,7 +276,7 @@ components:
     CreatePipelineRunEnrichSectionsRequest:
       properties:
         parameters:
-          $ref: '#/components/schemas/EnrichSectionsPipelineParameters'
+          $ref: "#/components/schemas/EnrichSectionsPipelineParameters"
       type: object
       required:
         - parameters
@@ -286,31 +286,31 @@ components:
         createdOn:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: >-
             The date and time when the pipeline run was created, formatted in
             ISO 8601.
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
         createdBy:
           type:
             - string
-            - 'null'
+            - "null"
           description: The user who created the pipeline run.
           example: mman
         updatedOn:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: >-
             The date and time when the pipeline run was last updated, formatted
             in ISO 8601.
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
         updatedBy:
           type:
             - string
-            - 'null'
+            - "null"
           description: The user who last updated the pipeline run.
           example: mman
         id:
@@ -336,32 +336,32 @@ components:
         runStart:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: >-
             The date and time when the pipeline run began, formatted in ISO
             8601.
-          example: '2025-06-18T12:46:12.718310'
+          example: "2025-06-18T12:46:12.718310"
         runEnd:
           type:
             - string
-            - 'null'
+            - "null"
           format: date-time
           description: >-
             The date and time when the pipeline run finished, formatted in ISO
             8601.
-          example: '2025-06-18T12:46:12.718310'
+          example: "2025-06-18T12:46:12.718310"
         durationInMs:
           type:
             - integer
-            - 'null'
+            - "null"
           description: The total duration of the pipeline run in milliseconds.
           default: 0
           example: 3
         status:
           type:
             - string
-            - 'null'
+            - "null"
           enum:
             - Succeeded
             - Failed
@@ -375,12 +375,12 @@ components:
         message:
           type:
             - string
-            - 'null'
+            - "null"
           description: >-
             Additional details or any error messages related to the pipeline
             run. This field is empty if no message is available.
-          default: ''
-          example: ''
+          default: ""
+          example: ""
       type: object
       required:
         - createdOn
@@ -444,7 +444,7 @@ components:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object

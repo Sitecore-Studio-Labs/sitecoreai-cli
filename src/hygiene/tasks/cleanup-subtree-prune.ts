@@ -38,7 +38,9 @@ const isMultiList = (value: string): boolean => {
   if (parts.length === 0) return false;
   // Every part must be GUID-shaped (with or without curly braces /
   // dashes). Reject if any token has whitespace or non-hex chars.
-  return parts.every((p) => /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i.test(p));
+  return parts.every((p) =>
+    /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i.test(p)
+  );
 };
 
 /**
@@ -47,10 +49,7 @@ const isMultiList = (value: string): boolean => {
  * entries. Returns the pruned list or `null` if the value isn't a
  * multi-list.
  */
-export const pruneMultiList = (
-  value: string,
-  targetIds: ReadonlySet<string>
-): string | null => {
+export const pruneMultiList = (value: string, targetIds: ReadonlySet<string>): string | null => {
   if (!isMultiList(value)) return null;
   const remaining = value
     .split("|")
@@ -102,10 +101,7 @@ export const pruneRenderingsXml = (
  * prune. Falls through to `null` when no pruner matches — the caller
  * should treat that as "single-value field; clearing is the prune."
  */
-export const pruneFieldValue = (
-  value: string,
-  targetIds: ReadonlySet<string>
-): string | null => {
+export const pruneFieldValue = (value: string, targetIds: ReadonlySet<string>): string | null => {
   const xmlPruned = pruneRenderingsXml(value, targetIds);
   if (xmlPruned !== null) return xmlPruned;
   const listPruned = pruneMultiList(value, targetIds);

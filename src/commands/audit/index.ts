@@ -76,7 +76,7 @@ export const createAuditCommand = (): Command => {
       "  Every audit reads from the master database via the XM Cloud\n" +
       "  Authoring API. XM Cloud has no `web` database — published content\n" +
       "  lives on Experience Edge, which is a separate query surface and\n" +
-      "  is not in scope for these audits. \"Stale\" / \"orphaned\" / \"dead\"\n" +
+      '  is not in scope for these audits. "Stale" / "orphaned" / "dead"\n' +
       "  findings reflect master-side state only; whether a master item is\n" +
       "  still served by Edge is independent and must be checked via the\n" +
       "  Edge Delivery / Edge Preview endpoints.\n" +

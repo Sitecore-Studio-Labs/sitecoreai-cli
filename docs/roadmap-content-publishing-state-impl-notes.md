@@ -17,22 +17,22 @@ scai content version set-validity
 
 New files (mirrors PR 2b layout):
 
-| Layer | File |
-|---|---|
-| Authoring GraphQL helpers | `src/content/sitecore-api/version-fields.ts` |
-| Task — unpublish (composite) | `src/publishing/tasks/unpublish.ts` |
-| Task — content version inspect | `src/content/tasks/version-inspect.ts` |
-| Task — content version set-never-publish | `src/content/tasks/version-never-publish.ts` |
-| Task — content version set-validity | `src/content/tasks/version-validity.ts` |
-| Task — shared content scaffolding | `src/content/tasks/shared.ts` |
-| Library entry | `src/content/index.ts` |
-| CLI — publish unpublish | `src/commands/publish/unpublish.ts` |
-| CLI — content (factory) | `src/commands/content/index.ts` |
-| CLI — content version (factory) | `src/commands/content/version/index.ts` |
-| CLI — content version inspect | `src/commands/content/version/inspect.ts` |
-| CLI — content version set-never-publish | `src/commands/content/version/set-never-publish.ts` |
-| CLI — content version set-validity | `src/commands/content/version/set-validity.ts` |
-| Tests (5 files, 48 tests) | `tests/unit/content/*.test.ts`, `tests/unit/publishing/unpublish.test.ts` |
+| Layer                                    | File                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------- |
+| Authoring GraphQL helpers                | `src/content/sitecore-api/version-fields.ts`                              |
+| Task — unpublish (composite)             | `src/publishing/tasks/unpublish.ts`                                       |
+| Task — content version inspect           | `src/content/tasks/version-inspect.ts`                                    |
+| Task — content version set-never-publish | `src/content/tasks/version-never-publish.ts`                              |
+| Task — content version set-validity      | `src/content/tasks/version-validity.ts`                                   |
+| Task — shared content scaffolding        | `src/content/tasks/shared.ts`                                             |
+| Library entry                            | `src/content/index.ts`                                                    |
+| CLI — publish unpublish                  | `src/commands/publish/unpublish.ts`                                       |
+| CLI — content (factory)                  | `src/commands/content/index.ts`                                           |
+| CLI — content version (factory)          | `src/commands/content/version/index.ts`                                   |
+| CLI — content version inspect            | `src/commands/content/version/inspect.ts`                                 |
+| CLI — content version set-never-publish  | `src/commands/content/version/set-never-publish.ts`                       |
+| CLI — content version set-validity       | `src/commands/content/version/set-validity.ts`                            |
+| Tests (5 files, 48 tests)                | `tests/unit/content/*.test.ts`, `tests/unit/publishing/unpublish.test.ts` |
 
 Extended files (no new modules, just additive changes per the roadmap):
 
@@ -118,9 +118,9 @@ Per spec, explicitly out of scope for this pass.
    - Read `system.languages` from the Authoring API before the
      field-write loop and use the active set.
    - Make `--languages` required and remove the fallback.
-   Either way, the current default deserves a callout in the help
-   text once the right shape is settled. Right now it's documented
-   inline in the help string ("field writes default to 'en'").
+     Either way, the current default deserves a callout in the help
+     text once the right shape is settled. Right now it's documented
+     inline in the help string ("field writes default to 'en'").
 
 2. **Authoring `UpdateItemInput` shape on version-scoped writes.**
    The roadmap's GraphQL example shows

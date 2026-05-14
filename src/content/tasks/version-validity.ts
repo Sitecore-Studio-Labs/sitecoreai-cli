@@ -58,13 +58,9 @@ const ISO_8601_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-
 const assertIso = (label: string, raw?: string): void => {
   if (!raw) return;
   if (!ISO_8601_PATTERN.test(raw)) {
-    throw createScaiError(
-      `${label} '${raw}' is not a valid ISO 8601 date.`,
-      "INPUT_INVALID",
-      {
-        hint: "Use ISO 8601 e.g. 2026-12-31 or 2026-12-31T23:59:59Z.",
-      }
-    );
+    throw createScaiError(`${label} '${raw}' is not a valid ISO 8601 date.`, "INPUT_INVALID", {
+      hint: "Use ISO 8601 e.g. 2026-12-31 or 2026-12-31T23:59:59Z.",
+    });
   }
 };
 
@@ -82,17 +78,9 @@ export const runContentVersionSetValidity = async (
     );
   }
   if (options.validTo && options.clearValidTo) {
-    throw createScaiError(
-      "Pass either --valid-to or --clear-valid-to, not both.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("Pass either --valid-to or --clear-valid-to, not both.", "INPUT_INVALID");
   }
-  if (
-    !options.validFrom &&
-    !options.clearValidFrom &&
-    !options.validTo &&
-    !options.clearValidTo
-  ) {
+  if (!options.validFrom && !options.clearValidFrom && !options.validTo && !options.clearValidTo) {
     throw createScaiError(
       "set-validity requires at least one of --valid-from / --clear-valid-from / --valid-to / --clear-valid-to.",
       "INPUT_INVALID"

@@ -27,10 +27,7 @@ export const createPublishAllCommand = (): Command => {
       "--languages-from-site <name>",
       "Resolve locales from the named site (Sites API). NOTE: the publish is still whole-tenant — this flag scopes locales only, not items."
     )
-    .option(
-      "--all-tenant-languages",
-      "Resolve locales to every language registered in the tenant."
-    )
+    .option("--all-tenant-languages", "Resolve locales to every language registered in the tenant.")
     .addOption(
       new Option("--mode <mode>", "Site publish mode")
         .choices(["Republish", "Smart", "Incremental"])

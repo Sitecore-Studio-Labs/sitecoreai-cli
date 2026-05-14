@@ -59,9 +59,7 @@ const main = async (): Promise<void> => {
         {
           id: overrides.itemOverrides?.id ?? itemId,
           type: overrides.itemOverrides?.type ?? "item",
-          ...(overrides.itemOverrides?.locale
-            ? { locale: overrides.itemOverrides.locale }
-            : {}),
+          ...(overrides.itemOverrides?.locale ? { locale: overrides.itemOverrides.locale } : {}),
         },
       ],
       xmc: {
@@ -151,7 +149,9 @@ const main = async (): Promise<void> => {
       throw err;
     }
   }
-  process.stderr.write(`\nAll variants returned 400. Item ${itemId} may not exist in this env, or the API expects something unusual.\n`);
+  process.stderr.write(
+    `\nAll variants returned 400. Item ${itemId} may not exist in this env, or the API expects something unusual.\n`
+  );
 };
 
 main().catch((err) => {

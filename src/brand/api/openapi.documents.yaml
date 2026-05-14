@@ -108,7 +108,7 @@ paths:
           description: |-
             The unique identifier of your organization.
 
-             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
           schema:
             type: string
             example: org_ABCDef123456
@@ -120,30 +120,30 @@ paths:
               $ref: >-
                 #/components/schemas/Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post
       responses:
-        '201':
+        "201":
           description: Document successfully created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateDocumentModelResponse_v2'
-        '400':
+                $ref: "#/components/schemas/CreateDocumentModelResponse_v2"
+        "400":
           description: Invalid file type
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
-        '422':
+                $ref: "#/components/schemas/HTTPError"
+        "422":
           description: Unprocessable entity
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '500':
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
           description: File upload failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
+                $ref: "#/components/schemas/HTTPError"
       security:
         - HTTPBearer: []
     get:
@@ -165,7 +165,7 @@ paths:
             description: |-
               The unique identifier of your organization.
 
-               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
             example: org_ABCDef123456
         - name: pageNumber
           in: query
@@ -202,7 +202,7 @@ paths:
             example: brand guidelines
             type:
               - string
-              - 'null'
+              - "null"
         - name: searchType
           in: query
           required: false
@@ -227,7 +227,7 @@ paths:
             example: brand guidelines
             type:
               - string
-              - 'null'
+              - "null"
         - name: status
           in: query
           required: false
@@ -239,7 +239,7 @@ paths:
               parameter, the API returns documents with any status.
             type:
               - string
-              - 'null'
+              - "null"
         - name: createdBy
           in: query
           required: false
@@ -250,7 +250,7 @@ paths:
             example: mman
             type:
               - string
-              - 'null'
+              - "null"
         - name: referenceType
           in: query
           required: false
@@ -261,7 +261,7 @@ paths:
             example: brandkit
             type:
               - string
-              - 'null'
+              - "null"
         - name: referenceId
           in: query
           required: false
@@ -275,7 +275,7 @@ paths:
             example: 8271dec7-0c30-457b-b37b-4489628d7d7b
             type:
               - string
-              - 'null'
+              - "null"
         - name: fileType
           in: query
           required: false
@@ -286,7 +286,7 @@ paths:
             example: application/pdf
             type:
               - string
-              - 'null'
+              - "null"
         - name: tags
           in: query
           required: false
@@ -302,7 +302,7 @@ paths:
               - Brand Context
             type:
               - array
-              - 'null'
+              - "null"
             items:
               type: string
         - name: includeDeleted
@@ -318,26 +318,26 @@ paths:
             example: false
             type:
               - boolean
-              - 'null'
+              - "null"
       responses:
-        '200':
+        "200":
           description: List of documents successfully retrieved
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListDocumentsModelResponse_v2'
-        '400':
+                $ref: "#/components/schemas/ListDocumentsModelResponse_v2"
+        "400":
           description: Unsupported search type
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
-        '422':
+                $ref: "#/components/schemas/HTTPError"
+        "422":
           description: Unprocessable entity
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       security:
         - HTTPBearer: []
   /api/documents/v1/organizations/{organizationId}/documents/{documentId}:
@@ -360,7 +360,7 @@ paths:
           description: |-
             The unique identifier of your organization.
 
-             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
           schema:
             type: string
             example: org_ABCDef123456​
@@ -378,26 +378,26 @@ paths:
             type: string
             example: documentid123
       responses:
-        '204':
+        "204":
           description: Document deleted successfully
-        '404':
+        "404":
           description: Document not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
-        '422':
+                $ref: "#/components/schemas/HTTPError"
+        "422":
           description: Unprocessable entity
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '500':
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
           description: Failed to delete document
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPError'
+                $ref: "#/components/schemas/HTTPError"
       security:
         - HTTPBearer: []
 components:
@@ -499,8 +499,8 @@ components:
           default: pending
           type:
             - string
-            - 'null'
-          $ref: '#/components/schemas/DocumentStatus'
+            - "null"
+          $ref: "#/components/schemas/DocumentStatus"
           enum:
             - pending
             - processed
@@ -516,59 +516,59 @@ components:
           example: https://example.com/document.pdf
         type:
           description: The document type.
-          example: 'null'
+          example: "null"
           type:
             - string
-            - 'null'
+            - "null"
         fileType:
           description: The document's file type.
           example: application/pdf
           type:
             - string
-            - 'null'
+            - "null"
         size:
           description: The document size in bytes.
-          example: '8127298'
+          example: "8127298"
           type:
             - string
-            - 'null'
+            - "null"
         numberOfPages:
           description: The total number of pages in the document.
-          example: '10'
+          example: "10"
           default: 0
           type:
             - integer
-            - 'null'
+            - "null"
         pageRangeFrom:
           description: The starting page number for processing the document.
           example: 2
           type:
             - integer
-            - 'null'
+            - "null"
         pageRangeTo:
           description: The ending page number for processing the document.
           example: 9
           type:
             - integer
-            - 'null'
+            - "null"
         title:
           description: The title of the document.
           example: Company Brand Guidelines.pdf
           type:
             - string
-            - 'null'
+            - "null"
         summary:
           description: A brief description of the document.
-          default: ''
+          default: ""
           type:
             - string
-            - 'null'
+            - "null"
         tags:
           description: An array of tags associated with the document.
           default: []
           type:
             - array
-            - 'null'
+            - "null"
           items:
             type: string
         references:
@@ -576,53 +576,53 @@ components:
           default: []
           type:
             - array
-            - 'null'
+            - "null"
           items:
-            $ref: '#/components/schemas/CreateReferenceModelResponse'
+            $ref: "#/components/schemas/CreateReferenceModelResponse"
         chunked:
           description: Whether the document has been chunked.
           example: false
           default: false
           type:
             - boolean
-            - 'null'
+            - "null"
         summarized:
           description: Whether the document has been summarized.
           example: true
           default: false
           type:
             - boolean
-            - 'null'
+            - "null"
         createdOn:
           description: >-
             The date and time when the document was created, formatted in ISO
             8601.
           format: date-time
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
           type:
             - string
-            - 'null'
+            - "null"
         createdBy:
           description: The user who created the document.
           example: mman
           type:
             - string
-            - 'null'
+            - "null"
         updatedOn:
           description: >-
             The date and time when the document was updated, formatted in ISO
             8601.
           format: date-time
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
           type:
             - string
-            - 'null'
+            - "null"
         updatedBy:
           description: The user who last updated the document.
           example: mman
           type:
             - string
-            - 'null'
+            - "null"
       type: object
       required:
         - organizationId
@@ -663,87 +663,87 @@ components:
           example: org_ZiiCnzhCeHDpWJAU
           type:
             - string
-            - 'null'
+            - "null"
         id:
           description: The unique identifier of the document.
           example: 11117df4-2412-44cf-b1e5-954330ca9230
           type:
             - string
-            - 'null'
+            - "null"
         status:
           description: The current status of the document.
           example: pending
           type:
             - string
-            - 'null'
+            - "null"
         chunked:
           description: Whether the document has been chunked.
           example: false
           type:
             - boolean
-            - 'null'
+            - "null"
         summarized:
           description: Whether the document has been summarized.
           example: true
           type:
             - boolean
-            - 'null'
+            - "null"
         url:
           description: The URL where the PDF document is located.
           example: https://example.com/document.pdf
           type:
             - string
-            - 'null'
+            - "null"
         type:
           description: The document type.
           example: brand guidelines
           type:
             - string
-            - 'null'
+            - "null"
         fileType:
           description: The document's file type.
           example: application/pdf
           type:
             - string
-            - 'null'
+            - "null"
         size:
           description: The document size in bytes.
-          example: '8127298'
+          example: "8127298"
           type:
             - string
-            - 'null'
+            - "null"
         numberOfPages:
           description: The total number of pages in the document.
           example: 10
           default: 0
           type:
             - integer
-            - 'null'
+            - "null"
         pageRangeFrom:
           description: The starting page number for processing the document.
           example: 2
           type:
             - integer
-            - 'null'
+            - "null"
         pageRangeTo:
           description: The ending page number for processing the document.
           example: 9
           type:
             - integer
-            - 'null'
+            - "null"
         title:
           description: The title of the document.
           example: Company Brand Guidelines.pdf
           type:
             - string
-            - 'null'
+            - "null"
         summary:
           description: A brief description of the document.
           example: Visual and text guidelines
-          default: ''
+          default: ""
           type:
             - string
-            - 'null'
+            - "null"
         tags:
           description: An array of brand kit sections associated with the document.
           example:
@@ -752,7 +752,7 @@ components:
           default: []
           type:
             - array
-            - 'null'
+            - "null"
           items:
             type: string
         references:
@@ -765,39 +765,39 @@ components:
           default: []
           type:
             - array
-            - 'null'
+            - "null"
           items:
-            $ref: '#/components/schemas/GetReferenceModelResponse'
+            $ref: "#/components/schemas/GetReferenceModelResponse"
         createdOn:
           description: >-
             The date and time when the document was created, formatted in ISO
             8601.
           format: date-time
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
           type:
             - string
-            - 'null'
+            - "null"
         createdBy:
           description: The user who created the document.
           example: mman
           type:
             - string
-            - 'null'
+            - "null"
         updatedOn:
           description: >-
             The date and time when the document was last updated, formatted in
             ISO 8601.
           format: date-time
-          example: '2025-04-23T13:55:13.308326'
+          example: "2025-04-23T13:55:13.308326"
           type:
             - string
-            - 'null'
+            - "null"
         updatedBy:
           description: The user who last updated the document.
           example: mman
           type:
             - string
-            - 'null'
+            - "null"
         searchScore:
           description: >-
             The relevance score of the document in search results. This value is
@@ -805,7 +805,7 @@ components:
           example: 0.85
           type:
             - number
-            - 'null'
+            - "null"
       type: object
       required:
         - organizationId
@@ -861,7 +861,7 @@ components:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object
@@ -882,7 +882,7 @@ components:
           example: 1
         data:
           items:
-            $ref: '#/components/schemas/DocumentModel_v2'
+            $ref: "#/components/schemas/DocumentModel_v2"
           type: array
           description: >-
             An array of documents that match the search criteria. Each document

@@ -28,7 +28,10 @@ import { listLanguages } from "../../../src/sites/api/languages";
 const mockListSites = listSites as unknown as ReturnType<typeof vi.fn>;
 const mockListLanguages = listLanguages as unknown as ReturnType<typeof vi.fn>;
 
-const env: EnvironmentConfiguration = { name: "sandbox", host: "host.example" } as EnvironmentConfiguration;
+const env: EnvironmentConfiguration = {
+  name: "sandbox",
+  host: "host.example",
+} as EnvironmentConfiguration;
 
 beforeEach(() => {
   mockListSites.mockReset();
@@ -49,9 +52,7 @@ describe("lookupSiteLanguages", () => {
   });
 
   it("filters out null entries in the languages array", async () => {
-    mockListSites.mockResolvedValue([
-      { name: "marketing", languages: ["en-US", null, "fr-CA"] },
-    ]);
+    mockListSites.mockResolvedValue([{ name: "marketing", languages: ["en-US", null, "fr-CA"] }]);
     expect(await lookupSiteLanguages(env, "marketing")).toEqual(["en-US", "fr-CA"]);
   });
 
@@ -88,11 +89,7 @@ describe("lookupSiteLanguages", () => {
 
 describe("lookupTenantLanguages", () => {
   it("returns the names of all tenant languages", async () => {
-    mockListLanguages.mockResolvedValue([
-      { name: "en-US" },
-      { name: "fr-CA" },
-      { name: "de-DE" },
-    ]);
+    mockListLanguages.mockResolvedValue([{ name: "en-US" }, { name: "fr-CA" }, { name: "de-DE" }]);
     expect(await lookupTenantLanguages(env)).toEqual(["en-US", "fr-CA", "de-DE"]);
   });
 

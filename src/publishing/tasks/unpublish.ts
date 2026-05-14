@@ -44,17 +44,9 @@ import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
 import { resolvePublishingLocales } from "../sitecore-api/languages";
 import { resolveSiteRoot } from "../sitecore-api/sites";
-import type {
-  CreatePublishJobRequest,
-  PublishingApiClientOptions,
-} from "../sitecore-api/types";
+import type { CreatePublishJobRequest, PublishingApiClientOptions } from "../sitecore-api/types";
 import { isProductionTier } from "../env-tier";
-import {
-  computeScopeHash,
-  mintScopeToken,
-  SCOPE_TOKEN_TTL_MS,
-  verifyScopeToken,
-} from "../consent";
+import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
 import {
   recordPublishAudit,
   type PublishAuditCaller,
@@ -280,10 +272,15 @@ const runDeleteUnpublish = async (ctx: DeleteContext): Promise<void> => {
         throw createScaiError(
           `--confirm-item-path mismatch for ${id}: provided '${ctx.confirmItemPath}', resolved '${resolvedPath}'.`,
           "INPUT_INVALID",
-          { hint: "Provide the exact resolved path, or omit --confirm-item-path and use the interactive prompt." }
+          {
+            hint: "Provide the exact resolved path, or omit --confirm-item-path and use the interactive prompt.",
+          }
         );
       }
-      logger.info(`  ${id} (${resolvedPath}): typed-path confirmation passed (--yes mode).`, "gray");
+      logger.info(
+        `  ${id} (${resolvedPath}): typed-path confirmation passed (--yes mode).`,
+        "gray"
+      );
     } else {
       if (ctx.nonInteractive) {
         throw createScaiError(
@@ -403,9 +400,7 @@ const runDeleteUnpublish = async (ctx: DeleteContext): Promise<void> => {
   }
 };
 
-export const runPublishUnpublish = async (
-  options: RunPublishUnpublishOptions
-): Promise<void> => {
+export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): Promise<void> => {
   const logger = toLogger(options);
 
   const directItemIds = options.itemIds ?? [];
@@ -500,9 +495,7 @@ export const runPublishUnpublish = async (
     process.stdout.write(`${token}\n`);
     logger.info("", "gray");
     logger.info(
-      `To execute: rerun with --allow-write${
-        productionTier ? ` --confirm-token ${token}` : ""
-      }`,
+      `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
       "gray"
     );
     return;

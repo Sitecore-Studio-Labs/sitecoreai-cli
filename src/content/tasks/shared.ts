@@ -66,10 +66,7 @@ export const resolveTargetItemId = async (
   options: { itemId?: string; path?: string }
 ): Promise<string> => {
   if (options.itemId && options.path) {
-    throw createScaiError(
-      "Pass either --item-id or --path, not both.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("Pass either --item-id or --path, not both.", "INPUT_INVALID");
   }
   if (options.itemId) {
     return options.itemId.replace(/[{}]/g, "");
@@ -135,9 +132,7 @@ export interface SafetyGateInput {
   describeChange?: () => void;
 }
 
-export type SafetyGateResult =
-  | { proceed: false }
-  | { proceed: true; whatIf: false };
+export type SafetyGateResult = { proceed: false } | { proceed: true; whatIf: false };
 
 /**
  * Apply the standard dry-run / allow-write / confirm-token / prompt
@@ -172,9 +167,7 @@ export const runSafetyGate = async (input: SafetyGateInput): Promise<SafetyGateR
     process.stdout.write(`${token}\n`);
     logger.info("", "gray");
     logger.info(
-      `To execute: rerun with --allow-write${
-        productionTier ? ` --confirm-token ${token}` : ""
-      }`,
+      `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
       "gray"
     );
     return { proceed: false };

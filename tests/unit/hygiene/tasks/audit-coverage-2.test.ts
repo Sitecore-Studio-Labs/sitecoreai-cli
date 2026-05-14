@@ -163,7 +163,10 @@ describe("audit translation-coverage", () => {
   // reported exactly 100 missing regardless of the real number.
   it("counts every missing item even when over the 100-sample cap", async () => {
     setupEnv();
-    const referenceIds = Array.from({ length: 250 }, (_, i) => `id${i.toString().padStart(4, "0")}`);
+    const referenceIds = Array.from(
+      { length: 250 },
+      (_, i) => `id${i.toString().padStart(4, "0")}`
+    );
     stubClient({
       searchAll: vi.fn().mockImplementation((q: { language?: string }) => {
         const lang = q.language ?? "";

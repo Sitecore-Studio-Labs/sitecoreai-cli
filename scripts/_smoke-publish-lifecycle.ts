@@ -7,11 +7,7 @@
  *   pnpm exec tsx -r tsconfig-paths/register scripts/_smoke-publish-lifecycle.ts <NAME> <jobId>
  */
 import { requestClientCredentialsToken } from "@/serialization/sitecore-api/auth";
-import {
-  cancelPublishJob,
-  getPublishJob,
-  listPublishJobs,
-} from "@/publishing/sitecore-api/client";
+import { cancelPublishJob, getPublishJob, listPublishJobs } from "@/publishing/sitecore-api/client";
 
 const SCOPES = "xmcpub.jobs.t:r xmcpub.jobs.t:w xmcpub.queue:r";
 
@@ -53,7 +49,9 @@ const main = async (): Promise<void> => {
   );
 
   if (!job1.canCancel) {
-    process.stderr.write(`\n⚠️  Job state '${job1.state}' is not cancellable. Skipping cancel step.\n`);
+    process.stderr.write(
+      `\n⚠️  Job state '${job1.state}' is not cancellable. Skipping cancel step.\n`
+    );
     return;
   }
 

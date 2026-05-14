@@ -1,9 +1,5 @@
 import { Command } from "commander";
-import {
-  runHistoryCapture,
-  runHistoryDiff,
-  runHistoryList,
-} from "@/hygiene/tasks/audit-history";
+import { runHistoryCapture, runHistoryDiff, runHistoryList } from "@/hygiene/tasks/audit-history";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions, collectList } from "../shared";
 
 export const createAuditHistoryCommand = (): Command => {

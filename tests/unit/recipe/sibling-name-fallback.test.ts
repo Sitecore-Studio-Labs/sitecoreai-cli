@@ -43,9 +43,7 @@ class LaggingMockClient extends MockAuthoringClient {
     if (selector.path && this.lagPaths.has(selector.path)) return null;
     return super.getItem(selector);
   }
-  async getItemsByPaths(
-    paths: readonly string[]
-  ): Promise<Map<string, RemoteItem | null>> {
+  async getItemsByPaths(paths: readonly string[]): Promise<Map<string, RemoteItem | null>> {
     const result = await super.getItemsByPaths(paths);
     for (const p of this.lagPaths) {
       if (result.has(p)) result.set(p, null);
@@ -85,14 +83,7 @@ describe("CreateItem — sibling-name fallback under path-index lag", () => {
     const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
     const snapshotCache = new Map<string, RemoteItem | null>();
 
-    const action = await buildAction(
-      0,
-      newCreateOp(),
-      client,
-      captured,
-      undefined,
-      snapshotCache
-    );
+    const action = await buildAction(0, newCreateOp(), client, captured, undefined, snapshotCache);
 
     // CreateAndUpdate + zero drift → skip, not create.
     expect(action.status).toBe("skip");

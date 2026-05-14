@@ -43,12 +43,7 @@ export type PublishAuditCaller =
  *   - `"never-publish"`  — `scai content version set-never-publish`
  *                          (per-version `__Never publish` field write).
  */
-export type PublishAuditScopeKind =
-  | "item"
-  | "full"
-  | "unpublish"
-  | "validity"
-  | "never-publish";
+export type PublishAuditScopeKind = "item" | "full" | "unpublish" | "validity" | "never-publish";
 
 /**
  * Strategy applied by `scai publish unpublish`. The CLI exposes three

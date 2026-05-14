@@ -38,11 +38,9 @@ describe("pruneMultiList", () => {
   });
 
   it("matches across canonical forms (curly-upper, curly-lower, bare-dashed)", () => {
-    const value = [
-      `{${TARGET_A.toUpperCase()}}`,
-      TARGET_B,
-      `{${SURVIVOR.toLowerCase()}}`,
-    ].join("|");
+    const value = [`{${TARGET_A.toUpperCase()}}`, TARGET_B, `{${SURVIVOR.toLowerCase()}}`].join(
+      "|"
+    );
     expect(pruneMultiList(value, targets)).toBe(`{${SURVIVOR.toLowerCase()}}`);
   });
 });

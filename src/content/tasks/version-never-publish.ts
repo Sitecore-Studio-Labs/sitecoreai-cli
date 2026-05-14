@@ -32,8 +32,7 @@ import {
   type CommonContentVersionOptions,
 } from "./shared";
 
-export interface RunContentVersionSetNeverPublishOptions
-  extends CommonContentVersionOptions {
+export interface RunContentVersionSetNeverPublishOptions extends CommonContentVersionOptions {
   /** Target value for `__Never publish`. Required. */
   value: boolean;
 }
@@ -43,10 +42,7 @@ export const runContentVersionSetNeverPublish = async (
 ): Promise<void> => {
   const logger = buildLogger(options);
   if (typeof options.value !== "boolean") {
-    throw createScaiError(
-      "set-never-publish requires --value true|false.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("set-never-publish requires --value true|false.", "INPUT_INVALID");
   }
   if (!options.language) {
     throw createScaiError("set-never-publish requires --language.", "INPUT_INVALID");

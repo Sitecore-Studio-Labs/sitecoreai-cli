@@ -1,8 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../../src/deploy/api/common/request", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../src/deploy/api/common/request")>();
+  const actual = await importOriginal<typeof import("../../../../src/deploy/api/common/request")>();
   return {
     ...actual,
     deployRequest: vi.fn().mockResolvedValue({}),

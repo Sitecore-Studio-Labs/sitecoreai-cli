@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-  EnvironmentConfiguration,
-  RootConfiguration,
-} from "../../../src/config/types";
+import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
 vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));

@@ -82,7 +82,7 @@ export interface SlugConflictPurgeAction {
 
 const pickByRule = (
   group: SlugConflictGroup,
-  rule: Exclude<SlugConflictsKeepRule, "interactive">,
+  rule: Exclude<SlugConflictsKeepRule, "interactive">
   // The audit-side report doesn't carry createdDate/updatedDate. For
   // `oldest`/`newest` we fall back to itemId-stable ordering (smallest
   // itemId wins for `oldest`, largest for `newest`) — not perfect, but

@@ -49,7 +49,7 @@ export const createCleanupCommand = (): Command => {
       "  After a large cascade delete, the Authoring API's template-cache\n" +
       "  can lag for ~30-90s. `cleanup dead-templates purge` against a\n" +
       "  template whose dependents were JUST deleted may still 4xx with\n" +
-      "  \"template has dependents\" until the cache settles. Workaround:\n" +
+      '  "template has dependents" until the cache settles. Workaround:\n' +
       "  re-run the cleanup after a short wait, or run the cascade in two\n" +
       "  passes (dependents first, then templates).\n" +
       "\nExamples:\n" +

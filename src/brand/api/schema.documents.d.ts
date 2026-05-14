@@ -4,615 +4,615 @@
  */
 
 export interface paths {
-    "/api/documents/v2/organizations/{organizationId}/documents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List documents
-         * @description Retrieves a list of documents in an organization. You can filter the results by various parameters, such as brand kit ID, status, type, and tags. This endpoint supports pagination and search functionality.
-         */
-        get: operations["list_documents_v2_api_documents_v2_organizations__organizationId__documents_get"];
-        put?: never;
-        /**
-         * Create a document
-         * @description Uploads a new brand document and uses it as a source of brand information in the specified brand kit.
-         */
-        post: operations["create_document_v2_api_documents_v2_organizations__organizationId__documents_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/api/documents/v2/organizations/{organizationId}/documents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/documents/v1/organizations/{organizationId}/documents/{documentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete a document
-         * @description Deletes a brand document from a brand kit by its reference ID. You can delete a brand document from your brand kit if it’s no longer needed or was uploaded by mistake. This is an irreversible operation. After you delete a document, you cannot retrieve the document or any related information extracted from it.
-         */
-        delete: operations["delete_document_api_documents_v1_organizations__organizationId__documents__documentId__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List documents
+     * @description Retrieves a list of documents in an organization. You can filter the results by various parameters, such as brand kit ID, status, type, and tags. This endpoint supports pagination and search functionality.
+     */
+    get: operations["list_documents_v2_api_documents_v2_organizations__organizationId__documents_get"];
+    put?: never;
+    /**
+     * Create a document
+     * @description Uploads a new brand document and uses it as a source of brand information in the specified brand kit.
+     */
+    post: operations["create_document_v2_api_documents_v2_organizations__organizationId__documents_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/documents/v1/organizations/{organizationId}/documents/{documentId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete a document
+     * @description Deletes a brand document from a brand kit by its reference ID. You can delete a brand document from your brand kit if it’s no longer needed or was uploaded by mistake. This is an irreversible operation. After you delete a document, you cannot retrieve the document or any related information extracted from it.
+     */
+    delete: operations["delete_document_api_documents_v1_organizations__organizationId__documents__documentId__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /** Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post */
-        Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post: {
-            /**
-             * Format: binary
-             * @description The PDF file to upload as a brand document. You must select a file from your local machine.
-             */
-            file?: string;
-            /**
-             * @description A JSON string containing the following parameters for uploading a brand document:
-             *
-             *      -  `url` - if no file is uploaded from your local machine, this parameter contains the MMS-uploaded file URL. If a file is uploaded locally, this parameter is empty.
-             *
-             *      - `status` - the current status of the document, such as pending, processed, draft, active, archived, edited, or failed.
-             *
-             *      - `type` - the document type, such as brand guidelines.
-             *
-             *      - `fileType` - the document's file type, such as PDF.
-             *
-             *      - `size` - the document size.
-             *
-             *      - `numberOfPages` - the total number of pages in the document.
-             *
-             *      - `pageRangeFrom` - the starting page number for processing the document.
-             *
-             *      - `pageRangeTo` - the ending page number for processing the document.
-             *
-             *      - `title` - the title of the document.
-             *
-             *      - `summary` - a brief description of the document.
-             *
-             *      - `tags` - an array of tags associated with the document
-             *
-             *      - `references` - an array of references associated with the document, including the type, brand kit ID, and reference.
-             *
-             *      - `setMetadata` - whether to set metadata for the document. Set this to `true` to automatically fill important details, such as the document's title and number of pages, which are later used during the brand ingestion process.
-             *
-             *      JSON structure with example values:
-             *
-             *      ```json
-             *     {
-             *       "url": "https://mms-delivery.{domain}/api/media/v1/delivery/protected/{mediaId}.pdf",
-             *       "status": "draft",
-             *       "type": "brand guidelines",
-             *       "fileType": "PDF",
-             *       "size": "2.5MB",
-             *       "numberOfPages": 5,
-             *       "pageRangeFrom": 1,
-             *       "pageRangeTo": 5,
-             *       "title": "Brand guidelines",
-             *       "summary": "Visual and text guidelines",
-             *       "tags": ["visual", "text"],
-             *       "status": "pending",
-             *       "setMetadata": true,
-             *       "references": [
-             *           {
-             *                "type": "brandkit",
-             *                "id": "{YOUR_BRANDKIT_ID}",
-             *                "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
-             *           }
-             *        ]
-             *     }
-             * @example {
-             *       "url": "",
-             *      "setMetadata": true,
-             *       "references": [
-             *           {
-             *                "type": "brandkit",
-             *                "id": "{YOUR_BRANDKIT_ID}",
-             *                "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
-             *           }
-             *        ]
-             *     }
-             */
-            create_request: string;
-        };
-        /** CreateDocumentModelResponse_v2 */
-        CreateDocumentModelResponse_v2: {
-            /**
-             * @description The unique identifier of your organization.
-             * @example org_ZiiCnzhCeHDpWJAU
-             */
-            organizationId: string;
-            /**
-             * @description The unique identifier of the document.
-             * @example 11117df4-2412-44cf-b1e5-954330ca9230
-             */
-            id: string;
-            /**
-             * @description The current status of the document.
-             * @default pending
-             * @enum {string|null}
-             */
-            status: components["schemas"]["DocumentStatus"];
-            /**
-             * @description The URL where the PDF document is located.
-             * @example https://example.com/document.pdf
-             */
-            url: string;
-            /**
-             * @description The document type.
-             * @example null
-             */
-            type: string | null;
-            /**
-             * @description The document's file type.
-             * @example application/pdf
-             */
-            fileType: string | null;
-            /**
-             * @description The document size in bytes.
-             * @example 8127298
-             */
-            size: string | null;
-            /**
-             * @description The total number of pages in the document.
-             * @default 0
-             * @example 10
-             */
-            numberOfPages: number | null;
-            /**
-             * @description The starting page number for processing the document.
-             * @example 2
-             */
-            pageRangeFrom?: number | null;
-            /**
-             * @description The ending page number for processing the document.
-             * @example 9
-             */
-            pageRangeTo?: number | null;
-            /**
-             * @description The title of the document.
-             * @example Company Brand Guidelines.pdf
-             */
-            title: string | null;
-            /**
-             * @description A brief description of the document.
-             * @default
-             */
-            summary: string | null;
-            /**
-             * @description An array of tags associated with the document.
-             * @default []
-             */
-            tags: string[] | null;
-            /**
-             * @description An array of references associated with the document.
-             * @default []
-             */
-            references: components["schemas"]["CreateReferenceModelResponse"][] | null;
-            /**
-             * @description Whether the document has been chunked.
-             * @default false
-             * @example false
-             */
-            chunked: boolean | null;
-            /**
-             * @description Whether the document has been summarized.
-             * @default false
-             * @example true
-             */
-            summarized: boolean | null;
-            /**
-             * Format: date-time
-             * @description The date and time when the document was created, formatted in ISO 8601.
-             * @example 2025-04-23T13:55:13.308326
-             */
-            createdOn: string | null;
-            /**
-             * @description The user who created the document.
-             * @example mman
-             */
-            createdBy: string | null;
-            /**
-             * Format: date-time
-             * @description The date and time when the document was updated, formatted in ISO 8601.
-             * @example 2025-04-23T13:55:13.308326
-             */
-            updatedOn: string | null;
-            /**
-             * @description The user who last updated the document.
-             * @example mman
-             */
-            updatedBy: string | null;
-        };
-        CreateReferenceModelResponse: {
-            /**
-             * @description The unique identifier of the document.
-             * @example 11117df4-2412-44cf-b1e5-954330ca9230
-             */
-            id: string;
-            /**
-             * @description The location of the document.
-             * @example /path
-             */
-            path: string;
-            /**
-             * @description The type of the document.
-             * @example brandkit
-             */
-            type: string;
-        };
-        /** DocumentModel_v2 */
-        DocumentModel_v2: {
-            /**
-             * @description The unique identifier of your organization.
-             * @example org_ZiiCnzhCeHDpWJAU
-             */
-            organizationId: string | null;
-            /**
-             * @description The unique identifier of the document.
-             * @example 11117df4-2412-44cf-b1e5-954330ca9230
-             */
-            id: string | null;
-            /**
-             * @description The current status of the document.
-             * @example pending
-             */
-            status: string | null;
-            /**
-             * @description Whether the document has been chunked.
-             * @example false
-             */
-            chunked?: boolean | null;
-            /**
-             * @description Whether the document has been summarized.
-             * @example true
-             */
-            summarized?: boolean | null;
-            /**
-             * @description The URL where the PDF document is located.
-             * @example https://example.com/document.pdf
-             */
-            url: string | null;
-            /**
-             * @description The document type.
-             * @example brand guidelines
-             */
-            type: string | null;
-            /**
-             * @description The document's file type.
-             * @example application/pdf
-             */
-            fileType: string | null;
-            /**
-             * @description The document size in bytes.
-             * @example 8127298
-             */
-            size: string | null;
-            /**
-             * @description The total number of pages in the document.
-             * @default 0
-             * @example 10
-             */
-            numberOfPages: number | null;
-            /**
-             * @description The starting page number for processing the document.
-             * @example 2
-             */
-            pageRangeFrom?: number | null;
-            /**
-             * @description The ending page number for processing the document.
-             * @example 9
-             */
-            pageRangeTo?: number | null;
-            /**
-             * @description The title of the document.
-             * @example Company Brand Guidelines.pdf
-             */
-            title: string | null;
-            /**
-             * @description A brief description of the document.
-             * @default
-             * @example Visual and text guidelines
-             */
-            summary: string | null;
-            /**
-             * @description An array of brand kit sections associated with the document.
-             * @default []
-             * @example [
-             *       "Global Goals",
-             *       "Brand Context"
-             *     ]
-             */
-            tags: string[] | null;
-            /**
-             * @description The references associated with the document.
-             * @default []
-             * @example [
-             *       {
-             *         "id": "8271dec7-0c30-457b-b37b-4489628d7d7b",
-             *         "path": "/api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references",
-             *         "type": "brandkit"
-             *       }
-             *     ]
-             */
-            references: components["schemas"]["GetReferenceModelResponse"][] | null;
-            /**
-             * Format: date-time
-             * @description The date and time when the document was created, formatted in ISO 8601.
-             * @example 2025-04-23T13:55:13.308326
-             */
-            createdOn?: string | null;
-            /**
-             * @description The user who created the document.
-             * @example mman
-             */
-            createdBy?: string | null;
-            /**
-             * Format: date-time
-             * @description The date and time when the document was last updated, formatted in ISO 8601.
-             * @example 2025-04-23T13:55:13.308326
-             */
-            updatedOn?: string | null;
-            /**
-             * @description The user who last updated the document.
-             * @example mman
-             */
-            updatedBy?: string | null;
-            /**
-             * @description The relevance score of the document in search results. This value is calculated based on the search query and the document's content.
-             * @example 0.85
-             */
-            searchScore?: number | null;
-        };
-        /**
-         * DocumentStatus
-         * @enum {string}
-         */
-        DocumentStatus: "pending" | "processed" | "draft" | "active" | "archived" | "edited" | "failed";
-        GetReferenceModelResponse: {
-            /**
-             * @description The unique identifier of the document.
-             * @example 11117df4-2412-44cf-b1e5-954330ca9230
-             */
-            id: string;
-            /**
-             * @description The location of the document.
-             * @example /api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references
-             */
-            path: string;
-            /**
-             * @description The type of the document reference.
-             * @example brandkit
-             */
-            type: string;
-        };
-        /** HTTPError */
-        HTTPError: {
-            /** Detail */
-            detail: string;
-        };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /** ListDocumentsModelResponse_v2 */
-        ListDocumentsModelResponse_v2: {
-            /**
-             * @description The total number of documents that match the search criteria.
-             * @example 100
-             */
-            totalCount: number;
-            /**
-             * @description The number of documents returned per page.
-             * @example 50
-             */
-            pageSize: number;
-            /**
-             * @description The current page number in the paginated response.
-             * @example 1
-             */
-            pageNumber: number;
-            /** @description An array of documents that match the search criteria. Each document contains details such as its ID, title, type, status, and other metadata. */
-            data: components["schemas"]["DocumentModel_v2"][];
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
+  schemas: {
+    /** Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post */
+    Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post: {
+      /**
+       * Format: binary
+       * @description The PDF file to upload as a brand document. You must select a file from your local machine.
+       */
+      file?: string;
+      /**
+       * @description A JSON string containing the following parameters for uploading a brand document:
+       *
+       *      -  `url` - if no file is uploaded from your local machine, this parameter contains the MMS-uploaded file URL. If a file is uploaded locally, this parameter is empty.
+       *
+       *      - `status` - the current status of the document, such as pending, processed, draft, active, archived, edited, or failed.
+       *
+       *      - `type` - the document type, such as brand guidelines.
+       *
+       *      - `fileType` - the document's file type, such as PDF.
+       *
+       *      - `size` - the document size.
+       *
+       *      - `numberOfPages` - the total number of pages in the document.
+       *
+       *      - `pageRangeFrom` - the starting page number for processing the document.
+       *
+       *      - `pageRangeTo` - the ending page number for processing the document.
+       *
+       *      - `title` - the title of the document.
+       *
+       *      - `summary` - a brief description of the document.
+       *
+       *      - `tags` - an array of tags associated with the document
+       *
+       *      - `references` - an array of references associated with the document, including the type, brand kit ID, and reference.
+       *
+       *      - `setMetadata` - whether to set metadata for the document. Set this to `true` to automatically fill important details, such as the document's title and number of pages, which are later used during the brand ingestion process.
+       *
+       *      JSON structure with example values:
+       *
+       *      ```json
+       *     {
+       *       "url": "https://mms-delivery.{domain}/api/media/v1/delivery/protected/{mediaId}.pdf",
+       *       "status": "draft",
+       *       "type": "brand guidelines",
+       *       "fileType": "PDF",
+       *       "size": "2.5MB",
+       *       "numberOfPages": 5,
+       *       "pageRangeFrom": 1,
+       *       "pageRangeTo": 5,
+       *       "title": "Brand guidelines",
+       *       "summary": "Visual and text guidelines",
+       *       "tags": ["visual", "text"],
+       *       "status": "pending",
+       *       "setMetadata": true,
+       *       "references": [
+       *           {
+       *                "type": "brandkit",
+       *                "id": "{YOUR_BRANDKIT_ID}",
+       *                "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
+       *           }
+       *        ]
+       *     }
+       * @example {
+       *       "url": "",
+       *      "setMetadata": true,
+       *       "references": [
+       *           {
+       *                "type": "brandkit",
+       *                "id": "{YOUR_BRANDKIT_ID}",
+       *                "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
+       *           }
+       *        ]
+       *     }
+       */
+      create_request: string;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    /** CreateDocumentModelResponse_v2 */
+    CreateDocumentModelResponse_v2: {
+      /**
+       * @description The unique identifier of your organization.
+       * @example org_ZiiCnzhCeHDpWJAU
+       */
+      organizationId: string;
+      /**
+       * @description The unique identifier of the document.
+       * @example 11117df4-2412-44cf-b1e5-954330ca9230
+       */
+      id: string;
+      /**
+       * @description The current status of the document.
+       * @default pending
+       * @enum {string|null}
+       */
+      status: components["schemas"]["DocumentStatus"];
+      /**
+       * @description The URL where the PDF document is located.
+       * @example https://example.com/document.pdf
+       */
+      url: string;
+      /**
+       * @description The document type.
+       * @example null
+       */
+      type: string | null;
+      /**
+       * @description The document's file type.
+       * @example application/pdf
+       */
+      fileType: string | null;
+      /**
+       * @description The document size in bytes.
+       * @example 8127298
+       */
+      size: string | null;
+      /**
+       * @description The total number of pages in the document.
+       * @default 0
+       * @example 10
+       */
+      numberOfPages: number | null;
+      /**
+       * @description The starting page number for processing the document.
+       * @example 2
+       */
+      pageRangeFrom?: number | null;
+      /**
+       * @description The ending page number for processing the document.
+       * @example 9
+       */
+      pageRangeTo?: number | null;
+      /**
+       * @description The title of the document.
+       * @example Company Brand Guidelines.pdf
+       */
+      title: string | null;
+      /**
+       * @description A brief description of the document.
+       * @default
+       */
+      summary: string | null;
+      /**
+       * @description An array of tags associated with the document.
+       * @default []
+       */
+      tags: string[] | null;
+      /**
+       * @description An array of references associated with the document.
+       * @default []
+       */
+      references: components["schemas"]["CreateReferenceModelResponse"][] | null;
+      /**
+       * @description Whether the document has been chunked.
+       * @default false
+       * @example false
+       */
+      chunked: boolean | null;
+      /**
+       * @description Whether the document has been summarized.
+       * @default false
+       * @example true
+       */
+      summarized: boolean | null;
+      /**
+       * Format: date-time
+       * @description The date and time when the document was created, formatted in ISO 8601.
+       * @example 2025-04-23T13:55:13.308326
+       */
+      createdOn: string | null;
+      /**
+       * @description The user who created the document.
+       * @example mman
+       */
+      createdBy: string | null;
+      /**
+       * Format: date-time
+       * @description The date and time when the document was updated, formatted in ISO 8601.
+       * @example 2025-04-23T13:55:13.308326
+       */
+      updatedOn: string | null;
+      /**
+       * @description The user who last updated the document.
+       * @example mman
+       */
+      updatedBy: string | null;
+    };
+    CreateReferenceModelResponse: {
+      /**
+       * @description The unique identifier of the document.
+       * @example 11117df4-2412-44cf-b1e5-954330ca9230
+       */
+      id: string;
+      /**
+       * @description The location of the document.
+       * @example /path
+       */
+      path: string;
+      /**
+       * @description The type of the document.
+       * @example brandkit
+       */
+      type: string;
+    };
+    /** DocumentModel_v2 */
+    DocumentModel_v2: {
+      /**
+       * @description The unique identifier of your organization.
+       * @example org_ZiiCnzhCeHDpWJAU
+       */
+      organizationId: string | null;
+      /**
+       * @description The unique identifier of the document.
+       * @example 11117df4-2412-44cf-b1e5-954330ca9230
+       */
+      id: string | null;
+      /**
+       * @description The current status of the document.
+       * @example pending
+       */
+      status: string | null;
+      /**
+       * @description Whether the document has been chunked.
+       * @example false
+       */
+      chunked?: boolean | null;
+      /**
+       * @description Whether the document has been summarized.
+       * @example true
+       */
+      summarized?: boolean | null;
+      /**
+       * @description The URL where the PDF document is located.
+       * @example https://example.com/document.pdf
+       */
+      url: string | null;
+      /**
+       * @description The document type.
+       * @example brand guidelines
+       */
+      type: string | null;
+      /**
+       * @description The document's file type.
+       * @example application/pdf
+       */
+      fileType: string | null;
+      /**
+       * @description The document size in bytes.
+       * @example 8127298
+       */
+      size: string | null;
+      /**
+       * @description The total number of pages in the document.
+       * @default 0
+       * @example 10
+       */
+      numberOfPages: number | null;
+      /**
+       * @description The starting page number for processing the document.
+       * @example 2
+       */
+      pageRangeFrom?: number | null;
+      /**
+       * @description The ending page number for processing the document.
+       * @example 9
+       */
+      pageRangeTo?: number | null;
+      /**
+       * @description The title of the document.
+       * @example Company Brand Guidelines.pdf
+       */
+      title: string | null;
+      /**
+       * @description A brief description of the document.
+       * @default
+       * @example Visual and text guidelines
+       */
+      summary: string | null;
+      /**
+       * @description An array of brand kit sections associated with the document.
+       * @default []
+       * @example [
+       *       "Global Goals",
+       *       "Brand Context"
+       *     ]
+       */
+      tags: string[] | null;
+      /**
+       * @description The references associated with the document.
+       * @default []
+       * @example [
+       *       {
+       *         "id": "8271dec7-0c30-457b-b37b-4489628d7d7b",
+       *         "path": "/api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references",
+       *         "type": "brandkit"
+       *       }
+       *     ]
+       */
+      references: components["schemas"]["GetReferenceModelResponse"][] | null;
+      /**
+       * Format: date-time
+       * @description The date and time when the document was created, formatted in ISO 8601.
+       * @example 2025-04-23T13:55:13.308326
+       */
+      createdOn?: string | null;
+      /**
+       * @description The user who created the document.
+       * @example mman
+       */
+      createdBy?: string | null;
+      /**
+       * Format: date-time
+       * @description The date and time when the document was last updated, formatted in ISO 8601.
+       * @example 2025-04-23T13:55:13.308326
+       */
+      updatedOn?: string | null;
+      /**
+       * @description The user who last updated the document.
+       * @example mman
+       */
+      updatedBy?: string | null;
+      /**
+       * @description The relevance score of the document in search results. This value is calculated based on the search query and the document's content.
+       * @example 0.85
+       */
+      searchScore?: number | null;
+    };
+    /**
+     * DocumentStatus
+     * @enum {string}
+     */
+    DocumentStatus: "pending" | "processed" | "draft" | "active" | "archived" | "edited" | "failed";
+    GetReferenceModelResponse: {
+      /**
+       * @description The unique identifier of the document.
+       * @example 11117df4-2412-44cf-b1e5-954330ca9230
+       */
+      id: string;
+      /**
+       * @description The location of the document.
+       * @example /api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references
+       */
+      path: string;
+      /**
+       * @description The type of the document reference.
+       * @example brandkit
+       */
+      type: string;
+    };
+    /** HTTPError */
+    HTTPError: {
+      /** Detail */
+      detail: string;
+    };
+    /** HTTPValidationError */
+    HTTPValidationError: {
+      /** Detail */
+      detail?: components["schemas"]["ValidationError"][];
+    };
+    /** ListDocumentsModelResponse_v2 */
+    ListDocumentsModelResponse_v2: {
+      /**
+       * @description The total number of documents that match the search criteria.
+       * @example 100
+       */
+      totalCount: number;
+      /**
+       * @description The number of documents returned per page.
+       * @example 50
+       */
+      pageSize: number;
+      /**
+       * @description The current page number in the paginated response.
+       * @example 1
+       */
+      pageNumber: number;
+      /** @description An array of documents that match the search criteria. Each document contains details such as its ID, title, type, status, and other metadata. */
+      data: components["schemas"]["DocumentModel_v2"][];
+    };
+    /** ValidationError */
+    ValidationError: {
+      /** Location */
+      loc: (string | number)[];
+      /** Message */
+      msg: string;
+      /** Error Type */
+      type: string;
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_documents_v2_api_documents_v2_organizations__organizationId__documents_get: {
-        parameters: {
-            query?: {
-                pageNumber?: number;
-                pageSize?: number;
-                search?: string | null;
-                searchType?: "fulltext" | "vector" | "hybrid" | "semantic";
-                type?: string | null;
-                status?: string | null;
-                createdBy?: string | null;
-                referenceType?: string | null;
-                referenceId?: string | null;
-                fileType?: string | null;
-                tags?: string[] | null;
-                includeDeleted?: boolean | null;
-            };
-            header?: never;
-            path: {
-                organizationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of documents successfully retrieved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListDocumentsModelResponse_v2"];
-                };
-            };
-            /** @description Unsupported search type */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPError"];
-                };
-            };
-            /** @description Unprocessable entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
+  list_documents_v2_api_documents_v2_organizations__organizationId__documents_get: {
+    parameters: {
+      query?: {
+        pageNumber?: number;
+        pageSize?: number;
+        search?: string | null;
+        searchType?: "fulltext" | "vector" | "hybrid" | "semantic";
+        type?: string | null;
+        status?: string | null;
+        createdBy?: string | null;
+        referenceType?: string | null;
+        referenceId?: string | null;
+        fileType?: string | null;
+        tags?: string[] | null;
+        includeDeleted?: boolean | null;
+      };
+      header?: never;
+      path: {
+        organizationId: string;
+      };
+      cookie?: never;
     };
-    create_document_v2_api_documents_v2_organizations__organizationId__documents_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description The unique identifier of your organization.
-                 *
-                 *      To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
-                 */
-                organizationId: string;
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description List of documents successfully retrieved */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post"];
-            };
+        content: {
+          "application/json": components["schemas"]["ListDocumentsModelResponse_v2"];
         };
-        responses: {
-            /** @description Document successfully created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateDocumentModelResponse_v2"];
-                };
-            };
-            /** @description Invalid file type */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPError"];
-                };
-            };
-            /** @description Unprocessable entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description File upload failed */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPError"];
-                };
-            };
+      };
+      /** @description Unsupported search type */
+      400: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          "application/json": components["schemas"]["HTTPError"];
+        };
+      };
+      /** @description Unprocessable entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
     };
-    delete_document_api_documents_v1_organizations__organizationId__documents__documentId__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /**
-                 * @description The unique identifier of your organization.
-                 *
-                 *      To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
-                 */
-                organizationId: string;
-                /**
-                 * @description The unique identifier of the document to delete. To get this value, you can retrieve the list of documents using the [List documents](#tag/Document/operation/list_documents_v2_api_documents_v2_organizations__organizationId__documents_get) endpoint. The `id` field in the response contains the document ID.
-                 *
-                 *      Alternatively, this is the same identifier that you receive in the response when using the [Create a document](#tag/Document/operation/create_document_v2_api_documents_v2_organizations__organizationId__documents_post) endpoint.
-                 */
-                documentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Document deleted successfully */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPError"];
-                };
-            };
-            /** @description Unprocessable entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Failed to delete document */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPError"];
-                };
-            };
-        };
+  };
+  create_document_v2_api_documents_v2_organizations__organizationId__documents_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /**
+         * @description The unique identifier of your organization.
+         *
+         *      To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+         */
+        organizationId: string;
+      };
+      cookie?: never;
     };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post"];
+      };
+    };
+    responses: {
+      /** @description Document successfully created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateDocumentModelResponse_v2"];
+        };
+      };
+      /** @description Invalid file type */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPError"];
+        };
+      };
+      /** @description Unprocessable entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+      /** @description File upload failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPError"];
+        };
+      };
+    };
+  };
+  delete_document_api_documents_v1_organizations__organizationId__documents__documentId__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /**
+         * @description The unique identifier of your organization.
+         *
+         *      To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+         */
+        organizationId: string;
+        /**
+         * @description The unique identifier of the document to delete. To get this value, you can retrieve the list of documents using the [List documents](#tag/Document/operation/list_documents_v2_api_documents_v2_organizations__organizationId__documents_get) endpoint. The `id` field in the response contains the document ID.
+         *
+         *      Alternatively, this is the same identifier that you receive in the response when using the [Create a document](#tag/Document/operation/create_document_v2_api_documents_v2_organizations__organizationId__documents_post) endpoint.
+         */
+        documentId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Document deleted successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Document not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPError"];
+        };
+      };
+      /** @description Unprocessable entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+      /** @description Failed to delete document */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPError"];
+        };
+      };
+    };
+  };
 }

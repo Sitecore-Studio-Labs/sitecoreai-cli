@@ -37,15 +37,15 @@ const setup = (
     timeoutMs: undefined,
   });
   const client = {
-    search: vi.fn().mockImplementation(
-      (
-        q: Parameters<HygieneApiClient["search"]>[0]
-      ): ReturnType<HygieneApiClient["search"]> => {
-        const c = q.searchStatement?.criteria;
-        if (!c) return Promise.resolve({ totalCount: 0, results: [] });
-        return Promise.resolve(search({ field: c.field, value: c.value }));
-      }
-    ),
+    search: vi
+      .fn()
+      .mockImplementation(
+        (q: Parameters<HygieneApiClient["search"]>[0]): ReturnType<HygieneApiClient["search"]> => {
+          const c = q.searchStatement?.criteria;
+          if (!c) return Promise.resolve({ totalCount: 0, results: [] });
+          return Promise.resolve(search({ field: c.field, value: c.value }));
+        }
+      ),
     searchAll: vi.fn(),
     getItemFields: vi.fn(),
     getItemFieldsBatch: vi.fn(),
@@ -124,9 +124,7 @@ describe("audit template-dependencies", () => {
       if (call.field === "__source") {
         return {
           totalCount: 1,
-          results: [
-            { itemId: "br1", path: "/sitecore/templates/Branches/Bar", name: "Bar" },
-          ],
+          results: [{ itemId: "br1", path: "/sitecore/templates/Branches/Bar", name: "Bar" }],
         };
       }
       if (call.field === "datasource template") {
@@ -153,12 +151,8 @@ describe("audit template-dependencies", () => {
     const byKind = new Map(reports.map((r) => [r.referenceKind, r]));
     expect(byKind.get("primary-template")?.path).toBe("/sitecore/content/A");
     expect(byKind.get("base-template")?.path).toBe("/sitecore/templates/B");
-    expect(byKind.get("insert-options")?.path).toBe(
-      "/sitecore/templates/Foo/__Standard Values"
-    );
-    expect(byKind.get("branch-source")?.path).toBe(
-      "/sitecore/templates/Branches/Bar"
-    );
+    expect(byKind.get("insert-options")?.path).toBe("/sitecore/templates/Foo/__Standard Values");
+    expect(byKind.get("branch-source")?.path).toBe("/sitecore/templates/Branches/Bar");
     expect(byKind.get("datasource-template")?.path).toBe(
       "/sitecore/layout/Renderings/Project/MyRendering"
     );

@@ -28,7 +28,7 @@ const buildBatchQuery = (count: number): string => {
   }
   const vars = Array.from({ length: count }, (_, i) => `$p${i}: String!`).join(", ");
   return `query Batch(${vars}) {\n${aliases.join("\n")}\n}`;
-}
+};
 
 interface ResolvedItem {
   path: string;

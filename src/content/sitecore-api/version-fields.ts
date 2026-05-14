@@ -132,10 +132,7 @@ export const formatBoolean = (value: boolean): string =>
  * distinction to the audit trail as `null` so an operator can tell
  * apart "was explicitly empty" from "wasn't there at all").
  */
-export const findField = (
-  snapshot: VersionFieldsSnapshot,
-  name: string
-): string | null => {
+export const findField = (snapshot: VersionFieldsSnapshot, name: string): string | null => {
   const match = snapshot.fields.find((f) => f.name === name);
   return match ? match.value : null;
 };

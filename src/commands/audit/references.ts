@@ -9,10 +9,7 @@ export const createAuditReferencesCommand = (): Command => {
 
   const list = new Command("list").description("List inbound references to an item");
   addAuditBaseOptions(list);
-  list.requiredOption(
-    "--to <guid>",
-    "Item ID to find references for (any GUID form)"
-  );
+  list.requiredOption("--to <guid>", "Item ID to find references for (any GUID form)");
   list.option("--root <path>", "Content root to scan (default: /sitecore/content)");
   list.option(
     "--fields <name>",

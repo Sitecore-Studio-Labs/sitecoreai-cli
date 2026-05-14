@@ -76,7 +76,4 @@ export { runPublishStatus, type RunPublishStatusOptions } from "./tasks/status";
 export { runPublishItem, type RunPublishItemOptions } from "./tasks/item";
 export { runPublishAll, type RunPublishAllOptions } from "./tasks/all";
 export { runPublishCancel, type RunPublishCancelOptions } from "./tasks/cancel";
-export {
-  runPublishUnpublish,
-  type RunPublishUnpublishOptions,
-} from "./tasks/unpublish";
+export { runPublishUnpublish, type RunPublishUnpublishOptions } from "./tasks/unpublish";

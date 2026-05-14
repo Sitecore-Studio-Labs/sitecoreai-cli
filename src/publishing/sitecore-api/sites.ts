@@ -36,15 +36,11 @@ export const resolveSiteRoot = async (
       .map((s) => s.name)
       .filter((n): n is string => Boolean(n))
       .slice(0, 12);
-    throw createScaiError(
-      `Site '${siteName}' not found in the content tree.`,
-      "INPUT_INVALID",
-      {
-        hint: `Available sites: ${available.join(", ")}${
-          sites.length > available.length ? ` (and ${sites.length - available.length} more)` : ""
-        }. Site discovery walks /sitecore/content/<tenant>/<site> — make sure the site lives under that convention.`,
-      }
-    );
+    throw createScaiError(`Site '${siteName}' not found in the content tree.`, "INPUT_INVALID", {
+      hint: `Available sites: ${available.join(", ")}${
+        sites.length > available.length ? ` (and ${sites.length - available.length} more)` : ""
+      }. Site discovery walks /sitecore/content/<tenant>/<site> — make sure the site lives under that convention.`,
+    });
   }
   const { resolved } = await resolveItemPathsToIds(environment, [match.path]);
   return {

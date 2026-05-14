@@ -111,8 +111,7 @@ const main = async (): Promise<void> => {
         body: {
           name: "scai-probe-field",
           intent: "Test what scai's Brand Review pipeline does end-to-end.",
-          content:
-            "Brand voice is warm, energetic, and direct. Avoid jargon. Use active voice.",
+          content: "Brand voice is warm, energetic, and direct. Avoid jargon. Use active voice.",
           aiEditable: true,
         },
       });
@@ -126,8 +125,7 @@ const main = async (): Promise<void> => {
         method: "PATCH",
         body: {
           intent: "Test what scai's Brand Review pipeline does end-to-end.",
-          content:
-            "Brand voice is warm, energetic, and direct. Avoid jargon. Use active voice.",
+          content: "Brand voice is warm, energetic, and direct. Avoid jargon. Use active voice.",
           aiEditable: true,
         },
       });

@@ -548,9 +548,7 @@ const cleanupInputSchema = () =>
     path: z
       .string()
       .optional()
-      .describe(
-        "subtree: content-tree path of the subtree root to delete. Required for subtree."
-      ),
+      .describe("subtree: content-tree path of the subtree root to delete. Required for subtree."),
     scanRoot: z
       .string()
       .optional()

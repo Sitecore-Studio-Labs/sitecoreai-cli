@@ -1,10 +1,6 @@
 import { Command } from "commander";
 import { runContentVersionInspect } from "@/content/tasks/version-inspect";
-import {
-  addConfigOption,
-  addEnvironmentOption,
-  addVerbosityOptions,
-} from "../../shared";
+import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../../shared";
 
 export const createInspectCommand = (): Command => {
   const command = new Command("inspect")

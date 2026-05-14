@@ -21,7 +21,10 @@ import {
   removeUserFromFilesystem,
 } from "../../../src/serialization/filesystem-store/users";
 import { ItemData, RoleData, UserData } from "../../../src/serialization/types";
-import type { RootConfiguration, SerializationModuleConfiguration } from "../../../src/config/types";
+import type {
+  RootConfiguration,
+  SerializationModuleConfiguration,
+} from "../../../src/config/types";
 
 describe("filesystem store", () => {
   it("writes and loads items", async () => {

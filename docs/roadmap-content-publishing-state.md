@@ -17,11 +17,11 @@ All three are version-level (or item-level) field writes via the
 Authoring `updateItem` mutation. Field names quoted verbatim from
 Sitecore docs:
 
-| Field | Type | Effect |
-|---|---|---|
-| `__Never publish` | boolean | If true, publishing skips this item/version entirely. Setting true on an already-published item → next publish removes it from Edge. |
-| `__Valid from` | datetime | Version's earliest publishable date. Versions before this date aren't selected by the publisher. |
-| `__Valid to` | datetime | Version's latest publishable date. After this date the version stops being selected; next publish removes it from Edge. |
+| Field             | Type     | Effect                                                                                                                               |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `__Never publish` | boolean  | If true, publishing skips this item/version entirely. Setting true on an already-published item → next publish removes it from Edge. |
+| `__Valid from`    | datetime | Version's earliest publishable date. Versions before this date aren't selected by the publisher.                                     |
+| `__Valid to`      | datetime | Version's latest publishable date. After this date the version stops being selected; next publish removes it from Edge.              |
 
 These are standard Sitecore fields; scai writes them through the
 existing `runAuthoringGraphQL` plumbing (same path the recipe runtime
@@ -35,6 +35,7 @@ scai already has cover Authoring writes.
 Composite operation: clear the publish state, then submit a publish.
 
 **Surface:**
+
 ```
 scai publish unpublish [-n <env>]
   --items <guid>                # repeatable / comma-separated
@@ -50,19 +51,21 @@ scai publish unpublish [-n <env>]
 ```
 
 **Strategies:**
-- `never-publish` *(default, reversible)* — sets `__Never publish: true`
+
+- `never-publish` _(default, reversible)_ — sets `__Never publish: true`
   on the latest version per language. To re-publish, operator clears
   the field and re-publishes. Audit-log records the previous value
   so it can be restored.
-- `expire-now` *(reversible)* — sets `__Valid to: <now>` on each
+- `expire-now` _(reversible)_ — sets `__Valid to: <now>` on each
   targeted version. Equivalent to expiring a version. Restoring
   requires writing `__Valid to: <future date>` back.
-- `delete` *(destructive)* — calls Authoring `deleteItem` (or
+- `delete` _(destructive)_ — calls Authoring `deleteItem` (or
   `archiveItem` if scoped to recycle bin). Not reversible at the
   scai layer. Production-tier prompts must explicitly name "delete"
   and require typed item path confirmation, not just a scope token.
 
 **Flow:**
+
 1. Resolve items (`--items` + `--paths` resolution via existing
    `resolveItemPathsToIds`).
 2. Build scope (`PublishAuditScope { kind: "unpublish", strategy, … }`).
@@ -77,6 +80,7 @@ scai publish unpublish [-n <env>]
 6. Write audit entry per item: original value, new value, job id.
 
 **File layout (matches PR 2b):**
+
 - `src/publishing/tasks/unpublish.ts`
 - `src/commands/publish/unpublish.ts`
 - Reuse: `consent.ts`, `audit.ts`, `path-resolver.ts`,
@@ -89,6 +93,7 @@ New command group for version-level state changes. Doesn't fit under
 — they just affect what publish picks up.
 
 **Verbs:**
+
 ```
 scai content version set-validity \
   --item-id <guid> | --path <path> \
@@ -111,6 +116,7 @@ scai content version inspect \
 ```
 
 **Flow (set-validity, set-never-publish):**
+
 1. Resolve item (id or path).
 2. Read current version's field values for audit.
 3. Build scope hash + token (reuse `consent.ts`).
@@ -123,10 +129,11 @@ scai content version inspect \
    operators batch changes before a single publish call.
 
 **File layout:**
+
 - `src/content/tasks/version-validity.ts`
 - `src/content/tasks/version-never-publish.ts`
 - `src/content/tasks/version-inspect.ts`
-- `src/content/sitecore-api/version-fields.ts`  ← Authoring GraphQL helpers
+- `src/content/sitecore-api/version-fields.ts` ← Authoring GraphQL helpers
 - `src/commands/content/index.ts` (factory)
 - `src/commands/content/version/{set-validity,set-never-publish,inspect}.ts`
 - New top-level command `scai content` registered in `src/cli.ts`.
@@ -141,14 +148,16 @@ both routes call the same task.
 
 ```graphql
 # Read current state for an item version
-query($itemId: ID!, $language: String!, $version: Int) {
+query ($itemId: ID!, $language: String!, $version: Int) {
   item(where: { itemId: $itemId }) {
     itemId
     name
     path
     version(language: $language, version: $version) {
       version
-      language { name }
+      language {
+        name
+      }
       fields(ownFields: false) {
         nodes {
           name
@@ -161,14 +170,11 @@ query($itemId: ID!, $language: String!, $version: Int) {
 }
 
 # Write version-level fields
-mutation($itemId: ID!, $language: String!, $version: Int!, $fields: [FieldValueInput!]!) {
-  updateItem(input: {
-    itemId: $itemId
-    language: $language
-    version: $version
-    fields: $fields
-  }) {
-    item { itemId }
+mutation ($itemId: ID!, $language: String!, $version: Int!, $fields: [FieldValueInput!]!) {
+  updateItem(input: { itemId: $itemId, language: $language, version: $version, fields: $fields }) {
+    item {
+      itemId
+    }
   }
 }
 ```
@@ -217,7 +223,7 @@ under `scripts/_smoke-content-*.ts` mirroring the publishing smokes.
 - Branch from current `dev` (or whatever the active branch is) in a
   worktree.
 - Read `docs/parity-with-devex.md` § Publishing for the safety model
-  + the PR 2b file layout — mirror it.
+  - the PR 2b file layout — mirror it.
 - Existing primitives to reuse, NOT reimplement:
   - `src/publishing/audit.ts` (`recordPublishAudit`,
     `PublishAuditEntry`, `PublishAuditScope`)

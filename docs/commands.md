@@ -433,7 +433,7 @@ scai audit large-fields list [options]
 - `--root <path>` — Content-tree root (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--threshold <bytes>` — Field-size threshold in bytes (default 100000 = 100KB)
-- `--include-system-fields` — Include __-prefixed system fields in the size check
+- `--include-system-fields` — Include \_\_-prefixed system fields in the size check
 
 ### scai audit missing-meta
 
@@ -493,11 +493,11 @@ scai audit datasource-missing [options] [command]
 
 **Subcommands**
 
-- [`scai audit datasource-missing list`](#scai-audit-datasource-missing-list) — List items whose __Renderings / __Final Renderings reference missing datasources
+- [`scai audit datasource-missing list`](#scai-audit-datasource-missing-list) — List items whose **Renderings / **Final Renderings reference missing datasources
 
 #### scai audit datasource-missing list
 
-List items whose __Renderings / __Final Renderings reference missing datasources
+List items whose **Renderings / **Final Renderings reference missing datasources
 
 ```
 scai audit datasource-missing list [options]
@@ -620,7 +620,7 @@ scai audit duplicates list [options]
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 - `--min-group-size <count>` — Only report groups with at least this many duplicates (default: 2)
-- `--include-system-fields` — Include __-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)
+- `--include-system-fields` — Include \_\_-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)
 
 ### scai audit empty-items
 
@@ -856,7 +856,7 @@ scai audit find-replace list [options]
 - `--ignore-case` — Case-insensitive match (sets the i regex flag)
 - `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
 - `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
-- `--include-system-fields` — Include __-prefixed system fields in the search (off by default)
+- `--include-system-fields` — Include \_\_-prefixed system fields in the search (off by default)
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--max-matches-per-item <count>` — Maximum number of sample snippets captured per matching item (default 10)
@@ -951,11 +951,11 @@ scai audit page-design-orphans [options] [command]
 
 **Subcommands**
 
-- [`scai audit page-design-orphans list`](#scai-audit-page-design-orphans-list) — List pages whose __Final Page Design / __Page Design field points to a missing item
+- [`scai audit page-design-orphans list`](#scai-audit-page-design-orphans-list) — List pages whose **Final Page Design / **Page Design field points to a missing item
 
 #### scai audit page-design-orphans list
 
-List pages whose __Final Page Design / __Page Design field points to a missing item
+List pages whose **Final Page Design / **Page Design field points to a missing item
 
 ```
 scai audit page-design-orphans list [options]
@@ -1772,7 +1772,7 @@ scai cleanup duplicates purge [options]
 - `--limit <count>` — Cap on the number of items inspected (default: 5000)
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
-- `--include-system-fields` — Include __-prefixed system fields when computing the content hash
+- `--include-system-fields` — Include \_\_-prefixed system fields when computing the content hash
 - `--keep-rule <rule>` — Which member of each duplicate group survives (default: `"oldest"`)
 - `--concurrency <count>` — Delete concurrency (default: 4)
 - `--batch-size <count>` — Aliased GraphQL batch size for field reads
@@ -1857,7 +1857,7 @@ scai cleanup field-set apply [options]
 - `--max-mutations <count>` — Maximum number of items to mutate per run (default: 100)
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
-- `--include-system-fields` — Allow writing to __-prefixed system fields (off by default)
+- `--include-system-fields` — Allow writing to \_\_-prefixed system fields (off by default)
 - `--cache` — Use the on-disk field cache for the discovery phase
 
 ### scai cleanup find-replace
@@ -1899,7 +1899,7 @@ scai cleanup find-replace apply [options]
 - `--ignore-case` — Case-insensitive match
 - `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
 - `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
-- `--include-system-fields` — Include __-prefixed system fields in the search (off by default; touching __Renderings via regex will mangle XML)
+- `--include-system-fields` — Include **-prefixed system fields in the search (off by default; touching **Renderings via regex will mangle XML)
 - `--root <path>` — Content-tree root (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--limit <count>` — Cap on items inspected (default: 5000)
@@ -2321,7 +2321,7 @@ scai cleanup workflow [options] [command]
 **Subcommands**
 
 - [`scai cleanup workflow advance`](#scai-cleanup-workflow-advance) — Execute a workflow command on items stuck past --stale-days
-- [`scai cleanup workflow apply`](#scai-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets __Workflow + __Workflow state directly). Use to backfill content authored before the workflow existed.
+- [`scai cleanup workflow apply`](#scai-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
 
 #### scai cleanup workflow advance
 
@@ -2356,7 +2356,7 @@ scai cleanup workflow advance [options]
 
 #### scai cleanup workflow apply
 
-Bulk-attach a workflow to items under --root (sets __Workflow + __Workflow state directly). Use to backfill content authored before the workflow existed.
+Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
 
 ```
 scai cleanup workflow apply [options]
@@ -2376,7 +2376,7 @@ scai cleanup workflow apply [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 - `--workflow <ref>` — Workflow GUID, content-tree path, or display/item name (case-insensitive)
-- `--state <ref>` — Target state (GUID or name). Defaults to the workflow's __Initial state.
+- `--state <ref>` — Target state (GUID or name). Defaults to the workflow's \_\_Initial state.
 - `--template <ref>` — Only attach to items conforming to this template (GUID or absolute /sitecore/templates path).
 - `--reattach` — Overwrite items already attached to a different workflow. Off by default — already-attached items are skipped so the verb defaults to a safe backfill.
 - `--stale-days <count>` — Only act on items not updated for at least N days. Optional — omit to attach to every match.

@@ -139,10 +139,7 @@ export type {
   VersionPruneAction,
 } from "./tasks/cleanup-versions-prune";
 export { runCleanupArchivePurge } from "./tasks/cleanup-archive-purge";
-export type {
-  CleanupArchivePurgeOptions,
-  ArchivePurgeAction,
-} from "./tasks/cleanup-archive-purge";
+export type { CleanupArchivePurgeOptions, ArchivePurgeAction } from "./tasks/cleanup-archive-purge";
 export { runCleanupDeadTemplates } from "./tasks/cleanup-dead-templates";
 export type {
   CleanupDeadTemplatesOptions,
@@ -176,7 +173,10 @@ export type { CleanupFindReplaceOptions, FindReplaceAction } from "./tasks/clean
 export { runAuditLargeFields } from "./tasks/audit-large-fields";
 export type { AuditLargeFieldsOptions, LargeFieldReport } from "./tasks/audit-large-fields";
 export { runAuditHeavyTemplates } from "./tasks/audit-heavy-templates";
-export type { AuditHeavyTemplatesOptions, HeavyTemplateReport } from "./tasks/audit-heavy-templates";
+export type {
+  AuditHeavyTemplatesOptions,
+  HeavyTemplateReport,
+} from "./tasks/audit-heavy-templates";
 export { runAuditMissingMeta } from "./tasks/audit-missing-meta";
 export type { AuditMissingMetaOptions, MissingMetaReport } from "./tasks/audit-missing-meta";
 export { runAuditAltTextMissing } from "./tasks/audit-alt-text-missing";
@@ -200,10 +200,7 @@ export type {
   TranslationCoverageReport,
 } from "./tasks/audit-translation-coverage";
 export { runAuditFallbackDrift } from "./tasks/audit-fallback-drift";
-export type {
-  AuditFallbackDriftOptions,
-  FallbackDriftReport,
-} from "./tasks/audit-fallback-drift";
+export type { AuditFallbackDriftOptions, FallbackDriftReport } from "./tasks/audit-fallback-drift";
 export { runAuditEmptyLinks } from "./tasks/audit-empty-links";
 export type { AuditEmptyLinksOptions, EmptyLinkReport } from "./tasks/audit-empty-links";
 export { runCleanupFieldSet } from "./tasks/cleanup-field-set";

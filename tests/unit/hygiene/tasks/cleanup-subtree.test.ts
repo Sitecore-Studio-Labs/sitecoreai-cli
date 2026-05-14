@@ -32,7 +32,11 @@ const setup = (params: {
   rootMissing?: boolean;
   allowWrite?: boolean;
 }) => {
-  const env = { name: "sandbox", host: "h", allowWrite: params.allowWrite ?? true } as EnvironmentConfiguration;
+  const env = {
+    name: "sandbox",
+    host: "h",
+    allowWrite: params.allowWrite ?? true,
+  } as EnvironmentConfiguration;
   vi.mocked(resolveEnvironment).mockReturnValue({
     envName: "sandbox",
     environment: env,
@@ -74,9 +78,9 @@ const setup = (params: {
       }
       return Promise.resolve({ totalCount: 0, results: [] });
     }),
-    searchAll: vi.fn().mockImplementation(async function* (
-      query: { searchStatement?: { criteria?: { field?: string; value?: string } } }
-    ) {
+    searchAll: vi.fn().mockImplementation(async function* (query: {
+      searchStatement?: { criteria?: { field?: string; value?: string } };
+    }) {
       const stmt = query.searchStatement;
       const field = stmt?.criteria?.field;
       const value = stmt?.criteria?.value;
@@ -372,9 +376,7 @@ describe("cleanup subtree — orphan-external-refs prune", () => {
     expect(result.blockers[0].cleared).toBe(true);
     // updateItemFields called with the pruned value — survivor kept.
     expect(client.updateItemFields).toHaveBeenCalledTimes(1);
-    const [updateCall] = (
-      client.updateItemFields as ReturnType<typeof vi.fn>
-    ).mock.calls;
+    const [updateCall] = (client.updateItemFields as ReturnType<typeof vi.fn>).mock.calls;
     expect(updateCall[0].fields[0].value).toBe("{11111111-2222-3333-4444-555555555555}");
     expect(updateCall[0].fields[0].value).not.toContain(CHILD_ID.toUpperCase());
   });
@@ -406,9 +408,7 @@ describe("cleanup subtree — orphan-external-refs prune", () => {
     } as never);
 
     expect(result.blockers).toHaveLength(1);
-    const [updateCall] = (
-      client.updateItemFields as ReturnType<typeof vi.fn>
-    ).mock.calls;
+    const [updateCall] = (client.updateItemFields as ReturnType<typeof vi.fn>).mock.calls;
     const written: string = updateCall[0].fields[0].value;
     expect(written).not.toContain(CHILD_ID.toUpperCase());
     // Surviving rendering preserved.
@@ -439,9 +439,7 @@ describe("cleanup subtree — orphan-external-refs prune", () => {
       json: true,
     } as never);
 
-    const [updateCall] = (
-      client.updateItemFields as ReturnType<typeof vi.fn>
-    ).mock.calls;
+    const [updateCall] = (client.updateItemFields as ReturnType<typeof vi.fn>).mock.calls;
     // A single-GUID multi-list IS a valid multi-list — pruner returns
     // an empty string. Same as clear in this case.
     expect(updateCall[0].fields[0].value).toBe("");

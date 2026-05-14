@@ -46,7 +46,7 @@ template **may still fail** with a "template has dependents" error for
 2. **Run the cascade in two passes.** Delete dependents first
    (`cleanup subtree delete --path <tree>`), wait for the cache to
    settle, then delete templates (`cleanup dead-templates purge --root
-   /sitecore/templates/<area>`).
+/sitecore/templates/<area>`).
 
 Re-run on success doesn't risk over-deletion because cleanup verbs are
 idempotent on missing targets — a template that's already gone is

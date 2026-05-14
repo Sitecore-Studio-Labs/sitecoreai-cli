@@ -80,7 +80,6 @@ statistics shape uses `itemsSent` / `itemsProcessed` / `itemsFailed`
 rather than the flat `processedCount` / `totalCount` from the spec
 extract.
 
-
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only
 target is Experience Edge.

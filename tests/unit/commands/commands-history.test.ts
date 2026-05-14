@@ -9,7 +9,9 @@ describe("history command", () => {
   it("prints the history path as json", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
     const historyPath = path.join(tmpDir, "history.log");
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([
@@ -22,8 +24,8 @@ describe("history command", () => {
       historyPath,
     ]);
 
-    expect(infoSpy).toHaveBeenCalled();
-    infoSpy.mockRestore();
+    expect(stdoutSpy).toHaveBeenCalled();
+    stdoutSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -95,7 +97,9 @@ describe("history command", () => {
       `{"timestamp":"1","event":"start","command":"scai status"}\nnot-json\n`,
       "utf8"
     );
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([
@@ -109,13 +113,13 @@ describe("history command", () => {
       historyPath,
     ]);
 
-    const payload = infoSpy.mock.calls[0]?.[0];
+    const payload = stdoutSpy.mock.calls[0]?.[0];
     const parsed = typeof payload === "string" ? JSON.parse(payload) : [];
     expect(parsed).toEqual([
       { timestamp: "1", event: "start", command: "scai status" },
       { raw: "not-json" },
     ]);
-    infoSpy.mockRestore();
+    stdoutSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

@@ -18,7 +18,8 @@ const assertValidUrl = vi.fn();
 vi.mock("../../../../../src/shared/validate", () => ({ assertValidUrl }));
 
 const setDeployToken = vi.fn();
-vi.mock("../../../../../src/shared/keychain", () => ({ setDeployToken }));
+const setCmTokens = vi.fn();
+vi.mock("../../../../../src/shared/keychain", () => ({ setDeployToken, setCmTokens }));
 
 const assertInteractive = vi.fn();
 const promptConfirm = vi.fn();
@@ -63,6 +64,7 @@ describe("runDeployToken", () => {
     readRootConfiguration.mockReturnValue({ environments: { demo: {} } });
     openBrowser.mockReturnValue(false);
     setDeployToken.mockResolvedValue(true);
+    setCmTokens.mockResolvedValue(true);
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
     delete process.env.SITECOREAI_NON_INTERACTIVE;
@@ -132,7 +134,9 @@ describe("runDeployToken", () => {
 
     expect(requestClientCredentialsToken).toHaveBeenCalledWith(
       expect.objectContaining({ clientId: "right", clientSecret: "secret" }),
-      undefined
+      // scope set requested at login — kept loose so adding a scope
+      // (e.g. a new Sitecore API surface) doesn't churn this test.
+      expect.stringContaining("xmcloud.cm:admin")
     );
     expect(promptSecret).not.toHaveBeenCalled();
   });

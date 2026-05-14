@@ -6,7 +6,7 @@ import {
 import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
 import { createScaiError } from "@/shared/errors";
-import { setDeployToken } from "@/shared/keychain";
+import { setCmTokens, setDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import {
   requestClientCredentialsToken,
@@ -15,7 +15,11 @@ import {
 } from "@/serialization/sitecore-api";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import type { DeployTokenOptions } from "@/deploy/tasks/types";
-import { DEFAULT_PUBLIC_CLIENT_ID } from "./constants";
+import {
+  DEFAULT_PUBLIC_CLIENT_ID,
+  SCAI_CLIENT_CREDENTIALS_SCOPES,
+  SCAI_DEVICE_FLOW_SCOPES,
+} from "./constants";
 
 export const runDeployToken = async (options: DeployTokenOptions): Promise<void> => {
   const logger = toLogger(options);
@@ -78,7 +82,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   }
   const audience = baseEnv.audience ?? "https://api.sitecorecloud.io";
 
-  let token: { accessToken: string; expiresIn?: number };
+  let token: { accessToken: string; refreshToken?: string; expiresIn?: number };
   if (wantsClientCredentials) {
     if (!authority || !clientId || !clientSecret) {
       throw createScaiError(
@@ -96,7 +100,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
         clientSecret: clientSecret ?? "",
         audience,
       },
-      undefined
+      SCAI_CLIENT_CREDENTIALS_SCOPES
     );
   } else {
     if (!authority || !clientId) {
@@ -117,7 +121,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
         clientSecret,
         audience,
       },
-      undefined
+      SCAI_DEVICE_FLOW_SCOPES
     );
     const verifyUrl = device.verificationUriComplete ?? device.verificationUri;
     if (device.message) {
@@ -146,6 +150,26 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   if (!stored) {
     logger.warn(
       "Unable to store the Deploy token in the OS keychain. Use SITECOREAI_DEPLOY_TOKEN if needed.",
+      "yellow"
+    );
+  }
+  // Mirror the same token into the CM keychain slot. The token's scope
+  // claim covers both Deploy AND `xmcloud.cm:admin`-gated paths (per the
+  // explicit scope set we requested above), so one mint serves both
+  // surfaces. Without this mirror, `getAccessToken` (Authoring API
+  // reader) reads an empty CM slot and surfaces AUTH_REQUIRED even
+  // though the equivalent token sits one slot over.
+  const cmStored = await setCmTokens(envName, {
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    expiresIn: token.expiresIn,
+    lastUpdated: new Date().toISOString(),
+  });
+  if (!cmStored && stored) {
+    // Deploy slot wrote, CM didn't — unusual; warn but proceed since
+    // Deploy commands still work without the mirror.
+    logger.warn(
+      "Stored the Deploy token but couldn't mirror it into the CM keychain slot. Authoring API calls (recipe/workflow/webhook) may fail until the next login retries.",
       "yellow"
     );
   }

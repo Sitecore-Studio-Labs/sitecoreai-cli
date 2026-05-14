@@ -167,10 +167,12 @@ describe("two-environment ser diff", () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const consola = (await import("consola")).consola;
-    const writeSpy = vi.spyOn(consola, "info").mockImplementation((message: unknown) => {
-      logs.push(String(message));
-    });
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: unknown) => {
+        logs.push(String(chunk));
+        return true;
+      });
     try {
       await tasks.runDiff({
         config: rootDir,
@@ -192,10 +194,12 @@ describe("two-environment ser diff", () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const consola = (await import("consola")).consola;
-    const writeSpy = vi.spyOn(consola, "info").mockImplementation((message: unknown) => {
-      logs.push(String(message));
-    });
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: unknown) => {
+        logs.push(String(chunk));
+        return true;
+      });
     try {
       await tasks.runDiff({
         config: rootDir,
@@ -254,10 +258,12 @@ describe("two-environment ser diff", () => {
     });
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const consola = (await import("consola")).consola;
-    const writeSpy = vi.spyOn(consola, "info").mockImplementation((message: unknown) => {
-      logs.push(String(message));
-    });
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: unknown) => {
+        logs.push(String(chunk));
+        return true;
+      });
     try {
       await tasks.runDiff({
         config: rootDir,

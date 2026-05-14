@@ -26,6 +26,10 @@ export const createPublishItemCommand = (): Command => {
       collectList,
       [] as string[]
     )
+    .option(
+      "--site <name>",
+      "Resolve the named site's content-tree root and add it to the publish target list. By default publishes ONLY the root item; combine with --include-subitems for the whole site."
+    )
     .option("--item-type <type>", "ItemModel.type for the request body. Defaults to `item`.")
     .option(
       "-l, --languages <list>",
@@ -85,7 +89,10 @@ export const createPublishItemCommand = (): Command => {
       "  $ scai publish item --items abc123 --include-subitems -n sandbox              # + descendants\n" +
       "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox             # force re-emit\n" +
       "  $ scai publish item --paths /sitecore/content/Home --languages-from-site marketing -n sandbox\n" +
-      "  $ scai publish item --items abc1 --all-tenant-languages -n sandbox            # every tenant lang\n"
+      "  $ scai publish item --items abc1 --all-tenant-languages -n sandbox            # every tenant lang\n" +
+      "  $ scai publish item --site marketing -n sandbox                                # site root only\n" +
+      "  $ scai publish item --site marketing --include-subitems -n sandbox             # whole site\n" +
+      "  $ scai publish item --site marketing --include-subitems --languages-from-site marketing -n sandbox\n"
   );
 
   command.action(async (options) => {

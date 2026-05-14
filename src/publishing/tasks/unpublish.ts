@@ -43,6 +43,7 @@ import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
 import { resolvePublishingLocales } from "../sitecore-api/languages";
+import { resolveSiteRoot } from "../sitecore-api/sites";
 import type {
   CreatePublishJobRequest,
   PublishingApiClientOptions,
@@ -67,6 +68,10 @@ export interface RunPublishUnpublishOptions {
   environmentName?: string;
   itemIds?: string[];
   paths?: string[];
+  /** Site name. Resolves to the site's content-tree root via Sites
+   *  API + Authoring GraphQL. Combine with `--include-subitems` to
+   *  unpublish the whole site. */
+  site?: string;
   /** Literal language list. See `PublishLocaleOptions`. */
   languages?: string[];
   /** Resolve languages from the named site via Sites API. */
@@ -405,12 +410,12 @@ export const runPublishUnpublish = async (
 
   const directItemIds = options.itemIds ?? [];
   const paths = options.paths ?? [];
-  if (directItemIds.length === 0 && paths.length === 0) {
+  if (directItemIds.length === 0 && paths.length === 0 && !options.site) {
     throw createScaiError(
-      "Unpublish requires at least one --items <guid> or --paths <path>.",
+      "Unpublish requires at least one --items <guid>, --paths <path>, or --site <name>.",
       "INPUT_INVALID",
       {
-        hint: "Pass --items <guid> (repeatable) and/or --paths <path> (repeatable). At least one is required.",
+        hint: "Pass --items <guid>, --paths <path>, and/or --site <name>. --site resolves the site's content-tree root; add --include-subitems to unpublish the whole site.",
       }
     );
   }
@@ -432,7 +437,26 @@ export const runPublishUnpublish = async (
       logger.info(`  ${r.path} → ${r.itemId}`, "gray");
     }
   }
-  const itemIds = [...directItemIds, ...resolvedFromPaths.map((r) => r.itemId)];
+
+  // Site root resolution. Composable with --items / --paths.
+  let resolvedSite: { siteName: string; path: string; itemId: string } | undefined;
+  if (options.site) {
+    logger.info(`Resolving site '${options.site}' root via Sites + Authoring GraphQL...`, "gray");
+    resolvedSite = await resolveSiteRoot(environment, options.site);
+    logger.info(`  → ${resolvedSite.path} (${resolvedSite.itemId})`, "gray");
+    if (!options.includeSubitems) {
+      logger.info(
+        `Targeting only the site root. Pass --include-subitems for the whole site.`,
+        "gray"
+      );
+    }
+  }
+
+  const itemIds = [
+    ...directItemIds,
+    ...resolvedFromPaths.map((r) => r.itemId),
+    ...(resolvedSite ? [resolvedSite.itemId] : []),
+  ];
 
   // Default to the env's configured publish languages if the operator
   // didn't pass any. We don't know those at this layer — leave the

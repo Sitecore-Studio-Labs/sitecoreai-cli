@@ -27,6 +27,10 @@ export const createPublishUnpublishCommand = (): Command => {
       [] as string[]
     )
     .option(
+      "--site <name>",
+      "Resolve the named site's content-tree root and add it to the target list. By default targets ONLY the root item; combine with --include-subitems to unpublish the whole site."
+    )
+    .option(
       "-l, --languages <list>",
       "Literal language list. Mutually exclusive with --languages-from-site / --all-tenant-languages.",
       collectList,

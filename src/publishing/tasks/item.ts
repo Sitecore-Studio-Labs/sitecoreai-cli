@@ -115,12 +115,12 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
 
   const directItemIds = options.itemIds ?? [];
   const paths = options.paths ?? [];
-  if (directItemIds.length === 0 && paths.length === 0) {
+  if (directItemIds.length === 0 && paths.length === 0 && !options.site) {
     throw createScaiError(
-      "Publish requires at least one --items <guid> or --paths <path>.",
+      "Publish requires at least one --items <guid>, --paths <path>, or --site <name>.",
       "INPUT_INVALID",
       {
-        hint: "Pass --items <guid> (repeatable) and/or --paths <path> (repeatable). Both can be combined in a single job; paths are resolved to IDs via Authoring GraphQL before submission.",
+        hint: "Pass --items <guid> (repeatable), --paths <path> (repeatable), and/or --site <name>. --site resolves the site's content-tree root via Sites API; add --include-subitems for the whole site.",
       }
     );
   }
@@ -143,7 +143,28 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
       logger.info(`  ${r.path} → ${r.itemId}`, "gray");
     }
   }
-  const itemIds = [...directItemIds, ...resolvedFromPaths.map((r) => r.itemId)];
+
+  // Site root resolution. Two round trips per call (discoverSites +
+  // resolveItemPathsToIds). Added to the target list; --include-subitems
+  // controls whether descendants come along.
+  let resolvedSite: { siteName: string; path: string; itemId: string } | undefined;
+  if (options.site) {
+    logger.info(`Resolving site '${options.site}' root via Sites + Authoring GraphQL...`, "gray");
+    resolvedSite = await resolveSiteRoot(environment, options.site);
+    logger.info(`  → ${resolvedSite.path} (${resolvedSite.itemId})`, "gray");
+    if (!options.includeSubitems) {
+      logger.info(
+        `Publishing only the site root item. Pass --include-subitems for the whole site.`,
+        "gray"
+      );
+    }
+  }
+
+  const itemIds = [
+    ...directItemIds,
+    ...resolvedFromPaths.map((r) => r.itemId),
+    ...(resolvedSite ? [resolvedSite.itemId] : []),
+  ];
 
   const scope: PublishAuditScope = {
     envName,

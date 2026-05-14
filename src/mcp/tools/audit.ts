@@ -50,6 +50,7 @@ import { runAuditSlugConflicts } from "@/hygiene/tasks/audit-slug-conflicts";
 import { runAuditStaleContent } from "@/hygiene/tasks/audit-stale-content";
 import { runAuditStaleUsers } from "@/hygiene/tasks/audit-stale-users";
 import { runAuditStaleWorkflow } from "@/hygiene/tasks/audit-stale-workflow";
+import { runAuditTemplateDependencies } from "@/hygiene/tasks/audit-template-dependencies";
 import { runAuditSuiteRun } from "@/hygiene/tasks/audit-suite-run";
 import { runAuditTranslationCoverage } from "@/hygiene/tasks/audit-translation-coverage";
 import { runAuditUnusedMedia } from "@/hygiene/tasks/audit-unused-media";
@@ -114,6 +115,7 @@ const SINGLE_AUDIT_RUNNERS: Record<string, LoosedRunner> = {
   "stale-content": loosen(runAuditStaleContent),
   "stale-users": loosen(runAuditStaleUsers),
   "stale-workflow": loosen(runAuditStaleWorkflow),
+  "template-dependencies": loosen(runAuditTemplateDependencies),
   "translation-coverage": loosen(runAuditTranslationCoverage),
   "unused-media": loosen(runAuditUnusedMedia),
 };

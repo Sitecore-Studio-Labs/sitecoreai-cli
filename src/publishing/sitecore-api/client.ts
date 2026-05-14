@@ -100,19 +100,36 @@ const normalizeState = (raw: string | undefined): PublishJobState =>
 
 const normalizeJob = (raw: PublishJobResponse): PublishJob => {
   const stats = (raw.statistics ?? {}) as Record<string, unknown>;
-  const processedCount =
+  // The Publishing API exposes statistics under two field sets:
+  //   - flat `processedCount` / `totalCount` (older deployments)
+  //   - rich `itemsSent` / `itemsProcessed` / `itemsFailed` (observed
+  //     live against Agents 2026-05-14)
+  // Prefer the rich set; fall back to flat.
+  const itemsProcessed =
+    typeof stats.itemsProcessed === "number" ? stats.itemsProcessed : undefined;
+  const itemsSent = typeof stats.itemsSent === "number" ? stats.itemsSent : undefined;
+  const flatProcessed =
     typeof stats.processedCount === "number" ? stats.processedCount : undefined;
-  const totalCount = typeof stats.totalCount === "number" ? stats.totalCount : undefined;
+  const flatTotal = typeof stats.totalCount === "number" ? stats.totalCount : undefined;
+
+  const state = normalizeState(raw.system?.status);
+  // `permissions.canCancel` is a *permission* flag (caller has cancel
+  // rights), not a *state* flag (the job is currently cancellable).
+  // The API returns `true` even on completed jobs because permission
+  // doesn't change. Combine both so callers get a useful "actually
+  // cancellable now" signal.
+  const stateIsCancellable = state === "queued" || state === "running";
+
   return {
     id: raw.id,
-    state: normalizeState(raw.system?.status),
+    state,
     name: raw.name ?? undefined,
     source: raw.source ?? undefined,
-    processedCount,
-    totalCount,
+    processedCount: itemsProcessed ?? flatProcessed,
+    totalCount: itemsSent ?? flatTotal,
     startedAt: raw.system?.startTime ?? undefined,
     completedAt: raw.system?.finishTime ?? undefined,
-    canCancel: Boolean(raw.permissions?.canCancel),
+    canCancel: Boolean(raw.permissions?.canCancel) && stateIsCancellable,
     raw,
   };
 };

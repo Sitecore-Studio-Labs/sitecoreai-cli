@@ -26,6 +26,7 @@ import { runAuditPersonalizationBroken } from "./audit-personalization-broken";
 import { runAuditSiteResidue } from "./audit-site-residue";
 import { runAuditStaleContent } from "./audit-stale-content";
 import { runAuditStaleWorkflow } from "./audit-stale-workflow";
+import { runAuditTemplateDependencies } from "./audit-template-dependencies";
 import { runAuditUnusedMedia } from "./audit-unused-media";
 
 /**
@@ -138,6 +139,12 @@ const AUDIT_REGISTRY: AuditDef[] = [
   { name: "site-residue", run: loosen(runAuditSiteResidue) },
   { name: "stale-content", run: loosen(runAuditStaleContent) },
   { name: "stale-workflow", run: loosen(runAuditStaleWorkflow) },
+  // template-dependencies requires --template-id; off by default in `audit all`.
+  {
+    name: "template-dependencies",
+    run: loosen(runAuditTemplateDependencies),
+    requiresExtraConfig: true,
+  },
   { name: "unused-media", run: loosen(runAuditUnusedMedia) },
 ];
 

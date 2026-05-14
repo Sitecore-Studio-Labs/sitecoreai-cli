@@ -62,6 +62,11 @@ const buildApiInput = (input: BrandReviewInput): RawRequest["input"] => {
       type: "document",
       mimeType: "text/plain",
       url: `data:text/plain;base64,${base64}`,
+      // Required per the OpenAPI spec even though the docs claim it
+      // defaults to "auto" — generated type has no `?`. Server 500s
+      // with `'name'` when this field is absent (the error is
+      // misleading; it's not actually about the name field).
+      detail: "auto",
     };
   }
   return result as RawRequest["input"];

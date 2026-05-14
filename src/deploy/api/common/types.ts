@@ -57,6 +57,18 @@ export type DeployEnvironment = {
   provisioningLastFailureMessage?: string;
   lastSuccessfulDeploymentId?: string;
   createdAt?: string;
+  /**
+   * Short base62 context identifiers (e.g. `73I2gLv5HPOrhXtgIjZoXi`)
+   * that scope content publishing/preview operations to a specific
+   * Sitecore Cloud context. Returned by `/api/environments/v2/{id}`
+   * but only surfaced here as of 2026-05-14, when the SAI Publishing
+   * API scoping work first needed them. Consumption pattern by the
+   * Publishing API (body field, header, or audience suffix) is still
+   * TBD — eleven header/query variants returned identical empty
+   * 403s, suggesting the token-scope gate fires first.
+   */
+  previewContextId?: string;
+  liveContextId?: string;
 };
 
 export const DEFAULT_DEPLOY_API_BASE = "https://xmclouddeploy-api.sitecorecloud.io";

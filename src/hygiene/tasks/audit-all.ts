@@ -22,6 +22,7 @@ import { runAuditMissingMeta } from "./audit-missing-meta";
 import { runAuditOrphans } from "./audit-orphans";
 import { runAuditPageDesignOrphans } from "./audit-page-design-orphans";
 import { runAuditPersonalizationBroken } from "./audit-personalization-broken";
+import { runAuditSiteResidue } from "./audit-site-residue";
 import { runAuditStaleContent } from "./audit-stale-content";
 import { runAuditStaleWorkflow } from "./audit-stale-workflow";
 import { runAuditUnusedMedia } from "./audit-unused-media";
@@ -119,6 +120,7 @@ const AUDIT_REGISTRY: AuditDef[] = [
   { name: "orphans", run: runAuditOrphans as never },
   { name: "page-design-orphans", run: runAuditPageDesignOrphans as never },
   { name: "personalization-broken", run: runAuditPersonalizationBroken as never },
+  { name: "site-residue", run: runAuditSiteResidue as never },
   { name: "stale-content", run: runAuditStaleContent as never },
   { name: "stale-workflow", run: runAuditStaleWorkflow as never },
   { name: "unused-media", run: runAuditUnusedMedia as never },

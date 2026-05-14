@@ -24,6 +24,7 @@ import { createAuditLanguageDataCommand } from "./language-data";
 import { createAuditOrphansCommand } from "./orphans";
 import { createAuditPageDesignOrphansCommand } from "./page-design-orphans";
 import { createAuditPersonalizationBrokenCommand } from "./personalization-broken";
+import { createAuditSiteResidueCommand } from "./site-residue";
 import { createAuditStaleContentCommand } from "./stale-content";
 import { createAuditStaleWorkflowCommand } from "./stale-workflow";
 import { createAuditUnusedMediaCommand } from "./unused-media";
@@ -53,6 +54,7 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditPageDesignOrphansCommand());
   command.addCommand(createAuditPersonalizationBrokenCommand());
   command.addCommand(createAuditRoleBloatCommand());
+  command.addCommand(createAuditSiteResidueCommand());
   command.addCommand(createAuditSlugConflictsCommand());
   command.addCommand(createAuditStaleContentCommand());
   command.addCommand(createAuditStaleUsersCommand());
@@ -74,6 +76,7 @@ export const createAuditCommand = (): Command => {
       "  $ scai audit personalization-broken list\n" +
       "  $ scai audit orphans list\n" +
       "  $ scai audit stale-workflow list --days 60\n" +
+      "  $ scai audit site-residue list\n" +
       "  $ scai audit unused-media list --json\n" +
       "  $ scai audit language-data list --languages en,fr\n"
   );

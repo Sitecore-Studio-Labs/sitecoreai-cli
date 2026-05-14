@@ -52,7 +52,12 @@ const buildApiInput = (input: BrandReviewInput): RawRequest["input"] => {
   const result: Record<string, unknown> = { ...(input.extra ?? {}) };
   if (input.text !== undefined) {
     const base64 = Buffer.from(input.text, "utf8").toString("base64");
-    result.content = {
+    // Use the `document` key — every working example in the OpenAPI
+    // spec puts an ExtractableFile under `document`, `image`, or
+    // `files`. The `content` key only appears in the bare-text
+    // example, which the server crashes on (500 'name'). Pick a key
+    // the server is known to accept.
+    result.document = {
       name: input.label ?? "input.txt",
       type: "document",
       mimeType: "text/plain",

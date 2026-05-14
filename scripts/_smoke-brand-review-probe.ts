@@ -103,6 +103,23 @@ const main = async (): Promise<void> => {
     //   - overallScore aggregation (client-side min)
     process.stderr.write("[2/2] POST /api/skills/v1/brandreview/generate...\n");
     const client: BrandApiClientOptions = { orgId, credential };
+    // Tap fetch so the request body is visible to the probe — the
+    // server's error messages are opaque, so we want to see exactly
+    // what scai sent over the wire.
+    const realFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = async (
+      url: Parameters<typeof globalThis.fetch>[0],
+      init?: Parameters<typeof globalThis.fetch>[1]
+    ): ReturnType<typeof globalThis.fetch> => {
+      if (
+        typeof url === "string" &&
+        url.includes("/brandreview/generate") &&
+        init?.body
+      ) {
+        process.stderr.write(`\n=== wire request body ===\n${init.body}\n\n`);
+      }
+      return realFetch(url, init);
+    };
     const result = await generateBrandReview({
       client,
       input: { text: PROBE_TEXT, label: "probe.txt" },

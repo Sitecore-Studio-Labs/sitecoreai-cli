@@ -236,7 +236,17 @@ export const resolveDeployEnvironmentId = async (
   },
   options: { id?: string; name?: string; project?: string }
 ): Promise<string> => {
-  const selection = options.id ?? options.name;
+  // `--id` is authoritative: skip the lookup round-trip entirely. The
+  // previous behaviour validated `--id` against a paginated project
+  // listing (`fetchProjectEnvironments` returns only the first page),
+  // which made `delete --id <known-good-id>` fall over with a spurious
+  // "not found" the moment a project grew past 10 environments. If the
+  // ID is wrong, the API call that follows will surface the 404 with
+  // its own clear error — no need to pre-validate.
+  if (options.id) {
+    return options.id;
+  }
+  const selection = options.name;
   if (context.whatIf) {
     if (selection) {
       return selection;

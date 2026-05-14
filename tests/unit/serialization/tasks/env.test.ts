@@ -16,6 +16,7 @@ const getDeployToken = vi.fn();
 const clearCmTokens = vi.fn();
 const clearDeployToken = vi.fn();
 const setDeployToken = vi.fn();
+const setCmTokens = vi.fn().mockResolvedValue(true);
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getCmTokens,
@@ -23,6 +24,7 @@ vi.mock("../../../../src/shared/keychain", () => ({
   clearCmTokens,
   clearDeployToken,
   setDeployToken,
+  setCmTokens,
 }));
 
 const requestClientCredentialsToken = vi.fn();

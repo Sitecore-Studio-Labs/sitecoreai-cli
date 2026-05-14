@@ -2,10 +2,14 @@ import { openBaseline, splitByBaseline } from "../baseline";
 import { writeAuditOutput, type OutputFormat } from "../output-adapters";
 import { type HygieneCommonOptions, toLogger } from "./shared";
 import { runAuditAltTextMissing } from "./audit-alt-text-missing";
+import { runAuditBrokenImages } from "./audit-broken-images";
 import { runAuditBrokenLinks } from "./audit-broken-links";
 import { runAuditEmptyRoles } from "./audit-empty-roles";
+import { runAuditFallbackDrift } from "./audit-fallback-drift";
 import { runAuditRoleBloat } from "./audit-role-bloat";
+import { runAuditSlugConflicts } from "./audit-slug-conflicts";
 import { runAuditStaleUsers } from "./audit-stale-users";
+import { runAuditTranslationCoverage } from "./audit-translation-coverage";
 import { runAuditDatasourceMissing } from "./audit-datasource-missing";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import { runAuditDuplicates } from "./audit-duplicates";
@@ -88,10 +92,20 @@ interface AuditDef {
 
 const AUDIT_REGISTRY: AuditDef[] = [
   { name: "alt-text-missing", run: runAuditAltTextMissing as never },
+  // broken-images makes external HTTP requests; off by default in `audit all`.
+  { name: "broken-images", run: runAuditBrokenImages as never, requiresExtraConfig: true },
   { name: "broken-links", run: runAuditBrokenLinks as never },
   { name: "empty-roles", run: runAuditEmptyRoles as never },
+  // fallback-drift + translation-coverage need explicit --target-languages.
+  { name: "fallback-drift", run: runAuditFallbackDrift as never, requiresExtraConfig: true },
   { name: "role-bloat", run: runAuditRoleBloat as never },
+  { name: "slug-conflicts", run: runAuditSlugConflicts as never },
   { name: "stale-users", run: runAuditStaleUsers as never },
+  {
+    name: "translation-coverage",
+    run: runAuditTranslationCoverage as never,
+    requiresExtraConfig: true,
+  },
   { name: "datasource-missing", run: runAuditDatasourceMissing as never },
   { name: "dead-templates", run: runAuditDeadTemplates as never },
   { name: "duplicates", run: runAuditDuplicates as never },

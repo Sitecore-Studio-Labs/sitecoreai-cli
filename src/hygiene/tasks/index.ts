@@ -96,6 +96,21 @@ export type { AuditEmptyRolesOptions, EmptyRoleReport } from "./audit-empty-role
 export { runAuditStaleUsers } from "./audit-stale-users";
 export type { AuditStaleUsersOptions, StaleUserReport } from "./audit-stale-users";
 
+export { runAuditBrokenImages } from "./audit-broken-images";
+export type { AuditBrokenImagesOptions, BrokenImageReport } from "./audit-broken-images";
+
+export { runAuditSlugConflicts } from "./audit-slug-conflicts";
+export type { AuditSlugConflictsOptions, SlugConflictGroup } from "./audit-slug-conflicts";
+
+export { runAuditTranslationCoverage } from "./audit-translation-coverage";
+export type {
+  AuditTranslationCoverageOptions,
+  TranslationCoverageReport,
+} from "./audit-translation-coverage";
+
+export { runAuditFallbackDrift } from "./audit-fallback-drift";
+export type { AuditFallbackDriftOptions, FallbackDriftReport } from "./audit-fallback-drift";
+
 export { runAuditAll, auditNames } from "./audit-all";
 export type { AuditAllOptions } from "./audit-all";
 

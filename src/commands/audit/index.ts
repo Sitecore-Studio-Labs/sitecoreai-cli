@@ -5,10 +5,14 @@ import { createAuditBaselineCommand } from "./baseline";
 import { createAuditBrokenLinksCommand } from "./broken-links";
 import { createAuditHeavyTemplatesCommand } from "./heavy-templates";
 import { createAuditLargeFieldsCommand } from "./large-fields";
+import { createAuditBrokenImagesCommand } from "./broken-images";
 import { createAuditEmptyRolesCommand } from "./empty-roles";
+import { createAuditFallbackDriftCommand } from "./fallback-drift";
 import { createAuditMissingMetaCommand } from "./missing-meta";
 import { createAuditRoleBloatCommand } from "./role-bloat";
+import { createAuditSlugConflictsCommand } from "./slug-conflicts";
 import { createAuditStaleUsersCommand } from "./stale-users";
+import { createAuditTranslationCoverageCommand } from "./translation-coverage";
 import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
 import { createAuditDuplicatesCommand } from "./duplicates";
@@ -30,6 +34,7 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditAllCommand());
   command.addCommand(createAuditAltTextMissingCommand());
   command.addCommand(createAuditBaselineCommand());
+  command.addCommand(createAuditBrokenImagesCommand());
   command.addCommand(createAuditBrokenLinksCommand());
   command.addCommand(createAuditHeavyTemplatesCommand());
   command.addCommand(createAuditLargeFieldsCommand());
@@ -39,15 +44,18 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditDuplicatesCommand());
   command.addCommand(createAuditEmptyItemsCommand());
   command.addCommand(createAuditEmptyRolesCommand());
+  command.addCommand(createAuditFallbackDriftCommand());
   command.addCommand(createAuditFindReplaceCommand());
   command.addCommand(createAuditLanguageDataCommand());
   command.addCommand(createAuditOrphansCommand());
   command.addCommand(createAuditPageDesignOrphansCommand());
   command.addCommand(createAuditPersonalizationBrokenCommand());
   command.addCommand(createAuditRoleBloatCommand());
+  command.addCommand(createAuditSlugConflictsCommand());
   command.addCommand(createAuditStaleContentCommand());
   command.addCommand(createAuditStaleUsersCommand());
   command.addCommand(createAuditStaleWorkflowCommand());
+  command.addCommand(createAuditTranslationCoverageCommand());
   command.addCommand(createAuditUnusedMediaCommand());
 
   command.addHelpText(

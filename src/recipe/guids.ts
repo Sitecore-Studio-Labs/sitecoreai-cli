@@ -564,10 +564,7 @@ export const templatePathRefKey = (path: string): string =>
  * captured-itemId map before planning the field write. Same identity
  * for the same path forever.
  */
-export const NAMESPACE_STANDARD_VALUES_BY_PATH = uuidv5(
-  "standard-values-by-path",
-  NAMESPACE_ROOT
-);
+export const NAMESPACE_STANDARD_VALUES_BY_PATH = uuidv5("standard-values-by-path", NAMESPACE_ROOT);
 export const standardValuesPathRefKey = (templatePath: string): string =>
   uuidv5(templatePath, NAMESPACE_STANDARD_VALUES_BY_PATH);
 
@@ -581,22 +578,13 @@ export const standardValuesPathRefKey = (templatePath: string): string =>
  * deeper levels.
  */
 export const NAMESPACE_WORKFLOW = uuidv5("workflow", NAMESPACE_ROOT);
-export const workflowId = (handle: string): string =>
-  uuidv5(handle, NAMESPACE_WORKFLOW);
+export const workflowId = (handle: string): string => uuidv5(handle, NAMESPACE_WORKFLOW);
 export const workflowStateId = (handle: string, stateKey: string): string =>
   uuidv5(`state:${stateKey}`, workflowId(handle));
-export const workflowCommandId = (
-  handle: string,
-  stateKey: string,
-  commandKey: string
-): string =>
+export const workflowCommandId = (handle: string, stateKey: string, commandKey: string): string =>
   uuidv5(`command:${commandKey}`, workflowStateId(handle, stateKey));
 /** Webhook submit/validation action under a workflow STATE's `Actions` folder. */
-export const workflowStateActionId = (
-  handle: string,
-  stateKey: string,
-  index: number
-): string =>
+export const workflowStateActionId = (handle: string, stateKey: string, index: number): string =>
   uuidv5(`action:${index}`, workflowStateId(handle, stateKey));
 /** Webhook validation action under a workflow COMMAND's `Actions` folder. */
 export const workflowCommandValidationId = (
@@ -604,8 +592,7 @@ export const workflowCommandValidationId = (
   stateKey: string,
   commandKey: string,
   index: number
-): string =>
-  uuidv5(`validation:${index}`, workflowCommandId(handle, stateKey, commandKey));
+): string => uuidv5(`validation:${index}`, workflowCommandId(handle, stateKey, commandKey));
 /** Workflow group folder under /sitecore/system/Workflows (when meta.tax.group is set). */
 export const workflowGroupFolderId = (group: string): string =>
   uuidv5(`group:${group}`, NAMESPACE_WORKFLOW);

@@ -1,5 +1,6 @@
+import { v5 as uuidv5 } from "uuid";
 import { createScaiError } from "@/shared/errors";
-import { contentItemId, fieldId, templateId } from "../guids";
+import { contentItemId, fieldId, templateId, workflowId } from "../guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -110,12 +111,37 @@ export function compileContentItemRecipe(
     } satisfies SetFieldOp);
   }
 
+  if (recipe.workflow) {
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `content-item-workflow:${recipe.handle}`,
+      itemRefKey,
+      fieldId: deriveStandardFieldId(itemRefKey, "__Workflow"),
+      fieldName: "__Workflow",
+      value: { kind: "ref-recipe", refKey: workflowId(recipe.workflow) },
+    } satisfies SetFieldOp);
+  }
+
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: recipe.handle,
     operations,
   });
 }
+
+/**
+ * Stable refKey for a Sitecore standard field on `itemRefKey`. Mirrors
+ * the pattern in `compile/workflow.ts` — the canonical `fieldName` is
+ * what the apply path uses for resolution, so `fieldId` only needs to
+ * be a deterministic per-(item, field) refKey.
+ */
+const STANDARD_FIELD_REFKEY_NAMESPACE = uuidv5(
+  "standard-field",
+  "d6c28e9f-21f3-56ee-ada3-f2a947c3d475" // NAMESPACE_ROOT
+);
+const deriveStandardFieldId = (parentRefKey: string, fieldName: string): string =>
+  uuidv5(`${parentRefKey}:${fieldName}`, STANDARD_FIELD_REFKEY_NAMESPACE);
 
 /**
  * Format a recipe `date` (ISO `YYYY-MM-DD`) or `datetime` (ISO 8601 with

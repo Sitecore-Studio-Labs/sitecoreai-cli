@@ -4,7 +4,7 @@ import {
   compileRecipe,
   type CompileContext,
 } from "../../../src/recipe/compile";
-import { templateId, standardValuesId } from "../../../src/recipe/guids";
+import { templateId, standardValuesId, workflowId } from "../../../src/recipe/guids";
 import {
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
@@ -79,6 +79,50 @@ describe("compileContentTemplateRecipe", () => {
       kind: "ref-recipe-list",
       refKeys: [templateId(SITE, "accordion-item@1"), templateId(SITE, "rich-text-block@1")],
     });
+  });
+
+  it("emits a __Default workflow SetField on Standard Values when defaultWorkflow is set", () => {
+    const ir = compileContentTemplateRecipe(
+      {
+        kind: "content-template",
+        schemaVersion: "1",
+        handle: "article@1",
+        name: "Article",
+        displayName: "Article",
+        fields: [{ name: "Title", shape: "text" }],
+        defaultWorkflow: "editorial@1",
+      },
+      CONTEXT
+    );
+    const wf = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "content-template-default-workflow:article@1"
+    )!;
+    expect(wf).toBeDefined();
+    expect(wf.itemRefKey).toBe(standardValuesId(SITE, "article@1"));
+    expect(wf.fieldName).toBe("__Default workflow");
+    expect(wf.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("editorial@1"),
+    });
+  });
+
+  it("omits the __Default workflow SetField when defaultWorkflow is unset", () => {
+    const ir = compileContentTemplateRecipe(
+      {
+        kind: "content-template",
+        schemaVersion: "1",
+        handle: "minimal@1",
+        name: "Minimal",
+        displayName: "Minimal",
+        fields: [{ name: "Title", shape: "text" }],
+      },
+      CONTEXT
+    );
+    const wf = ir.operations.find(
+      (op) => op.op === "SetField" && op.label.startsWith("content-template-default-workflow:")
+    );
+    expect(wf).toBeUndefined();
   });
 
   it("the emitted template uses STANDARD_TEMPLATE_ID as its base", () => {

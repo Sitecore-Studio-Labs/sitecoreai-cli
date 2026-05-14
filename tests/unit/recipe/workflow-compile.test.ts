@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { compileWorkflowRecipe } from "../../../src/recipe/compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "../../../src/recipe/compile/webhook-authorization";
 import {
+  standardValuesId,
+  standardValuesPathRefKey,
   webhookAuthorizationId,
   workflowCommandId,
   workflowCommandValidationId,
@@ -191,7 +193,15 @@ describe("compileWorkflowRecipe — IR shape", () => {
               },
             ],
           },
-          { key: "approved", name: "Approved", displayName: "Approved", final: true, preview: false, actions: [], commands: [] },
+          {
+            key: "approved",
+            name: "Approved",
+            displayName: "Approved",
+            final: true,
+            preview: false,
+            actions: [],
+            commands: [],
+          },
         ],
       }),
       baseContext
@@ -211,9 +221,7 @@ describe("compileWorkflowRecipe — IR shape", () => {
     });
 
     const validation = creates.find((o) => o.label.includes("workflow-validation:"))!;
-    expect(validation.id).toBe(
-      workflowCommandValidationId("test-wf@1", "draft", "approve", 0)
-    );
+    expect(validation.id).toBe(workflowCommandValidationId("test-wf@1", "draft", "approve", 0));
     expect(validation.templateOf).toEqual({
       kind: "ref-path",
       value: "/sitecore/templates/System/Workflow/Webhook Validation Action",
@@ -229,10 +237,7 @@ describe("compileWorkflowRecipe — IR shape", () => {
 describe("compileWorkflowRecipe — validation", () => {
   it("throws when initialState references an undeclared state", () => {
     expect(() =>
-      compileWorkflowRecipe(
-        minimalWorkflow({ initialState: "made-up" }),
-        baseContext
-      )
+      compileWorkflowRecipe(minimalWorkflow({ initialState: "made-up" }), baseContext)
     ).toThrowError(/initialState='made-up'/);
   });
 
@@ -260,7 +265,15 @@ describe("compileWorkflowRecipe — validation", () => {
                 },
               ],
             },
-            { key: "approved", name: "Approved", displayName: "Approved", final: true, preview: false, actions: [], commands: [] },
+            {
+              key: "approved",
+              name: "Approved",
+              displayName: "Approved",
+              final: true,
+              preview: false,
+              actions: [],
+              commands: [],
+            },
           ],
         }),
         baseContext
@@ -273,22 +286,87 @@ describe("compileWorkflowRecipe — validation", () => {
       compileWorkflowRecipe(
         minimalWorkflow({
           states: [
-            { key: "draft", name: "Draft", displayName: "Draft", final: false, preview: false, actions: [], commands: [] },
-            { key: "approved", name: "Approved", displayName: "Approved", final: false, preview: false, actions: [], commands: [] },
+            {
+              key: "draft",
+              name: "Draft",
+              displayName: "Draft",
+              final: false,
+              preview: false,
+              actions: [],
+              commands: [],
+            },
+            {
+              key: "approved",
+              name: "Approved",
+              displayName: "Approved",
+              final: false,
+              preview: false,
+              actions: [],
+              commands: [],
+            },
           ],
         }),
         baseContext
       )
     ).toThrowError(/at least one state with final=true/);
   });
+});
 
-  it("throws when bindings.templates is non-empty (deferred feature)", () => {
-    expect(() =>
-      compileWorkflowRecipe(
-        minimalWorkflow({ bindings: { templates: ["blog-article@1"] } }),
-        baseContext
-      )
-    ).toThrowError(/bindings.templates/);
+describe("compileWorkflowRecipe — bindings.templates", () => {
+  it("emits a __Default workflow SetField for an intra-recipe handle binding", () => {
+    const ir = compileWorkflowRecipe(
+      minimalWorkflow({ bindings: { templates: ["blog-article@1"] } }),
+      baseContext
+    );
+    const binding = ir.operations.find(
+      (o): o is SetFieldOp =>
+        o.op === "SetField" && o.label === "workflow-binding:test-wf@1:blog-article@1"
+    )!;
+    expect(binding).toBeDefined();
+    expect(binding.itemRefKey).toBe(standardValuesId("default", "blog-article@1"));
+    expect(binding.fieldName).toBe("__Default workflow");
+    expect(binding.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("test-wf@1"),
+    });
+    expect(binding.latePath).toBeUndefined();
+  });
+
+  it("emits a __Default workflow SetField with latePath for an absolute template path binding", () => {
+    const templatePath = "/sitecore/templates/Foundation/Article";
+    const ir = compileWorkflowRecipe(
+      minimalWorkflow({ bindings: { templates: [templatePath] } }),
+      baseContext
+    );
+    const binding = ir.operations.find(
+      (o): o is SetFieldOp =>
+        o.op === "SetField" && o.label === `workflow-binding:test-wf@1:${templatePath}`
+    )!;
+    expect(binding).toBeDefined();
+    expect(binding.itemRefKey).toBe(standardValuesPathRefKey(templatePath));
+    expect(binding.fieldName).toBe("__Default workflow");
+    expect(binding.latePath).toBe(`${templatePath}/__Standard Values`);
+    expect(binding.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("test-wf@1"),
+    });
+  });
+
+  it("emits one binding op per template entry, mixing both kinds", () => {
+    const ir = compileWorkflowRecipe(
+      minimalWorkflow({
+        bindings: {
+          templates: ["blog-article@1", "/sitecore/templates/Foundation/Page"],
+        },
+      }),
+      baseContext
+    );
+    const bindings = ir.operations.filter(
+      (o): o is SetFieldOp => o.op === "SetField" && o.label.startsWith("workflow-binding:")
+    );
+    expect(bindings).toHaveLength(2);
+    expect(bindings[0]!.latePath).toBeUndefined();
+    expect(bindings[1]!.latePath).toBe("/sitecore/templates/Foundation/Page/__Standard Values");
   });
 });
 
@@ -365,8 +443,7 @@ describe("compileWebhookAuthorizationRecipe", () => {
     });
     expect(oauthOp.templateOf).toEqual({
       kind: "ref-path",
-      value:
-        "/sitecore/templates/System/Webhooks/Authorizations/OAuth2 Client Credentials Grant",
+      value: "/sitecore/templates/System/Webhooks/Authorizations/OAuth2 Client Credentials Grant",
     });
     expect(oauthOp.fields.find((f) => f.fieldName === "Scope")?.value).toEqual({
       kind: "string",

@@ -539,6 +539,16 @@ export const ContentTemplateRecipeSchema = z.object({
    * that allows item content templates underneath).
    */
   insertOptions: z.array(z.string()).optional(),
+  /**
+   * Optional `WorkflowRecipe` handle to bind on the template's
+   * `__Standard Values` item. When set, the compiler emits a
+   * `SetField` writing `__Default workflow` to the workflow's refKey,
+   * so new items conforming to this template enter the workflow at
+   * its initial state automatically. Equivalent to declaring the same
+   * handle in the workflow recipe's `bindings.templates[]` — pick
+   * whichever side is more natural to author.
+   */
+  defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
 export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
@@ -723,6 +733,16 @@ export const ContentItemRecipeSchema = z.object({
   }),
   /** Field values keyed by field name on the template. */
   fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /**
+   * Optional `WorkflowRecipe` handle to attach this item to. When set,
+   * the compiler emits a `SetField` writing the item's `__Workflow`
+   * field to the workflow's refKey. Use this to override the template's
+   * `__Default workflow` for a single item, or to put items under a
+   * workflow without a template-level default. The item's
+   * `__Workflow state` is not written here — Sitecore initialises new
+   * items at the workflow's initial state from the workflow definition.
+   */
+  workflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
 export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
@@ -1417,10 +1437,7 @@ const WorkflowBindingsSchema = z
      */
     templates: z
       .array(
-        z.union([
-          z.string().regex(HANDLE_PATTERN),
-          z.string().startsWith("/sitecore/templates/"),
-        ])
+        z.union([z.string().regex(HANDLE_PATTERN), z.string().startsWith("/sitecore/templates/")])
       )
       .default([]),
   })

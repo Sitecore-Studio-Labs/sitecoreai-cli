@@ -6,7 +6,7 @@ import {
   compileContentItemRecipe,
   compileRecipe,
 } from "../../../src/recipe/compile";
-import { contentItemId, fieldId, templateId } from "../../../src/recipe/guids";
+import { contentItemId, fieldId, templateId, workflowId } from "../../../src/recipe/guids";
 import type { ContentFieldValue, ContentItemRecipe } from "../../../src/recipe/schema/recipe";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
@@ -102,6 +102,29 @@ describe("compileContentItemRecipe — IR shape", () => {
         renderingsRoot: CONTEXT.renderingsRoot,
       })
     ).toThrow(/contentItemsRoot/);
+  });
+
+  it("emits a SetField on __Workflow when workflow is set", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}, { workflow: "blog-approval@1" }), CONTEXT);
+    const wf = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "content-item-workflow:test-content@1"
+    )!;
+    expect(wf).toBeDefined();
+    expect(wf.itemRefKey).toBe(contentItemId(SITE, "test-content@1"));
+    expect(wf.fieldName).toBe("__Workflow");
+    expect(wf.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("blog-approval@1"),
+    });
+  });
+
+  it("omits the __Workflow SetField when workflow is unset", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}), CONTEXT);
+    const wf = ir.operations.find(
+      (op) => op.op === "SetField" && op.label.startsWith("content-item-workflow:")
+    );
+    expect(wf).toBeUndefined();
   });
 });
 

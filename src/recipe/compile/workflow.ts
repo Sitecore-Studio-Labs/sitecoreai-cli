@@ -20,10 +20,7 @@ import {
 } from "../ir/operations";
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { defaultPolicyForRecipe } from "../policy";
-import {
-  WorkflowRecipeSchema,
-  type WorkflowRecipe,
-} from "../schema/recipe";
+import { WorkflowRecipeSchema, type WorkflowRecipe } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 import { v5 as uuidv5 } from "uuid";
 
@@ -47,12 +44,15 @@ import { v5 as uuidv5 } from "uuid";
  *      `Webhook Submit Action` or `Webhook Validation Action`.
  *   7. One validation item per `command.validations[]` (Webhook
  *      Validation Action).
- *
- * Bindings (`recipe.bindings.templates`) are accepted by the schema but
- * NOT emitted by this compiler yet — they require a cross-recipe seed
- * for the bound template's `__Standard Values` item path. Surface an
- * `INPUT_INVALID` error when non-empty so authors don't silently lose
- * the binding intent.
+ *   8. One `SetField` op per `bindings.templates[]` entry, writing the
+ *      `__Default workflow` field on each bound template's
+ *      `__Standard Values` item to a `ref-recipe` pointing at the
+ *      workflow item. Entries that look like a recipe handle resolve
+ *      via `standardValuesId(site, handle)` (the matching
+ *      `ContentTemplateRecipe` / `ComponentTemplateRecipe` must ship in
+ *      the same set). Entries that look like an absolute template path
+ *      resolve via `latePath: "<path>/__Standard Values"` so the
+ *      executor seeds the captured-itemId map on demand.
  *
  * Workflow-specific field GUIDs are not published as a public contract
  * by Sitecore. The executor's `FieldValueInput.name` fallback resolves
@@ -71,22 +71,12 @@ export function compileWorkflowRecipe(
   context: CompileContext,
   emittedFolders: Set<string> = new Set()
 ): OperationIr {
-  void context;
   const recipe = WorkflowRecipeSchema.parse(input);
 
   validateWorkflowRecipe(recipe);
 
-  if (recipe.bindings.templates.length > 0) {
-    throw createScaiError(
-      `Workflow recipe '${recipe.handle}' declares bindings.templates but the binding compiler is not yet implemented.`,
-      "INPUT_INVALID",
-      {
-        hint: "Drop bindings.templates from the recipe for now and set __Default workflow on each template's Standard Values manually. Binding support is tracked as a follow-up.",
-      }
-    );
-  }
-
   const policy = defaultPolicyForRecipe(recipe.kind);
+  const site = siteOf(context);
   const operations: Operation[] = [];
 
   // 1. Optional group folder.
@@ -278,6 +268,27 @@ export function compileWorkflowRecipe(
     }
   }
 
+  // 8. Bindings — point each bound template's `__Default workflow` field
+  //    at this workflow. Intra-recipe handles resolve via the SV refKey
+  //    the matching content/component-template recipe emits; absolute
+  //    template paths resolve via late-path lookup of the SV item.
+  for (const binding of recipe.bindings.templates) {
+    const isPath = binding.startsWith("/sitecore/templates/");
+    const svRefKey = isPath ? standardValuesPathRefKey(binding) : standardValuesId(site, binding);
+    const fieldId = deriveFieldId(svRefKey, "__Default workflow");
+    const setField: SetFieldOp = {
+      op: "SetField",
+      policy,
+      label: `workflow-binding:${recipe.handle}:${binding}`,
+      itemRefKey: svRefKey,
+      fieldId,
+      fieldName: "__Default workflow",
+      value: { kind: "ref-recipe", refKey: workflowRefKey },
+      ...(isPath ? { latePath: joinPath(binding, "__Standard Values") } : {}),
+    };
+    operations.push(setField);
+  }
+
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: recipe.handle,
@@ -314,7 +325,10 @@ function validateWorkflowRecipe(recipe: WorkflowRecipe): void {
       "INPUT_INVALID"
     );
   }
-  const checkAction = (action: { authorizationRef?: string; authorizationPath?: string }, where: string) => {
+  const checkAction = (
+    action: { authorizationRef?: string; authorizationPath?: string },
+    where: string
+  ) => {
     if (action.authorizationRef && action.authorizationPath) {
       throw createScaiError(
         `Workflow '${recipe.handle}' ${where}: use either authorizationRef OR authorizationPath, not both.`,
@@ -323,9 +337,7 @@ function validateWorkflowRecipe(recipe: WorkflowRecipe): void {
     }
   };
   for (const state of recipe.states) {
-    state.actions.forEach((a) =>
-      checkAction(a, `state '${state.key}' action '${a.key}'`)
-    );
+    state.actions.forEach((a) => checkAction(a, `state '${state.key}' action '${a.key}'`));
     for (const command of state.commands) {
       command.validations.forEach((v) =>
         checkAction(v, `state '${state.key}' command '${command.key}' validation '${v.key}'`)

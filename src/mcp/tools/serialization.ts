@@ -17,6 +17,7 @@
 import { z } from "zod";
 import { runPull, runPush, runDiff, runValidate, runInfo } from "@/serialization/tasks";
 import { loadConfigAndModules } from "@/serialization/tasks/shared";
+import type { SerializationProgressEvent } from "@/serialization/tasks/types";
 import { publishItems, fetchItemMetadata } from "@/serialization/sitecore-api";
 import { createFieldFilterSet } from "@/serialization/field-filter";
 import { createScaiError } from "@/shared/errors";
@@ -136,7 +137,7 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
       ...environmentBindingShape,
       ...allowWriteShape,
     },
-    handler: async (input, context) => {
+    handler: async (input, context, extra) => {
       const envName = input.environmentName ?? context.envName;
       const isWrite =
         input.direction === "push" || (input.direction === "diff" && input.pushOnDiff);
@@ -147,11 +148,47 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
         );
       }
       const include = input.modules ?? [];
+      let dbCount = 0;
+      const emit = (event: SerializationProgressEvent): void => {
+        switch (event.kind) {
+          case "database-start":
+            dbCount += 1;
+            void extra.sendProgress(
+              dbCount,
+              undefined,
+              `Starting ${event.database} (${event.subtreeCount} subtree(s))`
+            );
+            break;
+          case "database-changes-detected":
+            void extra.sendProgress(
+              dbCount,
+              undefined,
+              `${event.database}: ${event.changes} change(s) detected`
+            );
+            break;
+          case "database-applied":
+            void extra.sendProgress(
+              dbCount,
+              undefined,
+              `${event.database}: applied ${event.changes} change(s)${event.whatIf ? " (whatIf)" : ""}`
+            );
+            break;
+          case "database-skipped":
+            void extra.sendProgress(
+              dbCount,
+              undefined,
+              `${event.database}: skipped (${event.reason})`
+            );
+            break;
+        }
+      };
       const baseOptions = baseSyncOptions(context.configPath, envName, {
         whatIf: input.whatIf,
         allowWrite: input.allowWrite,
         include,
         exclude: [],
+        emit,
+        signal: extra.signal,
       });
       switch (input.direction) {
         case "pull":
@@ -184,6 +221,7 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
           environment: envName,
           whatIf: Boolean(input.whatIf),
           modulesIncluded: include,
+          databasesProcessed: dbCount,
           status: "completed",
         },
       };

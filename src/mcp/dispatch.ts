@@ -12,7 +12,15 @@
  *     `allowWrite !== true` short-circuit to an INPUT_INVALID envelope
  *     before the handler runs — no side effects, no library import.
  *
- *  3. Error envelope conversion. Anything the handler throws (or any
+ *  3. The cancellation gate. The SDK's `RequestHandlerExtra.signal`
+ *     fires `aborted` when the client sends `notifications/cancelled`.
+ *     We thread that signal through to the handler (and the handler
+ *     plumbs it into the library). When the handler returns AND
+ *     `signal.aborted` is true, we convert the result to a `CANCELLED`
+ *     envelope so the client sees consistent typed-error shape rather
+ *     than a half-applied success.
+ *
+ *  4. Error envelope conversion. Anything the handler throws (or any
  *     ScaiError it returns by raising) lands in `toolResultFromError`
  *     and crosses the wire as `{ isError: true, content, structuredContent }`.
  */
@@ -21,7 +29,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createScaiError } from "@/shared/errors";
 import type { McpContext } from "./auth";
 import { toolResultFromError } from "./errors";
-import type { ToolDescriptor } from "./registry";
+import type { ToolDescriptor, ToolExtra } from "./registry";
 import { ALLOW_WRITE_ERROR_HINT } from "./schemas/common";
 import { redactStructured } from "./redact";
 
@@ -37,7 +45,15 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
 
 export interface DispatchOptions {
   context: McpContext;
+  extra: ToolExtra;
 }
+
+const cancelledEnvelope = (toolName: string): CallToolResult =>
+  toolResultFromError(
+    createScaiError(`Tool '${toolName}' was cancelled by the client.`, "CANCELLED", {
+      hint: "Re-invoke the same tool to resume; partially-applied writes (if any) are documented in the tool result.",
+    })
+  );
 
 export const dispatchTool = async (
   descriptor: ToolDescriptor,
@@ -45,6 +61,11 @@ export const dispatchTool = async (
   options: DispatchOptions
 ): Promise<CallToolResult> =>
   enqueue(async () => {
+    // Short-circuit if the client already cancelled before dispatch got
+    // a slot on the mutex.
+    if (options.extra.signal.aborted) {
+      return cancelledEnvelope(descriptor.name);
+    }
     try {
       if (descriptor.auth === "write") {
         const allowWrite = input["allowWrite"] === true;
@@ -56,7 +77,13 @@ export const dispatchTool = async (
           );
         }
       }
-      const result = await descriptor.handler(input as never, options.context);
+      const result = await descriptor.handler(input as never, options.context, options.extra);
+      // If the handler returned a non-error result but the client
+      // cancelled while it ran, convert it to a CANCELLED envelope so
+      // the client doesn't see "success" for work it asked to stop.
+      if (options.extra.signal.aborted && !result.isError) {
+        return cancelledEnvelope(descriptor.name);
+      }
       if (result.isError) {
         return result;
       }
@@ -68,6 +95,11 @@ export const dispatchTool = async (
       }
       return result;
     } catch (error) {
+      // AbortError from an aborted library call surfaces as a thrown
+      // DOMException-shaped error. Coerce to CANCELLED for the envelope.
+      if (options.extra.signal.aborted) {
+        return cancelledEnvelope(descriptor.name);
+      }
       return toolResultFromError(error);
     }
   });

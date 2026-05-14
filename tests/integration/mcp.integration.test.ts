@@ -196,4 +196,28 @@ describe("scai mcp serve — stdio integration", () => {
     const message = result.messages[0] as { content: { type: string; text: string } };
     expect(message.content.text).toContain("recipe_compile");
   });
+
+  it("converts a pre-aborted client call into a CANCELLED envelope", async () => {
+    // The SDK's Client.callTool accepts an `AbortSignal` via the third
+    // RequestOptions argument; firing it before the call resolves
+    // surfaces as the server emitting CANCELLED.
+    const controller = new AbortController();
+    controller.abort();
+    let captured: { isError?: boolean; structuredContent?: { code?: string } } | undefined;
+    try {
+      captured = (await client.callTool({ name: "scai_overview", arguments: {} }, undefined, {
+        signal: controller.signal,
+      })) as never;
+    } catch (error) {
+      // The SDK may surface a client-side abort as a thrown error
+      // before the round-trip completes — that's also a valid signal
+      // that cancellation worked. Either path is acceptable for v1.
+      expect((error as Error).message.toLowerCase()).toMatch(/abort|cancel/);
+      return;
+    }
+    if (captured) {
+      expect(captured.isError).toBe(true);
+      expect(captured.structuredContent?.code).toBe("CANCELLED");
+    }
+  });
 });

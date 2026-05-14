@@ -108,6 +108,21 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    * sequentially — within a push, mutations land in topological order.
    */
   planConcurrency?: number;
+  /**
+   * Optional progress callback. Receives per-recipe execution events
+   * as they happen (op-start / op-result / apply-start / apply-success
+   * / apply-error / site-job-poll / rollback events). Used by external
+   * orchestrators (e.g. `scai mcp serve`) to forward live progress to
+   * a client. The CLI logger does not need this — it observes the same
+   * events via its own internal collator.
+   */
+  emit?: (event: { recipe: string; event: import("../execute").ExecutionEvent }) => void;
+  /**
+   * Cooperative cancellation. When the signal fires, the executor
+   * stops between operations, rolls back applied mutations, and the
+   * per-recipe `ExecutionResult.aborted` is set to true.
+   */
+  signal?: AbortSignal;
 }
 
 export const toLogger = (options: RecipeCommonOptions): Logger =>

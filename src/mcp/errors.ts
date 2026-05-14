@@ -37,6 +37,8 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
     "Inspect deploy logs via `deploy_run_inspect` and address the failure before retrying.",
   SITES_API_FAILED:
     "Confirm the bound environment has Sites API access and the access token is fresh.",
+  CANCELLED:
+    "The tool was cancelled by the client. Any partial application is documented in `why`; re-run the tool with the same arguments to resume.",
   UNKNOWN: "Re-run with `SITECOREAI_TRACE=1` set in the launcher to capture a verbose trace.",
 };
 
@@ -58,6 +60,8 @@ const summarizeError = (error: ScaiError): string => {
       return "The XM Cloud Deploy operation failed.";
     case "SITES_API_FAILED":
       return "The Sites API call failed.";
+    case "CANCELLED":
+      return "The tool was cancelled mid-flight by the client.";
     case "UNKNOWN":
     default:
       return "The tool failed with an unexpected error.";

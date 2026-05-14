@@ -18,12 +18,40 @@ import type {
   CallToolResult,
   ReadResourceResult,
   GetPromptResult,
+  Notification,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { z, ZodRawShape } from "zod";
 import type { McpContext } from "./auth";
 
 export type ToolAuth = "read" | "write";
+
+/**
+ * Per-call extras handed to every tool handler. Carries the cancellation
+ * signal, the progress-notification sender, and the optional progress
+ * token threaded by the client.
+ *
+ *  - `signal` fires `aborted` when the client cancels the request
+ *    (MCP `notifications/cancelled`). Handlers that wrap long-running
+ *    operations should plumb this into the library so work stops
+ *    promptly; the dispatcher converts the aborted state into a
+ *    `CANCELLED` envelope after the handler returns.
+ *  - `sendProgress` is a no-op when the client didn't supply a
+ *    `progressToken`, so handlers can call it unconditionally.
+ */
+export interface ToolExtra {
+  signal: AbortSignal;
+  /** Token the client supplied; absent when the client didn't request progress. */
+  progressToken: string | number | undefined;
+  /**
+   * Emit a progress notification to the client. No-op when `progressToken`
+   * is absent. Always returns successfully (errors are swallowed and
+   * traced via stderr); progress is advisory, never load-bearing.
+   */
+  sendProgress: (progress: number, total: number | undefined, message?: string) => Promise<void>;
+  /** Lower-level escape hatch — send any notification frame. */
+  sendNotification: (notification: Notification) => Promise<void>;
+}
 
 export interface ToolDescriptor<TShape extends ZodRawShape = ZodRawShape> {
   name: string;
@@ -35,10 +63,11 @@ export interface ToolDescriptor<TShape extends ZodRawShape = ZodRawShape> {
   auth: ToolAuth;
   /** Zod raw shape for the SDK's input validation. May be empty. */
   inputSchema: TShape;
-  /** Tool handler. Receives the typed input + bound context. */
+  /** Tool handler. Receives the typed input, bound context, and per-call extras. */
   handler: (
     input: z.infer<z.ZodObject<TShape>>,
-    context: McpContext
+    context: McpContext,
+    extra: ToolExtra
   ) => CallToolResult | Promise<CallToolResult>;
 }
 

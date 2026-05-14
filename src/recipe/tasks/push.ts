@@ -323,7 +323,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const runOne = async (ir: OperationIr): Promise<ExecutionResult> =>
     executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
-      emit: (event) => allEvents.push({ recipe: ir.recipeHandle, event }),
+      emit: (event) => {
+        allEvents.push({ recipe: ir.recipeHandle, event });
+        options.emit?.({ recipe: ir.recipeHandle, event });
+      },
+      signal: options.signal,
       crossRecipeRefs,
       sitesClient,
       pathItemIdCache,

@@ -53,6 +53,11 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
 
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
+    if (options.signal?.aborted) {
+      options.emit?.({ kind: "database-skipped", database, reason: "cancelled-by-client" });
+      break;
+    }
+    options.emit?.({ kind: "database-start", database, subtreeCount: subtrees.length });
     const spinner = await startSpinner(`Pushing ${database} items`);
     try {
       const { items: sourceItems, metadata: sourceMetadata } = await loadFilesystemItems(subtrees);
@@ -79,6 +84,7 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
       );
       const changes = commands.length;
       summary.totalChanges += changes;
+      options.emit?.({ kind: "database-changes-detected", database, changes });
       const summaryEntry = {
         database,
         changes,
@@ -131,6 +137,12 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
           logger.info("Publishing is finished.", "green");
         }
       }
+      options.emit?.({
+        kind: "database-applied",
+        database,
+        changes,
+        whatIf: Boolean(options.whatIf),
+      });
       spinner?.succeed();
       summary.databases.push(summaryEntry);
     } catch (error) {

@@ -83,6 +83,15 @@ export interface ExecuteOptions {
   mode: ExecutionMode;
   emit?: (event: ExecutionEvent) => void;
   /**
+   * Cooperative cancellation. When `signal.aborted` becomes true, the
+   * executor stops *between* operations, runs the same rollback path
+   * as a failed op, and returns an `ExecutionResult` with
+   * `aborted: true` and a reason indicating client-initiated cancel.
+   * In-flight requests are not interrupted — finishing the current op
+   * keeps the rollback inventory accurate.
+   */
+  signal?: AbortSignal;
+  /**
    * Cross-recipe ref pre-seed: `refKey → expectedPath` for items
    * produced by OTHER recipes in the same workspace. The executor
    * walks this map at start, calls `getItem({path})` for each entry,
@@ -435,6 +444,12 @@ export const executeIr = async (
   }
 
   for (let index = 0; index < ir.operations.length; index += 1) {
+    if (options.signal?.aborted) {
+      const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
+      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      emitFailed(options, index, applied, rollbackResult, cancelMessage);
+      return buildResult(ir, actions, summary, true, rollbackResult);
+    }
     const op = ir.operations[index];
     options.emit?.({ kind: "op-start", index, operation: op });
 

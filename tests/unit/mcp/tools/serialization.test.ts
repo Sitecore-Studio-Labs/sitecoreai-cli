@@ -69,6 +69,13 @@ const fakeContext: McpContext = {
   deployToken: "tok",
 };
 
+const fakeExtra = {
+  signal: new AbortController().signal,
+  progressToken: undefined,
+  sendProgress: async () => undefined,
+  sendNotification: async () => undefined,
+};
+
 const setup = async () => {
   const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");
   return buildScaiMcpRegistry();
@@ -77,7 +84,7 @@ const setup = async () => {
 describe("serialization tools", () => {
   it("serialization_inspect returns module list from config", async () => {
     const reg = await setup();
-    const result = await reg.getTool("serialization_inspect")!.handler({}, fakeContext);
+    const result = await reg.getTool("serialization_inspect")!.handler({}, fakeContext, fakeExtra);
     const structured = result.structuredContent as { modules: Array<{ namespace: string }> };
     expect(structured.modules[0].namespace).toBe("demo");
   });
@@ -86,7 +93,7 @@ describe("serialization tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("serialization_sync")!
-      .handler({ direction: "pull", allowWrite: false }, fakeContext);
+      .handler({ direction: "pull", allowWrite: false }, fakeContext, fakeExtra);
     expect(taskMocks.runPull).toHaveBeenCalled();
     expect((result.structuredContent as { status: string }).status).toBe("completed");
   });
@@ -97,7 +104,15 @@ describe("serialization tools", () => {
     const result = await dispatchTool(
       reg.getTool("serialization_sync")!,
       { direction: "push", allowWrite: false },
-      { context: fakeContext }
+      {
+        context: fakeContext,
+        extra: {
+          signal: new AbortController().signal,
+          progressToken: undefined,
+          sendProgress: async () => undefined,
+          sendNotification: async () => undefined,
+        },
+      }
     );
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { code: string }).code).toBe("INPUT_INVALID");
@@ -107,7 +122,7 @@ describe("serialization tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("serialization_sync")!
-      .handler({ direction: "push", allowWrite: true }, fakeContext);
+      .handler({ direction: "push", allowWrite: true }, fakeContext, fakeExtra);
     expect(taskMocks.runPush).toHaveBeenCalled();
     expect((result.structuredContent as { status: string }).status).toBe("completed");
   });
@@ -116,8 +131,47 @@ describe("serialization tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("serialization_validate")!
-      .handler({ fix: false }, fakeContext);
+      .handler({ fix: false }, fakeContext, fakeExtra);
     expect((result.structuredContent as { valid: boolean }).valid).toBe(true);
+  });
+
+  it("serialization_sync forwards per-database progress events", async () => {
+    // Override runPull to synchronously emit database-* events.
+    taskMocks.runPull.mockImplementationOnce(
+      async (options: {
+        emit?: (e: {
+          kind: string;
+          database: string;
+          subtreeCount?: number;
+          changes?: number;
+          whatIf?: boolean;
+        }) => void;
+      }) => {
+        options.emit?.({ kind: "database-start", database: "master", subtreeCount: 3 });
+        options.emit?.({ kind: "database-changes-detected", database: "master", changes: 12 });
+        options.emit?.({
+          kind: "database-applied",
+          database: "master",
+          changes: 12,
+          whatIf: false,
+        });
+      }
+    );
+    const progressMessages: string[] = [];
+    const captureExtra = {
+      signal: new AbortController().signal,
+      progressToken: "tok-2" as string | number | undefined,
+      sendProgress: async (_progress: number, _total: number | undefined, message?: string) => {
+        if (message) progressMessages.push(message);
+      },
+      sendNotification: async () => undefined,
+    };
+    const reg = await setup();
+    await reg
+      .getTool("serialization_sync")!
+      .handler({ direction: "pull", allowWrite: false }, fakeContext, captureExtra);
+    expect(progressMessages.some((m) => m.includes("Starting master"))).toBe(true);
+    expect(progressMessages.some((m) => m.includes("12 change"))).toBe(true);
   });
 
   it("serialization_publish publishes resolved ids", async () => {
@@ -126,7 +180,8 @@ describe("serialization tools", () => {
       .getTool("serialization_publish")!
       .handler(
         { path: "/sitecore/content/Home", database: "master", allowWrite: true },
-        fakeContext
+        fakeContext,
+        fakeExtra
       );
     expect(apiMocks.fetchItemMetadata).toHaveBeenCalled();
     expect(apiMocks.publishItems).toHaveBeenCalledWith(

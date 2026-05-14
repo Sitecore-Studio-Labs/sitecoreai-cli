@@ -19,6 +19,7 @@ import { z } from "zod";
 import { compileRecipe, RecipeSchema, type CompileContext } from "@/recipe";
 import { loadRecipe } from "@/recipe/io";
 import { runRecipeDiff, runRecipePlan, runRecipePush } from "@/recipe/tasks";
+import type { ExecutionEvent } from "@/recipe/execute";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -219,12 +220,40 @@ export const registerRecipeTools = (registry: McpRegistry): void => {
       ...whatIfShape,
       ...allowWriteShape,
     },
-    handler: async (input, context) => {
+    handler: async (input, context, extra) => {
+      let opCount = 0;
       const results = await runRecipePush(
         baseTaskOptions(context.configPath, context.envName, {
           input: input.inputPath,
           whatIf: input.whatIf,
           allowWrite: input.allowWrite,
+          signal: extra.signal,
+          emit: ({ recipe, event }: { recipe: string; event: ExecutionEvent }) => {
+            // Translate per-op events into MCP progress notifications.
+            // We don't know the total op count up-front (compileRecipeSet
+            // expands at runtime), so leave `total` undefined and use
+            // an incrementing progress counter the client renders.
+            if (event.kind === "op-start") {
+              opCount += 1;
+              void extra.sendProgress(
+                opCount,
+                undefined,
+                `[${recipe}] op ${event.index}: ${event.operation.op}`
+              );
+            } else if (event.kind === "apply-success") {
+              void extra.sendProgress(
+                opCount,
+                undefined,
+                `[${recipe}] applied op ${event.action.index}`
+              );
+            } else if (event.kind === "apply-error") {
+              void extra.sendProgress(
+                opCount,
+                undefined,
+                `[${recipe}] error op ${event.action.index}: ${event.error}`
+              );
+            }
+          },
         }) as never
       );
       const succeeded = results.filter((r) => !r.aborted).length;

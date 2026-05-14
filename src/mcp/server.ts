@@ -12,10 +12,47 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { Notification } from "@modelcontextprotocol/sdk/types.js";
 import type { McpContext } from "./auth";
 import { dispatchTool } from "./dispatch";
-import type { McpRegistry } from "./registry";
+import type { McpRegistry, ToolExtra } from "./registry";
 import packageJson from "../../package.json";
+
+interface SdkExtra {
+  signal: AbortSignal;
+  _meta?: { progressToken?: string | number };
+  // Typed loosely so we don't have to chase the SDK's ServerNotification
+  // discriminated union here. The shape MCP actually sends maps cleanly
+  // onto our Notification type; the cast at the call-site is safe.
+  sendNotification: (notification: unknown) => Promise<void>;
+}
+
+const buildToolExtra = (sdkExtra: SdkExtra): ToolExtra => {
+  const progressToken = sdkExtra._meta?.progressToken;
+  return {
+    signal: sdkExtra.signal,
+    progressToken,
+    sendNotification: (notification: Notification) => sdkExtra.sendNotification(notification),
+    sendProgress: async (progress, total, message) => {
+      if (progressToken === undefined) {
+        return;
+      }
+      try {
+        await sdkExtra.sendNotification({
+          method: "notifications/progress",
+          params: { progressToken, progress, total, message },
+        });
+      } catch (error) {
+        // Progress is advisory — never let a failed notification
+        // bubble out and corrupt the tool's primary result. Trace to
+        // stderr only.
+        process.stderr.write(
+          `scai mcp: progress notification dropped (${error instanceof Error ? error.message : String(error)})\n`
+        );
+      }
+    },
+  };
+};
 
 export interface McpServerOptions {
   context: McpContext;
@@ -39,7 +76,11 @@ export const buildMcpServer = (options: McpServerOptions): McpServer => {
         inputSchema: tool.inputSchema,
         annotations: tool.annotations,
       },
-      async (args: Record<string, unknown>) => dispatchTool(tool, args ?? {}, { context })
+      async (args: Record<string, unknown>, sdkExtra: unknown) =>
+        dispatchTool(tool, args ?? {}, {
+          context,
+          extra: buildToolExtra(sdkExtra as SdkExtra),
+        })
     );
   }
 

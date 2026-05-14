@@ -171,17 +171,58 @@ already supports them via the SDK's `StreamableHTTPServerTransport`
 — the work to expose them as a `scai mcp serve --transport http`
 mode is intentionally out-of-scope for the v1 milestone.
 
+## Progress notifications
+
+`recipe_push` and `serialization_sync` emit MCP
+`notifications/progress` frames while they run, so clients with a
+`progressToken` see live state instead of staring at a silent tool
+call. Other tools currently don't emit progress — they're either
+fast reads (sub-second) or single-shot writes.
+
+- **`recipe_push`** — one notification per recipe op
+  (`op-start`, `apply-success`, `apply-error`). The message is
+  `[<recipe-handle>] op <i>: <op-kind>` (and similar for apply
+  events). `total` is intentionally omitted because the compiled op
+  count expands at runtime.
+- **`serialization_sync`** — one notification per database
+  checkpoint (`database-start`, `database-changes-detected`,
+  `database-applied`, `database-skipped`).
+
+Clients opt in by passing `_meta.progressToken` on the tool call;
+without it, the server skips emission entirely (progress is
+strictly opt-in).
+
+## Cancellation
+
+`recipe_push` and `serialization_sync` honor MCP
+`notifications/cancelled`. When the client cancels:
+
+- The recipe executor stops _between_ operations and runs the same
+  rollback path as a failed op — partially-applied mutations on the
+  tenant are reverted using the existing LIFO rollback inventory.
+- The serialization tasks stop _between_ databases (in-flight
+  requests are not interrupted). Any changes already written to the
+  filesystem or pushed to the tenant before the cancel are left in
+  place; the next invocation will resume from there.
+- The tool result crosses the wire as a `CANCELLED` error envelope
+  (exit code 130) so the client doesn't see "success" for work it
+  asked to stop.
+
+Other tools (fast reads, single-shot writes) return whatever they
+were doing — if the underlying HTTP request was cancellable the SDK
+threads the abort through, otherwise the envelope is converted to
+`CANCELLED` once the handler returns.
+
 ## Known limitations (v1)
 
 - **Single mutex around tool dispatch.** Tool calls serialize through
   a single in-house Promise chain. This keeps library state (token
   cache, fetched env metadata) coherent and side-steps a class of
   race conditions, at the cost of no parallel dispatch.
-- **No cancellation.** Long-running tools (`recipe_push`,
-  `serialization_sync direction=push`) finish-then-return. There is
-  no cancellation path through the protocol in v1.
-- **No streaming partial results.** Tools return a single envelope
-  when the underlying work completes.
+- **Cancellation is cooperative.** In-flight HTTP requests inside a
+  single op (e.g. a multi-second Sitecore GraphQL call) aren't
+  interrupted — the executor checks the abort signal _between_ ops /
+  databases. Worst-case stop time = the longest single network call.
 - **No `watch` tools.** `scai serialization watch` is intentionally
   excluded — the finish-then-return shape doesn't fit a watcher.
 - **No HTTP transport.** Deferred to v2.

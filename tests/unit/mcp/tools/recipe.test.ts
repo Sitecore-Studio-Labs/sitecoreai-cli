@@ -74,6 +74,13 @@ const fakeContext: McpContext = {
   deployToken: "tok",
 };
 
+const fakeExtra = {
+  signal: new AbortController().signal,
+  progressToken: undefined,
+  sendProgress: async () => undefined,
+  sendNotification: async () => undefined,
+};
+
 const setup = async () => {
   const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");
   return buildScaiMcpRegistry();
@@ -84,7 +91,7 @@ describe("recipe tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("recipe_compile")!
-      .handler({ inputPath: "/tmp/demo.recipe.ts" }, fakeContext);
+      .handler({ inputPath: "/tmp/demo.recipe.ts" }, fakeContext, fakeExtra);
     expect(ioMocks.loadRecipe).toHaveBeenCalledWith("/tmp/demo.recipe.ts");
     expect(recipeMocks.compileRecipe).toHaveBeenCalled();
     const structured = result.structuredContent as { ir: { operations: unknown[] } };
@@ -95,7 +102,7 @@ describe("recipe tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("recipe_diff")!
-      .handler({ inputPath: "/tmp/demo.recipe.ts" }, fakeContext);
+      .handler({ inputPath: "/tmp/demo.recipe.ts" }, fakeContext, fakeExtra);
     expect(tasksMocks.runRecipeDiff).toHaveBeenCalled();
     const structured = result.structuredContent as { results: unknown[] };
     expect(structured.results).toHaveLength(1);
@@ -105,7 +112,7 @@ describe("recipe tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("recipe_plan")!
-      .handler({ inputPath: "/tmp/demo.ir.json" }, fakeContext);
+      .handler({ inputPath: "/tmp/demo.ir.json" }, fakeContext, fakeExtra);
     const structured = result.structuredContent as {
       summary: { create: number };
       actions: unknown[];
@@ -118,17 +125,86 @@ describe("recipe tools", () => {
     const reg = await setup();
     const result = await reg
       .getTool("recipe_push")!
-      .handler({ inputPath: "/tmp/demo.recipe.ts", allowWrite: true }, fakeContext);
+      .handler({ inputPath: "/tmp/demo.recipe.ts", allowWrite: true }, fakeContext, fakeExtra);
     expect(tasksMocks.runRecipePush).toHaveBeenCalled();
     const structured = result.structuredContent as { succeeded: number; failed: number };
     expect(structured.succeeded).toBe(1);
     expect(structured.failed).toBe(0);
   });
 
+  it("recipe_push forwards executeIr events as MCP progress notifications", async () => {
+    // Re-stub runRecipePush so it synchronously emits events via the
+    // option callback before resolving — that's how the live executor
+    // surfaces progress.
+    tasksMocks.runRecipePush.mockImplementationOnce(
+      async (options: {
+        emit?: (e: {
+          recipe: string;
+          event: { kind: string; index?: number; operation?: { op: string } };
+        }) => void;
+      }): Promise<unknown[]> => {
+        options.emit?.({
+          recipe: "demo-comp@1",
+          event: { kind: "op-start", index: 0, operation: { op: "createItem" } },
+        });
+        options.emit?.({
+          recipe: "demo-comp@1",
+          event: {
+            kind: "apply-success",
+            action: { index: 0, status: "create", operation: { op: "createItem" } },
+          } as never,
+        });
+        return [
+          {
+            plan: {
+              schemaVersion: "1",
+              recipeHandle: "demo-comp@1",
+              actions: [],
+              summary: { create: 1, update: 0, skip: 0, error: 0 },
+            },
+            summary: { create: 1, update: 0, skip: 0, error: 0 },
+            aborted: false,
+          },
+        ];
+      }
+    );
+
+    const progressCalls: Array<{ progress: number; message?: string }> = [];
+    const captureExtra = {
+      signal: new AbortController().signal,
+      progressToken: "tok-1" as string | number | undefined,
+      sendProgress: async (progress: number, _total: number | undefined, message?: string) => {
+        progressCalls.push({ progress, message });
+      },
+      sendNotification: async () => undefined,
+    };
+
+    const reg = await setup();
+    await reg
+      .getTool("recipe_push")!
+      .handler({ inputPath: "/tmp/demo.recipe.ts", allowWrite: true }, fakeContext, captureExtra);
+
+    expect(progressCalls.length).toBeGreaterThanOrEqual(2);
+    expect(progressCalls[0].message).toContain("demo-comp@1");
+    expect(progressCalls[0].message).toContain("createItem");
+  });
+
   it("recipe_compile rejects when both inputPath and inputRecipe are missing", async () => {
     const reg = await setup();
     const { dispatchTool } = await import("../../../../src/mcp/dispatch");
-    const result = await dispatchTool(reg.getTool("recipe_compile")!, {}, { context: fakeContext });
+    const result = await dispatchTool(
+      reg.getTool("recipe_compile")!,
+      {},
+      {
+        context: fakeContext,
+        extra: {
+          signal: new AbortController().signal,
+          progressToken: undefined,
+          sendProgress: async () => undefined,
+          sendNotification: async () => undefined,
+        },
+      }
+    );
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { code: string }).code).toBe("INPUT_INVALID");
   });

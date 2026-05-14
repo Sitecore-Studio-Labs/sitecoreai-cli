@@ -36,6 +36,11 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
 
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
+    if (options.signal?.aborted) {
+      options.emit?.({ kind: "database-skipped", database, reason: "cancelled-by-client" });
+      break;
+    }
+    options.emit?.({ kind: "database-start", database, subtreeCount: subtrees.length });
     const spinner = await startSpinner(`Pulling ${database} items`);
     try {
       const sourceMetadata: ItemMetadata[] = [];
@@ -68,6 +73,7 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
         changes,
         applied: changes > 0 && !options.whatIf,
       });
+      options.emit?.({ kind: "database-changes-detected", database, changes });
 
       if (changes === 0) {
         if (!logger.isJson()) {
@@ -96,6 +102,12 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
 
       const pathProvider = new FilesystemPathProvider(subtrees);
       await applyFilesystemCommands(commands, pathProvider, dataMap, logger);
+      options.emit?.({
+        kind: "database-applied",
+        database,
+        changes,
+        whatIf: Boolean(options.whatIf),
+      });
       spinner?.succeed();
     } catch (error) {
       spinner?.fail();

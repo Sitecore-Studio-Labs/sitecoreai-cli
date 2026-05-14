@@ -322,6 +322,11 @@ export const runDiff = async (options: DiffOptions): Promise<void> => {
   // keeps spinner output / partial-failure semantics predictable.
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
+    if (options.signal?.aborted) {
+      options.emit?.({ kind: "database-skipped", database, reason: "cancelled-by-client" });
+      break;
+    }
+    options.emit?.({ kind: "database-start", database, subtreeCount: subtrees.length });
     const args: DiffDatabaseArgs = {
       root,
       sourceName,
@@ -335,12 +340,23 @@ export const runDiff = async (options: DiffOptions): Promise<void> => {
     const { commands, summary: dbSummary } = await diffDatabase(args);
     summary.databases.push(dbSummary);
     summary.totalDifferences += dbSummary.differences;
+    options.emit?.({
+      kind: "database-changes-detected",
+      database,
+      changes: dbSummary.differences,
+    });
     if (!logger.isJson()) {
       logger.info(`Discovered ${dbSummary.differences} differences for ${database}.`, "green");
     }
 
     if (options.push) {
       await pushDatabase(args, commands, logger);
+      options.emit?.({
+        kind: "database-applied",
+        database,
+        changes: dbSummary.differences,
+        whatIf: Boolean(options.whatIf),
+      });
     }
   }
 

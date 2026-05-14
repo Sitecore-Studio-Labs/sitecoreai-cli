@@ -24,6 +24,7 @@ export type ScaiErrorCode =
   | "ENV_NOT_FOUND"
   | "DEPLOY_FAILED"
   | "SITES_API_FAILED"
+  | "CANCELLED"
   | "UNKNOWN";
 
 export class ScaiError extends Error {
@@ -70,6 +71,8 @@ const exitCodeFor = (code: ScaiErrorCode): number => {
       return 6;
     case "SITES_API_FAILED":
       return 7;
+    case "CANCELLED":
+      return 130;
     default:
       return 1;
   }

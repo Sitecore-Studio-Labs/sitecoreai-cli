@@ -145,9 +145,11 @@ inventory, write-gate semantics, and v1 limitations.
 ## Using as a library
 
 `@sitecoreai-labs/sitecoreai-cli` is dual-purpose: a CLI **and** a typed
-TypeScript SDK. The CLI binary is only on `bin`; importing the package
-root or any subpath from your own code is safe (it will not execute the
-CLI).
+TypeScript SDK. The CLI binary is only on `bin`. The package root is
+intentionally not importable — there is no `main` entry. SDK consumers
+import from a subpath; the package root throws `ERR_PACKAGE_PATH_NOT_EXPORTED`
+so a stray `require("@sitecoreai-labs/sitecoreai-cli")` can never
+execute the CLI by accident.
 
 Each surface ships from its own subpath with its own stability
 contract. The most ergonomic seam is the `create*Client(options)`
@@ -195,17 +197,8 @@ import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai
 import { createWebhookApiClient } from "@sitecoreai-labs/sitecoreai-cli/webhooks";
 import { createWorkflowApiClient } from "@sitecoreai-labs/sitecoreai-cli/workflow";
 
-// Errors — every subpath throws `ScaiError`; the type ships at the root
+// Errors — every subpath throws `ScaiError`; import the type from `/errors`
 import { ScaiError, type ScaiErrorCode } from "@sitecoreai-labs/sitecoreai-cli/errors";
-```
-
-If you'd rather import from the package root, namespaced subpaths are
-also exposed:
-
-```ts
-import { recipe, deploy, publishing, ScaiError } from "@sitecoreai-labs/sitecoreai-cli";
-
-const client = deploy.createDeployApiClient({ accessToken });
 ```
 
 ### Stability contract (0.1.0)

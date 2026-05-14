@@ -14,12 +14,10 @@ shebang and runs commander on require. Any consumer doing
 `import "@sitecoreai-labs/sitecoreai-cli"` (no subpath) would execute the
 CLI.
 
-`main` now points at a new `dist/index.js` SDK barrel that namespace-
-re-exports every public subpath:
-
-```ts
-import { recipe, deploy, publishing, ScaiError } from "@sitecoreai-labs/sitecoreai-cli";
-```
+The `main` and `types` fields are removed and the `exports` map has no
+`"."` entry. Importing the package root now fails cleanly with
+`ERR_PACKAGE_PATH_NOT_EXPORTED` instead of running the CLI. SDK consumers
+import from subpaths; see "Using as a library" in the README.
 
 The CLI binary is still on `bin` and unchanged.
 

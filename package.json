@@ -17,13 +17,7 @@
     "sitecoreai-cli": "bin/sitecoreai-cli",
     "scai": "bin/sitecoreai-cli"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
     "./recipe": {
       "types": "./dist/recipe/index.d.ts",
       "default": "./dist/recipe/index.js"

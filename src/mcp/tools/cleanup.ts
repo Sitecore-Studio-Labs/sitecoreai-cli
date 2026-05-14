@@ -535,10 +535,10 @@ const cleanupInputSchema = () =>
         "subtree: content root scanned for inbound references. Default `/sitecore` (entire CMS). Narrow for speed at the cost of missing refs outside the chosen root."
       ),
     orphanExternalRefs: z
-      .enum(["clear"])
+      .enum(["clear", "prune"])
       .optional()
       .describe(
-        "subtree: how to handle external items whose fields reference the subtree. Omit (default) = refuse with blocker list; 'clear' = empty those fields before deleting. Use --what-if first to preview which fields would be cleared."
+        "subtree: how to handle external items whose fields reference the subtree. Omit (default) = refuse with blocker list. 'clear' empties the entire referring field. 'prune' surgically removes only the offending entries (preserves siblings in multi-list / treelist fields and `<r>` elements in `__Renderings` XML); falls back to clear for single-value fields. Use --what-if first to preview."
       ),
 
     // site-residue

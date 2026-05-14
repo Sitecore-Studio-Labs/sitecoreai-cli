@@ -340,8 +340,8 @@ export const runCleanupSubtree = async (
     );
   }
 
-  // ─── Optionally clear external referring fields ────────────────────────
-  if (blockers.length > 0 && policy === "clear" && !options.whatIf) {
+  // ─── Optionally clear or prune external referring fields ──────────────
+  if (blockers.length > 0 && policy !== "block" && !options.whatIf) {
     // Group blockers by (referrerItemId, fieldName) — multiple targets
     // could point at the same field. One update per (item, field).
     const byKey = new Map<string, InboundBlocker[]>();
@@ -355,17 +355,28 @@ export const runCleanupSubtree = async (
       [...byKey.entries()],
       async ([, group]) => {
         const [first] = group;
+        // Decide the new value:
+        //   - `clear`: always empty string.
+        //   - `prune`: try pruners (renderings XML, multi-list). When no
+        //     pruner matches the value's shape, fall back to clearing —
+        //     a single-value reference field has nothing to preserve.
+        let newValue = "";
+        if (policy === "prune" && first.fieldValue) {
+          const targetsInThisField = new Set(group.map((b) => b.targetItemId));
+          const pruned = pruneFieldValue(first.fieldValue, targetsInThisField);
+          if (pruned !== null) newValue = pruned;
+        }
         try {
           await client.updateItemFields({
             itemId: first.referrerItemId,
-            fields: [{ name: first.fieldName, value: "" }],
+            fields: [{ name: first.fieldName, value: newValue }],
           });
           for (const b of group) b.cleared = true;
         } catch (error) {
           // Leave `cleared: undefined` so the caller can see the field
-          // wasn't wiped; downstream delete will likely fail too.
+          // wasn't written; downstream delete will likely fail too.
           logger.warn(
-            `Failed to clear ${first.referrerPath}.${first.fieldName}: ${
+            `Failed to ${policy} ${first.referrerPath}.${first.fieldName}: ${
               error instanceof Error ? error.message : String(error)
             }`
           );

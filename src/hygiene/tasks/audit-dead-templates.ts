@@ -92,7 +92,7 @@ export const runAuditDeadTemplates = async (
     bounded,
     async (template) => {
       // A template is "dead" only when nothing — direct or inherited —
-      // depends on it. We need both signals:
+      // depends on it. We need three signals:
       //
       //   1. `_template = <id>` → items whose primary template IS this
       //      one. The Sitecore search index typically excludes Standard
@@ -105,7 +105,13 @@ export const runAuditDeadTemplates = async (
       //      etc.) have zero direct items but many derived templates
       //      — without this check they would be misclassified as dead.
       //
-      // OR'd together via SHOULD: "dead" requires both to be empty.
+      //   3. `__masters CONTAINS <id>` → Standard-Values items whose
+      //      Insert Options list this template as an allowed child.
+      //      A template with zero direct/inherited items but referenced
+      //      as an insert option still backs another template's
+      //      authoring UX; deleting it breaks "Insert > <Name>".
+      //
+      // OR'd together via SHOULD: "dead" requires all three to be empty.
       const value = normalizeItemId(template.templateId);
       const page = await client.search({
         index: options.index,
@@ -124,6 +130,13 @@ export const runAuditDeadTemplates = async (
             {
               criteria: {
                 field: "_basetemplates",
+                value,
+                criteriaType: "CONTAINS",
+              },
+            },
+            {
+              criteria: {
+                field: "__masters",
                 value,
                 criteriaType: "CONTAINS",
               },

@@ -28,6 +28,7 @@ import { createAuditPersonalizationBrokenCommand } from "./personalization-broke
 import { createAuditSiteResidueCommand } from "./site-residue";
 import { createAuditStaleContentCommand } from "./stale-content";
 import { createAuditStaleWorkflowCommand } from "./stale-workflow";
+import { createAuditTemplateDependenciesCommand } from "./template-dependencies";
 import { createAuditUnusedMediaCommand } from "./unused-media";
 
 export const createAuditCommand = (): Command => {
@@ -61,6 +62,7 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditStaleContentCommand());
   command.addCommand(createAuditStaleUsersCommand());
   command.addCommand(createAuditStaleWorkflowCommand());
+  command.addCommand(createAuditTemplateDependenciesCommand());
   command.addCommand(createAuditHistoryCommand());
   command.addCommand(createAuditSuiteCommand());
   command.addCommand(createAuditTranslationCoverageCommand());
@@ -71,6 +73,7 @@ export const createAuditCommand = (): Command => {
     "\nExamples:\n" +
       "  $ scai audit broken-links list --root /sitecore/content/MySite\n" +
       "  $ scai audit dead-templates list --root /sitecore/templates/Project\n" +
+      "  $ scai audit template-dependencies list --template-id {ABC123…}\n" +
       "  $ scai audit duplicates list --min-group-size 3 --json\n" +
       "  $ scai audit datasource-missing list\n" +
       "  $ scai audit empty-items list --language en\n" +

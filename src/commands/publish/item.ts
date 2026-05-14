@@ -6,29 +6,28 @@ import {
   addEnvironmentOption,
   addVerbosityOptions,
   addWhatIfOption,
+  collectList,
 } from "../shared";
 
 export const createPublishItemCommand = (): Command => {
   const command = new Command("item")
     .description(
-      "Publish a single item (Tier 1). Defaults to --what-if dry-run; pass --allow-write to actually publish. Production-tier envs additionally require --confirm-token from a prior dry-run."
+      "Publish one or more items in a single job (Tier 1). Defaults to --what-if dry-run; pass --allow-write to actually publish. Production-tier envs additionally require --confirm-token from a prior dry-run."
     )
     .requiredOption(
-      "--item-id <guid>",
-      "Item ID (GUID) to publish. Path-based publishing isn't supported yet."
+      "--items <guid>",
+      "Item ID (GUID) to publish. Repeatable, or pass a comma-separated list. All items are bundled into a single publishing job.",
+      collectList,
+      [] as string[]
     )
     .option("--item-type <type>", "ItemModel.type for the request body. Defaults to `item`.")
     .option(
       "-l, --languages <list>",
       "Comma-separated languages (e.g. en-US,fr-CA). Defaults to env-configured publish languages.",
-      (value: string) =>
-        value
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
+      collectList,
       [] as string[]
     )
-    .option("--include-subitems", "Publish descendants of the item (xmc.items.publishChildren).")
+    .option("--include-subitems", "Publish descendants of the items (xmc.items.publishChildren).")
     .option("--include-related", "Publish referenced items (xmc.items.publishRelatedItems).")
     .option(
       "--republish",
@@ -54,11 +53,16 @@ export const createPublishItemCommand = (): Command => {
   command.addHelpText(
     "after",
     "\nFlow:\n" +
-      "  1. Dry-run (default): scai publish item --item-id <guid> -n <env>\n" +
+      "  1. Dry-run (default): scai publish item --items <guid>[,<guid>...] -n <env>\n" +
       "     → prints the resolved scope and a scope token (5-min TTL)\n" +
-      "  2. Real call: scai publish item --item-id <guid> -n <env> --allow-write\n" +
+      "  2. Real call: scai publish item --items <guid>... -n <env> --allow-write\n" +
       "     → on non-prod envs, prompts [y/N]\n" +
-      "     → on prod envs, ALSO requires --confirm-token <token>\n"
+      "     → on prod envs, ALSO requires --confirm-token <token>\n" +
+      "\nExamples:\n" +
+      "  $ scai publish item --items abc123 -n sandbox\n" +
+      "  $ scai publish item --items abc123,def456,ghi789 -n sandbox\n" +
+      "  $ scai publish item --items abc123 --items def456 -n sandbox      # repeated flag\n" +
+      "  $ scai publish item --items abc123 --include-subitems -n sandbox  # + descendants\n"
   );
 
   command.action(async (options) => {

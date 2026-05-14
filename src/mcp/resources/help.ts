@@ -46,8 +46,13 @@ See \`tools_list\` and \`tools_schema\` for the live inventory.
 - \`scai://help/overview\` — this resource.
 - \`scai://help/recipes-grammar\` — Recipe DSL grammar synopsis.
 - \`scai://help/deploy-lifecycle\` — XM Cloud deploy state machine.
+- \`scai://help/sitecore-apis\` — curated index of Sitecore APIs with
+  links into api-docs.sitecore.com and per-API tool mappings.
 - \`scai://env/current/manifest\` — bound environment metadata.
 - \`scai://env/current/last-deploy\` — most recent deployment summary.
+- \`https://api-docs.sitecore.com/\` — external pointer to the full
+  Sitecore API docs site (clients that resolve https:// URIs natively
+  can fetch directly).
 
 ## Prompts
 
@@ -174,6 +179,77 @@ See the \`scai.recover_failed_deploy\` prompt for a guided remediation
 flow.
 `;
 
+const SITECORE_APIS_TEXT = `# Sitecore API catalog — curated index for scai
+
+Sitecore documents ~26 REST and GraphQL APIs at
+[api-docs.sitecore.com](https://api-docs.sitecore.com/). This resource
+is a **curated subset**: the APIs scai's library wraps or surfaces, with
+deep links into the official docs. Fetch this resource when you need to
+understand the wire-level contract behind one of scai's tools, or
+identify an API that scai doesn't yet surface.
+
+## APIs scai uses directly
+
+### XM Cloud Deploy API
+- **Base URL:** \`https://xmclouddeploy-api.sitecorecloud.io\`
+- **Docs:** [api-docs.sitecore.com/xm-cloud-deploy](https://api-docs.sitecore.com/xm-cloud-deploy)
+- **scai tools:** every \`deploy_*\` tool.
+- **What it does:** organizations / projects / environments / deployments
+  / environment variables / source-control bindings / restart + promote
+  lifecycle.
+
+### Authoring & Management GraphQL API
+- **Endpoint pattern:** \`https://<cmHost>/sitecore/api/authoring/graphql/v1\`
+- **Docs:** [api-docs.sitecore.com/authoring-and-management](https://api-docs.sitecore.com/authoring-and-management)
+- **scai tools:** \`serialization_*\` (read/write item operations),
+  \`recipe_diff\` / \`recipe_plan\` / \`recipe_push\` (write Authoring side).
+- **What it does:** item + template + rendering CRUD; role + user
+  CRUD; publish triggers; the canonical authoring write surface for
+  Sitecore Content Hub.
+
+### Sites API
+- **Base URL pattern:** tenant-bound via the bound environment.
+- **Docs:** [api-docs.sitecore.com/sites](https://api-docs.sitecore.com/sites)
+- **scai tools:** indirectly by recipe handlers (site creation, site
+  template binding).
+- **What it does:** site collection + site item + language + grouping
+  operations.
+
+### SAI Publishing API
+- **Base URL:** \`https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs\`
+- **Docs:** [api-docs.sitecore.com/sai/publishing-api](https://api-docs.sitecore.com/sai/publishing-api)
+- **scai tools:** none yet — \`serialization_publish\` currently
+  publishes via the Authoring GraphQL \`publish()\` mutation; the SAI
+  Publishing API is planned for the dedicated \`scai publish\` command
+  group.
+- **What it does:** publish-to-Edge job lifecycle (start, status,
+  cancel, list, summary).
+
+## APIs scai does NOT surface (yet)
+
+These are documented in the Sitecore catalog but are out of scope for
+the v1 MCP surface:
+
+- **Edge Delivery API** — read-only headless content. Marketer
+  delivery surface; not a scai concern.
+- **Pages API** — Marketer-facing page composition (the Marketer
+  MCP's primary surface).
+- **Forms API** — Sitecore Forms; not in scai's scope.
+- **Search API** — Sitecore Search; not in scai's scope.
+
+## Why use this resource
+
+- **Naming hints:** match a scai tool to its underlying API endpoint.
+- **Capability gaps:** identify an API operation scai doesn't yet
+  expose; surface it as a feature request.
+- **Wire-level debugging:** when a tool returns a network error, the
+  underlying endpoint and its docs are linked here.
+
+See the companion resource at \`https://api-docs.sitecore.com/\` for the
+full external docs index (clients with HTTP-resource support can fetch
+it directly).
+`;
+
 export const registerHelpResources = (registry: McpRegistry): void => {
   registry.registerResource({
     uri: "scai://help/overview",
@@ -220,6 +296,44 @@ export const registerHelpResources = (registry: McpRegistry): void => {
           uri: "scai://help/deploy-lifecycle",
           mimeType: "text/markdown",
           text: DEPLOY_LIFECYCLE_TEXT,
+        },
+      ],
+    }),
+  });
+
+  registry.registerResource({
+    uri: "scai://help/sitecore-apis",
+    name: "Sitecore API catalog",
+    description:
+      "Curated index of Sitecore REST + GraphQL APIs with deep links to api-docs.sitecore.com — names the APIs scai's tools wrap, plus the APIs scai does not yet surface.",
+    mimeType: "text/markdown",
+    handler: async () => ({
+      contents: [
+        {
+          uri: "scai://help/sitecore-apis",
+          mimeType: "text/markdown",
+          text: SITECORE_APIS_TEXT,
+        },
+      ],
+    }),
+  });
+
+  // Companion external pointer. Compatible MCP clients that resolve
+  // https:// resource URIs natively can fetch the docs root directly;
+  // clients that don't will still see the URI in resources/list and
+  // can navigate to it themselves.
+  registry.registerResource({
+    uri: "https://api-docs.sitecore.com/",
+    name: "Sitecore API docs (external)",
+    description:
+      "Direct https:// URI for the Sitecore API documentation site. Companion to scai://help/sitecore-apis — fetch this when you need the full external catalog beyond what scai's curated index covers.",
+    mimeType: "text/html",
+    handler: async () => ({
+      contents: [
+        {
+          uri: "https://api-docs.sitecore.com/",
+          mimeType: "text/plain",
+          text: "Sitecore API documentation: https://api-docs.sitecore.com/. Fetch this URL directly for the full catalog of ~26 documented REST + GraphQL APIs. For a scai-curated subset with tool mappings, read scai://help/sitecore-apis instead.",
         },
       ],
     }),

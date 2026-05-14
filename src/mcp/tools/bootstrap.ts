@@ -23,8 +23,10 @@ const RESOURCE_URIS = [
   "scai://help/overview",
   "scai://help/recipes-grammar",
   "scai://help/deploy-lifecycle",
+  "scai://help/sitecore-apis",
   "scai://env/current/manifest",
   "scai://env/current/last-deploy",
+  "https://api-docs.sitecore.com/",
 ] as const;
 
 export const registerBootstrapTools = (registry: McpRegistry): void => {

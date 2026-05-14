@@ -136,16 +136,20 @@ Full inventory: `scai mcp tools list` (TSV) or
 
 ## Resources
 
-5 resources for agent self-orientation. Each is a single URI the
-client can `resources/read` directly:
+7 resources for agent self-orientation. Six use the `scai://` scheme
+(handled in-process); one is the direct `https://` URI for the
+Sitecore API docs site, which compatible MCP clients can fetch
+externally:
 
-| URI                              | Content                                         |
-| -------------------------------- | ----------------------------------------------- |
-| `scai://help/overview`           | Markdown overview, binding model, write gate    |
-| `scai://help/recipes-grammar`    | Recipe DSL grammar synopsis                     |
-| `scai://help/deploy-lifecycle`   | XM Cloud deploy state machine                   |
-| `scai://env/current/manifest`    | Static metadata for the bound environment       |
-| `scai://env/current/last-deploy` | Most recent deployment (fetched lazily on read) |
+| URI                              | Content                                                                                        |
+| -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `scai://help/overview`           | Markdown overview, binding model, write gate                                                   |
+| `scai://help/recipes-grammar`    | Recipe DSL grammar synopsis                                                                    |
+| `scai://help/deploy-lifecycle`   | XM Cloud deploy state machine                                                                  |
+| `scai://help/sitecore-apis`      | Curated index of Sitecore APIs with deep links into api-docs.sitecore.com and tool mappings    |
+| `scai://env/current/manifest`    | Static metadata for the bound environment                                                      |
+| `scai://env/current/last-deploy` | Most recent deployment (fetched lazily on read)                                                |
+| `https://api-docs.sitecore.com/` | External pointer to the full Sitecore API docs site (companion to `scai://help/sitecore-apis`) |
 
 ## Prompts
 

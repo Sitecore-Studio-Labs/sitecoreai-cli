@@ -18,18 +18,38 @@ const fakeContext: McpContext = {
 describe("MCP resources", () => {
   const registry = buildScaiMcpRegistry();
 
-  it("registers the 5 required URIs", () => {
+  it("registers the 7 required URIs", () => {
     const uris = registry
       .listResources()
       .map((r) => r.uri)
       .sort();
     expect(uris).toEqual([
+      "https://api-docs.sitecore.com/",
       "scai://env/current/last-deploy",
       "scai://env/current/manifest",
       "scai://help/deploy-lifecycle",
       "scai://help/overview",
       "scai://help/recipes-grammar",
+      "scai://help/sitecore-apis",
     ]);
+  });
+
+  it("help/sitecore-apis returns the curated API catalog markdown", async () => {
+    const resource = registry.listResources().find((r) => r.uri === "scai://help/sitecore-apis")!;
+    const result = await resource.handler(fakeContext);
+    const body = result.contents[0] as { text: string };
+    expect(body.text).toContain("api-docs.sitecore.com");
+    expect(body.text).toContain("XM Cloud Deploy API");
+    expect(body.text).toContain("Authoring & Management GraphQL API");
+  });
+
+  it("api-docs.sitecore.com external resource resolves with a pointer body", async () => {
+    const resource = registry
+      .listResources()
+      .find((r) => r.uri === "https://api-docs.sitecore.com/")!;
+    const result = await resource.handler(fakeContext);
+    const body = result.contents[0] as { text: string };
+    expect(body.text).toContain("https://api-docs.sitecore.com/");
   });
 
   it("help/overview returns non-empty markdown content", async () => {

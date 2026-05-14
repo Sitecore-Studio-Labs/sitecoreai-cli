@@ -1,5 +1,6 @@
 import {
   fetchEnvironments,
+  fetchAllEnvironments,
   fetchEnvironmentsLimitation,
   fetchEnvironment,
   fetchEnvironmentDeployments,
@@ -44,12 +45,13 @@ import type {
   DeployEnvironmentPromoteOptions,
   DeployEnvironmentRepositoryLinkOptions,
   DeployEnvironmentVariableOptions,
+  DeployEnvironmentsListOptions,
 } from "./types";
 import { printDeploymentResult } from "./deployment-result";
 import { runDeployDeploymentsDeploy, runDeployDeploymentsWatch } from "./deployments";
 
 export const runDeployEnvironmentsList = async (
-  options: DeployEnvironmentOptions
+  options: DeployEnvironmentsListOptions
 ): Promise<void> => {
   const logger = toLogger(options);
   const context = await getDeployContext(options);
@@ -70,11 +72,45 @@ export const runDeployEnvironmentsList = async (
   }
 
   const normalizedType = options.type ? options.type.toLowerCase() : undefined;
-  const query: Record<
+  const baseQuery: Record<
     string,
     string | number | boolean | Array<string | number | boolean> | undefined
   > = {
     Types: normalizedType ? [normalizedType] : undefined,
+  };
+
+  if (options.all) {
+    const aggregated = await fetchAllEnvironments(
+      { accessToken: context.token, baseUrl: context.baseUrl },
+      baseQuery,
+      options.pageSize ?? 50
+    );
+    const aggregatedResult = {
+      totalCount: aggregated.totalCount,
+      pageSize: aggregated.pageSize,
+      data: aggregated.items,
+    };
+    if (options.type) {
+      const filtered = filterEnvironmentsByType(aggregated.items, options.type);
+      printDeployResultWithContext(
+        logger,
+        context,
+        "deploy.environments.list",
+        { ...aggregatedResult, data: filtered }
+      );
+      return;
+    }
+    printDeployResultWithContext(logger, context, "deploy.environments.list", aggregatedResult);
+    return;
+  }
+
+  const query: Record<
+    string,
+    string | number | boolean | Array<string | number | boolean> | undefined
+  > = {
+    ...baseQuery,
+    PageNumber: options.page,
+    PageSize: options.pageSize,
   };
   const result = await fetchEnvironments(
     { accessToken: context.token, baseUrl: context.baseUrl },

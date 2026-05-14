@@ -167,6 +167,16 @@ export type DeployEnvironmentOptions = DeployBaseOptions & {
   force?: boolean;
 };
 
+export type DeployEnvironmentsListOptions = DeployEnvironmentOptions & {
+  /** Walk every page until the result set is exhausted. */
+  all?: boolean;
+  /** Explicit page number (1-based). Ignored when `all` is set. */
+  page?: number;
+  /** Page size. Defaults to 50 when `all` is set, otherwise the API
+   *  default (10). */
+  pageSize?: number;
+};
+
 export type DeployEnvironmentDeleteOptions = DeployEnvironmentOptions & {
   force?: boolean;
 };

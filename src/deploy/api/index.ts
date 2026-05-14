@@ -60,6 +60,7 @@ export {
 
 export {
   fetchEnvironments,
+  fetchAllEnvironments,
   fetchEnvironmentsLimitation,
   fetchEnvironment,
   fetchEnvironmentDeployments,
@@ -80,6 +81,7 @@ export {
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
   type EnvironmentHealthResult,
+  type FetchAllEnvironmentsResult,
 } from "./environments";
 
 // --- Deployments ---------------------------------------------------------

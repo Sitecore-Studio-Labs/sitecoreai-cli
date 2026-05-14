@@ -2,11 +2,9 @@
   "mcpServers": {
     "scai": {
       "type": "stdio",
-      "command": "node_modules/.bin/tsx",
+      "command": "node",
       "args": [
-        "-r",
-        "tsconfig-paths/register",
-        "src/cli.ts",
+        "dist/cli.js",
         "mcp",
         "serve",
         "--environment-name",

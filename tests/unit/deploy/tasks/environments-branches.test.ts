@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchEnvironments: vi.fn(),
+  fetchAllEnvironments: vi.fn(),
   fetchEnvironmentsLimitation: vi.fn(),
   fetchEnvironment: vi.fn(),
   fetchEnvironmentDeployments: vi.fn(),
@@ -113,13 +114,50 @@ describe("deploy environments branches", () => {
 
     expect(apiMocks.fetchEnvironments).toHaveBeenCalledWith(
       { accessToken: "token", baseUrl: "https://api.example" },
-      { Types: undefined }
+      expect.objectContaining({ Types: undefined })
     );
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
       "deploy.environments.list",
       result
+    );
+  });
+
+  it("aggregates all pages when --all is passed", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 30,
+      pageSize: 50,
+      items: [{ id: "a" }, { id: "b" }],
+    });
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ all: true });
+
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      expect.objectContaining({ Types: undefined }),
+      50
+    );
+    expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.list",
+      { totalCount: 30, pageSize: 50, data: [{ id: "a" }, { id: "b" }] }
+    );
+  });
+
+  it("forwards --page and --page-size to the single-page fetch", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchEnvironments.mockResolvedValue({ items: [] });
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ page: 3, pageSize: 25 });
+
+    expect(apiMocks.fetchEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      expect.objectContaining({ PageNumber: 3, PageSize: 25 })
     );
   });
 

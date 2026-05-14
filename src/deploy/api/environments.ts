@@ -10,6 +10,51 @@ export const fetchEnvironments = async (
   query?: Record<string, DeployQueryValueList | undefined>
 ): Promise<unknown> => deployRequest<unknown>(options, "/api/environments/v2", query);
 
+export type FetchAllEnvironmentsResult = {
+  totalCount?: number;
+  pageSize: number;
+  items: DeployEnvironment[];
+};
+
+/**
+ * Walk every page of `/api/environments/v2` and concatenate the results.
+ * The Deploy API caps each page at 10 unless `PageSize` is set; this
+ * helper bumps it to 50 by default and follows `totalCount` (or an
+ * under-full page) to know when to stop. Callers that want a single
+ * page should use `fetchEnvironments` directly.
+ */
+export const fetchAllEnvironments = async (
+  options: DeployApiClientOptions,
+  query?: Record<string, DeployQueryValueList | undefined>,
+  pageSize: number = 50
+): Promise<FetchAllEnvironmentsResult> => {
+  const items: DeployEnvironment[] = [];
+  let totalCount: number | undefined;
+  // Hard cap: defends against APIs that never report totalCount and
+  // keep returning full pages. At pageSize=50 this is 5000 envs — far
+  // beyond any plausible tenant.
+  const maxPages = 100;
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+    const page = (await fetchEnvironments(options, {
+      ...query,
+      PageNumber: pageNumber,
+      PageSize: pageSize,
+    })) as { data?: DeployEnvironment[]; totalCount?: number };
+    const data = Array.isArray(page?.data) ? page.data : [];
+    items.push(...data);
+    if (typeof page?.totalCount === "number") {
+      totalCount = page.totalCount;
+    }
+    if (data.length < pageSize) {
+      break;
+    }
+    if (totalCount !== undefined && items.length >= totalCount) {
+      break;
+    }
+  }
+  return { totalCount, pageSize, items };
+};
+
 export const fetchEnvironmentsLimitation = async (
   options: DeployApiClientOptions
 ): Promise<unknown> => deployRequest<unknown>(options, "/api/environments/v1/limitation");

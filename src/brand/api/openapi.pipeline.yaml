@@ -1,0 +1,486 @@
+openapi: 3.1.0
+info:
+  title: Pipeline API
+  version: 0.1.0
+  description: >
+    Use the Pipeline REST API to run the brand ingestion and enrichment
+    processes: 
+
+     - **Brand ingestion** analyzes documents uploaded to your [brand kit](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-kits.html) using the [Documents REST API](https://api-docs.sitecore.com/ai-skills/ai-document-management-rest-api). The system analyzes each document page by page, extracts brand information, and breaks it down into smaller pieces called *knowledge chunks*. These chunks are then organized, vectorized, and stored as your [brand knowledge](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-knowledge.html).
+
+     - **Enrichment** uses existing brand knowledge to automatically populate or update content in brand kit sections and subsections. You don’t need to reingest brand documents to enrich content. 
+
+     This REST API lets you interact with:
+
+     - The pipeline object. A pipeline is a structured process that performs a series of tasks automatically. In this context, pipelines are used to run the [brand ingestion](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-knowledge.html) and [ enrichment](https://doc.sitecore.com/stream/en/users/sitecore-stream/review-or-refine-a-brand-kit-section.html#enrich-content-using-brand-knowledge) processes.
+
+     The resulting brand knowledge and enriched content are made available to Sitecore copilots and other AI agents enabling them to generate consistent, brand-aligned output.
+
+    Note the following:
+
+     - To use this REST API, you must authenticate your API requests.
+
+     - All API requests are made in your production environment.
+
+    For more information, see the [official Sitecore
+    documentation](https://doc.sitecore.com/).
+
+
+    # Authorization
+
+    The Pipeline REST API uses the OAuth 2.0 standard with [JSON web
+    tokens](https://doc.sitecore.com/stream/en/users/sitecore-stream/generate-a-json-web-token--jwt-.html)
+    to authorize REST API requests.
+
+    ### Create Client ID and Client Secret
+      1. In the Sitecore Cloud Portal, open Stream.
+      2. Click **Admin** > **AI APIs keys** > **Create credential**.
+      3. In the **​Create New Client​​** dialog, enter a name and description for the client. Then click **Create**. The ​Client ID and Client Secret​​ display.
+      4. Copy the Client ID and Client Secret because you won't be able to view them again in Stream. You'll use them to request an access token.
+
+    ### Request an access token
+
+    Run the following cURL command to request an access token. Replace the
+    placeholder values with your Client ID and Client Secret.
+
+    ```curl
+      curl -X POST 'https://auth.sitecorecloud.io/oauth/token' \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'client_id={YOUR_API_KEY}' \
+      --data-urlencode 'client_secret={YOUR_API_SECRET}' \
+      --data-urlencode 'grant_type=client_credentials' \
+      --data-urlencode 'audience=https://api.sitecorecloud.io'
+    ```
+
+    In the response, the `access_token` key contains the access token:
+
+    ```json
+      {
+        "access_token": "{YOUR_ACCESS_TOKEN}",
+        "scope": "ai.org.brd:w ai.org.brd:r ai.org.docs:w ai.org.docs:r ai.org:admin",
+        "expires_in": 86400,
+        "token_type": "Bearer"
+      }
+    ```
+
+    Access tokens expire in 24 hours. If your requests unexpectedly return a
+    response with status `401 Unauthorized`, request a new access token by
+    repeating this `POST` request.
+
+
+    We recommend that you cache the access token for 24 hours to avoid repeating
+    this `POST` request while the access token is still valid.
+
+    ### Include the access token in the request header
+
+    You can now start making REST API requests. You must include the access
+    token in the request header of every request. For example:
+
+      ```curl
+      curl -X GET '{YOUR_BASE_URL}/v2/...' \
+      -H 'Authorization: Bearer {YOUR_ACCESS_TOKEN}' \
+      -H 'Accept: application/json'
+      ```
+  contact:
+    name: Sitecore Corporation A/S
+  x-metadata:
+    product: AI skills
+  license:
+    name: Closed source
+servers:
+  - url: https://edge-platform.sitecorecloud.io/stream/ai-pipeline-api
+    description: Production server
+  - url: https://edge-platform.sitecorecloud.io/ai/ai-pipeline-api
+    description: Production server
+paths:
+  /api/data/v1/organizations/{organizationId}/pipeline/BrandIngestionPipeline:
+    post:
+      tags:
+        - Pipeline
+      summary: Create a pipeline run for brand ingestion
+      description: >-
+        Creates a new pipeline to run the brand ingestion process. Through this
+        process, brand documents uploaded to a brand kit are processed,
+        analyzed, and chunked into knowledge pieces to create brand knowledge.
+
+
+        To use this endpoint, make sure to upload and process at least one
+        document before running the brand ingestion pipeline.
+
+
+        The brand ingestion process might take a few minutes depending on the
+        file size.
+      operationId: >-
+        create_pipeline_run_brand_ingestion_api_data_v1_organizations__organizationId__pipeline_BrandIngestionPipeline_post
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, from the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` is what comes after `organization=` . 
+            example: org_ABCDef123456​
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineRunBrandIngestionRequest'
+      responses:
+        '201':
+          description: Brand ingestion successfully ran
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePipelineRunResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+        '422':
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Brand kit ingestion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+      security:
+        - HTTPBearer: []
+  /api/data/v1/organizations/{organizationId}/pipeline/EnrichSectionsPipeline:
+    post:
+      tags:
+        - Pipeline
+      summary: Create a pipeline run for enrichment
+      description: >-
+        Creates a new pipeline to run the enrichment process. This pipeline
+        automatically retrieves information from your existing brand knowledge
+        to generate or update the content of your brand kit sections and
+        subsections.
+
+
+        To use this endpoint, make sure to upload and process at least one
+        document before enriching the brand kit. If no brand knowledge is
+        available, enrichment won’t run.
+
+         Additionally, if the subsection you want to enrich is marked as *non AI editable*, the content will not be modified.
+      operationId: >-
+        create_pipeline_run_enrich_sections_api_data_v1_organizations__organizationId__pipeline_EnrichSectionsPipeline_post
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+            title: Organizationid
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, from the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` is what comes after `organization=` .
+            example: org_ABCDef123456​
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineRunEnrichSectionsRequest'
+      responses:
+        '201':
+          description: Brand kit enrichment successfully ran
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePipelineRunResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+        '422':
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Brand kit enrichment failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+      security:
+        - HTTPBearer: []
+components:
+  schemas:
+    BrandIngestionPipelineParameters:
+      properties:
+        brand_kit_id:
+          type: string
+          description: >-
+            The unique identifier of your brand kit to be used for brand
+            ingestion.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits_api_brands_v1_organizations__organizationId__brandkits_get) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit_api_brands_v1_organizations__organizationId__brandkits_post) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  the brand kit ID comes after `brandkits/`.
+          example: 98689dd5-1684-48cb-a339-d9610dbd7986
+        populateSections:
+          type:
+            - boolean
+            - 'null'
+          description: >-
+            Whether to populate the brand kit sections with the ingested brand
+            knowledge.
+
+             If you choose not to populate the sections, the brand documents will still be ingested. You can populate them later using the [Enrich sections](#operation/create_pipeline_run_enrich_sections_api_data_v1_organizations__organizationId__pipeline_EnrichSectionsPipeline_post) endpoint.
+          default: true
+          example: true
+        documentIdsList:
+          type:
+            - string
+            - 'null'
+          description: >-
+            A comma-separated list of document IDs to be processed by the
+            pipeline. Each ID represents a unique document, which you can
+            retrieve using the [List
+            documents](#tag/Document/operation/list_documents_v2_api_documents_v2_organizations__organizationId__documents_get)
+            endpoint. The `id` field in the response contains the document ID.
+
+             If no IDs are provided, the pipeline will ingest all unprocessed documents in the brand kit.
+          example: >-
+            30e73070-5230-4441-a88e-ef72a7d15316,30e73070-5230-4441-a88e-ef72a7d15316
+      type: object
+      title: BrandIngestionPipelineParameters
+    CreatePipelineRunBrandIngestionRequest:
+      properties:
+        parameters:
+          $ref: '#/components/schemas/BrandIngestionPipelineParameters'
+      type: object
+      required:
+        - parameters
+      title: CreatePipelineRunBrandIngestionRequest
+    CreatePipelineRunEnrichSectionsRequest:
+      properties:
+        parameters:
+          $ref: '#/components/schemas/EnrichSectionsPipelineParameters'
+      type: object
+      required:
+        - parameters
+      title: CreatePipelineRunEnrichSectionsRequest
+    CreatePipelineRunResponse:
+      properties:
+        createdOn:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: >-
+            The date and time when the pipeline run was created, formatted in
+            ISO 8601.
+          example: '2025-04-23T13:55:13.308326'
+        createdBy:
+          type:
+            - string
+            - 'null'
+          description: The user who created the pipeline run.
+          example: mman
+        updatedOn:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: >-
+            The date and time when the pipeline run was last updated, formatted
+            in ISO 8601.
+          example: '2025-04-23T13:55:13.308326'
+        updatedBy:
+          type:
+            - string
+            - 'null'
+          description: The user who last updated the pipeline run.
+          example: mman
+        id:
+          type: string
+          description: The unique identifier of the pipeline run.
+          example: e774b4b6-204e-11f0-a62d-3e62ff39b87e
+        pipelineId:
+          type: string
+          description: |-
+            The name of the pipeline used to run a brand kit process.
+
+             Examples: `"BrandIngestionPipeline"`, `"EnrichSectionsPipeline"`.
+        parameters:
+          type: object
+          additionalProperties: true
+          description: >-
+            The parameters used for brand ingestion, such as brand kit and
+            organization IDs and base URLs.
+          example:
+            brand_kit_id: 98689dd5-1684-48cb-a339-d9610dbd7986
+            org_id: org_ZiiCnzhCeHDpWJAU
+            baseUrlDocAPI: https://ai-documents-api-euw.sitecorecloud.io
+        runStart:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: >-
+            The date and time when the pipeline run began, formatted in ISO
+            8601.
+          example: '2025-06-18T12:46:12.718310'
+        runEnd:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: >-
+            The date and time when the pipeline run finished, formatted in ISO
+            8601.
+          example: '2025-06-18T12:46:12.718310'
+        durationInMs:
+          type:
+            - integer
+            - 'null'
+          description: The total duration of the pipeline run in milliseconds.
+          default: 0
+          example: 3
+        status:
+          type:
+            - string
+            - 'null'
+          enum:
+            - Succeeded
+            - Failed
+            - Cancelled
+            - InProgress
+            - Queued
+            - Canceling
+            - null
+          description: The current status of the pipeline run.
+          example: Succeeded
+        message:
+          type:
+            - string
+            - 'null'
+          description: >-
+            Additional details or any error messages related to the pipeline
+            run. This field is empty if no message is available.
+          default: ''
+          example: ''
+      type: object
+      required:
+        - createdOn
+        - createdBy
+        - updatedOn
+        - updatedBy
+        - id
+        - pipelineId
+        - parameters
+        - runStart
+        - runEnd
+      title: CreatePipelineRunResponse
+    EnrichSectionsPipelineParameters:
+      properties:
+        brand_kit_id:
+          type: string
+          description: |-
+            The unique identifier of your brand kit to enrich.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits_api_brands_v1_organizations__organizationId__brandkits_get) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit_api_brands_v1_organizations__organizationId__brandkits_post) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  the brand kit ID comes after `brandkits/`.
+
+             If you specify only a `brand_kit_id` without a `sectionId` or `fieldId`, the pipeline will enrich all unlocked sections and subsections in the brand kit.
+          example: 98689dd5-1684-48cb-a339-d9610dbd7986
+        sectionId:
+          type: string
+          description: >-
+            The unique identifier of the specific section of your brand kit to
+            enrich. 
+
+             If you provide only a `sectionId`, the pipeline will enrich all unlocked  subsections within that section.
+
+             To get the `sectionId`, use the [List brand kit sections](#operation/list_brand_kit_sections_api_brands_v1_organizations__organizationId__brandkits__brandkitId__sections_get) endpoint. The `id` in the response is the section ID.
+          example: b2f2e1a1-295d-4d40-88f2-93bf545bb878
+        fieldId:
+          type: string
+          description: >-
+            The unique identifier of the specific subsection of your brand kit
+            to enrich. You can only enrich an unlocked subsection.
+
+             To enrich a specific subsection, you must specify both the `sectionId` and `fieldId`. 
+
+             To get the `fieldId`, use the [List brand kit subsections](#operation/list_brand_kit_section_fields_api_brands_v2_organizations__organizationId__brandkits__brandkitId__sections__sectionId__fields_get) endpoint. The `id` in the response is the subsection ID.
+          example: b2f2e1a1-295d-4d40-88f2-93bf545bb878
+      type: object
+      required:
+        - brand_kit_id
+      title: EnrichSectionsPipelineParameters
+    HTTPError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+        - detail
+      title: HTTPError
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: Pipeline
+    description: >-
+      The Pipeline API lets you run the  brand ingestion  process to analyze
+      uploaded brand documents, break them into  knowledge chunks, and store
+      them as brand knowledge. It also supports the enrichment process, which
+      uses brand knowledge to populate brand kit sections and subsections.
+security:
+  - HTTPBearer: []

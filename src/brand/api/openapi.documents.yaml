@@ -1,0 +1,929 @@
+openapi: 3.1.0
+info:
+  title: Document Management API
+  version: 0.1.0
+  description: >
+    Use the Document Management REST API to  upload documents to your
+    organization's brand kit. You can also retrieve documents or delete them
+    when needed. 
+
+     This REST API lets you interect with:
+
+     - The document object. A [brand document](https://doc.sitecore.com/stream/en/users/sitecore-stream/guidelines-for-uploading-brand-documents.html) serves as a source material for your organization's brand. These can include brand guidelines, tone of voice, or messaging frameworks. 
+
+     After uploading documents, you can use the [Pipeline REST API](https://api-docs.sitecore.com/ai-skills/ai-pipeline-rest-api) to initiate the [brand ingestion](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-knowledge.html) process. This enables Sitecore to analyze the uploaded documents, create a database of brand knowledge, and populate the brand kit's sections with relevant content.
+
+    Note the following:
+
+     - To use this REST API, you must authenticate your API requests.
+
+     - All API requests are made in your production environment.
+
+    For more information, see the [official Sitecore
+    documentation](https://doc.sitecore.com/).
+
+
+    # Authorization
+
+    The Document Management REST API uses the OAuth 2.0 standard with [JSON web
+    tokens](https://doc.sitecore.com/stream/en/users/sitecore-stream/generate-a-json-web-token--jwt-.html)
+    to authorize REST API requests.
+
+    ### Create Client ID and Client Secret
+      1. In the Sitecore Cloud Portal, open Stream.
+      2. Click **Admin** > **AI APIs keys** > **Create credential**.
+      3. In the **​Create New Client​​** dialog, enter a name and description for the client. Then click **Create**. The ​Client ID and Client Secret​​ display.
+      4. Copy the Client ID and Client Secret because you won't be able to view them again in Stream. You'll use them to request an access token.
+
+    ### Request an access token
+
+    Run the following cURL command to request an access token. Replace the
+    placeholder values with your Client ID and Client Secret.
+
+    ```curl
+      curl -X POST 'https://auth.sitecorecloud.io/oauth/token' \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'client_id={YOUR_API_KEY}' \
+      --data-urlencode 'client_secret={YOUR_API_SECRET}' \
+      --data-urlencode 'grant_type=client_credentials' \
+      --data-urlencode 'audience=https://api.sitecorecloud.io'
+    ```
+
+    In the response, the `access_token` key contains the access token:
+
+    ```json
+      {
+        "access_token": "{YOUR_ACCESS_TOKEN}",
+        "scope": "ai.org.brd:w ai.org.brd:r ai.org.docs:w ai.org.docs:r ai.org:admin",
+        "expires_in": 86400,
+        "token_type": "Bearer"
+      }
+    ```
+
+    Access tokens expire in 24 hours. If your requests unexpectedly return a
+    response with status `401 Unauthorized`, request a new access token by
+    repeating this `POST` request.
+
+
+    We recommend that you cache the access token for 24 hours to avoid repeating
+    this `POST` request while the access token is still valid.
+
+    ### Include the access token in the request header
+
+    You can now start making REST API requests. You must include the access
+    token in the request header of every request. For example:
+
+      ```curl
+      curl -X GET '{YOUR_BASE_URL}/v2/...' \
+      -H 'Authorization: Bearer {YOUR_ACCESS_TOKEN}' \
+      -H 'Accept: application/json'
+      ```
+  contact:
+    name: Sitecore Corporation A/S
+  x-metadata:
+    product: AI skills
+  license:
+    name: Closed source
+servers:
+  - url: https://edge-platform.sitecorecloud.io/stream/ai-document-api
+    description: Production server
+  - url: https://edge-platform.sitecorecloud.io/ai/ai-document-api
+    description: Production server
+paths:
+  /api/documents/v2/organizations/{organizationId}/documents:
+    post:
+      tags:
+        - Document
+      summary: Create a document
+      x-hideTryItPanel: true
+      description: >-
+        Uploads a new brand document and uses it as a source of brand
+        information in the specified brand kit.
+      operationId: >-
+        create_document_v2_api_documents_v2_organizations__organizationId__documents_post
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+          schema:
+            type: string
+            example: org_ABCDef123456
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: >-
+                #/components/schemas/Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post
+      responses:
+        '201':
+          description: Document successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDocumentModelResponse_v2'
+        '400':
+          description: Invalid file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+        '422':
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: File upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+      security:
+        - HTTPBearer: []
+    get:
+      tags:
+        - Document
+      summary: List documents
+      description: >-
+        Retrieves a list of documents in an organization. You can filter the
+        results by various parameters, such as brand kit ID, status, type, and
+        tags. This endpoint supports pagination and search functionality.
+      operationId: >-
+        list_documents_v2_api_documents_v2_organizations__organizationId__documents_get
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+            example: org_ABCDef123456
+        - name: pageNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            description: >-
+              The page number to retrieve. The default value is `1`. If you do
+              not specify this parameter, the API returns the first page of
+              results.
+            example: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 50
+            description: >-
+              The number of documents to return per page. The maximum value is
+              `100`, and the minimum value is `1`. If you do not specify this
+              parameter, the API returns `50` documents per page.
+            example: 50
+        - name: search
+          in: query
+          required: false
+          schema:
+            description: >-
+              The search query to filter documents by title, summary, or tags.
+              This parameter supports full-text search and is case-insensitive.
+            example: brand guidelines
+            type:
+              - string
+              - 'null'
+        - name: searchType
+          in: query
+          required: false
+          schema:
+            enum:
+              - fulltext
+              - vector
+              - hybrid
+              - semantic
+            type: string
+            description: >-
+              The type of search to perform. If you do not specify this
+              parameter, the API performs a full-text search.
+            example: fulltext
+        - name: type
+          in: query
+          required: false
+          schema:
+            description: >-
+              The type of document to filter by. If you do not specify this
+              parameter, the API returns all documents.
+            example: brand guidelines
+            type:
+              - string
+              - 'null'
+        - name: status
+          in: query
+          required: false
+          schema:
+            description: >-
+              The status of the document to filter by. This parameter supports
+              the following values: `pending`, `processed`, `draft`, `active`,
+              `archived`, `edited`, and `failed`. If you do not specify this
+              parameter, the API returns documents with any status.
+            type:
+              - string
+              - 'null'
+        - name: createdBy
+          in: query
+          required: false
+          schema:
+            description: >-
+              The user who created the document. If you do not specify this
+              parameter, the API returns documents created by any user.
+            example: mman
+            type:
+              - string
+              - 'null'
+        - name: referenceType
+          in: query
+          required: false
+          schema:
+            description: >-
+              The type of document reference to filter by. If you do not specify
+              this parameter, the API returns documents with any reference type.
+            example: brandkit
+            type:
+              - string
+              - 'null'
+        - name: referenceId
+          in: query
+          required: false
+          schema:
+            description: |-
+              The unique identifier the brand kit to filter by.
+
+               To get this value, use the [List brand kits](#operation/list_brand_kits_api_brands_v1_organizations__organizationId__brandkits_get) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit_api_brands_v1_organizations__organizationId__brandkits_post) endpoint.
+
+               Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  the brand kit ID comes after `brandkits/`.
+            example: 8271dec7-0c30-457b-b37b-4489628d7d7b
+            type:
+              - string
+              - 'null'
+        - name: fileType
+          in: query
+          required: false
+          schema:
+            description: >-
+              The file type of the document to filter by. If you do not specify
+              this parameter, the API returns documents with any file type.
+            example: application/pdf
+            type:
+              - string
+              - 'null'
+        - name: tags
+          in: query
+          required: false
+          schema:
+            default: []
+            description: >-
+              The tags to filter documents by. This parameter supports an array
+              of strings, where each string is a brand kit section associated
+              with the document. If you do not specify this parameter, the API
+              returns documents with any tags.
+            example:
+              - Global Goals
+              - Brand Context
+            type:
+              - array
+              - 'null'
+            items:
+              type: string
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            default: false
+            description: >-
+              Whether to include deleted documents in the response. If set to
+              `true`, the API returns documents that have been deleted. If set
+              to `false`, the API returns only active documents. The default
+              value is `false`.
+            example: false
+            type:
+              - boolean
+              - 'null'
+      responses:
+        '200':
+          description: List of documents successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDocumentsModelResponse_v2'
+        '400':
+          description: Unsupported search type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+        '422':
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
+  /api/documents/v1/organizations/{organizationId}/documents/{documentId}:
+    delete:
+      tags:
+        - Document
+      summary: Delete a document
+      description: >-
+        Deletes a brand document from a brand kit by its reference ID. You can
+        delete a brand document from your brand kit if it’s no longer needed or
+        was uploaded by mistake. This is an irreversible operation. After you
+        delete a document, you cannot retrieve the document or any related
+        information extracted from it.
+      operationId: >-
+        delete_document_api_documents_v1_organizations__organizationId__documents__documentId__delete
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` . 
+          schema:
+            type: string
+            example: org_ABCDef123456​
+        - name: documentId
+          in: path
+          required: true
+          description: >-
+            The unique identifier of the document to delete. To get this value,
+            you can retrieve the list of documents using the [List
+            documents](#tag/Document/operation/list_documents_v2_api_documents_v2_organizations__organizationId__documents_get)
+            endpoint. The `id` field in the response contains the document ID.
+
+             Alternatively, this is the same identifier that you receive in the response when using the [Create a document](#tag/Document/operation/create_document_v2_api_documents_v2_organizations__organizationId__documents_post) endpoint.
+          schema:
+            type: string
+            example: documentid123
+      responses:
+        '204':
+          description: Document deleted successfully
+        '404':
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+        '422':
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Failed to delete document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPError'
+      security:
+        - HTTPBearer: []
+components:
+  schemas:
+    Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post:
+      properties:
+        file:
+          type: string
+          format: binary
+          description: >-
+            The PDF file to upload as a brand document. You must select a file
+            from your local machine.
+        create_request:
+          type: string
+          example: |-
+            {
+              "url": "",
+             "setMetadata": true,
+              "references": [
+                  {
+                       "type": "brandkit",
+                       "id": "{YOUR_BRANDKIT_ID}",
+                       "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
+                  }
+               ]
+            }
+          description: >
+            A JSON string containing the following parameters for uploading a
+            brand document:
+             
+             -  `url` - if no file is uploaded from your local machine, this parameter contains the MMS-uploaded file URL. If a file is uploaded locally, this parameter is empty.
+             
+             - `status` - the current status of the document, such as pending, processed, draft, active, archived, edited, or failed. 
+             
+             - `type` - the document type, such as brand guidelines. 
+             
+             - `fileType` - the document's file type, such as PDF. 
+             
+             - `size` - the document size. 
+             
+             - `numberOfPages` - the total number of pages in the document. 
+             
+             - `pageRangeFrom` - the starting page number for processing the document. 
+             
+             - `pageRangeTo` - the ending page number for processing the document. 
+             
+             - `title` - the title of the document. 
+             
+             - `summary` - a brief description of the document. 
+             
+             - `tags` - an array of tags associated with the document 
+             
+             - `references` - an array of references associated with the document, including the type, brand kit ID, and reference. 
+             
+             - `setMetadata` - whether to set metadata for the document. Set this to `true` to automatically fill important details, such as the document's title and number of pages, which are later used during the brand ingestion process.
+
+             JSON structure with example values: 
+
+             ```json
+            {
+              "url": "https://mms-delivery.{domain}/api/media/v1/delivery/protected/{mediaId}.pdf",
+              "status": "draft",
+              "type": "brand guidelines",
+              "fileType": "PDF",
+              "size": "2.5MB",
+              "numberOfPages": 5,
+              "pageRangeFrom": 1,
+              "pageRangeTo": 5,
+              "title": "Brand guidelines",
+              "summary": "Visual and text guidelines",
+              "tags": ["visual", "text"],
+              "status": "pending",
+              "setMetadata": true,
+              "references": [
+                  {
+                       "type": "brandkit",
+                       "id": "{YOUR_BRANDKIT_ID}",
+                       "path": "/api/brands/v1/organizations/{YOUR_ORG_ID}/brandkits/{YOUR_BRANDKIT_ID}/references"
+                  }
+               ]
+            }
+      type: object
+      required:
+        - create_request
+      title: >-
+        Body_create_document_v2_api_documents_v2_organizations__organizationId__documents_post
+    CreateDocumentModelResponse_v2:
+      properties:
+        organizationId:
+          type: string
+          description: The unique identifier of your organization.
+          example: org_ZiiCnzhCeHDpWJAU
+        id:
+          type: string
+          description: The unique identifier of the document.
+          example: 11117df4-2412-44cf-b1e5-954330ca9230
+        status:
+          description: The current status of the document.
+          default: pending
+          type:
+            - string
+            - 'null'
+          $ref: '#/components/schemas/DocumentStatus'
+          enum:
+            - pending
+            - processed
+            - draft
+            - active
+            - archived
+            - edited
+            - failed
+            - null
+        url:
+          type: string
+          description: The URL where the PDF document is located.
+          example: https://example.com/document.pdf
+        type:
+          description: The document type.
+          example: 'null'
+          type:
+            - string
+            - 'null'
+        fileType:
+          description: The document's file type.
+          example: application/pdf
+          type:
+            - string
+            - 'null'
+        size:
+          description: The document size in bytes.
+          example: '8127298'
+          type:
+            - string
+            - 'null'
+        numberOfPages:
+          description: The total number of pages in the document.
+          example: '10'
+          default: 0
+          type:
+            - integer
+            - 'null'
+        pageRangeFrom:
+          description: The starting page number for processing the document.
+          example: 2
+          type:
+            - integer
+            - 'null'
+        pageRangeTo:
+          description: The ending page number for processing the document.
+          example: 9
+          type:
+            - integer
+            - 'null'
+        title:
+          description: The title of the document.
+          example: Company Brand Guidelines.pdf
+          type:
+            - string
+            - 'null'
+        summary:
+          description: A brief description of the document.
+          default: ''
+          type:
+            - string
+            - 'null'
+        tags:
+          description: An array of tags associated with the document.
+          default: []
+          type:
+            - array
+            - 'null'
+          items:
+            type: string
+        references:
+          description: An array of references associated with the document.
+          default: []
+          type:
+            - array
+            - 'null'
+          items:
+            $ref: '#/components/schemas/CreateReferenceModelResponse'
+        chunked:
+          description: Whether the document has been chunked.
+          example: false
+          default: false
+          type:
+            - boolean
+            - 'null'
+        summarized:
+          description: Whether the document has been summarized.
+          example: true
+          default: false
+          type:
+            - boolean
+            - 'null'
+        createdOn:
+          description: >-
+            The date and time when the document was created, formatted in ISO
+            8601.
+          format: date-time
+          example: '2025-04-23T13:55:13.308326'
+          type:
+            - string
+            - 'null'
+        createdBy:
+          description: The user who created the document.
+          example: mman
+          type:
+            - string
+            - 'null'
+        updatedOn:
+          description: >-
+            The date and time when the document was updated, formatted in ISO
+            8601.
+          format: date-time
+          example: '2025-04-23T13:55:13.308326'
+          type:
+            - string
+            - 'null'
+        updatedBy:
+          description: The user who last updated the document.
+          example: mman
+          type:
+            - string
+            - 'null'
+      type: object
+      required:
+        - organizationId
+        - id
+        - url
+        - type
+        - fileType
+        - size
+        - title
+        - createdOn
+        - createdBy
+        - updatedOn
+        - updatedBy
+      title: CreateDocumentModelResponse_v2
+    CreateReferenceModelResponse:
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the document.
+          example: 11117df4-2412-44cf-b1e5-954330ca9230
+        path:
+          type: string
+          description: The location of the document.
+          example: /path
+        type:
+          type: string
+          description: The type of the document.
+          example: brandkit
+      type: object
+      required:
+        - id
+        - path
+        - type
+    DocumentModel_v2:
+      properties:
+        organizationId:
+          description: The unique identifier of your organization.
+          example: org_ZiiCnzhCeHDpWJAU
+          type:
+            - string
+            - 'null'
+        id:
+          description: The unique identifier of the document.
+          example: 11117df4-2412-44cf-b1e5-954330ca9230
+          type:
+            - string
+            - 'null'
+        status:
+          description: The current status of the document.
+          example: pending
+          type:
+            - string
+            - 'null'
+        chunked:
+          description: Whether the document has been chunked.
+          example: false
+          type:
+            - boolean
+            - 'null'
+        summarized:
+          description: Whether the document has been summarized.
+          example: true
+          type:
+            - boolean
+            - 'null'
+        url:
+          description: The URL where the PDF document is located.
+          example: https://example.com/document.pdf
+          type:
+            - string
+            - 'null'
+        type:
+          description: The document type.
+          example: brand guidelines
+          type:
+            - string
+            - 'null'
+        fileType:
+          description: The document's file type.
+          example: application/pdf
+          type:
+            - string
+            - 'null'
+        size:
+          description: The document size in bytes.
+          example: '8127298'
+          type:
+            - string
+            - 'null'
+        numberOfPages:
+          description: The total number of pages in the document.
+          example: 10
+          default: 0
+          type:
+            - integer
+            - 'null'
+        pageRangeFrom:
+          description: The starting page number for processing the document.
+          example: 2
+          type:
+            - integer
+            - 'null'
+        pageRangeTo:
+          description: The ending page number for processing the document.
+          example: 9
+          type:
+            - integer
+            - 'null'
+        title:
+          description: The title of the document.
+          example: Company Brand Guidelines.pdf
+          type:
+            - string
+            - 'null'
+        summary:
+          description: A brief description of the document.
+          example: Visual and text guidelines
+          default: ''
+          type:
+            - string
+            - 'null'
+        tags:
+          description: An array of brand kit sections associated with the document.
+          example:
+            - Global Goals
+            - Brand Context
+          default: []
+          type:
+            - array
+            - 'null'
+          items:
+            type: string
+        references:
+          description: The references associated with the document.
+          example:
+            - id: 8271dec7-0c30-457b-b37b-4489628d7d7b
+              path: >-
+                /api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references
+              type: brandkit
+          default: []
+          type:
+            - array
+            - 'null'
+          items:
+            $ref: '#/components/schemas/GetReferenceModelResponse'
+        createdOn:
+          description: >-
+            The date and time when the document was created, formatted in ISO
+            8601.
+          format: date-time
+          example: '2025-04-23T13:55:13.308326'
+          type:
+            - string
+            - 'null'
+        createdBy:
+          description: The user who created the document.
+          example: mman
+          type:
+            - string
+            - 'null'
+        updatedOn:
+          description: >-
+            The date and time when the document was last updated, formatted in
+            ISO 8601.
+          format: date-time
+          example: '2025-04-23T13:55:13.308326'
+          type:
+            - string
+            - 'null'
+        updatedBy:
+          description: The user who last updated the document.
+          example: mman
+          type:
+            - string
+            - 'null'
+        searchScore:
+          description: >-
+            The relevance score of the document in search results. This value is
+            calculated based on the search query and the document's content.
+          example: 0.85
+          type:
+            - number
+            - 'null'
+      type: object
+      required:
+        - organizationId
+        - id
+        - status
+        - url
+        - type
+        - fileType
+        - size
+        - title
+      title: DocumentModel_v2
+    DocumentStatus:
+      type: string
+      enum:
+        - pending
+        - processed
+        - draft
+        - active
+        - archived
+        - edited
+        - failed
+      title: DocumentStatus
+    GetReferenceModelResponse:
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the document.
+          example: 11117df4-2412-44cf-b1e5-954330ca9230
+        path:
+          type: string
+          description: The location of the document.
+          example: /api/brands/v1/organizations/org_ABCDEF/brandkits/bk_123/references
+        type:
+          type: string
+          description: The type of the document reference.
+          example: brandkit
+      type: object
+      required:
+        - id
+        - path
+        - type
+    HTTPError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+        - detail
+      title: HTTPError
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ListDocumentsModelResponse_v2:
+      properties:
+        totalCount:
+          type: integer
+          description: The total number of documents that match the search criteria.
+          example: 100
+        pageSize:
+          type: integer
+          description: The number of documents returned per page.
+          example: 50
+        pageNumber:
+          type: integer
+          description: The current page number in the paginated response.
+          example: 1
+        data:
+          items:
+            $ref: '#/components/schemas/DocumentModel_v2'
+          type: array
+          description: >-
+            An array of documents that match the search criteria. Each document
+            contains details such as its ID, title, type, status, and other
+            metadata.
+      type: object
+      required:
+        - totalCount
+        - pageSize
+        - pageNumber
+        - data
+      title: ListDocumentsModelResponse_v2
+    ValidationError:
+      properties:
+        loc:
+          items:
+            type:
+              - string
+              - integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: Document
+    description: >-
+      The Docoument API lets you upload, retrieve, or delete [brand
+      documents](https://doc.sitecore.com/stream/en/users/sitecore-stream/guidelines-for-uploading-brand-documents.html)
+      in a brand kit.

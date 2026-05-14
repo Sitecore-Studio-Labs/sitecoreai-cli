@@ -15,7 +15,7 @@ import { resolveEnvironment } from "../../../../src/shared/env";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const TEMPLATE_GUID = "{abc12345-0000-0000-0000-000000000001}";
-const TEMPLATE_NORM = "abc1234500000000000000000000000001";
+const TEMPLATE_NORM = "abc12345000000000000000000000001";
 
 const setup = (
   search: (call: { field: string; value: string }) => {

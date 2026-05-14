@@ -4,536 +4,522 @@
  */
 
 export interface paths {
-  "/api/skills/v1/brandreview/generate": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/skills/v1/brandreview/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a brand review
+         * @description Generates a brand review using AI by evaluating the provided input against the specified brand kit, including its sections and subsections(fields). The review returns compliance scores, explanations, and improvement suggestions.
+         */
+        post: operations["generate_brand_review_api_skills_v1_brandreview_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Generate a brand review
-     * @description Generates a brand review using AI by evaluating the provided input against the specified brand kit, including its sections and subsections(fields). The review returns compliance scores, explanations, and improvement suggestions.
-     */
-    post: operations["generate_brand_review_api_skills_v1_brandreview_generate_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /** AddedContextModel */
-    AddedContextModel: {
-      /** Data */
-      data: string;
-      mimeType?: components["schemas"]["MimeType"] | null;
+    schemas: {
+        /** AddedContextModel */
+        AddedContextModel: {
+            /** Data */
+            data: string;
+            mimeType?: components["schemas"]["MimeType"] | null;
+        };
+        /** AuthenticationType */
+        AuthenticationType: {
+            /**
+             * Authtype
+             * @description Authentication information required to access a protected file URL.
+             * @example bearer
+             * @enum {string}
+             */
+            authType: "bearer" | "basic" | "custom";
+            /**
+             * Value
+             * @description The authentication value associated with the specified authentication type.
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+             */
+            value: string;
+            /**
+             * Customheadername
+             * @description The name of the custom HTTP header used for authentication. Required only when `authType` is set to *custom*.
+             * @example X-Custom-Auth
+             */
+            customHeaderName?: string | null;
+        };
+        /**
+         * ContentType
+         * @description Content type that determines the method for processing the data and creating embedding(s)
+         * @enum {string}
+         */
+        ContentType: "GenericImage" | "ImageWithTextOverlay" | "TextEmbeddingForImageSearch" | "ShortText" | "LongText" | "RichDocument";
+        /** DeepResearchRequest */
+        DeepResearchRequest: {
+            /**
+             * Prompt
+             * @description TThe research question or topic to analyze. This drives what content is embedded and explored.
+             */
+            prompt: string;
+            /**
+             * Brandkitid
+             * @description The unique identifier of the brand kit that defines the guidelines to evaluate against.
+             *      To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
+             */
+            brandkitId: string;
+            /** @description The type of search to perform, influencing how the research prompt is processed and matched against brand content. */
+            searchType?: components["schemas"]["SearchType"];
+            /**
+             * Additionalcontext
+             * @description Supplementary context to guide the research, such as background information, constraints, or reference material.
+             */
+            additionalContext?: components["schemas"]["AddedContextModel"][];
+        };
+        /**
+         * DocumentMimeType
+         * @description Document MIME types supported for brand review.
+         * @enum {string}
+         */
+        DocumentMimeType: "application/pdf" | "text/plain";
+        /**
+         * ExtractableFile
+         * @description Model representing a file (document or image) that can be downloaded and processed for brand review analysis.
+         */
+        ExtractableFile: {
+            /**
+             * Name
+             * @description The name of the file to be reviewed.
+             * @example myarticle.pdf
+             */
+            name: string;
+            /**
+             * Type
+             * @description The type of file to be reviewed.
+             * @example document
+             * @enum {string}
+             */
+            type: "document" | "image";
+            /**
+             * Url
+             * @description The URL from which the file can be downloaded, or a base64-encoded representation of the file content.
+             * @example https://example.com/myarticle.pdf
+             */
+            url: string;
+            /**
+             * Mimetype
+             * @description The MIME type of the file content.
+             * @example application/pdf
+             */
+            mimeType: components["schemas"]["DocumentMimeType"] | components["schemas"]["ImageMimeType"];
+            /**
+             * Detail
+             * @description Specifies the level of detail to use when reviewing the content.
+             * @default auto
+             * @example high
+             */
+            detail: ("low" | "auto" | "high") | null;
+            /** @description Authentication details for accessing the file URL. Not required when the file content is provided as base64. */
+            auth?: components["schemas"]["AuthenticationType"] | null;
+        };
+        /** FieldReview */
+        FieldReview: {
+            /**
+             * Fieldid
+             * @description The unique identifier of the brand kit field (subsection) whose guidelines were used as the basis for evaluating the input content.
+             * @example 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+             */
+            fieldId?: string;
+            /**
+             * Score
+             * @description A compliance score indicating how well the input content aligns with the guidelines defined in this brand kit field, where 5 indicates the highest level of alignment.
+             * @example 4
+             */
+            score?: number;
+            /**
+             * Reason
+             * @description A detailed explanation of the score, describing how the input content aligns with or deviates from the guidelines defined in this brand kit field.
+             * @example The content effectively captures the brand's tone of voice and messaging, but there are minor inconsistencies in terminology that could be improved.
+             */
+            reason?: string;
+            /**
+             * Suggestion
+             * @description Practical recommendations for improving the input content to better align with the guidelines defined in this brand kit field.
+             * @example Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout.
+             */
+            suggestion?: string;
+        };
+        /**
+         * GenerateBrandReviewModelRequest
+         * @example {
+         *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
+         *       "input": {
+         *         "document": {
+         *           "auth": {
+         *             "authType": "bearer",
+         *             "value": "token123"
+         *           },
+         *           "detail": "high",
+         *           "mimeType": "application/pdf",
+         *           "name": "example.pdf",
+         *           "type": "document",
+         *           "url": "https://example.com/document.pdf"
+         *         }
+         *       },
+         *       "sections": [
+         *         {
+         *           "fields": [
+         *             "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
+         *           ],
+         *           "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
+         *         }
+         *       ]
+         *     }
+         * @example {
+         *       "brandkitId": "bc25f498-a65e-445e-9f77-c2db9f3465af",
+         *       "input": {
+         *         "content": "Unleash your potential with Powerful! At Powerful, we believe in fueling your active lifestyle with clean, nutrient-dense energy solutions. Our premium, all-natural power bars and granolas are crafted to nourish your body, support your performance, and inspire healthier living. Whether you're a seasoned athlete or just starting your fitness journey, our products are designed to empower you to push your limits and pursue your passions. With real, natural ingredients and a commitment to transparency, Powerful is your trusted partner in wellness and adventure. Join us in embracing a high-energy, active lifestyle and let Powerful be your source of motivation and strength!"
+         *       },
+         *       "sections": [
+         *         {
+         *           "fields": [
+         *             "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
+         *           ],
+         *           "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
+         *         }
+         *       ]
+         *     }
+         * @example {
+         *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
+         *       "input": {
+         *         "image": {
+         *           "detail": "high",
+         *           "mimeType": "image/png",
+         *           "name": "logo.png",
+         *           "type": "image",
+         *           "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+         *         }
+         *       }
+         *     }
+         * @example {
+         *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
+         *       "input": {
+         *         "files": [
+         *           {
+         *             "detail": "auto",
+         *             "mimeType": "application/pdf",
+         *             "name": "document.pdf",
+         *             "type": "document",
+         *             "url": "JVBERi0xLjQKJcOkw7zDtsO8w6..."
+         *           }
+         *         ]
+         *       }
+         *     }
+         */
+        GenerateBrandReviewModelRequest: {
+            /**
+             * Brandkitid
+             * Format: uuid
+             * @description The unique identifier of the brand kit that defines the guidelines to evaluate against.
+             *      To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
+             * @example d2c2df7a-1137-43dd-bba3-73ec313526b1
+             */
+            brandkitId: string;
+            /**
+             * Input
+             * @description The content, asset, or file to evaluate in the brand review. This object is a flexible map of input types, such as text, documents, images, or other extractable files. Values can be provided as raw content or as files from which content can be extracted.
+             * @example {
+             *       "document": {
+             *         "name": "sample.pdf",
+             *         "type": "document",
+             *         "url": "https://www.eolss.net/sample-chapters/C01/E6-15-01-03.pdf",
+             *         "mimeType": "application/pdf"
+             *       }
+             *     }
+             */
+            input: {
+                [key: string]: string | number | boolean | unknown[] | {
+                    [key: string]: unknown;
+                } | components["schemas"]["ExtractableFile"] | components["schemas"]["ExtractableFile"][] | null;
+            };
+            /**
+             * Sections
+             * @description A list of brand kit section and subsection(field) IDs that define which brand rules are applied when evaluating the input content.
+             *
+             *      - If not provided, the input content is evaluated against all sections and subsections in the brand kit.
+             *      - If only a `sectionId` is provided, the input content is evaluated against all subsections (fields) within that section.
+             *
+             *      To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
+             *
+             *      To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
+             * @example [
+             *       {
+             *         "fields": [
+             *           "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
+             *         ],
+             *         "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
+             *       }
+             *     ]
+             */
+            sections?: components["schemas"]["Section"][] | null;
+        };
+        /** GenerateBrandReviewModelResponse */
+        GenerateBrandReviewModelResponse: {
+            /**
+             * Reviews
+             * @description A list of section-level evaluation results generated from the brand review, including subsection (field)-level compliance details.
+             */
+            reviews?: components["schemas"]["SectionReview"][];
+        };
+        /** GenerateEmbeddingsModelRequest */
+        GenerateEmbeddingsModelRequest: {
+            /**
+             * Input
+             * @description List of content items for vectorization
+             */
+            input: components["schemas"]["InputItem"][];
+            /** @description The global models field overrides the default Large Language Models (LLMs) defined for creating embeddings for specific content types */
+            models?: components["schemas"]["LLMModel"] | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImageMimeType
+         * @description Image MIME types supported for brand review.
+         * @example image/png
+         * @enum {string}
+         */
+        ImageMimeType: "image/jpeg" | "image/png" | "image/webp";
+        /** InputItem */
+        InputItem: {
+            /**
+             * Name
+             * @description The name of the content item to create embedding for
+             * @example Sample Text
+             */
+            name: string;
+            /**
+             * Data
+             * @description The content data - URL | base64 | raw text
+             */
+            data: string;
+            /** @description The type of the content to vectorize, which determines how the data is processed. */
+            contentType: components["schemas"]["ContentType"];
+            /**
+             * Mimetype
+             * @description MIME type of the file
+             * @example text/plain
+             */
+            mimeType: components["schemas"]["DocumentMimeType"] | components["schemas"]["ImageMimeType"];
+            /**
+             * @description The models field overrides the default models for the particular content item
+             * @example {
+             *       "text_embedding": "custom-text-embedding-model-v1",
+             *       "image_embedding": "custom-image-embedding-model-v1",
+             *       "dimensions": 512
+             *     }
+             */
+            models?: components["schemas"]["LLMModel"] | null;
+            /**
+             * Embedimg
+             * @description Whether to generate embeddings for all content types. If false, image embeddings (and their mean‑pooled vector) are skipped
+             * @default true
+             * @example true
+             */
+            embedImg: boolean;
+            /**
+             * Embedtext
+             * @description Whether to generate embeddings for all content types. If false, text embeddings (and their mean‑pooled vector) are skipped
+             * @default true
+             * @example true
+             */
+            embedText: boolean;
+            /**
+             * Chunksize
+             * @description The size of the text chunks to create embeddings for. If not provided, the default chunk size is used
+             * @default 256
+             * @example 256
+             */
+            chunkSize: number | null;
+        };
+        /**
+         * LLMModel
+         * @description Custom LLM models in the requests that override the default LLM models.
+         * @example {
+         *       "verbalization": "custom-verbalization-model-v1",
+         *       "text_embedding": "custom-text-embedding-model-v1",
+         *       "image_embedding": "custom-image-embedding-model-v1",
+         *       "dimensions": 512
+         *     }
+         */
+        LLMModel: {
+            /**
+             * Verbalization
+             * @description The verbalization model to use for generating explanations or text outputs.
+             * @example custom-verbalization-model-v1
+             */
+            verbalization?: string | null;
+            /**
+             * Text Embedding
+             * @description The text embedding model to use for generating vector embeddings from text content.
+             * @example custom-text-embedding-model-v1
+             */
+            text_embedding?: string | null;
+            /**
+             * Image Embedding
+             * @description The image embedding model to use for generating vector embeddings from image content.
+             * @example custom-image-embedding-model-v1
+             */
+            image_embedding?: string | null;
+            /**
+             * Dimensions
+             * @description The dimensionality of the embedding vectors produced by the specified models.
+             * @example 512
+             */
+            dimensions?: number | null;
+        };
+        /**
+         * MimeType
+         * @description MIME types supported for brand review.
+         * @example image/png
+         * @enum {string}
+         */
+        MimeType: "image/jpeg" | "image/png" | "application/pdf";
+        /**
+         * SearchType
+         * @description The type of search to perform, influencing how the research prompt is processed and matched against brand content. Web search focuses on general web content, while knowledge search targets brand-related information from your brand kit.
+         * @example web
+         * @enum {string}
+         */
+        SearchType: "web" | "knowledge";
+        /** Section */
+        Section: {
+            /**
+             * Sectionid
+             * Format: uuid
+             * @description The unique identifier of a brand kit section whose rules are used to evaluate the input content.
+             *
+             *      To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
+             * @example 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+             */
+            sectionId: string;
+            /**
+             * Fieldids
+             * @description The unique identifiers of brand kit fields (subsections) whose rules are used to evaluate the input content.
+             *
+             *      To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
+             * @example 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+             */
+            fieldIds?: string[] | null;
+        };
+        /** SectionReview */
+        SectionReview: {
+            /**
+             * Sectionid
+             * @description The unique identifier of the brand kit section whose rules were applied when evaluating the input content.
+             * @example 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+             */
+            sectionId?: string;
+            /**
+             * Score
+             * @description The overall compliance score that reflects how well the input content aligns with the rules defined in this brand kit section, where 5 indicates the highest level of alignment.
+             * @example 4
+             */
+            score?: number;
+            /**
+             * Reason
+             * @description A detailed explanation of the compliance score, describing how the input content aligns with or deviates from the rules defined in this section, including strengths and areas for improvement.
+             * @example The content demonstrates a strong adherence to brand guidelines, effectively capturing the brand's tone of voice and messaging. However, there are minor inconsistencies in terminology that could be improved.
+             */
+            reason?: string;
+            /**
+             * Suggestion
+             * @description A set of practical recommendations for improving how the input content aligns with the brand guidelines defined in this section.
+             * @example Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout.
+             */
+            suggestion?: string;
+            /**
+             * Fields
+             * @description A list of subsection (field)-level evaluation results within the section. Each entry describes how the input content aligns with the rules defined in a specific field, including a score, explanation, and suggestions.
+             * @example [
+             *       {
+             *         "fieldId": "8cf1b172-0277-4aa3-9bb4-252f09f148fd",
+             *         "score": 4,
+             *         "reason": "The content effectively captures the brand's tone of voice and messaging, but there are minor inconsistencies in terminology that could be improved.",
+             *         "suggestion": "Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout."
+             *       }
+             *     ]
+             */
+            fields?: components["schemas"]["FieldReview"][];
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
     };
-    /** AuthenticationType */
-    AuthenticationType: {
-      /**
-       * Authtype
-       * @description Authentication information required to access a protected file URL.
-       * @example bearer
-       * @enum {string}
-       */
-      authType: "bearer" | "basic" | "custom";
-      /**
-       * Value
-       * @description The authentication value associated with the specified authentication type.
-       * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
-       */
-      value: string;
-      /**
-       * Customheadername
-       * @description The name of the custom HTTP header used for authentication. Required only when `authType` is set to *custom*.
-       * @example X-Custom-Auth
-       */
-      customHeaderName?: string | null;
-    };
-    /**
-     * ContentType
-     * @description Content type that determines the method for processing the data and creating embedding(s)
-     * @enum {string}
-     */
-    ContentType:
-      | "GenericImage"
-      | "ImageWithTextOverlay"
-      | "TextEmbeddingForImageSearch"
-      | "ShortText"
-      | "LongText"
-      | "RichDocument";
-    /** DeepResearchRequest */
-    DeepResearchRequest: {
-      /**
-       * Prompt
-       * @description TThe research question or topic to analyze. This drives what content is embedded and explored.
-       */
-      prompt: string;
-      /**
-       * Brandkitid
-       * @description The unique identifier of the brand kit that defines the guidelines to evaluate against.
-       *      To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
-       */
-      brandkitId: string;
-      /** @description The type of search to perform, influencing how the research prompt is processed and matched against brand content. */
-      searchType?: components["schemas"]["SearchType"];
-      /**
-       * Additionalcontext
-       * @description Supplementary context to guide the research, such as background information, constraints, or reference material.
-       */
-      additionalContext?: components["schemas"]["AddedContextModel"][];
-    };
-    /**
-     * DocumentMimeType
-     * @description Document MIME types supported for brand review.
-     * @enum {string}
-     */
-    DocumentMimeType: "application/pdf" | "text/plain";
-    /**
-     * ExtractableFile
-     * @description Model representing a file (document or image) that can be downloaded and processed for brand review analysis.
-     */
-    ExtractableFile: {
-      /**
-       * Name
-       * @description The name of the file to be reviewed.
-       * @example myarticle.pdf
-       */
-      name: string;
-      /**
-       * Type
-       * @description The type of file to be reviewed.
-       * @example document
-       * @enum {string}
-       */
-      type: "document" | "image";
-      /**
-       * Url
-       * @description The URL from which the file can be downloaded, or a base64-encoded representation of the file content.
-       * @example https://example.com/myarticle.pdf
-       */
-      url: string;
-      /**
-       * Mimetype
-       * @description The MIME type of the file content.
-       * @example application/pdf
-       */
-      mimeType: components["schemas"]["DocumentMimeType"] | components["schemas"]["ImageMimeType"];
-      /**
-       * Detail
-       * @description Specifies the level of detail to use when reviewing the content.
-       * @default auto
-       * @example high
-       */
-      detail: ("low" | "auto" | "high") | null;
-      /** @description Authentication details for accessing the file URL. Not required when the file content is provided as base64. */
-      auth?: components["schemas"]["AuthenticationType"] | null;
-    };
-    /** FieldReview */
-    FieldReview: {
-      /**
-       * Fieldid
-       * @description The unique identifier of the brand kit field (subsection) whose guidelines were used as the basis for evaluating the input content.
-       * @example 8cf1b172-0277-4aa3-9bb4-252f09f148fd
-       */
-      fieldId?: string;
-      /**
-       * Score
-       * @description A compliance score indicating how well the input content aligns with the guidelines defined in this brand kit field, where 5 indicates the highest level of alignment.
-       * @example 4
-       */
-      score?: number;
-      /**
-       * Reason
-       * @description A detailed explanation of the score, describing how the input content aligns with or deviates from the guidelines defined in this brand kit field.
-       * @example The content effectively captures the brand's tone of voice and messaging, but there are minor inconsistencies in terminology that could be improved.
-       */
-      reason?: string;
-      /**
-       * Suggestion
-       * @description Practical recommendations for improving the input content to better align with the guidelines defined in this brand kit field.
-       * @example Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout.
-       */
-      suggestion?: string;
-    };
-    /**
-     * GenerateBrandReviewModelRequest
-     * @example {
-     *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
-     *       "input": {
-     *         "document": {
-     *           "auth": {
-     *             "authType": "bearer",
-     *             "value": "token123"
-     *           },
-     *           "detail": "high",
-     *           "mimeType": "application/pdf",
-     *           "name": "example.pdf",
-     *           "type": "document",
-     *           "url": "https://example.com/document.pdf"
-     *         }
-     *       },
-     *       "sections": [
-     *         {
-     *           "fields": [
-     *             "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
-     *           ],
-     *           "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
-     *         }
-     *       ]
-     *     }
-     * @example {
-     *       "brandkitId": "bc25f498-a65e-445e-9f77-c2db9f3465af",
-     *       "input": {
-     *         "content": "Unleash your potential with Powerful! At Powerful, we believe in fueling your active lifestyle with clean, nutrient-dense energy solutions. Our premium, all-natural power bars and granolas are crafted to nourish your body, support your performance, and inspire healthier living. Whether you're a seasoned athlete or just starting your fitness journey, our products are designed to empower you to push your limits and pursue your passions. With real, natural ingredients and a commitment to transparency, Powerful is your trusted partner in wellness and adventure. Join us in embracing a high-energy, active lifestyle and let Powerful be your source of motivation and strength!"
-     *       },
-     *       "sections": [
-     *         {
-     *           "fields": [
-     *             "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
-     *           ],
-     *           "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
-     *         }
-     *       ]
-     *     }
-     * @example {
-     *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
-     *       "input": {
-     *         "image": {
-     *           "detail": "high",
-     *           "mimeType": "image/png",
-     *           "name": "logo.png",
-     *           "type": "image",
-     *           "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-     *         }
-     *       }
-     *     }
-     * @example {
-     *       "brandkitId": "f6c0ae91-674a-479f-9c4f-05bdb401bb4b",
-     *       "input": {
-     *         "files": [
-     *           {
-     *             "detail": "auto",
-     *             "mimeType": "application/pdf",
-     *             "name": "document.pdf",
-     *             "type": "document",
-     *             "url": "JVBERi0xLjQKJcOkw7zDtsO8w6..."
-     *           }
-     *         ]
-     *       }
-     *     }
-     */
-    GenerateBrandReviewModelRequest: {
-      /**
-       * Brandkitid
-       * Format: uuid
-       * @description The unique identifier of the brand kit that defines the guidelines to evaluate against.
-       *      To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
-       * @example d2c2df7a-1137-43dd-bba3-73ec313526b1
-       */
-      brandkitId: string;
-      /**
-       * Input
-       * @description The content, asset, or file to evaluate in the brand review. This object is a flexible map of input types, such as text, documents, images, or other extractable files. Values can be provided as raw content or as files from which content can be extracted.
-       * @example {
-       *       "document": {
-       *         "name": "sample.pdf",
-       *         "type": "document",
-       *         "url": "https://www.eolss.net/sample-chapters/C01/E6-15-01-03.pdf",
-       *         "mimeType": "application/pdf"
-       *       }
-       *     }
-       */
-      input: {
-        [key: string]:
-          | string
-          | number
-          | boolean
-          | unknown[]
-          | {
-              [key: string]: unknown;
-            }
-          | components["schemas"]["ExtractableFile"]
-          | components["schemas"]["ExtractableFile"][]
-          | null;
-      };
-      /**
-       * Sections
-       * @description A list of brand kit section and subsection(field) IDs that define which brand rules are applied when evaluating the input content.
-       *
-       *      - If not provided, the input content is evaluated against all sections and subsections in the brand kit.
-       *      - If only a `sectionId` is provided, the input content is evaluated against all subsections (fields) within that section.
-       *
-       *      To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
-       *
-       *      To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
-       * @example [
-       *       {
-       *         "fields": [
-       *           "8cf1b172-0277-4aa3-9bb4-252f09f148fd"
-       *         ],
-       *         "sectionId": "0b3197be-f0b7-462a-a2e5-3388a132ee3f"
-       *       }
-       *     ]
-       */
-      sections?: components["schemas"]["Section"][] | null;
-    };
-    /** GenerateBrandReviewModelResponse */
-    GenerateBrandReviewModelResponse: {
-      /**
-       * Reviews
-       * @description A list of section-level evaluation results generated from the brand review, including subsection (field)-level compliance details.
-       */
-      reviews?: components["schemas"]["SectionReview"][];
-    };
-    /** GenerateEmbeddingsModelRequest */
-    GenerateEmbeddingsModelRequest: {
-      /**
-       * Input
-       * @description List of content items for vectorization
-       */
-      input: components["schemas"]["InputItem"][];
-      /** @description The global models field overrides the default Large Language Models (LLMs) defined for creating embeddings for specific content types */
-      models?: components["schemas"]["LLMModel"] | null;
-    };
-    /** HTTPValidationError */
-    HTTPValidationError: {
-      /** Detail */
-      detail?: components["schemas"]["ValidationError"][];
-    };
-    /**
-     * ImageMimeType
-     * @description Image MIME types supported for brand review.
-     * @example image/png
-     * @enum {string}
-     */
-    ImageMimeType: "image/jpeg" | "image/png" | "image/webp";
-    /** InputItem */
-    InputItem: {
-      /**
-       * Name
-       * @description The name of the content item to create embedding for
-       * @example Sample Text
-       */
-      name: string;
-      /**
-       * Data
-       * @description The content data - URL | base64 | raw text
-       */
-      data: string;
-      /** @description The type of the content to vectorize, which determines how the data is processed. */
-      contentType: components["schemas"]["ContentType"];
-      /**
-       * Mimetype
-       * @description MIME type of the file
-       * @example text/plain
-       */
-      mimeType: components["schemas"]["DocumentMimeType"] | components["schemas"]["ImageMimeType"];
-      /**
-       * @description The models field overrides the default models for the particular content item
-       * @example {
-       *       "text_embedding": "custom-text-embedding-model-v1",
-       *       "image_embedding": "custom-image-embedding-model-v1",
-       *       "dimensions": 512
-       *     }
-       */
-      models?: components["schemas"]["LLMModel"] | null;
-      /**
-       * Embedimg
-       * @description Whether to generate embeddings for all content types. If false, image embeddings (and their mean‑pooled vector) are skipped
-       * @default true
-       * @example true
-       */
-      embedImg: boolean;
-      /**
-       * Embedtext
-       * @description Whether to generate embeddings for all content types. If false, text embeddings (and their mean‑pooled vector) are skipped
-       * @default true
-       * @example true
-       */
-      embedText: boolean;
-      /**
-       * Chunksize
-       * @description The size of the text chunks to create embeddings for. If not provided, the default chunk size is used
-       * @default 256
-       * @example 256
-       */
-      chunkSize: number | null;
-    };
-    /**
-     * LLMModel
-     * @description Custom LLM models in the requests that override the default LLM models.
-     * @example {
-     *       "verbalization": "custom-verbalization-model-v1",
-     *       "text_embedding": "custom-text-embedding-model-v1",
-     *       "image_embedding": "custom-image-embedding-model-v1",
-     *       "dimensions": 512
-     *     }
-     */
-    LLMModel: {
-      /**
-       * Verbalization
-       * @description The verbalization model to use for generating explanations or text outputs.
-       * @example custom-verbalization-model-v1
-       */
-      verbalization?: string | null;
-      /**
-       * Text Embedding
-       * @description The text embedding model to use for generating vector embeddings from text content.
-       * @example custom-text-embedding-model-v1
-       */
-      text_embedding?: string | null;
-      /**
-       * Image Embedding
-       * @description The image embedding model to use for generating vector embeddings from image content.
-       * @example custom-image-embedding-model-v1
-       */
-      image_embedding?: string | null;
-      /**
-       * Dimensions
-       * @description The dimensionality of the embedding vectors produced by the specified models.
-       * @example 512
-       */
-      dimensions?: number | null;
-    };
-    /**
-     * MimeType
-     * @description MIME types supported for brand review.
-     * @example image/png
-     * @enum {string}
-     */
-    MimeType: "image/jpeg" | "image/png" | "application/pdf";
-    /**
-     * SearchType
-     * @description The type of search to perform, influencing how the research prompt is processed and matched against brand content. Web search focuses on general web content, while knowledge search targets brand-related information from your brand kit.
-     * @example web
-     * @enum {string}
-     */
-    SearchType: "web" | "knowledge";
-    /** Section */
-    Section: {
-      /**
-       * Sectionid
-       * Format: uuid
-       * @description The unique identifier of a brand kit section whose rules are used to evaluate the input content.
-       *
-       *      To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
-       * @example 0b3197be-f0b7-462a-a2e5-3388a132ee3f
-       */
-      sectionId: string;
-      /**
-       * Fieldids
-       * @description The unique identifiers of brand kit fields (subsections) whose rules are used to evaluate the input content.
-       *
-       *      To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
-       * @example 8cf1b172-0277-4aa3-9bb4-252f09f148fd
-       */
-      fieldIds?: string[] | null;
-    };
-    /** SectionReview */
-    SectionReview: {
-      /**
-       * Sectionid
-       * @description The unique identifier of the brand kit section whose rules were applied when evaluating the input content.
-       * @example 0b3197be-f0b7-462a-a2e5-3388a132ee3f
-       */
-      sectionId?: string;
-      /**
-       * Score
-       * @description The overall compliance score that reflects how well the input content aligns with the rules defined in this brand kit section, where 5 indicates the highest level of alignment.
-       * @example 4
-       */
-      score?: number;
-      /**
-       * Reason
-       * @description A detailed explanation of the compliance score, describing how the input content aligns with or deviates from the rules defined in this section, including strengths and areas for improvement.
-       * @example The content demonstrates a strong adherence to brand guidelines, effectively capturing the brand's tone of voice and messaging. However, there are minor inconsistencies in terminology that could be improved.
-       */
-      reason?: string;
-      /**
-       * Suggestion
-       * @description A set of practical recommendations for improving how the input content aligns with the brand guidelines defined in this section.
-       * @example Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout.
-       */
-      suggestion?: string;
-      /**
-       * Fields
-       * @description A list of subsection (field)-level evaluation results within the section. Each entry describes how the input content aligns with the rules defined in a specific field, including a score, explanation, and suggestions.
-       * @example [
-       *       {
-       *         "fieldId": "8cf1b172-0277-4aa3-9bb4-252f09f148fd",
-       *         "score": 4,
-       *         "reason": "The content effectively captures the brand's tone of voice and messaging, but there are minor inconsistencies in terminology that could be improved.",
-       *         "suggestion": "Consider using more consistent terminology that aligns with the brand guidelines, and ensure that the tone remains professional throughout."
-       *       }
-       *     ]
-       */
-      fields?: components["schemas"]["FieldReview"][];
-    };
-    /** ValidationError */
-    ValidationError: {
-      /** Location */
-      loc: (string | number)[];
-      /** Message */
-      msg: string;
-      /** Error Type */
-      type: string;
-    };
-  };
-  responses: never;
-  parameters: never;
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  generate_brand_review_api_skills_v1_brandreview_generate_post: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description The feature within a Sitecore product that initiates the request. */
-        "x-sc-feature"?: string;
-        /** @description The type of AI interaction triggered by the feature. This value categorizes AI operations for usage reporting and entitlement tracking. */
-        "x-sc-interaction-type"?: string;
-        /** @description The Sitecore product that provides the feature used in the request. This value is used to track entitlement consumption for the related AI interaction. */
-        "x-sc-sellable-product"?: string;
-        /** @description A comma‑separated list of key-value pairs that reports usage to the consumption and usage services. */
-        "x-sc-params"?: string | null;
-      };
-      path?: never;
-      cookie?: never;
+    generate_brand_review_api_skills_v1_brandreview_generate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The feature within a Sitecore product that initiates the request. */
+                "x-sc-feature"?: string;
+                /** @description The type of AI interaction triggered by the feature. This value categorizes AI operations for usage reporting and entitlement tracking. */
+                "x-sc-interaction-type"?: string;
+                /** @description The Sitecore product that provides the feature used in the request. This value is used to track entitlement consumption for the related AI interaction. */
+                "x-sc-sellable-product"?: string;
+                /** @description A comma‑separated list of key-value pairs that reports usage to the consumption and usage services. */
+                "x-sc-params"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateBrandReviewModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateBrandReviewModelResponse"];
+                };
+            };
+            /** @description Unprocessable entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
     };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["GenerateBrandReviewModelRequest"];
-      };
-    };
-    responses: {
-      /** @description Successful response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["GenerateBrandReviewModelResponse"];
-        };
-      };
-      /** @description Unprocessable entity */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
 }

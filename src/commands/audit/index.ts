@@ -25,6 +25,7 @@ import { createAuditLanguageDataCommand } from "./language-data";
 import { createAuditOrphansCommand } from "./orphans";
 import { createAuditPageDesignOrphansCommand } from "./page-design-orphans";
 import { createAuditPersonalizationBrokenCommand } from "./personalization-broken";
+import { createAuditReferencesCommand } from "./references";
 import { createAuditSiteResidueCommand } from "./site-residue";
 import { createAuditStaleContentCommand } from "./stale-content";
 import { createAuditStaleWorkflowCommand } from "./stale-workflow";
@@ -56,6 +57,7 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditOrphansCommand());
   command.addCommand(createAuditPageDesignOrphansCommand());
   command.addCommand(createAuditPersonalizationBrokenCommand());
+  command.addCommand(createAuditReferencesCommand());
   command.addCommand(createAuditRoleBloatCommand());
   command.addCommand(createAuditSiteResidueCommand());
   command.addCommand(createAuditSlugConflictsCommand());
@@ -74,6 +76,7 @@ export const createAuditCommand = (): Command => {
       "  $ scai audit broken-links list --root /sitecore/content/MySite\n" +
       "  $ scai audit dead-templates list --root /sitecore/templates/Project\n" +
       "  $ scai audit template-dependencies list --template-id {ABC123…}\n" +
+      "  $ scai audit references list --to {ABC123…} --root /sitecore/content\n" +
       "  $ scai audit duplicates list --min-group-size 3 --json\n" +
       "  $ scai audit datasource-missing list\n" +
       "  $ scai audit empty-items list --language en\n" +

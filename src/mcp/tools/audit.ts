@@ -44,6 +44,7 @@ import { runAuditMissingMeta } from "@/hygiene/tasks/audit-missing-meta";
 import { runAuditOrphans } from "@/hygiene/tasks/audit-orphans";
 import { runAuditPageDesignOrphans } from "@/hygiene/tasks/audit-page-design-orphans";
 import { runAuditPersonalizationBroken } from "@/hygiene/tasks/audit-personalization-broken";
+import { runAuditReferences } from "@/hygiene/tasks/audit-references";
 import { runAuditRoleBloat } from "@/hygiene/tasks/audit-role-bloat";
 import { runAuditSiteResidue } from "@/hygiene/tasks/audit-site-residue";
 import { runAuditSlugConflicts } from "@/hygiene/tasks/audit-slug-conflicts";
@@ -109,6 +110,7 @@ const SINGLE_AUDIT_RUNNERS: Record<string, LoosedRunner> = {
   orphans: loosen(runAuditOrphans),
   "page-design-orphans": loosen(runAuditPageDesignOrphans),
   "personalization-broken": loosen(runAuditPersonalizationBroken),
+  references: loosen(runAuditReferences),
   "role-bloat": loosen(runAuditRoleBloat),
   "site-residue": loosen(runAuditSiteResidue),
   "slug-conflicts": loosen(runAuditSlugConflicts),

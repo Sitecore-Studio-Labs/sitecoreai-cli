@@ -23,6 +23,7 @@ import { runAuditMissingMeta } from "./audit-missing-meta";
 import { runAuditOrphans } from "./audit-orphans";
 import { runAuditPageDesignOrphans } from "./audit-page-design-orphans";
 import { runAuditPersonalizationBroken } from "./audit-personalization-broken";
+import { runAuditReferences } from "./audit-references";
 import { runAuditSiteResidue } from "./audit-site-residue";
 import { runAuditStaleContent } from "./audit-stale-content";
 import { runAuditStaleWorkflow } from "./audit-stale-workflow";
@@ -136,6 +137,8 @@ const AUDIT_REGISTRY: AuditDef[] = [
   { name: "orphans", run: loosen(runAuditOrphans) },
   { name: "page-design-orphans", run: loosen(runAuditPageDesignOrphans) },
   { name: "personalization-broken", run: loosen(runAuditPersonalizationBroken) },
+  // references requires --to; off by default in `audit all`.
+  { name: "references", run: loosen(runAuditReferences), requiresExtraConfig: true },
   { name: "site-residue", run: loosen(runAuditSiteResidue) },
   { name: "stale-content", run: loosen(runAuditStaleContent) },
   { name: "stale-workflow", run: loosen(runAuditStaleWorkflow) },

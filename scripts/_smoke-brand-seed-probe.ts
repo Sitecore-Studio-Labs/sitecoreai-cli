@@ -33,62 +33,18 @@ import {
 import { ScaiError } from "@/shared/errors";
 
 /**
- * Build a minimal valid PDF carrying the given text as a single-page
- * document. Avoids a runtime PDF library dependency; the Documents
- * API only accepts PDFs so we cannot just upload a `.txt` payload.
+ * Public PDF URL for the seed probe. Sitecore's v1 Documents endpoint
+ * downloads the file from this URL to its own MMS storage — we don't
+ * upload bytes directly. Any reasonably-sized public PDF works for
+ * smoke testing; using a real brand-guidelines document gives
+ * meaningful content for the ingestion pipeline to chunk.
  *
- * The structure follows the PDF 1.4 spec: catalog → pages → page →
- * content stream → font. Object offsets are tracked dynamically so
- * the xref table lines up regardless of the rendered text length.
+ * Override via `SCAI_BRAND_PROBE_PDF_URL` if you want to point at
+ * your own hosted file.
  */
-const makeMinimalPdf = (text: string): Buffer => {
-  const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-  const lines = escaped.split("\n");
-  const contentStream = lines
-    .map((line, i) => `T* (${line}) Tj`)
-    .join("\n")
-    .replace("T* ", "");
-  const stream = `BT /F1 12 Tf 50 750 Td 16 TL ${contentStream} ET`;
-  const objects = [
-    "<</Type/Catalog/Pages 2 0 R>>",
-    "<</Type/Pages/Kids[3 0 R]/Count 1>>",
-    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
-    `<</Length ${stream.length}>>stream\n${stream}\nendstream`,
-    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
-  ];
-  let body = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  for (let i = 0; i < objects.length; i++) {
-    offsets.push(body.length);
-    body += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
-  }
-  const xrefStart = body.length;
-  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i <= objects.length; i++) {
-    body += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  body += `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xrefStart}\n%%EOF`;
-  return Buffer.from(body, "latin1");
-};
-
-const BRAND_GUIDELINES = [
-  "Brand Voice Guidelines",
-  "",
-  "We are warm, energetic, and direct.",
-  "We use active voice. We avoid jargon.",
-  "We address the reader as 'you' and speak in plain language.",
-  "We celebrate effort and capability, never gatekeep expertise.",
-  "We use clear specifics over vague superlatives:",
-  "  - 'cuts page load by 40%' not 'lightning fast'",
-  "  - 'works on every browser since 2020' not 'universal compatibility'",
-  "",
-  "Tone of Voice",
-  "",
-  "Confident but not arrogant.",
-  "Helpful but not condescending.",
-  "Excited about real outcomes, not features.",
-  "Direct about tradeoffs, never hide what does not work.",
-].join("\n");
+const PROBE_PDF_URL =
+  process.env.SCAI_BRAND_PROBE_PDF_URL ??
+  "https://www.eolss.net/sample-chapters/C01/E6-15-01-03.pdf";
 
 const TEST_COPY = [
   "Hey there! Get ready because we are PUMPED to unveil the most",
@@ -141,25 +97,19 @@ const main = async (): Promise<void> => {
     }
     process.stderr.write(`      ok — kitId=${kitId}\n\n`);
 
-    // 2. Generate PDF
-    process.stderr.write(`[2/6] generating minimal PDF...\n`);
-    const pdf = makeMinimalPdf(BRAND_GUIDELINES);
-    process.stderr.write(`      ok (${pdf.length} bytes)\n\n`);
+    // 2. (PDF is hosted at a URL — Sitecore downloads it)
+    process.stderr.write(`[2/6] PDF source: ${PROBE_PDF_URL}\n\n`);
 
-    // 3. UPLOAD document
+    // 3. UPLOAD document (Sitecore re-fetches the URL to MMS)
     process.stderr.write(`[3/6] uploading document to kit...\n`);
     const uploaded = await uploadDocument({
       client,
       brandKitId: kitId,
-      pdf,
-      fileName: "brand-guidelines.pdf",
-      metadata: {
-        title: "Brand Guidelines",
-        summary: "Voice + tone rules for scai seed probe",
-        type: "brand guidelines",
-        fileType: "PDF",
-        status: "draft",
-      },
+      url: PROBE_PDF_URL,
+      title: "Brand Guidelines",
+      summary: "scai seed probe — voice + tone rules",
+      type: "brand guidelines",
+      fileType: "PDF",
     });
     process.stderr.write(`      ok — documentId=${uploaded.id} status=${uploaded.status}\n\n`);
 

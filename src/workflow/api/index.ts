@@ -11,6 +11,10 @@ export {
   type ListWorkflowDefinitionsOptions,
   type AssignedItemSummary,
   type SearchItemsByWorkflowStateOptions,
+  type WorkflowDefinitionDetail,
+  type WorkflowStateDetail,
+  type WorkflowCommandDetail,
+  type WorkflowChildSummary,
 } from "./client";
 export {
   resolveWorkflowCommandId,

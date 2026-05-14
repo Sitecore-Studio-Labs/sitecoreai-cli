@@ -3,11 +3,14 @@ import type { McpContext } from "../../../../src/mcp/auth";
 
 const taskMocks = vi.hoisted(() => ({
   runWorkflowInspect: vi.fn().mockResolvedValue({
-    itemId: "x",
-    path: "/sitecore/content/x",
-    workflow: { workflowId: "w1", workflowName: "Editorial" },
-    state: { stateId: "s1", stateName: "Draft", final: false },
-    availableCommands: [{ commandId: "c1", displayName: "Submit" }],
+    kind: "item",
+    item: {
+      itemId: "x",
+      path: "/sitecore/content/x",
+      workflow: { workflowId: "w1", workflowName: "Editorial" },
+      state: { stateId: "s1", stateName: "Draft", final: false },
+      availableCommands: [{ commandId: "c1", displayName: "Submit" }],
+    },
   }),
   runWorkflowListCommands: vi.fn().mockResolvedValue({
     itemId: "x",

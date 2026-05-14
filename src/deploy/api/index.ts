@@ -45,6 +45,7 @@ export {
 
 export {
   fetchProjects,
+  fetchAllProjects,
   fetchProjectsLimitation,
   fetchProject,
   validateProjectName,
@@ -54,7 +55,10 @@ export {
   linkProjectRepository,
   unlinkProjectRepository,
   fetchProjectEnvironments,
+  fetchAllProjectEnvironments,
   createProjectEnvironment,
+  type FetchAllProjectsResult,
+  type FetchAllProjectEnvironmentsResult,
 } from "./projects";
 
 // --- Environments --------------------------------------------------------

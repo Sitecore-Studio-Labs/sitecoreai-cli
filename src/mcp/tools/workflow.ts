@@ -114,15 +114,22 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
             ...taskOpts,
             item: input.item,
           } as never);
+          // `result` is a discriminated union — `kind: "item"` for items
+          // under workflow, `kind: "definition"` for Workflow-templated
+          // items, `null` when neither resolves.
+          let text: string;
+          if (!result) {
+            text = `Item '${input.item}' is not under workflow and isn't a workflow definition.`;
+          } else if (result.kind === "definition") {
+            text = `Workflow definition '${
+              result.definition.displayName ?? result.definition.name
+            }' (${result.definition.path}) — ${result.definition.states.length} state(s).`;
+          } else {
+            const i = result.item;
+            text = `Workflow '${i.workflow.workflowName}' state '${i.state.stateName ?? "?"}' on ${i.path ?? i.itemId}; ${i.availableCommands.length} command(s) available.`;
+          }
           return {
-            content: [
-              {
-                type: "text",
-                text: result
-                  ? `Workflow '${result.workflow.workflowName}' state '${result.state.stateName ?? "?"}' on ${result.path ?? result.itemId}; ${result.availableCommands.length} command(s) available.`
-                  : `Item ${input.item} is not under workflow.`,
-              },
-            ],
+            content: [{ type: "text", text }],
             structuredContent: { verb: input.verb, result },
           };
         }

@@ -18,6 +18,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchOrganizationLicense: vi.fn().mockResolvedValue({ key: "license" }),
   createOrganizationDemoSolution: vi.fn().mockResolvedValue({ id: "demo" }),
   fetchProjects: vi.fn().mockResolvedValue([{ id: "proj-1", name: "Project One" }]),
+  fetchAllProjects: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "proj-1", name: "Project One" }],
+  }),
   fetchProjectsLimitation: vi.fn().mockResolvedValue({ limit: 1 }),
   validateProjectName: vi.fn().mockResolvedValue({ valid: true }),
   fetchProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "Project One" }),
@@ -54,6 +59,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironments: vi
     .fn()
     .mockResolvedValue([{ id: "env-1", name: "Env One", projectType: "cm" }]),
+  fetchAllEnvironments: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "env-1", name: "Env One", projectType: "cm" }],
+  }),
   fetchEnvironmentsLimitation: vi.fn().mockResolvedValue({ limit: 1 }),
   fetchEnvironment: vi
     .fn()
@@ -73,6 +83,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironmentEditingSecret: vi.fn().mockResolvedValue({ secret: "edit" }),
   regenerateEnvironmentContext: vi.fn().mockResolvedValue({ ok: true }),
   fetchProjectEnvironments: vi.fn().mockResolvedValue([{ id: "env-1", name: "Env One" }]),
+  fetchAllProjectEnvironments: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "env-1", name: "Env One" }],
+  }),
   createProjectEnvironment: vi.fn().mockResolvedValue({ id: "env-2" }),
   deleteEnvironment: vi.fn().mockResolvedValue({ deleted: true }),
   updateEnvironment: vi.fn().mockResolvedValue({ updated: true }),

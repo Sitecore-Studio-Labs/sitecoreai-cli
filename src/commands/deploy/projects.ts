@@ -12,11 +12,37 @@ import {
 } from "@/deploy/tasks";
 import { addDeployBaseOptions } from "./shared";
 
+const parsePositiveInt = (label: string) => (value: string): number => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return parsed;
+};
+
 export const createDeployProjectsCommand = (): Command => {
   const projects = new Command("projects").description("Project operations").alias("proj");
 
   const projectsList = new Command("list").description("List projects");
   addDeployBaseOptions(projectsList);
+  projectsList
+    .addOption(
+      new Option(
+        "--all",
+        "Fetch every page and return the consolidated result set (default: one page)"
+      )
+    )
+    .addOption(
+      new Option("--page <n>", "1-based page number (ignored with --all)").argParser(
+        parsePositiveInt("--page")
+      )
+    )
+    .addOption(
+      new Option(
+        "--page-size <n>",
+        "Page size. Defaults to 50 with --all, otherwise the API default (10)."
+      ).argParser(parsePositiveInt("--page-size"))
+    );
   projectsList.action(async (options) => runDeployProjectsList(options));
 
   const projectsLimitation = new Command("limitation").description("Get project limitations");

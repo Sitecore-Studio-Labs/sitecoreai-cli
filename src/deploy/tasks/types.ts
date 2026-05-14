@@ -229,6 +229,11 @@ export type DeployEditingHostCreateOptions = DeployBaseOptions & {
 
 export type DeployEditingHostListOptions = DeployBaseOptions & {
   project?: string;
+  /** When false, fetch only one page. Default behaviour walks all
+   *  pages — see comment in `runDeployEditingHostList`. */
+  all?: boolean;
+  page?: number;
+  pageSize?: number;
 };
 
 export type DeployEditingHostDeleteOptions = DeployBaseOptions & {

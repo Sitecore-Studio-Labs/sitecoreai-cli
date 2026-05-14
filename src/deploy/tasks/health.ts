@@ -15,8 +15,8 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import {
   fetchAllEnvironments,
+  fetchAllProjectEnvironments,
   fetchEnvironmentDeployments,
-  fetchProjectEnvironments,
   getProvisioningStatus,
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
@@ -86,13 +86,8 @@ const collectEnvironments = async (
   const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
   const projectId = await resolveDeployProjectId(context, options);
   if (projectId) {
-    const result = (await fetchProjectEnvironments(apiOptions, projectId)) as
-      | DeployEnvironment[]
-      | { items?: DeployEnvironment[]; data?: DeployEnvironment[] };
-    if (Array.isArray(result)) {
-      return result;
-    }
-    return result?.items ?? result?.data ?? [];
+    const aggregated = await fetchAllProjectEnvironments(apiOptions, projectId, 50);
+    return aggregated.items;
   }
   const aggregated = await fetchAllEnvironments(apiOptions, {}, 50);
   return aggregated.items;

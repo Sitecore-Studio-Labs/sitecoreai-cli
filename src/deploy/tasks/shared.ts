@@ -14,9 +14,9 @@ import { inputError, selectMatch } from "@/shared/cli-tasks";
 import { resolveEnvironment } from "@/shared/env";
 import {
   fetchOrganization,
-  fetchProjects,
-  fetchProjectEnvironments,
-  fetchEnvironments,
+  fetchAllProjects,
+  fetchAllProjectEnvironments,
+  fetchAllEnvironments,
   DeployEnvironment,
 } from "@/deploy/api";
 
@@ -218,11 +218,14 @@ export const resolveDeployProjectId = async (
   if (context.whatIf) {
     return selection;
   }
-  const projects = await fetchProjects({
+  // Walk every page when matching a project by name/ID — the v2
+  // endpoint paginates at 10, so single-page lookups produce spurious
+  // "not found" errors the moment an org has more than 10 projects.
+  const aggregated = await fetchAllProjects({
     accessToken: context.token,
     baseUrl: context.baseUrl,
   });
-  const project = selectMatch(projects, "Project", selection);
+  const project = selectMatch(aggregated.items, "Project", selection);
   return project.id ?? project.projectId;
 };
 
@@ -270,11 +273,14 @@ export const resolveDeployEnvironmentId = async (
 
   const projectId = await resolveDeployProjectId(context, options);
   if (projectId) {
-    const environments = await fetchProjectEnvironments(
+    // Walk every page of the project's environments. The default
+    // page size on this endpoint is 10, so a project with >10 envs
+    // would otherwise fail name lookups for anything past page one.
+    const aggregated = await fetchAllProjectEnvironments(
       { accessToken: context.token, baseUrl: context.baseUrl },
       projectId
     );
-    const environment = selectMatch(environments, "Environment", selection);
+    const environment = selectMatch(aggregated.items, "Environment", selection);
     const environmentId = environment.id ?? environment.environmentId;
     if (!environmentId) {
       throw inputError("Environment ID was not available.");
@@ -282,15 +288,14 @@ export const resolveDeployEnvironmentId = async (
     return environmentId;
   }
 
-  const listResult = await fetchEnvironments(
+  // Same reason as above: walk all pages when scanning the org-wide
+  // list. `fetchAllEnvironments` returns `{ items, totalCount, ... }`
+  // — only `items` matters here, since we're picking one by name/ID.
+  const aggregated = await fetchAllEnvironments(
     { accessToken: context.token, baseUrl: context.baseUrl },
     {}
   );
-  const list =
-    (listResult as { items?: DeployEnvironment[] }).items ??
-    (listResult as { data?: DeployEnvironment[] }).data ??
-    (Array.isArray(listResult) ? (listResult as DeployEnvironment[]) : []);
-  const environment = selectMatch(list, "Environment", selection);
+  const environment = selectMatch(aggregated.items, "Environment", selection);
   const environmentId = environment.id ?? environment.environmentId;
   if (!environmentId) {
     throw inputError("Environment ID was not available.");

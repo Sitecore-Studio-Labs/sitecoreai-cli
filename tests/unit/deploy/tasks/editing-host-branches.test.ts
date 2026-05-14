@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const apiMocks = vi.hoisted(() => ({
   fetchEnvironment: vi.fn(),
   fetchProjectEnvironments: vi.fn(),
+  fetchAllProjectEnvironments: vi.fn(),
   fetchEnvironments: vi.fn(),
+  fetchAllEnvironments: vi.fn(),
   createProjectEnvironment: vi.fn(),
   deleteEnvironment: vi.fn(),
   updateEnvironment: vi.fn(),
@@ -57,10 +59,19 @@ describe("editing host branches", () => {
     sharedMocks.extractDeployEnvironmentList.mockImplementation((value: unknown) =>
       Array.isArray(value) ? value : []
     );
-    apiMocks.fetchProjectEnvironments.mockResolvedValue([
-      { id: "eh-1", name: "Editing Host", type: "eh" },
-      { id: "cm-1", name: "CM", type: "cm" },
-    ]);
+    apiMocks.fetchAllProjectEnvironments.mockResolvedValue({
+      totalCount: 2,
+      pageSize: 50,
+      items: [
+        { id: "eh-1", name: "Editing Host", type: "eh" },
+        { id: "cm-1", name: "CM", type: "cm" },
+      ],
+    });
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 0,
+      pageSize: 50,
+      items: [],
+    });
   });
 
   it("lists editing hosts for a project", async () => {
@@ -84,12 +95,16 @@ describe("editing host branches", () => {
       environmentId: "env-1",
     });
     apiMocks.fetchEnvironment.mockRejectedValue(new Error("boom"));
-    apiMocks.fetchEnvironments.mockResolvedValue([{ id: "eh-2", type: "eh" }]);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "eh-2", type: "eh" }],
+    });
     sharedMocks.getEnvironmentType.mockImplementation((env: { type?: string }) => env.type);
 
     const { runDeployEditingHostList } = await import("../../../../src/deploy/tasks/editing-host");
     await runDeployEditingHostList({});
-    expect(apiMocks.fetchEnvironments).toHaveBeenCalled();
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalled();
   });
 
   it("rejects deleting a non-editing-host environment", async () => {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchAllEnvironments: vi.fn(),
-  fetchProjectEnvironments: vi.fn(),
+  fetchAllProjectEnvironments: vi.fn(),
   fetchEnvironmentDeployments: vi.fn(),
   probeEnvironmentHealth: vi.fn(),
   resolveHostFromEnvironment: vi.fn(),

@@ -124,7 +124,13 @@ export const uploadDocument = async (
     // given a FormData body. Setting Content-Type explicitly would
     // break the boundary.
     const form = new FormData();
-    const pdfBlob = new Blob([options.pdf], { type: "application/pdf" });
+    // Copy into a fresh Uint8Array<ArrayBuffer> — Node's Buffer extends
+    // Uint8Array<ArrayBufferLike> which TypeScript does not accept as a
+    // BlobPart in strict configs. The copy is cheap for the PDF sizes
+    // we deal with here.
+    const bytes = new Uint8Array(options.pdf.byteLength);
+    bytes.set(options.pdf);
+    const pdfBlob = new Blob([bytes], { type: "application/pdf" });
     form.append("file", pdfBlob, options.fileName);
     form.append("create_request", createRequestJson);
 

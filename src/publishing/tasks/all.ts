@@ -9,17 +9,8 @@ import type {
   PublishSiteMode,
   PublishingApiClientOptions,
 } from "../sitecore-api/types";
-import {
-  computeScopeHash,
-  mintScopeToken,
-  SCOPE_TOKEN_TTL_MS,
-  verifyScopeToken,
-} from "../consent";
-import {
-  recordPublishAudit,
-  type PublishAuditCaller,
-  type PublishAuditScope,
-} from "../audit";
+import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
+import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } from "../audit";
 
 export interface RunPublishAllOptions {
   config?: string;
@@ -80,16 +71,16 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
       logger.info(`Tenant:        ${environment.tenantId}`, "gray");
     }
     logger.info(`Mode:          ${mode}`, "gray");
-    logger.info(`Languages:     ${languages.length > 0 ? languages.join(", ") : "(default)"}`, "gray");
+    logger.info(
+      `Languages:     ${languages.length > 0 ? languages.join(", ") : "(default)"}`,
+      "gray"
+    );
     const token = mintScopeToken(scope);
     logger.info("", "gray");
     logger.info(`Scope token (TTL ${SCOPE_TOKEN_TTL_MS / 1000}s):`, "gray");
     process.stdout.write(`${token}\n`);
     logger.info("", "gray");
-    logger.info(
-      `To execute: rerun with --allow-write --confirm-token ${token}.`,
-      "gray"
-    );
+    logger.info(`To execute: rerun with --allow-write --confirm-token ${token}.`, "gray");
     logger.info(`You will also be prompted to type the env name '${envName}' verbatim.`, "yellow");
     return;
   }
@@ -109,11 +100,9 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
   }
   const verification = verifyScopeToken(options.confirmToken, scope);
   if (!verification.ok) {
-    throw createScaiError(
-      `Scope token rejected (${verification.reason}).`,
-      "INPUT_INVALID",
-      { hint: "Re-run the dry-run to mint a fresh token." }
-    );
+    throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
+      hint: "Re-run the dry-run to mint a fresh token.",
+    });
   }
 
   // Env-name typed confirmation. CI can bypass via --yes (still
@@ -182,9 +171,7 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
       scopeToken: options.confirmToken,
       outcome: "error",
       errorCode:
-        err instanceof Error && "code" in err
-          ? String((err as { code: unknown }).code)
-          : "UNKNOWN",
+        err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "UNKNOWN",
       errorMessage: err instanceof Error ? err.message : String(err),
     });
     throw err;

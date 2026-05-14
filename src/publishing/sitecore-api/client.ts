@@ -65,8 +65,7 @@ const fetchPublishingApi = async (
 
     const text = await response.text().catch(() => "");
     if (!response.ok) {
-      const code =
-        response.status === 401 || response.status === 403 ? "AUTH_REQUIRED" : "NETWORK";
+      const code = response.status === 401 || response.status === 403 ? "AUTH_REQUIRED" : "NETWORK";
       const hint =
         response.status === 403
           ? "The token is valid but the API refused the call. Verify the env-level automation client has xmcpub.jobs.t:r/w grants. Body: " +
@@ -101,7 +100,8 @@ const normalizeState = (raw: string | undefined): PublishJobState =>
 
 const normalizeJob = (raw: PublishJobResponse): PublishJob => {
   const stats = (raw.statistics ?? {}) as Record<string, unknown>;
-  const processedCount = typeof stats.processedCount === "number" ? stats.processedCount : undefined;
+  const processedCount =
+    typeof stats.processedCount === "number" ? stats.processedCount : undefined;
   const totalCount = typeof stats.totalCount === "number" ? stats.totalCount : undefined;
   return {
     id: raw.id,

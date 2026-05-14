@@ -46,9 +46,7 @@ describe("computeScopeHash", () => {
   });
 
   it("changes when kind differs (item vs full)", () => {
-    expect(computeScopeHash(baseScope)).not.toBe(
-      computeScopeHash({ ...baseScope, kind: "full" })
-    );
+    expect(computeScopeHash(baseScope)).not.toBe(computeScopeHash({ ...baseScope, kind: "full" }));
   });
 
   it("changes when an item is added", () => {

@@ -1,8 +1,4 @@
-import {
-  resolveTenant,
-  scanItemsAndFields,
-  extractInternalRefs,
-} from "@/hygiene/tasks/shared";
+import { resolveTenant, scanItemsAndFields, extractInternalRefs } from "@/hygiene/tasks/shared";
 
 const ACTIVE_CONTENT_ROOTS = [
   "/sitecore/content/example/test-sync",
@@ -93,7 +89,9 @@ const main = async () => {
   console.log(`Found ${fixes.length} fields to fix\n`);
   for (const fix of fixes) {
     console.log(`  ${fix.itemPath}.${fix.fieldName}`);
-    console.log(`    before: ${fix.originalValue.slice(0, 100)}${fix.originalValue.length > 100 ? "…" : ""}`);
+    console.log(
+      `    before: ${fix.originalValue.slice(0, 100)}${fix.originalValue.length > 100 ? "…" : ""}`
+    );
     console.log(`    after:  ${fix.newValue.slice(0, 100) || "(empty)"}`);
     console.log(`    removed: ${fix.removedRefs.join(", ")}`);
   }

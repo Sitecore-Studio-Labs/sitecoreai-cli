@@ -27,9 +27,7 @@ const main = async (): Promise<void> => {
   const clientId = process.env[`SITECOREAI_ENV_${envSlug}_CLIENT_ID`];
   const clientSecret = process.env[`SITECOREAI_ENV_${envSlug}_CLIENT_SECRET`];
   if (!clientId || !clientSecret) {
-    process.stderr.write(
-      `Set SITECOREAI_ENV_${envSlug}_CLIENT_ID and _CLIENT_SECRET first.\n`
-    );
+    process.stderr.write(`Set SITECOREAI_ENV_${envSlug}_CLIENT_ID and _CLIENT_SECRET first.\n`);
     process.exit(2);
   }
   process.stderr.write(`> minting token for ${envName}\n`);

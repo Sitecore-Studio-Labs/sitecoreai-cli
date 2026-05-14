@@ -61,9 +61,7 @@ describe("publishing/client.submitPublishJob", () => {
     };
     const job = await submitPublishJob(baseClient, req);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(
-      "https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs"
-    );
+    expect(url).toBe("https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs");
     const fetchInit = init as { method: string; body: string; headers: Record<string, string> };
     expect(fetchInit.method).toBe("POST");
     expect(JSON.parse(fetchInit.body)).toEqual(req);
@@ -83,9 +81,11 @@ describe("publishing/client.submitPublishJob", () => {
     ] as const) {
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValue(
-          okJson(sampleResponse({ system: { ...sampleResponse().system, status: wire } }), 201)
-        )
+        vi
+          .fn()
+          .mockResolvedValue(
+            okJson(sampleResponse({ system: { ...sampleResponse().system, status: wire } }), 201)
+          )
       );
       const job = await submitPublishJob(baseClient, {
         name: "x",
@@ -137,9 +137,7 @@ describe("publishing/client.submitPublishJob", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(
-          errResponse(400, '{"errors":{"Name":["The Name field is required."]}}')
-        )
+        .mockResolvedValue(errResponse(400, '{"errors":{"Name":["The Name field is required."]}}'))
     );
     await expect(
       submitPublishJob(baseClient, { name: "", source: "", options: {} })

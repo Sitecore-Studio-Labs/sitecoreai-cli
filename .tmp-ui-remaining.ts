@@ -37,7 +37,8 @@ const main = async () => {
     });
     console.log(`\n${name} (${id}): ${page.totalCount} items derive from this template`);
     for (const r of page.results.slice(0, 10)) console.log(`  ${r.path}`);
-    if (page.totalCount > page.results.length) console.log(`  …and ${page.totalCount - page.results.length} more`);
+    if (page.totalCount > page.results.length)
+      console.log(`  …and ${page.totalCount - page.results.length} more`);
   }
 };
 

@@ -30,7 +30,10 @@ export const createPublishItemCommand = (): Command => {
     )
     .option("--include-subitems", "Publish descendants of the item (xmc.items.publishChildren).")
     .option("--include-related", "Publish referenced items (xmc.items.publishRelatedItems).")
-    .option("--republish", "Use Republish mode instead of Smart (forces re-emit of unchanged items).")
+    .option(
+      "--republish",
+      "Use Republish mode instead of Smart (forces re-emit of unchanged items)."
+    )
     .option(
       "--confirm-token <token>",
       "Scope token obtained from a previous dry-run. Required on production-tier envs."

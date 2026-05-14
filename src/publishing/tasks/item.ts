@@ -10,17 +10,8 @@ import type {
   PublishingApiClientOptions,
 } from "../sitecore-api/types";
 import { isProductionTier } from "../env-tier";
-import {
-  computeScopeHash,
-  mintScopeToken,
-  SCOPE_TOKEN_TTL_MS,
-  verifyScopeToken,
-} from "../consent";
-import {
-  recordPublishAudit,
-  type PublishAuditCaller,
-  type PublishAuditScope,
-} from "../audit";
+import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
+import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } from "../audit";
 
 export interface RunPublishItemOptions {
   config?: string;
@@ -156,13 +147,9 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
     }
     const verification = verifyScopeToken(options.confirmToken, scope);
     if (!verification.ok) {
-      throw createScaiError(
-        `Scope token rejected (${verification.reason}).`,
-        "INPUT_INVALID",
-        {
-          hint: `Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.`,
-        }
-      );
+      throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
+        hint: `Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.`,
+      });
     }
   } else if (!options.yes) {
     if (options.nonInteractive) {
@@ -229,7 +216,8 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
       scopeHash,
       scopeToken: options.confirmToken,
       outcome: "error",
-      errorCode: err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "UNKNOWN",
+      errorCode:
+        err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "UNKNOWN",
       errorMessage: err instanceof Error ? err.message : String(err),
     });
     throw err;

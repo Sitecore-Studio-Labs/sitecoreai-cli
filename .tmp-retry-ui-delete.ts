@@ -30,7 +30,9 @@ const main = async () => {
       }
     }
   }
-  console.log(`\n${pending.size === 0 ? "All deleted ✓" : `${pending.size} still failing after ${maxAttempts} attempts`}`);
+  console.log(
+    `\n${pending.size === 0 ? "All deleted ✓" : `${pending.size} still failing after ${maxAttempts} attempts`}`
+  );
 };
 
 main().catch((err) => {

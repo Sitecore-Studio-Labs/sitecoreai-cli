@@ -32,10 +32,7 @@ export const createPublishAllCommand = (): Command => {
       "--confirm-token <token>",
       "Scope token from a previous dry-run. Always required for the real call."
     )
-    .option(
-      "--yes",
-      "Skip the typed env-name prompt (CI use). Still requires --confirm-token."
-    )
+    .option("--yes", "Skip the typed env-name prompt (CI use). Still requires --confirm-token.")
     .addOption(new Option("--name <name>", "Override the API job name."))
     .addOption(new Option("--source <source>", "Override the API source field. Default `scai`."));
 

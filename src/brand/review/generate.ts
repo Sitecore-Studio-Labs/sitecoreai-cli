@@ -90,7 +90,9 @@ const flattenSectionReview = (review: RawSectionReview): BrandReviewSectionResul
  * worst finding rather than the average (which would hide outliers).
  * Empty responses default to 5 (no findings → max alignment).
  */
-const aggregateOverall = (sectionResults: readonly BrandReviewSectionResult[]): BrandReviewScore => {
+const aggregateOverall = (
+  sectionResults: readonly BrandReviewSectionResult[]
+): BrandReviewScore => {
   if (sectionResults.length === 0) return 5;
   let lowest: BrandReviewScore = 5;
   for (const row of sectionResults) {

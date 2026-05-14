@@ -24,6 +24,7 @@
 import { readRootConfiguration } from "@/config/root-config";
 import {
   BRAND_MANAGEMENT_BASE_PATH,
+  DOCUMENTS_BASE_PATH,
   generateBrandReview,
   requestBrandApi,
   runBrandIngestionPipeline,
@@ -123,17 +124,34 @@ const main = async (): Promise<void> => {
     });
     process.stderr.write(`      ok — runId=${run.id} pipelineName=${run.name ?? "?"}\n\n`);
 
-    // 5. POLL sections until populated
+    // 5. POLL document status first (cheap signal); once processed,
+    //    sections should be populated. Document status reaches
+    //    `processed` if the AI extracted brand knowledge or `failed`
+    //    if the PDF contents do not yield brand-shaped knowledge.
     process.stderr.write(
-      `[5/6] polling sections every ${pollIntervalSec}s (timeout ${timeoutSec}s)...\n`
+      `[5/6] polling status every ${pollIntervalSec}s (timeout ${timeoutSec}s)...\n`
     );
+    type DocStatus = {
+      id?: string;
+      status?: string;
+      chunked?: boolean;
+      summarized?: boolean;
+      numberOfPages?: number;
+    };
     type SectionList = {
       data?: Array<{ id?: string; name?: string; status?: string }>;
     };
     const deadline = Date.now() + timeoutSec * 1000;
     let sections: SectionList["data"] = [];
     let firstSectionId: string | undefined;
+    let lastDocStatus: string | undefined;
     while (Date.now() < deadline) {
+      const doc = await requestBrandApi<DocStatus>(client, {
+        basePath: DOCUMENTS_BASE_PATH,
+        path: `/api/documents/v1/organizations/${orgId}/documents/${uploaded.id}`,
+        method: "GET",
+      });
+      lastDocStatus = doc.status;
       const list = await requestBrandApi<SectionList>(client, {
         basePath: BRAND_MANAGEMENT_BASE_PATH,
         path: `/api/brands/v1/organizations/${orgId}/brandkits/${kitId}/sections`,
@@ -142,14 +160,25 @@ const main = async (): Promise<void> => {
       sections = list.data ?? [];
       const elapsed = Math.round((Date.now() - (deadline - timeoutSec * 1000)) / 1000);
       process.stderr.write(
-        `      [+${elapsed.toString().padStart(3, " ")}s] ${sections.length} section(s)\n`
+        `      [+${elapsed.toString().padStart(3, " ")}s] doc=${doc.status ?? "?"} ` +
+          `chunked=${doc.chunked} summarized=${doc.summarized} ${sections.length} section(s)\n`
       );
+      if (doc.status === "failed") {
+        process.stderr.write(
+          `\nERROR: document ingestion failed. The PDF likely is not a real brand-guidelines doc — the AI could not extract Tone/Context/etc.\n`
+        );
+        process.stderr.write(
+          `Set SCAI_BRAND_PROBE_PDF_URL to a URL of an actual brand-guidelines PDF and retry.\n`
+        );
+        process.exit(8);
+      }
       if (sections.length > 0) {
         firstSectionId = sections[0].id;
         break;
       }
       await sleep(pollIntervalSec * 1000);
     }
+    void lastDocStatus;
     if (sections.length === 0) {
       process.stderr.write(
         `\nERROR: timed out waiting for ingestion to populate sections.\nKit '${kitName}' (${kitId}) is still on the tenant.\n`

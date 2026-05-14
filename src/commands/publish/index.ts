@@ -3,6 +3,7 @@ import { createPublishAllCommand } from "./all";
 import { createPublishCancelCommand } from "./cancel";
 import { createPublishItemCommand } from "./item";
 import { createPublishStatusCommand } from "./status";
+import { createPublishUnpublishCommand } from "./unpublish";
 
 export const createPublishCommand = (): Command => {
   const command = new Command("publish").description(
@@ -13,6 +14,7 @@ export const createPublishCommand = (): Command => {
   command.addCommand(createPublishAllCommand());
   command.addCommand(createPublishStatusCommand());
   command.addCommand(createPublishCancelCommand());
+  command.addCommand(createPublishUnpublishCommand());
 
   command.addHelpText(
     "after",

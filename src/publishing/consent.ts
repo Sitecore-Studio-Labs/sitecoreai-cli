@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
-import type { PublishAuditCaller, PublishAuditScope } from "./audit";
+import type {
+  PublishAuditCaller,
+  PublishAuditScope,
+  PublishAuditScopeKind,
+} from "./audit";
 
 /**
  * Consent + scope-token primitives for `scai publish`.
@@ -46,6 +50,12 @@ const canonicalScope = (scope: PublishAuditScope): string =>
     languages: (scope.languages ?? []).slice().sort(),
     includeSubitems: Boolean(scope.includeSubitems),
     includeRelated: Boolean(scope.includeRelated),
+    // Include strategy + version in the hash so the scope token binds
+    // to the specific shape of the intended mutation. Defaulting to
+    // empty string keeps the legacy publish-item / publish-all hash
+    // values unchanged (both pass strategy=undefined, version=undefined).
+    strategy: scope.strategy ?? "",
+    version: scope.version ?? "",
   });
 
 /**
@@ -59,8 +69,11 @@ export const computeScopeHash = (scope: PublishAuditScope): string =>
 
 interface ScopeTokenPayload {
   v: 1;
-  /** "item" (Tier 1) or "full" (Tier 2). */
-  k: "item" | "full";
+  /** Scope kind — see `PublishAuditScopeKind` in audit.ts. Existing
+   *  publish-item / publish-all tokens encode "item" / "full"; the new
+   *  unpublish / content version verbs add their own kinds so a token
+   *  minted for one verb can't be replayed against another. */
+  k: PublishAuditScopeKind;
   /** envName, kept short. */
   e: string;
   /** scopeHash (32 hex chars). */

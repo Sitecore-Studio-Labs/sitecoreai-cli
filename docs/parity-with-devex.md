@@ -204,6 +204,16 @@ Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
 Lock it during implementation from a real tenant's browser network
 traffic or from the OpenAPI YAML directly.
 
+**Operator prerequisite (discovered 2026-05-14 during PR 1 smoke):**
+the existing automation-client JWT used by `scai deploy` / `ser push`
+does **not** automatically include publishing scopes. A tenant whose
+automation client lacks the right scopes returns `403 Forbidden` on
+every Publishing API call. The CLI surfaces this as `AUTH_REQUIRED`
+with a hint pointing the operator at the Sitecore Cloud Portal →
+automation clients UI to add publishing scopes and re-run
+`scai login`. The exact scope names should be documented in
+`docs/operator-setup.md` once we confirm them from the Portal UI.
+
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 
 The dotnet plugin's `clean-blobs`, `clean-fields`, `clean-orphan-fields`,

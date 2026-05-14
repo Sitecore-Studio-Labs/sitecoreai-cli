@@ -17,7 +17,7 @@ import {
 import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { promptConfirm, promptSecret, promptText } from "@/shared/prompt";
-import { AI_SKILLS_REQUIRED_SCOPES, extractScopes, hasAiSkillsScopes } from "../api/auth";
+import { extractScopes } from "../api/auth";
 
 export interface AiSkillsLoginOptions extends CommonOptions {
   environmentName?: string;
@@ -32,9 +32,20 @@ export interface AiSkillsLoginOptions extends CommonOptions {
 
 const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
 
-const REQUESTED_SCOPE_PARAM = [...AI_SKILLS_REQUIRED_SCOPES, "ai.org.docs:r", "ai.org.docs:w"].join(
-  " "
-);
+/**
+ * Optional scopes the login flow surfaces when present, to give the
+ * operator a complete view of what the AI APIs key carries. scai's
+ * mint request does NOT pass an explicit `scope` param — Auth0 grants
+ * whatever the client has, and we report it back.
+ */
+const KNOWN_AI_SKILLS_SCOPES = [
+  "ai.org.brd:r",
+  "ai.org.brd:w",
+  "ai.org.docs:r",
+  "ai.org.docs:w",
+  "ai.orgs.br:gen",
+  "ai.org:admin",
+] as const;
 
 const CLOUD_PORTAL_HINT =
   "Create the credential in Cloud Portal → Stream → Admin → AI APIs keys → Create credential.";
@@ -164,10 +175,19 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   logger.info("Validating credential by minting a test token...");
   let mintResult;
   try {
-    mintResult = await requestClientCredentialsToken(
-      { authority, clientId, clientSecret, audience },
-      REQUESTED_SCOPE_PARAM
-    );
+    // No explicit scope param — Auth0 grants whatever the AI APIs key
+    // has been issued. Requesting scopes the client wasn't granted
+    // causes Auth0 to 403 outright (verified 2026-05-14 with a
+    // partial-scope client). Permissive login is intentional: the
+    // operator may legitimately have a read-only or review-only key,
+    // and per-operation scope checks downstream will surface the
+    // exact missing scope when they go to run something.
+    mintResult = await requestClientCredentialsToken({
+      authority,
+      clientId,
+      clientSecret,
+      audience,
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw createScaiError(
@@ -185,19 +205,43 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
       { hint: CLOUD_PORTAL_HINT }
     );
   }
-  if (!hasAiSkillsScopes(mintResult.accessToken)) {
-    const granted = extractScopes(mintResult.accessToken);
-    const grantSummary = granted.length > 0 ? granted.join(", ") : "(no scope claim in token)";
+
+  const grantedScopes = extractScopes(mintResult.accessToken);
+  const hasReviewScope = grantedScopes.includes("ai.orgs.br:gen");
+  const knownGranted = grantedScopes.filter((s) =>
+    (KNOWN_AI_SKILLS_SCOPES as readonly string[]).includes(s)
+  );
+  const knownMissing = (KNOWN_AI_SKILLS_SCOPES as readonly string[]).filter(
+    (s) => !grantedScopes.includes(s)
+  );
+  const looksLikePagesSitesClient =
+    grantedScopes.some((s) => s.startsWith("xmclouddeploy.") || s.startsWith("xmcpub.")) &&
+    !grantedScopes.some((s) => s.startsWith("ai.org"));
+  if (looksLikePagesSitesClient) {
+    // The credential is the wrong client class entirely — refuse to
+    // persist. A typed Pages/Sites automation client never carries
+    // any `ai.org*` scope, so it will fail every AI Skills call.
     throw createScaiError(
-      `Credential minted but missing AI Skills scopes. Expected: ${AI_SKILLS_REQUIRED_SCOPES.join(", ")}. Granted: ${grantSummary}.`,
+      `Credential for org '${orgId}' looks like the Pages/Sites automation client, not an AI APIs key.`,
       "AUTH_AI_SKILLS_REQUIRED",
       {
-        hint: `The credential looks like the wrong client class. ${CLOUD_PORTAL_HINT}`,
+        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. ${CLOUD_PORTAL_HINT}`,
       }
     );
   }
-
-  const grantedScopes = extractScopes(mintResult.accessToken);
+  if (knownGranted.length === 0) {
+    // No recognizable AI Skills scope at all — probably the wrong
+    // client class even though it doesn't match the Pages/Sites
+    // shape. Refuse to persist to avoid storing a credential that's
+    // guaranteed to fail every operation.
+    throw createScaiError(
+      `Credential minted for org '${orgId}' but carries no recognized AI Skills scopes.`,
+      "AUTH_AI_SKILLS_REQUIRED",
+      {
+        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. Expected at least one of: ${KNOWN_AI_SKILLS_SCOPES.join(", ")}. ${CLOUD_PORTAL_HINT}`,
+      }
+    );
+  }
 
   // Persist: keychain first (secret + token), then config. If keychain
   // fails we don't want a config record pointing at a secret-less
@@ -238,5 +282,17 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   }
 
   logger.info(`AI Skills credential saved for org '${orgId}'.`, "green");
-  logger.info(`Scopes granted: ${grantedScopes.join(", ")}`);
+  logger.info(`Scopes granted: ${grantedScopes.join(", ") || "(none)"}`);
+  if (knownMissing.length > 0) {
+    logger.warn(
+      `Scopes NOT on this key: ${knownMissing.join(", ")}. Operations that need these will refuse.`,
+      "yellow"
+    );
+  }
+  if (!hasReviewScope) {
+    logger.warn(
+      "  → `scai brand review` needs `ai.orgs.br:gen`. Recreate the AI APIs key in Cloud Portal with that scope enabled.",
+      "yellow"
+    );
+  }
 };

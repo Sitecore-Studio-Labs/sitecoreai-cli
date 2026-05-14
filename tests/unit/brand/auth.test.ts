@@ -44,18 +44,16 @@ describe("brand/api/auth — extractScopes", () => {
 });
 
 describe("brand/api/auth — hasAiSkillsScopes", () => {
-  it("returns true when all required scopes are present (with extras)", () => {
+  it("returns true when the required scope (Brand Review generate) is present", () => {
     const token = makeJwt({
-      scope: [...AI_SKILLS_REQUIRED_SCOPES, "ai.org.docs:r", "ai.org.docs:w", "ai.org:admin"].join(
-        " "
-      ),
+      scope: "ai.org.brd:r ai.orgs.br:gen ai.org:admin",
     });
     expect(hasAiSkillsScopes(token)).toBe(true);
   });
 
-  it("returns false when any required scope is missing", () => {
+  it("returns false when the Brand Review generate scope is missing", () => {
     const token = makeJwt({
-      scope: "ai.org.brd:r ai.orgs.br:gen", // missing ai.org.brd:w
+      scope: "ai.org.brd:r ai.org.brd:w ai.org:admin", // no ai.orgs.br:gen
     });
     expect(hasAiSkillsScopes(token)).toBe(false);
   });
@@ -74,14 +72,11 @@ describe("brand/api/auth — hasAiSkillsScopes", () => {
 });
 
 describe("brand/api/auth — AI_SKILLS_REQUIRED_SCOPES", () => {
-  it("locks in the minimum required scope set for Brand Management + Brand Review", () => {
-    // If this set changes, the operator-facing error message in
-    // buildScopeMissingError + the documented Cloud Portal flow need
-    // updating too. The test is the gate.
-    expect([...AI_SKILLS_REQUIRED_SCOPES]).toEqual([
-      "ai.org.brd:r",
-      "ai.org.brd:w",
-      "ai.orgs.br:gen",
-    ]);
+  it("matches what scai actually needs for the operations it ships today (Brand Review only)", () => {
+    // scai ships only Brand Review today; the minimum required scope
+    // is `ai.orgs.br:gen`. When Brand Management primitives land,
+    // they will lift this set to include `ai.org.brd:r/w`. The test
+    // is the gate — bump it intentionally when adding operations.
+    expect([...AI_SKILLS_REQUIRED_SCOPES]).toEqual(["ai.orgs.br:gen"]);
   });
 });

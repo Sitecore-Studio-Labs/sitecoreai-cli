@@ -8,31 +8,33 @@ import { getAiSkillsClientSecret, getAiSkillsToken, setAiSkillsToken } from "@/s
 import type { AiSkillsCredential } from "@/config/types";
 
 /**
- * OAuth scopes the Sitecore AI Skills APIs require.
+ * OAuth scopes scai's *currently shipped* AI Skills operations require.
  *
- * The AI APIs key (Cloud Portal → Stream → Admin → AI APIs keys)
- * issues a single credential that, when minted, carries scopes
- * across the four AI Skills APIs:
+ * The AI APIs key can carry any of:
  *
  *   - `ai.org.brd:r`  / `ai.org.brd:w`   — Brand Management read/write
  *   - `ai.org.docs:r` / `ai.org.docs:w`  — Documents read/write
  *   - `ai.orgs.br:gen`                   — Brand Review generate
  *   - `ai.org:admin`                     — org-level admin
  *
- * The minimum required set for scai's brand surface (Brand Management
- * + Brand Review) is `ai.org.brd:r`, `ai.org.brd:w`, `ai.orgs.br:gen`.
- * We validate against this minimum so an operator who provisions an
- * unnecessarily broad credential isn't rejected, but one who pastes
- * the wrong client (e.g. the Pages/Sites automation client) gets a
- * pointed error.
+ * Real-world quirk (verified 2026-05-14): AI APIs keys in Cloud Portal
+ * are issued with **per-key scope subsets**, not the full grant set.
+ * An operator can paste a credential that has `ai.org.brd:r` only, or
+ * one that adds `ai.orgs.br:gen`, etc. If scai *requests* scopes the
+ * client wasn't granted, Auth0 returns a 403 outright (not "filtered
+ * to intersection"). So the OAuth mint requests **no scope** — Auth0
+ * grants whatever the client has — and scai validates the resulting
+ * token's scope claim against the *minimum scai needs to run the
+ * operations it ships today*.
+ *
+ * Today that minimum is just `ai.orgs.br:gen` (Brand Review). Brand
+ * Management primitives, when they land, will lift this to include
+ * `ai.org.brd:r` (read) and later `ai.org.brd:w` (write). The login
+ * flow stays permissive — it persists any minted credential and tells
+ * the operator what's missing — but per-operation calls will refuse
+ * if their specific scope isn't present.
  */
-export const AI_SKILLS_REQUIRED_SCOPES = [
-  "ai.org.brd:r",
-  "ai.org.brd:w",
-  "ai.orgs.br:gen",
-] as const;
-
-const SCOPE_PARAM = [...AI_SKILLS_REQUIRED_SCOPES, "ai.org.docs:r", "ai.org.docs:w"].join(" ");
+export const AI_SKILLS_REQUIRED_SCOPES = ["ai.orgs.br:gen"] as const;
 
 const NO_CREDENTIAL_HINT =
   "Run `scai login ai-skills --env <env>` to provision the credential, or paste an existing AI APIs key into `aiSkills.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";
@@ -157,7 +159,11 @@ export const acquireAiSkillsToken = async (
 
   let result;
   try {
-    result = await requestClientCredentialsToken(mintEnv, SCOPE_PARAM);
+    // Mint with NO scope parameter — Auth0 grants whatever the AI APIs
+    // key has been issued, and per-operation scope checks below filter
+    // for the subset scai needs. Requesting scopes the key wasn't
+    // granted causes Auth0 to 403 outright.
+    result = await requestClientCredentialsToken(mintEnv);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw createScaiError(

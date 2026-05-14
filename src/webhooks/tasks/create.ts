@@ -5,7 +5,7 @@ import type {
   CreateWorkflowActionInput,
   WebhookHandlerSummary,
   WebhookSerializationType,
-} from "../api";
+} from "../api/client";
 import {
   printWebhookResult,
   resolveWebhookTenant,

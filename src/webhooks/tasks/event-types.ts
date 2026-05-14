@@ -1,4 +1,4 @@
-import type { WebhookEventTypeCategory, WebhookEventTypeSummary } from "../api";
+import type { WebhookEventTypeCategory, WebhookEventTypeSummary } from "../api/client";
 import {
   printWebhookResult,
   resolveWebhookTenant,

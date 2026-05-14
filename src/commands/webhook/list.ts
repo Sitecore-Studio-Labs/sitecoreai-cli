@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWebhookList } from "@/webhooks/tasks";
+import { runWebhookList } from "@/webhooks/tasks/list";
 import { addWebhookReadOptions } from "./shared";
 
 export const createWebhookListCommand = (): Command => {

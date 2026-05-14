@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWebhookDelete } from "@/webhooks/tasks";
+import { runWebhookDelete } from "@/webhooks/tasks/delete";
 import { addAllowWriteOption, addWhatIfOption } from "../shared";
 import { addWebhookReadOptions } from "./shared";
 

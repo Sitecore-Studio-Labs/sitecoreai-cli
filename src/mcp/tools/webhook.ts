@@ -10,13 +10,11 @@
  */
 
 import { z } from "zod";
-import {
-  runWebhookCreate,
-  runWebhookDelete,
-  runWebhookEventTypes,
-  runWebhookInspect,
-  runWebhookList,
-} from "@/webhooks/tasks";
+import { runWebhookCreate } from "@/webhooks/tasks/create";
+import { runWebhookDelete } from "@/webhooks/tasks/delete";
+import { runWebhookEventTypes } from "@/webhooks/tasks/event-types";
+import { runWebhookInspect } from "@/webhooks/tasks/inspect";
+import { runWebhookList } from "@/webhooks/tasks/list";
 import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

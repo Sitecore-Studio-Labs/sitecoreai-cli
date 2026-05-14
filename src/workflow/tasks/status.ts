@@ -1,6 +1,6 @@
 import { createScaiError } from "@/shared/errors";
 import { getAccessToken } from "@/serialization/sitecore-api/auth";
-import { retrieveWorkflowStatistics, type WorkflowsStatistics } from "@/sites/api";
+import { retrieveWorkflowStatistics, type WorkflowsStatistics } from "@/sites/api/sites";
 import {
   printWorkflowResult,
   resolveWorkflowTenant,

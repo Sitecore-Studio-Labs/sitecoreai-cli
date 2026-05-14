@@ -1,20 +1,16 @@
+import { listCollections, type SiteCollection } from "../../sites/api/collections";
+import { getJobStatus, type Job } from "../../sites/api/jobs";
+import { addLanguage, listLanguages, type Language } from "../../sites/api/languages";
 import {
-  addLanguage,
   createSite,
-  getJobStatus,
-  type Job,
-  type JobResponse,
-  type Language,
-  listCollections,
-  listLanguages,
   listSites,
   listSiteTemplates,
+  type JobResponse,
   type NewSiteInput,
   type Site,
-  type SiteCollection,
   type SiteTemplate,
-  type SitesApiClientOptions as RawSitesApiClientOptions,
-} from "../../sites/api";
+} from "../../sites/api/sites";
+import type { SitesApiClientOptions as RawSitesApiClientOptions } from "../../sites/api/types";
 
 /**
  * Sites API client surface for recipe execution.

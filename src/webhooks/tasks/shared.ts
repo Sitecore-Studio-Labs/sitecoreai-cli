@@ -1,7 +1,7 @@
 import { Logger } from "@/shared/logger";
 import { resolveEnvironment } from "@/shared/env";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config";
-import { createWebhookApiClient, type WebhookApiClient } from "../api";
+import { createWebhookApiClient, type WebhookApiClient } from "../api/client";
 
 /** Shared option shape for `scai webhook *` tasks. */
 export interface WebhookTaskOptions {

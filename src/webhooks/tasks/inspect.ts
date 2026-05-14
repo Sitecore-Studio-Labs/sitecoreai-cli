@@ -1,5 +1,5 @@
 import { createScaiError } from "@/shared/errors";
-import type { WebhookHandlerDetail } from "../api";
+import type { WebhookHandlerDetail } from "../api/client";
 import {
   printWebhookResult,
   resolveWebhookTenant,

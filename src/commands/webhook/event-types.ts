@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWebhookEventTypes } from "@/webhooks/tasks";
+import { runWebhookEventTypes } from "@/webhooks/tasks/event-types";
 import { addWebhookReadOptions } from "./shared";
 
 export const createWebhookEventTypesCommand = (): Command => {

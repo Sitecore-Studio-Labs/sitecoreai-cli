@@ -1,4 +1,4 @@
-import type { WebhookHandlerSummary } from "../api";
+import type { WebhookHandlerSummary } from "../api/client";
 import {
   printWebhookResult,
   resolveWebhookTenant,

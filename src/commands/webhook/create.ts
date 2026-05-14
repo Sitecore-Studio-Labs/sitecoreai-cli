@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWebhookCreate } from "@/webhooks/tasks";
+import { runWebhookCreate } from "@/webhooks/tasks/create";
 import { addAllowWriteOption, addWhatIfOption, collectList } from "../shared";
 import { addWebhookReadOptions } from "./shared";
 

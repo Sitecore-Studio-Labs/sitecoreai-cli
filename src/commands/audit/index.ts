@@ -7,6 +7,8 @@ import { createAuditHeavyTemplatesCommand } from "./heavy-templates";
 import { createAuditLargeFieldsCommand } from "./large-fields";
 import { createAuditBrokenImagesCommand } from "./broken-images";
 import { createAuditEmptyRolesCommand } from "./empty-roles";
+import { createAuditHistoryCommand } from "./history";
+import { createAuditSuiteCommand } from "./suite";
 import { createAuditFallbackDriftCommand } from "./fallback-drift";
 import { createAuditMissingMetaCommand } from "./missing-meta";
 import { createAuditRoleBloatCommand } from "./role-bloat";
@@ -55,6 +57,8 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditStaleContentCommand());
   command.addCommand(createAuditStaleUsersCommand());
   command.addCommand(createAuditStaleWorkflowCommand());
+  command.addCommand(createAuditHistoryCommand());
+  command.addCommand(createAuditSuiteCommand());
   command.addCommand(createAuditTranslationCoverageCommand());
   command.addCommand(createAuditUnusedMediaCommand());
 

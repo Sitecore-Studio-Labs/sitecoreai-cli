@@ -57,6 +57,8 @@ scai audit [options] [command]
 - [`scai audit stale-content`](#scai-audit-stale-content) — Find content items not updated in N days — the abandoned-content (graveyard) signal
 - [`scai audit stale-users`](#scai-audit-stale-users) — Find users inactive for N days (default 180)
 - [`scai audit stale-workflow`](#scai-audit-stale-workflow) — Find items stuck in a workflow state past a stale-after threshold
+- [`scai audit history`](#scai-audit-history) — Snapshot audit-all results over time + diff across snapshots
+- [`scai audit suite`](#scai-audit-suite) — Run a YAML-defined audit pipeline (codified hygiene policy)
 - [`scai audit translation-coverage`](#scai-audit-translation-coverage) — Measure translation coverage between a reference and target language(s)
 - [`scai audit unused-media`](#scai-audit-unused-media) — Find media library items with zero references from content
 
@@ -1212,6 +1214,132 @@ scai audit stale-workflow list [options]
 - `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--days <count>` — Stale threshold in days (default: 30)
+
+### scai audit history
+
+Snapshot audit-all results over time + diff across snapshots
+
+```
+scai audit history [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit history capture`](#scai-audit-history-capture) — Run `audit all` and persist the result to .scai/audit-history/<env>/
+- [`scai audit history list`](#scai-audit-history-list) — List captured snapshots, newest first
+- [`scai audit history diff`](#scai-audit-history-diff) — Compare two snapshots and show per-audit deltas (defaults to last two)
+
+#### scai audit history capture
+
+Run `audit all` and persist the result to .scai/audit-history/<env>/
+
+```
+scai audit history capture [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--root <path>` — Default content root for sub-audits
+- `--limit <count>` — Cap per audit
+- `--include-system` — Include /sitecore/system items
+- `--include <audits>` — Comma-separated audit names (default: `[]`)
+- `--exclude-audit <audits>` — Comma-separated audit names to skip (default: `[]`)
+- `--exclude <path>` — Path-prefix exclusions (default: `[]`)
+- `--since <date>` — Only items updated on/after this date
+
+#### scai audit history list
+
+List captured snapshots, newest first
+
+```
+scai audit history list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai audit history diff
+
+Compare two snapshots and show per-audit deltas (defaults to last two)
+
+```
+scai audit history diff [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--from <file>` — Snapshot path to compare FROM (default: second-most-recent)
+- `--to <file>` — Snapshot path to compare TO (default: most-recent)
+
+### scai audit suite
+
+Run a YAML-defined audit pipeline (codified hygiene policy)
+
+```
+scai audit suite [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit suite run`](#scai-audit-suite-run) — Execute a suite file
+
+#### scai audit suite run
+
+Execute a suite file
+
+```
+scai audit suite run [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--file <path>` — Path to the audit-suite YAML file
+- `--only <audits>` — Comma-separated subset of suite audits to run (default: `[]`)
 
 ### scai audit translation-coverage
 

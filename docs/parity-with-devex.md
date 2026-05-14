@@ -15,7 +15,7 @@ Those are out of scope by design, not by oversight.
 | dotnet surface                                                                       | scai equivalent                                               | Notes                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------ | ------------------------------------------------------------ |
 | `sitecore ser pull`                                                                  | `scai ser pull`                                               | Same semantics.                                                                                                                                                                                                         |
-| `sitecore ser push`                                                                  | `scai ser push`                                               | Same semantics. `--publish` chain is out of scope (see Publishing below).                                                                                                                                               |
+| `sitecore ser push`                                                                  | `scai ser push`                                               | Same semantics. The `--publish` chain flag is intentionally not ported — publish is a separate consent-gated verb (see Publishing below); chaining would bypass the safety model.                                       |
 | `sitecore ser diff` (local vs remote)                                                | `scai ser diff`                                               | Same semantics for the local-vs-remote case.                                                                                                                                                                            |
 | `sitecore ser diff --source A --destination B [--push]`                              | `scai ser diff --source-env A --target-env B [--push]`        | Same semantics. Source/destination metadata fetched in parallel; per-item fetch fanout bounded by `SITECOREAI_HTTP_CONCURRENCY`. Adds `--what-if`, `--allow-write`, `--force` (empty-source guard). Shipped 2026-05-14. |
 | `sitecore ser info`, `explain`, `validate`, `watch`                                  | `scai ser info                                                | explain                                                                                                                                                                                                                 | validate                                               | watch` | Same. `--fix` auto-correct on `validate` is not implemented. |
@@ -63,16 +63,85 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — ⚠️ partial via roadmap
+### `sitecore publish` (Publishing plugin) — 🗓️ planned (REST API + consent model)
 
 The dotnet plugin publishes from CM to one or more publishing targets
-(web, preview, ...). On XM Cloud the only target is Experience Edge and
-publishing is implicit in the deploy pipeline.
+via the Authoring GraphQL `publish()` mutation. On XM Cloud the only
+target is Experience Edge.
 
-**Decision:** add a thin `scai publish item` wrapper to roadmap that
-triggers an Edge publish for a specific item / subtree via the
-Authoring GraphQL API. The rest of the dotnet surface
-(`list-targets`, multi-target, republish-all) is on-prem-only.
+**Decision:** scope to two verbs — `scai publish` (item / subtree) and
+`scai publish status <jobId>` — backed by the **SAI Publishing REST
+API** (`https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs`,
+documented at [api-docs.sitecore.com/sai/publishing-api](https://api-docs.sitecore.com/sai/publishing-api)),
+not the legacy Authoring GraphQL `publish()` mutation. Same
+automation-client JWT auth as the Sites and Pages APIs. `cancel`,
+`list`, and `summary` are adjacent endpoints we'll consider as
+follow-ups when there's a real need.
+
+Out of scope (XM Cloud constraint): `list-targets` and multi-target
+publishing (Edge is the only target), whole-DB republish (implicit
+in the deploy pipeline; an out-of-band CLI republish is the wrong
+shape).
+
+**Safety model — non-negotiable.** Publishing pushes content to
+Experience Edge and is immediately visible to end users. An agent
+must never auto-invoke. Three layers, all required:
+
+1. **CLI defaults to `--what-if`.** Running `scai publish` without
+   `--allow-write` prints the resolved scope (env, target, item
+   count + IDs, languages) and exits without calling the API.
+   Same pattern as `scai cleanup versions prune`.
+
+2. **Production envs require a typed scope token, two-step flow.**
+   An environment is "production-tier" if its `sitecoreai.cli.json`
+   entry sets `production: true`, or its name matches `/prod/i` or
+   `/^live/i` (auto-flag, operator can override per-env). Production
+   publishes are:
+   - Step 1: dry-run prints scope summary plus a short token of the
+     form `pub-<env>-<hash>-<ts>`, hashed over `(envName, resolved
+itemIds, languages, target)`, TTL 5 minutes.
+   - Step 2: real call requires `--allow-write --confirm-token <token>`.
+     Changing scope between steps invalidates the token. CI pipelines
+     follow the same two-step flow (`--json --what-if` → parse token
+     from output → real call); there is no auto-approve shortcut.
+
+   Non-production envs accept an interactive `[y/N]` prompt or
+   `--yes` instead.
+
+3. **Library + MCP require a structured consent record.** The
+   publish library function (e.g. `publishJob`) is typed to require
+   a `PublishConsent { confirmedBy, scope, scopeHash, issuedAt, ttl }`
+   argument and refuses to call `POST /jobs` without one. The library
+   recomputes `scopeHash` from the actual arguments and rejects on
+   mismatch — the caller cannot lie about scope. Production-tier
+   publishes require `confirmedBy.type === "human"` by default; CI
+   principals can publish to production only when the env config
+   explicitly lists their pipeline ID. An agent cannot synthesize a
+   valid consent record; it must come from a layer the agent does
+   not control (CLI prompt, MCP host approval modal, CI gate).
+
+   On the MCP surface, publishing follows the workflow-shaped tool
+   pattern (see [scai-mcp-tool-shape] memory) — exposed as a single
+   `publishing_lifecycle` tool with a discriminated `action`
+   (`submit`, `status`, and later `cancel` / `list`), not a 1:1
+   `publish_item` wrapper. The tool inherits the per-call
+   `allowWrite: true` gate already enforced by the MCP dispatcher;
+   the `PublishConsent` record is an additional gate that the
+   dispatcher's generic write check cannot satisfy. Tool description
+   explicitly directs agents to surface scope to the operator and
+   never invoke `submit` without an unambiguous green-light naming
+   the target environment.
+
+Every publish call writes a JSON-Lines entry to
+`~/.sitecoreai/audit.log` (configurable via `SITECOREAI_AUDIT_LOG`):
+caller identity, timestamp, scope, consent record, API response.
+The audit log is never redacted — it's the production trail.
+
+**Open implementation detail:** the request body schema for
+`POST /authoring/publishing/v1/jobs` is rendered dynamically by
+Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
+Lock it during implementation from a real tenant's browser network
+traffic or from the OpenAPI YAML directly.
 
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 

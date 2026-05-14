@@ -126,6 +126,16 @@ export type { CleanupRolesOptions, RoleCleanupAction } from "./cleanup-roles";
 export { runCleanupUsers } from "./cleanup-users";
 export type { CleanupUsersOptions, UserCleanupAction } from "./cleanup-users";
 
+export { runAuditSuiteRun } from "./audit-suite-run";
+export type { AuditSuiteRunOptions } from "./audit-suite-run";
+
+export { runHistoryCapture, runHistoryList, runHistoryDiff } from "./audit-history";
+export type {
+  HistoryCaptureOptions,
+  HistoryListOptions,
+  HistoryDiffOptions,
+} from "./audit-history";
+
 export { runAuditAll, auditNames } from "./audit-all";
 export type { AuditAllOptions } from "./audit-all";
 

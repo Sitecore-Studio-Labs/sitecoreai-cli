@@ -93,6 +93,17 @@ export const fingerprintFinding = (audit: string, finding: unknown): string => {
     case "page-design-orphans":
     case "personalization-broken":
       return hashJson({ audit, itemId: f.itemId });
+    case "alt-text-missing":
+      // One row per (item, field, mediaId) — the mediaId disambiguates
+      // when an item has multiple Image fields with the same name in
+      // different languages, and the fieldName disambiguates the common
+      // case of an item with both a Banner and a Thumbnail.
+      return hashJson({
+        audit,
+        itemId: f.itemId,
+        fieldName: f.fieldName,
+        mediaId: f.mediaId,
+      });
     case "datasource-missing":
       return hashJson({
         audit,

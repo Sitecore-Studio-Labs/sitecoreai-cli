@@ -191,7 +191,7 @@ describe("audit alt-text-missing", () => {
     ]);
     const result = await runAuditAltTextMissing({ json: true } as never);
     expect(result).toHaveLength(1);
-    expect(result[0].imageFields[0].fieldName).toBe("Banner");
+    expect(result[0].fieldName).toBe("Banner");
   });
 
   it("flags Image fields with missing alt attribute entirely", async () => {
@@ -203,6 +203,7 @@ describe("audit alt-text-missing", () => {
     ]);
     const result = await runAuditAltTextMissing({ json: true } as never);
     expect(result).toHaveLength(1);
+    expect(result[0].fieldName).toBe("Banner");
   });
 
   it("does not flag Image fields with non-empty alt", async () => {
@@ -214,5 +215,30 @@ describe("audit alt-text-missing", () => {
     ]);
     const result = await runAuditAltTextMissing({ json: true } as never);
     expect(result).toHaveLength(0);
+  });
+
+  // Regression: each (item, image-field) pair gets its own row so
+  // consumers (CSV, baselines, audit-all flat results) always have a
+  // top-level `fieldName` instead of a nested array. Previously the
+  // audit emitted one row per item with `imageFields[].fieldName`,
+  // which surfaced as null/empty in the union-column CSV output.
+  it("emits one row per offending field, with top-level fieldName", async () => {
+    setup([
+      {
+        id: "a",
+        fields: [
+          { name: "Banner", value: '<image mediaid="{m1}" alt="" />' },
+          { name: "Thumbnail", value: '<image mediaid="{m2}" />' },
+        ],
+      },
+    ]);
+    const result = await runAuditAltTextMissing({ json: true } as never);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.fieldName).sort()).toEqual(["Banner", "Thumbnail"]);
+    for (const r of result) {
+      expect(r.itemId).toBe("a");
+      expect(typeof r.fieldName).toBe("string");
+      expect(r.fieldName.length).toBeGreaterThan(0);
+    }
   });
 });

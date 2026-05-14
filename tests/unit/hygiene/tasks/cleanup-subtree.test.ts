@@ -448,6 +448,81 @@ describe("cleanup subtree — orphan-external-refs prune", () => {
   });
 });
 
+describe("cleanup subtree — orphan-external-refs leave", () => {
+  it("skips the inbound-ref scan and deletes even when refs exist on the tenant", async () => {
+    const client = setup({
+      descendants: [CHILD_ID],
+      // External item with a real reference into the subtree. In `block`
+      // mode this would refuse; in `leave` it should be ignored.
+      scannedItems: [
+        {
+          id: EXTERNAL_ID,
+          path: "/sitecore/content/Other/Page",
+          fields: [{ name: "Link", value: dashed(CHILD_ID) }],
+        },
+      ],
+    });
+
+    const result = await runCleanupSubtree({
+      path: SUBTREE_PATH,
+      orphanExternalRefs: "leave",
+      allowWrite: true,
+      json: true,
+    } as never);
+
+    // No blockers surfaced (scan didn't run), no field updates issued,
+    // subtree still deleted bottom-up.
+    expect(result.blockers).toEqual([]);
+    expect(client.updateItemFields).not.toHaveBeenCalled();
+    expect(client.deleteItem).toHaveBeenCalledTimes(2);
+    expect(result.deletions.every((d) => d.status === "deleted")).toBe(true);
+    expect(result.policy).toBe("leave");
+  });
+
+  it("waives the path-under-scan-root invariant (scan doesn't run)", async () => {
+    setup({ descendants: [] });
+    // In any non-leave mode this combination throws; leave should be
+    // tolerant since it doesn't scan.
+    await expect(
+      runCleanupSubtree({
+        path: SUBTREE_PATH,
+        scanRoot: "/sitecore/templates",
+        orphanExternalRefs: "leave",
+        whatIf: true,
+        json: true,
+      } as never)
+    ).resolves.toBeDefined();
+  });
+
+  it("what-if reports the planned deletions without scanning", async () => {
+    const client = setup({
+      descendants: [CHILD_ID],
+      scannedItems: [
+        {
+          id: EXTERNAL_ID,
+          path: "/sitecore/content/Other/Page",
+          fields: [{ name: "Link", value: dashed(CHILD_ID) }],
+        },
+      ],
+    });
+
+    const result = await runCleanupSubtree({
+      path: SUBTREE_PATH,
+      orphanExternalRefs: "leave",
+      whatIf: true,
+      json: true,
+    } as never);
+
+    expect(result.blockers).toEqual([]);
+    expect(result.deletions.every((d) => d.status === "what-if")).toBe(true);
+    expect(client.deleteItem).not.toHaveBeenCalled();
+    // The scanItemsAndFields getItemFieldsBatch should not have been
+    // hit — its `searchAll` for the scan-root wouldn't fire either,
+    // but assert on the more visible field-fetch call.
+    expect(client.getItemFieldsBatch).not.toHaveBeenCalled();
+  });
+});
+
 describe("cleanup subtree — bottom-up order", () => {
   it("deletes deeper paths before shallower ones", async () => {
     const deletes: string[] = [];

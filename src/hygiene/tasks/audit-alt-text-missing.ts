@@ -29,7 +29,8 @@ export interface AltTextMissingReport {
   path: string;
   templateName: string | null;
   language: string | null;
-  imageFields: Array<{ fieldName: string; mediaId: string | null }>;
+  fieldName: string;
+  mediaId: string | null;
 }
 
 /**
@@ -75,7 +76,6 @@ export const runAuditAltTextMissing = async (
   for (const item of scanned) {
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
-    const offending: Array<{ fieldName: string; mediaId: string | null }> = [];
     for (const field of fields) {
       if (!field.value) continue;
       if (field.name.startsWith("__")) continue;
@@ -90,20 +90,19 @@ export const runAuditAltTextMissing = async (
         if (alt.length > 0) continue;
         const mediaMatch = MEDIA_ID_PATTERN.exec(tag);
         const mediaId = mediaMatch ? mediaMatch[1].replace(/[{}-]/g, "").toLowerCase() : null;
-        offending.push({ fieldName: field.name, mediaId });
+        reports.push({
+          itemId: item.itemId,
+          path: item.path,
+          templateName: item.templateName,
+          language: item.language,
+          fieldName: field.name,
+          mediaId,
+        });
       }
     }
-    if (offending.length > 0) {
-      reports.push({
-        itemId: item.itemId,
-        path: item.path,
-        templateName: item.templateName,
-        language: item.language,
-        imageFields: offending,
-      });
-    }
   }
-  reports.sort((a, b) => a.path.localeCompare(b.path));
+  // Sort by path, then field name, so multi-field items group naturally.
+  reports.sort((a, b) => a.path.localeCompare(b.path) || a.fieldName.localeCompare(b.fieldName));
 
   await cache?.flush();
 
@@ -112,9 +111,9 @@ export const runAuditAltTextMissing = async (
     command: "audit.alt-text-missing.list",
     envName,
     results: reports,
-    summary: `Scanned ${scanned.length} items; ${reports.length} have Image fields with empty alt text.`,
+    summary: `Scanned ${scanned.length} items; ${reports.length} Image field${reports.length === 1 ? " has" : "s have"} empty alt text.`,
     formatLine: (r) =>
-      `${r.path} — ${r.imageFields.map((f) => `${f.fieldName}${f.mediaId ? `(${f.mediaId.slice(0, 8)})` : ""}`).join(", ")}`,
+      `${r.path} — ${r.fieldName}${r.mediaId ? ` (${r.mediaId.slice(0, 8)})` : ""}`,
     extra: { root, scannedCount: scanned.length },
     options,
   });

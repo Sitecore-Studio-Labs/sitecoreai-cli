@@ -52,6 +52,7 @@ export const createCleanupCommand = (): Command => {
       "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --what-if\n" +
       "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --orphan-external-refs clear --allow-write\n" +
       "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --orphan-external-refs prune --allow-write\n" +
+      "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --orphan-external-refs leave --allow-write\n" +
       "  $ scai cleanup users purge-stale --not-active-days 365 --what-if\n"
   );
 

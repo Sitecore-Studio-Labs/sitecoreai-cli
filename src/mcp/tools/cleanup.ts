@@ -535,10 +535,10 @@ const cleanupInputSchema = () =>
         "subtree: content root scanned for inbound references. Default `/sitecore` (entire CMS). Narrow for speed at the cost of missing refs outside the chosen root."
       ),
     orphanExternalRefs: z
-      .enum(["clear", "prune"])
+      .enum(["clear", "prune", "leave"])
       .optional()
       .describe(
-        "subtree: how to handle external items whose fields reference the subtree. Omit (default) = refuse with blocker list. 'clear' empties the entire referring field. 'prune' surgically removes only the offending entries (preserves siblings in multi-list / treelist fields and `<r>` elements in `__Renderings` XML); falls back to clear for single-value fields. Use --what-if first to preview."
+        "subtree: how to handle external items whose fields reference the subtree. Omit (default) = refuse with blocker list. 'clear' empties the entire referring field. 'prune' surgically removes only the offending entries (preserves siblings in multi-list / treelist fields and `<r>` elements in `__Renderings` XML); falls back to clear for single-value fields. 'leave' skips the inbound-ref scan entirely — fastest mode; accepts dangling refs and expects an `audit broken-links` follow-up. Use --what-if first to preview the non-`leave` modes."
       ),
 
     // site-residue

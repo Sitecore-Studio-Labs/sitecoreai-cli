@@ -31,7 +31,14 @@ export type OrphanExternalRefsPolicy =
    * GUIDs. Single-value fields with no shape to preserve fall through
    * to a clear (empty-string write).
    */
-  | "prune";
+  | "prune"
+  /**
+   * Delete the subtree and do nothing to external referrers — accept
+   * dangling refs as a tradeoff for speed. Skips the inbound-reference
+   * scan entirely (fastest mode). Operator is expected to run `audit
+   * broken-links` after the fact to find and triage the dangling refs.
+   */
+  | "leave";
 
 export interface CleanupSubtreeOptions extends HygieneCommonOptions {
   /** Required. Root path of the subtree to delete. */
@@ -239,8 +246,14 @@ export const runCleanupSubtree = async (
     );
   }
 
+  const policy: OrphanExternalRefsPolicy | "block" = options.orphanExternalRefs ?? "block";
+
   const scanRoot = options.scanRoot ?? "/sitecore";
-  if (!subtreePath.startsWith(scanRoot)) {
+  // `leave` mode skips the inbound-reference scan entirely, so the
+  // path-under-scan-root invariant doesn't apply. Other modes need
+  // the scan to either block (default) or compute prune/clear writes,
+  // so they enforce the invariant.
+  if (policy !== "leave" && !subtreePath.startsWith(scanRoot)) {
     throw createScaiError(
       `--path '${subtreePath}' is not under --scan-root '${scanRoot}'.`,
       "INPUT_INVALID",
@@ -311,18 +324,22 @@ export const runCleanupSubtree = async (
   const targetIds = new Set(subtreeItems.map((i) => i.itemId));
 
   // ─── Inbound-reference scan ───────────────────────────────────────────
-  logger.verbose(
-    `Scanning ${scanRoot} for inbound references to ${subtreeItems.length} subtree item(s).`
-  );
-  const blockers = await findInboundBlockers(
-    client,
-    envName,
-    scanRoot,
-    targetIds,
-    options
-  );
-
-  const policy: OrphanExternalRefsPolicy | "block" = options.orphanExternalRefs ?? "block";
+  // Skipped in `leave` mode — the operator is opting out of inbound-ref
+  // safety in exchange for speed, accepting that they'll run `audit
+  // broken-links` afterward to find dangling refs.
+  let blockers: InboundBlocker[] = [];
+  if (policy !== "leave") {
+    logger.verbose(
+      `Scanning ${scanRoot} for inbound references to ${subtreeItems.length} subtree item(s).`
+    );
+    blockers = await findInboundBlockers(
+      client,
+      envName,
+      scanRoot,
+      targetIds,
+      options
+    );
+  }
 
   if (blockers.length > 0 && policy === "block") {
     // Print the blockers so the operator can choose: clear external refs,
@@ -333,7 +350,7 @@ export const runCleanupSubtree = async (
       .join("\n");
     throw createScaiError(
       `Refusing to delete subtree '${subtreePath}': ${blockers.length} external reference(s) point into it. ` +
-        `Pass --orphan-external-refs clear to wipe those referring fields before deleting, or fix the refs out-of-band first.\n${sample}${
+        `Pass --orphan-external-refs clear (empty the fields), prune (surgical removal preserving siblings), or leave (accept dangling refs and clean up later via audit broken-links).\n${sample}${
           blockers.length > 5 ? `\n  …and ${blockers.length - 5} more` : ""
         }`,
       "INPUT_INVALID"
@@ -415,13 +432,24 @@ export const runCleanupSubtree = async (
 
   const deletedCount = deletions.filter((d) => d.status === "deleted").length;
   const failedCount = deletions.filter((d) => d.status === "failed").length;
+  // Verb describing what the policy did to each external referring
+  // field. "clearing" for clear, "pruning" for prune, "blocking on"
+  // when the operator hit a hard-block.
+  const refVerb =
+    policy === "clear" ? "clearing" : policy === "prune" ? "pruning" : "blocking on";
+  const writtenVerb =
+    policy === "clear" ? "cleared" : policy === "prune" ? "pruned" : "wrote";
+  const leaveNote =
+    policy === "leave"
+      ? " (leave mode: dangling refs accepted; run `audit broken-links` afterward to triage)"
+      : "";
   const summary = options.whatIf
     ? `Plan: would delete ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0 ? ` (after ${policy === "clear" ? "clearing" : "blocking on"} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})` : ""
-      }.`
+        blockers.length > 0 ? ` (after ${refVerb} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})` : ""
+      }${leaveNote}.`
     : `Deleted ${deletedCount} of ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0 ? ` (cleared ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})` : ""
-      }${failedCount > 0 ? ` (${failedCount} delete failure${failedCount === 1 ? "" : "s"})` : ""}.`;
+        blockers.length > 0 ? ` (${writtenVerb} ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})` : ""
+      }${failedCount > 0 ? ` (${failedCount} delete failure${failedCount === 1 ? "" : "s"})` : ""}${leaveNote}.`;
 
   printReport({
     logger,

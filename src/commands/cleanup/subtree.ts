@@ -18,7 +18,7 @@ export const createCleanupSubtreeCommand = (): Command => {
   );
   del.option(
     "--orphan-external-refs <mode>",
-    "How to handle external items whose fields reference the subtree. Default: refuse. 'clear' empties the entire referring field. 'prune' surgically removes only the entries pointing at the subtree (preserves sibling values in multi-list / treelist fields and `<r>` elements in `__Renderings` layout XML)."
+    "How to handle external items whose fields reference the subtree. Default: refuse with blocker list. 'clear' empties the entire referring field. 'prune' surgically removes only the entries pointing at the subtree (preserves sibling values in multi-list / treelist fields and `<r>` elements in `__Renderings` layout XML). 'leave' skips the ref scan entirely — fastest, accepts dangling refs, expects `audit broken-links` follow-up."
   );
   del.option(
     "--max-deletions <count>",

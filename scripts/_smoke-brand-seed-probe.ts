@@ -108,9 +108,10 @@ const main = async (): Promise<void> => {
       brandKitId: kitId,
       url: PROBE_PDF_URL,
       title: "Brand Guidelines",
-      summary: "scai seed probe — voice + tone rules",
+      summary: "scai seed probe",
       type: "brand guidelines",
-      fileType: "PDF",
+      // MIME, not "PDF" label — matches working Sync kit docs.
+      fileType: "application/pdf",
     });
     process.stderr.write(`      ok — documentId=${uploaded.id} status=${uploaded.status}\n\n`);
 

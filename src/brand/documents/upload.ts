@@ -118,29 +118,62 @@ export const uploadDocument = async (
   );
 
   const fire = async (token: string): Promise<Response> => {
-    // Build multipart/form-data manually. `FormData` + `Blob` with the
-    // PDF bytes is the canonical Node 20+ shape; `fetch` handles the
-    // multipart boundary + Content-Type header automatically when
-    // given a FormData body. Setting Content-Type explicitly would
-    // break the boundary.
-    const form = new FormData();
-    // Copy into a fresh Uint8Array<ArrayBuffer> — Node's Buffer extends
-    // Uint8Array<ArrayBufferLike> which TypeScript does not accept as a
-    // BlobPart in strict configs. The copy is cheap for the PDF sizes
-    // we deal with here.
-    const bytes = new Uint8Array(options.pdf.byteLength);
-    bytes.set(options.pdf);
-    const pdfBlob = new Blob([bytes], { type: "application/pdf" });
-    form.append("file", pdfBlob, options.fileName);
-    form.append("create_request", createRequestJson);
+    // Hand-roll the multipart body. Node's built-in `FormData` should
+    // work with `fetch`, but the Sitecore FastAPI parser intermittently
+    // rejects the encoding with `'create_request' field required`
+    // even when it's present — verified 2026-05-14. Constructing the
+    // wire payload directly avoids any browser/Node FormData
+    // differences and gives us a predictable Content-Type boundary.
+    // Boundary must NOT start with `-` — the wire delimiter prepends
+    // `--` to the value, and parsers sometimes choke on `------` runs.
+    const boundary = `scaiBoundary${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+    const enc = (s: string): Buffer => Buffer.from(s, "utf8");
+    const CRLF = "\r\n";
+
+    const parts: Buffer[] = [];
+    // create_request part — explicit application/json content type;
+    // FastAPI's multipart parser dispatches typed parts to different
+    // pydantic models, and a bare text part may not route to the
+    // JSON-body parameter the endpoint expects.
+    parts.push(enc(`--${boundary}${CRLF}`));
+    parts.push(enc(`Content-Disposition: form-data; name="create_request"${CRLF}`));
+    parts.push(enc(`Content-Type: application/json${CRLF}${CRLF}`));
+    parts.push(enc(createRequestJson));
+    parts.push(enc(CRLF));
+    // file part — application/pdf binary
+    parts.push(enc(`--${boundary}${CRLF}`));
+    parts.push(
+      enc(
+        `Content-Disposition: form-data; name="file"; filename="${options.fileName}"${CRLF}`
+      )
+    );
+    parts.push(enc(`Content-Type: application/pdf${CRLF}${CRLF}`));
+    parts.push(Buffer.isBuffer(options.pdf) ? options.pdf : Buffer.from(options.pdf));
+    parts.push(enc(CRLF));
+    // closing boundary
+    parts.push(enc(`--${boundary}--${CRLF}`));
+
+    const body = Buffer.concat(parts);
+
+    // Debug: when SCAI_BRAND_DEBUG_MULTIPART is set, dump the raw
+    // request body so we can inspect what the wire actually carries.
+    if (process.env.SCAI_BRAND_DEBUG_MULTIPART) {
+      const debugPath = `/tmp/scai-brand-upload-${Date.now()}.bin`;
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(debugPath, body);
+      process.stderr.write(`> [debug] wrote multipart body to ${debugPath} (${body.length} bytes)\n`);
+      process.stderr.write(`> [debug] Content-Type: multipart/form-data; boundary=${boundary}\n`);
+    }
 
     return fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": body.length.toString(),
       },
-      body: form,
+      body,
       signal: options.signal,
     });
   };

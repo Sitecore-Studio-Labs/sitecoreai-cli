@@ -4,6 +4,7 @@ import { resolveEnvironment } from "@/shared/env";
 import { promptConfirm } from "@/shared/prompt";
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
+import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
 import type {
   CreatePublishJobRequest,
   PublishItemsMode,
@@ -16,12 +17,18 @@ import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } f
 export interface RunPublishItemOptions {
   config?: string;
   environmentName?: string;
-  /** Item IDs (GUIDs) to publish. At least one required. The API
-   *  accepts an array; scai bundles all IDs into a single publishing
-   *  job (one POST /jobs, one job id, one audit entry). For
-   *  large batches consider tenant rate limits — the API documents
-   *  no hard cap but treats each item as a unit of work. */
+  /** Item IDs (GUIDs) to publish. At least one of `itemIds` or
+   *  `paths` is required. The API accepts an array; scai bundles all
+   *  IDs into a single publishing job (one POST /jobs, one job id,
+   *  one audit entry). For large batches consider tenant rate limits
+   *  — the API documents no hard cap but treats each item as a unit
+   *  of work. */
   itemIds?: string[];
+  /** Content-tree paths (e.g. `/sitecore/content/Home`). Resolved to
+   *  item IDs via Authoring GraphQL before submission. Merged into
+   *  the same job as `itemIds`; paths that don't resolve fail the
+   *  whole call before any API write. */
+  paths?: string[];
   /** ItemModel.type — defaults to "item". The Publishing API accepts
    *  a free-form string here; if your tenant uses a different value
    *  (e.g. "Item" or "ContentItem"), pass it explicitly. */
@@ -88,11 +95,16 @@ const printScope = (logger: Logger, scope: PublishAuditScope): void => {
 export const runPublishItem = async (options: RunPublishItemOptions): Promise<void> => {
   const logger = toLogger(options);
 
-  const itemIds = options.itemIds ?? [];
-  if (itemIds.length === 0) {
-    throw createScaiError("Publish requires at least one --items <guid>.", "INPUT_INVALID", {
-      hint: "Pass --items <guid> (repeatable) or --items <guid1,guid2,...> to publish a batch in one job. Path-based publishing is on the roadmap once we wire path→id resolution.",
-    });
+  const directItemIds = options.itemIds ?? [];
+  const paths = options.paths ?? [];
+  if (directItemIds.length === 0 && paths.length === 0) {
+    throw createScaiError(
+      "Publish requires at least one --items <guid> or --paths <path>.",
+      "INPUT_INVALID",
+      {
+        hint: "Pass --items <guid> (repeatable) and/or --paths <path> (repeatable). Both can be combined in a single job; paths are resolved to IDs via Authoring GraphQL before submission.",
+      }
+    );
   }
 
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
@@ -100,6 +112,20 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
   const languages = options.languages ?? [];
   const target = "Edge";
   const mode: PublishItemsMode = options.mode ?? "Smart";
+
+  // Resolve paths → IDs up front so the dry-run scope (and the scope
+  // hash) reflects the actual items the API will see. Resolution
+  // errors fail the whole call before any publish-API write.
+  let resolvedFromPaths: Array<{ path: string; itemId: string }> = [];
+  if (paths.length > 0) {
+    logger.info(`Resolving ${paths.length} path(s) via Authoring GraphQL...`, "gray");
+    const result = await resolveItemPathsToIds(environment, paths);
+    resolvedFromPaths = result.resolved;
+    for (const r of resolvedFromPaths) {
+      logger.info(`  ${r.path} → ${r.itemId}`, "gray");
+    }
+  }
+  const itemIds = [...directItemIds, ...resolvedFromPaths.map((r) => r.itemId)];
 
   const scope: PublishAuditScope = {
     envName,

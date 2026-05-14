@@ -1,4 +1,4 @@
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { runWebhookAuthoringGraphQL, type WebhookRequestOptions } from "./graphql";
 

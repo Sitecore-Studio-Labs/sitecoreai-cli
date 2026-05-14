@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupEmptyFolders } from "@/hygiene/tasks";
+import { runCleanupEmptyFolders } from "@/hygiene/tasks/cleanup-empty-folders";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupEmptyFoldersCommand = (): Command => {

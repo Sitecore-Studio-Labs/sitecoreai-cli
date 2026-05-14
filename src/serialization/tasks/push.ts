@@ -1,7 +1,8 @@
 import { createFieldFilterSet } from "../field-filter";
 import { ItemMetadata } from "../types";
-import { fetchItemMetadata, publishItems } from "../sitecore-api";
-import { loadFilesystemItems } from "../filesystem-store";
+import { fetchItemMetadata } from "../sitecore-api/items";
+import { publishItems } from "../sitecore-api/publish";
+import { loadFilesystemItems } from "../filesystem-store/items";
 import { startSpinner } from "@/shared/spinner";
 import {
   ensureAllowWrite,
@@ -12,12 +13,10 @@ import {
 } from "./shared";
 import { enrichCreateCommands, enrichUpdateCommands } from "../commands";
 import type { SyncOptions } from "./types";
-import {
-  applySitecoreCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applySitecoreCommands } from "./helpers/sitecore";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { syncRolesPush } from "./roles";
 import { syncUsersPush } from "./users";
 

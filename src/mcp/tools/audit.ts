@@ -25,43 +25,41 @@
  */
 
 import { z } from "zod";
+import { auditNames, runAuditAll } from "@/hygiene/tasks/audit-all";
+import { runAuditAltTextMissing } from "@/hygiene/tasks/audit-alt-text-missing";
+import { runAuditBrokenImages } from "@/hygiene/tasks/audit-broken-images";
+import { runAuditBrokenLinks } from "@/hygiene/tasks/audit-broken-links";
+import { runAuditDatasourceMissing } from "@/hygiene/tasks/audit-datasource-missing";
+import { runAuditDeadTemplates } from "@/hygiene/tasks/audit-dead-templates";
+import { runAuditDuplicates } from "@/hygiene/tasks/audit-duplicates";
+import { runAuditEmptyItems } from "@/hygiene/tasks/audit-empty-items";
+import { runAuditEmptyLinks } from "@/hygiene/tasks/audit-empty-links";
+import { runAuditEmptyRoles } from "@/hygiene/tasks/audit-empty-roles";
+import { runAuditFallbackDrift } from "@/hygiene/tasks/audit-fallback-drift";
+import { runAuditFindReplace } from "@/hygiene/tasks/audit-find-replace";
+import { runAuditHeavyTemplates } from "@/hygiene/tasks/audit-heavy-templates";
+import { runAuditLanguageData } from "@/hygiene/tasks/audit-language-data";
+import { runAuditLargeFields } from "@/hygiene/tasks/audit-large-fields";
+import { runAuditMissingMeta } from "@/hygiene/tasks/audit-missing-meta";
+import { runAuditOrphans } from "@/hygiene/tasks/audit-orphans";
+import { runAuditPageDesignOrphans } from "@/hygiene/tasks/audit-page-design-orphans";
+import { runAuditPersonalizationBroken } from "@/hygiene/tasks/audit-personalization-broken";
+import { runAuditRoleBloat } from "@/hygiene/tasks/audit-role-bloat";
+import { runAuditSiteResidue } from "@/hygiene/tasks/audit-site-residue";
+import { runAuditSlugConflicts } from "@/hygiene/tasks/audit-slug-conflicts";
+import { runAuditStaleContent } from "@/hygiene/tasks/audit-stale-content";
+import { runAuditStaleUsers } from "@/hygiene/tasks/audit-stale-users";
+import { runAuditStaleWorkflow } from "@/hygiene/tasks/audit-stale-workflow";
+import { runAuditSuiteRun } from "@/hygiene/tasks/audit-suite-run";
+import { runAuditTranslationCoverage } from "@/hygiene/tasks/audit-translation-coverage";
+import { runAuditUnusedMedia } from "@/hygiene/tasks/audit-unused-media";
 import {
-  auditNames,
-  runAuditAll,
-  runAuditAltTextMissing,
-  runAuditBrokenImages,
-  runAuditBrokenLinks,
-  runAuditDatasourceMissing,
-  runAuditDeadTemplates,
-  runAuditDuplicates,
-  runAuditEmptyItems,
-  runAuditEmptyLinks,
-  runAuditEmptyRoles,
-  runAuditFallbackDrift,
-  runAuditFindReplace,
-  runAuditHeavyTemplates,
-  runAuditLanguageData,
-  runAuditLargeFields,
-  runAuditMissingMeta,
-  runAuditOrphans,
-  runAuditPageDesignOrphans,
-  runAuditPersonalizationBroken,
-  runAuditRoleBloat,
-  runAuditSiteResidue,
-  runAuditSlugConflicts,
-  runAuditStaleContent,
-  runAuditStaleUsers,
-  runAuditStaleWorkflow,
-  runAuditSuiteRun,
-  runAuditTranslationCoverage,
-  runAuditUnusedMedia,
   runBaselineCreate,
   runBaselineRemove,
   runBaselineReset,
   runBaselineShow,
-  runHistoryCapture,
-  runHistoryList,
-} from "@/hygiene/tasks";
+} from "@/hygiene/tasks/audit-baseline";
+import { runHistoryCapture, runHistoryList } from "@/hygiene/tasks/audit-history";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";

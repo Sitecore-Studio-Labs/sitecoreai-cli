@@ -9,7 +9,7 @@
  * endpoint at a different path, override via `SITECOREAI_AUTHORING_PATH`.
  */
 
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { runSitecoreGraphQL, type GraphQLRequestOptions } from "@/shared/graphql";
 import { getAccessToken } from "./auth";
 

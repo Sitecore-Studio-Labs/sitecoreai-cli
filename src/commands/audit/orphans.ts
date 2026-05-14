@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditOrphans } from "@/hygiene/tasks";
+import { runAuditOrphans } from "@/hygiene/tasks/audit-orphans";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 
 export const createAuditOrphansCommand = (): Command => {

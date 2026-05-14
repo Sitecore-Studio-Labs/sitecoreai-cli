@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditPersonalizationBroken } from "@/hygiene/tasks";
+import { runAuditPersonalizationBroken } from "@/hygiene/tasks/audit-personalization-broken";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditPersonalizationBrokenCommand = (): Command => {

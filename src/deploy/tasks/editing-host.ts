@@ -1,15 +1,17 @@
 import {
   fetchEnvironment,
-  fetchAllProjectEnvironments,
   fetchAllEnvironments,
   fetchEnvironments,
-  fetchProjectEnvironments,
-  createProjectEnvironment,
   deleteEnvironment,
   updateEnvironment,
   createEnvironmentDeployment,
-} from "@/deploy/api";
-import type { DeployEnvironment } from "@/deploy/api";
+} from "@/deploy/api/environments";
+import {
+  fetchAllProjectEnvironments,
+  fetchProjectEnvironments,
+  createProjectEnvironment,
+} from "@/deploy/api/projects";
+import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   extractDeployEnvironmentList,
   getDeployContext,

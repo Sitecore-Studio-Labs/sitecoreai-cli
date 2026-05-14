@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { isProductionTier } from "../../../src/publishing/env-tier";
 
 const env = (overrides: Partial<EnvironmentConfiguration>): EnvironmentConfiguration =>

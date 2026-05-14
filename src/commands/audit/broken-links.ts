@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditBrokenLinks } from "@/hygiene/tasks";
+import { runAuditBrokenLinks } from "@/hygiene/tasks/audit-broken-links";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditBrokenLinksCommand = (): Command => {

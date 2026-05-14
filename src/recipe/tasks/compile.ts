@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
 import { compileRecipe } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";

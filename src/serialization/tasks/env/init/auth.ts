@@ -7,8 +7,8 @@ import {
   requestClientCredentialsToken,
   requestDeviceAuthorization,
   pollDeviceToken,
-} from "@/serialization/sitecore-api";
-import type { EnvironmentConfiguration } from "@/config";
+} from "@/serialization/sitecore-api/auth";
+import type { EnvironmentConfiguration } from "@/config/types";
 import type { ConnectOptions } from "../../types";
 import { DEFAULT_PUBLIC_CLIENT_ID } from "../constants";
 import type { Logger } from "@/shared/logger";

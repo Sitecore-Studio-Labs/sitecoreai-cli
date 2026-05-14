@@ -6,13 +6,11 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import {
-  runRecipeCompile,
-  runRecipeDiff,
-  runRecipePlan,
-  runRecipePruneDefaults,
-  runRecipePush,
-} from "../../recipe/tasks";
+import { runRecipeCompile } from "../../recipe/tasks/compile";
+import { runRecipeDiff } from "../../recipe/tasks/diff";
+import { runRecipePlan } from "../../recipe/tasks/plan";
+import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
+import { runRecipePush } from "../../recipe/tasks/push";
 import { createScaiError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>

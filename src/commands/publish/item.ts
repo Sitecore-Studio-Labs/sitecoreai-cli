@@ -1,5 +1,5 @@
 import { Command, Option } from "commander";
-import { runPublishItem } from "@/publishing/tasks";
+import { runPublishItem } from "@/publishing/tasks/item";
 import {
   addAllowWriteOption,
   addConfigOption,

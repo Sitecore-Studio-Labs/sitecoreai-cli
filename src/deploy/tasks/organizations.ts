@@ -3,7 +3,7 @@ import {
   fetchOrganizationHealth,
   fetchOrganizationLicense,
   createOrganizationDemoSolution,
-} from "@/deploy/api";
+} from "@/deploy/api/organizations";
 import {
   getDeployContext,
   inputError,

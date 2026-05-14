@@ -1,6 +1,6 @@
 import { ensureAllowWrite } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
-import { resolveWorkflowCommandId } from "../api";
+import { resolveWorkflowCommandId } from "../api/resolve-command";
 import {
   dashifyItemId,
   parseItemReference,

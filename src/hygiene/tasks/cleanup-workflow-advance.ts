@@ -1,6 +1,6 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
-import { resolveWorkflowCommandId } from "@/workflow/api";
+import { resolveWorkflowCommandId } from "@/workflow/api/resolve-command";
 import {
   type HygieneCommonOptions,
   buildPathFilterStatement,

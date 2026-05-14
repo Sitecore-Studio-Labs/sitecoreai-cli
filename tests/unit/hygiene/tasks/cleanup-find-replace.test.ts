@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runCleanupFindReplace } from "../../../../src/hygiene/tasks/cleanup-find-replace";
 

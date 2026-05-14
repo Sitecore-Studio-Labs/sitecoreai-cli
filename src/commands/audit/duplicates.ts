@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditDuplicates } from "@/hygiene/tasks";
+import { runAuditDuplicates } from "@/hygiene/tasks/audit-duplicates";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditDuplicatesCommand = (): Command => {

@@ -12,13 +12,10 @@ import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { inputError, selectMatch } from "@/shared/cli-tasks";
 import { resolveEnvironment } from "@/shared/env";
-import {
-  fetchOrganization,
-  fetchAllProjects,
-  fetchAllProjectEnvironments,
-  fetchAllEnvironments,
-  DeployEnvironment,
-} from "@/deploy/api";
+import { fetchOrganization } from "@/deploy/api/organizations";
+import { fetchAllProjects, fetchAllProjectEnvironments } from "@/deploy/api/projects";
+import { fetchAllEnvironments } from "@/deploy/api/environments";
+import type { DeployEnvironment } from "@/deploy/api/common/types";
 
 // Re-export neutral helpers so deploy task runners can keep using
 // the local `./shared` import surface; new code can also import

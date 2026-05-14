@@ -7,7 +7,8 @@
  */
 
 import { Command, Option } from "commander";
-import { runDeploySiteBind, runDeploySiteList } from "@/deploy/tasks";
+import { runDeploySiteBind } from "@/deploy/tasks/site-bind";
+import { runDeploySiteList } from "@/deploy/tasks/site";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeploySiteCommand = (): Command => {

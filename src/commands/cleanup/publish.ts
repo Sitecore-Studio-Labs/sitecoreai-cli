@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupPublish } from "@/hygiene/tasks";
+import { runCleanupPublish } from "@/hygiene/tasks/cleanup-publish";
 import { collectList } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 

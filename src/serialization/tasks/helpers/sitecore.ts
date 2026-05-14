@@ -1,6 +1,6 @@
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import { ItemData } from "../../types";
-import { executeSerializationCommands } from "../../sitecore-api";
+import { executeSerializationCommands } from "../../sitecore-api/items";
 import { Logger } from "@/shared/logger";
 import { ItemCommand } from "../../commands";
 import { resolveApiTimeoutMs } from "../shared";

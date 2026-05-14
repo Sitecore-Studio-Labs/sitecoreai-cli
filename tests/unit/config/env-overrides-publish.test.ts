@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyEnvOverrides } from "../../../src/config/env-overrides";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 
 const PUBLISHING_KEYS = [
   "SITECOREAI_ENV_PROD_PRODUCTION",

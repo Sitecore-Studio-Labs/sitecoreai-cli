@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runPublishStatus } from "@/publishing/tasks";
+import { runPublishStatus } from "@/publishing/tasks/status";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 
 export const createPublishStatusCommand = (): Command => {

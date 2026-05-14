@@ -1,4 +1,4 @@
-import type { WorkflowCommandSummary } from "../api";
+import type { WorkflowCommandSummary } from "../api/client";
 import {
   dashifyItemId,
   parseItemReference,

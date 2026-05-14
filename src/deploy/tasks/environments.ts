@@ -11,8 +11,6 @@ import {
   fetchEnvironmentEdgeToken,
   fetchEnvironmentEditingSecret,
   regenerateEnvironmentContext,
-  fetchProjectEnvironments,
-  createProjectEnvironment,
   deleteEnvironment,
   linkEnvironmentRepository,
   unlinkEnvironmentRepository,
@@ -21,8 +19,9 @@ import {
   promoteEnvironmentDeployment,
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
-} from "@/deploy/api";
-import type { DeployEnvironment } from "@/deploy/api";
+} from "@/deploy/api/environments";
+import { fetchProjectEnvironments, createProjectEnvironment } from "@/deploy/api/projects";
+import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   confirmDestructive,
   extractDeployEnvironmentList,

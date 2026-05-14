@@ -6,7 +6,7 @@ import {
   createWorkflowApiClient,
   type WorkflowApiClient,
   type WorkflowDefinitionDetail,
-} from "@/workflow/api";
+} from "@/workflow/api/client";
 import { resolveWorkflowRef, resolveWorkflowState } from "@/workflow/tasks/shared";
 import {
   type HygieneCommonOptions,

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditMissingMeta } from "@/hygiene/tasks";
+import { runAuditMissingMeta } from "@/hygiene/tasks/audit-missing-meta";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

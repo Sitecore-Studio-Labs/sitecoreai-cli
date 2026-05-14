@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditFindReplace } from "@/hygiene/tasks";
+import { runAuditFindReplace } from "@/hygiene/tasks/audit-find-replace";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

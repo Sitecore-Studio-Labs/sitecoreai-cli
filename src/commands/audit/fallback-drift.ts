@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditFallbackDrift } from "@/hygiene/tasks";
+import { runAuditFallbackDrift } from "@/hygiene/tasks/audit-fallback-drift";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

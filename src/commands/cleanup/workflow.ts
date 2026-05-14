@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { runCleanupWorkflowAdvance, runCleanupWorkflowApply } from "@/hygiene/tasks";
+import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup-workflow-advance";
+import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup-workflow-apply";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupWorkflowCommand = (): Command => {

@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runDeployToken } from "../serialization/tasks";
+import { runDeployToken } from "../serialization/tasks/env/deploy-token";
 import { runAiSkillsLogin } from "../brand/tasks/login";
 
 /**

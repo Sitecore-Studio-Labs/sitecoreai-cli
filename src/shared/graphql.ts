@@ -14,7 +14,7 @@
  * the per-API constants.
  */
 
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "./errors";
 import { redactSecrets } from "./redact";
 

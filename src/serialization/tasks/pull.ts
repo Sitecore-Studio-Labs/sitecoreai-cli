@@ -1,8 +1,8 @@
 import { FilesystemPathProvider } from "../path-provider";
 import { createFieldFilterSet } from "../field-filter";
 import { ItemMetadata } from "../types";
-import { fetchItemMetadata } from "../sitecore-api";
-import { loadFilesystemItems } from "../filesystem-store";
+import { fetchItemMetadata } from "../sitecore-api/items";
+import { loadFilesystemItems } from "../filesystem-store/items";
 import { startSpinner } from "@/shared/spinner";
 import {
   loadConfigAndModules,
@@ -12,12 +12,10 @@ import {
 } from "./shared";
 import { enrichCreateCommands, enrichUpdateCommands } from "../commands";
 import type { SyncOptions } from "./types";
-import {
-  applyFilesystemCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applyFilesystemCommands } from "./helpers/filesystem";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { syncRolesPull } from "./roles";
 import { syncUsersPull } from "./users";
 

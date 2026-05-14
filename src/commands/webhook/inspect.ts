@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWebhookInspect } from "@/webhooks/tasks";
+import { runWebhookInspect } from "@/webhooks/tasks/inspect";
 import { addWebhookReadOptions } from "./shared";
 
 export const createWebhookInspectCommand = (): Command => {

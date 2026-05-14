@@ -1,4 +1,4 @@
-import type { WorkflowDefinitionSummary } from "../api";
+import type { WorkflowDefinitionSummary } from "../api/client";
 import {
   printWorkflowResult,
   resolveWorkflowTenant,

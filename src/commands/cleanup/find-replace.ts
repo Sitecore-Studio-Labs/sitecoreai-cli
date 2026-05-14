@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupFindReplace } from "@/hygiene/tasks";
+import { runCleanupFindReplace } from "@/hygiene/tasks/cleanup-find-replace";
 import { collectList } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 

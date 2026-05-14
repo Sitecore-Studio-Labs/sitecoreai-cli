@@ -12,12 +12,8 @@
  * (auth client, deploy token lookup, etc.).
  */
 
-import {
-  type EnvironmentConfiguration,
-  type RootConfiguration,
-  readRootConfiguration,
-  readRootConfigurationFile,
-} from "@/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
 import { resolveApiTimeoutMs } from "./cli-tasks";
 

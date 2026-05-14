@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../../src/config";
+import type { EnvironmentConfiguration } from "../../../../src/config/types";
 import { createWebhookApiClient } from "../../../../src/webhooks/api/client";
 
 vi.mock("../../../../src/serialization/sitecore-api/auth", () => ({

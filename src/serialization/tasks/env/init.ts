@@ -10,7 +10,7 @@ import {
   readRootConfiguration,
   readRootConfigurationFile,
   writeRootConfigurationFile,
-} from "@/config";
+} from "@/config/root-config";
 import { assertValidHost } from "@/shared/validate";
 import { resolveTargetPath, writeConfigTemplate } from "@/shared/config-template";
 import { setDeployToken } from "@/shared/keychain";

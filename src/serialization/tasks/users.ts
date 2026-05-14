@@ -1,11 +1,12 @@
-import { readRootConfiguration, SerializationModuleConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
+import type { SerializationModuleConfiguration } from "@/config/types";
 import { Logger } from "@/shared/logger";
-import { fetchUsers, pushUserCommands } from "../sitecore-api";
+import { fetchUsers, pushUserCommands } from "../sitecore-api/users";
 import {
   readUsersFromFilesystem,
   removeUserFromFilesystem,
   writeUserToFilesystem,
-} from "../filesystem-store";
+} from "../filesystem-store/users";
 import { UserData } from "../types";
 import { resolveApiTimeoutMs } from "./shared";
 import { rolesEqual } from "./roles";

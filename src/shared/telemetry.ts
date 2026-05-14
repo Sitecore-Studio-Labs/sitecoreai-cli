@@ -2,7 +2,7 @@ import { consola } from "consola";
 import { randomUUID } from "node:crypto";
 import readline from "node:readline/promises";
 import AjvDraft4 from "ajv-draft-04";
-import { readRootConfigurationFile, writeRootConfigurationFile } from "../config";
+import { readRootConfigurationFile, writeRootConfigurationFile } from "../config/root-config";
 import telemetrySchema from "../config/telemetry.schema.json";
 import { redactArgs } from "./redact";
 

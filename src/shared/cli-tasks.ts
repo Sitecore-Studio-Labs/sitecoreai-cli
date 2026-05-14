@@ -4,7 +4,7 @@
  * serialization-specific belongs in `src/serialization/tasks/shared.ts`.
  */
 
-import type { RootConfiguration } from "@/config";
+import type { RootConfiguration } from "@/config/types";
 import { Logger } from "@/shared/logger";
 import { promptConfirm, promptText } from "@/shared/prompt";
 import { createScaiError } from "@/shared/errors";

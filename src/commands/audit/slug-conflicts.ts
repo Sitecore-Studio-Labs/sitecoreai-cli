@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditSlugConflicts } from "@/hygiene/tasks";
+import { runAuditSlugConflicts } from "@/hygiene/tasks/audit-slug-conflicts";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditSlugConflictsCommand = (): Command => {

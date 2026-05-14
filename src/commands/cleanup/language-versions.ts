@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupLanguageVersionAdd } from "@/hygiene/tasks";
+import { runCleanupLanguageVersionAdd } from "@/hygiene/tasks/cleanup-language-version-add";
 import { collectList } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 

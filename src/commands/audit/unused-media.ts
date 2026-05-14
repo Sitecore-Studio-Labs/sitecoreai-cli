@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditUnusedMedia } from "@/hygiene/tasks";
+import { runAuditUnusedMedia } from "@/hygiene/tasks/audit-unused-media";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditUnusedMediaCommand = (): Command => {

@@ -4,8 +4,8 @@ import {
   deployRequest,
   parseJsonIfPossible,
   startDeploySpinner,
-  withOrganizationHeaders,
-} from "../../../../src/deploy/api/common";
+} from "../../../../src/deploy/api/common/request";
+import { withOrganizationHeaders } from "../../../../src/deploy/api/common/headers";
 import { ScaiError } from "../../../../src/shared/errors";
 
 const oraMocks = vi.hoisted(() => {

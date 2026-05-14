@@ -1,8 +1,8 @@
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import { FilesystemTreeSpec } from "../../tree-spec";
 import { createFieldFilterSet } from "../../field-filter";
 import { ItemData, ItemMetadata } from "../../types";
-import { fetchItemData, fetchItemMetadata } from "../../sitecore-api";
+import { fetchItemData, fetchItemMetadata } from "../../sitecore-api/items";
 import { resolveApiTimeoutMs } from "../shared";
 import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/concurrency";

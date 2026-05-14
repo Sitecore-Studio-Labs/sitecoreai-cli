@@ -1,14 +1,14 @@
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import {
   createWorkflowApiClient,
   type ItemWorkflowState,
   type WorkflowApiClient,
-} from "@/workflow/api";
+} from "@/workflow/api/client";
 import { runHygieneAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
 
-export type { ItemWorkflowState } from "@/workflow/api";
+export type { ItemWorkflowState } from "@/workflow/api/client";
 
 /**
  * Authoring GraphQL operations used by `scai audit` and `scai cleanup`.

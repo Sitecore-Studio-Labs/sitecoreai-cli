@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import packageJson from "../../../package.json";
 import { createScaiError } from "@/shared/errors";
 import { toLogger, inputError } from "@/shared/cli-tasks";

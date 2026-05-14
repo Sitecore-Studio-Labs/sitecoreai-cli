@@ -10,8 +10,8 @@ import {
   deployDeployment,
   cancelDeployment,
   uploadDeploymentSource,
-  fetchDeploymentLogs,
-} from "@/deploy/api";
+} from "@/deploy/api/deployments";
+import { fetchDeploymentLogs } from "@/deploy/api/deployment-logs";
 import { createScaiError } from "@/shared/errors";
 import {
   getDeployContext,

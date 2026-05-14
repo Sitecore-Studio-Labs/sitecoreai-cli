@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { runCleanupVersionsArchive, runCleanupVersionsPrune } from "@/hygiene/tasks";
+import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup-versions-archive";
+import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup-versions-prune";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupVersionsCommand = (): Command => {

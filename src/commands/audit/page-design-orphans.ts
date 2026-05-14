@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditPageDesignOrphans } from "@/hygiene/tasks";
+import { runAuditPageDesignOrphans } from "@/hygiene/tasks/audit-page-design-orphans";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditPageDesignOrphansCommand = (): Command => {

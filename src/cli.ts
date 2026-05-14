@@ -35,8 +35,9 @@ import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
 import { createWebhookCommand } from "./commands/webhook";
 import { createWorkflowCommand } from "./commands/workflow";
-import { readRootConfiguration, readRootConfigurationFile } from "./config";
-import { runDeployToken, runInit } from "./serialization/tasks";
+import { readRootConfiguration, readRootConfigurationFile } from "./config/root-config";
+import { runDeployToken } from "./serialization/tasks/env/deploy-token";
+import { runInit } from "./serialization/tasks/env/init";
 import { getDeployToken } from "./shared/keychain";
 
 type AutoWizardNeed =

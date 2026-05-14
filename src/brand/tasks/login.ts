@@ -2,7 +2,7 @@ import {
   readRootConfiguration,
   readRootConfigurationFile,
   writeRootConfigurationFile,
-} from "@/config";
+} from "@/config/root-config";
 import type { AiSkillsCredential } from "@/config/types";
 import {
   DEFAULT_SITECORE_API_AUDIENCE,

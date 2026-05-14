@@ -8,7 +8,7 @@ import {
   resolveHostFromEnvironment,
   DeployEnvironment,
 } from "@/deploy/api";
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import type { ConnectOptions } from "../../types";
 import { inputError, selectFromList, selectMatch } from "@/shared/cli-tasks";
 import {

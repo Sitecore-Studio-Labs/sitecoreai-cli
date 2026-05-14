@@ -19,17 +19,16 @@
  */
 
 import { z } from "zod";
-import {
-  runWorkflowAdvance,
-  runWorkflowApply,
-  runWorkflowAssigned,
-  runWorkflowInspect,
-  runWorkflowListCommands,
-  runWorkflowListDefs,
-  runWorkflowReset,
-  runWorkflowStatus,
-} from "@/workflow/tasks";
-import { runCleanupWorkflowAdvance, runCleanupWorkflowApply } from "@/hygiene/tasks";
+import { runWorkflowAdvance } from "@/workflow/tasks/advance";
+import { runWorkflowApply } from "@/workflow/tasks/apply";
+import { runWorkflowAssigned } from "@/workflow/tasks/assigned";
+import { runWorkflowInspect } from "@/workflow/tasks/inspect";
+import { runWorkflowListCommands } from "@/workflow/tasks/list-commands";
+import { runWorkflowListDefs } from "@/workflow/tasks/list-defs";
+import { runWorkflowReset } from "@/workflow/tasks/reset";
+import { runWorkflowStatus } from "@/workflow/tasks/status";
+import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup-workflow-advance";
+import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup-workflow-apply";
 import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

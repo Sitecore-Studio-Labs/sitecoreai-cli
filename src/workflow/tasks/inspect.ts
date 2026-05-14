@@ -4,7 +4,7 @@ import type {
   ItemWorkflowState,
   WorkflowCommandSummary,
   WorkflowDefinitionDetail,
-} from "../api";
+} from "../api/client";
 import {
   dashifyItemId,
   parseItemReference,

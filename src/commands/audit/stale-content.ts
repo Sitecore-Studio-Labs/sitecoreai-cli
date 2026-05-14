@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditStaleContent } from "@/hygiene/tasks";
+import { runAuditStaleContent } from "@/hygiene/tasks/audit-stale-content";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditStaleContentCommand = (): Command => {

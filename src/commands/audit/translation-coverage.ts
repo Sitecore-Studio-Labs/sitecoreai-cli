@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditTranslationCoverage } from "@/hygiene/tasks";
+import { runAuditTranslationCoverage } from "@/hygiene/tasks/audit-translation-coverage";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

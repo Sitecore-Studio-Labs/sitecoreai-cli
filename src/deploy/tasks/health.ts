@@ -15,13 +15,16 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import {
   fetchAllEnvironments,
-  fetchAllProjectEnvironments,
   fetchEnvironmentDeployments,
   getProvisioningStatus,
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
-} from "@/deploy/api";
-import type { DeployEnvironment, DeployEnvironmentProvisioningStatus } from "@/deploy/api";
+} from "@/deploy/api/environments";
+import { fetchAllProjectEnvironments } from "@/deploy/api/projects";
+import type {
+  DeployEnvironment,
+  DeployEnvironmentProvisioningStatus,
+} from "@/deploy/api/common/types";
 import {
   getDeployContext,
   getEnvironmentType,

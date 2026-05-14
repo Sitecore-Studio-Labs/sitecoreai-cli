@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditDatasourceMissing } from "@/hygiene/tasks";
+import { runAuditDatasourceMissing } from "@/hygiene/tasks/audit-datasource-missing";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditDatasourceMissingCommand = (): Command => {

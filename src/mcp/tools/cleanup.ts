@@ -20,24 +20,22 @@
  */
 
 import { z } from "zod";
-import {
-  runCleanupArchivePurge,
-  runCleanupDeadTemplates,
-  runCleanupDuplicates,
-  runCleanupEmptyFolders,
-  runCleanupFieldSet,
-  runCleanupFindReplace,
-  runCleanupLanguageVersionAdd,
-  runCleanupPublish,
-  runCleanupRename,
-  runCleanupRoles,
-  runCleanupSiteResidue,
-  runCleanupUsers,
-  runCleanupVersionsArchive,
-  runCleanupVersionsPrune,
-  runCleanupWorkflowAdvance,
-  runCleanupWorkflowApply,
-} from "@/hygiene/tasks";
+import { runCleanupArchivePurge } from "@/hygiene/tasks/cleanup-archive-purge";
+import { runCleanupDeadTemplates } from "@/hygiene/tasks/cleanup-dead-templates";
+import { runCleanupDuplicates } from "@/hygiene/tasks/cleanup-duplicates";
+import { runCleanupEmptyFolders } from "@/hygiene/tasks/cleanup-empty-folders";
+import { runCleanupFieldSet } from "@/hygiene/tasks/cleanup-field-set";
+import { runCleanupFindReplace } from "@/hygiene/tasks/cleanup-find-replace";
+import { runCleanupLanguageVersionAdd } from "@/hygiene/tasks/cleanup-language-version-add";
+import { runCleanupPublish } from "@/hygiene/tasks/cleanup-publish";
+import { runCleanupRename } from "@/hygiene/tasks/cleanup-rename";
+import { runCleanupRoles } from "@/hygiene/tasks/cleanup-roles";
+import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup-site-residue";
+import { runCleanupUsers } from "@/hygiene/tasks/cleanup-users";
+import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup-versions-archive";
+import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup-versions-prune";
+import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup-workflow-advance";
+import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup-workflow-apply";
 import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

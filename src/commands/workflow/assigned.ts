@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowAssigned } from "@/workflow/tasks";
+import { runWorkflowAssigned } from "@/workflow/tasks/assigned";
 import { addWorkflowReadOptions } from "./shared";
 
 export const createWorkflowAssignedCommand = (): Command => {

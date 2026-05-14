@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditSuiteRun } from "@/hygiene/tasks";
+import { runAuditSuiteRun } from "@/hygiene/tasks/audit-suite-run";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

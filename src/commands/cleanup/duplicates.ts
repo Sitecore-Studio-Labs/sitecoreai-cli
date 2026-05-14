@@ -1,5 +1,5 @@
 import { Command, Option } from "commander";
-import { runCleanupDuplicates } from "@/hygiene/tasks";
+import { runCleanupDuplicates } from "@/hygiene/tasks/cleanup-duplicates";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupDuplicatesCommand = (): Command => {

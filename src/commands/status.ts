@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { addConfigOption, addVerbosityOptions } from "./shared";
-import { runStatus } from "../serialization/tasks";
+import { runStatus } from "../serialization/tasks/env/status";
 
 export const createStatusCommand = (): Command => {
   const command = new Command("status").description(

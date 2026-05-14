@@ -9,7 +9,7 @@ import {
   deleteProject,
   linkProjectRepository,
   unlinkProjectRepository,
-} from "@/deploy/api";
+} from "@/deploy/api/projects";
 import { createScaiError } from "@/shared/errors";
 import {
   confirmDestructive,

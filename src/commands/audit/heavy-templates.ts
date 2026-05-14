@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditHeavyTemplates } from "@/hygiene/tasks";
+import { runAuditHeavyTemplates } from "@/hygiene/tasks/audit-heavy-templates";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditHeavyTemplatesCommand = (): Command => {

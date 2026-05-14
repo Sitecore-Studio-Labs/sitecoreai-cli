@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowListDefs } from "@/workflow/tasks";
+import { runWorkflowListDefs } from "@/workflow/tasks/list-defs";
 import { addWorkflowReadOptions } from "./shared";
 
 export const createWorkflowListDefsCommand = (): Command => {

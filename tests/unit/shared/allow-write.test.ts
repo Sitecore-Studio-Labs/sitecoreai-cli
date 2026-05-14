@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ensureAllowWrite, ensureMcpElevationAllowed } from "../../../src/shared/allow-write";
-import type { RootConfiguration, EnvironmentConfiguration } from "../../../src/config";
+import type { RootConfiguration, EnvironmentConfiguration } from "../../../src/config/types";
 
 const mkRoot = (env: Partial<EnvironmentConfiguration> & { name: string }): RootConfiguration =>
   ({

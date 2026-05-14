@@ -1,7 +1,7 @@
 import path from "node:path";
 import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
-import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { createAuthoringClient } from "../api/authoring-client";

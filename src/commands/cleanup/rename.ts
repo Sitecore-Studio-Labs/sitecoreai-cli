@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupRename } from "@/hygiene/tasks";
+import { runCleanupRename } from "@/hygiene/tasks/cleanup-rename";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupRenameCommand = (): Command => {

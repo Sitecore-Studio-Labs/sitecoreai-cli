@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupFieldSet, type FieldSetMode } from "@/hygiene/tasks";
+import { runCleanupFieldSet, type FieldSetMode } from "@/hygiene/tasks/cleanup-field-set";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupFieldSetCommand = (): Command => {

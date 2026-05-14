@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditAltTextMissing } from "@/hygiene/tasks";
+import { runAuditAltTextMissing } from "@/hygiene/tasks/audit-alt-text-missing";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditAltTextMissingCommand = (): Command => {

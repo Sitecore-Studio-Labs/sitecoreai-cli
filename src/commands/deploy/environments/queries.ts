@@ -6,7 +6,7 @@ import {
   runDeployEnvironmentsGetEdgeToken,
   runDeployEnvironmentsGetEditingSecret,
   runDeployEnvironmentsHealth,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/environments";
 import { addDeployBaseOptions } from "../shared";
 
 const parsePositiveInt =

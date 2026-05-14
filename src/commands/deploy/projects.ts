@@ -9,7 +9,7 @@ import {
   runDeployProjectsLinkRepository,
   runDeployProjectsUnlinkRepository,
   runDeployProjectsDelete,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/projects";
 import { addDeployBaseOptions } from "./shared";
 
 const parsePositiveInt =

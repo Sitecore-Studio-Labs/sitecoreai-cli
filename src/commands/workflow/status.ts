@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowStatus } from "@/workflow/tasks";
+import { runWorkflowStatus } from "@/workflow/tasks/status";
 import { addWorkflowReadOptions } from "./shared";
 
 export const createWorkflowStatusCommand = (): Command => {

@@ -1,5 +1,5 @@
 import { createScaiError } from "@/shared/errors";
-import type { AssignedItemSummary } from "../api";
+import type { AssignedItemSummary } from "../api/client";
 import {
   printWorkflowResult,
   resolveWorkflowTenant,

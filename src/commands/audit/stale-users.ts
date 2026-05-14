@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditStaleUsers } from "@/hygiene/tasks";
+import { runAuditStaleUsers } from "@/hygiene/tasks/audit-stale-users";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditStaleUsersCommand = (): Command => {

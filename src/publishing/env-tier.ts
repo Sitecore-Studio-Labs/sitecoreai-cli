@@ -1,4 +1,4 @@
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 
 /**
  * Whether an environment is "production-tier" for publish gating.

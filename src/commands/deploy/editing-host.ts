@@ -5,7 +5,7 @@ import {
   runDeployEditingHostDelete,
   runDeployEditingHostUpdate,
   runDeployEditingHostDeploy,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/editing-host";
 import { addDeployBaseOptions } from "./shared";
 
 const parsePositiveInt =

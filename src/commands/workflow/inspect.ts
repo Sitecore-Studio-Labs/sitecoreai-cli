@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowInspect } from "@/workflow/tasks";
+import { runWorkflowInspect } from "@/workflow/tasks/inspect";
 import { addWorkflowReadOptions } from "./shared";
 
 export const createWorkflowInspectCommand = (): Command => {

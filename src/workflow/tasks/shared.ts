@@ -1,13 +1,13 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
-import type { EnvironmentConfiguration, RootConfiguration } from "@/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import {
   createWorkflowApiClient,
   type ItemSelector,
   type WorkflowApiClient,
   type WorkflowDefinitionDetail,
-} from "../api";
+} from "../api/client";
 
 /** Shared option shape for `scai workflow *` tasks. */
 export interface WorkflowTaskOptions {

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditBrokenImages } from "@/hygiene/tasks";
+import { runAuditBrokenImages } from "@/hygiene/tasks/audit-broken-images";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

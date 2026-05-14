@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupDeadTemplates } from "@/hygiene/tasks";
+import { runCleanupDeadTemplates } from "@/hygiene/tasks/cleanup-dead-templates";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupDeadTemplatesCommand = (): Command => {

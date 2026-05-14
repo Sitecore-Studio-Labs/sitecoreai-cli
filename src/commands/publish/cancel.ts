@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runPublishCancel } from "@/publishing/tasks";
+import { runPublishCancel } from "@/publishing/tasks/cancel";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 
 export const createPublishCancelCommand = (): Command => {

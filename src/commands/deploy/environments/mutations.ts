@@ -8,7 +8,7 @@ import {
   runDeployEnvironmentsLinkRepository,
   runDeployEnvironmentsUnlinkRepository,
   runDeployEnvironmentsDelete,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/environments";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsCreateCommand = (): Command => {

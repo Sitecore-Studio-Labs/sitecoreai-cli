@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowReset } from "@/workflow/tasks";
+import { runWorkflowReset } from "@/workflow/tasks/reset";
 import { addAllowWriteOption, addWhatIfOption } from "../shared";
 import { addWorkflowReadOptions } from "./shared";
 

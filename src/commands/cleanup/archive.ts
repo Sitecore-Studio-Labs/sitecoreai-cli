@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupArchivePurge } from "@/hygiene/tasks";
+import { runCleanupArchivePurge } from "@/hygiene/tasks/cleanup-archive-purge";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupArchiveCommand = (): Command => {

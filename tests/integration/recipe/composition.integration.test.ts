@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect } from "vitest";
 import "../setup";
 import { describeIfDeployAuth, getEnv, resolveDeployToken } from "../helpers";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 import {
   type CompileContext,
   type ContentItemRecipe,

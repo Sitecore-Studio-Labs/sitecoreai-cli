@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditStaleWorkflow } from "@/hygiene/tasks";
+import { runAuditStaleWorkflow } from "@/hygiene/tasks/audit-stale-workflow";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditStaleWorkflowCommand = (): Command => {

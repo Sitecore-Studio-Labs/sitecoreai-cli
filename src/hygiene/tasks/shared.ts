@@ -2,7 +2,7 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createHygieneApiClient, type HygieneApiClient } from "../api/client";
 import {
   createFieldCache,

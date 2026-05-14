@@ -7,13 +7,9 @@
  * `@/deploy/tasks/shared`.
  */
 
-import {
-  readRootConfiguration,
-  readRootConfigurationFile,
-  readSerializationModules,
-  RootConfiguration,
-  SerializationModuleConfiguration,
-} from "@/config";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
+import { readSerializationModules } from "@/config/modules";
+import type { RootConfiguration, SerializationModuleConfiguration } from "@/config/types";
 import { FilesystemTreeSpec } from "../tree-spec";
 import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "./types";

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditLargeFields } from "@/hygiene/tasks";
+import { runAuditLargeFields } from "@/hygiene/tasks/audit-large-fields";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditLargeFieldsCommand = (): Command => {

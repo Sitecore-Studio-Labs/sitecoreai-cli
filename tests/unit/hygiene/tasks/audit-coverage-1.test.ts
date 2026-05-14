@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runAuditAltTextMissing } from "../../../../src/hygiene/tasks/audit-alt-text-missing";
 import { runAuditLargeFields } from "../../../../src/hygiene/tasks/audit-large-fields";

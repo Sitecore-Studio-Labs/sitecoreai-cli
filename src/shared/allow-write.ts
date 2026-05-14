@@ -1,4 +1,4 @@
-import type { RootConfiguration } from "@/config";
+import type { RootConfiguration } from "@/config/types";
 import { createScaiError } from "./errors";
 
 /**

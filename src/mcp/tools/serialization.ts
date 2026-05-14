@@ -15,10 +15,15 @@
  */
 
 import { z } from "zod";
-import { runPull, runPush, runDiff, runValidate, runInfo } from "@/serialization/tasks";
+import { runPull } from "@/serialization/tasks/pull";
+import { runPush } from "@/serialization/tasks/push";
+import { runDiff } from "@/serialization/tasks/diff";
+import { runValidate } from "@/serialization/tasks/validate";
+import { runInfo } from "@/serialization/tasks/info";
 import { loadConfigAndModules } from "@/serialization/tasks/shared";
 import type { SerializationProgressEvent } from "@/serialization/tasks/types";
-import { publishItems, fetchItemMetadata } from "@/serialization/sitecore-api";
+import { publishItems } from "@/serialization/sitecore-api/publish";
+import { fetchItemMetadata } from "@/serialization/sitecore-api/items";
 import { createFieldFilterSet } from "@/serialization/field-filter";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

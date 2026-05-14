@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditDeadTemplates } from "@/hygiene/tasks";
+import { runAuditDeadTemplates } from "@/hygiene/tasks/audit-dead-templates";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditDeadTemplatesCommand = (): Command => {

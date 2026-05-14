@@ -4,7 +4,7 @@ import {
   runBaselineRemove,
   runBaselineReset,
   runBaselineShow,
-} from "@/hygiene/tasks";
+} from "@/hygiene/tasks/audit-baseline";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions, collectList } from "../shared";
 
 export const createAuditBaselineCommand = (): Command => {

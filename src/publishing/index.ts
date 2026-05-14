@@ -72,5 +72,7 @@ export {
 export { isProductionTier } from "./env-tier";
 
 // --- Task runners -------------------------------------------------------
-export { runPublishStatus, type RunPublishStatusOptions } from "./tasks";
-export { runPublishItem, type RunPublishItemOptions } from "./tasks";
+export { runPublishStatus, type RunPublishStatusOptions } from "./tasks/status";
+export { runPublishItem, type RunPublishItemOptions } from "./tasks/item";
+export { runPublishAll, type RunPublishAllOptions } from "./tasks/all";
+export { runPublishCancel, type RunPublishCancelOptions } from "./tasks/cancel";

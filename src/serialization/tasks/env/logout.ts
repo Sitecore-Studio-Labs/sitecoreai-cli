@@ -1,4 +1,4 @@
-import { readRootConfigurationFile, writeRootConfigurationFile } from "@/config";
+import { readRootConfigurationFile, writeRootConfigurationFile } from "@/config/root-config";
 import { clearCmTokens, clearDeployToken } from "@/shared/keychain";
 import { createScaiError } from "@/shared/errors";
 import { toLogger } from "../shared";

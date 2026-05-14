@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditLanguageData } from "@/hygiene/tasks";
+import { runAuditLanguageData } from "@/hygiene/tasks/audit-language-data";
 import { collectList } from "../shared";
 import { addAuditBaseOptions } from "./shared";
 

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runWorkflowApply } from "@/workflow/tasks";
+import { runWorkflowApply } from "@/workflow/tasks/apply";
 import { addAllowWriteOption, addWhatIfOption } from "../shared";
 import { addWorkflowReadOptions } from "./shared";
 

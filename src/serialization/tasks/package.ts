@@ -2,15 +2,14 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import AdmZip from "adm-zip";
 import fg from "fast-glob";
-import {
-  readRootConfiguration,
-  SerializationModuleConfiguration,
-  normalizeModuleConfiguration,
-} from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
+import { normalizeModuleConfiguration } from "@/config/modules";
+import type { SerializationModuleConfiguration } from "@/config/types";
 import { ItemData, ItemMetadata } from "../types";
 import { createFieldFilterSet } from "../field-filter";
-import { fetchItemMetadata } from "../sitecore-api";
-import { readRolesFromFilesystem, readUsersFromFilesystem } from "../filesystem-store";
+import { fetchItemMetadata } from "../sitecore-api/items";
+import { readRolesFromFilesystem } from "../filesystem-store/roles";
+import { readUsersFromFilesystem } from "../filesystem-store/users";
 import { writeRoleYaml, writeUserYaml, readItemYamlFromString } from "../yaml";
 import {
   ensureAllowWrite,
@@ -21,12 +20,10 @@ import {
   toLogger,
 } from "./shared";
 import type { PackageCreateOptions, PackageInstallOptions } from "./types";
-import {
-  applySitecoreCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applySitecoreCommands } from "./helpers/sitecore";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { enrichCreateCommands, enrichUpdateCommands } from "../commands";
 
 const exists = async (value: string): Promise<boolean> => {

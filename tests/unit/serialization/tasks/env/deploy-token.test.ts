@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RootConfigurationFile } from "../../../../../src/config";
+import type { RootConfigurationFile } from "../../../../../src/config/types";
 
 const readRootConfigurationFile = vi.fn();
 const readRootConfiguration = vi.fn();

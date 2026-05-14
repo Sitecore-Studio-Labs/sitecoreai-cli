@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditRoleBloat } from "@/hygiene/tasks";
+import { runAuditRoleBloat } from "@/hygiene/tasks/audit-role-bloat";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditRoleBloatCommand = (): Command => {

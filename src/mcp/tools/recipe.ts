@@ -16,9 +16,12 @@
  */
 
 import { z } from "zod";
-import { compileRecipe, RecipeSchema, type CompileContext } from "@/recipe";
+import { compileRecipe, type CompileContext } from "@/recipe/compile";
+import { RecipeSchema } from "@/recipe/schema/recipe";
 import { loadRecipe } from "@/recipe/io";
-import { runRecipeDiff, runRecipePlan, runRecipePush } from "@/recipe/tasks";
+import { runRecipeDiff } from "@/recipe/tasks/diff";
+import { runRecipePlan } from "@/recipe/tasks/plan";
+import { runRecipePush } from "@/recipe/tasks/push";
 import type { ExecutionEvent } from "@/recipe/execute";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

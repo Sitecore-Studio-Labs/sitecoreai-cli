@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditEmptyItems } from "@/hygiene/tasks";
+import { runAuditEmptyItems } from "@/hygiene/tasks/audit-empty-items";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditEmptyItemsCommand = (): Command => {

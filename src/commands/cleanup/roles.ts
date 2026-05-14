@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupRoles } from "@/hygiene/tasks";
+import { runCleanupRoles } from "@/hygiene/tasks/cleanup-roles";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupRolesCommand = (): Command => {

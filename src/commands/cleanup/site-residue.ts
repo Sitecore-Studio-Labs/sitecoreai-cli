@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runCleanupSiteResidue } from "@/hygiene/tasks";
+import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup-site-residue";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupSiteResidueCommand = (): Command => {

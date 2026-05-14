@@ -18,7 +18,7 @@ import {
   type Site,
   type SitesApiClient,
 } from "../../../src/recipe/api/sites-client";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 
 const { describe, it } = describeIfDeployAuth();
 

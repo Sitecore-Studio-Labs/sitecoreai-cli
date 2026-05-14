@@ -1,4 +1,4 @@
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import { runWorkflowAuthoringGraphQL, type WorkflowRequestOptions } from "./graphql";

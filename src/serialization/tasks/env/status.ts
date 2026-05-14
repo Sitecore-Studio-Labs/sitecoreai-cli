@@ -1,4 +1,4 @@
-import { readRootConfiguration, readRootConfigurationFile } from "@/config";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { getCmTokens, getDeployToken } from "@/shared/keychain";
 import { toLogger } from "../shared";
 import type { CommonOptions } from "../types";

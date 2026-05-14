@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../../src/config";
+import type { EnvironmentConfiguration } from "../../../../src/config/types";
 import { createWorkflowApiClient } from "../../../../src/workflow/api/client";
 
 vi.mock("../../../../src/serialization/sitecore-api/auth", () => ({

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { runAuditSiteResidue } from "@/hygiene/tasks";
+import { runAuditSiteResidue } from "@/hygiene/tasks/audit-site-residue";
 import { addAuditBaseOptions } from "./shared";
 
 export const createAuditSiteResidueCommand = (): Command => {

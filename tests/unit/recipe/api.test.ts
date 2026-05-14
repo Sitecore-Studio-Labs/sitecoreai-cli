@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { ScaiError } from "../../../src/shared/errors";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";

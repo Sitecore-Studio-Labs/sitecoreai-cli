@@ -1,4 +1,4 @@
-import { loadFilesystemItems } from "../filesystem-store";
+import { loadFilesystemItems } from "../filesystem-store/items";
 import { inputError, loadConfigAndModules, toLogger } from "./shared";
 import type { CommonOptions } from "./types";
 

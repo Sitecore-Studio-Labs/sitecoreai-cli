@@ -2,7 +2,7 @@ import {
   readRootConfiguration,
   readRootConfigurationFile,
   writeRootConfigurationFile,
-} from "@/config";
+} from "@/config/root-config";
 import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
 import { createScaiError } from "@/shared/errors";
@@ -12,7 +12,7 @@ import {
   requestClientCredentialsToken,
   requestDeviceAuthorization,
   pollDeviceToken,
-} from "@/serialization/sitecore-api";
+} from "@/serialization/sitecore-api/auth";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import type { DeployTokenOptions } from "@/deploy/tasks/types";
 import {

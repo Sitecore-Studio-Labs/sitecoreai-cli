@@ -3,7 +3,7 @@ import { ItemPath } from "../item-path";
 import { FilesystemTreeSpec, AllowedPushOperations, TreeScope } from "../tree-spec";
 import { createFieldFilterSet, type FieldFilterSet } from "../field-filter";
 import { ItemMetadata } from "../types";
-import { fetchItemMetadata } from "../sitecore-api";
+import { fetchItemMetadata } from "../sitecore-api/items";
 import { enrichCreateCommands, enrichUpdateCommands, type ItemCommand } from "../commands";
 import {
   groupSubtreesByDatabase,
@@ -13,15 +13,13 @@ import {
   ensureAllowWrite,
 } from "./shared";
 import type { DiffOptions } from "./types";
-import {
-  applySitecoreCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applySitecoreCommands } from "./helpers/sitecore";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { inputError, confirmDestructive } from "@/shared/cli-tasks";
 import { mapWithConcurrency } from "@/shared/concurrency";
-import type { EnvironmentConfiguration, RootConfiguration } from "@/config";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 
 /**
  * Two-environment-aware `ser diff`.

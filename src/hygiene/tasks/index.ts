@@ -111,6 +111,13 @@ export type {
 export { runAuditFallbackDrift } from "./audit-fallback-drift";
 export type { AuditFallbackDriftOptions, FallbackDriftReport } from "./audit-fallback-drift";
 
+export { runAuditSiteResidue } from "./audit-site-residue";
+export type {
+  AuditSiteResidueOptions,
+  SiteResidueKind,
+  SiteResidueReport,
+} from "./audit-site-residue";
+
 export { runCleanupWorkflowAdvance } from "./cleanup-workflow-advance";
 export type {
   CleanupWorkflowAdvanceOptions,

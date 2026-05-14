@@ -204,36 +204,61 @@ Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
 Lock it during implementation from a real tenant's browser network
 traffic or from the OpenAPI YAML directly.
 
-**Auth model (resolved 2026-05-14, corrected after consulting the
-Publishing API architect):** the Publishing API requires OAuth
-scopes the default scai deploy flow doesn't request explicitly, but
-the **same automation client an operator uses for `scai deploy`
-carries these scopes by default** — no separate client setup,
-client-grant addition, or Portal change needed.
+**Auth model (resolved 2026-05-14, after consulting the Publishing
+API architect):** automation clients in Sitecore Cloud Portal are
+either **organization-level** (for org/project/env management
+operations) or **environment-level** (for per-env operations
+including publishing). The Publishing API requires an
+**environment-level** automation client; org-level clients don't
+carry the publishing grants.
 
-- Required scopes (tenant-tier, for automation clients):
+- Required scopes (tenant-tier, on env-level automation clients):
   - `xmcpub.jobs.t:r` — read publishing jobs
   - `xmcpub.jobs.t:w` — create / cancel publishing jobs
   - `xmcpub.queue:r`  — read the publish queue
 - Audience: `https://api.sitecorecloud.io` (the standard Sitecore
-  Cloud API audience scai's deploy operations already target).
+  Cloud API audience).
 - The api-docs page also lists `.a` admin-tier variants
   (`xmcpub.jobs.a:r/w`); those are for Pages-UI **user** tokens
-  with Organization Owner role, NOT for automation clients.
-  Confusion between the two variants is the only thing stopping
-  M2M from working out-of-the-box.
+  with Organization Owner role, on the
+  `https://api-webapp.sitecorecloud.io` resource server. Don't copy
+  the Pages scope set verbatim into automation-client requests.
 
-**Resolution:** `acquirePublishingToken` mints a publishing-scoped
-token via M2M client-credentials using the env's existing automation
-client (clientId + clientSecret), requesting the tenant-tier scopes
-explicitly. The token is cached in a publishing-specific keychain
-entry (separate from the deploy token's keychain entry since they
-carry different scope sets but share the same client). CI flows
-work transparently — same credentials that already power
-`scai deploy`. The optional `scai publish login` command remains as
-an interactive setup helper for operators who don't have the M2M
-credentials surfaced in their env profile yet, but it isn't
-required on a well-configured tenant.
+**Operator setup (per environment that needs to publish):**
+
+1. Sitecore Cloud Portal → Environments → [env] → Automation
+   Clients → Create. This generates an env-level clientId + secret
+   that carries the publishing grants by default.
+2. Put those credentials on the env profile in
+   `sitecoreai.cli.json`:
+   ```json
+   "envProfiles": {
+     "sandbox": {
+       "clientId": "<env-level-client-id>",
+       "clientSecret": "<env-level-client-secret>",
+       "useClientCredentials": true,
+       ...
+     }
+   }
+   ```
+   Or pass them via env vars:
+   `SITECOREAI_ENV_SANDBOX_CLIENT_ID` /
+   `SITECOREAI_ENV_SANDBOX_CLIENT_SECRET`. Either pattern is
+   first-class.
+3. Run `scai publish status <jobId>`. scai mints the publishing
+   token transparently with `.t` scopes, verifies the scopes are
+   present in the returned token, caches it in the publishing-
+   specific keychain entry, and uses it for the request.
+
+**Resolution (PR 2a code):** `acquirePublishingToken` mints via
+client-credentials with explicit `.t` scopes. After minting, the
+token is decoded and verified — if it's missing the expected
+scopes (typical case: operator used org-level credentials), scai
+surfaces an `AUTH_REQUIRED` error that decodes what the token DID
+get and infers the likely cause ("looks like an org-level client;
+the Publishing API requires env-level"). No `scai publish login`
+command — setup is just editing the env profile or setting env
+vars, both of which scai already supports for deploy operations.
 
 **Note on prior research artifacts:** a multi-hour investigation
 earlier on 2026-05-14 wrongly concluded the publishing scopes lived

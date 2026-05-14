@@ -29,7 +29,7 @@ import {
   runWorkflowReset,
   runWorkflowStatus,
 } from "@/workflow/tasks";
-import { runCleanupWorkflowAdvance } from "@/hygiene/tasks";
+import { runCleanupWorkflowAdvance, runCleanupWorkflowApply } from "@/hygiene/tasks";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -232,9 +232,9 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
     },
     inputSchema: {
       verb: z
-        .enum(["advance", "reset", "bulk-advance", "apply-workflow"])
+        .enum(["advance", "reset", "bulk-advance", "apply-workflow", "bulk-apply"])
         .describe(
-          "Which mutation to run. `advance` moves one item through one command. `reset` force-writes one item back to its workflow's initial state (bypasses validation + submit actions). `bulk-advance` sweeps stale items under a root and advances each via a named command (wraps `scai cleanup workflow advance`). `apply-workflow` attaches a workflow to an item not yet under one (sets `__Workflow` + `__Workflow state` directly)."
+          "Which mutation to run. `advance` moves one item through one command. `reset` force-writes one item back to its workflow's initial state (bypasses validation + submit actions). `bulk-advance` sweeps stale items under a root and advances each via a named command (wraps `scai cleanup workflow advance`). `apply-workflow` attaches a workflow to an item not yet under one (sets `__Workflow` + `__Workflow state` directly). `bulk-apply` does the same as `apply-workflow` but sweeps every item under a root, optionally filtered by template — wraps `scai cleanup workflow apply`."
         ),
 
       // advance / reset / apply-workflow target
@@ -257,26 +257,47 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         .optional()
         .describe("Comment recorded with the transition (advance only; audit trail)."),
 
-      // apply-workflow
+      // apply-workflow + bulk-apply
       workflow: z
         .string()
         .optional()
         .describe(
-          "Workflow GUID, content-tree path, or display/item name (apply-workflow only). Same resolver as workflow_inspect verb=inspect."
+          "Workflow GUID, content-tree path, or display/item name (apply-workflow / bulk-apply). Same resolver as workflow_inspect verb=inspect."
         ),
       state: z
         .string()
         .optional()
         .describe(
-          "Target state override for apply-workflow (state GUID or name). Defaults to the workflow's `__Initial state`."
+          "Target state (state GUID or name) for apply-workflow / bulk-apply. Defaults to the workflow's `__Initial state`."
         ),
 
-      // bulk-advance
+      // bulk-apply
+      template: z
+        .string()
+        .optional()
+        .describe(
+          "bulk-apply: only attach to items conforming to this template (GUID or absolute /sitecore/templates path). Omit to attach to every item under `root`."
+        ),
+      reattach: z
+        .boolean()
+        .optional()
+        .describe(
+          "bulk-apply: overwrite items already attached to a different workflow. Off by default — already-attached items are skipped."
+        ),
+      maxApplies: z
+        .number()
+        .int()
+        .positive()
+        .max(10000)
+        .optional()
+        .describe("bulk-apply blast-radius cap. Default 100."),
+
+      // bulk-advance + bulk-apply
       root: z
         .string()
         .optional()
         .describe(
-          "Content-tree root to scan for bulk-advance. Default `/sitecore/content`."
+          "Content-tree root to scan for bulk-advance / bulk-apply. Default `/sitecore/content`."
         ),
       commandName: z
         .string()
@@ -293,7 +314,9 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         .int()
         .nonnegative()
         .optional()
-        .describe("Bulk-advance eligibility: only items not updated in this many days. Default 30."),
+        .describe(
+          "Eligibility window: only items not updated for at least this many days. Bulk-advance defaults to 30; bulk-apply has no default (omit to attach to every match)."
+        ),
       maxAdvances: z
         .number()
         .int()
@@ -420,6 +443,49 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
                   input.whatIf === true
                     ? `bulk-advance plan: ${whatIfCount} item(s) would advance.`
                     : `bulk-advance: advanced ${advanced}, failed ${failed}, skipped ${skipped}.`,
+              },
+            ],
+            structuredContent: { verb: input.verb, actions },
+          };
+        }
+
+        case "bulk-apply": {
+          if (!input.workflow) {
+            throw createScaiError(
+              "verb='bulk-apply' requires `workflow`.",
+              "INPUT_INVALID"
+            );
+          }
+          // Delegates to `runCleanupWorkflowApply` — same semantics as
+          // `scai cleanup workflow apply`. Workflow-shaped here for
+          // discovery; the cleanup tool also exposes it as
+          // `verb: 'workflow-apply'` for symmetry with `workflow-advance`.
+          const actions = await runCleanupWorkflowApply({
+            ...taskOpts,
+            workflow: input.workflow,
+            ...(input.state !== undefined && { state: input.state }),
+            ...(input.template !== undefined && { template: input.template }),
+            ...(input.reattach !== undefined && { reattach: input.reattach }),
+            ...(input.root !== undefined && { root: input.root }),
+            ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
+            ...(input.maxApplies !== undefined && { maxApplies: input.maxApplies }),
+            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+          } as never);
+          const applied = actions.filter((a) => a.status === "applied").length;
+          const failed = actions.filter((a) => a.status === "failed").length;
+          const skippedAttached = actions.filter(
+            (a) => a.status === "skipped-already-attached"
+          ).length;
+          const whatIfCount = actions.filter((a) => a.status === "what-if").length;
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  input.whatIf === true
+                    ? `bulk-apply plan: ${whatIfCount} item(s) would attach to '${input.workflow}'.`
+                    : `bulk-apply: attached ${applied}, failed ${failed}, ${skippedAttached} already attached.`,
               },
             ],
             structuredContent: { verb: input.verb, actions },

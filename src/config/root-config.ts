@@ -91,6 +91,7 @@ export const readRootConfiguration = (
     },
     settings,
     environments: envWithOverrides,
+    aiSkills: rootJson.aiSkills ?? {},
     physicalPath: rootPath,
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,

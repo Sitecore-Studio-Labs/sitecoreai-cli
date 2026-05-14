@@ -30,6 +30,8 @@ const SERVICE_NAME = "SitecoreAI CLI";
 const DEPLOY_ACCOUNT_PREFIX = "deploy:";
 const CM_ACCOUNT_PREFIX = "cm:";
 const PUBLISHING_ACCOUNT_PREFIX = "publishing:";
+const AI_SKILLS_SECRET_ACCOUNT_PREFIX = "ai-skills-secret:";
+const AI_SKILLS_TOKEN_ACCOUNT_PREFIX = "ai-skills-token:";
 
 let cachedKeyring: KeyringModule | null | undefined;
 let warnedKeyringUnavailable = false;
@@ -218,6 +220,98 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * AI Skills credentials are keyed by Sitecore `organizationId`, not by
+ * env profile. The AI APIs key is one-org-per-credential (Cloud Portal
+ * → Stream → Admin → AI APIs keys), so every env profile in the same
+ * org shares one credential. We store the client secret and the cached
+ * access token under separate entries to keep their lifecycles
+ * independent (token rotates ~daily; secret is long-lived).
+ */
+export const getAiSkillsClientSecret = async (orgId: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId));
+};
+
+export const setAiSkillsClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+    );
+    await entry.setPassword(secret);
+    return true;
+  } catch {
+    warnOnce("Unable to write AI Skills client secret to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearAiSkillsClientSecret = async (orgId: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+    );
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+export const getAiSkillsToken = async (orgId: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId));
+};
+
+export const setAiSkillsToken = async (orgId: string, token: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
+    );
+    await entry.setPassword(token);
+    return true;
+  } catch {
+    warnOnce("Unable to write AI Skills token to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearAiSkillsToken = async (orgId: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
+    );
     return entry.deleteCredential();
   } catch {
     return false;

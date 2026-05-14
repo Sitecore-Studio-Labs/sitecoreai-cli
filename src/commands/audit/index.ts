@@ -19,6 +19,7 @@ import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
 import { createAuditDuplicatesCommand } from "./duplicates";
 import { createAuditEmptyItemsCommand } from "./empty-items";
+import { createAuditEmptyLinksCommand } from "./empty-links";
 import { createAuditFindReplaceCommand } from "./find-replace";
 import { createAuditLanguageDataCommand } from "./language-data";
 import { createAuditOrphansCommand } from "./orphans";
@@ -46,6 +47,7 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditDeadTemplatesCommand());
   command.addCommand(createAuditDuplicatesCommand());
   command.addCommand(createAuditEmptyItemsCommand());
+  command.addCommand(createAuditEmptyLinksCommand());
   command.addCommand(createAuditEmptyRolesCommand());
   command.addCommand(createAuditFallbackDriftCommand());
   command.addCommand(createAuditFindReplaceCommand());

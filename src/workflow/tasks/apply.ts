@@ -3,6 +3,8 @@ import { createScaiError } from "@/shared/errors";
 import {
   parseItemReference,
   printWorkflowResult,
+  resolveWorkflowRef,
+  resolveWorkflowState,
   resolveWorkflowTenant,
   toLogger,
   type WorkflowTaskOptions,
@@ -48,8 +50,6 @@ export interface WorkflowApplyResult {
   message?: string;
 }
 
-const ITEM_ID_PATTERN = /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i;
-
 /**
  * Attach a workflow to an item — sets the item's `__Workflow` and
  * `__Workflow state` fields directly via `updateItem`. Bypasses the
@@ -81,17 +81,7 @@ export const runWorkflowApply = async (
 
   // Resolve workflow ref → workflow definition detail.
   const wfRef = options.workflow.trim();
-  let workflowDetail: Awaited<ReturnType<typeof client.getWorkflowDefinitionDetail>> = null;
-  if (wfRef.startsWith("/sitecore/") || wfRef.startsWith("/Sitecore/")) {
-    workflowDetail = await client.getWorkflowDefinitionDetail({ path: wfRef });
-  } else if (ITEM_ID_PATTERN.test(wfRef)) {
-    workflowDetail = await client.getWorkflowDefinitionDetail({ itemId: wfRef });
-  } else {
-    const found = await client.findWorkflowDefinitionByName(wfRef);
-    if (found) {
-      workflowDetail = await client.getWorkflowDefinitionDetail({ itemId: found.summary.itemId });
-    }
-  }
+  const workflowDetail = await resolveWorkflowRef(client, wfRef);
   if (!workflowDetail) {
     const result: WorkflowApplyResult = {
       itemId: null,
@@ -118,16 +108,10 @@ export const runWorkflowApply = async (
   let targetStateName: string | null = null;
   if (options.state) {
     const stateRef = options.state.trim();
-    const isGuid = ITEM_ID_PATTERN.test(stateRef);
-    const match = workflowDetail.states.find((s) =>
-      isGuid
-        ? s.itemId.replace(/[{}]/g, "").toLowerCase() === stateRef.replace(/[{}]/g, "").toLowerCase()
-        : s.name.toLowerCase() === stateRef.toLowerCase() ||
-          (s.displayName?.toLowerCase() === stateRef.toLowerCase())
-    );
+    const match = resolveWorkflowState(workflowDetail, stateRef);
     if (match) {
       targetStateId = match.itemId;
-      targetStateName = match.displayName ?? match.name;
+      targetStateName = match.name;
     }
     if (!targetStateId) {
       const result: WorkflowApplyResult = {

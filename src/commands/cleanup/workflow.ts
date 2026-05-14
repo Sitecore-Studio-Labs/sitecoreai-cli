@@ -1,10 +1,10 @@
 import { Command } from "commander";
-import { runCleanupWorkflowAdvance } from "@/hygiene/tasks";
+import { runCleanupWorkflowAdvance, runCleanupWorkflowApply } from "@/hygiene/tasks";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupWorkflowCommand = (): Command => {
   const command = new Command("workflow").description(
-    "Mutating workflow operations (advance stale items, etc.)"
+    "Mutating workflow operations (advance stale items, bulk-attach a workflow, etc.)"
   );
 
   const advance = new Command("advance").description(
@@ -33,5 +33,43 @@ export const createCleanupWorkflowCommand = (): Command => {
     await runCleanupWorkflowAdvance(options);
   });
   command.addCommand(advance);
+
+  const apply = new Command("apply").description(
+    "Bulk-attach a workflow to items under --root (sets __Workflow + __Workflow state directly). Use to backfill content authored before the workflow existed."
+  );
+  addCleanupBaseOptions(apply);
+  apply.requiredOption(
+    "--workflow <ref>",
+    "Workflow GUID, content-tree path, or display/item name (case-insensitive)"
+  );
+  apply.option(
+    "--state <ref>",
+    "Target state (GUID or name). Defaults to the workflow's __Initial state."
+  );
+  apply.option(
+    "--template <ref>",
+    "Only attach to items conforming to this template (GUID or absolute /sitecore/templates path)."
+  );
+  apply.option(
+    "--reattach",
+    "Overwrite items already attached to a different workflow. Off by default — already-attached items are skipped so the verb defaults to a safe backfill."
+  );
+  apply.option(
+    "--stale-days <count>",
+    "Only act on items not updated for at least N days. Optional — omit to attach to every match.",
+    (v) => parseInt(v, 10)
+  );
+  apply.option("--root <path>", "Content root (default: /sitecore/content)");
+  apply.option("--max-applies <count>", "Cap on items attached per run (default 100)", (v) =>
+    parseInt(v, 10)
+  );
+  apply.option("--limit <count>", "Cap on items inspected (default 5000)", (v) => parseInt(v, 10));
+  apply.option("--index <name>", "Override the search index");
+  apply.option("--include-system", "Include /sitecore/system items");
+  apply.action(async (options) => {
+    await runCleanupWorkflowApply(options);
+  });
+  command.addCommand(apply);
+
   return command;
 };

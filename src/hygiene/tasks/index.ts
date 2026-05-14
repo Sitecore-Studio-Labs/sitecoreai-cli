@@ -111,6 +111,28 @@ export type {
 export { runAuditFallbackDrift } from "./audit-fallback-drift";
 export type { AuditFallbackDriftOptions, FallbackDriftReport } from "./audit-fallback-drift";
 
+export { runAuditEmptyLinks } from "./audit-empty-links";
+export type { AuditEmptyLinksOptions, EmptyLinkReport } from "./audit-empty-links";
+
+export { runCleanupFieldSet } from "./cleanup-field-set";
+export type {
+  CleanupFieldSetOptions,
+  FieldSetAction,
+  FieldSetMode,
+} from "./cleanup-field-set";
+
+export { runCleanupPublish } from "./cleanup-publish";
+export type { CleanupPublishOptions, PublishAction } from "./cleanup-publish";
+
+export { runCleanupRename } from "./cleanup-rename";
+export type { CleanupRenameOptions, RenameAction } from "./cleanup-rename";
+
+export { runCleanupLanguageVersionAdd } from "./cleanup-language-version-add";
+export type {
+  CleanupLanguageVersionAddOptions,
+  LanguageVersionAddAction,
+} from "./cleanup-language-version-add";
+
 export { runAuditSiteResidue } from "./audit-site-residue";
 export type {
   AuditSiteResidueOptions,
@@ -130,6 +152,13 @@ export type {
   CleanupWorkflowAdvanceOptions,
   WorkflowAdvanceAction,
 } from "./cleanup-workflow-advance";
+
+export { runCleanupWorkflowApply } from "./cleanup-workflow-apply";
+export type {
+  CleanupWorkflowApplyOptions,
+  WorkflowApplyAction,
+  WorkflowApplyActionStatus,
+} from "./cleanup-workflow-apply";
 
 export { runCleanupEmptyFolders } from "./cleanup-empty-folders";
 export type { CleanupEmptyFoldersOptions, EmptyFolderAction } from "./cleanup-empty-folders";

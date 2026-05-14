@@ -3,7 +3,11 @@ import { createCleanupArchiveCommand } from "./archive";
 import { createCleanupDeadTemplatesCommand } from "./dead-templates";
 import { createCleanupDuplicatesCommand } from "./duplicates";
 import { createCleanupEmptyFoldersCommand } from "./empty-folders";
+import { createCleanupFieldSetCommand } from "./field-set";
 import { createCleanupFindReplaceCommand } from "./find-replace";
+import { createCleanupLanguageVersionsCommand } from "./language-versions";
+import { createCleanupPublishCommand } from "./publish";
+import { createCleanupRenameCommand } from "./rename";
 import { createCleanupRolesCommand } from "./roles";
 import { createCleanupSiteResidueCommand } from "./site-residue";
 import { createCleanupUsersCommand } from "./users";
@@ -19,7 +23,11 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupDeadTemplatesCommand());
   command.addCommand(createCleanupDuplicatesCommand());
   command.addCommand(createCleanupEmptyFoldersCommand());
+  command.addCommand(createCleanupFieldSetCommand());
   command.addCommand(createCleanupFindReplaceCommand());
+  command.addCommand(createCleanupLanguageVersionsCommand());
+  command.addCommand(createCleanupPublishCommand());
+  command.addCommand(createCleanupRenameCommand());
   command.addCommand(createCleanupRolesCommand());
   command.addCommand(createCleanupSiteResidueCommand());
   command.addCommand(createCleanupUsersCommand());
@@ -35,6 +43,7 @@ export const createCleanupCommand = (): Command => {
       "  $ scai cleanup dead-templates purge --root /sitecore/templates/Project --what-if\n" +
       "  $ scai cleanup duplicates purge --root /sitecore/content/MySite --keep-rule oldest --what-if\n" +
       "  $ scai cleanup workflow advance --root /sitecore/content/MySite --command-name Submit --stale-days 60 --what-if\n" +
+      "  $ scai cleanup workflow apply --root /sitecore/content/MySite --workflow 'Article Workflow' --template /sitecore/templates/Foundation/Article --what-if\n" +
       "  $ scai cleanup empty-folders purge --root /sitecore/content/MySite --what-if\n" +
       "  $ scai cleanup roles purge-empty --domain sitecore --what-if\n" +
       "  $ scai cleanup site-residue purge --what-if\n" +

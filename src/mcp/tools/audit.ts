@@ -35,6 +35,7 @@ import {
   runAuditDeadTemplates,
   runAuditDuplicates,
   runAuditEmptyItems,
+  runAuditEmptyLinks,
   runAuditEmptyRoles,
   runAuditFallbackDrift,
   runAuditFindReplace,
@@ -46,6 +47,7 @@ import {
   runAuditPageDesignOrphans,
   runAuditPersonalizationBroken,
   runAuditRoleBloat,
+  runAuditSiteResidue,
   runAuditSlugConflicts,
   runAuditStaleContent,
   runAuditStaleUsers,
@@ -82,6 +84,7 @@ const SINGLE_AUDIT_RUNNERS: Record<
   "dead-templates": runAuditDeadTemplates as never,
   duplicates: runAuditDuplicates as never,
   "empty-items": runAuditEmptyItems as never,
+  "empty-links": runAuditEmptyLinks as never,
   "empty-roles": runAuditEmptyRoles as never,
   "fallback-drift": runAuditFallbackDrift as never,
   "find-replace": runAuditFindReplace as never,
@@ -93,6 +96,7 @@ const SINGLE_AUDIT_RUNNERS: Record<
   "page-design-orphans": runAuditPageDesignOrphans as never,
   "personalization-broken": runAuditPersonalizationBroken as never,
   "role-bloat": runAuditRoleBloat as never,
+  "site-residue": runAuditSiteResidue as never,
   "slug-conflicts": runAuditSlugConflicts as never,
   "stale-content": runAuditStaleContent as never,
   "stale-users": runAuditStaleUsers as never,
@@ -216,8 +220,14 @@ export const registerAuditTools = (registry: McpRegistry): void => {
               "INPUT_INVALID"
             );
           }
+          // `site-residue` is the lone audit whose `root` is `string[]`
+          // (extra SXA Project roots) instead of a content-tree string.
+          // Forwarding the top-level `root` (string) here would corrupt
+          // the array spread. Callers extend the SXA defaults via
+          // `auditOptions: { root: [...] }`.
+          const forwardRoot = input.audit !== "site-residue";
           const shared = baseTaskOptions(context.configPath, context.envName, {
-            ...(input.root !== undefined && { root: input.root }),
+            ...(forwardRoot && input.root !== undefined && { root: input.root }),
             ...(input.limit !== undefined && { limit: input.limit }),
             ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
             ...(input.exclude !== undefined && { exclude: input.exclude }),

@@ -37,6 +37,13 @@
     "settings": {
       "description": "Cli settings",
       "oneOf": [{ "$ref": "#/definitions/Settings" }]
+    },
+    "aiSkills": {
+      "type": "object",
+      "description": "Sitecore AI Skills credentials (Brand Management, Brand Review, Documents, Pipeline), keyed by Sitecore organizationId. AI APIs keys are one-org-per-credential and use scopes separate from the Pages/Sites automation client.",
+      "additionalProperties": {
+        "$ref": "#/definitions/AiSkillsCredential"
+      }
     }
   },
   "definitions": {
@@ -83,6 +90,33 @@
       "properties": {
         "fieldId": { "type": "string" },
         "description": { "type": "string" }
+      }
+    },
+    "AiSkillsCredential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clientId"],
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "Client ID of the AI APIs key created in Cloud Portal → Stream → Admin → AI APIs keys. The matching secret lives in the OS keychain, never on disk."
+        },
+        "audience": {
+          "type": "string",
+          "description": "OAuth audience to request. Defaults to https://api.sitecorecloud.io."
+        },
+        "authority": {
+          "type": "string",
+          "description": "OAuth authority. Defaults to https://auth.sitecorecloud.io."
+        },
+        "tokenExpiresIn": {
+          "type": ["integer", "null"],
+          "description": "Last-known expires_in (seconds) of the cached access token. Advisory only — actual cached token lives in the keychain."
+        },
+        "tokenLastUpdated": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the last token mint. Advisory only."
+        }
       }
     },
     "Settings": {

@@ -92,7 +92,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   cleanup_preview:
     "Plan a cleanup operation without mutating the tenant — runs the chosen `verb` with whatIf: true and returns the per-action plan list. Same input shape as cleanup_execute so the agent can show the user the diff first, then re-invoke cleanup_execute with the same arguments after authorization. Safe to call iteratively while tuning scope flags.",
   cleanup_execute:
-    "Execute a destructive hygiene cleanup verb. Covers versions-prune, versions-archive, archive-purge, dead-templates, duplicates, empty-folders, find-replace, roles, users — every verb in the `scai cleanup` CLI group whose underlying library has a real what-if path. Requires allowWrite: true. Honors per-verb blast-radius caps (`maxDeletions`, `limit`) and the global `whatIf` flag for plan-only mode; pair with cleanup_preview when the user wants to see the plan before authorizing.",
+    "Execute a destructive hygiene cleanup verb. Covers versions-prune, versions-archive, archive-purge, dead-templates, duplicates, empty-folders, find-replace, roles, site-residue, users, workflow-advance — every verb in the `scai cleanup` CLI group. Requires allowWrite: true. Honors per-verb blast-radius caps (`maxDeletions`, `limit`, `maxAdvances`) and the global `whatIf` flag for plan-only mode; pair with cleanup_preview when the user wants to see the plan before authorizing.",
 
   // Webhook
   webhook_inspect:

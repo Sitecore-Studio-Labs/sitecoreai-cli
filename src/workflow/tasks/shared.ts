@@ -2,7 +2,12 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config";
-import { createWorkflowApiClient, type ItemSelector, type WorkflowApiClient } from "../api";
+import {
+  createWorkflowApiClient,
+  type ItemSelector,
+  type WorkflowApiClient,
+  type WorkflowDefinitionDetail,
+} from "../api";
 
 /** Shared option shape for `scai workflow *` tasks. */
 export interface WorkflowTaskOptions {
@@ -41,7 +46,57 @@ export const resolveWorkflowTenant = (options: WorkflowTaskOptions): ResolvedWor
   return { envName, environment, root, client };
 };
 
-const ITEM_ID_PATTERN = /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i;
+export const WORKFLOW_ITEM_ID_PATTERN =
+  /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i;
+const ITEM_ID_PATTERN = WORKFLOW_ITEM_ID_PATTERN;
+
+/**
+ * Resolve a workflow ref (GUID, content-tree path, or display/item name)
+ * to a `WorkflowDefinitionDetail` via the same lookup `scai workflow
+ * inspect` / `scai workflow apply` use. Returns `null` when no
+ * workflow-templated item matches the ref. Callers convert null into a
+ * task-specific "skipped-workflow-not-found" outcome.
+ */
+export const resolveWorkflowRef = async (
+  client: WorkflowApiClient,
+  ref: string
+): Promise<WorkflowDefinitionDetail | null> => {
+  const wfRef = ref.trim();
+  if (!wfRef) return null;
+  if (wfRef.startsWith("/sitecore/") || wfRef.startsWith("/Sitecore/")) {
+    return client.getWorkflowDefinitionDetail({ path: wfRef });
+  }
+  if (ITEM_ID_PATTERN.test(wfRef)) {
+    return client.getWorkflowDefinitionDetail({ itemId: wfRef });
+  }
+  const found = await client.findWorkflowDefinitionByName(wfRef);
+  if (!found) return null;
+  return client.getWorkflowDefinitionDetail({ itemId: found.summary.itemId });
+};
+
+/**
+ * Resolve a state ref (GUID, item name, or display name) against the
+ * states declared on a workflow definition. Returns `null` when the ref
+ * doesn't match any state — callers turn this into a
+ * `skipped-state-not-found` outcome.
+ */
+export const resolveWorkflowState = (
+  workflow: WorkflowDefinitionDetail,
+  stateRef: string
+): { itemId: string; name: string } | null => {
+  const trimmed = stateRef.trim();
+  if (!trimmed) return null;
+  const isGuid = ITEM_ID_PATTERN.test(trimmed);
+  const normalized = trimmed.replace(/[{}]/g, "").toLowerCase();
+  const match = workflow.states.find((s) =>
+    isGuid
+      ? s.itemId.replace(/[{}]/g, "").toLowerCase() === normalized
+      : s.name.toLowerCase() === trimmed.toLowerCase() ||
+        s.displayName?.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (!match) return null;
+  return { itemId: match.itemId, name: match.displayName ?? match.name };
+};
 
 /**
  * Normalize a Sitecore item ID to dashed lowercase form

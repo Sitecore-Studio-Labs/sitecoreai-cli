@@ -219,11 +219,33 @@ export type EnvironmentConfiguration = {
   allowedCiPipelines?: string[];
 };
 
+/**
+ * AI Skills credential record, keyed by Sitecore organization ID.
+ *
+ * AI APIs keys are created in Cloud Portal → Stream → Admin → AI APIs
+ * keys, are bound to a single org (confirmed one-org-per-credential),
+ * and carry their own scope set (`ai.org.brd:r/w`, `ai.org.docs:r/w`,
+ * `ai.orgs.br:gen`). They are NOT the env-level automation client
+ * `scai login` provisions for Pages/Sites/Authoring. The
+ * `clientSecret` is never stored on disk — it lives only in the OS
+ * keychain. Token cache timings here are advisory; the actual cached
+ * access token is also in the keychain.
+ */
+export type AiSkillsCredential = {
+  clientId: string;
+  audience?: string;
+  authority?: string;
+  tokenExpiresIn?: number | null;
+  tokenLastUpdated?: string | null;
+};
+
 export type RootConfiguration = {
   modules: string[];
   serialization: SerializationRootConfiguration;
   settings: Settings;
   environments: Record<string, EnvironmentConfiguration>;
+  /** AI Skills credentials, keyed by Sitecore `organizationId`. */
+  aiSkills: Record<string, AiSkillsCredential>;
   physicalPath: string;
   defaultEnvironment: string;
   /**
@@ -242,6 +264,13 @@ export type RootConfigurationFile = {
   settings?: Partial<Settings>;
   envProfiles?: Record<string, EnvironmentConfiguration>;
   defaultEnvProfile?: string;
+  /**
+   * AI Skills credentials, keyed by Sitecore `organizationId`. Stored
+   * separately from `envProfiles` because the AI APIs key is org-scoped,
+   * not env-scoped — multiple env profiles in the same org share one
+   * credential.
+   */
+  aiSkills?: Record<string, AiSkillsCredential>;
   /** Globs locating recipe files. See `RootConfiguration.recipes`. */
   recipes?: string[];
   [key: string]: unknown;

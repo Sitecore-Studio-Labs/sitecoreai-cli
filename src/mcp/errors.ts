@@ -39,6 +39,10 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
     "Confirm the bound environment has Sites API access and the access token is fresh.",
   CANCELLED:
     "The tool was cancelled by the client. Any partial application is documented in `why`; re-run the tool with the same arguments to resume.",
+  AUTH_AI_SKILLS_REQUIRED:
+    "Authenticate with the Sitecore AI Skills service for the bound environment, then re-run the tool.",
+  BRAND_API_FAILED:
+    "Confirm the bound environment has Brand API access and the access token is fresh; check Sitecore Cloud status if the failure persists.",
   UNKNOWN: "Re-run with `SITECOREAI_TRACE=1` set in the launcher to capture a verbose trace.",
 };
 

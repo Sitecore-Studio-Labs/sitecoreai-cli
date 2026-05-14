@@ -14,6 +14,7 @@ import { runAuditDatasourceMissing } from "./audit-datasource-missing";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import { runAuditDuplicates } from "./audit-duplicates";
 import { runAuditEmptyItems } from "./audit-empty-items";
+import { runAuditEmptyLinks } from "./audit-empty-links";
 import { runAuditFindReplace } from "./audit-find-replace";
 import { runAuditHeavyTemplates } from "./audit-heavy-templates";
 import { runAuditLanguageData } from "./audit-language-data";
@@ -111,6 +112,7 @@ const AUDIT_REGISTRY: AuditDef[] = [
   { name: "dead-templates", run: runAuditDeadTemplates as never },
   { name: "duplicates", run: runAuditDuplicates as never },
   { name: "empty-items", run: runAuditEmptyItems as never },
+  { name: "empty-links", run: runAuditEmptyLinks as never },
   // find-replace needs --pattern; only run if explicitly included AND pattern provided.
   { name: "find-replace", run: runAuditFindReplace as never, requiresExtraConfig: true },
   { name: "heavy-templates", run: runAuditHeavyTemplates as never },

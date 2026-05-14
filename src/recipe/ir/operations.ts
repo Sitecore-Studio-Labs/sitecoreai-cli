@@ -147,7 +147,26 @@ export const CreateItemOpSchema = z.object({
     z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
     z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
   ]),
-  templateOf: GUID,
+  /**
+   * Template the new item conforms to. Two shapes:
+   *
+   *   - **GUID string** — the conventional case: a Sitecore built-in
+   *     template ID (see `SITECORE_TEMPLATES`), or a refKey for a
+   *     template the same push creates (the planner resolves both
+   *     against `capturedItemIds`).
+   *   - **`{kind: "ref-path", value}`** — late-resolved against a
+   *     content-tree path. Used by recipes that conform new items to
+   *     system templates whose GUIDs aren't published as a public
+   *     contract (e.g. workflow `Workflow`/`State`/`Command` templates,
+   *     webhook authorization templates). The push pipeline pre-seeds
+   *     these via the same `crossRecipeRefs` mechanism that resolves
+   *     ref-path parents: a single `getItemsByPaths` batch lookup
+   *     before planning.
+   */
+  templateOf: z.union([
+    GUID,
+    z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
+  ]),
   name: NON_EMPTY,
   fields: z.array(FieldValueSchema),
 });

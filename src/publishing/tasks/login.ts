@@ -13,6 +13,21 @@ import { DEFAULT_PUBLIC_CLIENT_ID } from "@/serialization/tasks/env/constants";
 const PUBLISHING_SCOPES =
   "openid profile email offline_access xmcpub.jobs.a:r xmcpub.jobs.a:w xmcpub.queue:r";
 
+/**
+ * Auth0 resource-server audience for publishing operations. The
+ * `xmcpub.*` scopes belong to this resource server, not the
+ * `api.sitecorecloud.io` audience used for deploy and CM admin.
+ * Discovered 2026-05-14 by decoding a Pages-UI token — its `aud`
+ * claim included `https://api-webapp.sitecorecloud.io` and that's
+ * the audience that carries the publishing scope set.
+ *
+ * When we requested `xmcpub.*` against `api.sitecorecloud.io`,
+ * Auth0 silently stripped the scopes at token issuance (no error
+ * at device-authorization time, but the resulting token didn't
+ * carry them). Override per-env via env.audience if needed.
+ */
+const PUBLISHING_AUDIENCE = "https://api-webapp.sitecorecloud.io";
+
 const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
   const parts = token.split(".");
   if (parts.length !== 3) {
@@ -99,12 +114,19 @@ export const runPublishingLogin = async (
     env.authority ?? process.env.SITECOREAI_AUTHORITY ?? "https://auth.sitecorecloud.io";
   const clientId =
     options.clientId ?? process.env.SITECOREAI_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID;
-  const audience = env.audience ?? "https://api.sitecorecloud.io";
+  // Publishing scopes belong to the SAI api-webapp resource server,
+  // not the standard xmcloud.cm/xmclouddeploy api.sitecorecloud.io
+  // audience. Override via SITECOREAI_PUBLISHING_AUDIENCE if Sitecore
+  // changes the resource server identifier.
+  const audience =
+    process.env.SITECOREAI_PUBLISHING_AUDIENCE ?? PUBLISHING_AUDIENCE;
 
   logger.info(
-    `Requesting publishing scopes (xmcpub.jobs.a:r, xmcpub.jobs.a:w, xmcpub.queue:r) from Auth0 for env '${envName}'.`,
+    `Requesting publishing scopes (xmcpub.jobs.a:r, xmcpub.jobs.a:w, xmcpub.queue:r) from Auth0.`,
     "cyan"
   );
+  logger.info(`Audience: ${audience}`, "gray");
+  logger.info(`Client:   ${clientId}`, "gray");
 
   let device;
   try {

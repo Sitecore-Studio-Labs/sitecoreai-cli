@@ -24,6 +24,7 @@ const PUBLISHING_SCOPES =
 const main = async (): Promise<void> => {
   const envName = process.argv[2] ?? "sandbox";
   const clientId = process.argv[3] ?? DEFAULT_PUBLIC_CLIENT_ID;
+  const audienceArg = process.argv[4];
   process.stderr.write(`> env: ${envName}\n`);
   process.stderr.write(`> client_id: ${clientId}\n`);
 
@@ -32,7 +33,8 @@ const main = async (): Promise<void> => {
     environment.authority ??
     process.env.SITECOREAI_AUTHORITY ??
     "https://auth.sitecorecloud.io";
-  const audience = environment.audience ?? "https://api.sitecorecloud.io";
+  const audience =
+    audienceArg ?? environment.audience ?? "https://api.sitecorecloud.io";
 
   process.stderr.write(`> authority: ${authority}\n`);
   process.stderr.write(`> audience: ${audience}\n`);

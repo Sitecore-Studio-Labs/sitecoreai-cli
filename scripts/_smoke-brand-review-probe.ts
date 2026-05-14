@@ -33,7 +33,7 @@
  * Exits with 0 on success, with the ScaiError exitCode on a known
  * scai failure, or 99 on unhandled exceptions.
  */
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import {
   acquireAiSkillsToken,
   AI_SKILLS_API_HOST,

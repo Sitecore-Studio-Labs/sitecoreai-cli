@@ -1247,6 +1247,9 @@ export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow + webhook recipes
+//
+// Full reference (behavior, payload, endpoint contract, auth types,
+// failure modes, troubleshooting): docs/recipes/workflow.md
 // ─────────────────────────────────────────────────────────────────────
 
 /**

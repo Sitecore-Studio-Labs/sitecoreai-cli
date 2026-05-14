@@ -13,6 +13,9 @@ import type { WorkflowRecipe } from "@/recipe/schema/recipe";
  *
  *   `autoPublish: true` on `approve` flips Sitecore's standard
  *   __Auto Publish field — the item auto-publishes on transition.
+ *
+ * Full reference for fields, payload shape, endpoint contract, and
+ * troubleshooting: docs/recipes/workflow.md
  */
 export const blogArticleApproval = {
   kind: "workflow",

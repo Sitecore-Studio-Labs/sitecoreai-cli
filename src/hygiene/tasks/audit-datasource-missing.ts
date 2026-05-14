@@ -191,6 +191,7 @@ export const runAuditDatasourceMissing = async (
         .map((d) => `${d.fieldName}→${d.datasource}`)
         .join(", ")}${r.missingDatasources.length > 2 ? "…" : ""})`,
     extra: { root, scannedCount: scanned.length },
+    options,
   });
 
   return reports;

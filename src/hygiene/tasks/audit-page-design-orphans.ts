@@ -113,6 +113,7 @@ export const runAuditPageDesignOrphans = async (
     summary: `Scanned ${scanned.length} items; ${orphans.length} reference missing page designs.`,
     formatLine: (r) => `${r.path} — ${r.fieldName}→${r.pageDesignRef.slice(0, 8)}`,
     extra: { root, scannedCount: scanned.length },
+    options,
   });
 
   return orphans;

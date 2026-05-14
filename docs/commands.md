@@ -33,6 +33,8 @@ scai audit [options] [command]
 
 **Subcommands**
 
+- [`scai audit all`](#scai-audit-all) — Run every audit and emit a consolidated report (skip find-replace; it needs --pattern)
+- [`scai audit baseline`](#scai-audit-baseline) — Manage the per-env audit baseline (ignore-list of accepted findings)
 - [`scai audit broken-links`](#scai-audit-broken-links) — Find content items with internal links that point to deleted items
 - [`scai audit datasource-missing`](#scai-audit-datasource-missing) — Find page items with rendering datasources that don't resolve
 - [`scai audit dead-templates`](#scai-audit-dead-templates) — Find item templates with zero items derived from them
@@ -46,6 +48,141 @@ scai audit [options] [command]
 - [`scai audit stale-content`](#scai-audit-stale-content) — Find content items not updated in N days — the abandoned-content (graveyard) signal
 - [`scai audit stale-workflow`](#scai-audit-stale-workflow) — Find items stuck in a workflow state past a stale-after threshold
 - [`scai audit unused-media`](#scai-audit-unused-media) — Find media library items with zero references from content
+
+### scai audit all
+
+Run every audit and emit a consolidated report (skip find-replace; it needs --pattern)
+
+```
+scai audit all [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--include <audits>` — Comma-separated list of audit names to run (default: every audit except find-replace) (default: `[]`)
+- `--exclude-audit <audits>` — Comma-separated list of audit names to skip (default: `[]`)
+- `--update-baseline` — After running, write the current findings to the baseline file (use after manual review)
+- `--root <path>` — Default content root for sub-audits (default: /sitecore/content)
+
+### scai audit baseline
+
+Manage the per-env audit baseline (ignore-list of accepted findings)
+
+```
+scai audit baseline [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit baseline show`](#scai-audit-baseline-show) — Print the current baseline contents
+- [`scai audit baseline create`](#scai-audit-baseline-create) — Run audits and add every current finding to the baseline (accept-all snapshot)
+- [`scai audit baseline remove`](#scai-audit-baseline-remove) — Remove a single entry from the baseline
+- [`scai audit baseline reset`](#scai-audit-baseline-reset) — Wipe the baseline for one audit (or all audits if --audit is omitted)
+
+#### scai audit baseline show
+
+Print the current baseline contents
+
+```
+scai audit baseline show [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai audit baseline create
+
+Run audits and add every current finding to the baseline (accept-all snapshot)
+
+```
+scai audit baseline create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--audits <names>` — Comma-separated audit names to snapshot. Default: all audits (default: `[]`)
+- `--reset` — Reset the baseline for the chosen audits before adding new entries
+- `--root <path>` — Default content root (default: /sitecore/content)
+- `--limit <count>` — Cap on items per audit
+- `--include-system` — Include /sitecore/system items
+
+#### scai audit baseline remove
+
+Remove a single entry from the baseline
+
+```
+scai audit baseline remove [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--audit <name>` — Audit name (e.g. broken-links)
+- `--fingerprint <hex>` — Fingerprint shown by `audit baseline show`
+
+#### scai audit baseline reset
+
+Wipe the baseline for one audit (or all audits if --audit is omitted)
+
+```
+scai audit baseline reset [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--audit <name>` — Audit name to reset (default: all)
 
 ### scai audit broken-links
 
@@ -84,6 +221,12 @@ scai audit broken-links list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 
 ### scai audit datasource-missing
@@ -123,6 +266,12 @@ scai audit datasource-missing list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--report-query-datasources` — Also report Sitecore query: and local: datasources (which can't be resolved statically)
 
@@ -163,6 +312,12 @@ scai audit dead-templates list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Template-tree root to scan (default: /sitecore/templates)
 
 ### scai audit duplicates
@@ -202,6 +357,12 @@ scai audit duplicates list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 - `--min-group-size <count>` — Only report groups with at least this many duplicates (default: 2)
@@ -244,6 +405,12 @@ scai audit empty-items list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 
@@ -284,6 +451,12 @@ scai audit find-replace list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--pattern <regex>` — Regex pattern (or literal string with --literal) to match against field values
 - `--literal` — Treat --pattern as a literal string (regex special chars escaped)
 - `--ignore-case` — Case-insensitive match (sets the i regex flag)
@@ -331,6 +504,12 @@ scai audit language-data list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--languages <value>` — Comma-separated language codes to inspect (default: all languages found under --root) (default: `[]`)
 
@@ -405,6 +584,12 @@ scai audit page-design-orphans list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 
 ### scai audit personalization-broken
@@ -444,6 +629,12 @@ scai audit personalization-broken list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 
 ### scai audit stale-content
@@ -483,6 +674,12 @@ scai audit stale-content list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--not-updated-in-days <count>` — Threshold in days (default: 365)
 - `--language <code>` — Restrict to one language
@@ -525,6 +722,12 @@ scai audit stale-workflow list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--days <count>` — Stale threshold in days (default: 30)
 
@@ -565,6 +768,12 @@ scai audit unused-media list [options]
 - `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
 - `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
 - `--media-root <path>` — Media library root to scan (default: /sitecore/media library)
 - `--reference-root <path>` — Root under which media references are searched (default: /sitecore/content)
 - `--media-limit <count>` — Cap on the number of media items inspected

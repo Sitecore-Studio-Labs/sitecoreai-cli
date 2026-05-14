@@ -137,6 +137,7 @@ export const runAuditDeadTemplates = async (
     summary: `Inspected ${bounded.length} templates under ${root}; ${dead.length} dead.`,
     formatLine: (r) => `${r.fullName ?? r.name} (${r.templateId.slice(0, 8)})`,
     extra: { root, limit, scannedCount: bounded.length },
+    options,
   });
 
   return dead;

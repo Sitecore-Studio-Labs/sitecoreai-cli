@@ -75,4 +75,20 @@ export type { AuditStaleContentOptions, StaleContentReport } from "./audit-stale
 export { runCleanupFindReplace } from "./cleanup-find-replace";
 export type { CleanupFindReplaceOptions, FindReplaceAction } from "./cleanup-find-replace";
 
+export { runAuditAll, auditNames } from "./audit-all";
+export type { AuditAllOptions } from "./audit-all";
+
+export {
+  runBaselineShow,
+  runBaselineCreate,
+  runBaselineRemove,
+  runBaselineReset,
+} from "./audit-baseline";
+export type {
+  BaselineShowOptions,
+  BaselineCreateOptions,
+  BaselineRemoveOptions,
+  BaselineResetOptions,
+} from "./audit-baseline";
+
 export type { HygieneCommonOptions } from "./shared";

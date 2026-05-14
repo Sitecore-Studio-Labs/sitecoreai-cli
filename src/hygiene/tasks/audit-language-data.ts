@@ -169,6 +169,7 @@ export const runAuditLanguageData = async (
     summary: `Scanned ${scanned} items, ${pairs.length} (item, language) pairs; ${reports.length} with empty language entries.`,
     formatLine: (r) => `${r.path} — empty: ${r.emptyLanguages.join(", ")}`,
     extra: { root, limit, scannedCount: scanned, pairsChecked: pairs.length },
+    options,
   });
 
   return reports;

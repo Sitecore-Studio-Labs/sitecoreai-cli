@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import { createAuditAllCommand } from "./all";
+import { createAuditBaselineCommand } from "./baseline";
 import { createAuditBrokenLinksCommand } from "./broken-links";
 import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
@@ -18,6 +20,8 @@ export const createAuditCommand = (): Command => {
     "Read-only diagnostics over Sitecore content — links, media, archive, workflow, languages, templates, datasources, duplicates, empty items, page designs, personalization"
   );
 
+  command.addCommand(createAuditAllCommand());
+  command.addCommand(createAuditBaselineCommand());
   command.addCommand(createAuditBrokenLinksCommand());
   command.addCommand(createAuditDatasourceMissingCommand());
   command.addCommand(createAuditDeadTemplatesCommand());

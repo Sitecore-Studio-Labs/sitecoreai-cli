@@ -227,6 +227,7 @@ export const runCleanupDuplicates = async (
       deletedCount: totalDeleted,
       failedCount: totalFailed,
     },
+    options,
   });
 
   return actions;

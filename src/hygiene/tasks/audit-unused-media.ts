@@ -188,6 +188,7 @@ export const runAuditUnusedMedia = async (
       mediaScanned: candidates.size,
       referenceScanned: referenceItems.length,
     },
+    options,
   });
 
   return unused;

@@ -236,6 +236,7 @@ export const runCleanupVersionsArchive = async (
       errorCount: totalErrors,
       archiveName: options.archiveName ?? null,
     },
+    options,
   });
 
   return actions;

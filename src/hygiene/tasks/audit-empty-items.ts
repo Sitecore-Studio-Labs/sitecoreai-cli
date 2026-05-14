@@ -75,6 +75,7 @@ export const runAuditEmptyItems = async (
     formatLine: (r) =>
       `${r.path}${r.templateName ? ` (${r.templateName})` : ""}${r.language ? ` @${r.language}` : ""}`,
     extra: { root, scannedCount: scanned.length },
+    options,
   });
 
   return empty;

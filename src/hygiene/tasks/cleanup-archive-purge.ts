@@ -173,6 +173,7 @@ export const runCleanupArchivePurge = async (
       purgedCount: purged,
       failedCount: failed,
     },
+    options,
   });
 
   return actions;

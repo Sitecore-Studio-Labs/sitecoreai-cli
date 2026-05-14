@@ -197,6 +197,7 @@ export const runAuditStaleContent = async (
       scannedCount: scanned,
       excludeWorkflow,
     },
+    options,
   });
 
   return reports;

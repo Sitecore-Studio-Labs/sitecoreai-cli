@@ -241,6 +241,7 @@ export const runCleanupDeadTemplates = async (
       templateFailedCount: failed,
       foldersRemovedCount: foldersRemoved,
     },
+    options,
   });
 
   return { templates: templateActions, folders: folderActions };

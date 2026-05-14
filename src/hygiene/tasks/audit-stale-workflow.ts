@@ -161,6 +161,7 @@ export const runAuditStaleWorkflow = async (
     formatLine: (r) =>
       `${r.path} — ${r.workflowName} @ "${r.stateName ?? "?"}" (${r.daysSinceUpdate}d)`,
     extra: { root, days, limit, scannedCount: scanned },
+    options,
   });
 
   return stale;

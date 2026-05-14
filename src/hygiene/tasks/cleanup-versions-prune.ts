@@ -280,6 +280,7 @@ export const runCleanupVersionsPrune = async (
       deletedCount: totalDeleted,
       errorCount: totalErrors,
     },
+    options,
   });
 
   return actions;

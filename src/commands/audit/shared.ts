@@ -35,5 +35,34 @@ export const addAuditBaseOptions = (command: Command): Command => {
     "--cache",
     "Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/"
   );
+  command.option(
+    "--exclude <path>",
+    "Exclude items under this path prefix. Repeat or comma-separate.",
+    (v: string, prev: string[] = []) =>
+      prev.concat(
+        v
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0)
+      ),
+    []
+  );
+  command.option(
+    "--since <date>",
+    "Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)"
+  );
+  command.option(
+    "--owner <user>",
+    "Filter by createdBy or updatedBy (post-fetch filter on Authoring API)"
+  );
+  command.option(
+    "--baseline",
+    "Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json"
+  );
+  command.option(
+    "--output <file>",
+    "Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)"
+  );
+  command.option("--format <fmt>", "Output format: json (default), csv, markdown");
   return command;
 };

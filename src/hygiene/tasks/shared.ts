@@ -10,6 +10,9 @@ import {
   wrapFieldsBatchWithCache,
   type FieldCache,
 } from "../cache";
+import { openBaseline, splitByBaseline, type BaselineHandle } from "../baseline";
+import { inferFormatFromExtension, writeAuditOutput, type OutputFormat } from "../output-adapters";
+import path from "node:path";
 
 /**
  * Shared option shape, tenant resolution, and link-extraction helpers for
@@ -64,33 +67,139 @@ export interface PrintReportOptions<T> {
   /** Optional headline shown above the list. Defaults to `${results.length} item(s) found`. */
   summary?: string;
   extra?: Record<string, unknown>;
+  /**
+   * The audit's task options. When provided, enables baseline
+   * filtering (`options.baseline`), output redirect (`options.output`),
+   * and format selection (`options.format`). Each audit passes its
+   * own `options` object through.
+   */
+  options?: {
+    baseline?: boolean;
+    output?: string;
+    format?: OutputFormat;
+    config?: string;
+    environmentName?: string;
+  };
 }
 
-export const printReport = <T>({
-  logger,
-  command,
-  envName,
-  results,
-  formatLine,
-  summary,
-  extra,
-}: PrintReportOptions<T>): void => {
+export const printReport = <T>(params: PrintReportOptions<T>): void => {
+  finishAudit({ ...params, auditName: deriveAuditName(params.command) });
+};
+
+/**
+ * Extended print helper used by every audit task runner. Adds:
+ *
+ *   - **Baseline filtering** (`options.baseline`): splits findings
+ *     into "new" vs. "ignored" using the per-env baseline file.
+ *   - **Output redirection** (`options.output` / `options.format`):
+ *     writes a serialized report to a file instead of (or in
+ *     addition to) printing the JSON envelope to stdout.
+ *
+ * `auditName` is the bare audit slug used as the baseline key
+ * (e.g. `"broken-links"`). Without it, the `--baseline` flag is a
+ * no-op with a warning.
+ */
+export interface FinishAuditOptions<T> extends PrintReportOptions<T> {
+  /** Bare audit name (e.g. "broken-links"). Required for baseline filtering. */
+  auditName?: string;
+  /**
+   * Pass `options.baseline`, `options.output`, `options.format`, plus
+   * `options.config` through here so this helper can locate the
+   * baseline file and the output target.
+   */
+  options?: {
+    baseline?: boolean;
+    output?: string;
+    format?: OutputFormat;
+    config?: string;
+    environmentName?: string;
+  };
+}
+
+const deriveAuditName = (command: string): string | undefined => {
+  // command shape: "audit.<name>.<verb>" e.g. "audit.broken-links.list"
+  const m = /^audit\.([^.]+)\./.exec(command);
+  return m?.[1];
+};
+
+const resolveConfigDir = (config: string | undefined): string => {
+  if (!config) return process.cwd();
+  if (config.endsWith(".json")) return path.dirname(config);
+  return config;
+};
+
+export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
+  const { logger, command, envName, formatLine, summary, extra, options, auditName } = params;
+  let results = params.results;
+  let ignoredCount = 0;
+
+  // Apply baseline filtering if requested AND we know the audit name.
+  if (options?.baseline && auditName) {
+    try {
+      const baseline = openBaseline({
+        envName,
+        configDir: resolveConfigDir(options.config),
+        logger,
+      });
+      const split = splitByBaseline(auditName, results as unknown[], baseline);
+      results = split.kept as T[];
+      ignoredCount = split.ignored.length;
+    } catch (error) {
+      logger.warn(
+        `Failed to apply baseline filter for '${auditName}': ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  } else if (options?.baseline && !auditName) {
+    logger.warn(
+      `--baseline requested but the audit command name '${command}' doesn't map to a baseline key.`
+    );
+  }
+
+  const envelope = {
+    command,
+    environment: envName,
+    ...(extra ?? {}),
+    ...(ignoredCount > 0 && { ignoredCount }),
+    count: results.length,
+    results,
+  };
+
+  // Output adapter: --output writes serialised report to file.
+  const explicitFormat = options?.format;
+  const inferredFormat = options?.output ? inferFormatFromExtension(options.output) : undefined;
+  const format: OutputFormat = explicitFormat ?? inferredFormat ?? "json";
+
+  if (options?.output) {
+    writeAuditOutput(envelope, { format, output: options.output });
+    if (!logger.isJson()) {
+      logger.info(
+        `Wrote ${options.output} (${envelope.count} finding${envelope.count === 1 ? "" : "s"}${
+          ignoredCount > 0 ? `, ${ignoredCount} ignored by baseline` : ""
+        }).`,
+        "green"
+      );
+    }
+    return;
+  }
+
+  // Stdout path — same as the original printReport behavior.
   if (logger.isJson()) {
-    logger.json({
-      command,
-      environment: envName,
-      ...extra,
-      count: results.length,
-      results,
-    });
+    logger.json(envelope);
     return;
   }
   const headline = summary ?? `${results.length} item${results.length === 1 ? "" : "s"} found.`;
   logger.info(headline, results.length === 0 ? "green" : "yellow");
+  if (ignoredCount > 0) {
+    logger.info(`  (${ignoredCount} ignored by baseline)`, "gray");
+  }
   for (const item of results) {
     logger.info(`  - ${formatLine(item)}`);
   }
 };
+
+export type { BaselineHandle };
 
 /** Normalize a Sitecore itemId to lowercase, no dashes, no braces (search-index form). */
 export const normalizeItemId = (raw: string): string => raw.toLowerCase().replace(/[{}-]/g, "");
@@ -427,12 +536,72 @@ export interface ScanItemsAndFieldsParams {
     language?: string;
     index?: string;
     cache?: boolean;
+    /** Repeatable: skip items whose path starts with any of these. */
+    exclude?: string[];
+    /** ISO date (YYYY-MM-DD or full ISO): only items updated on/after this date. */
+    since?: string;
+    /** Filter by createdBy or updatedBy. */
+    owner?: string;
   };
   /** Override `latestVersionOnly` on the search. Default true. */
   latestVersionOnly?: boolean;
   /** Skip the field-fetch phase entirely (returns empty fields map). */
   skipFields?: boolean;
 }
+
+/**
+ * Cross-cutting result-filter helpers — applied during the
+ * enumeration phase before items are accumulated. Exposed here so
+ * audits that don't go through `scanItemsAndFields` (orphans,
+ * dead-templates) can re-use the same predicates.
+ */
+export interface ScanFilters {
+  excludePaths?: string[];
+  sinceMs?: number;
+  owner?: string;
+}
+
+export const resolveScanFilters = (options: {
+  exclude?: string[];
+  since?: string;
+  owner?: string;
+}): ScanFilters => {
+  const excludePaths = options.exclude?.length
+    ? options.exclude.map((p) => p.toLowerCase()).filter((p) => p.length > 0)
+    : undefined;
+  let sinceMs: number | undefined;
+  if (options.since) {
+    const ts = Date.parse(options.since);
+    if (Number.isFinite(ts)) sinceMs = ts;
+    else
+      throw createScaiError(
+        `--since '${options.since}' is not a valid ISO date.`,
+        "INPUT_INVALID",
+        { hint: "Use YYYY-MM-DD or a full ISO 8601 timestamp." }
+      );
+  }
+  return { excludePaths, sinceMs, owner: options.owner };
+};
+
+/** Returns true if the search result should be excluded by the filters. */
+export const matchesScanFilters = (
+  r: { path?: string; updatedDate?: string | null; createdDate?: string | null },
+  filters: ScanFilters
+): boolean => {
+  if (filters.excludePaths) {
+    const p = r.path?.toLowerCase() ?? "";
+    if (filters.excludePaths.some((e) => p.startsWith(e))) return false;
+  }
+  if (filters.sinceMs !== undefined) {
+    const t = r.updatedDate ? Date.parse(r.updatedDate) : NaN;
+    if (!Number.isFinite(t) || t < filters.sinceMs) return false;
+  }
+  // The owner filter is harder — `createdBy` / `updatedBy` aren't on
+  // SearchResultItem. Defer to the audit task layer when needed; we
+  // can't filter here without a per-item Authoring API call. (Kept on
+  // the interface so the helper signature is forward-compatible.)
+  return true;
+};
 
 export const scanItemsAndFields = async ({
   client,
@@ -448,6 +617,11 @@ export const scanItemsAndFields = async ({
   const cache = cacheEnabled ? createFieldCache({ envName, logger }) : null;
   const limit = options.limit ?? 5000;
   const includeSystem = Boolean(options.includeSystem);
+  const filters = resolveScanFilters({
+    exclude: options.exclude,
+    since: options.since,
+    owner: options.owner,
+  });
 
   // Resolve root path → itemId.
   let rootItemId: string | undefined;
@@ -478,6 +652,7 @@ export const scanItemsAndFields = async ({
     knobs.pageParallelism
   )) {
     if (!includeSystem && isSystemPath(r.path)) continue;
+    if (!matchesScanFilters(r, filters)) continue;
     scanned.push({
       itemId: normalizeItemId(r.itemId),
       path: r.path,

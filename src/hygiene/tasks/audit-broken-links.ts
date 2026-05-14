@@ -150,6 +150,7 @@ export const runAuditBrokenLinks = async (
         .map((b) => `${b.fieldName}→${b.refItemId.slice(0, 8)}`)
         .join(", ")}${r.brokenRefs.length > 3 ? "…" : ""})`,
     extra: { root, scannedCount: scanned.length },
+    options,
   });
 
   return reports;

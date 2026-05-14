@@ -101,6 +101,7 @@ export const runAuditDuplicates = async (
         .map((m) => m.path)
         .join(", ")}${g.count > 3 ? "…" : ""}`,
     extra: { root, scannedCount: scanned.length, minGroupSize },
+    options,
   });
 
   return duplicates;

@@ -96,6 +96,7 @@ export const runAuditOrphans = async (options: AuditOrphansOptions): Promise<Orp
     formatLine: (r) =>
       `${r.name} from ${r.originalLocation}${r.archivedDate ? ` (${r.archivedDate.slice(0, 10)} by ${r.archivedBy ?? "?"})` : ""}`,
     extra: { archiveName: options.archiveName ?? null, limit },
+    options,
   });
 
   return archived;

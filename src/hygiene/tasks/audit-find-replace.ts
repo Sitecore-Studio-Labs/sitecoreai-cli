@@ -192,6 +192,7 @@ export const runAuditFindReplace = async (
       scannedCount: scanned.length,
       totalMatches,
     },
+    options,
   });
 
   return reports;

@@ -241,6 +241,7 @@ export const runCleanupFindReplace = async (
       failedCount: failed,
       totalMatches,
     },
+    options,
   });
 
   return actions;

@@ -15,16 +15,22 @@ const PUBLISHING_SCOPES =
 
 /**
  * Auth0 resource-server audience for publishing operations.
- * Confirmed 2026-05-14: the SAI Publishing API is hosted at
- * `https://edge-platform.sitecorecloud.io` but its OAuth resource
- * server identifier — what tokens need to carry in their `aud`
- * claim — is the standard `https://api.sitecorecloud.io`. (Pages
- * tokens carry `api-webapp.sitecorecloud.io` but that's a Pages-
- * specific audience; the Publishing API itself uses the canonical
- * Sitecore Cloud API audience.) Override via
- * SITECOREAI_PUBLISHING_AUDIENCE if Sitecore changes the identifier.
+ * Confirmed 2026-05-14 via cross-referenced Auth0 errors:
+ *   - M2M client with aud=api.sitecorecloud.io + xmcpub.* scopes
+ *     → "client has not been granted scopes" (the audience exists
+ *     for the client but doesn't host those scopes)
+ *   - M2M client with aud=api-webapp.sitecorecloud.io + xmcpub.*
+ *     → "client not authorized to access resource server" (the
+ *     audience IS where those scopes live; the client lacks a
+ *     grant to it)
+ *   - Pages token: aud=api-webapp, scope includes xmcpub.* → works
+ *
+ * `xmcpub.*` scopes live on the `api-webapp.sitecorecloud.io`
+ * resource server. Operator must have an automation client with
+ * a client-grant for that resource server, including the
+ * publishing scopes. Override via SITECOREAI_PUBLISHING_AUDIENCE.
  */
-const PUBLISHING_AUDIENCE = "https://api.sitecorecloud.io";
+const PUBLISHING_AUDIENCE = "https://api-webapp.sitecorecloud.io";
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
   const parts = token.split(".");

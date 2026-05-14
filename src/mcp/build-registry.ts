@@ -15,6 +15,8 @@ import { registerDeployTools } from "./tools/deploy";
 import { registerSerializationTools } from "./tools/serialization";
 import { registerRecipeTools } from "./tools/recipe";
 import { registerInspectorTools } from "./tools/inspector";
+import { registerWebhookTools } from "./tools/webhook";
+import { registerWorkflowTools } from "./tools/workflow";
 import { registerHelpResources } from "./resources/help";
 import { registerEnvironmentResources } from "./resources/env";
 import { registerWorkflowPrompts } from "./prompts/workflows";
@@ -25,6 +27,8 @@ export const buildScaiMcpRegistry = (): McpRegistry => {
   registerDeployTools(registry);
   registerSerializationTools(registry);
   registerRecipeTools(registry);
+  registerWorkflowTools(registry);
+  registerWebhookTools(registry);
   registerInspectorTools(registry);
   registerHelpResources(registry);
   registerEnvironmentResources(registry);

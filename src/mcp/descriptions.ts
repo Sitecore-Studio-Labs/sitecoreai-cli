@@ -73,6 +73,18 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Returns the names + descriptions + auth class of every tool registered on this MCP server. Use this for human debugging or when an agent needs to discover the available action surface without an external manifest.",
   tools_schema:
     "Returns the Zod-derived JSON schema for one tool (name given) or all tools. Use this when an agent's tool-use planner needs the input-shape contract beyond what list-tools exposes.",
+
+  // Workflow
+  workflow_inspect:
+    "Read-side workflow surface over a discriminated { verb } input — `inspect` (one item's workflow + state + available commands), `list-commands` (transitions available on one item), `list-defs` (workflow definitions on the tenant), `status` (per-site rollup from XM Apps REST), or `assigned` (search items by workflow state). No writes; use this to plan a workflow action before invoking workflow_lifecycle.",
+  workflow_lifecycle:
+    "Mutating workflow surface — currently exposes the `advance` verb (move one item through a named workflow command). Requires allowWrite: true. Pair with workflow_inspect first to confirm the item's state + the available command name; pass --what-if equivalent via the `whatIf` flag for plan-only mode.",
+
+  // Webhook
+  webhook_inspect:
+    "Read-side webhook handler surface over a discriminated { verb } input — `list` (handler items under /sitecore/system/Webhooks or a workflow state) or `get` (one handler's full field detail). Use this to enumerate existing handlers, audit URLs + auth bindings, or confirm what would be deleted before a destructive call.",
+  webhook_manage:
+    "Mutating webhook handler surface — `create` (item/publish event handler or workflow submit/validation action) or `delete` (any webhook item by id or path). Requires allowWrite: true. Workflow webhooks attach at a workflow state's Actions subfolder; pass the state's content-tree path via `onState`.",
 };
 
 export const verifyDescriptions = (names: string[]): { missing: string[]; tooShort: string[] } => {

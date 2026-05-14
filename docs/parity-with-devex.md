@@ -66,7 +66,7 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — 🗓️ planned (REST API + tiered consent model)
+### `sitecore publish` (Publishing plugin) — ✅ shipped (REST API + tiered consent model, 2026-05-14)
 
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only

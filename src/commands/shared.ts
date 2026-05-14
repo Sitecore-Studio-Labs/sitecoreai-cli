@@ -9,8 +9,17 @@ const splitComma = (value: string): string[] =>
 export const collectList = (value: string, previous: string[] = []): string[] =>
   previous.concat(splitComma(value));
 
-export const normalizeArgs = (argv: string[]): string[] =>
-  argv.map((arg) => {
+export const normalizeArgs = (argv: string[]): string[] => {
+  // Drop a leading `--` separator (argv[2]). `pnpm dev -- <subcmd> ...`
+  // injects a literal `--` before the subcommand; commander then treats
+  // it as an end-of-options marker for the root program and routes
+  // every subsequent flag (e.g. `--what-if`) into positional args
+  // instead of parsing them. The separator carries no scai-level
+  // meaning, so strip it before commander sees it. Position 2 only:
+  // `--` later in argv (e.g. for a hypothetical pass-through arg) is
+  // preserved.
+  const cleaned = argv[2] === "--" ? [...argv.slice(0, 2), ...argv.slice(3)] : argv;
+  return cleaned.map((arg) => {
     if (arg === "-fr") {
       return "--force";
     }
@@ -30,6 +39,7 @@ export const normalizeArgs = (argv: string[]): string[] =>
     }
     return arg;
   });
+};
 
 export const addConfigOption = (command: Command): Command =>
   command.addOption(

@@ -333,4 +333,37 @@ describe("normalizeArgs flag aliases", () => {
       "b",
     ]);
   });
+
+  it("strips a leading -- separator at argv[2] (pnpm dev passthrough)", async () => {
+    const { normalizeArgs } = await import("../../../../src/commands/shared");
+    expect(
+      normalizeArgs([
+        "node",
+        "src/cli.ts",
+        "--",
+        "deploy",
+        "environments",
+        "delete",
+        "--id",
+        "BOGUS",
+        "--what-if",
+      ])
+    ).toEqual([
+      "node",
+      "src/cli.ts",
+      "deploy",
+      "environments",
+      "delete",
+      "--id",
+      "BOGUS",
+      "--what-if",
+    ]);
+  });
+
+  it("preserves a -- that appears mid-argv (potential pass-through marker)", async () => {
+    const { normalizeArgs } = await import("../../../../src/commands/shared");
+    expect(
+      normalizeArgs(["node", "src/cli.ts", "shell", "--", "--passthrough-flag"])
+    ).toEqual(["node", "src/cli.ts", "shell", "--", "--passthrough-flag"]);
+  });
 });

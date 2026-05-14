@@ -1,6 +1,7 @@
 import {
   DeployApiClientOptions,
   DeployEnvironment,
+  DeployEnvironmentProvisioningStatus,
   DeployQueryValueList,
   deployRequest,
 } from "./common";

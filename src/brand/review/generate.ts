@@ -34,18 +34,30 @@ const clampScore = (value: number | undefined): BrandReviewScore => {
 /**
  * Build the API's `input` map from scai's caller-facing input shape.
  *
- * The Brand Review API accepts a flexible map of input types — raw
- * text, files, base64 payloads, etc. scai's headline path is text
- * content, which lands under the `content` key (matches the
- * documented example in the OpenAPI spec). Callers can layer
- * arbitrary additional fields via `input.extra` for advanced cases
- * (e.g. `{ document: ExtractableFile }`) without dropping to the
- * raw transport.
+ * The Brand Review API documents a `{ content: "raw text" }` shape
+ * for plain text, but the real server crashes with a 500 KeyError on
+ * `'name'` when given a bare string — verified empirically against a
+ * Sitecore tenant 2026-05-14. Every working example in the OpenAPI
+ * spec uses the `ExtractableFile` shape (document, image, files[]),
+ * all of which carry a `name` field. So scai sends text via the same
+ * shape: an `ExtractableFile` with `type: "document"`, `mimeType:
+ * "text/plain"`, and a base64-encoded data URL carrying the content.
+ * The caller's `label` becomes the file name.
+ *
+ * Callers can still layer arbitrary additional `input.*` keys via
+ * `input.extra` for advanced cases (real file references, images,
+ * etc.) without going through this wrapper.
  */
 const buildApiInput = (input: BrandReviewInput): RawRequest["input"] => {
   const result: Record<string, unknown> = { ...(input.extra ?? {}) };
   if (input.text !== undefined) {
-    result.content = input.text;
+    const base64 = Buffer.from(input.text, "utf8").toString("base64");
+    result.content = {
+      name: input.label ?? "input.txt",
+      type: "document",
+      mimeType: "text/plain",
+      url: `data:text/plain;base64,${base64}`,
+    };
   }
   return result as RawRequest["input"];
 };

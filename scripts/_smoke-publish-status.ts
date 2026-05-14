@@ -14,9 +14,14 @@ import { ScaiError } from "@/shared/errors";
 const main = async (): Promise<void> => {
   const envName = process.argv[2] ?? "sandbox";
   process.stderr.write(`> resolving env '${envName}'\n`);
-  const { environment } = resolveEnvironment({ environmentName: envName });
-  process.stderr.write(`> requesting publishing-scoped token (xmcpub.jobs.a:r/w xmcpub.queue:r)\n`);
-  const accessToken = await acquirePublishingToken(environment);
+  const { envName: resolvedName, environment } = resolveEnvironment({
+    environmentName: envName,
+  });
+  process.stderr.write(`> acquiring publishing token (keychain then M2M)\n`);
+  const accessToken = await acquirePublishingToken({
+    envName: resolvedName,
+    environment,
+  });
   process.stderr.write(`> GET /authoring/publishing/v1/jobs\n`);
   try {
     const jobs = await listPublishJobs({ accessToken });

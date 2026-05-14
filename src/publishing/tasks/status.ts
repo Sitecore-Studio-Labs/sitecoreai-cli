@@ -1,7 +1,6 @@
 import { Logger } from "@/shared/logger";
-import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
-import { getAccessToken } from "@/serialization/sitecore-api/auth";
+import { acquirePublishingToken } from "../sitecore-api/auth";
 import { getPublishJob, listPublishJobs } from "../sitecore-api/client";
 import type { PublishJob, PublishingApiClientOptions } from "../sitecore-api/types";
 
@@ -40,15 +39,7 @@ export const runPublishStatus = async (options: RunPublishStatusOptions): Promis
   const logger = toLogger(options);
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
 
-  const accessToken = await getAccessToken(environment);
-  if (!accessToken) {
-    throw createScaiError(
-      `Could not acquire an access token for environment '${envName}'.`,
-      "AUTH_REQUIRED",
-      { hint: `Run 'scai login --environment-name ${envName}' first.` }
-    );
-  }
-
+  const accessToken = await acquirePublishingToken({ envName, environment });
   const client: PublishingApiClientOptions = {
     accessToken,
     timeoutMs,

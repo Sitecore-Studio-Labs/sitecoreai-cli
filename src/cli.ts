@@ -31,6 +31,7 @@ import { redactSecrets } from "./shared/redact";
 import { toScaiError } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
+import { createWebhookCommand } from "./commands/webhook";
 import { createWorkflowCommand } from "./commands/workflow";
 import { readRootConfiguration, readRootConfigurationFile } from "./config";
 import { runDeployToken, runInit } from "./serialization/tasks";
@@ -258,6 +259,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createSerializationCommand());
   program.addCommand(createStatusCommand());
   program.addCommand(createTelemetryCommand());
+  program.addCommand(createWebhookCommand());
   program.addCommand(createWorkflowCommand());
   program.addCommand(createShellCommand(runCli));
 

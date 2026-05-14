@@ -204,26 +204,34 @@ Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
 Lock it during implementation from a real tenant's browser network
 traffic or from the OpenAPI YAML directly.
 
-**Operator prerequisite (discovered 2026-05-14 during PR 1 smoke):**
-the existing automation-client JWT used by `scai deploy` / `ser push`
-does **not** automatically include publishing scopes. A tenant whose
-automation client lacks the right scopes returns `403 Forbidden` on
-every Publishing API call. The CLI surfaces this as `AUTH_REQUIRED`
-with a hint pointing the operator at the Sitecore Cloud Portal →
-automation clients UI to add publishing scopes and re-run
-`scai login`.
+**Auth model (resolved 2026-05-14 during PR 1 + PR 2a research):**
+the Publishing API requires OAuth scopes the default scai deploy
+flow doesn't request. Decoded inspection found:
 
-A typical scai-provisioned automation client carries
-`xmclouddeploy.<resource>:<verb>` scopes (Deploy API) plus
-`xmcloud.cm:admin` (CM admin) — confirmed by decoding a sandbox
-token. None of those grant Publishing API access. The Publishing
-API likely needs a scope along the lines of
-`xmcloud.publishing.<…>:<…>`, but the exact name is not in the
-public Redoc and the credentials-management doc on
-`doc.sitecore.com` is auth-walled. Operator must either inspect the
-Cloud Portal automation-client UI's scope catalog, or open a
-Sitecore support ticket. Document the exact scope name in
-`docs/operator-setup.md` once confirmed.
+- The scopes are `xmcpub.jobs.a:r`, `xmcpub.jobs.a:w`,
+  `xmcpub.queue:r` (matched against a Pages-UI user token).
+- The scai default Auth0 device-flow client
+  `Chi8EwfFnEejksk3Sed9hlalGiM9B2v7` **is authorized** to grant
+  them — verified by a non-interactive probe against the
+  device-authorization endpoint.
+- The default deploy token, requested without an explicit `scope`,
+  carries `xmclouddeploy.*` + `xmcloud.cm:admin` only and returns
+  403 against the Publishing API.
+
+**Resolution shipped in PR 2a:** a separate `scai publish login`
+command runs the device-code flow with the publishing scopes
+explicitly requested, stores the resulting JWT in a publishing-
+specific keychain entry (separate from the deploy token), and the
+publishing API client looks up that entry instead of the deploy
+token. CI use is supported via M2M client credentials *if* the
+operator's automation client is authorized for the publishing
+scopes; otherwise the command surfaces `AUTH_REQUIRED` with a hint
+pointing at `scai publish login`.
+
+The M2M scope authorization on automation clients remains unproven
+— testing it requires an automation client config we don't have
+locally. PR 2b validates the user-flow path against the sandbox;
+M2M will get validated whenever a CI environment first hits it.
 
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 

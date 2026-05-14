@@ -38,10 +38,6 @@ export const createPublishItemCommand = (): Command => {
         .default("Smart")
     )
     .option(
-      "--republish",
-      "Alias for `--mode Republish` (matches the dotnet `sitecore publish item --republish` flag). When both are set, `--mode` wins."
-    )
-    .option(
       "--confirm-token <token>",
       "Scope token obtained from a previous dry-run. Required on production-tier envs."
     )

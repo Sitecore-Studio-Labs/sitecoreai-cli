@@ -36,10 +36,6 @@ export interface RunPublishItemOptions {
    *  supports only `Smart` (default) and `Republish` — Incremental
    *  is whole-site only and lives on `publish all`. */
   mode?: PublishItemsMode;
-  /** Legacy alias for `mode: "Republish"`. When both are set, `mode`
-   *  wins. Kept because the dotnet `sitecore publish item --republish`
-   *  flag is muscle memory for many operators. */
-  republish?: boolean;
   /** Dry-run; default true. Real publish requires --allow-write. */
   whatIf?: boolean;
   /** Required to actually call the API. */
@@ -103,8 +99,7 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
   const itemType = options.itemType ?? "item";
   const languages = options.languages ?? [];
   const target = "Edge";
-  const mode: PublishItemsMode =
-    options.mode ?? (options.republish ? "Republish" : "Smart");
+  const mode: PublishItemsMode = options.mode ?? "Smart";
 
   const scope: PublishAuditScope = {
     envName,

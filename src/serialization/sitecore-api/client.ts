@@ -42,9 +42,7 @@ export interface SitecoreApiClient {
   fetchPublishingTargets: Tail<typeof fetchPublishingTargets>;
 }
 
-export const createSitecoreApiClient = (
-  options: SitecoreApiClientOptions
-): SitecoreApiClient => ({
+export const createSitecoreApiClient = (options: SitecoreApiClientOptions): SitecoreApiClient => ({
   options,
   fetchItemMetadata: (database, path, ...rest) =>
     fetchItemMetadata(options, database, path, ...rest),

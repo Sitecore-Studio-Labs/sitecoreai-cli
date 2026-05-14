@@ -142,6 +142,82 @@ Cline, and any other MCP-speaking client. See
 [docs/mcp.md](./docs/mcp.md) for client config snippets, the tool
 inventory, write-gate semantics, and v1 limitations.
 
+## Using as a library
+
+`@sitecoreai-labs/sitecoreai-cli` is dual-purpose: a CLI **and** a typed
+TypeScript SDK. The CLI binary is only on `bin`; importing the package
+root or any subpath from your own code is safe (it will not execute the
+CLI).
+
+Each surface ships from its own subpath with its own stability
+contract. The most ergonomic seam is the `create*Client(options)`
+factory; the underlying option-first functions are also exported for
+callers that prefer the bag-of-functions style.
+
+```ts
+// Recipes — compile a declarative recipe and push it to the CMS
+import {
+  compileRecipe,
+  buildPlan,
+  executeIr,
+  createAuthoringClient,
+  createSitesApiClient,
+} from "@sitecoreai-labs/sitecoreai-cli/recipe";
+
+// Deploy API — environments, deployments, logs
+import { createDeployApiClient } from "@sitecoreai-labs/sitecoreai-cli/deploy";
+const deploy = createDeployApiClient({ accessToken: process.env.SITECOREAI_DEPLOY_TOKEN! });
+const projects = await deploy.fetchAllProjects();
+
+// Serialization (Authoring + Management GraphQL) — items, roles, users, publish
+import { createSitecoreApiClient } from "@sitecoreai-labs/sitecoreai-cli/serialization";
+const sc = createSitecoreApiClient({ host, accessToken });
+const meta = await sc.fetchItemMetadata("master", "/sitecore/content/Home");
+
+// Publishing API — XM Cloud publish jobs, with the structured consent
+// argument required for any destructive call
+import {
+  submitPublishJob,
+  mintScopeToken,
+  type PublishConsent,
+} from "@sitecoreai-labs/sitecoreai-cli/publishing";
+
+// Sites API — CRUD over sites, collections, languages, jobs
+import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/sites";
+
+// Hygiene — audits + cleanups, output adapters, baselines, history
+import { runAuditOrphans, createHygieneApiClient } from "@sitecoreai-labs/sitecoreai-cli/hygiene";
+
+// Brand (AI Skills) — Brand Review SARIF + JSON pipelines
+import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai-cli/brand";
+
+// Webhooks + Workflow — Sitecore event handlers and item workflow operations
+import { createWebhookApiClient } from "@sitecoreai-labs/sitecoreai-cli/webhooks";
+import { createWorkflowApiClient } from "@sitecoreai-labs/sitecoreai-cli/workflow";
+
+// Errors — every subpath throws `ScaiError`; the type ships at the root
+import { ScaiError, type ScaiErrorCode } from "@sitecoreai-labs/sitecoreai-cli/errors";
+```
+
+If you'd rather import from the package root, namespaced subpaths are
+also exposed:
+
+```ts
+import { recipe, deploy, publishing, ScaiError } from "@sitecoreai-labs/sitecoreai-cli";
+
+const client = deploy.createDeployApiClient({ accessToken });
+```
+
+### Stability contract (0.1.0)
+
+The symbols re-exported from each subpath's `index.ts` are the public
+SDK contract. Anything reachable only via the `@/...` path alias
+(reaching into `src/` internals) is not part of the contract and may
+change between scai versions without notice.
+
+Breaking changes to any exported symbol require a major version bump
+(per Changesets). New symbols are additive and ship in minor versions.
+
 ## Going deeper
 
 - [Command reference](./docs/commands.md) — every command and flag,

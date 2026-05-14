@@ -8,12 +8,11 @@
  *
  *   - `fetchOrganization*` for org metadata + license
  *   - `fetchProject*` + `createProject` for project navigation
- *   - `fetchEnvironment*` + `createEnvironmentDeployment` +
- *     `probeEnvironmentHealth` + `resolveHostFromEnvironment` for the
+ *   - `fetchEnvironment*` + `createEnvironmentDeployment` for the
  *     environment lifecycle
  *   - `fetchDeployment*` + `deployDeployment` + `uploadDeploymentSource`
  *     for the deploy flow
- *   - `fetchDeploymentLogs` + `fetchLogList` for log access
+ *   - `fetchLogList` for environment log access
  *   - `fetchSourceControlIntegrations` + `fetchSourceControlRepository`
  *     for source-control discovery
  *
@@ -26,8 +25,15 @@
  * This factory exists primarily for shape uniformity with the recipe
  * surface; it does not add retry, caching, or path-resolution behavior
  * beyond what the underlying functions already do.
+ *
+ * Note: a few deploy operations are intentionally NOT on this interface
+ * because their signatures don't take a `DeployApiClientOptions`:
+ *   - `probeEnvironmentHealth(host, timeoutMs)` — direct HTTP probe by URL
+ *   - `resolveHostFromEnvironment(env)` — pure object accessor
+ *   - `fetchDeploymentLogs(deploymentId, accessToken)` — takes the access
+ *     token directly rather than the full options object
+ * Import these directly from `@sitecoreai-labs/sitecoreai-cli/deploy`.
  */
-import { fetchDeploymentLogs } from "./deployment-logs";
 import {
   cancelDeployment,
   deployDeployment,
@@ -42,8 +48,6 @@ import {
   fetchEnvironment,
   fetchEnvironmentDeployments,
   fetchEnvironments,
-  probeEnvironmentHealth,
-  resolveHostFromEnvironment,
 } from "./environments";
 import { fetchLogList } from "./logs";
 import {
@@ -59,10 +63,7 @@ import {
   fetchProjectEnvironments,
   fetchProjects,
 } from "./projects";
-import {
-  fetchSourceControlIntegrations,
-  fetchSourceControlRepository,
-} from "./source-control";
+import { fetchSourceControlIntegrations, fetchSourceControlRepository } from "./source-control";
 import type { DeployApiClientOptions } from "./common/types";
 
 type Tail<F> = F extends (head: DeployApiClientOptions, ...rest: infer R) => infer X
@@ -91,8 +92,6 @@ export interface DeployApiClient {
   fetchEnvironment: Tail<typeof fetchEnvironment>;
   fetchEnvironmentDeployments: Tail<typeof fetchEnvironmentDeployments>;
   createEnvironmentDeployment: Tail<typeof createEnvironmentDeployment>;
-  probeEnvironmentHealth: Tail<typeof probeEnvironmentHealth>;
-  resolveHostFromEnvironment: Tail<typeof resolveHostFromEnvironment>;
 
   // Deployments
   fetchDeployments: Tail<typeof fetchDeployments>;
@@ -103,46 +102,49 @@ export interface DeployApiClient {
   uploadDeploymentSource: Tail<typeof uploadDeploymentSource>;
 
   // Logs
-  fetchDeploymentLogs: Tail<typeof fetchDeploymentLogs>;
   fetchLogList: Tail<typeof fetchLogList>;
 
   // Source control
-  fetchSourceControlIntegrations: Tail<typeof fetchSourceControlIntegrations>;
+  fetchSourceControlIntegrations: () => ReturnType<typeof fetchSourceControlIntegrations>;
   fetchSourceControlRepository: Tail<typeof fetchSourceControlRepository>;
 }
 
 export const createDeployApiClient = (options: DeployApiClientOptions): DeployApiClient => ({
   options,
 
-  fetchOrganization: (...args) => fetchOrganization(options, ...args),
-  fetchOrganizationHealth: (...args) => fetchOrganizationHealth(options, ...args),
-  fetchOrganizationLicense: (...args) => fetchOrganizationLicense(options, ...args),
-  createOrganizationDemoSolution: (...args) => createOrganizationDemoSolution(options, ...args),
+  fetchOrganization: () => fetchOrganization(options),
+  fetchOrganizationHealth: (orgId) => fetchOrganizationHealth(options, orgId),
+  fetchOrganizationLicense: (orgId) => fetchOrganizationLicense(options, orgId),
+  createOrganizationDemoSolution: () => createOrganizationDemoSolution(options),
 
-  fetchProjects: (...args) => fetchProjects(options, ...args),
-  fetchAllProjects: (...args) => fetchAllProjects(options, ...args),
-  fetchProject: (...args) => fetchProject(options, ...args),
-  createProject: (...args) => createProject(options, ...args),
-  fetchProjectEnvironments: (...args) => fetchProjectEnvironments(options, ...args),
+  fetchProjects: (query) => fetchProjects(options, query),
+  fetchAllProjects: (pageSize) => fetchAllProjects(options, pageSize),
+  fetchProject: (projectId) => fetchProject(options, projectId),
+  createProject: (body) => createProject(options, body),
+  fetchProjectEnvironments: (projectId, query) =>
+    fetchProjectEnvironments(options, projectId, query),
 
-  fetchEnvironments: (...args) => fetchEnvironments(options, ...args),
-  fetchAllEnvironments: (...args) => fetchAllEnvironments(options, ...args),
-  fetchEnvironment: (...args) => fetchEnvironment(options, ...args),
-  fetchEnvironmentDeployments: (...args) => fetchEnvironmentDeployments(options, ...args),
-  createEnvironmentDeployment: (...args) => createEnvironmentDeployment(options, ...args),
-  probeEnvironmentHealth: (...args) => probeEnvironmentHealth(options, ...args),
-  resolveHostFromEnvironment: (...args) => resolveHostFromEnvironment(options, ...args),
+  fetchEnvironments: (query) => fetchEnvironments(options, query),
+  fetchAllEnvironments: (pageSize) => fetchAllEnvironments(options, pageSize),
+  fetchEnvironment: (environmentId) => fetchEnvironment(options, environmentId),
+  fetchEnvironmentDeployments: (environmentId) =>
+    fetchEnvironmentDeployments(options, environmentId),
+  createEnvironmentDeployment: (environmentId, redeploy) =>
+    createEnvironmentDeployment(options, environmentId, redeploy),
 
-  fetchDeployments: (...args) => fetchDeployments(options, ...args),
-  fetchDeployment: (...args) => fetchDeployment(options, ...args),
-  fetchDeploymentStatus: (...args) => fetchDeploymentStatus(options, ...args),
-  deployDeployment: (...args) => deployDeployment(options, ...args),
-  cancelDeployment: (...args) => cancelDeployment(options, ...args),
-  uploadDeploymentSource: (...args) => uploadDeploymentSource(options, ...args),
+  fetchDeployments: (query) => fetchDeployments(options, query),
+  fetchDeployment: (deploymentId) => fetchDeployment(options, deploymentId),
+  fetchDeploymentStatus: (organizationId) => fetchDeploymentStatus(options, organizationId),
+  deployDeployment: (deploymentId, organizationId) =>
+    deployDeployment(options, deploymentId, organizationId),
+  cancelDeployment: (deploymentId, organizationId) =>
+    cancelDeployment(options, deploymentId, organizationId),
+  uploadDeploymentSource: (deploymentId, content) =>
+    uploadDeploymentSource(options, deploymentId, content),
 
-  fetchDeploymentLogs: (...args) => fetchDeploymentLogs(options, ...args),
-  fetchLogList: (...args) => fetchLogList(options, ...args),
+  fetchLogList: (environmentId, latest) => fetchLogList(options, environmentId, latest),
 
-  fetchSourceControlIntegrations: (...args) => fetchSourceControlIntegrations(options, ...args),
-  fetchSourceControlRepository: (...args) => fetchSourceControlRepository(options, ...args),
+  fetchSourceControlIntegrations: () => fetchSourceControlIntegrations(options),
+  fetchSourceControlRepository: (query, organizationId) =>
+    fetchSourceControlRepository(options, query, organizationId),
 });

@@ -18,11 +18,7 @@ export {
   type AcquireAiSkillsTokenOptions,
 } from "./api/auth";
 
-export {
-  requestBrandApi,
-  type BrandApiClientOptions,
-  type BrandApiRequest,
-} from "./api/client";
+export { requestBrandApi, type BrandApiClientOptions, type BrandApiRequest } from "./api/client";
 
 export {
   AI_SKILLS_API_HOST,
@@ -37,3 +33,5 @@ export {
 } from "./api/types";
 
 export { generateBrandReview, type GenerateBrandReviewOptions } from "./review/generate";
+
+export { runAiSkillsLogin, type AiSkillsLoginOptions } from "./tasks/login";

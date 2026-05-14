@@ -150,6 +150,9 @@ describe("public library surface — /brand", () => {
 
     // Brand Review primitive.
     expect(typeof brand.generateBrandReview).toBe("function");
+
+    // Login task.
+    expect(typeof brand.runAiSkillsLogin).toBe("function");
   });
 });
 

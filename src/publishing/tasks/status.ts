@@ -70,7 +70,7 @@ export const runPublishStatus = async (options: RunPublishStatusOptions): Promis
   }
 
   const running = await listPublishJobs(client, {
-    states: ["queued", "running"],
+    statuses: ["Queued", "Running"],
   });
   if (logger.isJson()) {
     process.stdout.write(`${JSON.stringify(running, null, 2)}\n`);

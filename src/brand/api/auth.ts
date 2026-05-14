@@ -14,7 +14,10 @@ import type { AiSkillsCredential } from "@/config/types";
  *
  *   - `ai.org.brd:r`  / `ai.org.brd:w`   — Brand Management read/write
  *   - `ai.org.docs:r` / `ai.org.docs:w`  — Documents read/write
- *   - `ai.orgs.br:gen`                   — Brand Review generate
+ *   - `ai.org.br:gen`                    — Brand Review generate
+ *     (NB: the OpenAPI YAML example shows `ai.orgs.br:gen` with a
+ *     plural `orgs`; verified empirically 2026-05-14 the real scope
+ *     is singular `org`. Docs typo, not a scope-name variant.)
  *   - `ai.org:admin`                     — org-level admin
  *
  * Real-world quirk (verified 2026-05-14): AI APIs keys in Cloud Portal
@@ -27,14 +30,14 @@ import type { AiSkillsCredential } from "@/config/types";
  * token's scope claim against the *minimum scai needs to run the
  * operations it ships today*.
  *
- * Today that minimum is just `ai.orgs.br:gen` (Brand Review). Brand
+ * Today that minimum is just `ai.org.br:gen` (Brand Review). Brand
  * Management primitives, when they land, will lift this to include
  * `ai.org.brd:r` (read) and later `ai.org.brd:w` (write). The login
  * flow stays permissive — it persists any minted credential and tells
  * the operator what's missing — but per-operation calls will refuse
  * if their specific scope isn't present.
  */
-export const AI_SKILLS_REQUIRED_SCOPES = ["ai.orgs.br:gen"] as const;
+export const AI_SKILLS_REQUIRED_SCOPES = ["ai.org.br:gen"] as const;
 
 const NO_CREDENTIAL_HINT =
   "Run `scai login ai-skills --env <env>` to provision the credential, or paste an existing AI APIs key into `aiSkills.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";

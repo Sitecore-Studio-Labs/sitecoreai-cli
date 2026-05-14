@@ -43,7 +43,7 @@ const KNOWN_AI_SKILLS_SCOPES = [
   "ai.org.brd:w",
   "ai.org.docs:r",
   "ai.org.docs:w",
-  "ai.orgs.br:gen",
+  "ai.org.br:gen",
   "ai.org:admin",
 ] as const;
 
@@ -207,7 +207,7 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   }
 
   const grantedScopes = extractScopes(mintResult.accessToken);
-  const hasReviewScope = grantedScopes.includes("ai.orgs.br:gen");
+  const hasReviewScope = grantedScopes.includes("ai.org.br:gen");
   const knownGranted = grantedScopes.filter((s) =>
     (KNOWN_AI_SKILLS_SCOPES as readonly string[]).includes(s)
   );
@@ -291,7 +291,7 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   }
   if (!hasReviewScope) {
     logger.warn(
-      "  → `scai brand review` needs `ai.orgs.br:gen`. Recreate the AI APIs key in Cloud Portal with that scope enabled.",
+      "  → `scai brand review` needs `ai.org.br:gen`. Recreate the AI APIs key in Cloud Portal with that scope enabled.",
       "yellow"
     );
   }

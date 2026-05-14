@@ -46,14 +46,14 @@ describe("brand/api/auth — extractScopes", () => {
 describe("brand/api/auth — hasAiSkillsScopes", () => {
   it("returns true when the required scope (Brand Review generate) is present", () => {
     const token = makeJwt({
-      scope: "ai.org.brd:r ai.orgs.br:gen ai.org:admin",
+      scope: "ai.org.brd:r ai.org.br:gen ai.org:admin",
     });
     expect(hasAiSkillsScopes(token)).toBe(true);
   });
 
   it("returns false when the Brand Review generate scope is missing", () => {
     const token = makeJwt({
-      scope: "ai.org.brd:r ai.org.brd:w ai.org:admin", // no ai.orgs.br:gen
+      scope: "ai.org.brd:r ai.org.brd:w ai.org:admin", // no ai.org.br:gen
     });
     expect(hasAiSkillsScopes(token)).toBe(false);
   });
@@ -74,9 +74,11 @@ describe("brand/api/auth — hasAiSkillsScopes", () => {
 describe("brand/api/auth — AI_SKILLS_REQUIRED_SCOPES", () => {
   it("matches what scai actually needs for the operations it ships today (Brand Review only)", () => {
     // scai ships only Brand Review today; the minimum required scope
-    // is `ai.orgs.br:gen`. When Brand Management primitives land,
+    // is `ai.org.br:gen` (singular `org` — verified empirically
+    // 2026-05-14; the Sitecore OpenAPI docs example shows `ai.orgs`
+    // with a plural typo). When Brand Management primitives land,
     // they will lift this set to include `ai.org.brd:r/w`. The test
     // is the gate — bump it intentionally when adding operations.
-    expect([...AI_SKILLS_REQUIRED_SCOPES]).toEqual(["ai.orgs.br:gen"]);
+    expect([...AI_SKILLS_REQUIRED_SCOPES]).toEqual(["ai.org.br:gen"]);
   });
 });

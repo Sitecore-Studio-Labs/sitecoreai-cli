@@ -33,10 +33,7 @@ const setup = (
     timeoutMs: undefined,
   });
   const fieldsMap = new Map(
-    items.map((it) => [
-      it.id,
-      (it.fields ?? []).map((f) => ({ fieldId: "f1", ...f })),
-    ])
+    items.map((it) => [it.id, (it.fields ?? []).map((f) => ({ fieldId: "f1", ...f }))])
   );
   const updateItemFields = vi.fn().mockResolvedValue(undefined);
   const renameItem = vi.fn().mockResolvedValue(undefined);
@@ -122,9 +119,7 @@ describe("audit empty-links", () => {
 
 describe("cleanup field-set", () => {
   it("mode=replace overwrites the field value", async () => {
-    const { updateItemFields } = setup([
-      { id: "a", fields: [{ name: "Status", value: "draft" }] },
-    ]);
+    const { updateItemFields } = setup([{ id: "a", fields: [{ name: "Status", value: "draft" }] }]);
     const actions = await runCleanupFieldSet({
       field: "Status",
       value: "live",
@@ -188,8 +183,7 @@ describe("cleanup field-set", () => {
         fields: [
           {
             name: "Tags",
-            value:
-              "{11111111-1111-1111-1111-111111111111}|{22222222-2222-2222-2222-222222222222}",
+            value: "{11111111-1111-1111-1111-111111111111}|{22222222-2222-2222-2222-222222222222}",
           },
         ],
       },
@@ -222,9 +216,7 @@ describe("cleanup field-set", () => {
   });
 
   it("--what-if reports plan without writing", async () => {
-    const { updateItemFields } = setup([
-      { id: "a", fields: [{ name: "Status", value: "draft" }] },
-    ]);
+    const { updateItemFields } = setup([{ id: "a", fields: [{ name: "Status", value: "draft" }] }]);
     const actions = await runCleanupFieldSet({
       field: "Status",
       value: "live",

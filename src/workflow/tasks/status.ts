@@ -52,9 +52,7 @@ export const runWorkflowStatus = async (
 
   const lines: string[] = [];
   for (const w of statistics.workflows ?? []) {
-    const states = (w.states ?? [])
-      .map((s) => `${s.name ?? "?"}: ${s.pageCount ?? 0}`)
-      .join(", ");
+    const states = (w.states ?? []).map((s) => `${s.name ?? "?"}: ${s.pageCount ?? 0}`).join(", ");
     lines.push(`${w.name ?? "?"} — ${states || "(no states)"}`);
   }
   if (lines.length === 0) {

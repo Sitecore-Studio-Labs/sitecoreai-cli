@@ -65,10 +65,7 @@ export const createWebhookCreateCommand = (): Command => {
       "--parent-path <path>",
       "Override parent path for item/publish handlers (default: /sitecore/system/Webhooks)"
     )
-    .option(
-      "--disabled",
-      "Create the handler disabled (default: enabled)"
-    )
+    .option("--disabled", "Create the handler disabled (default: enabled)")
     .action(async (options: Record<string, unknown>) => {
       const enabled = options.disabled === true ? false : undefined;
       await runWebhookCreate({

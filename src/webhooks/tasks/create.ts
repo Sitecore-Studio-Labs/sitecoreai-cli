@@ -70,9 +70,8 @@ export interface WebhookCreateResult {
   };
 }
 
-const isItemOrPublishFlavor = (
-  event: WebhookCreateOptions["event"]
-): event is "item" | "publish" => event === "item" || event === "publish";
+const isItemOrPublishFlavor = (event: WebhookCreateOptions["event"]): event is "item" | "publish" =>
+  event === "item" || event === "publish";
 
 export const runWebhookCreate = async (
   options: WebhookCreateOptions
@@ -152,9 +151,7 @@ export const runWebhookCreate = async (
       command: "webhook.create",
       envName,
       result,
-      humanLines: [
-        `Created webhook '${handler.name}' (${handler.itemId}) at ${handler.path}.`,
-      ],
+      humanLines: [`Created webhook '${handler.name}' (${handler.itemId}) at ${handler.path}.`],
     });
     return result;
   }

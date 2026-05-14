@@ -64,9 +64,7 @@ const setup = (params: {
   }
   const client = {
     search: vi.fn().mockImplementation(async (input: { searchStatement?: unknown }) => {
-      const stmt = input.searchStatement as
-        | { criteria?: { value?: string } }
-        | undefined;
+      const stmt = input.searchStatement as { criteria?: { value?: string } } | undefined;
       const itemId = stmt?.criteria?.value;
       // +1 because the audit subtracts 1 to exclude the item itself.
       const total = itemId ? (counts[itemId] ?? 0) + 1 : 0;
@@ -233,14 +231,12 @@ describe("audit site-residue", () => {
       deleteArchivedItem: vi.fn(),
       archiveVersion: vi.fn(),
       listItemTemplates: vi.fn(),
-      getChildren: vi
-        .fn()
-        .mockImplementation(async (selector: { path?: string }) => {
-          if (selector.path === "/sitecore/templates/Project") {
-            throw new Error("network burp");
-          }
-          return [];
-        }),
+      getChildren: vi.fn().mockImplementation(async (selector: { path?: string }) => {
+        if (selector.path === "/sitecore/templates/Project") {
+          throw new Error("network burp");
+        }
+        return [];
+      }),
       updateItemFields: vi.fn(),
       listUsers: vi.fn(),
       listRoles: vi.fn(),

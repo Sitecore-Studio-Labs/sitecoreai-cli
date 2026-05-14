@@ -3,13 +3,7 @@
     "scai": {
       "type": "stdio",
       "command": "node",
-      "args": [
-        "dist/cli.js",
-        "mcp",
-        "serve",
-        "--environment-name",
-        "test"
-      ],
+      "args": ["dist/cli.js", "mcp", "serve", "--environment-name", "test"],
       "env": {
         "SITECOREAI_AUTO_WIZARD": "0"
       }

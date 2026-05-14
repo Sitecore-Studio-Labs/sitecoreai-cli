@@ -86,8 +86,7 @@ export const createWebhookTemplateResolver = (
         `Could not resolve the ${label} template at '${path}'.`,
         "ENV_NOT_FOUND",
         {
-          hint:
-            "Verify the path exists on the target tenant. XM Cloud ships this template in base content; if it's missing, the tenant may be on an older version or the path was customized.",
+          hint: "Verify the path exists on the target tenant. XM Cloud ships this template in base content; if it's missing, the tenant may be on an older version or the path was customized.",
         }
       );
     }
@@ -109,13 +108,9 @@ export const createWebhookTemplateResolver = (
         const path = `${root}/${name}`;
         const id = await resolveItemIdByPath(path);
         if (!id) {
-          throw createScaiError(
-            `Unknown webhook event type '${name}'.`,
-            "INPUT_INVALID",
-            {
-              hint: `Expected a catalog item at '${path}'. Check '/sitecore/system/Settings/Webhooks/Event Types' on the tenant for the correct event name.`,
-            }
-          );
+          throw createScaiError(`Unknown webhook event type '${name}'.`, "INPUT_INVALID", {
+            hint: `Expected a catalog item at '${path}'. Check '/sitecore/system/Settings/Webhooks/Event Types' on the tenant for the correct event name.`,
+          });
         }
         ids.push(id);
       }

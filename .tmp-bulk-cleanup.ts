@@ -16,53 +16,181 @@
  *     (auto-generated names with hash suffixes — recipe-test residue)
  *   - Cards / Lists / Layout / UI under /sitecore/layout/Renderings/Project/demo-registry
  */
-import {
-  resolveTenant,
-  scanItemsAndFields,
-  extractInternalRefs,
-} from "@/hygiene/tasks/shared";
+import { resolveTenant, scanItemsAndFields, extractInternalRefs } from "@/hygiene/tasks/shared";
 
 type Candidate = { name: string; itemId: string; path: string };
 
 const STAGE_1: Candidate[] = [
   // ui — site collection (user confirmed)
-  { name: "ui (templates)", itemId: "77b59280ee684047a8951fcb4044dec8", path: "/sitecore/templates/Project/ui" },
-  { name: "ui (renderings)", itemId: "100acba7e182467f8f5b29ae39925d19", path: "/sitecore/layout/Renderings/Project/ui" },
+  {
+    name: "ui (templates)",
+    itemId: "77b59280ee684047a8951fcb4044dec8",
+    path: "/sitecore/templates/Project/ui",
+  },
+  {
+    name: "ui (renderings)",
+    itemId: "100acba7e182467f8f5b29ae39925d19",
+    path: "/sitecore/layout/Renderings/Project/ui",
+  },
   // FooterSocialTpl* family (9 items under demo-registry templates)
-  { name: "FooterSocialTplP4divlkrx", itemId: "88a17056947748edb0747121aff0b0dc", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4divlkrx" },
-  { name: "FooterSocialTplP4foq11", itemId: "3c5594eb3c204c509bbbde76c271f8f5", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4foq11" },
-  { name: "FooterSocialTplP4lantj3", itemId: "c907ebe98c574ba09c7d953c789556ba", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4lantj3" },
-  { name: "FooterSocialTplP4mom2hq1h2sy", itemId: "daf244f5bec54e15b5b05073105dc1cd", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom2hq1h2sy" },
-  { name: "FooterSocialTplP4mom2wopo0dg", itemId: "88c19044aa8540d983aac9b4fe43f5be", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom2wopo0dg" },
-  { name: "FooterSocialTplP4mom31e2r0m8", itemId: "c53b014522b34a37be095e8a9a3cf7b0", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom31e2r0m8" },
-  { name: "FooterSocialTplP4momnqt8p3ex", itemId: "78c49ba329374f2bb627b34f63b4fb46", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4momnqt8p3ex" },
-  { name: "FooterSocialTplP4momntiy55rx", itemId: "247358feaec340838b6b2c19f3ccddd9", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4momntiy55rx" },
-  { name: "FooterSocialTplP4rmom2cxew", itemId: "9a6d4433e6634470b262ff35d009c177", path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4rmom2cxew" },
+  {
+    name: "FooterSocialTplP4divlkrx",
+    itemId: "88a17056947748edb0747121aff0b0dc",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4divlkrx",
+  },
+  {
+    name: "FooterSocialTplP4foq11",
+    itemId: "3c5594eb3c204c509bbbde76c271f8f5",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4foq11",
+  },
+  {
+    name: "FooterSocialTplP4lantj3",
+    itemId: "c907ebe98c574ba09c7d953c789556ba",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4lantj3",
+  },
+  {
+    name: "FooterSocialTplP4mom2hq1h2sy",
+    itemId: "daf244f5bec54e15b5b05073105dc1cd",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom2hq1h2sy",
+  },
+  {
+    name: "FooterSocialTplP4mom2wopo0dg",
+    itemId: "88c19044aa8540d983aac9b4fe43f5be",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom2wopo0dg",
+  },
+  {
+    name: "FooterSocialTplP4mom31e2r0m8",
+    itemId: "c53b014522b34a37be095e8a9a3cf7b0",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4mom31e2r0m8",
+  },
+  {
+    name: "FooterSocialTplP4momnqt8p3ex",
+    itemId: "78c49ba329374f2bb627b34f63b4fb46",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4momnqt8p3ex",
+  },
+  {
+    name: "FooterSocialTplP4momntiy55rx",
+    itemId: "247358feaec340838b6b2c19f3ccddd9",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4momntiy55rx",
+  },
+  {
+    name: "FooterSocialTplP4rmom2cxew",
+    itemId: "9a6d4433e6634470b262ff35d009c177",
+    path: "/sitecore/templates/Project/demo-registry/FooterSocialTplP4rmom2cxew",
+  },
   // NavLinkTpl* family
-  { name: "NavLinkTplP4divlkrx", itemId: "f18b2efad414472aa9eb3ee4e3253b05", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4divlkrx" },
-  { name: "NavLinkTplP4foq11", itemId: "76513d9be53f4116bb6dc6bb42a5af8a", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4foq11" },
-  { name: "NavLinkTplP4lantj3", itemId: "7b7484cdf27d444682a79a5ba4b51e6c", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4lantj3" },
-  { name: "NavLinkTplP4mom2hq1h2sy", itemId: "2a930621f2434e3aab079a211b396363", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom2hq1h2sy" },
-  { name: "NavLinkTplP4mom2wopo0dg", itemId: "79a9ace28fdd4ec8b6a22f9ec7bb787e", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom2wopo0dg" },
-  { name: "NavLinkTplP4mom31e2r0m8", itemId: "f025d7b5290f4538ad7f4f737cfdc36e", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom31e2r0m8" },
-  { name: "NavLinkTplP4momnqt8p3ex", itemId: "a21edaa1037e481b816dd87e91366b5f", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4momnqt8p3ex" },
-  { name: "NavLinkTplP4momntiy55rx", itemId: "61f7f850433245e2a12cf253e5115e77", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4momntiy55rx" },
-  { name: "NavLinkTplP4rmom2cxew", itemId: "22d65973d4984500960f9d66f4bc9dd2", path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4rmom2cxew" },
+  {
+    name: "NavLinkTplP4divlkrx",
+    itemId: "f18b2efad414472aa9eb3ee4e3253b05",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4divlkrx",
+  },
+  {
+    name: "NavLinkTplP4foq11",
+    itemId: "76513d9be53f4116bb6dc6bb42a5af8a",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4foq11",
+  },
+  {
+    name: "NavLinkTplP4lantj3",
+    itemId: "7b7484cdf27d444682a79a5ba4b51e6c",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4lantj3",
+  },
+  {
+    name: "NavLinkTplP4mom2hq1h2sy",
+    itemId: "2a930621f2434e3aab079a211b396363",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom2hq1h2sy",
+  },
+  {
+    name: "NavLinkTplP4mom2wopo0dg",
+    itemId: "79a9ace28fdd4ec8b6a22f9ec7bb787e",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom2wopo0dg",
+  },
+  {
+    name: "NavLinkTplP4mom31e2r0m8",
+    itemId: "f025d7b5290f4538ad7f4f737cfdc36e",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4mom31e2r0m8",
+  },
+  {
+    name: "NavLinkTplP4momnqt8p3ex",
+    itemId: "a21edaa1037e481b816dd87e91366b5f",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4momnqt8p3ex",
+  },
+  {
+    name: "NavLinkTplP4momntiy55rx",
+    itemId: "61f7f850433245e2a12cf253e5115e77",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4momntiy55rx",
+  },
+  {
+    name: "NavLinkTplP4rmom2cxew",
+    itemId: "22d65973d4984500960f9d66f4bc9dd2",
+    path: "/sitecore/templates/Project/demo-registry/NavLinkTplP4rmom2cxew",
+  },
   // NavListTpl* family
-  { name: "NavListTplP4divlkrx", itemId: "63601a7dabf140f7beb85f46d05ee9df", path: "/sitecore/templates/Project/demo-registry/NavListTplP4divlkrx" },
-  { name: "NavListTplP4foq11", itemId: "ff499957a9ee4c09899066c8ff8a9ebf", path: "/sitecore/templates/Project/demo-registry/NavListTplP4foq11" },
-  { name: "NavListTplP4lantj3", itemId: "4e144ef7f24a4c0aacd0495bfb5cbef6", path: "/sitecore/templates/Project/demo-registry/NavListTplP4lantj3" },
-  { name: "NavListTplP4mom2hq1h2sy", itemId: "9091c25dfe4342c388a9462db833c0a2", path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom2hq1h2sy" },
-  { name: "NavListTplP4mom2wopo0dg", itemId: "5c102a5242864c6396fa6cb9ef56f596", path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom2wopo0dg" },
-  { name: "NavListTplP4mom31e2r0m8", itemId: "8af74e4c9e7d4b3590fb767b40636452", path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom31e2r0m8" },
-  { name: "NavListTplP4momnqt8p3ex", itemId: "19879e37e7e94bb7a6f44d43173cc1cd", path: "/sitecore/templates/Project/demo-registry/NavListTplP4momnqt8p3ex" },
-  { name: "NavListTplP4momntiy55rx", itemId: "f60865e727f54cf08ea28e09e96794aa", path: "/sitecore/templates/Project/demo-registry/NavListTplP4momntiy55rx" },
-  { name: "NavListTplP4rmom2cxew", itemId: "031db11b207041bf8b0e8e46c5a5e0db", path: "/sitecore/templates/Project/demo-registry/NavListTplP4rmom2cxew" },
+  {
+    name: "NavListTplP4divlkrx",
+    itemId: "63601a7dabf140f7beb85f46d05ee9df",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4divlkrx",
+  },
+  {
+    name: "NavListTplP4foq11",
+    itemId: "ff499957a9ee4c09899066c8ff8a9ebf",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4foq11",
+  },
+  {
+    name: "NavListTplP4lantj3",
+    itemId: "4e144ef7f24a4c0aacd0495bfb5cbef6",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4lantj3",
+  },
+  {
+    name: "NavListTplP4mom2hq1h2sy",
+    itemId: "9091c25dfe4342c388a9462db833c0a2",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom2hq1h2sy",
+  },
+  {
+    name: "NavListTplP4mom2wopo0dg",
+    itemId: "5c102a5242864c6396fa6cb9ef56f596",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom2wopo0dg",
+  },
+  {
+    name: "NavListTplP4mom31e2r0m8",
+    itemId: "8af74e4c9e7d4b3590fb767b40636452",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4mom31e2r0m8",
+  },
+  {
+    name: "NavListTplP4momnqt8p3ex",
+    itemId: "19879e37e7e94bb7a6f44d43173cc1cd",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4momnqt8p3ex",
+  },
+  {
+    name: "NavListTplP4momntiy55rx",
+    itemId: "f60865e727f54cf08ea28e09e96794aa",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4momntiy55rx",
+  },
+  {
+    name: "NavListTplP4rmom2cxew",
+    itemId: "031db11b207041bf8b0e8e46c5a5e0db",
+    path: "/sitecore/templates/Project/demo-registry/NavListTplP4rmom2cxew",
+  },
   // Cards / Lists / Layout / UI under demo-registry renderings
-  { name: "Cards (demo-registry renderings)", itemId: "746f553968354d6c8c3e58e286373eef", path: "/sitecore/layout/Renderings/Project/demo-registry/Cards" },
-  { name: "Layout (demo-registry renderings)", itemId: "7205e36af8dd417cb1f9dbe09047cd19", path: "/sitecore/layout/Renderings/Project/demo-registry/Layout" },
-  { name: "UI (demo-registry renderings)", itemId: "e14453c360bf45ffae22f5b91a714403", path: "/sitecore/layout/Renderings/Project/demo-registry/UI" },
-  { name: "Lists (demo-registry renderings)", itemId: "6b17267365394680870d45c16a397720", path: "/sitecore/layout/Renderings/Project/demo-registry/Lists" },
+  {
+    name: "Cards (demo-registry renderings)",
+    itemId: "746f553968354d6c8c3e58e286373eef",
+    path: "/sitecore/layout/Renderings/Project/demo-registry/Cards",
+  },
+  {
+    name: "Layout (demo-registry renderings)",
+    itemId: "7205e36af8dd417cb1f9dbe09047cd19",
+    path: "/sitecore/layout/Renderings/Project/demo-registry/Layout",
+  },
+  {
+    name: "UI (demo-registry renderings)",
+    itemId: "e14453c360bf45ffae22f5b91a714403",
+    path: "/sitecore/layout/Renderings/Project/demo-registry/UI",
+  },
+  {
+    name: "Lists (demo-registry renderings)",
+    itemId: "6b17267365394680870d45c16a397720",
+    path: "/sitecore/layout/Renderings/Project/demo-registry/Lists",
+  },
 ];
 
 // Active site content paths — anything we delete must not be a templateId
@@ -142,9 +270,14 @@ const main = async () => {
     }
     if (conflicts.length > 0) {
       blocked.push({ ...c, conflict: conflicts });
-      console.log(`  ✗ ${c.name}: ${conflicts.length} subtree items are used as templates by active content`);
+      console.log(
+        `  ✗ ${c.name}: ${conflicts.length} subtree items are used as templates by active content`
+      );
     } else {
-      safeToDelete.push({ ...c, reason: `${subtree.scanned.length} items in subtree, none used by active content` });
+      safeToDelete.push({
+        ...c,
+        reason: `${subtree.scanned.length} items in subtree, none used by active content`,
+      });
       console.log(`  ✓ ${c.name}: safe (${subtree.scanned.length} items in subtree)`);
     }
   }
@@ -153,7 +286,9 @@ const main = async () => {
   // For each candidate that's a rendering (path under /sitecore/layout/Renderings/Project/),
   // scan all active content fields for GUID refs matching the rendering subtree itemIds.
   console.log("\n=== Reference scan (renderings → active content) ===");
-  const renderingCandidates = safeToDelete.filter((c) => c.path.startsWith("/sitecore/layout/Renderings/Project/"));
+  const renderingCandidates = safeToDelete.filter((c) =>
+    c.path.startsWith("/sitecore/layout/Renderings/Project/")
+  );
   if (renderingCandidates.length > 0) {
     const renderingIds = new Set<string>();
     const idsByCandidate = new Map<string, Set<string>>();
@@ -175,7 +310,9 @@ const main = async () => {
       }
       idsByCandidate.set(c.itemId, ids);
     }
-    console.log(`  Scanning active content fields for references to ${renderingIds.size} rendering itemIds…`);
+    console.log(
+      `  Scanning active content fields for references to ${renderingIds.size} rendering itemIds…`
+    );
     let foundRefs = 0;
     for (const root of ACTIVE_CONTENT_ROOTS) {
       const { scanned, fieldsByItemId } = await scanItemsAndFields({
@@ -207,7 +344,8 @@ const main = async () => {
         }
       }
     }
-    if (foundRefs === 0) console.log("  ✓ No references to rendering candidates from active content");
+    if (foundRefs === 0)
+      console.log("  ✓ No references to rendering candidates from active content");
   }
 
   // ===== Step 5: print summary and execute =====
@@ -216,7 +354,8 @@ const main = async () => {
   for (const c of safeToDelete) console.log(`  ${c.itemId}  ${c.path}  — ${c.reason ?? ""}`);
   if (blocked.length > 0) {
     console.log(`Blocked: ${blocked.length}`);
-    for (const c of blocked) console.log(`  ${c.itemId}  ${c.path}  (${c.conflict.length} conflicts)`);
+    for (const c of blocked)
+      console.log(`  ${c.itemId}  ${c.path}  (${c.conflict.length} conflicts)`);
   }
 
   console.log("\n=== Executing deletes ===");

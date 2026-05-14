@@ -7,7 +7,7 @@ const tsPlugin = require("@typescript-eslint/eslint-plugin");
 module.exports = [
   js.configs.recommended,
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "*.tgz"],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "*.tgz", ".tmp-*"],
   },
   {
     files: ["**/*.{ts,tsx,js,cjs,mjs}"],

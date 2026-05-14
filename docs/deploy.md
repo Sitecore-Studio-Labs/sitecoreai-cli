@@ -20,15 +20,15 @@ auth surface.
 
 ## Aliases
 
-| Alias                  | Resolves to             |
-| ---------------------- | ----------------------- |
-| `deploy org`           | `deploy organizations`  |
-| `deploy proj`          | `deploy projects`       |
-| `deploy env`           | `deploy environments`   |
-| `deploy sc`            | `deploy source-control` |
-| `deploy dep`           | `deploy deployments`    |
-| `deploy log`           | `deploy logs`           |
-| `deploy eh`            | `deploy editing-host`   |
+| Alias         | Resolves to             |
+| ------------- | ----------------------- |
+| `deploy org`  | `deploy organizations`  |
+| `deploy proj` | `deploy projects`       |
+| `deploy env`  | `deploy environments`   |
+| `deploy sc`   | `deploy source-control` |
+| `deploy dep`  | `deploy deployments`    |
+| `deploy log`  | `deploy logs`           |
+| `deploy eh`   | `deploy editing-host`   |
 
 ## Selection rules
 

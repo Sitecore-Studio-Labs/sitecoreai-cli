@@ -215,7 +215,7 @@ carry the publishing grants.
 - Required scopes (tenant-tier, on env-level automation clients):
   - `xmcpub.jobs.t:r` — read publishing jobs
   - `xmcpub.jobs.t:w` — create / cancel publishing jobs
-  - `xmcpub.queue:r`  — read the publish queue
+  - `xmcpub.queue:r` — read the publish queue
 - Audience: `https://api.sitecorecloud.io` (the standard Sitecore
   Cloud API audience).
 - The api-docs page also lists `.a` admin-tier variants

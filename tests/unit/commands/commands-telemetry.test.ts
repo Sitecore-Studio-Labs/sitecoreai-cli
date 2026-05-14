@@ -4,9 +4,7 @@ import { createTelemetryCommand } from "../../../src/commands/telemetry";
 
 describe("telemetry command", () => {
   it("prints telemetry status as json", async () => {
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     process.env.SITECOREAI_TELEMETRY = "1";
 
     const command = createTelemetryCommand();

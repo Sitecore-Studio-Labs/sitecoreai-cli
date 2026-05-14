@@ -149,9 +149,9 @@ describe("runWorkflowAssigned", () => {
 
   it("forwards the stateId and option overrides to the client", async () => {
     const client = stubClient({
-      searchItemsByWorkflowState: vi.fn().mockResolvedValue([
-        { itemId: "a", path: "/x", templateName: "Page", updatedDate: null },
-      ]),
+      searchItemsByWorkflowState: vi
+        .fn()
+        .mockResolvedValue([{ itemId: "a", path: "/x", templateName: "Page", updatedDate: null }]),
     });
     installClient(client);
 

@@ -117,9 +117,7 @@ vi.mock("../../../../src/shared/env", () => ({
   })),
 }));
 
-const writeAuditOutputMock = vi.hoisted(() =>
-  vi.fn(() => "{}")
-);
+const writeAuditOutputMock = vi.hoisted(() => vi.fn(() => "{}"));
 vi.mock("../../../../src/hygiene/output-adapters", () => ({
   writeAuditOutput: writeAuditOutputMock,
 }));
@@ -143,10 +141,7 @@ describe("runAuditAll", () => {
     expect(subAuditMocks.runAuditSlugConflicts).toHaveBeenCalledTimes(1);
     expect(subAuditMocks.runAuditMissingMeta).toHaveBeenCalledTimes(1);
 
-    for (const mock of [
-      subAuditMocks.runAuditSlugConflicts,
-      subAuditMocks.runAuditMissingMeta,
-    ]) {
+    for (const mock of [subAuditMocks.runAuditSlugConflicts, subAuditMocks.runAuditMissingMeta]) {
       const subOptions = mock.mock.calls[0][0] as {
         output?: unknown;
         format?: unknown;

@@ -9,9 +9,7 @@ describe("history command", () => {
   it("prints the history path as json", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
     const historyPath = path.join(tmpDir, "history.log");
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([
@@ -97,9 +95,7 @@ describe("history command", () => {
       `{"timestamp":"1","event":"start","command":"scai status"}\nnot-json\n`,
       "utf8"
     );
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([

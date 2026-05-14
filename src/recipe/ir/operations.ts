@@ -163,10 +163,7 @@ export const CreateItemOpSchema = z.object({
    *     ref-path parents: a single `getItemsByPaths` batch lookup
    *     before planning.
    */
-  templateOf: z.union([
-    GUID,
-    z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
-  ]),
+  templateOf: z.union([GUID, z.object({ kind: z.literal("ref-path"), value: NON_EMPTY })]),
   name: NON_EMPTY,
   fields: z.array(FieldValueSchema),
 });

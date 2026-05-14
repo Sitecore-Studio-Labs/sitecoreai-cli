@@ -25,7 +25,4 @@ export {
   EVENT_TYPE_ITEM_ROOT,
   EVENT_TYPE_PUBLISH_ROOT,
 } from "./templates";
-export {
-  runWebhookAuthoringGraphQL,
-  type WebhookRequestOptions,
-} from "./graphql";
+export { runWebhookAuthoringGraphQL, type WebhookRequestOptions } from "./graphql";

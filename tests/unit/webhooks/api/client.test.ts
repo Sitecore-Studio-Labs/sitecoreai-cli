@@ -295,7 +295,9 @@ describe("webhook client — createWorkflowSubmitAction", () => {
     });
 
     const body = lastFetchBody(fetchMock);
-    expect((body.variables as { input: { templateId: string; parent: string } }).input).toMatchObject({
+    expect(
+      (body.variables as { input: { templateId: string; parent: string } }).input
+    ).toMatchObject({
       templateId: "tmpl-submit",
       parent: "/sitecore/system/Workflows/Sample/Draft/Actions",
     });
@@ -304,9 +306,9 @@ describe("webhook client — createWorkflowSubmitAction", () => {
 
 describe("webhook client — deleteWebhookItem", () => {
   it("emits a deleteItem mutation by itemId", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      okResponse({ data: { deleteItem: { successful: true } } })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { deleteItem: { successful: true } } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createWebhookApiClient({ environment: baseEnv });
@@ -320,9 +322,9 @@ describe("webhook client — deleteWebhookItem", () => {
   });
 
   it("throws when deleteItem returns successful=false", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      okResponse({ data: { deleteItem: { successful: false } } })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { deleteItem: { successful: false } } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createWebhookApiClient({ environment: baseEnv });

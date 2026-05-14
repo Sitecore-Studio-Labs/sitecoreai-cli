@@ -10,15 +10,10 @@ export const createWorkflowAssignedCommand = (): Command => {
       "--field <name>",
       "Override the search field (default: '__workflow state'; some tenants use '__workflow_state')"
     )
-    .option(
-      "--index <name>",
-      "Override the search index (default: sitecore_master_index)"
-    )
+    .option("--index <name>", "Override the search index (default: sitecore_master_index)")
     .option("--limit <count>", "Cap on items returned (default: 500)", (v) => parseInt(v, 10))
-    .option(
-      "--page-size <count>",
-      "Search backend page size (default: 100)",
-      (v) => parseInt(v, 10)
+    .option("--page-size <count>", "Search backend page size (default: 100)", (v) =>
+      parseInt(v, 10)
     )
     .action(async (options: Record<string, unknown>) => {
       await runWorkflowAssigned(options as never);

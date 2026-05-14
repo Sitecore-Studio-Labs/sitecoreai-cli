@@ -44,9 +44,7 @@ describe("Logger", () => {
 
   it("emits JSON payloads directly to stdout without consola prefix", () => {
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const logger = new Logger(false, false, true, false);
 
     logger.json({ ok: true });

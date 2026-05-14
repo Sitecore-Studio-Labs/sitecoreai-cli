@@ -105,9 +105,7 @@ export const runAuditEmptyLinks = async (
   const logger = toLogger(options);
   const { envName, client } = resolveTenant(options);
   const root = options.root ?? "/sitecore/content";
-  const templateRegex = options.templatePattern
-    ? new RegExp(options.templatePattern, "i")
-    : null;
+  const templateRegex = options.templatePattern ? new RegExp(options.templatePattern, "i") : null;
 
   const { scanned, fieldsByItemId, cache } = await scanItemsAndFields({
     client,
@@ -154,9 +152,7 @@ export const runAuditEmptyLinks = async (
         // "PrimaryCTA" / "BaseUrl" / "HeroLink" without false-positive matching against
         // "Surl" or "Blinking". A separator (start-of-string, [A-Z_-]) at the head
         // prevents matching mid-word.
-        /(?:^|[A-Z_-])(link|cta|calltoaction|call-to-action|url|href)$/i.test(
-          field.name
-        ) &&
+        /(?:^|[A-Z_-])(link|cta|calltoaction|call-to-action|url|href)$/i.test(field.name) &&
         value.trim().length === 0
       ) {
         offending.push({ fieldName: field.name, reason: "no-link-tag" });

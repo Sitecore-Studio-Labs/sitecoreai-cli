@@ -70,8 +70,7 @@ describe("Phase 5 Milestone E — multi-brand SiteRecipe round-trip", () => {
   const cmHost = getEnv("RECIPE_TEST_CM_HOST") ?? DEFAULTS.cmHost;
   const templatesRoot = getEnv("RECIPE_TEST_TEMPLATES_ROOT") ?? DEFAULTS.templatesRoot;
   const renderingsRoot = getEnv("RECIPE_TEST_RENDERINGS_ROOT") ?? DEFAULTS.renderingsRoot;
-  const siteTemplatesRoot =
-    getEnv("RECIPE_TEST_SITE_TEMPLATES_ROOT") ?? DEFAULTS.siteTemplatesRoot;
+  const siteTemplatesRoot = getEnv("RECIPE_TEST_SITE_TEMPLATES_ROOT") ?? DEFAULTS.siteTemplatesRoot;
   const existingCollectionId = getEnv("RECIPE_TEST_COLLECTION_ID");
 
   const compileContext: CompileContext = {
@@ -178,7 +177,7 @@ describe("Phase 5 Milestone E — multi-brand SiteRecipe round-trip", () => {
         if (found?.id) createdSiteIds.push(found.id);
       }
     },
-    PUSH_TIMEOUT_MS,
+    PUSH_TIMEOUT_MS
   );
 
   it(
@@ -198,16 +197,14 @@ describe("Phase 5 Milestone E — multi-brand SiteRecipe round-trip", () => {
           sitesClient,
         });
         expect(result.aborted, `${ir.recipeHandle} aborted on re-push`).toBe(false);
-        expect(
-          result.summary.create,
-          `${ir.recipeHandle} should report 0 creates on re-push`,
-        ).toBe(0);
-        expect(
-          result.summary.update,
-          `${ir.recipeHandle} should report 0 updates on re-push`,
-        ).toBe(0);
+        expect(result.summary.create, `${ir.recipeHandle} should report 0 creates on re-push`).toBe(
+          0
+        );
+        expect(result.summary.update, `${ir.recipeHandle} should report 0 updates on re-push`).toBe(
+          0
+        );
       }
     },
-    PUSH_TIMEOUT_MS,
+    PUSH_TIMEOUT_MS
   );
 });

@@ -38,11 +38,7 @@ export const fetchAllProjects = async (
       PageNumber: pageNumber,
       PageSize: pageSize,
     })) as DeployProject[] | { data?: DeployProject[]; totalCount?: number };
-    const data = Array.isArray(page)
-      ? page
-      : Array.isArray(page?.data)
-        ? page.data
-        : [];
+    const data = Array.isArray(page) ? page : Array.isArray(page?.data) ? page.data : [];
     if (!Array.isArray(page) && typeof page?.totalCount === "number") {
       totalCount = page.totalCount;
     }
@@ -124,11 +120,7 @@ export const fetchProjectEnvironments = async (
   // lookup that needs to find a specific environment by name/id — the
   // Deploy API paginates this endpoint at 10 by default and a project
   // with >10 environments will otherwise produce false "not found"s.
-  deployRequest<DeployEnvironment[]>(
-    options,
-    `/api/projects/v2/${projectId}/environments`,
-    query
-  );
+  deployRequest<DeployEnvironment[]>(options, `/api/projects/v2/${projectId}/environments`, query);
 
 export type FetchAllProjectEnvironmentsResult = {
   totalCount?: number;
@@ -149,11 +141,7 @@ export const fetchAllProjectEnvironments = async (
       PageNumber: pageNumber,
       PageSize: pageSize,
     })) as DeployEnvironment[] | { data?: DeployEnvironment[]; totalCount?: number };
-    const data = Array.isArray(page)
-      ? page
-      : Array.isArray(page?.data)
-        ? page.data
-        : [];
+    const data = Array.isArray(page) ? page : Array.isArray(page?.data) ? page.data : [];
     if (!Array.isArray(page) && typeof page?.totalCount === "number") {
       totalCount = page.totalCount;
     }

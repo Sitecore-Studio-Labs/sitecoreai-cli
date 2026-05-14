@@ -61,9 +61,7 @@ export interface SitesApiClient {
  * surface. The `options` arg carries the OAuth-resolved auth header and
  * base URL; the underlying `sitesRequest` re-uses these per call.
  */
-export const createSitesApiClient = (
-  options: RawSitesApiClientOptions,
-): SitesApiClient => ({
+export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesApiClient => ({
   createSite: (input) => createSite(options, input),
   getJobStatus: (jobHandle) => getJobStatus(options, jobHandle),
   listSites: () => listSites(options),
@@ -73,12 +71,4 @@ export const createSitesApiClient = (
   addLanguage: (languageCode) => addLanguage(options, { languageCode }),
 });
 
-export type {
-  Job,
-  JobResponse,
-  Language,
-  NewSiteInput,
-  Site,
-  SiteCollection,
-  SiteTemplate,
-};
+export type { Job, JobResponse, Language, NewSiteInput, Site, SiteCollection, SiteTemplate };

@@ -187,9 +187,7 @@ export interface WorkflowApiClient {
    * templated item; the task layer uses that as the signal to fall
    * through to item-state inspection.
    */
-  getWorkflowDefinitionDetail(
-    input: ItemSelector
-  ): Promise<WorkflowDefinitionDetail | null>;
+  getWorkflowDefinitionDetail(input: ItemSelector): Promise<WorkflowDefinitionDetail | null>;
   /**
    * Resolve a workflow definition by display name OR item name (case-
    * insensitive). Walks `listWorkflowDefinitions` and returns the first
@@ -693,8 +691,8 @@ export const createWorkflowApiClient = (options: WorkflowClientOptions): Workflo
         for (const child of stateChildren) {
           const tname = child.template?.name ?? null;
           if (tname === WORKFLOW_COMMAND_TEMPLATE_NAME) {
-            const validations: WorkflowChildSummary[] = (child.children?.nodes ?? []).map(
-              (v) => toChildSummary(v)
+            const validations: WorkflowChildSummary[] = (child.children?.nodes ?? []).map((v) =>
+              toChildSummary(v)
             );
             commands.push({
               itemId: child.itemId,
@@ -771,9 +769,7 @@ export const createWorkflowApiClient = (options: WorkflowClientOptions): Workflo
     );
   };
 
-  const getWorkflowInitialStateId = async (
-    workflowItemId: string
-  ): Promise<string | null> => {
+  const getWorkflowInitialStateId = async (workflowItemId: string): Promise<string | null> => {
     const data = await runWorkflowAuthoringGraphQL<{
       item: { fields: { nodes: Array<{ name: string; value: string }> } } | null;
     }>(environment, GET_WORKFLOW_INITIAL_STATE, { itemId: workflowItemId }, readRequest);

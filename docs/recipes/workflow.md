@@ -20,7 +20,7 @@ of your repo.
 >
 > If the standard XM Cloud sample workflow's `actions` array shows
 > items templated `Webhook Submit Action` / `Webhook Validation
-> Action`, your tenant has them. If not, strip `actions` and
+Action`, your tenant has them. If not, strip `actions` and
 > `validations` from your workflow recipe until you've installed (or
 > located) the templates.
 
@@ -46,10 +46,10 @@ A Sitecore workflow attaches to an item via the item's `__Workflow` and
 
 Where each kind attaches:
 
-| Recipe field | Attaches at | Kind(s) | Fires when |
-|---|---|---|---|
-| `state.actions[]` | A workflow **state** (state-entry actions) | `webhook-submit` or `webhook-validation` | Item enters the state (post-transition) |
-| `state.commands[].validations[]` | A workflow **command** | `webhook-validation` only | Command is invoked, before the transition completes |
+| Recipe field                     | Attaches at                                | Kind(s)                                  | Fires when                                          |
+| -------------------------------- | ------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
+| `state.actions[]`                | A workflow **state** (state-entry actions) | `webhook-submit` or `webhook-validation` | Item enters the state (post-transition)             |
+| `state.commands[].validations[]` | A workflow **command**                     | `webhook-validation` only                | Command is invoked, before the transition completes |
 
 State-attached actions are rarely `webhook-validation` in practice —
 validating at entry rather than at the gate is unusual. The schema
@@ -108,8 +108,8 @@ Cloud):
 
 ```jsonc
 {
-  "EventName": "workflow:command:executed",        // or similar identifier
-  "ItemId": "{ABC...}",                            // Sitecore item ID, braced
+  "EventName": "workflow:command:executed", // or similar identifier
+  "ItemId": "{ABC...}", // Sitecore item ID, braced
   "ItemPath": "/sitecore/content/Site/Home",
   "ItemLanguage": "en",
   "ItemVersion": 3,
@@ -117,15 +117,15 @@ Cloud):
   "TemplateName": "Article",
   "WorkflowId": "{...}",
   "WorkflowName": "Editorial",
-  "PreviousStateId": "{...}",                      // null for state-entry from no state
+  "PreviousStateId": "{...}", // null for state-entry from no state
   "PreviousStateName": "Draft",
   "NewStateId": "{...}",
   "NewStateName": "In Review",
-  "CommandId": "{...}",                            // null for state-entry submit actions
+  "CommandId": "{...}", // null for state-entry submit actions
   "CommandName": "Submit",
-  "Comments": "Looks good to me",                  // from the workflow command UI
+  "Comments": "Looks good to me", // from the workflow command UI
   "User": { "Name": "sitecore\\admin", "Email": "..." },
-  "Timestamp": "2026-05-14T12:34:56Z"
+  "Timestamp": "2026-05-14T12:34:56Z",
 }
 ```
 
@@ -145,10 +145,10 @@ kind) or `authorizationPath` (absolute path to an existing tenant-
 side Authorization item). Three authorization types ship with
 Sitecore:
 
-| Type | Recipe shape | Wire-time behavior |
-|---|---|---|
-| `ApiKey` | `{ type, headerName, key: "$ENV:VAR" }` | Adds a custom header (e.g. `Authorization: <key>` or `X-Api-Key: <key>`) on each fire. `headerName` decides the header. |
-| `Basic` | `{ type, username, password: "$ENV:VAR" }` | Adds `Authorization: Basic base64(username:password)` on each fire. |
+| Type                           | Recipe shape                                                                     | Wire-time behavior                                                                                                                                                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ApiKey`                       | `{ type, headerName, key: "$ENV:VAR" }`                                          | Adds a custom header (e.g. `Authorization: <key>` or `X-Api-Key: <key>`) on each fire. `headerName` decides the header.                                                                                                                        |
+| `Basic`                        | `{ type, username, password: "$ENV:VAR" }`                                       | Adds `Authorization: Basic base64(username:password)` on each fire.                                                                                                                                                                            |
 | `OAuth2ClientCredentialsGrant` | `{ type, tokenEndpoint, clientId, clientSecret: "$ENV:VAR", scope?, audience? }` | Mints a token from the configured endpoint on first fire (token-caching behavior on the Sitecore side is **undocumented** — assume per-fire fetch unless you've verified otherwise on your tenant), then sets `Authorization: Bearer <token>`. |
 
 Secrets are **always** declared as `$ENV:VAR_NAME` references in the
@@ -161,7 +161,7 @@ If you don't want the recipe to manage the Authorization item, point
 at one that already exists on the tenant via `authorizationPath`:
 
 ```ts
-authorizationPath: "/sitecore/system/Settings/Webhooks/Authorizations/Existing CI Token"
+authorizationPath: "/sitecore/system/Settings/Webhooks/Authorizations/Existing CI Token";
 ```
 
 ---
@@ -248,15 +248,15 @@ authorizationPath: "/sitecore/system/Settings/Webhooks/Authorizations/Existing C
 
 ### Recipe → Sitecore content-tree mapping
 
-| Recipe field | Sitecore path | Template |
-|---|---|---|
-| `meta.tax.group` (optional) | `/sitecore/system/Workflows/<group>/` | `Workflow Folder` |
-| `name` | `/sitecore/system/Workflows/[<group>/]<name>` | `Workflow` |
-| `states[].name` | `…/<name>/<state.name>` | `State` |
-| `states[].commands[].name` | `…/<name>/<state.name>/<cmd.name>` | `Command` |
-| `states[].actions[].key` | `…/<name>/<state.name>/<action.key>` | `Webhook Submit Action` or `Webhook Validation Action` |
-| `commands[].validations[].key` | `…/<name>/<state.name>/<cmd.name>/<val.key>` | `Webhook Validation Action` |
-| Webhook authorization | `/sitecore/system/Settings/Webhooks/Authorizations/<name>` | `Api Key`/`Basic`/`OAuth2 Client Credentials Grant` |
+| Recipe field                   | Sitecore path                                              | Template                                               |
+| ------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------ |
+| `meta.tax.group` (optional)    | `/sitecore/system/Workflows/<group>/`                      | `Workflow Folder`                                      |
+| `name`                         | `/sitecore/system/Workflows/[<group>/]<name>`              | `Workflow`                                             |
+| `states[].name`                | `…/<name>/<state.name>`                                    | `State`                                                |
+| `states[].commands[].name`     | `…/<name>/<state.name>/<cmd.name>`                         | `Command`                                              |
+| `states[].actions[].key`       | `…/<name>/<state.name>/<action.key>`                       | `Webhook Submit Action` or `Webhook Validation Action` |
+| `commands[].validations[].key` | `…/<name>/<state.name>/<cmd.name>/<val.key>`               | `Webhook Validation Action`                            |
+| Webhook authorization          | `/sitecore/system/Settings/Webhooks/Authorizations/<name>` | `Api Key`/`Basic`/`OAuth2 Client Credentials Grant`    |
 
 State/command/action children all live as **direct** children of their
 parent in the content tree — there is no `Actions/` subfolder.
@@ -268,14 +268,14 @@ siblings.
 
 ## Failure modes + retry
 
-| Scenario | What happens |
-|---|---|
-| Validation endpoint returns `IsValid: false` | Transition aborts. `Message` surfaces in the CMS error UI / API response. The item stays in its current state. |
-| Validation endpoint returns non-JSON, HTTP 4xx/5xx, or times out | Same — transition aborts. Sitecore treats unknown response as "blocked, safer to fail closed." Default timeout is **15 seconds** (Sitecore-side; not configurable from the recipe). |
-| Submit endpoint returns non-2xx | Logged to `/sitecore/system/Logging`. Transition is already complete — no rollback. |
-| Submit endpoint times out | Same — log + continue. **No retries** by default. |
-| Authorization item references an `$ENV:VAR` that's missing at push time | Recipe push fails at plan phase with a clear error. No item write happens. |
-| Authorization item is deleted from the tenant after the action is bound | Action fires without auth headers. The endpoint will reject; the failure is silent for submit actions and a transition-block for validations. |
+| Scenario                                                                | What happens                                                                                                                                                                        |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validation endpoint returns `IsValid: false`                            | Transition aborts. `Message` surfaces in the CMS error UI / API response. The item stays in its current state.                                                                      |
+| Validation endpoint returns non-JSON, HTTP 4xx/5xx, or times out        | Same — transition aborts. Sitecore treats unknown response as "blocked, safer to fail closed." Default timeout is **15 seconds** (Sitecore-side; not configurable from the recipe). |
+| Submit endpoint returns non-2xx                                         | Logged to `/sitecore/system/Logging`. Transition is already complete — no rollback.                                                                                                 |
+| Submit endpoint times out                                               | Same — log + continue. **No retries** by default.                                                                                                                                   |
+| Authorization item references an `$ENV:VAR` that's missing at push time | Recipe push fails at plan phase with a clear error. No item write happens.                                                                                                          |
+| Authorization item is deleted from the tenant after the action is bound | Action fires without auth headers. The endpoint will reject; the failure is silent for submit actions and a transition-block for validations.                                       |
 
 There is no built-in retry queue. If you need at-least-once delivery
 for submit actions, set up an idempotent receiver and a separate
@@ -349,15 +349,15 @@ Draft ──submit──▶ In Review ──approve──▶ Approved (final)
                        └──reject──▶ Draft
 ```
 
-| Step | Op | Result on the tenant |
-|---|---|---|
-| 1 | `CreateItem` Editorial folder (CreateOnly) | `/sitecore/system/Workflows/Editorial` (skipped on re-push) |
-| 2 | `CreateItem` workflow | `/sitecore/system/Workflows/Editorial/BlogArticleApproval` |
-| 3 | `CreateItem` × 3 state items | Draft, InReview, Approved |
-| 4 | `SetField` `__Initial state` | Workflow points at Draft as the entry state |
-| 5 | `CreateItem` × 3 commands | Submit (Draft), Approve + Reject (InReview) |
-| 6 | `CreateItem` × 1 validation | `lint-content` under the Approve command |
-| 7 | `CreateItem` × 2 submit actions | `notify-reviewer` (InReview state), `publish-trigger` (Approved state) |
+| Step | Op                                         | Result on the tenant                                                   |
+| ---- | ------------------------------------------ | ---------------------------------------------------------------------- |
+| 1    | `CreateItem` Editorial folder (CreateOnly) | `/sitecore/system/Workflows/Editorial` (skipped on re-push)            |
+| 2    | `CreateItem` workflow                      | `/sitecore/system/Workflows/Editorial/BlogArticleApproval`             |
+| 3    | `CreateItem` × 3 state items               | Draft, InReview, Approved                                              |
+| 4    | `SetField` `__Initial state`               | Workflow points at Draft as the entry state                            |
+| 5    | `CreateItem` × 3 commands                  | Submit (Draft), Approve + Reject (InReview)                            |
+| 6    | `CreateItem` × 1 validation                | `lint-content` under the Approve command                               |
+| 7    | `CreateItem` × 2 submit actions            | `notify-reviewer` (InReview state), `publish-trigger` (Approved state) |
 
 Re-pushing the same recipe is a no-op: every GUID is `uuidv5(handle)`-
 derived, the policy is `CreateAndUpdate`, and per-field diff means only

@@ -10,10 +10,8 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
-  headlessVariantsRoot:
-    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
-  enumerationsRoot:
-    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot: "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 const compileCta = () => compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);
@@ -314,8 +312,7 @@ describe("executeIr — pathSnapshotCache short-circuit", () => {
     //   the tenant rejects with "name already defined on this level".
     const ir = compileCta();
     const sectionFolderOp = ir.operations.find(
-      (op): op is import("../../../src/recipe/ir/operations").CreateItemOp =>
-        op.op === "CreateItem"
+      (op): op is import("../../../src/recipe/ir/operations").CreateItemOp => op.op === "CreateItem"
     )!;
 
     const client = new MockAuthoringClient();
@@ -372,21 +369,16 @@ describe("executeIr — pathSnapshotCache short-circuit", () => {
       (op): op is CreateItemOp => op.op === "CreateItem" && op.parent.kind === "ref-path"
     );
     expect(refPathOp).toBeTruthy();
-    const parentPath =
-      refPathOp!.parent.kind === "ref-path" ? refPathOp!.parent.value : undefined;
+    const parentPath = refPathOp!.parent.kind === "ref-path" ? refPathOp!.parent.value : undefined;
     expect(parentPath).toBeTruthy();
 
-    const pathItemIdCache = new Map<string, string>([
-      [parentPath as string, "primed-parent-id"],
-    ]);
+    const pathItemIdCache = new Map<string, string>([[parentPath as string, "primed-parent-id"]]);
     const getItemSpy = vi.spyOn(client, "getItem");
 
     await executeIr(ir, client, { mode: "plan", pathItemIdCache });
 
     // No getItem call against the primed parent path.
-    const fetchedParent = getItemSpy.mock.calls.some(
-      (call) => call[0].path === parentPath
-    );
+    const fetchedParent = getItemSpy.mock.calls.some((call) => call[0].path === parentPath);
     expect(fetchedParent).toBe(false);
   });
 });

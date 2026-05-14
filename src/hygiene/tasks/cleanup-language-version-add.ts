@@ -89,14 +89,9 @@ export const runCleanupLanguageVersionAdd = async (
 ): Promise<LanguageVersionAddAction[]> => {
   const logger = toLogger(options);
   if (!options.languages?.length) {
-    throw createScaiError(
-      "`languages` is required (at least one language code).",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("`languages` is required (at least one language code).", "INPUT_INVALID");
   }
-  const templateRegex = options.templatePattern
-    ? new RegExp(options.templatePattern, "i")
-    : null;
+  const templateRegex = options.templatePattern ? new RegExp(options.templatePattern, "i") : null;
   const maxAdds = options.maxAdds ?? 500;
 
   const { envName, root: rootConfig, client } = resolveTenant(options);

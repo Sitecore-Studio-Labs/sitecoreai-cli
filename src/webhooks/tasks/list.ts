@@ -41,9 +41,7 @@ const TEMPLATE_NAME_BY_CATEGORY: Record<WebhookEventCategory, string> = {
  * pointing at a workflow state to find workflow webhooks attached to
  * a specific transition.
  */
-export const runWebhookList = async (
-  options: WebhookListOptions
-): Promise<WebhookListResult> => {
+export const runWebhookList = async (options: WebhookListOptions): Promise<WebhookListResult> => {
   const logger = toLogger(options);
   const { envName, client } = resolveWebhookTenant(options);
 
@@ -58,7 +56,10 @@ export const runWebhookList = async (
 
   const lines =
     handlers.length > 0
-      ? handlers.map((h) => `${h.name} (${h.itemId}) — ${h.path}${h.templateName ? ` [${h.templateName}]` : ""}`)
+      ? handlers.map(
+          (h) =>
+            `${h.name} (${h.itemId}) — ${h.path}${h.templateName ? ` [${h.templateName}]` : ""}`
+        )
       : [`No webhook handlers found under ${rootPath}.`];
 
   printWebhookResult({

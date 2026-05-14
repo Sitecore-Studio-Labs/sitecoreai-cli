@@ -49,9 +49,9 @@ afterEach(() => {
 describe("runWorkflowAdvance", () => {
   it("throws INPUT_INVALID when --command is missing", async () => {
     installClient(stubClient());
-    await expect(
-      runWorkflowAdvance({ item: "/x", command: "", json: true })
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    await expect(runWorkflowAdvance({ item: "/x", command: "", json: true })).rejects.toMatchObject(
+      { code: "INPUT_INVALID" }
+    );
   });
 
   it("calls ensureAllowWrite when not in --what-if mode", async () => {
@@ -83,9 +83,9 @@ describe("runWorkflowAdvance", () => {
         stateName: "Draft",
         stateIsFinal: false,
       }),
-      getWorkflowCommandsForItem: vi.fn().mockResolvedValue([
-        { commandId: "c1", displayName: "Submit" },
-      ]),
+      getWorkflowCommandsForItem: vi
+        .fn()
+        .mockResolvedValue([{ commandId: "c1", displayName: "Submit" }]),
     });
     installClient(client);
 
@@ -153,9 +153,9 @@ describe("runWorkflowAdvance", () => {
         stateName: "Draft",
         stateIsFinal: false,
       }),
-      getWorkflowCommandsForItem: vi.fn().mockResolvedValue([
-        { commandId: "c1", displayName: "Submit" },
-      ]),
+      getWorkflowCommandsForItem: vi
+        .fn()
+        .mockResolvedValue([{ commandId: "c1", displayName: "Submit" }]),
     });
     installClient(client);
 
@@ -181,9 +181,9 @@ describe("runWorkflowAdvance", () => {
         stateName: "Draft",
         stateIsFinal: false,
       }),
-      getWorkflowCommandsForItem: vi.fn().mockResolvedValue([
-        { commandId: "c1", displayName: "Submit" },
-      ]),
+      getWorkflowCommandsForItem: vi
+        .fn()
+        .mockResolvedValue([{ commandId: "c1", displayName: "Submit" }]),
       executeWorkflowCommand: vi.fn().mockResolvedValue({
         successful: true,
         nextStateId: "s2",
@@ -221,9 +221,9 @@ describe("runWorkflowAdvance", () => {
         stateName: "Draft",
         stateIsFinal: false,
       }),
-      getWorkflowCommandsForItem: vi.fn().mockResolvedValue([
-        { commandId: "c1", displayName: "Submit" },
-      ]),
+      getWorkflowCommandsForItem: vi
+        .fn()
+        .mockResolvedValue([{ commandId: "c1", displayName: "Submit" }]),
       executeWorkflowCommand: vi.fn().mockResolvedValue({
         successful: false,
         nextStateId: null,
@@ -254,9 +254,9 @@ describe("runWorkflowAdvance", () => {
         stateName: "Draft",
         stateIsFinal: false,
       }),
-      getWorkflowCommandsForItem: vi.fn().mockResolvedValue([
-        { commandId: "c1", displayName: "Submit" },
-      ]),
+      getWorkflowCommandsForItem: vi
+        .fn()
+        .mockResolvedValue([{ commandId: "c1", displayName: "Submit" }]),
       executeWorkflowCommand: vi.fn().mockRejectedValue(new Error("network died")),
     });
     installClient(client);

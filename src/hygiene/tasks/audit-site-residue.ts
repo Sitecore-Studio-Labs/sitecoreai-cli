@@ -104,9 +104,7 @@ export const runAuditSiteResidue = async (
   const roots = [...DEFAULT_RESIDUE_ROOTS, ...extraRoots];
   const concurrency = options.concurrency ?? 8;
 
-  logger.verbose(
-    `Discovering active sites under ${options.contentRoot ?? "/sitecore/content"}.`
-  );
+  logger.verbose(`Discovering active sites under ${options.contentRoot ?? "/sitecore/content"}.`);
   const { tenants: activeTenants, sites: activeSites } = await collectActiveSites(
     environment,
     options.contentRoot

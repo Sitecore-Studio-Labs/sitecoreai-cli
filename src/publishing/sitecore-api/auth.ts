@@ -1,11 +1,7 @@
 import { requestClientCredentialsToken } from "@/serialization/sitecore-api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/sitecore-api/types";
 import { createScaiError } from "@/shared/errors";
-import {
-  getDeployToken,
-  getPublishingToken,
-  setPublishingToken,
-} from "@/shared/keychain";
+import { getDeployToken, getPublishingToken, setPublishingToken } from "@/shared/keychain";
 
 /**
  * OAuth scopes the SAI Publishing API requires.
@@ -52,10 +48,7 @@ const decodeJwtPayload = (token: string): Record<string, unknown> | undefined =>
   const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
   try {
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<
-      string,
-      unknown
-    >;
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>;
   } catch {
     return undefined;
   }

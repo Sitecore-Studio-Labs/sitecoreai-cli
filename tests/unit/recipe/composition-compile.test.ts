@@ -171,7 +171,10 @@ describe("compilePageDesignRecipe — default-page-design@1 (partials only, no o
     expect(setPartials.fieldId).toBe(COMPOSITION_FIELDS.PARTIAL_DESIGNS);
     expect(setPartials.value).toEqual({
       kind: "ref-recipe-list",
-      refKeys: [partialDesignId(SITE, "standard-header@1"), partialDesignId(SITE, "standard-footer@1")],
+      refKeys: [
+        partialDesignId(SITE, "standard-header@1"),
+        partialDesignId(SITE, "standard-footer@1"),
+      ],
     });
   });
 });

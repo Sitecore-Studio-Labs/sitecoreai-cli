@@ -221,7 +221,8 @@ export const probeEnvironmentHealth = async (
   host: string,
   timeoutMs: number = 30_000
 ): Promise<EnvironmentHealthResult> => {
-  const normalized = host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`;
+  const normalized =
+    host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`;
   const url = `${normalized.replace(/\/$/, "")}/healthz/ready`;
   const controller = timeoutMs > 0 ? new AbortController() : undefined;
   const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;

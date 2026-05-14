@@ -70,10 +70,7 @@ const setup = (params: {
   });
   const scannedItems = params.scannedItems ?? [];
   const fieldsMap = new Map(
-    scannedItems.map((it) => [
-      it.id,
-      it.fields.map((f) => ({ fieldId: "f1", ...f })),
-    ])
+    scannedItems.map((it) => [it.id, it.fields.map((f) => ({ fieldId: "f1", ...f }))])
   );
   const descendants = params.descendantsByOrphan ?? {};
   const client = {
@@ -211,9 +208,7 @@ describe("cleanup site-residue", () => {
       scannedItems: [
         {
           id: "activepage",
-          fields: [
-            { name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" },
-          ],
+          fields: [{ name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" }],
         },
       ],
       descendantsByOrphan: {
@@ -235,9 +230,7 @@ describe("cleanup site-residue", () => {
       scannedItems: [
         {
           id: "activepage",
-          fields: [
-            { name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" },
-          ],
+          fields: [{ name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" }],
         },
       ],
       descendantsByOrphan: {

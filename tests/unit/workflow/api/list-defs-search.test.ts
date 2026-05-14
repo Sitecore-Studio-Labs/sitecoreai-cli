@@ -164,9 +164,9 @@ describe("workflow client — searchItemsByWorkflowState", () => {
   });
 
   it("honors `field` override for tenants using `__workflow_state`", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      okResponse({ data: { search: { totalCount: 0, results: [] } } })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { search: { totalCount: 0, results: [] } } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createWorkflowApiClient({ environment: baseEnv });

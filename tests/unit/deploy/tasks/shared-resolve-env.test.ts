@@ -50,9 +50,7 @@ describe("resolveDeployEnvironmentId", () => {
   });
 
   it("returns --id immediately without any lookup", async () => {
-    const { resolveDeployEnvironmentId } = await import(
-      "../../../../src/deploy/tasks/shared"
-    );
+    const { resolveDeployEnvironmentId } = await import("../../../../src/deploy/tasks/shared");
 
     const result = await resolveDeployEnvironmentId(
       { token: "t", envName: "test" },
@@ -71,9 +69,7 @@ describe("resolveDeployEnvironmentId", () => {
       pageSize: 50,
       items: [{ id: "env-1", name: "Env One" }],
     });
-    const { resolveDeployEnvironmentId } = await import(
-      "../../../../src/deploy/tasks/shared"
-    );
+    const { resolveDeployEnvironmentId } = await import("../../../../src/deploy/tasks/shared");
 
     const result = await resolveDeployEnvironmentId(
       { token: "t", envName: "test" },
@@ -85,9 +81,7 @@ describe("resolveDeployEnvironmentId", () => {
   });
 
   it("uses context.environmentId when no flags or name are supplied", async () => {
-    const { resolveDeployEnvironmentId } = await import(
-      "../../../../src/deploy/tasks/shared"
-    );
+    const { resolveDeployEnvironmentId } = await import("../../../../src/deploy/tasks/shared");
 
     const result = await resolveDeployEnvironmentId(
       { token: "t", envName: "test", environmentId: "ctx-env" },
@@ -115,9 +109,7 @@ describe("resolveDeployEnvironmentId", () => {
         { id: "env-target", name: "Env Target" },
       ],
     });
-    const { resolveDeployEnvironmentId } = await import(
-      "../../../../src/deploy/tasks/shared"
-    );
+    const { resolveDeployEnvironmentId } = await import("../../../../src/deploy/tasks/shared");
 
     const result = await resolveDeployEnvironmentId(
       { token: "t", envName: "test" },

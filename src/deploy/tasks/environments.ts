@@ -92,12 +92,10 @@ export const runDeployEnvironmentsList = async (
     };
     if (options.type) {
       const filtered = filterEnvironmentsByType(aggregated.items, options.type);
-      printDeployResultWithContext(
-        logger,
-        context,
-        "deploy.environments.list",
-        { ...aggregatedResult, data: filtered }
-      );
+      printDeployResultWithContext(logger, context, "deploy.environments.list", {
+        ...aggregatedResult,
+        data: filtered,
+      });
       return;
     }
     printDeployResultWithContext(logger, context, "deploy.environments.list", aggregatedResult);

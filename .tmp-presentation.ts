@@ -6,7 +6,8 @@ const main = async () => {
   for (const k of kids) {
     console.log(`${k.path}  (template: ${(k as any).templateName ?? "?"})`);
     const grand = await client.getChildren({ itemId: k.itemId });
-    for (const g of grand) console.log(`  ${g.path}  (template: ${(g as any).templateName ?? "?"})`);
+    for (const g of grand)
+      console.log(`  ${g.path}  (template: ${(g as any).templateName ?? "?"})`);
   }
 };
 

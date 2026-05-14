@@ -59,9 +59,7 @@ export interface WorkflowInspectItemResult {
   availableCommands: WorkflowCommandSummary[];
 }
 
-const parseSelectorOrName = (
-  value: string
-): { selector?: ItemSelector; name?: string } => {
+const parseSelectorOrName = (value: string): { selector?: ItemSelector; name?: string } => {
   try {
     return { selector: parseItemReference(value) };
   } catch (error) {
@@ -93,7 +91,9 @@ const renderDefinitionLines = (def: WorkflowDefinitionDetail): string[] => {
       for (const cmd of state.commands) {
         lines.push(`      - ${cmd.displayName ?? cmd.name} (${cmd.itemId})`);
         for (const v of cmd.validations) {
-          lines.push(`          ↳ validation: ${v.displayName ?? v.name} [${v.templateName ?? "?"}]`);
+          lines.push(
+            `          ↳ validation: ${v.displayName ?? v.name} [${v.templateName ?? "?"}]`
+          );
         }
       }
     }

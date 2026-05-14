@@ -182,18 +182,11 @@ export const runCleanupFieldSet = async (
   }
   const mode: FieldSetMode = options.mode ?? "replace";
   if (mode !== "clear" && (options.value === undefined || options.value === null)) {
-    throw createScaiError(
-      `--value is required for mode='${mode}'.`,
-      "INPUT_INVALID"
-    );
+    throw createScaiError(`--value is required for mode='${mode}'.`, "INPUT_INVALID");
   }
   const maxMutations = options.maxMutations ?? 100;
-  const templateRegex = options.templatePattern
-    ? new RegExp(options.templatePattern, "i")
-    : null;
-  const currentRegex = options.whereCurrentMatches
-    ? new RegExp(options.whereCurrentMatches)
-    : null;
+  const templateRegex = options.templatePattern ? new RegExp(options.templatePattern, "i") : null;
+  const currentRegex = options.whereCurrentMatches ? new RegExp(options.whereCurrentMatches) : null;
   const fieldNameLc = options.field.toLowerCase();
   const includeSystemFields = Boolean(options.includeSystemFields);
   if (fieldNameLc.startsWith("__") && !includeSystemFields) {
@@ -267,9 +260,7 @@ export const runCleanupFieldSet = async (
         }
         const existing = splitMultilistValue(oldValue);
         const toRemove = new Set(guidList!);
-        const filtered = existing
-          .map((g) => normalizeGuid(g) ?? g)
-          .filter((g) => !toRemove.has(g));
+        const filtered = existing.map((g) => normalizeGuid(g) ?? g).filter((g) => !toRemove.has(g));
         newValue = joinMultilistValue(filtered);
         break;
       }
@@ -290,7 +281,9 @@ export const runCleanupFieldSet = async (
       break;
     }
   }
-  logger.verbose(`${plans.length} item(s) considered; ${plans.filter((p) => !p.skip).length} will mutate.`);
+  logger.verbose(
+    `${plans.length} item(s) considered; ${plans.filter((p) => !p.skip).length} will mutate.`
+  );
 
   const actions: FieldSetAction[] = await mapWithConcurrency(
     plans,

@@ -44,8 +44,14 @@ jobs:
             pnpm install --no-frozen-lockfile
           fi
 
+      - name: Format check
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Test
         run: npm run test

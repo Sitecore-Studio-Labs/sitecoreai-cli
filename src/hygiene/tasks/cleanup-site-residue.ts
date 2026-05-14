@@ -160,10 +160,7 @@ export const runCleanupSiteResidue = async (
   if (!options.whatIf) {
     ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
-    logger.info(
-      "What-if mode active — no orphan trees will be deleted.",
-      "yellow"
-    );
+    logger.info("What-if mode active — no orphan trees will be deleted.", "yellow");
   }
 
   const auditOptions = options as unknown as AuditSiteResidueOptions;

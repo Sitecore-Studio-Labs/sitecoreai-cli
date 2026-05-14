@@ -28,11 +28,7 @@ const makeJwt = (payload: Record<string, unknown>): string => {
 describe("brand/api/auth — extractScopes", () => {
   it("reads the space-delimited `scope` claim", () => {
     const token = makeJwt({ scope: "ai.org.brd:r ai.org.brd:w ai.orgs.br:gen" });
-    expect(extractScopes(token)).toEqual([
-      "ai.org.brd:r",
-      "ai.org.brd:w",
-      "ai.orgs.br:gen",
-    ]);
+    expect(extractScopes(token)).toEqual(["ai.org.brd:r", "ai.org.brd:w", "ai.orgs.br:gen"]);
   });
 
   it("falls back to the `scp` array claim when `scope` is absent", () => {
@@ -50,12 +46,9 @@ describe("brand/api/auth — extractScopes", () => {
 describe("brand/api/auth — hasAiSkillsScopes", () => {
   it("returns true when all required scopes are present (with extras)", () => {
     const token = makeJwt({
-      scope: [
-        ...AI_SKILLS_REQUIRED_SCOPES,
-        "ai.org.docs:r",
-        "ai.org.docs:w",
-        "ai.org:admin",
-      ].join(" "),
+      scope: [...AI_SKILLS_REQUIRED_SCOPES, "ai.org.docs:r", "ai.org.docs:w", "ai.org:admin"].join(
+        " "
+      ),
     });
     expect(hasAiSkillsScopes(token)).toBe(true);
   });

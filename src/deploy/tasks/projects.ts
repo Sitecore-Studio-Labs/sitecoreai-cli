@@ -36,9 +36,7 @@ export type DeployProjectsListOptions = DeployBaseOptions & {
   pageSize?: number;
 };
 
-export const runDeployProjectsList = async (
-  options: DeployProjectsListOptions
-): Promise<void> => {
+export const runDeployProjectsList = async (options: DeployProjectsListOptions): Promise<void> => {
   const logger = toLogger(options);
   const context = await getDeployContext(options);
   const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };

@@ -45,9 +45,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       openWorldHint: true,
     },
     inputSchema: {
-      verb: z
-        .enum(["list", "get"])
-        .describe("Which read operation to run."),
+      verb: z.enum(["list", "get"]).describe("Which read operation to run."),
       root: z
         .string()
         .optional()
@@ -58,10 +56,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
         .enum(["item", "publish", "workflow"])
         .optional()
         .describe("Filter handlers by category (verb='list')."),
-      enabledOnly: z
-        .boolean()
-        .optional()
-        .describe("Return only enabled handlers (verb='list')."),
+      enabledOnly: z.boolean().optional().describe("Return only enabled handlers (verb='list')."),
       webhook: z
         .string()
         .optional()
@@ -124,9 +119,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       openWorldHint: true,
     },
     inputSchema: {
-      verb: z
-        .enum(["create", "delete"])
-        .describe("Which mutation to run."),
+      verb: z.enum(["create", "delete"]).describe("Which mutation to run."),
 
       // create — required for verb='create'
       name: z
@@ -141,9 +134,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       events: z
         .array(z.string())
         .optional()
-        .describe(
-          "Event-type names for item/publish flavors (e.g. ['item:saved','publish:end'])."
-        ),
+        .describe("Event-type names for item/publish flavors (e.g. ['item:saved','publish:end'])."),
       onState: z
         .string()
         .optional()
@@ -165,22 +156,14 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
         .enum(["JSON", "XML"])
         .optional()
         .describe("Payload serialization (default JSON)."),
-      parentPath: z
-        .string()
-        .optional()
-        .describe("Override parent path for item/publish handlers."),
-      enabled: z
-        .boolean()
-        .optional()
-        .describe("Enable on creation. Default true."),
+      parentPath: z.string().optional().describe("Override parent path for item/publish handlers."),
+      enabled: z.boolean().optional().describe("Enable on creation. Default true."),
 
       // delete — required for verb='delete'
       webhook: z
         .string()
         .optional()
-        .describe(
-          "Item GUID or content-tree path of the handler to delete (verb='delete')."
-        ),
+        .describe("Item GUID or content-tree path of the handler to delete (verb='delete')."),
 
       ...whatIfShape,
       ...allowWriteShape,

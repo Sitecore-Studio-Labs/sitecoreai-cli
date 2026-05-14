@@ -11,10 +11,8 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
   renderingsRoot: "/sitecore/layout/Renderings/Project/sandbox",
-  headlessVariantsRoot:
-    "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
-  enumerationsRoot:
-    "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
+  headlessVariantsRoot: "/sitecore/content/test-tenant/sandbox/Presentation/Headless Variants",
+  enumerationsRoot: "/sitecore/content/test-tenant/sandbox/Settings/Enumerations",
 };
 
 const compileCta = () => compileComponentTemplateRecipe(ctaButtonRecipe, CONTEXT);

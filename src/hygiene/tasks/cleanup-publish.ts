@@ -110,16 +110,10 @@ export const runCleanupPublish = async (
   const { envName, environment, root: rootConfig, client } = resolveTenant(options);
 
   if (!options.items?.length && !options.root) {
-    throw createScaiError(
-      "Either `items` or `root` is required.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("Either `items` or `root` is required.", "INPUT_INVALID");
   }
   if (options.items?.length && options.root) {
-    throw createScaiError(
-      "Pass either `items` OR `root`, not both.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("Pass either `items` OR `root`, not both.", "INPUT_INVALID");
   }
   const maxPublishes = options.maxPublishes ?? 1000;
 

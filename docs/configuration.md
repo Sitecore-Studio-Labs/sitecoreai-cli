@@ -20,10 +20,10 @@ it does not exist, and can set the default environment with `--set-default`.
       "settings": {
         "cacheAuthenticationToken": true,
         "apiClientTimeoutInMinutes": 10,
-        "telemetryEnabled": true
-      }
-    }
-  }
+        "telemetryEnabled": true,
+      },
+    },
+  },
 }
 ```
 
@@ -43,9 +43,9 @@ A starter file lives at [`../sitecore.cli.example.json`](../sitecore.cli.example
 
 There are two distinct tokens:
 
-| Token        | Used by             | Stored where                                                  |
-| ------------ | ------------------- | ------------------------------------------------------------- |
-| Deploy token | Deploy API commands | OS keychain as `deployToken`; includes SitecoreAI CM/admin scopes |
+| Token        | Used by                                        | Stored where                                                             |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| Deploy token | Deploy API commands                            | OS keychain as `deployToken`; includes SitecoreAI CM/admin scopes        |
 | CM token     | Serialization (Authoring + Management GraphQL) | OS keychain when `settings.cacheAuthenticationToken` is `true` (default) |
 
 - `scai init` can accept `--deploy-token` directly, or obtain a token via

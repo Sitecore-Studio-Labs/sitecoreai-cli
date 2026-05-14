@@ -2,10 +2,7 @@ import type { EnvironmentConfiguration } from "@/config";
 import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import { runWebhookAuthoringGraphQL, type WebhookRequestOptions } from "./graphql";
-import {
-  createWebhookTemplateResolver,
-  type WebhookTemplateResolver,
-} from "./templates";
+import { createWebhookTemplateResolver, type WebhookTemplateResolver } from "./templates";
 
 /**
  * Authoring GraphQL operations for the Sitecore webhook content tree.
@@ -97,10 +94,7 @@ export interface WebhookApiClient {
     enabledOnly?: boolean;
   }): Promise<WebhookHandlerSummary[]>;
   /** Fetch a single handler item with all configuration fields. */
-  getEventHandler(input: {
-    itemId?: string;
-    path?: string;
-  }): Promise<WebhookHandlerDetail | null>;
+  getEventHandler(input: { itemId?: string; path?: string }): Promise<WebhookHandlerDetail | null>;
   /**
    * Create a Webhook Event Handler item (for item/publish events).
    * Resolves event-name strings to catalog GUIDs and the template ID
@@ -243,9 +237,7 @@ const toDetail = (raw: RawItemNode): WebhookHandlerDetail => ({
   fields: flattenFields(raw),
 });
 
-export const createWebhookApiClient = (
-  options: WebhookClientOptions
-): WebhookApiClient => {
+export const createWebhookApiClient = (options: WebhookClientOptions): WebhookApiClient => {
   const { environment, request } = options;
 
   const readRequest: WebhookRequestOptions = {
@@ -293,9 +285,10 @@ export const createWebhookApiClient = (
     return data.item?.children.nodes ?? [];
   };
 
-  const listEventHandlers = async (
-    opts?: { rootPath?: string; enabledOnly?: boolean }
-  ): Promise<WebhookHandlerSummary[]> => {
+  const listEventHandlers = async (opts?: {
+    rootPath?: string;
+    enabledOnly?: boolean;
+  }): Promise<WebhookHandlerSummary[]> => {
     const rootPath = opts?.rootPath ?? DEFAULT_WEBHOOK_HANDLERS_ROOT;
     const results: WebhookHandlerSummary[] = [];
 
@@ -325,10 +318,7 @@ export const createWebhookApiClient = (
     path?: string;
   }): Promise<WebhookHandlerDetail | null> => {
     if (!input.itemId && !input.path) {
-      throw createScaiError(
-        "getEventHandler requires either itemId or path.",
-        "INPUT_INVALID"
-      );
+      throw createScaiError("getEventHandler requires either itemId or path.", "INPUT_INVALID");
     }
     const raw = input.itemId ? await fetchById(input.itemId) : await fetchByPath(input.path!);
     return raw ? toDetail(raw) : null;
@@ -397,8 +387,14 @@ export const createWebhookApiClient = (
 
   const buildSharedFields = async (
     input:
-      | Pick<CreateEventHandlerInput, "url" | "enabled" | "description" | "authorizationPath" | "serializationType">
-      | Pick<CreateWorkflowActionInput, "url" | "enabled" | "description" | "authorizationPath" | "serializationType">
+      | Pick<
+          CreateEventHandlerInput,
+          "url" | "enabled" | "description" | "authorizationPath" | "serializationType"
+        >
+      | Pick<
+          CreateWorkflowActionInput,
+          "url" | "enabled" | "description" | "authorizationPath" | "serializationType"
+        >
   ): Promise<Array<{ name: string; value: string }>> => {
     const fields: Array<{ name: string; value: string }> = [
       { name: WEBHOOK_FIELD_URL, value: input.url },
@@ -476,15 +472,9 @@ export const createWebhookApiClient = (
     return createWorkflowActionImpl(input, templateId);
   };
 
-  const deleteWebhookItem = async (input: {
-    itemId?: string;
-    path?: string;
-  }): Promise<void> => {
+  const deleteWebhookItem = async (input: { itemId?: string; path?: string }): Promise<void> => {
     if (!input.itemId && !input.path) {
-      throw createScaiError(
-        "deleteWebhookItem requires either itemId or path.",
-        "INPUT_INVALID"
-      );
+      throw createScaiError("deleteWebhookItem requires either itemId or path.", "INPUT_INVALID");
     }
     const payload: Record<string, unknown> = {
       database: "master",

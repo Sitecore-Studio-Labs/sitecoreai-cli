@@ -98,9 +98,7 @@ export function compileWebhookAuthorizationRecipe(
         })
       );
       if (recipe.auth.scope !== undefined) {
-        fields.push(
-          actionField(itemRefKey, "Scope", { kind: "string", value: recipe.auth.scope })
-        );
+        fields.push(actionField(itemRefKey, "Scope", { kind: "string", value: recipe.auth.scope }));
       }
       if (recipe.auth.audience !== undefined) {
         fields.push(
@@ -110,10 +108,7 @@ export function compileWebhookAuthorizationRecipe(
       break;
     default:
       // Discriminated union exhaustiveness — unreachable at runtime.
-      throw createScaiError(
-        `Unsupported auth type on '${recipe.handle}'.`,
-        "INPUT_INVALID"
-      );
+      throw createScaiError(`Unsupported auth type on '${recipe.handle}'.`, "INPUT_INVALID");
   }
 
   const operations: Operation[] = [
@@ -145,11 +140,7 @@ function deriveFieldId(parentRefKey: string, fieldName: string): string {
   return uuidv5(`${parentRefKey}:${fieldName}`, FIELD_REFKEY_NAMESPACE);
 }
 
-function actionField(
-  parentRefKey: string,
-  name: string,
-  value: FieldValue["value"]
-): FieldValue {
+function actionField(parentRefKey: string, name: string, value: FieldValue["value"]): FieldValue {
   return {
     ...sharedField(deriveFieldId(parentRefKey, name), value),
     fieldName: name,

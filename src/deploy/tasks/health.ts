@@ -21,10 +21,7 @@ import {
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
 } from "@/deploy/api";
-import type {
-  DeployEnvironment,
-  DeployEnvironmentProvisioningStatus,
-} from "@/deploy/api";
+import type { DeployEnvironment, DeployEnvironmentProvisioningStatus } from "@/deploy/api";
 import {
   getDeployContext,
   getEnvironmentType,
@@ -93,13 +90,9 @@ const collectEnvironments = async (
   return aggregated.items;
 };
 
-const sortLatestFirst = <T extends { createdAt?: string; startedAt?: string }>(
-  list: T[]
-): T[] =>
+const sortLatestFirst = <T extends { createdAt?: string; startedAt?: string }>(list: T[]): T[] =>
   [...list].sort((a, b) =>
-    String(b.createdAt ?? b.startedAt ?? "").localeCompare(
-      String(a.createdAt ?? a.startedAt ?? "")
-    )
+    String(b.createdAt ?? b.startedAt ?? "").localeCompare(String(a.createdAt ?? a.startedAt ?? ""))
   );
 
 const probeEnvironment = async (
@@ -133,8 +126,8 @@ const probeEnvironment = async (
   const list = Array.isArray(dep)
     ? (dep as Array<Record<string, unknown>>)
     : ((dep?.data as Array<Record<string, unknown>>) ??
-       (dep?.deployments as Array<Record<string, unknown>>) ??
-       []);
+      (dep?.deployments as Array<Record<string, unknown>>) ??
+      []);
   if (list.length === 0) {
     return { kind: "skipped", reason: "No deployments found." };
   }
@@ -150,16 +143,14 @@ const probeEnvironment = async (
       (typeof latest.deploymentStatus === "string" && latest.deploymentStatus) ||
       undefined,
     createdAt: typeof latest.createdAt === "string" ? latest.createdAt : undefined,
-    completedAt:
-      typeof latest.completedAt === "string" ? latest.completedAt : undefined,
+    completedAt: typeof latest.completedAt === "string" ? latest.completedAt : undefined,
   };
 };
 
 const summarizeReports = (
   reports: EnvironmentHealthReport[]
 ): Record<string, { total: number; byStatus: Record<string, number> }> => {
-  const summary: Record<string, { total: number; byStatus: Record<string, number> }> =
-    {};
+  const summary: Record<string, { total: number; byStatus: Record<string, number> }> = {};
   for (const report of reports) {
     const bucket = summary[report.type] ?? { total: 0, byStatus: {} };
     bucket.total += 1;

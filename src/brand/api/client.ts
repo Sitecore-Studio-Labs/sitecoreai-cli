@@ -30,7 +30,12 @@ export interface BrandApiRequest {
   signal?: AbortSignal;
 }
 
-const buildUrl = (host: string, basePath: string, path: string, query?: BrandApiRequest["query"]): string => {
+const buildUrl = (
+  host: string,
+  basePath: string,
+  path: string,
+  query?: BrandApiRequest["query"]
+): string => {
   const url = new URL(`${basePath.replace(/\/$/, "")}${path}`, host);
   if (query) {
     for (const [key, value] of Object.entries(query)) {

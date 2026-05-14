@@ -105,9 +105,7 @@ const compilePattern = (
  *     does NOT touch it. Use `cleanup field-set --field "__Display Name"`
  *     when the operator wants the editor-visible name to change too.
  */
-export const runCleanupRename = async (
-  options: CleanupRenameOptions
-): Promise<RenameAction[]> => {
+export const runCleanupRename = async (options: CleanupRenameOptions): Promise<RenameAction[]> => {
   const logger = toLogger(options);
   if (!options.pattern) {
     throw createScaiError("--pattern is required.", "INPUT_INVALID");
@@ -116,9 +114,7 @@ export const runCleanupRename = async (
     throw createScaiError("--replacement is required.", "INPUT_INVALID");
   }
   const regex = compilePattern(options.pattern, options);
-  const templateRegex = options.templatePattern
-    ? new RegExp(options.templatePattern, "i")
-    : null;
+  const templateRegex = options.templatePattern ? new RegExp(options.templatePattern, "i") : null;
   const maxRenames = options.maxRenames ?? 100;
 
   const { envName, root: rootConfig, client } = resolveTenant(options);

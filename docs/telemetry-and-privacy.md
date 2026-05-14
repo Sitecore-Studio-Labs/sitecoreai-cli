@@ -22,15 +22,15 @@ This page describes exactly what is sent, where it goes, and how to opt out.
 
 Each telemetry event includes:
 
-| Field           | Example                                | Notes                                  |
-| --------------- | -------------------------------------- | -------------------------------------- |
-| Command name    | `deploy environments list`             | No full args; sensitive flags redacted |
-| Duration        | `1234` (ms)                            |                                        |
-| CLI version     | `0.0.4`                                |                                        |
-| Schema version  | `v1`                                   | Payload format version                 |
-| CI flag         | `ci=1`                                 | Present when CI is detected            |
-| Approximate region | `US-CA`                             | Derived from CDN headers by the server; client-supplied region values are ignored |
-| Nonce           | (random)                               | Per-event, no cross-event correlation  |
+| Field              | Example                    | Notes                                                                             |
+| ------------------ | -------------------------- | --------------------------------------------------------------------------------- |
+| Command name       | `deploy environments list` | No full args; sensitive flags redacted                                            |
+| Duration           | `1234` (ms)                |                                                                                   |
+| CLI version        | `0.0.4`                    |                                                                                   |
+| Schema version     | `v1`                       | Payload format version                                                            |
+| CI flag            | `ci=1`                     | Present when CI is detected                                                       |
+| Approximate region | `US-CA`                    | Derived from CDN headers by the server; client-supplied region values are ignored |
+| Nonce              | (random)                   | Per-event, no cross-event correlation                                             |
 
 Payloads are validated against the telemetry schema at
 `https://schemas.sitecoreai.dev/v1/telemetry.schema.json` before sending.

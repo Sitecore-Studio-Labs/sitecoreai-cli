@@ -41,10 +41,7 @@ export const createCleanupFieldSetCommand = (): Command => {
     (v) => parseInt(v, 10)
   );
   apply.option("--index <name>", "Override the search index name");
-  apply.option(
-    "--include-system",
-    "Include /sitecore/system items in the scan (off by default)"
-  );
+  apply.option("--include-system", "Include /sitecore/system items in the scan (off by default)");
   apply.option(
     "--include-system-fields",
     "Allow writing to __-prefixed system fields (off by default)"

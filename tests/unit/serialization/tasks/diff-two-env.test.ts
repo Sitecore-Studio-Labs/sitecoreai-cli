@@ -167,12 +167,10 @@ describe("two-environment ser diff", () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const writeSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation((chunk: unknown) => {
-        logs.push(String(chunk));
-        return true;
-      });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      logs.push(String(chunk));
+      return true;
+    });
     try {
       await tasks.runDiff({
         config: rootDir,
@@ -194,12 +192,10 @@ describe("two-environment ser diff", () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const writeSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation((chunk: unknown) => {
-        logs.push(String(chunk));
-        return true;
-      });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      logs.push(String(chunk));
+      return true;
+    });
     try {
       await tasks.runDiff({
         config: rootDir,
@@ -258,12 +254,10 @@ describe("two-environment ser diff", () => {
     });
     const logs: string[] = [];
     const tasks = await import("../../../../src/serialization/tasks");
-    const writeSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation((chunk: unknown) => {
-        logs.push(String(chunk));
-        return true;
-      });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      logs.push(String(chunk));
+      return true;
+    });
     try {
       await tasks.runDiff({
         config: rootDir,
@@ -362,8 +356,12 @@ describe("normalizeArgs flag aliases", () => {
 
   it("preserves a -- that appears mid-argv (potential pass-through marker)", async () => {
     const { normalizeArgs } = await import("../../../../src/commands/shared");
-    expect(
-      normalizeArgs(["node", "src/cli.ts", "shell", "--", "--passthrough-flag"])
-    ).toEqual(["node", "src/cli.ts", "shell", "--", "--passthrough-flag"]);
+    expect(normalizeArgs(["node", "src/cli.ts", "shell", "--", "--passthrough-flag"])).toEqual([
+      "node",
+      "src/cli.ts",
+      "shell",
+      "--",
+      "--passthrough-flag",
+    ]);
   });
 });

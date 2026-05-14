@@ -77,7 +77,10 @@ describe("compileRecipeSet — enumerations root Standard Values aggregator", ()
     const root = findCreateItem(aggregate!.operations, (o) => o.id === enumerationsRootId(SITE));
     expect(root).toBeDefined();
     expect(root!.path).toBe(ENUMERATIONS_ROOT);
-    expect(root!.parent).toEqual({ kind: "ref-path", value: "/sitecore/content/test-tenant/test-site/Settings" });
+    expect(root!.parent).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/content/test-tenant/test-site/Settings",
+    });
     expect(root!.name).toBe("Enumerations");
     expect(root!.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
     expect(root!.policy).toBe("CreateAndUpdate");
@@ -98,10 +101,7 @@ describe("compileRecipeSet — enumerations root Standard Values aggregator", ()
     expect(sv!.policy).toBe("CreateOnly");
     expect(sv!.fields).toEqual([]);
 
-    const insert = findOp(
-      aggregate!.operations,
-      (op): op is SetFieldOp => op.op === "SetField"
-    );
+    const insert = findOp(aggregate!.operations, (op): op is SetFieldOp => op.op === "SetField");
     expect(insert!.itemRefKey).toBe(enumerationsRootStandardValuesId(SITE));
     expect(insert!.fieldId).toBe(SYSTEM_FIELDS.INSERT_OPTIONS);
     expect(insert!.value).toEqual({

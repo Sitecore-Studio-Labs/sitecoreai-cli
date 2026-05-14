@@ -32,10 +32,8 @@ export const createCleanupSiteResidueCommand = (): Command => {
     "Skip the inbound-ref pre-flight scan. Faster but loses the safety net — pair with `audit broken-links` if you use this."
   );
   purge.option("--index <name>", "Override the search index name (default: sitecore_master_index)");
-  purge.option(
-    "--concurrency <count>",
-    "Concurrent deletes / pre-flight scans (default: 4)",
-    (v) => parseInt(v, 10)
+  purge.option("--concurrency <count>", "Concurrent deletes / pre-flight scans (default: 4)", (v) =>
+    parseInt(v, 10)
   );
   purge.action(async (options) => {
     await runCleanupSiteResidue(options);

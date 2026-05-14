@@ -1236,10 +1236,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       // Slashes in a Sitecore item name produce paths the resolver can't
       // round-trip; reject at the API boundary so the caller doesn't
       // hand the foot-gun to the user.
-      throw createScaiError(
-        "Item names cannot contain '/' or '\\'.",
-        "INPUT_INVALID"
-      );
+      throw createScaiError("Item names cannot contain '/' or '\\'.", "INPUT_INVALID");
     }
     const data = await runHygieneAuthoringGraphQL<GraphQLUpdateItemResponse>(
       environment,

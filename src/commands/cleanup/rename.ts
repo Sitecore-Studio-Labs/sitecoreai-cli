@@ -11,7 +11,10 @@ export const createCleanupRenameCommand = (): Command => {
     "Rename items whose name matches --pattern to the --replacement form"
   );
   addCleanupBaseOptions(apply);
-  apply.requiredOption("--pattern <regex>", "JS regex (or literal with --literal) applied to item Name");
+  apply.requiredOption(
+    "--pattern <regex>",
+    "JS regex (or literal with --literal) applied to item Name"
+  );
   apply.requiredOption(
     "--replacement <text>",
     "Replacement string. Supports JS regex backreferences ($1, $&, $<name>)"

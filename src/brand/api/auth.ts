@@ -4,11 +4,7 @@ import {
 } from "@/serialization/sitecore-api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/sitecore-api/types";
 import { createScaiError } from "@/shared/errors";
-import {
-  getAiSkillsClientSecret,
-  getAiSkillsToken,
-  setAiSkillsToken,
-} from "@/shared/keychain";
+import { getAiSkillsClientSecret, getAiSkillsToken, setAiSkillsToken } from "@/shared/keychain";
 import type { AiSkillsCredential } from "@/config/types";
 
 /**
@@ -36,11 +32,7 @@ export const AI_SKILLS_REQUIRED_SCOPES = [
   "ai.orgs.br:gen",
 ] as const;
 
-const SCOPE_PARAM = [
-  ...AI_SKILLS_REQUIRED_SCOPES,
-  "ai.org.docs:r",
-  "ai.org.docs:w",
-].join(" ");
+const SCOPE_PARAM = [...AI_SKILLS_REQUIRED_SCOPES, "ai.org.docs:r", "ai.org.docs:w"].join(" ");
 
 const NO_CREDENTIAL_HINT =
   "Run `scai login ai-skills --env <env>` to provision the credential, or paste an existing AI APIs key into `aiSkills.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";

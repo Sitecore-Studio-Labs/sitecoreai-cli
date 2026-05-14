@@ -13,11 +13,7 @@ export {
   type WorkflowListDefsOptions,
   type WorkflowListDefsResult,
 } from "./list-defs";
-export {
-  runWorkflowStatus,
-  type WorkflowStatusOptions,
-  type WorkflowStatusResult,
-} from "./status";
+export { runWorkflowStatus, type WorkflowStatusOptions, type WorkflowStatusResult } from "./status";
 export {
   runWorkflowAssigned,
   type WorkflowAssignedOptions,

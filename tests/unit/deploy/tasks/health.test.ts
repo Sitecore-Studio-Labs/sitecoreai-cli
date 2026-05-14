@@ -46,9 +46,7 @@ describe("deploy health task", () => {
         { id: "eh-1", name: "EH One", type: "eh", provisioningStatus: 2 },
       ],
     });
-    sharedMocks.getEnvironmentType.mockImplementation(
-      (env: { type?: string }) => env.type
-    );
+    sharedMocks.getEnvironmentType.mockImplementation((env: { type?: string }) => env.type);
     apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
     apiMocks.resolveHostFromEnvironment.mockReturnValue("cm.example");
     apiMocks.probeEnvironmentHealth.mockResolvedValue({
@@ -160,9 +158,7 @@ describe("deploy health task", () => {
         { id: "eh-1", name: "EH", type: "eh", provisioningStatus: 2 },
       ],
     });
-    sharedMocks.getEnvironmentType.mockImplementation(
-      (env: { type?: string }) => env.type
-    );
+    sharedMocks.getEnvironmentType.mockImplementation((env: { type?: string }) => env.type);
     apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
     apiMocks.resolveHostFromEnvironment.mockReturnValue("cm.example");
     apiMocks.probeEnvironmentHealth.mockResolvedValue({

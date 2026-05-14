@@ -1,12 +1,17 @@
 /**
  * Tool dispatch — wraps each registered handler with:
  *
- *  1. Serialization via a single in-house mutex (Promise chain). The
- *     stdio transport receives requests one-at-a-time, but the SDK
- *     does not serialize tool calls on its own; serializing here keeps
- *     library state (token cache, fetched env metadata) coherent and
- *     side-steps a class of race conditions in v1. Documented as a
- *     known limitation in `docs/mcp.md`.
+ *  1. Concurrency via an in-house read/write lock. The stdio transport
+ *     receives requests one-at-a-time, but the SDK does not serialize
+ *     tool calls on its own. Multiple read tools (`*_inspect`,
+ *     `environment_status`, …) run concurrently; writes are exclusive
+ *     against everything. Writer preference keeps a queued
+ *     `recipe_push` from starving behind a stream of reads.
+ *
+ *     v1 used a single Promise-chain mutex that serialized every tool
+ *     call. The rwlock keeps the write-time correctness guarantee
+ *     (mutations don't observe each other's half-applied state) while
+ *     letting read fan-out cost what it should.
  *
  *  2. The per-call `allowWrite` gate. Write-typed tools that receive
  *     `allowWrite !== true` short-circuit to an INPUT_INVALID envelope
@@ -27,21 +32,14 @@
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createScaiError } from "@/shared/errors";
+import { RwLock } from "@/shared/rwlock";
 import type { McpContext } from "./auth";
 import { toolResultFromError } from "./errors";
 import type { ToolDescriptor, ToolExtra } from "./registry";
 import { ALLOW_WRITE_ERROR_HINT } from "./schemas/common";
 import { redactStructured } from "./redact";
 
-let mutex: Promise<unknown> = Promise.resolve();
-
-const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
-  const next = mutex.then(task, task);
-  // Keep the chain alive even if a previous task rejected — we never
-  // want one tool failure to wedge dispatch for subsequent calls.
-  mutex = next.catch(() => undefined);
-  return next;
-};
+const lock = new RwLock();
 
 export interface DispatchOptions {
   context: McpContext;
@@ -59,10 +57,10 @@ export const dispatchTool = async (
   descriptor: ToolDescriptor,
   input: Record<string, unknown>,
   options: DispatchOptions
-): Promise<CallToolResult> =>
-  enqueue(async () => {
-    // Short-circuit if the client already cancelled before dispatch got
-    // a slot on the mutex.
+): Promise<CallToolResult> => {
+  const run = async (): Promise<CallToolResult> => {
+    // Short-circuit if the client already cancelled while waiting on the
+    // lock. Holding the lock for the no-op return is negligible.
     if (options.extra.signal.aborted) {
       return cancelledEnvelope(descriptor.name);
     }
@@ -102,12 +100,15 @@ export const dispatchTool = async (
       }
       return toolResultFromError(error);
     }
-  });
+  };
+
+  return descriptor.auth === "write" ? lock.withWrite(run) : lock.withRead(run);
+};
 
 /**
- * Test-only helper to reset the dispatch mutex between tests so the
- * Promise chain doesn't carry state across `describe` blocks.
+ * Test-only helper to reset the dispatch lock between tests so the
+ * rwlock's pending-queue state doesn't carry across `describe` blocks.
  */
-export const __resetDispatchMutexForTests = (): void => {
-  mutex = Promise.resolve();
+export const __resetDispatchLockForTests = (): void => {
+  lock.reset();
 };

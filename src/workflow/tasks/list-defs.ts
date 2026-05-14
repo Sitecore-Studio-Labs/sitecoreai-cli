@@ -37,9 +37,7 @@ export const runWorkflowListDefs = async (
 
   const lines =
     workflows.length > 0
-      ? workflows.map(
-          (w) => `${w.displayName ?? w.name} (${w.itemId}) — ${w.path}`
-        )
+      ? workflows.map((w) => `${w.displayName ?? w.name} (${w.itemId}) — ${w.path}`)
       : [`No workflow definitions under ${rootPath}.`];
 
   printWorkflowResult({

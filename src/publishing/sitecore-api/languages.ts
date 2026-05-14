@@ -3,11 +3,14 @@ import type { EnvironmentConfiguration } from "@/config/types";
 import { listLanguages } from "@/sites/api/languages";
 import { listSites } from "@/sites/api/sites";
 import { createScaiError } from "@/shared/errors";
+import type { Logger } from "@/shared/logger";
 
 /**
  * Sites API helpers for resolving per-site or tenant-wide publish
- * languages. Used by `scai publish *` verbs to auto-fill `--languages`
- * when the operator names a site instead of typing locales by hand.
+ * languages. Used by `scai publish *` verbs to back the explicit
+ * `--languages-from-site <name>` and `--all-tenant-languages` flags
+ * (no implicit resolution — each flag does exactly what its name
+ * says).
  *
  * Auth: the Sites API uses `xmcloud.cm:admin` (already in scai's
  * deploy token scope set). No additional grants required — same

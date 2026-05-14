@@ -91,7 +91,13 @@ export const uploadDocument = async (
     sections: options.sectionIds ?? [],
     url: options.url,
     type: options.type ?? "brand guidelines",
-    fileType: options.fileType ?? "PDF",
+    // MIME, not label — Sitecore's PDF parser appears to key off the
+    // exact MIME `application/pdf` when populating numberOfPages /
+    // tags / summary via setMetadata. Working docs in this org all
+    // have `fileType: "application/pdf"`; docs with `"PDF"` (label)
+    // come back with `numberOfPages: 0` and the ingestion pipeline
+    // marks them failed.
+    fileType: options.fileType ?? "application/pdf",
     title: options.title,
     summary: options.summary,
     tags: options.tags ?? [],

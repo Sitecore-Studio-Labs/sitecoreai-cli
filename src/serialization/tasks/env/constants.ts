@@ -37,6 +37,13 @@ const SCAI_API_SCOPES = [
   // inspectors when an agent walks the tenancy tree.
   "platform.tenants:listall",
   "iam.usr_roles:r",
+  // SAI Publishing API — tenant-tier scopes used by `scai publish`.
+  // Granted only on environment-level automation clients per the
+  // Publishing API architect (org-level clients won't get them, and
+  // the issued token will just omit them in that case — harmless).
+  "xmcpub.jobs.t:r",
+  "xmcpub.jobs.t:w",
+  "xmcpub.queue:r",
 ] as const;
 
 /**

@@ -226,39 +226,43 @@ carry the publishing grants.
 
 **Operator setup (per environment that needs to publish):**
 
-1. Sitecore Cloud Portal → Environments → [env] → Automation
-   Clients → Create. This generates an env-level clientId + secret
-   that carries the publishing grants by default.
-2. Put those credentials on the env profile in
-   `sitecoreai.cli.json`:
-   ```json
-   "envProfiles": {
-     "sandbox": {
-       "clientId": "<env-level-client-id>",
-       "clientSecret": "<env-level-client-secret>",
-       "useClientCredentials": true,
-       ...
-     }
-   }
-   ```
-   Or pass them via env vars:
-   `SITECOREAI_ENV_SANDBOX_CLIENT_ID` /
-   `SITECOREAI_ENV_SANDBOX_CLIENT_SECRET`. Either pattern is
-   first-class.
-3. Run `scai publish status <jobId>`. scai mints the publishing
-   token transparently with `.t` scopes, verifies the scopes are
-   present in the returned token, caches it in the publishing-
-   specific keychain entry, and uses it for the request.
+There are two viable paths. Both depend on the operator having an
+env-level automation client (Cloud Portal → Environments → [env] →
+Automation Clients → Create — generates a clientId + secret that
+carries the `.t` publishing grants by default).
 
-**Resolution (PR 2a code):** `acquirePublishingToken` mints via
-client-credentials with explicit `.t` scopes. After minting, the
-token is decoded and verified — if it's missing the expected
-scopes (typical case: operator used org-level credentials), scai
-surfaces an `AUTH_REQUIRED` error that decodes what the token DID
-get and infers the likely cause ("looks like an org-level client;
-the Publishing API requires env-level"). No `scai publish login`
-command — setup is just editing the env profile or setting env
-vars, both of which scai already supports for deploy operations.
+**Path A — interactive operator (workstation):** run `scai login
+-n <env>` against the env-level client. scai's default scope set
+(`SCAI_API_SCOPES` in
+`src/serialization/tasks/env/constants.ts`) already requests the
+publishing scopes alongside the deploy + CM admin scopes, so a
+successful login mints a token covering both surfaces. No
+publish-specific login command; one login, both capabilities.
+
+**Path B — CI / non-interactive:** set
+`SITECOREAI_ENV_<NAME>_CLIENT_ID` + `_CLIENT_SECRET` env vars
+(or put `clientId`/`clientSecret` on the env profile in
+`sitecoreai.cli.json`). scai mints a fresh publishing-scoped token
+on demand via client-credentials with explicit `.t` scopes, caches
+it in the publishing keychain entry, and reuses it until expiry.
+
+**Resolution order in `acquirePublishingToken`:**
+
+1. Cached publishing-specific token in keychain (set by a previous
+   successful mint or Path B run).
+2. The deploy token in keychain, if its scope claim already
+   contains `xmcpub.jobs.t:*` (Path A — same token serves both
+   deploy and publishing).
+3. Fresh client-credentials mint via the env's clientId + secret
+   (Path B).
+
+After minting (or reading from keychain), scai decodes the token
+and verifies the publishing scopes are present. If not, it
+surfaces an `AUTH_REQUIRED` error that **decodes what the token
+DID get** and infers the likely cause — e.g. "looks like an
+org-level client; the Publishing API requires env-level" — so the
+operator knows whether to re-login or fix their credential
+configuration.
 
 **Note on prior research artifacts:** a multi-hour investigation
 earlier on 2026-05-14 wrongly concluded the publishing scopes lived

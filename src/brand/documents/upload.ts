@@ -1,4 +1,8 @@
-import { requestBrandApi, type BrandApiClientOptions } from "../api/client";
+import { createScaiError } from "@/shared/errors";
+import { clearAiSkillsToken } from "@/shared/keychain";
+import { acquireAiSkillsToken } from "../api/auth";
+import { AI_SKILLS_API_HOST } from "../api/types";
+import type { BrandApiClientOptions } from "../api/client";
 
 /**
  * Base path for the AI Skills Documents API. Same edge host as the
@@ -20,32 +24,33 @@ export interface UploadDocumentOptions {
   /** Brand kit UUID to attach the document to. */
   brandKitId: string;
   /**
-   * Publicly-reachable URL to a PDF (or other supported file type)
-   * the Sitecore edge can download. Sitecore re-fetches the URL and
-   * stores the file in MMS — direct local-file upload requires the
-   * MMS API (out of scope until concrete demand).
+   * Publicly-reachable URL to the document the Sitecore edge can
+   * download. Today, scai only supports URL-based uploads — the
+   * v2 `multipart/form-data` endpoint with a `file` binary part is
+   * broken on Sitecore's side (the FastAPI parser drops the
+   * `create_request` field whenever a `file` part is included).
+   * Local-file upload waits on a Sitecore fix or a separate MMS
+   * upload API.
    */
   url: string;
   /** Document type tag, e.g. "brand guidelines". */
   type?: string;
-  /** Document MIME / file type tag, e.g. "PDF". */
+  /**
+   * Document MIME type, e.g. "application/pdf". The working Sync kit
+   * docs use the full MIME (not labels like "PDF").
+   */
   fileType?: string;
   /** Display title; if `setMetadata: true` the server may overwrite. */
   title?: string;
   /** Brief description. */
   summary?: string;
-  /** Tags. The server rejects null/missing — defaults to []. */
+  /** Tags. The server rejects null — defaults to []. */
   tags?: string[];
   /**
    * Whether the server should auto-fill metadata (page count, etc.)
    * from the fetched file. Defaults to true.
    */
   setMetadata?: boolean;
-  /**
-   * Section IDs in the brand kit to associate the document with.
-   * Defaults to [] — server requires the field but accepts empty.
-   */
-  sectionIds?: string[];
   signal?: AbortSignal;
 }
 
@@ -53,12 +58,13 @@ export interface UploadedDocument {
   id: string;
   organizationId?: string;
   status?: string;
-  /** Sitecore MMS URL the file got copied to. */
+  /** Sitecore MMS URL the file got copied to (when copying happens). */
   url?: string;
   fileId?: string;
   type?: string;
   fileType?: string;
   brandkitId?: string;
+  references?: Array<{ id: string; path: string; type: string }>;
   [extra: string]: unknown;
 }
 
@@ -69,39 +75,41 @@ const buildReferencePath = (orgId: string, brandKitId: string): string =>
  * Upload a brand document to the Sitecore AI Skills Documents API and
  * attach it to a specific brand kit.
  *
- * **API quirk:** the OpenAPI spec documents a v2 multipart endpoint
- * (`POST /api/documents/v2/.../documents`), but it consistently 400s
- * with `'create_request' field required` regardless of how the
- * multipart body is encoded — verified empirically 2026-05-14 with
- * both hand-rolled multipart and curl's native `-F`. The v1 endpoint
- * (`POST /api/documents/v1/.../documents`) IS the working surface
- * and takes a JSON body that includes `brandkitId`, `sections`,
- * `url`, `tags`, `references`, and metadata fields.
+ * **Wire shape:** v2 endpoint, `application/x-www-form-urlencoded`,
+ * a single `create_request` form parameter whose value is a
+ * URL-encoded JSON string carrying `url`, `tags`, `references`, and
+ * metadata fields. Verified empirically 2026-05-14:
+ *   - The documented `multipart/form-data` shape with `file` (binary)
+ *     + `create_request` (JSON string) does NOT work — the server's
+ *     FastAPI parser drops `create_request` whenever a `file` part
+ *     is present. Reproduced with Node FormData, hand-rolled
+ *     multipart, and curl's native `-F` form handling.
+ *   - The form-urlencoded path with `create_request` alone is what
+ *     actually accepts the request and returns 201.
+ *   - References populate on this path; the alternative undocumented
+ *     v1 JSON path leaves references empty.
  *
- * The v1 endpoint downloads from `url` to Sitecore MMS — scai does
- * NOT upload the file directly. Callers must host the PDF at a URL
- * the Sitecore edge can reach. Local-file upload (via MMS) is a
- * follow-up; for now this is the developer-supplied-URL path.
+ * The server fetches the file from `url` and copies it to Sitecore
+ * MMS asynchronously. Local-file upload requires the multipart `file`
+ * part to be fixed server-side OR a separate MMS direct-upload API.
  */
 export const uploadDocument = async (
   options: UploadDocumentOptions
 ): Promise<UploadedDocument> => {
-  const body = {
-    brandkitId: options.brandKitId,
-    sections: options.sectionIds ?? [],
+  const host = options.client.host ?? AI_SKILLS_API_HOST;
+  const url = new URL(
+    `${DOCUMENTS_BASE_PATH}/api/documents/v2/organizations/${options.client.orgId}/documents`,
+    host
+  ).toString();
+
+  const createRequestJson = JSON.stringify({
     url: options.url,
+    setMetadata: options.setMetadata ?? true,
     type: options.type ?? "brand guidelines",
-    // MIME, not label — Sitecore's PDF parser appears to key off the
-    // exact MIME `application/pdf` when populating numberOfPages /
-    // tags / summary via setMetadata. Working docs in this org all
-    // have `fileType: "application/pdf"`; docs with `"PDF"` (label)
-    // come back with `numberOfPages: 0` and the ingestion pipeline
-    // marks them failed.
     fileType: options.fileType ?? "application/pdf",
     title: options.title,
     summary: options.summary,
     tags: options.tags ?? [],
-    setMetadata: options.setMetadata ?? true,
     references: [
       {
         type: "brandkit",
@@ -109,13 +117,44 @@ export const uploadDocument = async (
         path: buildReferencePath(options.client.orgId, options.brandKitId),
       },
     ],
+  });
+
+  const fire = async (token: string): Promise<Response> => {
+    const body = new URLSearchParams();
+    body.set("create_request", createRequestJson);
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+      signal: options.signal,
+    });
   };
 
-  return requestBrandApi<UploadedDocument>(options.client, {
-    basePath: DOCUMENTS_BASE_PATH,
-    path: `/api/documents/v1/organizations/${options.client.orgId}/documents`,
-    method: "POST",
-    body,
-    signal: options.signal,
+  let token = await acquireAiSkillsToken({
+    orgId: options.client.orgId,
+    credential: options.client.credential,
   });
+  let response = await fire(token);
+
+  if (response.status === 401) {
+    await clearAiSkillsToken(options.client.orgId);
+    token = await acquireAiSkillsToken({
+      orgId: options.client.orgId,
+      credential: options.client.credential,
+    });
+    response = await fire(token);
+  }
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw createScaiError(
+      `Document upload failed (${response.status}): ${detail || "Unknown error"}`,
+      "BRAND_API_FAILED"
+    );
+  }
+  return (await response.json()) as UploadedDocument;
 };

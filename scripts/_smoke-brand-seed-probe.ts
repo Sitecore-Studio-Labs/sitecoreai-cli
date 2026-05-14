@@ -149,7 +149,7 @@ const main = async (): Promise<void> => {
     while (Date.now() < deadline) {
       const doc = await requestBrandApi<DocStatus>(client, {
         basePath: DOCUMENTS_BASE_PATH,
-        path: `/api/documents/v1/organizations/${orgId}/documents/${uploaded.id}`,
+        path: `/api/documents/v2/organizations/${orgId}/documents/${uploaded.id}`,
         method: "GET",
       });
       lastDocStatus = doc.status;

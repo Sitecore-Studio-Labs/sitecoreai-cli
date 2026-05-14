@@ -6,6 +6,7 @@ import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
 import { resolvePublishingLocales } from "../sitecore-api/languages";
+import { resolveSiteRoot } from "../sitecore-api/sites";
 import type {
   CreatePublishJobRequest,
   PublishItemsMode,
@@ -30,6 +31,12 @@ export interface RunPublishItemOptions {
    *  the same job as `itemIds`; paths that don't resolve fail the
    *  whole call before any API write. */
   paths?: string[];
+  /** Site name. Resolves to the site's content-tree root item via
+   *  Sites + Authoring GraphQL, and adds that item to the publish
+   *  target list. Composable with `itemIds` and `paths` (target list
+   *  is the union). Combine with `--include-subitems` to publish the
+   *  whole site subtree; omit to publish just the root item. */
+  site?: string;
   /** ItemModel.type — defaults to "item". The Publishing API accepts
    *  a free-form string here; if your tenant uses a different value
    *  (e.g. "Item" or "ContentItem"), pass it explicitly. */

@@ -136,11 +136,7 @@ describe("public library surface — /brand", () => {
     expect(typeof brand.acquireAiSkillsToken).toBe("function");
     expect(typeof brand.extractScopes).toBe("function");
     expect(typeof brand.hasAiSkillsScopes).toBe("function");
-    expect([...brand.AI_SKILLS_REQUIRED_SCOPES]).toEqual([
-      "ai.org.brd:r",
-      "ai.org.brd:w",
-      "ai.orgs.br:gen",
-    ]);
+    expect([...brand.AI_SKILLS_REQUIRED_SCOPES]).toEqual(["ai.org.br:gen"]);
 
     // Transport seam.
     expect(typeof brand.requestBrandApi).toBe("function");

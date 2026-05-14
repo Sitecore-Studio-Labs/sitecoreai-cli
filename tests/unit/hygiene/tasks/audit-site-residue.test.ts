@@ -54,7 +54,14 @@ const setup = (params: {
   );
   const byPath: Childs = params.childrenByPath ?? {};
   const byId: Childs = params.childrenByItemId ?? {};
-  const counts = params.descendantsByItemId ?? {};
+  // The audit normalises itemIds (lowercase, strip `{}-`) before they
+  // hit the search index. Rekey the counts map on the same shape so
+  // tests can use human-readable IDs like `"site-orphan"`.
+  const normalize = (raw: string): string => raw.toLowerCase().replace(/[{}-]/g, "");
+  const counts: Record<string, number> = {};
+  for (const [id, count] of Object.entries(params.descendantsByItemId ?? {})) {
+    counts[normalize(id)] = count;
+  }
   const client = {
     search: vi.fn().mockImplementation(async (input: { searchStatement?: unknown }) => {
       const stmt = input.searchStatement as

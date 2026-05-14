@@ -56,3 +56,20 @@ export {
 export { buildJsonReport, type BrandReviewJsonReport } from "./review/format-json";
 export { buildSarifReport, type SarifReport } from "./review/format-sarif";
 export { buildTextReport, formatTextRow, formatTextSummary } from "./review/format-text";
+
+export {
+  uploadDocument,
+  DOCUMENTS_BASE_PATH,
+  type UploadDocumentOptions,
+  type UploadedDocument,
+  type DocumentCreateMetadata,
+  type DocumentUploadReference,
+} from "./documents/upload";
+
+export {
+  runBrandIngestionPipeline,
+  runEnrichSectionsPipeline,
+  PIPELINE_BASE_PATH,
+  type RunBrandIngestionOptions,
+  type RunEnrichSectionsOptions,
+} from "./pipeline/run";

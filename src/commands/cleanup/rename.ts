@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupRename } from "@/hygiene/tasks/cleanup-rename";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupRenameCommand = (): Command => {
@@ -43,9 +44,7 @@ export const createCleanupRenameCommand = (): Command => {
       "display name (without changing the slug), use:\n" +
       "  scai cleanup field-set apply --field '__Display Name' --value 'new name'\n"
   );
-  apply.action(async (options) => {
-    await runCleanupRename(options);
-  });
+  apply.action(withApplyGate(runCleanupRename));
 
   command.addCommand(apply);
   return command;

@@ -12,6 +12,7 @@ import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { inputError, selectMatch } from "@/shared/cli-tasks";
 import { resolveEnvironment } from "@/shared/env";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { fetchOrganization } from "@/deploy/api/organizations";
 import { fetchAllProjects, fetchAllProjectEnvironments } from "@/deploy/api/projects";
 import { fetchAllEnvironments } from "@/deploy/api/environments";
@@ -108,12 +109,12 @@ export const printDeployResultWithContext = (
   extra: Record<string, unknown> = {}
 ): void => {
   if (logger.isJson()) {
-    logger.json({
-      command,
-      environment: context.envName ?? null,
-      ...extra,
-      result,
-    });
+    // `extra` keys overlapping with canonical envelope fields
+    // (totalCount, pageSize, whatIf, etc.) are hoisted to envelope-
+    // level; anything else lands under `meta`. Keeps the top-level
+    // namespace clean while preserving the caller's ability to attach
+    // pagination metadata without nesting it under `data`.
+    logger.json(buildScaiEnvelope({ command, environment: context.envName, data: result, extra }));
     return;
   }
   printDeployResult(logger, result);
@@ -126,12 +127,14 @@ export const printDeployWhatIf = (
   request: Record<string, unknown>
 ): void => {
   if (logger.isJson()) {
-    logger.json({
-      command,
-      environment: context.envName ?? null,
-      whatIf: true,
-      request,
-    });
+    logger.json(
+      buildScaiEnvelope({
+        command,
+        environment: context.envName,
+        data: request,
+        extra: { whatIf: true },
+      })
+    );
     return;
   }
   printDeployResult(logger, { whatIf: true, request });

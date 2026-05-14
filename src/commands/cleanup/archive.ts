@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupArchivePurge } from "@/hygiene/tasks/cleanup-archive-purge";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupArchiveCommand = (): Command => {
@@ -26,9 +27,7 @@ export const createCleanupArchiveCommand = (): Command => {
   purge.option("--concurrency <count>", "Concurrency for delete calls (default: 4)", (v) =>
     parseInt(v, 10)
   );
-  purge.action(async (options) => {
-    await runCleanupArchivePurge(options);
-  });
+  purge.action(withApplyGate(runCleanupArchivePurge));
 
   command.addCommand(purge);
   return command;

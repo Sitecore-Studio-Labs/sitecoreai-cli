@@ -8,14 +8,14 @@ import path from "node:path";
  * The output adapters here let callers redirect to a file and/or
  * transform to CSV / Markdown for human-readable reporting.
  *
- * Adapters operate on the JSON envelope shape that `printReport`
- * produces:
+ * Adapters operate on the canonical `ScaiEnvelope` shape that
+ * `printReport` produces:
  *
  *   {
  *     command: "audit.broken-links.list",
  *     environment: "sandbox",
  *     count: 42,
- *     results: [ { itemId, path, ... } ],
+ *     data: [ { itemId, path, ... } ],   // renamed from `results` 2026-05-14
  *     <extra fields>
  *   }
  *
@@ -33,9 +33,10 @@ export type OutputFormat = "json" | "csv" | "markdown";
 
 export interface AuditEnvelope {
   command: string;
-  environment: string;
+  environment: string | null;
   count?: number;
-  results: unknown[];
+  /** Canonical envelope key for the primary payload. */
+  data: unknown[];
   summary?: string;
   [key: string]: unknown;
 }
@@ -46,7 +47,7 @@ export const formatAuditOutput = (envelope: AuditEnvelope, format: OutputFormat)
     case "json":
       return JSON.stringify(envelope, null, 2);
     case "csv":
-      return toCsv(envelope.results);
+      return toCsv(envelope.data);
     case "markdown":
       return toMarkdown(envelope);
     default:
@@ -156,7 +157,7 @@ const toMarkdownSingle = (envelope: AuditEnvelope): string => {
     lines.push(`- **${k}**: ${v}`);
   }
   lines.push("");
-  emitResultsBlock(lines, envelope.results);
+  emitResultsBlock(lines, envelope.data);
   return lines.join("\n") + "\n";
 };
 

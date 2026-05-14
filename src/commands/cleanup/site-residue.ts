@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup-site-residue";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupSiteResidueCommand = (): Command => {
@@ -35,9 +36,7 @@ export const createCleanupSiteResidueCommand = (): Command => {
   purge.option("--concurrency <count>", "Concurrent deletes / pre-flight scans (default: 4)", (v) =>
     parseInt(v, 10)
   );
-  purge.action(async (options) => {
-    await runCleanupSiteResidue(options);
-  });
+  purge.action(withApplyGate(runCleanupSiteResidue));
 
   command.addCommand(purge);
 

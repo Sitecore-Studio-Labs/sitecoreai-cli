@@ -167,3 +167,219 @@ describe("cleanup duplicates — what-if + safety", () => {
     expect(client.deleteItem).not.toHaveBeenCalled();
   });
 });
+
+describe("cleanup duplicates — inbound-reference pre-flight", () => {
+  const GUID_A = "aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa";
+  const GUID_B = "bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb";
+  const GUID_C = "cccccccccccc4ccc8ccccccccccccccc";
+
+  it("blocks delete when a content field references the dupe (default pre-flight)", async () => {
+    // A (older) and B are dupes (same Title="Hello"); C is a distinct
+    // item with a Link field referencing B. Keep-rule "oldest" keeps A;
+    // B becomes the deletion candidate, and the pre-flight finds C's
+    // ref to B — the action should be blocked.
+    const items = mkItems([
+      { id: GUID_A, path: "/sitecore/content/Root/A", created: "2026-01-01T00:00:00Z" },
+      { id: GUID_B, path: "/sitecore/content/Root/B", created: "2026-02-01T00:00:00Z" },
+      { id: GUID_C, path: "/sitecore/content/Root/C" },
+    ]);
+    const env = {
+      name: "sandbox",
+      host: "h",
+      allowWrite: true,
+    } as EnvironmentConfiguration;
+    vi.mocked(resolveEnvironment).mockReturnValue({
+      envName: env.name!,
+      environment: env,
+      root: { environments: { [env.name!]: env } } as unknown as RootConfiguration,
+      timeoutMs: undefined,
+    });
+
+    const fieldsByItemId = new Map<string, Array<{ fieldId: string; name: string; value: string }>>(
+      [
+        [GUID_A, [{ fieldId: "f1", name: "Title", value: "Hello" }]],
+        [GUID_B, [{ fieldId: "f1", name: "Title", value: "Hello" }]],
+        // C is NOT a dupe (different Title) and references B in a Link field.
+        [
+          GUID_C,
+          [
+            { fieldId: "f1", name: "Title", value: "Unique" },
+            { fieldId: "f2", name: "Link", value: `{${GUID_B.toUpperCase()}}` },
+          ],
+        ],
+      ]
+    );
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        totalCount: 1,
+        results: [{ itemId: "rootid", path: "/sitecore/content/Root" }],
+      }),
+      searchAll: vi.fn().mockImplementation(async function* () {
+        for (const it of items) yield it;
+      }),
+      getItemFieldsBatch: vi.fn().mockImplementation((ids: string[]) => {
+        const out = new Map();
+        for (const id of ids) out.set(id, fieldsByItemId.get(id) ?? null);
+        return Promise.resolve(out);
+      }),
+      deleteItem: vi.fn().mockResolvedValue(undefined),
+      getItemFields: vi.fn(),
+      itemExists: vi.fn(),
+      itemsExistBatch: vi.fn(),
+      getItemVersions: vi.fn(),
+      getItemWorkflow: vi.fn(),
+      listArchivedItems: vi.fn(),
+      deleteItemVersion: vi.fn(),
+      deleteItemTemplate: vi.fn(),
+      deleteArchivedItem: vi.fn(),
+      archiveVersion: vi.fn(),
+      listItemTemplates: vi.fn(),
+      getChildren: vi.fn(),
+    } as HygieneApiClient;
+    vi.mocked(createHygieneApiClient).mockReturnValue(client);
+
+    const result = await runCleanupDuplicates({
+      keepRule: "oldest",
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].kept.itemId).toBe(GUID_A);
+    const bDeletion = result[0].deleted.find((d) => d.itemId === GUID_B);
+    expect(bDeletion?.status).toBe("blocked");
+    expect(bDeletion?.blockers).toBeDefined();
+    expect(bDeletion?.blockers?.length ?? 0).toBeGreaterThan(0);
+    expect(client.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it("--skip-ref-check bypasses the pre-flight", async () => {
+    const items = mkItems([
+      { id: GUID_A, path: "/sitecore/content/Root/A" },
+      { id: GUID_B, path: "/sitecore/content/Root/B" },
+    ]);
+    const client = setup({ items });
+    await runCleanupDuplicates({
+      keepRule: "oldest",
+      root: "/sitecore/content/Root",
+      skipRefCheck: true,
+      json: true,
+      quiet: true,
+    } as never);
+    expect(client.deleteItem).toHaveBeenCalled();
+  });
+
+  it("--force bypasses the pre-flight even when refs exist", async () => {
+    const items = mkItems([
+      { id: GUID_A, path: "/sitecore/content/Root/A" },
+      { id: GUID_B, path: "/sitecore/content/Root/B" },
+    ]);
+    const client = setup({ items });
+    await runCleanupDuplicates({
+      keepRule: "oldest",
+      root: "/sitecore/content/Root",
+      force: true,
+      json: true,
+      quiet: true,
+    } as never);
+    expect(client.deleteItem).toHaveBeenCalled();
+  });
+});
+
+describe("cleanup duplicates — pre-computed groups (--from-stdin path)", () => {
+  const GUID_X = "11111111111111111111111111111111";
+  const GUID_Y = "22222222222222222222222222222222";
+
+  it("skips the internal audit when preComputedGroups is supplied", async () => {
+    // Make sure setup() exists; do not yield any dupe items via the audit
+    // — searchAll yields nothing. If the cleanup ran the internal audit,
+    // it would find zero groups; with preComputedGroups, it sees ours.
+    const env = {
+      name: "sandbox",
+      host: "h",
+      allowWrite: true,
+    } as EnvironmentConfiguration;
+    vi.mocked(resolveEnvironment).mockReturnValue({
+      envName: env.name!,
+      environment: env,
+      root: { environments: { [env.name!]: env } } as unknown as RootConfiguration,
+      timeoutMs: undefined,
+    });
+
+    const searchAll = vi.fn().mockImplementation(async function* () {
+      // Yield nothing — proves the cleanup didn't fall back to the audit.
+    });
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        totalCount: 1,
+        results: [{ itemId: "rootid", path: "/sitecore/content/Root" }],
+      }),
+      searchAll,
+      getItemFieldsBatch: vi.fn().mockResolvedValue(
+        new Map([
+          [GUID_X, []],
+          [GUID_Y, []],
+        ])
+      ),
+      deleteItem: vi.fn().mockResolvedValue(undefined),
+      getItemFields: vi.fn(),
+      itemExists: vi.fn(),
+      itemsExistBatch: vi.fn(),
+      getItemVersions: vi.fn(),
+      getItemWorkflow: vi.fn(),
+      listArchivedItems: vi.fn(),
+      deleteItemVersion: vi.fn(),
+      deleteItemTemplate: vi.fn(),
+      deleteArchivedItem: vi.fn(),
+      archiveVersion: vi.fn(),
+      listItemTemplates: vi.fn(),
+      getChildren: vi.fn(),
+    } as HygieneApiClient;
+    vi.mocked(createHygieneApiClient).mockReturnValue(client);
+
+    const preComputedGroups = [
+      {
+        contentHash: "hash-1",
+        count: 2,
+        members: [
+          {
+            itemId: GUID_X,
+            path: "/sitecore/content/Root/X",
+            name: "X",
+            language: { name: "en" },
+            version: 1,
+            createdDate: "2026-01-01T00:00:00Z",
+            updatedDate: "2026-01-02T00:00:00Z",
+            templateName: "Generic",
+          },
+          {
+            itemId: GUID_Y,
+            path: "/sitecore/content/Root/Y",
+            name: "Y",
+            language: { name: "en" },
+            version: 1,
+            createdDate: "2026-02-01T00:00:00Z",
+            updatedDate: "2026-02-02T00:00:00Z",
+            templateName: "Generic",
+          },
+        ],
+      },
+    ];
+
+    const result = await runCleanupDuplicates({
+      keepRule: "oldest",
+      root: "/sitecore/content/Root",
+      preComputedGroups,
+      skipRefCheck: true,
+      json: true,
+      quiet: true,
+    } as never);
+
+    expect(searchAll).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].kept.itemId).toBe(GUID_X);
+    expect(result[0].deleted).toHaveLength(1);
+    expect(result[0].deleted[0].itemId).toBe(GUID_Y);
+  });
+});

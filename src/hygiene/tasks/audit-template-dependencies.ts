@@ -55,6 +55,13 @@ export interface AuditTemplateDependenciesOptions extends HygieneCommonOptions {
   limit?: number;
   /** Skip a reference kind by name. Use to scope big tenants. */
   skip?: TemplateReferenceKind[];
+  /**
+   * Suppress the audit's own report. Used by cleanup tasks that call
+   * this audit as a pre-flight check and surface blockers in their own
+   * combined report rather than as a separate audit record. Default
+   * false — direct CLI / MCP callers always see the audit report.
+   */
+  silent?: boolean;
 }
 
 export interface TemplateDependencyReport {
@@ -154,16 +161,18 @@ export const runAuditTemplateDependencies = async (
     return (a.path ?? a.name).localeCompare(b.path ?? b.name);
   });
 
-  printReport({
-    logger,
-    command: "audit.template-dependencies.list",
-    envName,
-    results: reports,
-    summary: `Template ${value}: ${reports.length} inbound reference(s).`,
-    formatLine: (r) => `[${r.referenceKind}] ${r.path ?? r.name} (${r.itemId.slice(0, 8)})`,
-    extra: { templateId: value, limit, skipped: [...skip] },
-    options,
-  });
+  if (!options.silent) {
+    printReport({
+      logger,
+      command: "audit.template-dependencies.list",
+      envName,
+      results: reports,
+      summary: `Template ${value}: ${reports.length} inbound reference(s).`,
+      formatLine: (r) => `[${r.referenceKind}] ${r.path ?? r.name} (${r.itemId.slice(0, 8)})`,
+      extra: { templateId: value, limit, skipped: [...skip] },
+      options,
+    });
+  }
 
   return reports;
 };

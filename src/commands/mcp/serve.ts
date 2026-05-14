@@ -10,7 +10,7 @@
 
 import { Command, Option } from "commander";
 import { installMcpStdoutDiscipline, writeStartupLine } from "@/mcp/logging";
-import { bindMcpEnvironment } from "@/mcp/auth";
+import { createMcpContextProvider, resolveMcpEnv } from "@/mcp/auth";
 import { buildScaiMcpRegistry } from "@/mcp/build-registry";
 import { buildMcpServer, startStdioTransport } from "@/mcp/server";
 import { toScaiError } from "@/shared/errors";
@@ -32,14 +32,30 @@ export const runMcpServe = async (options: McpServeOptions): Promise<void> => {
   }
 
   try {
-    const context = await bindMcpEnvironment({
+    // Fail-fast on bad config (sync read, no keychain involved). Bad config
+    // is a setup error — surface it at startup, not buried in a tool result.
+    const resolved = resolveMcpEnv({
       configPath: options.config,
       environmentName: options.environmentName,
     });
+    const configPath = options.config ?? process.cwd();
+    const getContext = createMcpContextProvider(resolved, configPath);
     const registry = buildScaiMcpRegistry();
-    const server = buildMcpServer({ context, registry });
+    const server = buildMcpServer({ getContext, registry });
+
+    // Warm the context in the background. If the keychain prompts on macOS,
+    // the prompt happens here — concurrent with stdio connect — instead of
+    // serializing before it, which is what made `initialize` time out
+    // ("still connecting") in some hosts.
+    void getContext().catch((error) => {
+      const scaiError = toScaiError(error);
+      process.stderr.write(
+        `scai mcp: deferred env binding failed; first tool call will retry. ${scaiError.message}\n`
+      );
+    });
+
     writeStartupLine(
-      `scai mcp serve listening on stdio, bound to environment '${context.envName}'`
+      `scai mcp serve listening on stdio, bound to environment '${resolved.envName}'`
     );
     await startStdioTransport(server);
   } catch (error) {

@@ -2,6 +2,10 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import {
+  runAuditTemplateDependencies,
+  type TemplateDependencyReport,
+} from "./audit-template-dependencies";
+import {
   type HygieneCommonOptions,
   ensureAllowWriteForCleanup,
   printReport,
@@ -39,8 +43,17 @@ export interface DeadTemplatePurgeAction {
   templateId: string;
   name: string;
   fullName: string | null;
-  status: "purged" | "what-if" | "failed";
+  status: "purged" | "what-if" | "failed" | "blocked";
   error?: string;
+  /**
+   * Inbound structural references that blocked the delete: base-template
+   * inheritors, insert-options hosts, branch sources, datasource
+   * templates. Populated when status is "blocked". The cleanup ran
+   * `audit template-dependencies` as a pre-flight; the operator can
+   * resolve each blocker before re-running cleanup, or pass --force to
+   * attempt delete anyway (the Authoring API may still reject).
+   */
+  blockers?: TemplateDependencyReport[];
 }
 
 export interface FolderCleanupAction {
@@ -171,6 +184,35 @@ export const runCleanupDeadTemplates = async (
   const templateActions: DeadTemplatePurgeAction[] = await mapWithConcurrency(
     dead,
     async (t): Promise<DeadTemplatePurgeAction> => {
+      // Pre-flight check: `audit dead-templates` only counts primary-template
+      // refs (items whose `_template` is t.templateId). Templates can still
+      // be in use as base templates, insert-options entries, branch sources,
+      // or datasource templates — none of which the dead-templates audit
+      // sees. Running `audit template-dependencies` here catches all four
+      // structural shapes via the search index before we attempt a delete
+      // the Authoring API would reject anyway. The agent gets a structured
+      // `blockers` list instead of a terse "is used by other items" string.
+      //
+      // --force skips the pre-flight and lets the Authoring API decide
+      // (preserves the existing escape hatch for ops who know the API
+      // would accept the delete despite stale index entries).
+      if (!options.force) {
+        const blockers = await runAuditTemplateDependencies({
+          ...options,
+          templateId: t.templateId,
+          silent: true,
+        });
+        if (blockers.length > 0) {
+          return {
+            templateId: t.templateId,
+            name: t.name,
+            fullName: t.fullName,
+            status: "blocked",
+            blockers,
+          };
+        }
+      }
+
       if (options.whatIf) {
         return {
           templateId: t.templateId,
@@ -210,19 +252,22 @@ export const runCleanupDeadTemplates = async (
 
   const purged = templateActions.filter((a) => a.status === "purged").length;
   const failed = templateActions.filter((a) => a.status === "failed").length;
+  const blocked = templateActions.filter((a) => a.status === "blocked").length;
+  const wouldDelete = templateActions.filter((a) => a.status === "what-if").length;
   const foldersRemoved = folderActions.filter((a) => a.status === "deleted").length;
 
+  const blockedSuffix = blocked > 0 ? `, ${blocked} blocked by inbound refs` : "";
   const summary = options.whatIf
-    ? `Plan: would delete ${templateActions.length} dead template${templateActions.length === 1 ? "" : "s"}${
+    ? `Plan: would delete ${wouldDelete} dead template${wouldDelete === 1 ? "" : "s"}${
         folderActions.length > 0
           ? ` and ${folderActions.length} empty folder${folderActions.length === 1 ? "" : "s"}`
           : ""
-      }.`
+      }${blockedSuffix}.`
     : `Deleted ${purged} template${purged === 1 ? "" : "s"}${
         foldersRemoved > 0
           ? ` and ${foldersRemoved} empty folder${foldersRemoved === 1 ? "" : "s"}`
           : ""
-      }${failed > 0 ? ` (${failed} template failure${failed === 1 ? "" : "s"})` : ""}.`;
+      }${failed > 0 ? ` (${failed} template failure${failed === 1 ? "" : "s"})` : ""}${blockedSuffix}.`;
 
   printReport({
     logger,
@@ -232,13 +277,29 @@ export const runCleanupDeadTemplates = async (
     summary,
     formatLine: (a) =>
       "templateId" in a
-        ? `${a.status === "what-if" ? "[would delete] " : a.status === "failed" ? "[failed] " : ""}${a.fullName ?? a.name}${a.error ? ` — ${a.error}` : ""}`
+        ? `${
+            a.status === "what-if"
+              ? "[would delete] "
+              : a.status === "failed"
+                ? "[failed] "
+                : a.status === "blocked"
+                  ? `[blocked × ${a.blockers?.length ?? 0}] `
+                  : ""
+          }${a.fullName ?? a.name}${a.error ? ` — ${a.error}` : ""}${
+            a.status === "blocked" && a.blockers && a.blockers.length > 0
+              ? ` — ${a.blockers
+                  .slice(0, 3)
+                  .map((b) => `${b.referenceKind}:${b.path ?? b.name}`)
+                  .join(", ")}${a.blockers.length > 3 ? "…" : ""}`
+              : ""
+          }`
         : `${a.status === "what-if" ? "[would delete folder] " : a.status === "failed" ? "[failed folder] " : "[folder] "}${a.path}${a.error ? ` — ${a.error}` : ""}`,
     extra: {
       root,
       whatIf: Boolean(options.whatIf),
       templatePurgedCount: purged,
       templateFailedCount: failed,
+      templateBlockedCount: blocked,
       foldersRemovedCount: foldersRemoved,
     },
     options,

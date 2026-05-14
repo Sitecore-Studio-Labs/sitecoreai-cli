@@ -90,6 +90,49 @@ export const addIncludeExcludeOptions = (command: Command): Command =>
 export const addWhatIfOption = (command: Command): Command =>
   command.option("-w, --what-if", "Lists commands that would be executed, without executing them");
 
+/**
+ * `--apply` is the universal "yes really execute" flag for destructive
+ * commands. Without it, scai dry-runs as if `--what-if` were set.
+ * Agent-first: no destruction without an explicit affirmative in the
+ * command line.
+ *
+ * Pre-2026-05-14, destructive commands ran whenever the operator passed
+ * `--allow-write` (cleanup) or `--force` (deploy). That made "I forgot
+ * `--what-if`" the same keystroke as "delete." Inverting the default
+ * costs one flag for intentional mutations and removes the muscle-
+ * memory hazard for everything else.
+ */
+export const addApplyOption = (command: Command): Command =>
+  command.option(
+    "--apply",
+    "Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set."
+  );
+
+/**
+ * Wrap a CLI command runner with the `--apply` gate. Without `--apply`
+ * (and absent an explicit `--what-if`), the runner is invoked with
+ * `whatIf: true` so it produces a plan-only output. Emits a one-line
+ * stderr hint so operators don't wonder why no mutation happened.
+ *
+ * Use at the CLI command layer (in `.action()` handlers). Library
+ * callers (MCP tools, direct programmatic use) bypass this wrapper and
+ * are gated by their own contract (e.g. MCP's per-call `allowWrite`).
+ */
+export const withApplyGate = <T extends { apply?: boolean; whatIf?: boolean }>(
+  runner: (options: T) => unknown | Promise<unknown>
+): ((options: T) => Promise<void>) => {
+  return async (options: T): Promise<void> => {
+    let coerced = options;
+    if (!options.apply && !options.whatIf) {
+      process.stderr.write(
+        "Dry run (no --apply flag set). Pass --apply to execute the mutation.\n"
+      );
+      coerced = { ...options, whatIf: true };
+    }
+    await runner(coerced);
+  };
+};
+
 export const addSkipValidationOption = (command: Command): Command =>
   command.option("-s, --skip-validation", "Skips filesystem integrity validation prior to syncing");
 

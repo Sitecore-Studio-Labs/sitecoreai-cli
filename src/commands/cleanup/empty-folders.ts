@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupEmptyFolders } from "@/hygiene/tasks/cleanup-empty-folders";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupEmptyFoldersCommand = (): Command => {
@@ -15,9 +16,7 @@ export const createCleanupEmptyFoldersCommand = (): Command => {
   purge.option("--max-deletions <count>", "Cap on total deletions per run (default 500)", (v) =>
     parseInt(v, 10)
   );
-  purge.action(async (options) => {
-    await runCleanupEmptyFolders(options);
-  });
+  purge.action(withApplyGate(runCleanupEmptyFolders));
   command.addCommand(purge);
   return command;
 };

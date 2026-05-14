@@ -13,7 +13,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Notification } from "@modelcontextprotocol/sdk/types.js";
-import type { McpContext } from "./auth";
+import type { McpContextProvider } from "./auth";
 import { dispatchTool } from "./dispatch";
 import type { McpRegistry, ToolExtra } from "./registry";
 import packageJson from "../../package.json";
@@ -55,12 +55,18 @@ const buildToolExtra = (sdkExtra: SdkExtra): ToolExtra => {
 };
 
 export interface McpServerOptions {
-  context: McpContext;
+  /**
+   * Lazy provider for the bound `McpContext`. Resolves on first tool /
+   * resource / prompt invocation so the stdio transport can complete
+   * the MCP `initialize` handshake before any keychain access happens.
+   * See `createMcpContextProvider` for the memoization + retry shape.
+   */
+  getContext: McpContextProvider;
   registry: McpRegistry;
 }
 
 export const buildMcpServer = (options: McpServerOptions): McpServer => {
-  const { context, registry } = options;
+  const { getContext, registry } = options;
 
   const server = new McpServer({
     name: "scai",
@@ -76,11 +82,13 @@ export const buildMcpServer = (options: McpServerOptions): McpServer => {
         inputSchema: tool.inputSchema,
         annotations: tool.annotations,
       },
-      async (args: Record<string, unknown>, sdkExtra: unknown) =>
-        dispatchTool(tool, args ?? {}, {
+      async (args: Record<string, unknown>, sdkExtra: unknown) => {
+        const context = await getContext();
+        return dispatchTool(tool, args ?? {}, {
           context,
           extra: buildToolExtra(sdkExtra as SdkExtra),
-        })
+        });
+      }
     );
   }
 
@@ -93,7 +101,7 @@ export const buildMcpServer = (options: McpServerOptions): McpServer => {
         description: resource.description,
         mimeType: resource.mimeType,
       },
-      async () => resource.handler(context)
+      async () => resource.handler(await getContext())
     );
   }
 
@@ -105,7 +113,7 @@ export const buildMcpServer = (options: McpServerOptions): McpServer => {
         description: prompt.description,
         argsSchema: prompt.argsSchema,
       },
-      async (args: Record<string, unknown>) => prompt.handler(args as never, context)
+      async (args: Record<string, unknown>) => prompt.handler(args as never, await getContext())
     );
   }
 

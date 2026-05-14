@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import {
   addAllowWriteOption,
+  addApplyOption,
   addConfigOption,
   addEnvironmentOption,
   addForceOption,
@@ -12,6 +13,7 @@ export const addCleanupBaseOptions = (command: Command): Command => {
   addEnvironmentOption(command);
   addConfigOption(command);
   addWhatIfOption(command);
+  addApplyOption(command);
   addAllowWriteOption(command);
   addForceOption(command);
   addVerbosityOptions(command);

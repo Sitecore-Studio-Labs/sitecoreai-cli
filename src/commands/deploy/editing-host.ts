@@ -6,6 +6,7 @@ import {
   runDeployEditingHostUpdate,
   runDeployEditingHostDeploy,
 } from "@/deploy/tasks/editing-host";
+import { withApplyGate } from "../shared";
 import { addDeployBaseOptions } from "./shared";
 
 const parsePositiveInt =
@@ -65,7 +66,7 @@ export const createDeployEditingHostCommand = (): Command => {
   del
     .addOption(new Option("--id <id>", "Editing host environment ID"))
     .addOption(new Option("--force", "Force delete environment"));
-  del.action(async (options) => runDeployEditingHostDelete(options));
+  del.action(withApplyGate(runDeployEditingHostDelete));
 
   const deploy = new Command("deploy").description("Deploy an editing host environment");
   addDeployBaseOptions(deploy);

@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupUsers } from "@/hygiene/tasks/cleanup-users";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupUsersCommand = (): Command => {
@@ -33,9 +34,7 @@ export const createCleanupUsersCommand = (): Command => {
     "\nDefault threshold is 365 days (vs 180 for the audit) — deleting users is\n" +
       "more destructive than flagging them, so the bar is higher.\n"
   );
-  purgeStale.action(async (options) => {
-    await runCleanupUsers(options);
-  });
+  purgeStale.action(withApplyGate(runCleanupUsers));
   command.addCommand(purgeStale);
   return command;
 };

@@ -1,5 +1,6 @@
 import { Command, Option } from "commander";
 import { runCleanupSlugConflicts } from "@/hygiene/tasks/cleanup-slug-conflicts";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupSlugConflictsCommand = (): Command => {
@@ -57,9 +58,7 @@ export const createCleanupSlugConflictsCommand = (): Command => {
       "  `oldest` and `newest` fall back to itemId-stable ordering. Use\n" +
       "  `--keep-rule interactive` when the survivor decision matters per-item.\n"
   );
-  purge.action(async (options) => {
-    await runCleanupSlugConflicts(options);
-  });
+  purge.action(withApplyGate(runCleanupSlugConflicts));
 
   command.addCommand(purge);
   return command;

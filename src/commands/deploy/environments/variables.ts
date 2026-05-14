@@ -4,6 +4,7 @@ import {
   runDeployEnvironmentsVariablesCreate,
   runDeployEnvironmentsVariablesDelete,
 } from "@/deploy/tasks/environments";
+import { withApplyGate } from "../../shared";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsVariablesCommand = (): Command => {
@@ -42,9 +43,7 @@ export const createEnvironmentsVariablesCommand = (): Command => {
     .addOption(new Option("--name <name>", "Environment name"))
     .addOption(new Option("--project <value>", "Project name or ID"))
     .addOption(new Option("--variable <name>", "Variable name"));
-  environmentsVariablesDelete.action(async (options) =>
-    runDeployEnvironmentsVariablesDelete(options)
-  );
+  environmentsVariablesDelete.action(withApplyGate(runDeployEnvironmentsVariablesDelete));
 
   environmentsVariables.addCommand(environmentsVariablesCreate);
   environmentsVariables.addCommand(environmentsVariablesDelete);

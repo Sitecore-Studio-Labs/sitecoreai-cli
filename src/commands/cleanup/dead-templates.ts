@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupDeadTemplates } from "@/hygiene/tasks/cleanup-dead-templates";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupDeadTemplatesCommand = (): Command => {
@@ -21,9 +22,7 @@ export const createCleanupDeadTemplatesCommand = (): Command => {
     "Skip the recursive empty-folder cleanup after templates are deleted (default: clean up)"
   );
   purge.option("--index <name>", "Override the search index name (default: sitecore_master_index)");
-  purge.action(async (options) => {
-    await runCleanupDeadTemplates(options);
-  });
+  purge.action(withApplyGate(runCleanupDeadTemplates));
 
   command.addCommand(purge);
   return command;

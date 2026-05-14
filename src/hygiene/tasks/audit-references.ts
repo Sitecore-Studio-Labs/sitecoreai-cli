@@ -25,6 +25,14 @@ export interface AuditReferencesOptions extends HygieneCommonOptions {
   includeSystemFields?: boolean;
   /** Restrict the scan to these field names. */
   fields?: string[];
+  /**
+   * Suppress the audit's own report. Used by cleanup tasks that call
+   * this audit as a pre-flight check and surface blockers in their own
+   * combined report rather than as a separate audit record. Pair with
+   * `cache: true` when running back-to-back checks against the same
+   * `--root` so subsequent calls hit the field cache. Default false.
+   */
+  silent?: boolean;
 }
 
 export interface ReferenceReport {
@@ -55,7 +63,9 @@ export interface ReferenceReport {
  * concatenations. Match permissively so a single audit catches the
  * full surface.
  */
-const buildPatterns = (normalized: string): Array<{ pattern: string; form: ReferenceReport["matches"][number]["form"] }> => {
+const buildPatterns = (
+  normalized: string
+): Array<{ pattern: string; form: ReferenceReport["matches"][number]["form"] }> => {
   const flat = normalized;
   const dashed = `${flat.slice(0, 8)}-${flat.slice(8, 12)}-${flat.slice(12, 16)}-${flat.slice(16, 20)}-${flat.slice(20)}`;
   return [
@@ -97,10 +107,7 @@ export const runAuditReferences = async (
   const { envName, client } = resolveTenant(options);
 
   if (!options.to) {
-    throw createScaiError(
-      "audit references requires --to <itemId>.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("audit references requires --to <itemId>.", "INPUT_INVALID");
   }
   const normalized = normalizeItemId(options.to);
   const root = options.root ?? "/sitecore/content";
@@ -173,20 +180,22 @@ export const runAuditReferences = async (
   reports.sort((a, b) => a.path.localeCompare(b.path));
   await cache?.flush();
 
-  printReport({
-    logger,
-    command: "audit.references.list",
-    envName,
-    results: reports,
-    summary: `Scanned ${scanned.length} items under ${root}; ${reports.length} item(s) reference ${normalized}.`,
-    formatLine: (r) =>
-      `${r.path} — ${r.matches
-        .slice(0, 3)
-        .map((m) => `${m.fieldName}(${m.form})`)
-        .join(", ")}${r.matches.length > 3 ? "…" : ""}`,
-    extra: { to: normalized, root, scannedCount: scanned.length },
-    options,
-  });
+  if (!options.silent) {
+    printReport({
+      logger,
+      command: "audit.references.list",
+      envName,
+      results: reports,
+      summary: `Scanned ${scanned.length} items under ${root}; ${reports.length} item(s) reference ${normalized}.`,
+      formatLine: (r) =>
+        `${r.path} — ${r.matches
+          .slice(0, 3)
+          .map((m) => `${m.fieldName}(${m.form})`)
+          .join(", ")}${r.matches.length > 3 ? "…" : ""}`,
+      extra: { to: normalized, root, scannedCount: scanned.length },
+      options,
+    });
+  }
 
   return reports;
 };

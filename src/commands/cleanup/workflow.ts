@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup-workflow-advance";
 import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup-workflow-apply";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupWorkflowCommand = (): Command => {
@@ -30,9 +31,7 @@ export const createCleanupWorkflowCommand = (): Command => {
   advance.option("--limit <count>", "Cap on items inspected", (v) => parseInt(v, 10));
   advance.option("--index <name>", "Override the search index");
   advance.option("--include-system", "Include /sitecore/system items");
-  advance.action(async (options) => {
-    await runCleanupWorkflowAdvance(options);
-  });
+  advance.action(withApplyGate(runCleanupWorkflowAdvance));
   command.addCommand(advance);
 
   const apply = new Command("apply").description(
@@ -67,9 +66,7 @@ export const createCleanupWorkflowCommand = (): Command => {
   apply.option("--limit <count>", "Cap on items inspected (default 5000)", (v) => parseInt(v, 10));
   apply.option("--index <name>", "Override the search index");
   apply.option("--include-system", "Include /sitecore/system items");
-  apply.action(async (options) => {
-    await runCleanupWorkflowApply(options);
-  });
+  apply.action(withApplyGate(runCleanupWorkflowApply));
   command.addCommand(apply);
 
   return command;

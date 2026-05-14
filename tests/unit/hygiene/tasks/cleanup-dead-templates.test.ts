@@ -31,7 +31,11 @@ const setup = (allowWrite = true): EnvironmentConfiguration => {
 
 const stub = (overrides: Partial<HygieneApiClient>): HygieneApiClient => {
   const base = {
-    search: vi.fn(),
+    // Default to an empty search result so the new `audit template-dependencies`
+    // pre-flight in `cleanup-dead-templates` finds no blockers and existing
+    // tests can stay focused on delete behavior. Tests that exercise the
+    // blocker path override `search` with a populated result.
+    search: vi.fn().mockResolvedValue({ results: [] }),
     searchAll: vi.fn(),
     getItemFields: vi.fn(),
     getItemFieldsBatch: vi.fn(),
@@ -184,5 +188,60 @@ describe("cleanup dead-templates — purge logic", () => {
     expect(result.templates).toEqual([]);
     expect(result.folders).toEqual([]);
     expect(client.getChildren).not.toHaveBeenCalled();
+  });
+});
+
+describe("cleanup dead-templates — pre-flight blocker check", () => {
+  it("blocks delete when `audit template-dependencies` returns inbound refs", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t-blocked", name: "Blocked", fullName: "/sitecore/templates/Project/Blocked" },
+    ] as never);
+    // First search call (primary-template, EXACT) returns the inheritor;
+    // subsequent kinds return empty. The pre-flight aggregates across kinds
+    // and reports each blocker with its referenceKind.
+    const client = stub({
+      search: vi
+        .fn()
+        .mockResolvedValueOnce({
+          results: [
+            {
+              itemId: "inheritor-1",
+              path: "/sitecore/templates/Project/Inheritor",
+              name: "Inheritor",
+              templateId: null,
+              templateName: null,
+            },
+          ],
+        })
+        .mockResolvedValue({ results: [] }),
+    });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    expect(result.templates).toHaveLength(1);
+    expect(result.templates[0].status).toBe("blocked");
+    expect(result.templates[0].blockers).toHaveLength(1);
+    expect(result.templates[0].blockers?.[0].referenceKind).toBe("primary-template");
+    expect(client.deleteItemTemplate).not.toHaveBeenCalled();
+  });
+
+  it("--force bypasses the pre-flight and attempts the delete", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    const searchSpy = vi.fn().mockResolvedValue({ results: [] });
+    const client = stub({
+      search: searchSpy,
+    });
+
+    const result = await runCleanupDeadTemplates({ force: true, json: true } as never);
+
+    expect(result.templates[0].status).toBe("purged");
+    expect(client.deleteItemTemplate).toHaveBeenCalledTimes(1);
+    // The pre-flight is skipped entirely when --force is set; search must
+    // not be invoked for the dependency check.
+    expect(searchSpy).not.toHaveBeenCalled();
   });
 });

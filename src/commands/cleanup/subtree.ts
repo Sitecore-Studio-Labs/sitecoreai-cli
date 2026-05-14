@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupSubtree } from "@/hygiene/tasks/cleanup-subtree";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupSubtreeCommand = (): Command => {
@@ -38,9 +39,7 @@ export const createCleanupSubtreeCommand = (): Command => {
       ),
     [] as string[]
   );
-  del.action(async (options) => {
-    await runCleanupSubtree(options);
-  });
+  del.action(withApplyGate(runCleanupSubtree));
 
   command.addCommand(del);
   return command;

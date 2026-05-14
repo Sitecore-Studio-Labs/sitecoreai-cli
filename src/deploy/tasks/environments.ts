@@ -20,7 +20,11 @@ import {
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
 } from "@/deploy/api/environments";
-import { fetchProjectEnvironments, createProjectEnvironment } from "@/deploy/api/projects";
+import {
+  fetchAllProjectEnvironments,
+  fetchProjectEnvironments,
+  createProjectEnvironment,
+} from "@/deploy/api/projects";
 import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   confirmDestructive,
@@ -55,11 +59,44 @@ export const runDeployEnvironmentsList = async (
   const logger = toLogger(options);
   const context = await getDeployContext(options);
   const projectId = await resolveDeployProjectId(context, options);
+  const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
+
+  const normalizedType = options.type ? options.type.toLowerCase() : undefined;
+  const baseQuery: Record<
+    string,
+    string | number | boolean | Array<string | number | boolean> | undefined
+  > = {
+    Types: normalizedType ? [normalizedType] : undefined,
+  };
+
+  // Default: walk every page. The Deploy API caps single-page responses at
+  // 10 by default, so "list" without --page returning only the first page
+  // surfaced as spurious "couldn't find" errors when an org or project grew
+  // past that boundary. Operators who explicitly want page-at-a-time pass
+  // --page; --no-all is the inverse opt-out.
+  const walkAll = options.all !== false && options.page === undefined;
+
   if (projectId) {
-    const result = await fetchProjectEnvironments(
-      { accessToken: context.token, baseUrl: context.baseUrl },
-      projectId
-    );
+    if (walkAll) {
+      const aggregated = await fetchAllProjectEnvironments(
+        apiOptions,
+        projectId,
+        options.pageSize ?? 50
+      );
+      const aggregatedResult = {
+        totalCount: aggregated.totalCount,
+        pageSize: aggregated.pageSize,
+        data: options.type
+          ? filterEnvironmentsByType(aggregated.items, options.type)
+          : aggregated.items,
+      };
+      printDeployResultWithContext(logger, context, "deploy.environments.list", aggregatedResult);
+      return;
+    }
+    const result = await fetchProjectEnvironments(apiOptions, projectId, {
+      PageNumber: options.page,
+      PageSize: options.pageSize,
+    });
     if (options.type) {
       const list = extractDeployEnvironmentList(result);
       const filtered = filterEnvironmentsByType(list, options.type);
@@ -70,33 +107,26 @@ export const runDeployEnvironmentsList = async (
     return;
   }
 
-  const normalizedType = options.type ? options.type.toLowerCase() : undefined;
-  const baseQuery: Record<
-    string,
-    string | number | boolean | Array<string | number | boolean> | undefined
-  > = {
-    Types: normalizedType ? [normalizedType] : undefined,
-  };
-
-  if (options.all) {
-    const aggregated = await fetchAllEnvironments(
-      { accessToken: context.token, baseUrl: context.baseUrl },
-      baseQuery,
-      options.pageSize ?? 50
-    );
+  if (walkAll) {
+    const aggregated = await fetchAllEnvironments(apiOptions, baseQuery, options.pageSize ?? 50);
+    const filteredData = options.type
+      ? filterEnvironmentsByType(aggregated.items, options.type)
+      : aggregated.items;
+    // Mirror the single-page fallback: if the server's Types filter
+    // returned an empty list under a type filter, re-walk without it
+    // and filter client-side. Defensive against server-side filter
+    // semantics that occasionally surface as "no envs" when there are.
+    if (options.type && filteredData.length === 0 && (aggregated.totalCount ?? 0) === 0) {
+      const fallback = await fetchAllEnvironments(apiOptions, {}, options.pageSize ?? 50);
+      const fallbackFiltered = filterEnvironmentsByType(fallback.items, options.type);
+      printDeployResultWithContext(logger, context, "deploy.environments.list", fallbackFiltered);
+      return;
+    }
     const aggregatedResult = {
       totalCount: aggregated.totalCount,
       pageSize: aggregated.pageSize,
-      data: aggregated.items,
+      data: filteredData,
     };
-    if (options.type) {
-      const filtered = filterEnvironmentsByType(aggregated.items, options.type);
-      printDeployResultWithContext(logger, context, "deploy.environments.list", {
-        ...aggregatedResult,
-        data: filtered,
-      });
-      return;
-    }
     printDeployResultWithContext(logger, context, "deploy.environments.list", aggregatedResult);
     return;
   }
@@ -109,10 +139,7 @@ export const runDeployEnvironmentsList = async (
     PageNumber: options.page,
     PageSize: options.pageSize,
   };
-  const result = await fetchEnvironments(
-    { accessToken: context.token, baseUrl: context.baseUrl },
-    query
-  );
+  const result = await fetchEnvironments(apiOptions, query);
   if (!options.type) {
     printDeployResultWithContext(logger, context, "deploy.environments.list", result);
     return;
@@ -124,10 +151,7 @@ export const runDeployEnvironmentsList = async (
     return;
   }
 
-  const fallback = await fetchEnvironments(
-    { accessToken: context.token, baseUrl: context.baseUrl },
-    {}
-  );
+  const fallback = await fetchEnvironments(apiOptions, {});
   const fallbackList = extractDeployEnvironmentList(fallback);
   const filtered = filterEnvironmentsByType(fallbackList, options.type);
   printDeployResultWithContext(logger, context, "deploy.environments.list", filtered);

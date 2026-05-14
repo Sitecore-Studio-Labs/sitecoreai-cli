@@ -250,9 +250,12 @@ export const runAuditAll = async (options: AuditAllOptions): Promise<void> => {
         },
       ])
     ),
-    // `results` mirrors the per-audit findings list for adapters that
-    // walk a flat results array (CSV, Markdown table).
-    results: results.flatMap((r) =>
+    // `data` is the canonical envelope key (renamed from `results` on
+    // 2026-05-14 to unify CLI output across deploy/hygiene surfaces).
+    // It mirrors the per-audit findings list for adapters that walk
+    // a flat array (CSV, Markdown table); the structured per-audit
+    // view stays under `audits`.
+    data: results.flatMap((r) =>
       r.findings.map((f) => ({ audit: r.name, ...(f as Record<string, unknown>) }))
     ),
     count: results.reduce((n, r) => n + r.findings.length, 0),

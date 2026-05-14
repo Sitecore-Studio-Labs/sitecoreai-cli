@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { runCleanupPublish } from "@/hygiene/tasks/cleanup-publish";
-import { collectList } from "../shared";
+import { collectList, withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupPublishCommand = (): Command => {
@@ -45,9 +45,7 @@ export const createCleanupPublishCommand = (): Command => {
     "Polling cadence in ms when --poll-timeout-ms > 0 (default: 2000)",
     (v) => parseInt(v, 10)
   );
-  dispatch.action(async (options) => {
-    await runCleanupPublish(options);
-  });
+  dispatch.action(withApplyGate(runCleanupPublish));
 
   command.addCommand(dispatch);
   return command;

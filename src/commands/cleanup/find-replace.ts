@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { runCleanupFindReplace } from "@/hygiene/tasks/cleanup-find-replace";
-import { collectList } from "../shared";
+import { collectList, withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupFindReplaceCommand = (): Command => {
@@ -52,9 +52,7 @@ export const createCleanupFindReplaceCommand = (): Command => {
       "applying. Pair with --what-if to preview the changes without\n" +
       "touching the tenant.\n"
   );
-  apply.action(async (options) => {
-    await runCleanupFindReplace(options);
-  });
+  apply.action(withApplyGate(runCleanupFindReplace));
 
   command.addCommand(apply);
   return command;

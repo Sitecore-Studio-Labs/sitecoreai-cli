@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup-versions-archive";
 import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup-versions-prune";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupVersionsCommand = (): Command => {
@@ -32,9 +33,7 @@ export const createCleanupVersionsCommand = (): Command => {
     parseInt(v, 10)
   );
   prune.option("--include-system", "Include /sitecore/system and platform items in the prune");
-  prune.action(async (options) => {
-    await runCleanupVersionsPrune(options);
-  });
+  prune.action(withApplyGate(runCleanupVersionsPrune));
   command.addCommand(prune);
 
   // ── archive (soft / reversible) ──────────────────────────────────
@@ -64,9 +63,7 @@ export const createCleanupVersionsCommand = (): Command => {
       "alternative for cases where you want to trim version history but keep\n" +
       "an undo path.\n"
   );
-  archive.action(async (options) => {
-    await runCleanupVersionsArchive(options);
-  });
+  archive.action(withApplyGate(runCleanupVersionsArchive));
   command.addCommand(archive);
 
   return command;

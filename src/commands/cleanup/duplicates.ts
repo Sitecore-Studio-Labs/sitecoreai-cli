@@ -1,5 +1,11 @@
 import { Command, Option } from "commander";
-import { runCleanupDuplicates } from "@/hygiene/tasks/cleanup-duplicates";
+import {
+  runCleanupDuplicates,
+  type CleanupDuplicatesOptions,
+} from "@/hygiene/tasks/cleanup-duplicates";
+import type { DuplicatesGroup } from "@/hygiene/tasks/audit-duplicates";
+import { readScaiEnvelopeFromStdin } from "@/shared/envelope";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupDuplicatesCommand = (): Command => {
@@ -36,14 +42,40 @@ export const createCleanupDuplicatesCommand = (): Command => {
   purge.option("--batch-size <count>", "Aliased GraphQL batch size for field reads", (v) =>
     parseInt(v, 10)
   );
+  purge.option(
+    "--skip-ref-check",
+    "Skip the inbound-reference pre-flight scan (faster on large tenants; refs to deleted dupes will become broken)"
+  );
+  purge.option(
+    "--from-stdin",
+    "Read an `audit duplicates list` envelope from stdin and use its groups directly, skipping the cleanup's internal audit re-run. Pair with the audit's --json mode."
+  );
   purge.addHelpText(
     "after",
-    "\nNote: refs to deleted duplicates become broken links.\n" +
-      "Run `scai audit broken-links list` after a purge to surface fallout.\n"
+    "\nPre-flight: each dupe targeted for deletion is scanned for inbound refs\n" +
+      "via `audit references`; matches are reported as 'blocked' and skipped.\n" +
+      "Pass --skip-ref-check or --force (from cleanup base options) to override;\n" +
+      "run `scai audit broken-links list` after the purge to triage any dangling refs.\n\n" +
+      "Pipelining: skip the cleanup's internal audit re-run with --from-stdin:\n" +
+      "  $ scai audit duplicates list --json | scai cleanup duplicates purge --from-stdin --apply\n" +
+      "Useful when the operator wants to inspect / filter the audit envelope\n" +
+      "before passing it to the cleanup, or when running both in a pipeline\n" +
+      "shouldn't repeat the hash scan.\n"
   );
-  purge.action(async (options) => {
-    await runCleanupDuplicates(options);
-  });
+  purge.action(
+    withApplyGate(async (options: CleanupDuplicatesOptions & { fromStdin?: boolean }) => {
+      if (options.fromStdin) {
+        const envelope = await readScaiEnvelopeFromStdin<DuplicatesGroup[]>();
+        if (!Array.isArray(envelope.data)) {
+          throw new Error(
+            `--from-stdin: envelope.data is not an array (got ${typeof envelope.data}). Expected an audit duplicates list envelope.`
+          );
+        }
+        return runCleanupDuplicates({ ...options, preComputedGroups: envelope.data });
+      }
+      return runCleanupDuplicates(options);
+    })
+  );
 
   command.addCommand(purge);
   return command;

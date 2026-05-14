@@ -10,6 +10,7 @@ import {
   runDeployProjectsUnlinkRepository,
   runDeployProjectsDelete,
 } from "@/deploy/tasks/projects";
+import { withApplyGate } from "../shared";
 import { addDeployBaseOptions } from "./shared";
 
 const parsePositiveInt =
@@ -112,7 +113,7 @@ export const createDeployProjectsCommand = (): Command => {
   );
   addDeployBaseOptions(projectsUnlinkRepository);
   projectsUnlinkRepository.addOption(new Option("--id <id>", "Project ID"));
-  projectsUnlinkRepository.action(async (options) => runDeployProjectsUnlinkRepository(options));
+  projectsUnlinkRepository.action(withApplyGate(runDeployProjectsUnlinkRepository));
 
   const projectsDelete = new Command("delete").description("Delete a project by name or ID");
   addDeployBaseOptions(projectsDelete);
@@ -120,7 +121,7 @@ export const createDeployProjectsCommand = (): Command => {
     .addOption(new Option("--id <id>", "Project ID"))
     .addOption(new Option("--name <name>", "Project name"))
     .addOption(new Option("--force", "Skip confirmation prompt"));
-  projectsDelete.action(async (options) => runDeployProjectsDelete(options));
+  projectsDelete.action(withApplyGate(runDeployProjectsDelete));
 
   projects.addCommand(projectsCreate);
   projects.addCommand(projectsDelete);

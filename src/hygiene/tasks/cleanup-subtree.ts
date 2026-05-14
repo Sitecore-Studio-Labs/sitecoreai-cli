@@ -13,6 +13,11 @@ import {
 } from "./shared";
 import type { HygieneApiClient } from "../api/client";
 import { pruneFieldValue } from "./cleanup-subtree-prune";
+import {
+  classifyReferenceKind,
+  REFERENCE_KIND_PRIORITY,
+  type ReferenceKind,
+} from "./reference-kind";
 
 /** Policy for handling external inbound references to the subtree. */
 export type OrphanExternalRefsPolicy =
@@ -91,6 +96,14 @@ export interface InboundBlocker {
   referrerPath: string;
   referrerTemplateName: string | null;
   fieldName: string;
+  /**
+   * Structured reference category derived from `fieldName`. Lets the
+   * operator distinguish "base-template inheritance" (catastrophic —
+   * orphans every inheritor's fields) from "field-value" (recoverable
+   * — clear the field, refs go away). See
+   * [./reference-kind](./reference-kind.ts) for the mapping table.
+   */
+  referenceKind: ReferenceKind;
   /** Item inside the subtree the field value references. */
   targetItemId: string;
   /**
@@ -197,6 +210,7 @@ const findInboundBlockers = async (
             referrerPath: item.path,
             referrerTemplateName: item.templateName,
             fieldName: field.name,
+            referenceKind: classifyReferenceKind(field.name),
             targetItemId: targetId,
             fieldValue: field.value,
           });
@@ -232,10 +246,7 @@ export const runCleanupSubtree = async (
   const logger = toLogger(options);
 
   if (!options.path) {
-    throw createScaiError(
-      "cleanup subtree requires --path <content-tree-path>.",
-      "INPUT_INVALID"
-    );
+    throw createScaiError("cleanup subtree requires --path <content-tree-path>.", "INPUT_INVALID");
   }
   const subtreePath = options.path;
   if (!options.force && PROTECTED_ROOTS.some((p) => subtreePath.startsWith(p))) {
@@ -280,13 +291,9 @@ export const runCleanupSubtree = async (
   });
   const rootItem = rootSearch.results[0];
   if (!rootItem) {
-    throw createScaiError(
-      `Subtree root '${subtreePath}' not found.`,
-      "INPUT_INVALID",
-      {
-        hint: "Verify the path exists in the tenant (`scai audit broken-links` can help locate misspellings).",
-      }
-    );
+    throw createScaiError(`Subtree root '${subtreePath}' not found.`, "INPUT_INVALID", {
+      hint: "Verify the path exists in the tenant (`scai audit broken-links` can help locate misspellings).",
+    });
   }
   const rootItemId = normalizeItemId(rootItem.itemId);
 
@@ -332,21 +339,24 @@ export const runCleanupSubtree = async (
     logger.verbose(
       `Scanning ${scanRoot} for inbound references to ${subtreeItems.length} subtree item(s).`
     );
-    blockers = await findInboundBlockers(
-      client,
-      envName,
-      scanRoot,
-      targetIds,
-      options
-    );
+    blockers = await findInboundBlockers(client, envName, scanRoot, targetIds, options);
   }
 
   if (blockers.length > 0 && policy === "block") {
     // Print the blockers so the operator can choose: clear external refs,
     // or fix the refs out-of-band first.
-    const sample = blockers
+    // Sort by referenceKind priority so structural blockers (base-template,
+    // insert-options, …) surface before plain field-value refs — those are
+    // the ones the operator needs to triage first.
+    const sortedBlockers = [...blockers].sort(
+      (a, b) => REFERENCE_KIND_PRIORITY[a.referenceKind] - REFERENCE_KIND_PRIORITY[b.referenceKind]
+    );
+    const sample = sortedBlockers
       .slice(0, 5)
-      .map((b) => `  ${b.referrerPath} . ${b.fieldName} → ${b.targetItemId.slice(0, 8)}…`)
+      .map(
+        (b) =>
+          `  [${b.referenceKind}] ${b.referrerPath} . ${b.fieldName} → ${b.targetItemId.slice(0, 8)}…`
+      )
       .join("\n");
     throw createScaiError(
       `Refusing to delete subtree '${subtreePath}': ${blockers.length} external reference(s) point into it. ` +
@@ -435,20 +445,22 @@ export const runCleanupSubtree = async (
   // Verb describing what the policy did to each external referring
   // field. "clearing" for clear, "pruning" for prune, "blocking on"
   // when the operator hit a hard-block.
-  const refVerb =
-    policy === "clear" ? "clearing" : policy === "prune" ? "pruning" : "blocking on";
-  const writtenVerb =
-    policy === "clear" ? "cleared" : policy === "prune" ? "pruned" : "wrote";
+  const refVerb = policy === "clear" ? "clearing" : policy === "prune" ? "pruning" : "blocking on";
+  const writtenVerb = policy === "clear" ? "cleared" : policy === "prune" ? "pruned" : "wrote";
   const leaveNote =
     policy === "leave"
       ? " (leave mode: dangling refs accepted; run `audit broken-links` afterward to triage)"
       : "";
   const summary = options.whatIf
     ? `Plan: would delete ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0 ? ` (after ${refVerb} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})` : ""
+        blockers.length > 0
+          ? ` (after ${refVerb} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})`
+          : ""
       }${leaveNote}.`
     : `Deleted ${deletedCount} of ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0 ? ` (${writtenVerb} ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})` : ""
+        blockers.length > 0
+          ? ` (${writtenVerb} ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})`
+          : ""
       }${failedCount > 0 ? ` (${failedCount} delete failure${failedCount === 1 ? "" : "s"})` : ""}${leaveNote}.`;
 
   printReport({

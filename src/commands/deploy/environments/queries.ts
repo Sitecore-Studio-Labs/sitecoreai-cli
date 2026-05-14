@@ -28,18 +28,19 @@ export const createEnvironmentsListCommand = (): Command => {
     .addOption(
       new Option(
         "--all",
-        "Fetch every page and return the consolidated result set (default: one page)"
-      )
-    )
-    .addOption(
-      new Option("--page <n>", "1-based page number (ignored with --all)").argParser(
-        parsePositiveInt("--page")
+        "Walk every page and return the consolidated result set (default). Pass --no-all (or --page) to fetch a single page."
       )
     )
     .addOption(
       new Option(
+        "--page <n>",
+        "1-based page number. Implies --no-all and fetches a single page."
+      ).argParser(parsePositiveInt("--page"))
+    )
+    .addOption(
+      new Option(
         "--page-size <n>",
-        "Page size. Defaults to 50 with --all, otherwise the API default (10)."
+        "Page size. Defaults to 50 when walking pages, otherwise the API default (10)."
       ).argParser(parsePositiveInt("--page-size"))
     );
   environmentsList.action(async (options) => runDeployEnvironmentsList(options));

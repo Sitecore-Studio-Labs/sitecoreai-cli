@@ -20,7 +20,7 @@ const envelope = {
   command: "audit.broken-links.list",
   environment: "sandbox",
   count: 2,
-  results: [
+  data: [
     { itemId: "a", path: "/foo", brokenRefs: 3 },
     { itemId: "b", path: "/bar", brokenRefs: 1 },
   ],
@@ -57,14 +57,14 @@ describe("formatAuditOutput — csv", () => {
   });
 
   it("returns empty string for empty results", () => {
-    expect(formatAuditOutput({ ...envelope, results: [] }, "csv")).toBe("");
+    expect(formatAuditOutput({ ...envelope, data: [] }, "csv")).toBe("");
   });
 
   it("quotes values containing commas / quotes / newlines", () => {
     const out = formatAuditOutput(
       {
         ...envelope,
-        results: [{ note: 'has "quote", and comma' }],
+        data: [{ note: 'has "quote", and comma' }],
       },
       "csv"
     );
@@ -85,7 +85,7 @@ describe("formatAuditOutput — markdown", () => {
     const out = formatAuditOutput(
       {
         ...envelope,
-        results: [{ itemId: "a", nested: { deep: "value" } }],
+        data: [{ itemId: "a", nested: { deep: "value" } }],
       },
       "markdown"
     );
@@ -93,7 +93,7 @@ describe("formatAuditOutput — markdown", () => {
   });
 
   it('emits "no findings" line when results is empty', () => {
-    const out = formatAuditOutput({ ...envelope, results: [], count: 0 }, "markdown");
+    const out = formatAuditOutput({ ...envelope, data: [], count: 0 }, "markdown");
     expect(out).toContain("_No findings._");
   });
 

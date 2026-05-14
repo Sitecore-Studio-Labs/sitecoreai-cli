@@ -15,6 +15,7 @@ import {
   type SiteResidueKind,
   type SiteResidueReport,
 } from "./audit-site-residue";
+import { classifyReferenceKind, type ReferenceKind } from "./reference-kind";
 import { discoverSites } from "@/recipe/api/site-discovery";
 import type { HygieneApiClient } from "../api/client";
 
@@ -72,6 +73,14 @@ export interface InboundRef {
   fromItemId: string;
   fromPath: string;
   fieldName: string;
+  /**
+   * Structured reference category derived from `fieldName`. "base-template"
+   * means an active template inherits from an item in the doomed tree —
+   * catastrophic. "field-value" means a generic field reference — usually
+   * recoverable. See [./reference-kind](./reference-kind.ts) for the full
+   * mapping.
+   */
+  referenceKind: ReferenceKind;
   /** itemId inside the doomed tree that the active-content ref pointed at. */
   refItemId: string;
 }
@@ -125,7 +134,15 @@ const scanActiveContentForRefs = async (params: {
   options: CleanupSiteResidueOptions;
   contentRoot: string;
   logger: ReturnType<typeof toLogger>;
-}): Promise<Array<{ itemId: string; path: string; field: string; refs: string[] }>> => {
+}): Promise<
+  Array<{
+    itemId: string;
+    path: string;
+    field: string;
+    referenceKind: ReferenceKind;
+    refs: string[];
+  }>
+> => {
   const { scanned, fieldsByItemId } = await scanItemsAndFields({
     client: params.client,
     envName: params.envName,
@@ -133,7 +150,13 @@ const scanActiveContentForRefs = async (params: {
     logger: params.logger,
     options: params.options,
   });
-  const rows: Array<{ itemId: string; path: string; field: string; refs: string[] }> = [];
+  const rows: Array<{
+    itemId: string;
+    path: string;
+    field: string;
+    referenceKind: ReferenceKind;
+    refs: string[];
+  }> = [];
   for (const item of scanned) {
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
@@ -145,6 +168,7 @@ const scanActiveContentForRefs = async (params: {
         itemId: item.itemId,
         path: item.path,
         field: field.name,
+        referenceKind: classifyReferenceKind(field.name),
         refs,
       });
     }
@@ -233,6 +257,7 @@ export const runCleanupSiteResidue = async (
               fromItemId: row.itemId,
               fromPath: row.path,
               fieldName: row.field,
+              referenceKind: row.referenceKind,
               refItemId: normalized,
             });
             refsByOrphan.set(orphanId, list);

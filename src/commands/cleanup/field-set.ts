@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupFieldSet, type FieldSetMode } from "@/hygiene/tasks/cleanup-field-set";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupFieldSetCommand = (): Command => {
@@ -62,10 +63,12 @@ export const createCleanupFieldSetCommand = (): Command => {
       "Always pair with --template-pattern to scope the run, and start with\n" +
       "--what-if to preview the plan.\n"
   );
-  apply.action(async (options) => {
-    const mode: FieldSetMode = (options.mode as FieldSetMode) ?? "replace";
-    await runCleanupFieldSet({ ...options, mode });
-  });
+  apply.action(
+    withApplyGate(async (options: { mode?: string } & Record<string, unknown>) => {
+      const mode: FieldSetMode = (options.mode as FieldSetMode) ?? "replace";
+      return runCleanupFieldSet({ ...options, mode } as Parameters<typeof runCleanupFieldSet>[0]);
+    })
+  );
 
   command.addCommand(apply);
   return command;

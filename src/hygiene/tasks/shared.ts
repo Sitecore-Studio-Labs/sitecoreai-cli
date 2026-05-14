@@ -2,6 +2,7 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createHygieneApiClient, type HygieneApiClient } from "../api/client";
 import {
@@ -11,7 +12,12 @@ import {
   type FieldCache,
 } from "../cache";
 import { openBaseline, splitByBaseline, type BaselineHandle } from "../baseline";
-import { inferFormatFromExtension, writeAuditOutput, type OutputFormat } from "../output-adapters";
+import {
+  inferFormatFromExtension,
+  writeAuditOutput,
+  type AuditEnvelope,
+  type OutputFormat,
+} from "../output-adapters";
 import path from "node:path";
 
 /**
@@ -132,18 +138,33 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
   const { logger, command, envName, formatLine, summary, extra, options, auditName } = params;
   let results = params.results;
   let ignoredCount = 0;
+  // Total accepted entries for this audit across all runs — surfaced
+  // even when --baseline isn't set, so operators discover the baseline
+  // exists and know how many findings are already accepted.
+  let baselineAcceptedTotal: number | undefined;
 
-  // Apply baseline filtering if requested AND we know the audit name.
-  if (options?.baseline && auditName) {
+  // Open the baseline once if we know the audit name. `openBaseline`
+  // is cheap when the file doesn't exist (returns an empty in-memory
+  // baseline), so the unconditional open here costs ~ms on the warm
+  // path. Both behaviors — filtering on `--baseline` and surfacing
+  // accepted counts on every run — share the same handle.
+  if (auditName) {
     try {
       const baseline = openBaseline({
         envName,
-        configDir: resolveConfigDir(options.config),
+        configDir: resolveConfigDir(options?.config),
         logger,
       });
-      const split = splitByBaseline(auditName, results as unknown[], baseline);
-      results = split.kept as T[];
-      ignoredCount = split.ignored.length;
+      const snapshot = baseline.snapshot();
+      const acceptedForThisAudit = snapshot.ignored[auditName]?.length ?? 0;
+      if (acceptedForThisAudit > 0) {
+        baselineAcceptedTotal = acceptedForThisAudit;
+      }
+      if (options?.baseline) {
+        const split = splitByBaseline(auditName, results as unknown[], baseline);
+        results = split.kept as T[];
+        ignoredCount = split.ignored.length;
+      }
     } catch (error) {
       logger.warn(
         `Failed to apply baseline filter for '${auditName}': ${
@@ -157,14 +178,22 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
     );
   }
 
-  const envelope = {
+  // Build the canonical `ScaiEnvelope` shape — `data` (not `results`)
+  // for the primary payload; `meta` collects command-specific extras
+  // that don't have a structured slot. Pre-2026-05-14 this surface
+  // emitted `results` while deploy emitted `result`; the unification
+  // lets agents parse one shape across every CLI command.
+  const envelope = buildScaiEnvelope({
     command,
     environment: envName,
-    ...(extra ?? {}),
-    ...(ignoredCount > 0 && { ignoredCount }),
-    count: results.length,
-    results,
-  };
+    data: results,
+    extra: {
+      ...(extra ?? {}),
+      count: results.length,
+      ...(ignoredCount > 0 ? { ignoredCount } : {}),
+      ...(baselineAcceptedTotal !== undefined ? { baselineAcceptedTotal } : {}),
+    },
+  });
 
   // Output adapter: --output writes serialised report to file.
   const explicitFormat = options?.format;
@@ -172,7 +201,10 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
   const format: OutputFormat = explicitFormat ?? inferredFormat ?? "json";
 
   if (options?.output) {
-    writeAuditOutput(envelope, { format, output: options.output });
+    // ScaiEnvelope is structurally compatible with AuditEnvelope but
+    // lacks the latter's `[key: string]: unknown` index signature;
+    // cast widens the type without changing the runtime shape.
+    writeAuditOutput(envelope as unknown as AuditEnvelope, { format, output: options.output });
     if (!logger.isJson()) {
       logger.info(
         `Wrote ${options.output} (${envelope.count} finding${envelope.count === 1 ? "" : "s"}${
@@ -193,6 +225,17 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
   logger.info(headline, results.length === 0 ? "green" : "yellow");
   if (ignoredCount > 0) {
     logger.info(`  (${ignoredCount} ignored by baseline)`, "gray");
+  }
+  // Always surface the per-audit baseline size — even when the operator
+  // didn't pass --baseline. The agent feedback called out that baseline
+  // is underused because it's invisible; showing the count nudges
+  // operators toward it. Skip when --baseline is on (the ignoredCount
+  // line above already says what got filtered).
+  if (baselineAcceptedTotal !== undefined && !options?.baseline) {
+    logger.info(
+      `  (${baselineAcceptedTotal} finding${baselineAcceptedTotal === 1 ? "" : "s"} in baseline; pass --baseline to filter, or 'scai audit baseline accept --audit ${auditName} --from-stdin' to add more)`,
+      "gray"
+    );
   }
   for (const item of results) {
     logger.info(`  - ${formatLine(item)}`);

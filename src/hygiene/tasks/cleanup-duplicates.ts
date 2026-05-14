@@ -2,6 +2,7 @@ import readline from "node:readline";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
 import { runAuditDuplicates, type DuplicatesGroup } from "./audit-duplicates";
+import { runAuditReferences, type ReferenceReport } from "./audit-references";
 import {
   type HygieneCommonOptions,
   dashifyItemId,
@@ -34,6 +35,28 @@ export interface CleanupDuplicatesOptions extends HygieneCommonOptions {
   allowWrite?: boolean;
   /** Required when `keepRule === "interactive"` and stdin isn't a TTY. */
   nonInteractive?: boolean;
+  /**
+   * Skip the inbound-reference pre-flight. Use when the operator
+   * knows refs to dupes are acceptable (e.g. a content migration that
+   * will rebuild refs separately). The pre-flight is enabled by
+   * default so a dupe delete doesn't silently break content links;
+   * `audit broken-links list` was the previous post-cleanup mitigation
+   * but the agent never knew to run it. Inverse: `--force` also
+   * bypasses (existing escape hatch).
+   */
+  skipRefCheck?: boolean;
+  /** Force-delete dupes even when blockers are found. */
+  force?: boolean;
+  /**
+   * Skip the internal `runAuditDuplicates` call and use this pre-
+   * computed group list as the cleanup input. Set by the CLI's
+   * `--from-stdin` flag when the operator pipes `scai audit
+   * duplicates list --json` directly into the cleanup. Eliminates the
+   * dual-discovery drift where audit and cleanup run the same hash
+   * pass twice (and could disagree on the group set when the tenant
+   * changes between calls).
+   */
+  preComputedGroups?: DuplicatesGroup[];
 }
 
 export interface DuplicatePurgeAction {
@@ -45,8 +68,16 @@ export interface DuplicatePurgeAction {
   deleted: Array<{
     itemId: string;
     path: string;
-    status: "deleted" | "what-if" | "failed";
+    status: "deleted" | "what-if" | "failed" | "blocked";
     error?: string;
+    /**
+     * Inbound-reference reports that blocked the delete. Populated
+     * when status is "blocked". The cleanup ran `audit references`
+     * for the dupe's itemId; the operator can resolve each pointer
+     * before re-running, or pass `--skip-ref-check` / `--force` to
+     * delete anyway and clean up dangling refs after.
+     */
+    blockers?: ReferenceReport[];
   }>;
 }
 
@@ -154,8 +185,13 @@ export const runCleanupDuplicates = async (
     logger.info("What-if mode active — no items will be deleted.", "yellow");
   }
 
-  // Reuse audit to find groups.
-  const groups = await runAuditDuplicates({ ...options, json: true, quiet: true });
+  // Reuse audit to find groups — unless the caller piped in an audit
+  // envelope via --from-stdin. Skipping the internal audit prevents the
+  // tenant-state-changed-between-calls drift the dual-discovery model
+  // could surface, and shaves the full discovery scan off the cleanup.
+  const groups =
+    options.preComputedGroups ??
+    (await runAuditDuplicates({ ...options, json: true, quiet: true }));
 
   const actions: DuplicatePurgeAction[] = [];
   for (const group of groups) {
@@ -170,10 +206,32 @@ export const runCleanupDuplicates = async (
       kept: { itemId: selection.kept.itemId, path: selection.kept.path },
       deleted: [],
     };
-    // Apply deletes (or stage them under what-if).
+    // Pre-flight: scan content for inbound refs to each deletion
+    // candidate. `audit references` with `cache: true` shares its
+    // field-cache across back-to-back calls so only the first scan
+    // pays the full O(items × fields) cost; subsequent dupes hit the
+    // warm cache. `--skip-ref-check` or `--force` opts out for
+    // operators who know inbound refs are acceptable.
+    const runRefCheck = !options.skipRefCheck && !options.force && !options.whatIf;
     const deleteResults = await mapWithConcurrency(
       selection.rest,
       async (m) => {
+        if (runRefCheck) {
+          const refs = await runAuditReferences({
+            ...options,
+            to: m.itemId,
+            silent: true,
+            cache: true,
+          });
+          if (refs.length > 0) {
+            return {
+              itemId: m.itemId,
+              path: m.path,
+              status: "blocked" as const,
+              blockers: refs,
+            };
+          }
+        }
         if (options.whatIf) {
           return { itemId: m.itemId, path: m.path, status: "what-if" as const };
         }
@@ -206,9 +264,14 @@ export const runCleanupDuplicates = async (
     (n, a) => n + a.deleted.filter((d) => d.status === "failed").length,
     0
   );
+  const totalBlocked = actions.reduce(
+    (n, a) => n + a.deleted.filter((d) => d.status === "blocked").length,
+    0
+  );
+  const blockedSuffix = totalBlocked > 0 ? `; ${totalBlocked} blocked by inbound refs` : "";
   const summary = options.whatIf
     ? `Plan: would delete ${actions.reduce((n, a) => n + a.deleted.length, 0)} duplicate item${actions.reduce((n, a) => n + a.deleted.length, 0) === 1 ? "" : "s"} across ${actions.length} group${actions.length === 1 ? "" : "s"} (keep-rule: ${keepRule}).`
-    : `Deleted ${totalDeleted} duplicate${totalDeleted === 1 ? "" : "s"} across ${actions.length} group${actions.length === 1 ? "" : "s"} (keep-rule: ${keepRule})${totalFailed > 0 ? `; ${totalFailed} failed` : ""}.`;
+    : `Deleted ${totalDeleted} duplicate${totalDeleted === 1 ? "" : "s"} across ${actions.length} group${actions.length === 1 ? "" : "s"} (keep-rule: ${keepRule})${totalFailed > 0 ? `; ${totalFailed} failed` : ""}${blockedSuffix}.`;
 
   printReport({
     logger,

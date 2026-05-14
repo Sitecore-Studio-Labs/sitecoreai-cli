@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import {
+  runBaselineAccept,
   runBaselineCreate,
   runBaselineRemove,
   runBaselineReset,
@@ -65,6 +66,33 @@ export const createAuditBaselineCommand = (): Command => {
   });
   command.addCommand(reset);
 
+  const accept = new Command("accept").description(
+    "Read a `ScaiEnvelope` from stdin (an audit's --json output) and add its findings to the baseline"
+  );
+  addEnvironmentOption(accept);
+  addConfigOption(accept);
+  addVerbosityOptions(accept);
+  accept.requiredOption(
+    "--audit <name>",
+    "Audit name the findings belong to (e.g. broken-links). Must match the audit that produced the envelope."
+  );
+  accept.option("--note <text>", "Optional note recorded with every accepted entry");
+  accept.option(
+    "--from-stdin",
+    "Read the audit envelope from stdin (required; pipe `audit X list --json` in)"
+  );
+  accept.addHelpText(
+    "after",
+    "\nPipeline form:\n" +
+      "  $ scai audit broken-links list --json \\\n" +
+      "    | scai audit baseline accept --audit broken-links --note 'known debt'\n\n" +
+      "Skips fingerprints already in the baseline so the pipeline is idempotent.\n"
+  );
+  accept.action(async (options) => {
+    await runBaselineAccept(options);
+  });
+  command.addCommand(accept);
+
   command.addHelpText(
     "after",
     "\nThe baseline lives at `.scai/audit-baseline-<envName>.json` (per-env).\n" +
@@ -72,7 +100,10 @@ export const createAuditBaselineCommand = (): Command => {
       "\nWorkflow:\n" +
       "  1. scai audit all                    # see all findings\n" +
       "  2. scai audit baseline create        # accept everything as the new baseline\n" +
-      "  3. scai audit all --baseline         # in CI: only flag NEW findings\n"
+      "  3. scai audit all --baseline         # in CI: only flag NEW findings\n" +
+      "\nIncremental accept:\n" +
+      "  scai audit broken-links list --json \\\n" +
+      "    | scai audit baseline accept --audit broken-links\n"
   );
 
   return command;

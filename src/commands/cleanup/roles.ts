@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { runCleanupRoles } from "@/hygiene/tasks/cleanup-roles";
+import { withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupRolesCommand = (): Command => {
@@ -20,9 +21,7 @@ export const createCleanupRolesCommand = (): Command => {
     "\nReview `audit empty-roles list` output BEFORE running this — some empty roles\n" +
       "are platform-internal and removing them breaks Sitecore's role model.\n"
   );
-  purgeEmpty.action(async (options) => {
-    await runCleanupRoles(options);
-  });
+  purgeEmpty.action(withApplyGate(runCleanupRoles));
   command.addCommand(purgeEmpty);
   return command;
 };

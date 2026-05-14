@@ -103,7 +103,7 @@ describe("serialization task helpers", () => {
     expect((error as { code?: string }).code).toBe("INPUT_INVALID");
   });
 
-  it("prints deploy results with context in JSON mode", () => {
+  it("prints deploy results with context as a canonical ScaiEnvelope in JSON mode", () => {
     const jsonSpy = vi.fn();
     const logger = { isJson: () => true, json: jsonSpy } as {
       isJson: () => boolean;
@@ -118,15 +118,46 @@ describe("serialization task helpers", () => {
         extra: 1,
       }
     );
+    // `data` (not `result`) is the canonical envelope key; non-canonical
+    // extras collect under `meta` to keep top-level slots reserved for
+    // structured envelope fields (count, totalCount, pageSize, etc.).
     expect(jsonSpy).toHaveBeenCalledWith({
       command: "deploy.test",
       environment: "demo",
-      extra: 1,
-      result: { ok: true },
+      data: { ok: true },
+      meta: { extra: 1 },
     });
   });
 
-  it("prints deploy what-if payloads in JSON mode", () => {
+  it("hoists canonical envelope keys from `extra` to envelope-level", () => {
+    const jsonSpy = vi.fn();
+    const logger = { isJson: () => true, json: jsonSpy } as {
+      isJson: () => boolean;
+      json: typeof jsonSpy;
+    };
+    printDeployResultWithContext(
+      logger,
+      { envName: "demo" },
+      "deploy.test",
+      [{ id: 1 }, { id: 2 }],
+      {
+        totalCount: 100,
+        pageSize: 50,
+        root: "/sitecore/content",
+      }
+    );
+    expect(jsonSpy).toHaveBeenCalledWith({
+      command: "deploy.test",
+      environment: "demo",
+      data: [{ id: 1 }, { id: 2 }],
+      count: 2,
+      totalCount: 100,
+      pageSize: 50,
+      meta: { root: "/sitecore/content" },
+    });
+  });
+
+  it("prints deploy what-if payloads as a canonical envelope in JSON mode", () => {
     const jsonSpy = vi.fn();
     const logger = { isJson: () => true, json: jsonSpy } as {
       isJson: () => boolean;
@@ -136,8 +167,8 @@ describe("serialization task helpers", () => {
     expect(jsonSpy).toHaveBeenCalledWith({
       command: "deploy.test",
       environment: "demo",
+      data: { method: "POST" },
       whatIf: true,
-      request: { method: "POST" },
     });
   });
 });

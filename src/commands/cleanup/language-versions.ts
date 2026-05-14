@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { runCleanupLanguageVersionAdd } from "@/hygiene/tasks/cleanup-language-version-add";
-import { collectList } from "../shared";
+import { collectList, withApplyGate } from "../shared";
 import { addCleanupBaseOptions } from "./shared";
 
 export const createCleanupLanguageVersionsCommand = (): Command => {
@@ -36,9 +36,7 @@ export const createCleanupLanguageVersionsCommand = (): Command => {
   add.option("--index <name>", "Override the search index name");
   add.option("--include-system", "Include /sitecore/system items in the scan (off by default)");
   add.option("--cache", "Use the on-disk field cache for the discovery phase");
-  add.action(async (options) => {
-    await runCleanupLanguageVersionAdd(options);
-  });
+  add.action(withApplyGate(runCleanupLanguageVersionAdd));
 
   command.addCommand(add);
   return command;

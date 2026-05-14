@@ -216,6 +216,57 @@ describe("cleanup_execute — verb routing", () => {
   });
 });
 
+describe("cleanup_execute — denyMcpElevation gate", () => {
+  const denyContext: McpContext = {
+    envName: "prod",
+    configPath: "/tmp/sitecoreai.cli.json",
+    resolved: {
+      envName: "prod",
+      environment: {} as never,
+      root: {
+        environments: {
+          prod: { name: "prod", host: "h", denyMcpElevation: true },
+        },
+      } as never,
+      timeoutMs: undefined,
+    },
+    allowWriteEnabled: false,
+    deployToken: "tok",
+  };
+
+  it("refuses to mutate when env.denyMcpElevation is true", async () => {
+    hygieneMocks.runCleanupWorkflowAdvance.mockClear();
+    const reg = await setup();
+    await expect(
+      reg.getTool("cleanup_execute")!.handler(
+        {
+          verb: "workflow-advance",
+          commandName: "Submit",
+          allowWrite: true,
+        },
+        denyContext,
+        fakeExtra
+      )
+    ).rejects.toMatchObject({ code: "AUTH_DENIED" });
+    expect(hygieneMocks.runCleanupWorkflowAdvance).not.toHaveBeenCalled();
+  });
+
+  it("still permits whatIf preview when env.denyMcpElevation is true", async () => {
+    const reg = await setup();
+    await reg.getTool("cleanup_execute")!.handler(
+      {
+        verb: "workflow-advance",
+        commandName: "Submit",
+        whatIf: true,
+      },
+      denyContext,
+      fakeExtra
+    );
+    // The gate fires only on mutating calls — what-if previews are read-only.
+    expect(hygieneMocks.runCleanupWorkflowAdvance).toHaveBeenCalled();
+  });
+});
+
 describe("cleanup_execute — CLI/MCP parity", () => {
   it("every CLI cleanup group has at least one corresponding MCP verb", async () => {
     // Authoritative CLI surface: the commander tree built by

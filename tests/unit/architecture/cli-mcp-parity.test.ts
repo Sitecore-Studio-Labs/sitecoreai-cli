@@ -103,7 +103,11 @@ const getMcpVerbs = async (toolName: string): Promise<string[]> => {
  * across both tools in a domain covers every CLI group — see the
  * second test below.
  */
-const matchesVerb = (group: string, verbs: readonly string[], renames?: Record<string, string>): boolean => {
+const matchesVerb = (
+  group: string,
+  verbs: readonly string[],
+  renames?: Record<string, string>
+): boolean => {
   if (renames?.[group] && verbs.includes(renames[group])) return true;
   return verbs.some((v) => v === group || v.startsWith(`${group}-`));
 };
@@ -148,7 +152,9 @@ describe("architecture: CLI/MCP verb parity", () => {
     }
 
     if (gaps.length > 0) {
-      const lines = gaps.map(({ domain, group }) => `  CLI '${domain} ${group}' → no matching MCP verb`).join("\n");
+      const lines = gaps
+        .map(({ domain, group }) => `  CLI '${domain} ${group}' → no matching MCP verb`)
+        .join("\n");
       throw new Error(
         `Found ${gaps.length} CLI/MCP parity gap(s):\n${lines}\n\n` +
           `Either add the missing verb to the matching MCP tool's enum + routing table, ` +

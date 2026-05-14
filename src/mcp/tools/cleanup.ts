@@ -38,6 +38,7 @@ import {
   runCleanupWorkflowAdvance,
   runCleanupWorkflowApply,
 } from "@/hygiene/tasks";
+import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -284,6 +285,12 @@ export const registerCleanupTools = (registry: McpRegistry): void => {
         throw createScaiError(`Unknown cleanup verb '${input.verb}'.`, "INPUT_INVALID");
       }
       const whatIf = input.whatIf === true;
+      // Per-env opt-out for MCP-elevated writes. Only enforced when this
+      // call would actually mutate the tenant — what-if previews are
+      // read-only and always permitted.
+      if (!whatIf) {
+        ensureMcpElevationAllowed(context.resolved.root, context.envName);
+      }
       const opts = buildRunnerOptions(
         input.verb,
         input as Record<string, unknown>,

@@ -28,10 +28,7 @@ const API_URL = "https://edge-platform.sitecorecloud.io/authoring/publishing/v1/
 const decodePart = (b64url: string): Record<string, unknown> => {
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
-  return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>;
 };
 
 const main = async (): Promise<void> => {
@@ -44,8 +41,12 @@ const main = async (): Promise<void> => {
   const clientSecret = process.env[secretVar];
 
   process.stderr.write(`> env: ${envName}\n`);
-  process.stderr.write(`> ${idVar}:     ${clientId ? `<set, len=${clientId.length}>` : "<NOT SET>"}\n`);
-  process.stderr.write(`> ${secretVar}: ${clientSecret ? `<set, len=${clientSecret.length}>` : "<NOT SET>"}\n`);
+  process.stderr.write(
+    `> ${idVar}:     ${clientId ? `<set, len=${clientId.length}>` : "<NOT SET>"}\n`
+  );
+  process.stderr.write(
+    `> ${secretVar}: ${clientSecret ? `<set, len=${clientSecret.length}>` : "<NOT SET>"}\n`
+  );
 
   if (!clientId || !clientSecret) {
     process.stderr.write(`\nSet both env vars above before running.\n`);

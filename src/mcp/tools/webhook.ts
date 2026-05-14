@@ -16,6 +16,7 @@ import {
   runWebhookInspect,
   runWebhookList,
 } from "@/webhooks/tasks";
+import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -169,6 +170,8 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       ...allowWriteShape,
     },
     handler: async (input, context) => {
+      // Per-env opt-out for MCP-elevated tenant writes.
+      ensureMcpElevationAllowed(context.resolved.root, context.envName);
       const taskOpts = baseTaskOptions(context.configPath, context.envName);
       switch (input.verb) {
         case "create": {

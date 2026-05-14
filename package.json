@@ -71,6 +71,7 @@
     "prepare": "husky",
     "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
+    "brand:codegen": "openapi-typescript src/brand/api/openapi.brand-management.yaml --output src/brand/api/schema.brand-management.d.ts && openapi-typescript src/brand/api/openapi.brand-review.yaml --output src/brand/api/schema.brand-review.d.ts",
     "smoke": "npm run build && node scripts/smoke.cjs && node scripts/smoke-mcp.cjs",
     "start": "node dist/cli.js",
     "pretest": "tsc --noEmit",

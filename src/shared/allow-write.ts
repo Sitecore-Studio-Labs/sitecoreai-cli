@@ -56,7 +56,7 @@ export const ensureAllowWrite = (
  * from a human CLI invocation. The flag doesn't affect direct CLI use.
  */
 export const ensureMcpElevationAllowed = (root: RootConfiguration, envName: string): void => {
-  const env = root.environments[envName];
+  const env = root.environments?.[envName];
   if (env?.denyMcpElevation !== true) return;
   throw createScaiError(
     `Environment ${envName} has denyMcpElevation set; MCP write tools cannot mutate this tenant.`,

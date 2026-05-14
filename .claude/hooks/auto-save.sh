@@ -26,8 +26,19 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo '.')"
 LOCK_FILE=".claude/session-checkout.lock"
 
+# Only release the lock if THIS process owns it. The Stop hook fires at
+# the end of every user-message turn, not on agent-process exit — without
+# the pid scope, the lock was being wiped between turns and concurrent
+# sessions in the same checkout were able to coexist (defeats RULE #1).
+# Cleanup of the lock for a crashed session is handled in branch-create.sh
+# via the pid-liveness check on next SessionStart.
 release_lock() {
-  rm -f "$LOCK_FILE" 2>/dev/null || true
+  [ -f "$LOCK_FILE" ] || return 0
+  lock_pid=$(awk -F= '/^pid=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
+  our_pid="${CLAUDE_AGENT_PID:-$PPID}"
+  if [ "$lock_pid" = "$our_pid" ]; then
+    rm -f "$LOCK_FILE" 2>/dev/null || true
+  fi
 }
 trap release_lock EXIT
 

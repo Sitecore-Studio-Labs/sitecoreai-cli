@@ -1,11 +1,17 @@
 /**
- * Hand-typed shapes for the Sitecore AI Skills APIs (Brand Management
- * + Brand Review). These mirror the documented endpoints at
- * api-docs.sitecore.com/ai-skills. They are intentionally minimal —
- * only fields scai consumes — and will be replaced by codegen from
- * the vendored OpenAPI YAML in a follow-up commit once the SPA's raw
- * YAML fetch story is sorted out.
+ * Convenience types layered over the codegen'd OpenAPI schemas for the
+ * Sitecore AI Skills APIs (Brand Management + Brand Review). The raw
+ * schemas are at `./schema.brand-management.d.ts` and
+ * `./schema.brand-review.d.ts`; these aliases give scai's library
+ * surface a stable, callable shape without exposing the underlying
+ * `components["schemas"][…]` indirection on every property access.
+ *
+ * Where the API's wire shape doesn't match what callers want
+ * (response → flattened section/field results, free-text input →
+ * keyed `input` map, etc.), the mapping happens in `generate.ts` and
+ * sibling primitives. These types stay close to what consumers see.
  */
+import type { components as BrandReviewComponents } from "./schema.brand-review";
 
 /** Hostname for the AI Skills APIs. Same edge host as the Publishing API. */
 export const AI_SKILLS_API_HOST = "https://edge-platform.sitecorecloud.io";
@@ -17,11 +23,14 @@ export const BRAND_MANAGEMENT_BASE_PATH = "/stream/ai-brands-api";
 export const BRAND_REVIEW_BASE_PATH = "/stream/ai-skills-api";
 
 /**
- * Predefined brand kit sections every kit is created with (empty by
- * default; populated via Documents + Pipeline APIs or hand-authored
- * via Brand Management subsection writes). The full set isn't
- * exhaustively documented; treat this as the validated subset and
- * accept unknown section names from the API.
+ * Predefined brand kit section names. The Sitecore docs reference
+ * "Brand Context", "Global Goals", "Tone of Voice", and "Glossary and
+ * Localization" as defaults; other sections like "Do's and Don'ts",
+ * "Grammar Checklists", and "Visual Guidelines" appear in the Brand
+ * Review docs. Kept as a string-and-known-literals union for
+ * autocomplete; the API addresses sections by UUID, not by name —
+ * scai's caller-facing layer maps names ↔ IDs in a follow-up slice
+ * once Brand Management read primitives land.
  */
 export type BrandKitSectionName =
   | "Brand Context"
@@ -31,52 +40,98 @@ export type BrandKitSectionName =
   | "Do's and Don'ts"
   | "Grammar Checklists"
   | "Visual Guidelines"
-  | (string & {}); // accept future sections without losing autocomplete
+  | (string & {});
 
 /** Compliance score domain documented in the Brand Review API. */
 export type BrandReviewScore = 1 | 2 | 3 | 4 | 5;
 
+/**
+ * Section selector for Brand Review.
+ *
+ *   - `sectionId` (UUID) is required.
+ *   - `fieldIds` narrows to specific subsections within the section.
+ *     Empty / unset → every field in the section is evaluated.
+ *
+ * Mirrors the API's `Section` schema 1:1.
+ */
+export type BrandReviewSectionSelector = BrandReviewComponents["schemas"]["Section"];
+
+/**
+ * Flattened result for one section (or one field within a section) of
+ * a Brand Review. scai's formatters consume this shape uniformly;
+ * `generate.ts` normalizes the API's nested
+ * `{ reviews: [{ sectionId, score, fields: [{ fieldId, score }] }] }`
+ * structure into a flat list of `BrandReviewSectionResult`s — one
+ * per section + one per field — so per-field findings drive SARIF /
+ * JSON entries without requiring consumers to walk nested arrays.
+ *
+ * `section` carries the UUID until name lookup lands; `field` is the
+ * subsection UUID. Suggestions are wrapped in an array for forward
+ * compatibility (the API exposes a single `suggestion` string today).
+ */
 export interface BrandReviewSectionResult {
-  /** Section the result applies to. */
-  section: BrandKitSectionName;
-  /** Optional subsection (field) within the section. */
+  /** Section UUID (or, eventually, resolved name). */
+  section: string;
+  /** Subsection (field) UUID, present for per-field results. */
   field?: string;
   /** 1..5; 5 = strongest alignment with the brand guidelines. */
   score: BrandReviewScore;
   /** Why this score was assigned. */
   explanation?: string;
-  /** Improvement suggestions, if any. */
+  /** Improvement suggestions. */
   suggestions?: string[];
 }
 
 export interface BrandReviewResult {
-  /** Overall score across all evaluated sections. */
+  /**
+   * scai-computed headline score for the run, derived as the minimum
+   * across every section + field score in the response. Conservative
+   * by design — a CI threshold gate should react to the worst finding,
+   * not the average. The Brand Review API does NOT return an overall
+   * score; this is a client-side aggregation.
+   */
   overallScore: BrandReviewScore;
-  /** Per-section / per-field breakdown. */
+  /**
+   * Flat list: one entry per section, plus one entry per field, in
+   * the order the API returned them. Sections come before their
+   * fields.
+   */
   sectionResults: BrandReviewSectionResult[];
-  /** Free-form server fields scai doesn't model yet. */
-  raw?: Record<string, unknown>;
+  /** Raw server payload — escape hatch for inspection/debugging. */
+  raw?: BrandReviewComponents["schemas"]["GenerateBrandReviewModelResponse"];
 }
 
 /**
- * Input content to evaluate. Brand Review accepts text, images, PDFs,
- * Markdown, JSON, etc. — the request shape is "content in the request
- * body". scai's high-level primitive only models text + markdown for
- * the first cut; other formats land in follow-up slices with their
- * own factories.
+ * Caller-facing input shape for one review call.
+ *
+ *   - `text` is the convenience path for raw text / markdown / JSON
+ *     content (the headline use case). When set, scai sends the API's
+ *     `input` map with a single `"content"` key.
+ *   - `extra` lets advanced callers add arbitrary `input.*` keys
+ *     (e.g. file refs per the `ExtractableFile` schema) without
+ *     dropping to the raw transport.
+ *   - `label` is scai-local — used for downstream formatting and
+ *     SARIF `physicalLocation` URIs. NOT sent to the API.
  */
 export interface BrandReviewInput {
-  /** Free-text or markdown content to evaluate. */
-  text: string;
-  /** Optional content format hint surfaced to the API. */
-  format?: "text" | "markdown" | "json";
-  /** Optional caller-supplied label (e.g. source file path) — purely for downstream aggregation. */
+  text?: string;
+  /** Free-form additional `input.*` fields per the API's flexible-map shape. */
+  extra?: Record<string, unknown>;
+  /** Caller-supplied label, e.g. file path or test name. */
   label?: string;
 }
 
+/** Selector targeting a specific brand kit + optional narrowing. */
 export interface BrandReviewSelector {
-  /** Brand kit to evaluate against. */
   brandKitId: string;
-  /** Optional narrowing to specific sections. Empty/undefined = all sections. */
-  sections?: BrandKitSectionName[];
+  /**
+   * Restrict the evaluation to these sections (and optionally to
+   * specific fields within them). Empty/undefined → evaluate against
+   * every section in the brand kit.
+   *
+   * Note: sectionId / fieldIds are UUIDs (see Brand Management API).
+   * scai's CLI exposes `--section-id` directly; friendly name lookup
+   * lands once the Brand Management read primitives ship.
+   */
+  sections?: BrandReviewSectionSelector[];
 }

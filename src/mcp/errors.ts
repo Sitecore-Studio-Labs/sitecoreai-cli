@@ -41,6 +41,8 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
     "The tool was cancelled by the client. Any partial application is documented in `why`; re-run the tool with the same arguments to resume.",
   AUTH_AI_SKILLS_REQUIRED:
     "Authenticate with the Sitecore AI Skills service for the bound environment, then re-run the tool.",
+  AUTH_DENIED:
+    "The bound environment has denyMcpElevation set; MCP write tools can't mutate this tenant. Run the destructive op via the CLI with --allow-write, or clear denyMcpElevation in sitecoreai.cli.json if MCP-driven writes are acceptable for this env.",
   BRAND_API_FAILED:
     "Confirm the bound environment has Brand API access and the access token is fresh; check Sitecore Cloud status if the failure persists.",
   UNKNOWN: "Re-run with `SITECOREAI_TRACE=1` set in the launcher to capture a verbose trace.",
@@ -50,6 +52,8 @@ const summarizeError = (error: ScaiError): string => {
   switch (error.code) {
     case "AUTH_REQUIRED":
       return "Authentication required.";
+    case "AUTH_DENIED":
+      return "MCP write tools are not permitted for this environment.";
     case "CONFIG_NOT_FOUND":
       return "scai configuration was not found.";
     case "CONFIG_INVALID":

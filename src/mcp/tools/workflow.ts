@@ -30,6 +30,7 @@ import {
   runWorkflowStatus,
 } from "@/workflow/tasks";
 import { runCleanupWorkflowAdvance, runCleanupWorkflowApply } from "@/hygiene/tasks";
+import { ensureMcpElevationAllowed } from "@/shared/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -318,6 +319,8 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
       ...allowWriteShape,
     },
     handler: async (input, context) => {
+      // Per-env opt-out for MCP-elevated tenant writes.
+      ensureMcpElevationAllowed(context.resolved.root, context.envName);
       const taskOpts = baseTaskOptions(context.configPath, context.envName);
       switch (input.verb) {
         case "advance": {

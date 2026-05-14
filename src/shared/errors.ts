@@ -66,6 +66,7 @@ const exitCodeFor = (code: ScaiErrorCode): number => {
       return 2;
     case "AUTH_REQUIRED":
     case "AUTH_AI_SKILLS_REQUIRED":
+    case "AUTH_DENIED":
       return 3;
     case "NETWORK":
       return 4;

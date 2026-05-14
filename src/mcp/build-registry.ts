@@ -10,7 +10,9 @@
  */
 
 import { McpRegistry } from "./registry";
+import { registerAuditTools } from "./tools/audit";
 import { registerBootstrapTools } from "./tools/bootstrap";
+import { registerCleanupTools } from "./tools/cleanup";
 import { registerDeployTools } from "./tools/deploy";
 import { registerSerializationTools } from "./tools/serialization";
 import { registerRecipeTools } from "./tools/recipe";
@@ -30,6 +32,8 @@ export const buildScaiMcpRegistry = (): McpRegistry => {
   registerRecipeTools(registry);
   registerWorkflowTools(registry);
   registerWebhookTools(registry);
+  registerAuditTools(registry);
+  registerCleanupTools(registry);
   registerInspectorTools(registry);
   registerHelpResources(registry);
   registerEnvironmentResources(registry);

@@ -80,6 +80,20 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   workflow_lifecycle:
     "Mutating workflow surface over a discriminated { verb } input — `advance` (move one item through a named command), `reset` (force an item back to its workflow's initial state — bypasses validation actions), `bulk-advance` (sweep items matched by stale-days / from-state / root and advance each via a named command), or `apply-workflow` (attach a workflow + set initial state on an item that isn't yet under workflow). Every verb requires allowWrite: true. Pair with workflow_inspect first to confirm state shape + command names; pass the `whatIf` flag for plan-only mode where supported.",
 
+  // Audit
+  audit_inspect:
+    "Read-side audit surface over a discriminated { verb } input — `list` (registered audit names), `run` (one audit, or `audit: 'all'` for the consolidated run), `history-capture` (run `all` and persist a snapshot under .scai/audit-history/), `history-list` (snapshots on disk), or `history-diff` (compare two snapshots by fingerprint). Common scope flags (root/limit/since/owner/exclude/baseline) live at the top level; audit-specific options ride along in the `auditOptions` bag. No tenant mutations — pair with audit_baseline for write-side baseline management.",
+  audit_baseline:
+    "Manage the per-env audit baseline file at .scai/audit-baseline-<envName>.json via a discriminated { verb } — `show` (current ignored fingerprints), `update` (run audits and fold every current finding into the baseline; pass `resetFirst: true` to replace rather than merge), `remove` (drop one fingerprint from one audit), or `reset` (clear one audit or all). Writes target the local baseline file only — never the tenant — but still require allowWrite: true so a stray call can't quietly erase an accepted-findings set.",
+  audit_suite_run:
+    "Execute a YAML-defined audit suite by file path. Loads the suite, applies its include/exclude + per-audit options, optionally enables baseline filtering, expands {date}/{datetime}/{env}/{suite} tokens in the output path, and runs every selected audit through `runAuditAll`. Read-only — suites themselves can't mutate the tenant. Use `only` to scope a re-run after a targeted fix.",
+
+  // Cleanup
+  cleanup_preview:
+    "Plan a cleanup operation without mutating the tenant — runs the chosen `verb` with whatIf: true and returns the per-action plan list. Same input shape as cleanup_execute so the agent can show the user the diff first, then re-invoke cleanup_execute with the same arguments after authorization. Safe to call iteratively while tuning scope flags.",
+  cleanup_execute:
+    "Execute a destructive hygiene cleanup verb. Covers versions-prune, versions-archive, archive-purge, dead-templates, duplicates, empty-folders, find-replace, roles, users — every verb in the `scai cleanup` CLI group whose underlying library has a real what-if path. Requires allowWrite: true. Honors per-verb blast-radius caps (`maxDeletions`, `limit`) and the global `whatIf` flag for plan-only mode; pair with cleanup_preview when the user wants to see the plan before authorizing.",
+
   // Webhook
   webhook_inspect:
     "Read-side webhook handler surface over a discriminated { verb } input — `list` (handler items under /sitecore/system/Webhooks or a workflow state) or `get` (one handler's full field detail). Use this to enumerate existing handlers, audit URLs + auth bindings, or confirm what would be deleted before a destructive call.",

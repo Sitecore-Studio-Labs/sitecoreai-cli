@@ -58,7 +58,6 @@ import {
   runBaselineReset,
   runBaselineShow,
   runHistoryCapture,
-  runHistoryDiff,
   runHistoryList,
 } from "@/hygiene/tasks";
 import { createScaiError } from "@/shared/errors";

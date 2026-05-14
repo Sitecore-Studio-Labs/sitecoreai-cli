@@ -19,7 +19,20 @@ beforeEach(() => {
 describe("projects api", () => {
   it("fetchProjects lists projects", async () => {
     await api.fetchProjects({ accessToken: "token" });
-    expect(common.deployRequest).toHaveBeenCalledWith({ accessToken: "token" }, "/api/projects/v2");
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/projects/v2",
+      undefined
+    );
+  });
+
+  it("fetchProjects forwards a query when provided", async () => {
+    await api.fetchProjects({ accessToken: "token" }, { PageNumber: 2, PageSize: 25 });
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/projects/v2",
+      { PageNumber: 2, PageSize: 25 }
+    );
   });
 
   it("fetchProjectsLimitation hits limitation endpoint", async () => {
@@ -101,8 +114,53 @@ describe("projects api", () => {
     await api.fetchProjectEnvironments({ accessToken: "token" }, "proj-1");
     expect(common.deployRequest).toHaveBeenCalledWith(
       { accessToken: "token" },
-      "/api/projects/v2/proj-1/environments"
+      "/api/projects/v2/proj-1/environments",
+      undefined
     );
+  });
+
+  it("fetchProjectEnvironments forwards a query when provided", async () => {
+    await api.fetchProjectEnvironments({ accessToken: "token" }, "proj-1", {
+      PageNumber: 3,
+      PageSize: 25,
+    });
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/projects/v2/proj-1/environments",
+      { PageNumber: 3, PageSize: 25 }
+    );
+  });
+
+  it("fetchAllProjects walks pages until totalCount is reached", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 50 }, (_, idx) => ({ id: `p-${idx}` })),
+        totalCount: 60,
+      })
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 10 }, (_, idx) => ({ id: `p-${idx + 50}` })),
+        totalCount: 60,
+      });
+    const result = await api.fetchAllProjects({ accessToken: "token" });
+    expect(result.items).toHaveLength(60);
+    expect(result.totalCount).toBe(60);
+  });
+
+  it("fetchAllProjectEnvironments walks pages until totalCount is reached", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 50 }, (_, idx) => ({ id: `e-${idx}` })),
+        totalCount: 55,
+      })
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 5 }, (_, idx) => ({ id: `e-${idx + 50}` })),
+        totalCount: 55,
+      });
+    const result = await api.fetchAllProjectEnvironments({ accessToken: "token" }, "proj-1");
+    expect(result.items).toHaveLength(55);
+    expect(result.totalCount).toBe(55);
   });
 
   it("createProjectEnvironment posts environment body", async () => {

@@ -44,6 +44,22 @@ export const resolveWorkflowTenant = (options: WorkflowTaskOptions): ResolvedWor
 const ITEM_ID_PATTERN = /^\{?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}\}?$/i;
 
 /**
+ * Normalize a Sitecore item ID to dashed lowercase form
+ * (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). The Authoring API's
+ * `workflow.commands(query: {item: {itemId}})` and
+ * `executeWorkflowCommand(input: {item: {itemId}})` both require this
+ * dashed form even though `item(where: {itemId})` accepts undashed.
+ *
+ * Pass-through if the input isn't a 32-hex string — callers can rely on
+ * receiving a still-valid input or surfacing the eventual API error.
+ */
+export const dashifyItemId = (id: string): string => {
+  const hex = id.toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (hex.length !== 32) return id;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
+/**
  * Parse a `<itemId|path>` CLI argument into an `ItemSelector`. Accepts:
  *
  *   - 32-hex GUIDs with or without braces/hyphens → `{itemId}`

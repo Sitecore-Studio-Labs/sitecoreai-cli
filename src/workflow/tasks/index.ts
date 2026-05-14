@@ -24,10 +24,17 @@ export {
   type WorkflowAssignedResult,
 } from "./assigned";
 export {
+  runWorkflowAdvance,
+  type WorkflowAdvanceOptions,
+  type WorkflowAdvanceResult,
+  type WorkflowAdvanceStatus,
+} from "./advance";
+export {
   type WorkflowTaskOptions,
   type ResolvedWorkflowTenant,
   resolveWorkflowTenant,
   toLogger,
   parseItemReference,
   printWorkflowResult,
+  dashifyItemId,
 } from "./shared";

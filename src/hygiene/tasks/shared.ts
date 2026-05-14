@@ -707,23 +707,4 @@ export const scanItemsAndFields = async ({
   return { scanned, fieldsByItemId, cache, knobs };
 };
 
-export const ensureAllowWriteForCleanup = (
-  root: RootConfiguration,
-  envName: string,
-  override?: boolean
-): void => {
-  const env = root.environments[envName];
-  if (override || env?.allowWrite) return;
-  const envKey = envName
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  throw createScaiError(
-    `Environment ${envName} is not configured to allow writing data.`,
-    "INPUT_INVALID",
-    {
-      hint: `Set allowWrite in sitecoreai.cli.json, set SITECOREAI_ENV_${envKey}_ALLOW_WRITE=true, or pass --allow-write.`,
-    }
-  );
-};
+export { ensureAllowWrite as ensureAllowWriteForCleanup } from "@/shared/allow-write";

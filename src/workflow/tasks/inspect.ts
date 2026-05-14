@@ -1,6 +1,7 @@
 import { createScaiError } from "@/shared/errors";
 import type { ItemWorkflowState, WorkflowCommandSummary } from "../api";
 import {
+  dashifyItemId,
   parseItemReference,
   printWorkflowResult,
   resolveWorkflowTenant,
@@ -27,12 +28,6 @@ export interface WorkflowInspectResult {
   };
   availableCommands: WorkflowCommandSummary[];
 }
-
-const dashifyItemId = (id: string): string => {
-  const hex = id.toLowerCase().replace(/[^0-9a-f]/g, "");
-  if (hex.length !== 32) return id;
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-};
 
 /**
  * Inspect an item's workflow assignment: current workflow, current

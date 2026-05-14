@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createWorkflowAdvanceCommand } from "./advance";
 import { createWorkflowAssignedCommand } from "./assigned";
 import { createWorkflowInspectCommand } from "./inspect";
 import { createWorkflowListCommandsCommand } from "./list-commands";
@@ -15,6 +16,7 @@ export const createWorkflowCommand = (): Command => {
   command.addCommand(createWorkflowListDefsCommand());
   command.addCommand(createWorkflowStatusCommand());
   command.addCommand(createWorkflowAssignedCommand());
+  command.addCommand(createWorkflowAdvanceCommand());
 
   command.addHelpText(
     "after",
@@ -24,7 +26,9 @@ export const createWorkflowCommand = (): Command => {
       "  $ scai workflow list-commands /sitecore/content/MySite/Home\n" +
       "  $ scai workflow list-defs\n" +
       "  $ scai workflow status --site <siteId>\n" +
-      "  $ scai workflow assigned --state <stateId> --limit 100\n"
+      "  $ scai workflow assigned --state <stateId> --limit 100\n" +
+      "  $ scai workflow advance /sitecore/content/MySite/Home --command Approve --comments 'auto-batched'\n" +
+      "  $ scai workflow advance <itemId> --command Submit --what-if\n"
   );
 
   return command;

@@ -7,7 +7,7 @@
  * Usage: pnpm exec tsx -r tsconfig-paths/register scripts/_smoke-publish-status.ts [envName]
  */
 import { resolveEnvironment } from "@/shared/env";
-import { getAccessToken } from "@/serialization/sitecore-api/auth";
+import { acquirePublishingToken } from "@/publishing/sitecore-api/auth";
 import { listPublishJobs } from "@/publishing/sitecore-api/client";
 import { ScaiError } from "@/shared/errors";
 
@@ -15,12 +15,8 @@ const main = async (): Promise<void> => {
   const envName = process.argv[2] ?? "sandbox";
   process.stderr.write(`> resolving env '${envName}'\n`);
   const { environment } = resolveEnvironment({ environmentName: envName });
-  process.stderr.write(`> acquiring access token\n`);
-  const accessToken = await getAccessToken(environment);
-  if (!accessToken) {
-    process.stderr.write(`! no token for env '${envName}'\n`);
-    process.exit(1);
-  }
+  process.stderr.write(`> requesting publishing-scoped token (xmcpub.jobs.a:r/w xmcpub.queue:r)\n`);
+  const accessToken = await acquirePublishingToken(environment);
   process.stderr.write(`> GET /authoring/publishing/v1/jobs\n`);
   try {
     const jobs = await listPublishJobs({ accessToken });

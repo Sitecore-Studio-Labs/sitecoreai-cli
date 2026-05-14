@@ -1,5 +1,6 @@
 import type { WorkflowCommandSummary } from "../api";
 import {
+  dashifyItemId,
   parseItemReference,
   printWorkflowResult,
   resolveWorkflowTenant,
@@ -18,12 +19,6 @@ export interface WorkflowListCommandsResult {
   workflowId: string;
   commands: WorkflowCommandSummary[];
 }
-
-const dashifyItemId = (id: string): string => {
-  const hex = id.toLowerCase().replace(/[^0-9a-f]/g, "");
-  if (hex.length !== 32) return id;
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-};
 
 /**
  * List the workflow commands available on an item at its current state.

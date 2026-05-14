@@ -12,6 +12,7 @@ import {
   type PlanSummary,
 } from "./plan";
 import { rollback, type RollbackError, type RollbackEvent, type RollbackResult } from "./rollback";
+import type { RollbackLogger, RollbackSummaryLog } from "./rollback-log";
 
 /**
  * `scai recipe push` and `scai recipe plan` share the same per-op
@@ -134,6 +135,14 @@ export interface ExecuteOptions {
    * indicates a CreateItem is needed.
    */
   pathSnapshotCache?: Map<string, RemoteItem | null>;
+  /**
+   * On-disk rollback audit log. Threaded through to `rollback()` so each
+   * compensating-op outcome is captured, and to `executeIr` so the
+   * per-recipe summary line is written when a push aborts. Optional —
+   * when absent, the executor still rolls back in-memory but writes
+   * nothing to disk.
+   */
+  rollbackLog?: RollbackLogger;
 }
 
 /**
@@ -309,8 +318,24 @@ const runRollback = async (
   applied: PlannedAction[],
   client: AuthoringApiClient,
   capturedItemIds: ReadonlyMap<string, string>,
-  options: ExecuteOptions
-): Promise<RollbackResult> => rollback(applied, client, capturedItemIds, { emit: options.emit });
+  options: ExecuteOptions,
+  recipeHandle: string,
+  summary: { trigger: RollbackSummaryLog["trigger"]; forwardError: string }
+): Promise<RollbackResult> => {
+  const result = await rollback(applied, client, capturedItemIds, {
+    emit: options.emit,
+    log: options.rollbackLog ? { logger: options.rollbackLog, recipe: recipeHandle } : undefined,
+  });
+  if (options.rollbackLog) {
+    await options.rollbackLog.recordSummary(recipeHandle, {
+      trigger: summary.trigger,
+      rolledBack: result.rolledBack,
+      errorCount: result.errors.length,
+      forwardError: summary.forwardError,
+    });
+  }
+  return result;
+};
 
 const emitFailed = (
   options: ExecuteOptions,
@@ -446,7 +471,14 @@ export const executeIr = async (
   for (let index = 0; index < ir.operations.length; index += 1) {
     if (options.signal?.aborted) {
       const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
-      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "cancelled", forwardError: cancelMessage }
+      );
       emitFailed(options, index, applied, rollbackResult, cancelMessage);
       return buildResult(ir, actions, summary, true, rollbackResult);
     }
@@ -469,7 +501,14 @@ export const executeIr = async (
       options.emit?.({ kind: "op-error", index, operation: op, error: message });
       summary.error += 1;
       actions.push(action);
-      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "plan-error", forwardError: message }
+      );
       emitFailed(options, index, applied, rollbackResult, message);
       return buildResult(ir, actions, summary, true, rollbackResult);
     }
@@ -503,7 +542,14 @@ export const executeIr = async (
       action.status = "error";
       action.reason = message;
       options.emit?.({ kind: "apply-error", action, error: message });
-      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "apply-error", forwardError: message }
+      );
       emitFailed(options, index, applied, rollbackResult, message);
       return buildResult(ir, actions, summary, true, rollbackResult);
     }

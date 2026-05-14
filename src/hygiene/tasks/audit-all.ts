@@ -92,40 +92,53 @@ interface AuditDef {
   requiresExtraConfig?: boolean;
 }
 
+/**
+ * Convert a typed audit runner into the loose-typed registry shape.
+ * Mirrors `loosen<O>` in `src/mcp/tools/audit.ts` — same rationale:
+ * the runtime still hands every audit a `Record<string, unknown>`
+ * option bag (because the registry-driven dispatch path doesn't know
+ * the audit-specific option type at compile time), but the call to
+ * `loosen` requires its argument to return `Promise<X[]>`, so a
+ * runner regression (e.g. returning a non-array) fails type-check
+ * here instead of leaking into the dispatch path.
+ */
+const loosen = <O>(fn: (options: O) => Promise<unknown[]>): AuditDef["run"] =>
+  fn as unknown as AuditDef["run"];
+
 const AUDIT_REGISTRY: AuditDef[] = [
-  { name: "alt-text-missing", run: runAuditAltTextMissing as never },
+  { name: "alt-text-missing", run: loosen(runAuditAltTextMissing) },
   // broken-images makes external HTTP requests; off by default in `audit all`.
-  { name: "broken-images", run: runAuditBrokenImages as never, requiresExtraConfig: true },
-  { name: "broken-links", run: runAuditBrokenLinks as never },
-  { name: "empty-roles", run: runAuditEmptyRoles as never },
+  { name: "broken-images", run: loosen(runAuditBrokenImages), requiresExtraConfig: true },
+  { name: "broken-links", run: loosen(runAuditBrokenLinks) },
+  { name: "empty-roles", run: loosen(runAuditEmptyRoles) },
   // fallback-drift + translation-coverage need explicit --target-languages.
-  { name: "fallback-drift", run: runAuditFallbackDrift as never, requiresExtraConfig: true },
-  { name: "role-bloat", run: runAuditRoleBloat as never },
-  { name: "slug-conflicts", run: runAuditSlugConflicts as never },
-  { name: "stale-users", run: runAuditStaleUsers as never },
+  { name: "fallback-drift", run: loosen(runAuditFallbackDrift), requiresExtraConfig: true },
+  { name: "role-bloat", run: loosen(runAuditRoleBloat) },
+  { name: "slug-conflicts", run: loosen(runAuditSlugConflicts) },
+  { name: "stale-users", run: loosen(runAuditStaleUsers) },
   {
     name: "translation-coverage",
-    run: runAuditTranslationCoverage as never,
+    run: loosen(runAuditTranslationCoverage),
     requiresExtraConfig: true,
   },
-  { name: "datasource-missing", run: runAuditDatasourceMissing as never },
-  { name: "dead-templates", run: runAuditDeadTemplates as never },
-  { name: "duplicates", run: runAuditDuplicates as never },
-  { name: "empty-items", run: runAuditEmptyItems as never },
-  { name: "empty-links", run: runAuditEmptyLinks as never },
+  { name: "datasource-missing", run: loosen(runAuditDatasourceMissing) },
+  { name: "dead-templates", run: loosen(runAuditDeadTemplates) },
+  { name: "duplicates", run: loosen(runAuditDuplicates) },
+  { name: "empty-items", run: loosen(runAuditEmptyItems) },
+  { name: "empty-links", run: loosen(runAuditEmptyLinks) },
   // find-replace needs --pattern; only run if explicitly included AND pattern provided.
-  { name: "find-replace", run: runAuditFindReplace as never, requiresExtraConfig: true },
-  { name: "heavy-templates", run: runAuditHeavyTemplates as never },
-  { name: "language-data", run: runAuditLanguageData as never },
-  { name: "large-fields", run: runAuditLargeFields as never },
-  { name: "missing-meta", run: runAuditMissingMeta as never },
-  { name: "orphans", run: runAuditOrphans as never },
-  { name: "page-design-orphans", run: runAuditPageDesignOrphans as never },
-  { name: "personalization-broken", run: runAuditPersonalizationBroken as never },
-  { name: "site-residue", run: runAuditSiteResidue as never },
-  { name: "stale-content", run: runAuditStaleContent as never },
-  { name: "stale-workflow", run: runAuditStaleWorkflow as never },
-  { name: "unused-media", run: runAuditUnusedMedia as never },
+  { name: "find-replace", run: loosen(runAuditFindReplace), requiresExtraConfig: true },
+  { name: "heavy-templates", run: loosen(runAuditHeavyTemplates) },
+  { name: "language-data", run: loosen(runAuditLanguageData) },
+  { name: "large-fields", run: loosen(runAuditLargeFields) },
+  { name: "missing-meta", run: loosen(runAuditMissingMeta) },
+  { name: "orphans", run: loosen(runAuditOrphans) },
+  { name: "page-design-orphans", run: loosen(runAuditPageDesignOrphans) },
+  { name: "personalization-broken", run: loosen(runAuditPersonalizationBroken) },
+  { name: "site-residue", run: loosen(runAuditSiteResidue) },
+  { name: "stale-content", run: loosen(runAuditStaleContent) },
+  { name: "stale-workflow", run: loosen(runAuditStaleWorkflow) },
+  { name: "unused-media", run: loosen(runAuditUnusedMedia) },
 ];
 
 export const auditNames = (): string[] => AUDIT_REGISTRY.map((a) => a.name);

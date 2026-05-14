@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
 import { templateId } from "../../../src/recipe/guids";
 import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import { inverseOf, rollback, type RollbackEvent } from "../../../src/recipe/rollback";
+import { createRollbackLogger } from "../../../src/recipe/rollback-log";
 import type { PlannedAction } from "../../../src/recipe/plan";
 import type { CreateItemOp, SetBaseTemplatesOp } from "../../../src/recipe/ir/operations";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
@@ -317,6 +321,54 @@ describe("rollback — best-effort", () => {
     // Both successes and the one failure must appear in the event stream.
     expect(events.filter((e) => e.kind === "rollback-success")).toHaveLength(2);
     expect(events.filter((e) => e.kind === "rollback-failed")).toHaveLength(1);
+  });
+});
+
+describe("rollback — disk audit log", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-rollback-integration-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("records a JSONL line per compensating-op outcome, success and failure alike", async () => {
+    const { client, captured, applied } = await buildAppliedSequence(3);
+    const middleAssignedId = captured.get(applied[1].operation.id)!;
+    const originalDelete = client.deleteItem.bind(client);
+    client.deleteItem = async (selector) => {
+      if (selector.itemId === middleAssignedId) {
+        throw new Error("simulated permission denied");
+      }
+      return originalDelete(selector);
+    };
+
+    const logger = createRollbackLogger("run-integration", { dir: tmpDir });
+    await rollback(applied, client, captured, {
+      log: { logger, recipe: "test-recipe@1" },
+    });
+
+    expect(logger.wasUsed).toBe(true);
+    const raw = await fs.readFile(logger.logPath, "utf8");
+    const lines = raw
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+    expect(lines).toHaveLength(3);
+    // LIFO order: index 2 first, then 1 (failure), then 0.
+    expect(lines.map((l) => [l.index, l.status])).toEqual([
+      [2, "success"],
+      [1, "failed"],
+      [0, "success"],
+    ]);
+    expect(lines[1].error).toMatch(/permission denied/);
+    // Successful deletes get the captured itemId for replay.
+    expect(lines[0].itemId).toBe(captured.get(applied[2].operation.id));
+    expect(lines[2].itemId).toBe(captured.get(applied[0].operation.id));
   });
 });
 

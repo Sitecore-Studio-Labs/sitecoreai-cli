@@ -21,6 +21,7 @@ export type ScaiErrorCode =
   | "INPUT_INVALID"
   | "AUTH_REQUIRED"
   | "AUTH_AI_SKILLS_REQUIRED"
+  | "AUTH_DENIED"
   | "NETWORK"
   | "ENV_NOT_FOUND"
   | "DEPLOY_FAILED"

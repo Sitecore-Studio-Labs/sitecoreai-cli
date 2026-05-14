@@ -171,7 +171,7 @@ export const runCleanupSiteResidue = async (
     output: undefined,
     format: undefined,
     quiet: true,
-  } as never);
+  });
 
   if (findings.length === 0) {
     printReport({

@@ -49,6 +49,18 @@ export type EnvironmentConfiguration = {
   authority?: string;
   environmentType?: "cm" | "eh";
   allowWrite?: boolean;
+  /**
+   * When `true`, MCP write tools refuse to operate against this
+   * environment even when the host has cleared their own
+   * write-confirmation UX. Use for production-shaped environments
+   * where every destructive op must originate from a human-driven CLI
+   * call (`--allow-write`) and never from an MCP-elevated context. The
+   * gate fires at the MCP tool boundary — direct CLI use is
+   * unaffected.
+   *
+   * Defaults to `false` (MCP elevation allowed).
+   */
+  denyMcpElevation?: boolean;
   accessToken?: string;
   refreshToken?: string;
   refreshTokenParameters?: Record<string, string>;

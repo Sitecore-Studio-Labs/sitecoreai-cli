@@ -168,6 +168,10 @@
           "type": "boolean",
           "description": "Whether writing data to this endpoint is allowed (i.e. to prevent accidental writes to production)"
         },
+        "denyMcpElevation": {
+          "type": "boolean",
+          "description": "When true, MCP write tools refuse to operate against this environment regardless of the host's write-confirmation UX. Use for production-shaped envs where destructive ops must originate from a human CLI call (--allow-write) and never an MCP-elevated context. Defaults to false."
+        },
         "host": {
           "type": "string",
           "description": "Base URL to the Sitecore instance to connect to (i.e. http://{my-sitecore-instance}.sitecorecloud.io)",

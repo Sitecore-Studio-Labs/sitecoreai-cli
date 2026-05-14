@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
@@ -18,6 +19,7 @@ import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
+import { createRollbackLogger } from "../rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
@@ -106,6 +108,12 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   if (!isDryRun) {
     ensureAllowWrite(tenant.root, tenant.envName, options.allowWrite);
   }
+
+  // One rollback-log scope per `recipe push` invocation. The file at
+  // `~/.sitecoreai/rollback/<runId>.jsonl` is created lazily by the
+  // logger on first write — successful pushes leave no file behind.
+  const rollbackRunId = randomUUID();
+  const rollbackLog = createRollbackLogger(rollbackRunId);
 
   const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
     options,
@@ -341,6 +349,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       sitesClient,
       pathItemIdCache,
       pathSnapshotCache,
+      // Dry-run never rolls back, so the logger is a no-op there. Pass
+      // it through anyway — the conditional lives inside the executor.
+      rollbackLog,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {
@@ -463,6 +474,10 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
   }
 
+  if (rollbackLog.wasUsed && !logger.isJson()) {
+    logger.warn(`Rollback audit log written to ${rollbackLog.logPath}`);
+  }
+
   if (logger.isJson()) {
     logger.json({
       command: "recipe.push",
@@ -470,6 +485,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       source,
       whatIf: isDryRun,
       placeholderAllowControls: placeholderAllowSummary ?? undefined,
+      rollbackLog: rollbackLog.wasUsed
+        ? { runId: rollbackLog.runId, path: rollbackLog.logPath }
+        : undefined,
       results: results.map((r) => ({
         recipeHandle: r.plan.recipeHandle,
         summary: r.summary,

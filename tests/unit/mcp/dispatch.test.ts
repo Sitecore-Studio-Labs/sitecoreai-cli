@@ -197,18 +197,30 @@ describe("dispatchTool — read/write lock", () => {
       inFlight -= 1;
       return { content: [{ type: "text" as const, text: "ok" }] };
     };
-    const a = dispatchTool(makeDescriptor("read_a", "read", handler), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
-    const b = dispatchTool(makeDescriptor("read_b", "read", handler), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
-    const c = dispatchTool(makeDescriptor("read_c", "read", handler), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
+    const a = dispatchTool(
+      makeDescriptor("read_a", "read", handler),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
+    const b = dispatchTool(
+      makeDescriptor("read_b", "read", handler),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
+    const c = dispatchTool(
+      makeDescriptor("read_c", "read", handler),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
     // Yield enough microtasks for all three reads to acquire the lock.
     await new Promise((r) => setTimeout(r, 5));
     expect(peakInFlight).toBe(3);
@@ -230,10 +242,14 @@ describe("dispatchTool — read/write lock", () => {
       events.push("write-end");
       return { content: [{ type: "text" as const, text: "w" }] };
     };
-    const r = dispatchTool(makeDescriptor("read_a", "read", readHandler), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
+    const r = dispatchTool(
+      makeDescriptor("read_a", "read", readHandler),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
     // Give the read a tick to acquire the lock before the write queues.
     await new Promise((res) => setTimeout(res, 0));
     const w = dispatchTool(
@@ -302,10 +318,14 @@ describe("dispatchTool — read/write lock", () => {
     };
 
     // Read 1 grabs the lock and parks.
-    const r1 = dispatchTool(makeDescriptor("r1", "read", firstRead), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
+    const r1 = dispatchTool(
+      makeDescriptor("r1", "read", firstRead),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
     await new Promise((res) => setTimeout(res, 0));
     // Write queues behind it.
     const w = dispatchTool(
@@ -315,10 +335,14 @@ describe("dispatchTool — read/write lock", () => {
     );
     await new Promise((res) => setTimeout(res, 0));
     // Read 2 must queue behind the waiting write, not slip in alongside r1.
-    const r2 = dispatchTool(makeDescriptor("r2", "read", secondRead), {}, {
-      context: baseContext,
-      extra: makeExtra(),
-    });
+    const r2 = dispatchTool(
+      makeDescriptor("r2", "read", secondRead),
+      {},
+      {
+        context: baseContext,
+        extra: makeExtra(),
+      }
+    );
     await new Promise((res) => setTimeout(res, 5));
     expect(order).toEqual(["read-1"]);
     firstReadGate.resolve();

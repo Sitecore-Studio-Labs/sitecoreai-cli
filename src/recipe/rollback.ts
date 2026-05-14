@@ -2,6 +2,7 @@ import { createScaiError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, UpdateItemInput } from "./api/client";
 import type { FieldValue } from "./ir/operations";
 import type { PlannedAction } from "./plan";
+import type { RollbackLogger } from "./rollback-log";
 
 /**
  * Best-effort rollback for partial recipe pushes.
@@ -43,6 +44,14 @@ export type RollbackEvent =
 
 export interface RollbackOptions {
   emit?: (event: RollbackEvent) => void;
+  /**
+   * On-disk audit log. When provided, each compensating-op outcome
+   * (success/skip/failure) is appended to the run's JSONL file so an
+   * operator can audit what happened — including which items rollback
+   * itself failed on. The caller is responsible for writing the run's
+   * terminal summary line after `rollback()` returns.
+   */
+  log?: { logger: RollbackLogger; recipe: string };
 }
 
 const findPriorValue = (
@@ -151,6 +160,24 @@ export const rollback = async (
 ): Promise<RollbackResult> => {
   const result: RollbackResult = { rolledBack: 0, errors: [] };
 
+  const log = options.log;
+  const recordStep = async (
+    action: PlannedAction,
+    status: "success" | "failed" | "skip",
+    extras: { inverse?: InverseMutation | null; reason?: string; error?: string }
+  ): Promise<void> => {
+    if (!log) return;
+    await log.logger.recordStep(log.recipe, {
+      index: action.index,
+      label: action.operation.label,
+      status,
+      inverse: extras.inverse?.kind,
+      itemId: extras.inverse?.kind === "deleteItem" ? extras.inverse.itemId : undefined,
+      reason: extras.reason,
+      error: extras.error,
+    });
+  };
+
   for (let i = applied.length - 1; i >= 0; i -= 1) {
     const action = applied[i];
     let inverse: InverseMutation | null;
@@ -164,15 +191,14 @@ export const rollback = async (
         error: message,
       });
       options.emit?.({ kind: "rollback-failed", action, error: message });
+      await recordStep(action, "failed", { error: message });
       continue;
     }
 
     if (!inverse) {
-      options.emit?.({
-        kind: "rollback-skip",
-        action,
-        reason: "no inverse needed (no forward mutation)",
-      });
+      const reason = "no inverse needed (no forward mutation)";
+      options.emit?.({ kind: "rollback-skip", action, reason });
+      await recordStep(action, "skip", { reason });
       continue;
     }
 
@@ -185,6 +211,7 @@ export const rollback = async (
       }
       result.rolledBack += 1;
       options.emit?.({ kind: "rollback-success", action });
+      await recordStep(action, "success", { inverse });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.errors.push({
@@ -193,6 +220,7 @@ export const rollback = async (
         error: message,
       });
       options.emit?.({ kind: "rollback-failed", action, error: message });
+      await recordStep(action, "failed", { inverse, error: message });
       // best-effort: continue with remaining rollbacks
     }
   }

@@ -72,7 +72,15 @@ export const createAuditCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nExamples:\n" +
+    "\nDatabase scope:\n" +
+      "  Every audit reads from the master database via the XM Cloud\n" +
+      "  Authoring API. XM Cloud has no `web` database — published content\n" +
+      "  lives on Experience Edge, which is a separate query surface and\n" +
+      "  is not in scope for these audits. \"Stale\" / \"orphaned\" / \"dead\"\n" +
+      "  findings reflect master-side state only; whether a master item is\n" +
+      "  still served by Edge is independent and must be checked via the\n" +
+      "  Edge Delivery / Edge Preview endpoints.\n" +
+      "\nExamples:\n" +
       "  $ scai audit broken-links list --root /sitecore/content/MySite\n" +
       "  $ scai audit dead-templates list --root /sitecore/templates/Project\n" +
       "  $ scai audit template-dependencies list --template-id {ABC123…}\n" +

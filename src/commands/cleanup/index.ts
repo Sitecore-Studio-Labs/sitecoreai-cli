@@ -38,7 +38,19 @@ export const createCleanupCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nExamples:\n" +
+    "\nDatabase scope:\n" +
+      "  Every cleanup writes to the master database via the XM Cloud\n" +
+      "  Authoring API. XM Cloud has no `web` database — to surface a\n" +
+      "  cleanup on the published edge, re-publish the affected scope\n" +
+      "  (`scai publish` / Sites API) after the cleanup completes.\n" +
+      "\nKnown gotcha — post-cascade-delete cache staleness:\n" +
+      "  After a large cascade delete, the Authoring API's template-cache\n" +
+      "  can lag for ~30-90s. `cleanup dead-templates purge` against a\n" +
+      "  template whose dependents were JUST deleted may still 4xx with\n" +
+      "  \"template has dependents\" until the cache settles. Workaround:\n" +
+      "  re-run the cleanup after a short wait, or run the cascade in two\n" +
+      "  passes (dependents first, then templates).\n" +
+      "\nExamples:\n" +
       "  $ scai cleanup versions prune --root /sitecore/content/MySite --keep 5 --what-if\n" +
       "  $ scai cleanup versions archive --root /sitecore/content/MySite --keep 5 --allow-write\n" +
       "  $ scai cleanup archive purge --older-than-days 30 --allow-write\n" +

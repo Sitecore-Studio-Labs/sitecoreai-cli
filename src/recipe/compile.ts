@@ -45,6 +45,8 @@ import { compileContentItemRecipe } from "./compile/content-item";
 import { compileSiteTemplateRecipe } from "./compile/site-template";
 import { compileSiteRecipe } from "./compile/site";
 import { compileEnumerationRecipe } from "./compile/enumeration";
+import { compileWorkflowRecipe } from "./compile/workflow";
+import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
 import { joinPath, sharedField, siteOf, type CompileContext } from "./compile/shared";
 
 // Re-export per-kind compile functions so existing import paths
@@ -62,6 +64,8 @@ export {
   compileSiteTemplateRecipe,
   compileSiteRecipe,
   compileEnumerationRecipe,
+  compileWorkflowRecipe,
+  compileWebhookAuthorizationRecipe,
 };
 
 // Re-export the CompileContext type so callers can keep importing it
@@ -861,5 +865,9 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileSiteRecipe(recipe, context);
     case "enumeration":
       return compileEnumerationRecipe(recipe, context);
+    case "workflow":
+      return compileWorkflowRecipe(recipe, context);
+    case "webhook-authorization":
+      return compileWebhookAuthorizationRecipe(recipe, context);
   }
 }

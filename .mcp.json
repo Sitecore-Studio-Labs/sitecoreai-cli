@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "scai": {
+      "type": "stdio",
+      "command": "node_modules/.bin/tsx",
+      "args": [
+        "-r",
+        "tsconfig-paths/register",
+        "src/cli.ts",
+        "mcp",
+        "serve",
+        "--environment-name",
+        "test"
+      ],
+      "env": {
+        "SITECOREAI_AUTO_WIZARD": "0"
+      }
+    }
+  }
+}

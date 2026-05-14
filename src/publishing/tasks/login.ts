@@ -14,19 +14,17 @@ const PUBLISHING_SCOPES =
   "openid profile email offline_access xmcpub.jobs.a:r xmcpub.jobs.a:w xmcpub.queue:r";
 
 /**
- * Auth0 resource-server audience for publishing operations. The
- * `xmcpub.*` scopes belong to this resource server, not the
- * `api.sitecorecloud.io` audience used for deploy and CM admin.
- * Discovered 2026-05-14 by decoding a Pages-UI token — its `aud`
- * claim included `https://api-webapp.sitecorecloud.io` and that's
- * the audience that carries the publishing scope set.
- *
- * When we requested `xmcpub.*` against `api.sitecorecloud.io`,
- * Auth0 silently stripped the scopes at token issuance (no error
- * at device-authorization time, but the resulting token didn't
- * carry them). Override per-env via env.audience if needed.
+ * Auth0 resource-server audience for publishing operations.
+ * Confirmed 2026-05-14: the SAI Publishing API is hosted at
+ * `https://edge-platform.sitecorecloud.io` but its OAuth resource
+ * server identifier — what tokens need to carry in their `aud`
+ * claim — is the standard `https://api.sitecorecloud.io`. (Pages
+ * tokens carry `api-webapp.sitecorecloud.io` but that's a Pages-
+ * specific audience; the Publishing API itself uses the canonical
+ * Sitecore Cloud API audience.) Override via
+ * SITECOREAI_PUBLISHING_AUDIENCE if Sitecore changes the identifier.
  */
-const PUBLISHING_AUDIENCE = "https://api-webapp.sitecorecloud.io";
+const PUBLISHING_AUDIENCE = "https://api.sitecorecloud.io";
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
   const parts = token.split(".");

@@ -35,7 +35,7 @@ const decodePart = (b64url: string): Record<string, unknown> => {
 
 const main = async (): Promise<void> => {
   const clientId = process.argv[2] ?? "HVRrmuiQ5m6djc2WFJGVjQIqXKZGrqh1";
-  const audience = process.argv[3] ?? "https://api-webapp.sitecorecloud.io";
+  const audience = process.argv[3] ?? "https://api.sitecorecloud.io";
   const clientSecret = process.env.SITECOREAI_M2M_CLIENT_SECRET;
   const authority =
     process.env.SITECOREAI_AUTHORITY ?? "https://auth.sitecorecloud.io";

@@ -12,9 +12,11 @@ import { runAiSkillsLogin } from "../brand/tasks/login";
  * automation client `scai login` provisions.
  */
 const createLoginAiSkillsCommand = (): Command => {
-  const command = new Command("ai-skills").description(
-    "Provision a Sitecore AI Skills credential (Brand Management + Brand Review) for the active environment's organization"
-  );
+  const command = new Command("ai-skills")
+    .aliases(["ai-skill", "aiskills", "aiskill"])
+    .description(
+      "Provision a Sitecore AI Skills credential (Brand Management + Brand Review) for the active environment's organization"
+    );
 
   addEnvironmentOption(command);
   addConfigOption(command);

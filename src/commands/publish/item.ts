@@ -12,11 +12,17 @@ import {
 export const createPublishItemCommand = (): Command => {
   const command = new Command("item")
     .description(
-      "Publish one or more items in a single job (Tier 1). Defaults to --what-if dry-run; pass --allow-write to actually publish. Production-tier envs additionally require --confirm-token from a prior dry-run."
+      "Publish one or more items in a single job (Tier 1). Items can be addressed by GUID (--items) or by Sitecore content-tree path (--paths). At least one must be provided. Defaults to --what-if dry-run; pass --allow-write to actually publish. Production-tier envs additionally require --confirm-token from a prior dry-run."
     )
-    .requiredOption(
+    .option(
       "--items <guid>",
-      "Item ID (GUID) to publish. Repeatable, or pass a comma-separated list. All items are bundled into a single publishing job.",
+      "Item ID (GUID) to publish. Repeatable, or pass a comma-separated list.",
+      collectList,
+      [] as string[]
+    )
+    .option(
+      "--paths <path>",
+      "Item path (e.g. /sitecore/content/Home). Repeatable, or pass a comma-separated list. Resolved to item IDs via Authoring GraphQL before submission.",
       collectList,
       [] as string[]
     )
@@ -65,9 +71,11 @@ export const createPublishItemCommand = (): Command => {
       "\nExamples:\n" +
       "  $ scai publish item --items abc123 -n sandbox\n" +
       "  $ scai publish item --items abc123,def456,ghi789 -n sandbox\n" +
-      "  $ scai publish item --items abc123 --items def456 -n sandbox      # repeated flag\n" +
-      "  $ scai publish item --items abc123 --include-subitems -n sandbox  # + descendants\n" +
-      "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox # force re-emit\n"
+      "  $ scai publish item --paths /sitecore/content/Home -n sandbox\n" +
+      "  $ scai publish item --paths /sitecore/content/Home,/sitecore/content/About -n sandbox\n" +
+      "  $ scai publish item --items abc123 --paths /sitecore/content/Home -n sandbox  # mix both\n" +
+      "  $ scai publish item --items abc123 --include-subitems -n sandbox              # + descendants\n" +
+      "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox             # force re-emit\n"
   );
 
   command.action(async (options) => {

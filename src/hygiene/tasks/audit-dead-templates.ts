@@ -92,7 +92,7 @@ export const runAuditDeadTemplates = async (
     bounded,
     async (template) => {
       // A template is "dead" only when nothing — direct or inherited —
-      // depends on it. We need three signals:
+      // depends on it. We need four signals:
       //
       //   1. `_template = <id>` → items whose primary template IS this
       //      one. The Sitecore search index typically excludes Standard
@@ -111,7 +111,13 @@ export const runAuditDeadTemplates = async (
       //      as an insert option still backs another template's
       //      authoring UX; deleting it breaks "Insert > <Name>".
       //
-      // OR'd together via SHOULD: "dead" requires all three to be empty.
+      //   4. `datasource template CONTAINS <id>` → Rendering items
+      //      whose `Datasource Template` field designates this
+      //      template as the type new datasources must conform to.
+      //      Deleting the template breaks the rendering's "Create
+      //      Local Datasource" flow in the Experience Editor / Pages.
+      //
+      // OR'd together via SHOULD: "dead" requires all four to be empty.
       const value = normalizeItemId(template.templateId);
       const page = await client.search({
         index: options.index,
@@ -137,6 +143,13 @@ export const runAuditDeadTemplates = async (
             {
               criteria: {
                 field: "__masters",
+                value,
+                criteriaType: "CONTAINS",
+              },
+            },
+            {
+              criteria: {
+                field: "datasource template",
                 value,
                 criteriaType: "CONTAINS",
               },

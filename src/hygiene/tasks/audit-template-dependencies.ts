@@ -27,17 +27,24 @@ import {
  *     definitions) whose `__source` contains the target. Deleting
  *     breaks the "New from Branch" flow for that branch.
  *
+ *   - `datasource-template`: Rendering items whose `Datasource
+ *     Template` field designates the target as the type new
+ *     datasources must conform to. Deleting breaks the rendering's
+ *     "Create Local Datasource" flow in Pages / Experience Editor.
+ *
  * Lower-priority kinds intentionally not covered yet (track separately):
  *   - Custom droplist/treelist fields whose `Source=` value resolves
  *     to the target's path. Requires per-field-definition scan.
  *   - Generic ID-bearing fields that happen to hold the target's GUID
- *     in their value. Requires a full-text scan.
+ *     in their value. Use `audit references --to <itemId>` for a
+ *     broader content-text scan when this audit returns nothing.
  */
 export type TemplateReferenceKind =
   | "primary-template"
   | "base-template"
   | "insert-options"
-  | "branch-source";
+  | "branch-source"
+  | "datasource-template";
 
 export interface AuditTemplateDependenciesOptions extends HygieneCommonOptions {
   /** Target template ID — GUID in any standard form ({…}, dashes, flat). Required. */
@@ -69,6 +76,7 @@ const SEARCH_KINDS: Array<{
   { kind: "base-template", field: "_basetemplates", criteriaType: "CONTAINS" },
   { kind: "insert-options", field: "__masters", criteriaType: "CONTAINS" },
   { kind: "branch-source", field: "__source", criteriaType: "CONTAINS" },
+  { kind: "datasource-template", field: "datasource template", criteriaType: "CONTAINS" },
 ];
 
 /**

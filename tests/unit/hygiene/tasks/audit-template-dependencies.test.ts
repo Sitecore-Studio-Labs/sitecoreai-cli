@@ -75,7 +75,7 @@ describe("audit template-dependencies", () => {
     });
   });
 
-  it("queries all four reference kinds with normalized id", async () => {
+  it("queries all reference kinds with normalized id", async () => {
     const fieldsSeen: string[] = [];
     const client = setup((call) => {
       fieldsSeen.push(call.field);
@@ -85,12 +85,13 @@ describe("audit template-dependencies", () => {
 
     await runAuditTemplateDependencies({ templateId: TEMPLATE_GUID, json: true });
 
-    expect(client.search).toHaveBeenCalledTimes(4);
+    expect(client.search).toHaveBeenCalledTimes(5);
     expect(fieldsSeen.sort()).toEqual([
       "__masters",
       "__source",
       "_basetemplates",
       "_template",
+      "datasource template",
     ]);
   });
 

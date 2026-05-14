@@ -131,13 +131,12 @@ export const uploadDocument = async (
     const CRLF = "\r\n";
 
     const parts: Buffer[] = [];
-    // create_request part — explicit application/json content type;
-    // FastAPI's multipart parser dispatches typed parts to different
-    // pydantic models, and a bare text part may not route to the
-    // JSON-body parameter the endpoint expects.
+    // create_request part — plain form-data text field. FastAPI's
+    // `Form(...)` parameter binding expects fields with no per-part
+    // Content-Type; setting one routes the part as a different model
+    // and leaves `create_request` "missing".
     parts.push(enc(`--${boundary}${CRLF}`));
-    parts.push(enc(`Content-Disposition: form-data; name="create_request"${CRLF}`));
-    parts.push(enc(`Content-Type: application/json${CRLF}${CRLF}`));
+    parts.push(enc(`Content-Disposition: form-data; name="create_request"${CRLF}${CRLF}`));
     parts.push(enc(createRequestJson));
     parts.push(enc(CRLF));
     // file part — application/pdf binary

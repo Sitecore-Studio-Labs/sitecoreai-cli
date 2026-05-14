@@ -13,6 +13,16 @@
 
 export type { SitecoreApiClientOptions } from "./types";
 
+// --- Curated client seam ------------------------------------------------
+//
+// `createSitecoreApiClient(options)` returns a typed, options-bound
+// facade over the function-style item / history / roles / users /
+// publish surface — parallels `createDeployApiClient` and
+// `createSitesApiClient`. The underlying functions remain exported
+// below for direct use.
+
+export { createSitecoreApiClient, type SitecoreApiClient } from "./client";
+
 // --- Transport seam ------------------------------------------------------
 
 export { runGraphQL, type GraphQLRequestOptions } from "./graphql";

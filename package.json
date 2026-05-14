@@ -17,9 +17,13 @@
     "sitecoreai-cli": "bin/sitecoreai-cli",
     "scai": "bin/sitecoreai-cli"
   },
-  "main": "dist/cli.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/cli.js",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./recipe": {
       "types": "./dist/recipe/index.d.ts",
       "default": "./dist/recipe/index.js"
@@ -39,6 +43,26 @@
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "default": "./dist/brand/index.js"
+    },
+    "./sites": {
+      "types": "./dist/sites/index.d.ts",
+      "default": "./dist/sites/index.js"
+    },
+    "./publishing": {
+      "types": "./dist/publishing/index.d.ts",
+      "default": "./dist/publishing/index.js"
+    },
+    "./hygiene": {
+      "types": "./dist/hygiene/index.d.ts",
+      "default": "./dist/hygiene/index.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks/index.d.ts",
+      "default": "./dist/webhooks/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow/index.d.ts",
+      "default": "./dist/workflow/index.js"
     },
     "./package.json": "./package.json"
   },

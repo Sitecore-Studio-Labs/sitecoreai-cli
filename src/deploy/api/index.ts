@@ -32,6 +32,16 @@ export {
 export { withOrganizationHeaders } from "./common/headers";
 export { deployRequest } from "./common/request";
 
+// --- Curated client seam ------------------------------------------------
+//
+// `createDeployApiClient(options)` returns a typed, options-bound facade
+// over the most common Deploy API operations. Parallels
+// `createSitesApiClient` in `recipe/` — the full 60+ function surface
+// remains exported below as bag-of-functions for callers that need the
+// long tail (env vars, source-control providers, etc.).
+
+export { createDeployApiClient, type DeployApiClient } from "./client";
+
 // --- Organizations -------------------------------------------------------
 
 export {

@@ -31,6 +31,7 @@ import { runCleanupPublish } from "@/hygiene/tasks/cleanup-publish";
 import { runCleanupRename } from "@/hygiene/tasks/cleanup-rename";
 import { runCleanupRoles } from "@/hygiene/tasks/cleanup-roles";
 import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup-site-residue";
+import { runCleanupSubtree } from "@/hygiene/tasks/cleanup-subtree";
 import { runCleanupUsers } from "@/hygiene/tasks/cleanup-users";
 import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup-versions-archive";
 import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup-versions-prune";
@@ -88,6 +89,15 @@ const CLEANUP_RUNNERS: Record<string, LoosedRunner> = {
   rename: loosen(runCleanupRename),
   roles: loosen(runCleanupRoles),
   "site-residue": loosen(runCleanupSiteResidue),
+  subtree: loosen(async (options: Parameters<typeof runCleanupSubtree>[0]) => {
+    const r = await runCleanupSubtree(options);
+    // Flatten the {blockers, deletions} envelope so the MCP dispatch
+    // handler's `actions.length` matches the user-visible work.
+    return [
+      ...r.blockers.map((b) => ({ ...b, kind: "blocker" as const })),
+      ...r.deletions.map((d) => ({ ...d, kind: "deletion" as const })),
+    ];
+  }),
   users: loosen(runCleanupUsers),
   "workflow-advance": loosen(runCleanupWorkflowAdvance),
   "workflow-apply": loosen(runCleanupWorkflowApply),
@@ -334,12 +344,13 @@ const cleanupInputSchema = () =>
         "rename",
         "roles",
         "site-residue",
+        "subtree",
         "users",
         "workflow-advance",
         "workflow-apply",
       ])
       .describe(
-        "Which cleanup operation to run. Each verb maps 1:1 to a `scai cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); publish (`items` OR `root`); rename (`pattern`, `replacement`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). All others have safe defaults but accept the same option bag."
+        "Which cleanup operation to run. Each verb maps 1:1 to a `scai cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); publish (`items` OR `root`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
       ),
 
     // versions-prune / versions-archive
@@ -508,6 +519,26 @@ const cleanupInputSchema = () =>
       .optional()
       .describe(
         "users: use lastActivityDate instead of lastLoginDate for the inactivity check. Off by default."
+      ),
+
+    // subtree
+    path: z
+      .string()
+      .optional()
+      .describe(
+        "subtree: content-tree path of the subtree root to delete. Required for subtree."
+      ),
+    scanRoot: z
+      .string()
+      .optional()
+      .describe(
+        "subtree: content root scanned for inbound references. Default `/sitecore` (entire CMS). Narrow for speed at the cost of missing refs outside the chosen root."
+      ),
+    orphanExternalRefs: z
+      .enum(["clear"])
+      .optional()
+      .describe(
+        "subtree: how to handle external items whose fields reference the subtree. Omit (default) = refuse with blocker list; 'clear' = empty those fields before deleting. Use --what-if first to preview which fields would be cleared."
       ),
 
     // site-residue

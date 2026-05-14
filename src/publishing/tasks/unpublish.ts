@@ -29,7 +29,8 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
-import { promptConfirm } from "@/shared/prompt";
+import { promptConfirm, promptText } from "@/shared/prompt";
+import { createHygieneApiClient } from "@/hygiene/api/client";
 import {
   FIELD_NEVER_PUBLISH,
   FIELD_VALID_TO,
@@ -41,6 +42,7 @@ import {
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
+import { lookupSiteLanguages } from "../sitecore-api/languages";
 import type {
   CreatePublishJobRequest,
   PublishingApiClientOptions,
@@ -66,10 +68,21 @@ export interface RunPublishUnpublishOptions {
   itemIds?: string[];
   paths?: string[];
   languages?: string[];
+  /** Site name. When set and `languages` is empty, scai auto-fills
+   *  languages from the named site via the Sites API. */
+  site?: string;
   includeSubitems?: boolean;
   includeRelated?: boolean;
   /** Defaults to `"never-publish"`. */
   strategy?: UnpublishStrategy;
+  /**
+   * For `--strategy delete` on production-tier envs: the operator
+   *  must echo the item path back literally before scai will call
+   *  `deleteItem`. The CLI prompts interactively when unset; CI must
+   *  supply this matching the resolved item path. (Mirrors `publish
+   *  all`'s typed env-name gate, scaled per-item.)
+   */
+  confirmItemPath?: string;
   whatIf?: boolean;
   allowWrite?: boolean;
   confirmToken?: string;
@@ -159,13 +172,228 @@ const applyStrategy = async (
     return [{ name: FIELD_VALID_TO, before, after }];
   }
 
+  // Note: `delete` is not handled here — it's item-scoped (not
+  // version-scoped) and runs through `runDeleteUnpublish` below.
+
   throw createScaiError(
     `Unpublish strategy '${strategy as string}' is not implemented yet.`,
     "INPUT_INVALID",
     {
-      hint: "Use --strategy never-publish (default) or --strategy expire-now. The 'delete' strategy requires the typed-item-path confirmation flow and lands in a follow-up.",
+      hint: "Use --strategy never-publish (default), --strategy expire-now, or --strategy delete.",
     }
   );
+};
+
+/**
+ * Read the resolved Sitecore path for an itemId via Authoring GraphQL.
+ * Used by the `delete` strategy to surface the path the operator must
+ * echo back at the typed-path confirmation gate. The path is also the
+ * value scai writes to the audit log so a "deleted X" entry is
+ * grep-able by path, not just GUID.
+ */
+const lookupItemPath = async (
+  environment: Parameters<typeof readVersionFields>[0],
+  itemId: string
+): Promise<string | null> => {
+  // readVersionFields throws if the item has no version in the requested
+  // language — that's a problem for delete (we want to delete regardless
+  // of language). Use a minimal GraphQL probe instead.
+  const { runAuthoringGraphQL } = await import("@/recipe/api/graphql");
+  type Resp = { item: { itemId: string; path: string } | null };
+  const data = await runAuthoringGraphQL<Resp>(
+    environment,
+    `query($id: String!) { item(where: { itemId: $id }) { itemId path } }`,
+    { id: itemId }
+  );
+  return data.item?.path ?? null;
+};
+
+interface DeleteContext {
+  envName: string;
+  environment: Parameters<typeof readVersionFields>[0];
+  timeoutMs: number | undefined;
+  logger: Logger;
+  itemIds: string[];
+  resolvedPaths: Map<string, string>;
+  scope: PublishAuditScope;
+  scopeHash: string;
+  productionTier: boolean;
+  confirmToken?: string;
+  confirmItemPath?: string;
+  yes: boolean;
+  nonInteractive: boolean;
+  includeSubitems?: boolean;
+  includeRelated?: boolean;
+  languages: string[];
+  name?: string;
+  source?: string;
+}
+
+/**
+ * Execute `--strategy delete` end-to-end. Item-scoped (not
+ * version-scoped) — Sitecore's `deleteItem` removes the item across
+ * every version and language at once. Distinct flow from the
+ * reversible strategies because:
+ *
+ *   - typed-item-path confirmation gates each delete on production-tier
+ *     envs (mirrors `publish all`'s typed env-name confirmation, scaled
+ *     per-item)
+ *   - audit entries carry `risk: "high"` (delete is NOT reversible)
+ *   - the publish job follows the deletes so Edge sees the removals
+ *
+ * @internal
+ */
+const runDeleteUnpublish = async (ctx: DeleteContext): Promise<void> => {
+  const { logger, envName, environment, timeoutMs, itemIds } = ctx;
+  const caller: PublishAuditCaller = { type: "human", via: "cli" };
+  const hygieneClient = createHygieneApiClient({ environment });
+
+  // Typed-item-path confirmation gate: one prompt per item. Operator
+  // sees the resolved path and types it back literally. `--yes`
+  // (alongside `--confirm-item-path`) skips the prompt for CI, but
+  // the supplied path MUST equal the resolved path — otherwise we
+  // refuse so accidental paste of the wrong path can't slip through.
+  const pathByItem = new Map<string, string>();
+  for (const id of itemIds) {
+    const cached = ctx.resolvedPaths.get(id);
+    const resolved = cached ?? (await lookupItemPath(environment, id));
+    if (!resolved) {
+      throw createScaiError(
+        `Item ${id} not found in env '${envName}'; refusing to delete.`,
+        "INPUT_INVALID"
+      );
+    }
+    pathByItem.set(id, resolved);
+  }
+
+  for (const id of itemIds) {
+    const resolvedPath = pathByItem.get(id)!;
+    if (ctx.yes && ctx.confirmItemPath) {
+      if (ctx.confirmItemPath !== resolvedPath) {
+        throw createScaiError(
+          `--confirm-item-path mismatch for ${id}: provided '${ctx.confirmItemPath}', resolved '${resolvedPath}'.`,
+          "INPUT_INVALID",
+          { hint: "Provide the exact resolved path, or omit --confirm-item-path and use the interactive prompt." }
+        );
+      }
+      logger.info(`  ${id} (${resolvedPath}): typed-path confirmation passed (--yes mode).`, "gray");
+    } else {
+      if (ctx.nonInteractive) {
+        throw createScaiError(
+          "Delete in non-interactive mode requires --yes AND --confirm-item-path.",
+          "INPUT_INVALID"
+        );
+      }
+      const typed = await promptText(
+        `Type the path '${resolvedPath}' to confirm permanent deletion of ${id}:`
+      );
+      if (typed !== resolvedPath) {
+        throw createScaiError(
+          `Confirmation mismatch for ${id}: typed '${typed}', expected '${resolvedPath}'. Aborting; nothing deleted.`,
+          "INPUT_INVALID"
+        );
+      }
+    }
+  }
+
+  // All confirmations passed. Issue the deletes; audit each one
+  // BEFORE moving to the next, so an interrupted run still has an
+  // accurate trail.
+  for (const id of itemIds) {
+    const resolvedPath = pathByItem.get(id)!;
+    try {
+      await hygieneClient.deleteItem({ itemId: id, permanently: true });
+      recordPublishAudit({
+        ts: new Date().toISOString(),
+        command: "publish unpublish",
+        caller,
+        scope: { ...ctx.scope, itemIds: [id], path: resolvedPath },
+        risk: "high",
+        scopeHash: ctx.scopeHash,
+        scopeToken: ctx.confirmToken,
+        outcome: "ok",
+        fieldChanges: [{ name: "__DELETED__", before: resolvedPath, after: null }],
+      });
+      logger.info(`  ${id} (${resolvedPath}): deleted permanently.`, "yellow");
+    } catch (err) {
+      recordPublishAudit({
+        ts: new Date().toISOString(),
+        command: "publish unpublish",
+        caller,
+        scope: { ...ctx.scope, itemIds: [id], path: resolvedPath },
+        risk: "high",
+        scopeHash: ctx.scopeHash,
+        scopeToken: ctx.confirmToken,
+        outcome: "error",
+        errorCode:
+          err instanceof Error && "code" in err
+            ? String((err as { code: unknown }).code)
+            : "UNKNOWN",
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  // Submit a publish job so Edge sees the deletions. Smart mode picks
+  // up the missing items and removes them from Edge.
+  const accessToken = await acquirePublishingToken({ envName, environment });
+  const client: PublishingApiClientOptions = { accessToken, timeoutMs };
+  const defaultName = `scai publish unpublish [delete] ${itemIds.length} item(s) (${envName})`;
+  const request: CreatePublishJobRequest = {
+    name: ctx.name ?? defaultName,
+    source: ctx.source ?? "scai",
+    options: {
+      items: itemIds.map((id) => ({ id, type: "item" })),
+      xmc: {
+        locales: ctx.languages.length > 0 ? ctx.languages : undefined,
+        items: {
+          mode: "Smart",
+          publishChildren: ctx.includeSubitems,
+          publishRelatedItems: ctx.includeRelated,
+        },
+      },
+    },
+  };
+  try {
+    const job = await submitPublishJob(client, request);
+    recordPublishAudit({
+      ts: new Date().toISOString(),
+      command: "publish unpublish",
+      caller,
+      scope: ctx.scope,
+      risk: "high",
+      scopeHash: ctx.scopeHash,
+      scopeToken: ctx.confirmToken,
+      jobId: job.id,
+      outcome: "ok",
+    });
+    if (logger.isJson()) {
+      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      return;
+    }
+    logger.info(`Submitted publish job ${job.id} (${job.state}).`, "green");
+    logger.info(`Track with: scai publish status ${job.id} -n ${envName}`, "gray");
+    logger.warn(
+      `Delete is NOT reversible from scai. Restoring requires Sitecore archive recovery or re-creation from serialization.`,
+      "yellow"
+    );
+  } catch (err) {
+    recordPublishAudit({
+      ts: new Date().toISOString(),
+      command: "publish unpublish",
+      caller,
+      scope: ctx.scope,
+      risk: "high",
+      scopeHash: ctx.scopeHash,
+      scopeToken: ctx.confirmToken,
+      outcome: "error",
+      errorCode:
+        err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "UNKNOWN",
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 };
 
 export const runPublishUnpublish = async (
@@ -186,19 +414,25 @@ export const runPublishUnpublish = async (
   }
 
   const strategy: UnpublishStrategy = options.strategy ?? "never-publish";
-  if (strategy === "delete") {
-    throw createScaiError(
-      "Unpublish strategy 'delete' is not yet implemented.",
-      "INPUT_INVALID",
-      {
-        hint: "Delete requires a typed-item-path confirmation gate (mirroring publish-all's typed env-name gate) and lands in a follow-up PR. Use 'never-publish' (default, reversible) or 'expire-now' (reversible) for now, or call `scai content version *` directly for per-version state changes.",
-      }
-    );
-  }
 
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
-  const languages = options.languages ?? [];
+  let languages = options.languages ?? [];
   const target = "Edge";
+
+  // Site → languages auto-fill: only when --languages wasn't passed.
+  // Sites API is the canonical source for per-site language config.
+  if (languages.length === 0 && options.site) {
+    logger.info(`Looking up languages for site '${options.site}'...`, "gray");
+    languages = await lookupSiteLanguages(environment, options.site);
+    if (languages.length === 0) {
+      throw createScaiError(
+        `Site '${options.site}' has no configured languages.`,
+        "INPUT_INVALID",
+        { hint: "Add a language to the site or pass --languages explicitly." }
+      );
+    }
+    logger.info(`  → ${languages.join(", ")}`, "gray");
+  }
 
   // Resolve paths → IDs up-front so the dry-run scope reflects the
   // actual items the field-write + publish-job will see.
@@ -297,6 +531,39 @@ export const runPublishUnpublish = async (
       logger.info("Aborted.", "yellow");
       return;
     }
+  }
+
+  // Delete strategy branches into its own flow — it's item-scoped
+  // (not version-scoped), requires typed-item-path confirmation, and
+  // emits high-risk audit entries.
+  if (strategy === "delete") {
+    // Build path-by-item map from the path resolution we already did
+    // when --paths was used; we'll re-resolve missing ones inside.
+    const resolvedPaths = new Map<string, string>();
+    for (const r of resolvedFromPaths) {
+      resolvedPaths.set(r.itemId, r.path);
+    }
+    await runDeleteUnpublish({
+      envName,
+      environment,
+      timeoutMs,
+      logger,
+      itemIds,
+      resolvedPaths,
+      scope,
+      scopeHash,
+      productionTier,
+      confirmToken: options.confirmToken,
+      confirmItemPath: options.confirmItemPath,
+      yes: Boolean(options.yes),
+      nonInteractive: Boolean(options.nonInteractive),
+      includeSubitems: options.includeSubitems,
+      includeRelated: options.includeRelated,
+      languages,
+      name: options.name,
+      source: options.source,
+    });
+    return;
   }
 
   const caller: PublishAuditCaller = { type: "human", via: "cli" };

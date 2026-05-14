@@ -10,6 +10,7 @@ import { createCleanupPublishCommand } from "./publish";
 import { createCleanupRenameCommand } from "./rename";
 import { createCleanupRolesCommand } from "./roles";
 import { createCleanupSiteResidueCommand } from "./site-residue";
+import { createCleanupSubtreeCommand } from "./subtree";
 import { createCleanupUsersCommand } from "./users";
 import { createCleanupVersionsCommand } from "./versions";
 import { createCleanupWorkflowCommand } from "./workflow";
@@ -30,6 +31,7 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupRenameCommand());
   command.addCommand(createCleanupRolesCommand());
   command.addCommand(createCleanupSiteResidueCommand());
+  command.addCommand(createCleanupSubtreeCommand());
   command.addCommand(createCleanupUsersCommand());
   command.addCommand(createCleanupVersionsCommand());
   command.addCommand(createCleanupWorkflowCommand());
@@ -47,6 +49,8 @@ export const createCleanupCommand = (): Command => {
       "  $ scai cleanup empty-folders purge --root /sitecore/content/MySite --what-if\n" +
       "  $ scai cleanup roles purge-empty --domain sitecore --what-if\n" +
       "  $ scai cleanup site-residue purge --what-if\n" +
+      "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --what-if\n" +
+      "  $ scai cleanup subtree delete --path /sitecore/content/MySite/Old --orphan-external-refs clear --allow-write\n" +
       "  $ scai cleanup users purge-stale --not-active-days 365 --what-if\n"
   );
 

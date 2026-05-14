@@ -5,6 +5,7 @@ import { promptConfirm } from "@/shared/prompt";
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
+import { lookupSiteLanguages } from "../sitecore-api/languages";
 import type {
   CreatePublishJobRequest,
   PublishItemsMode,
@@ -33,8 +34,14 @@ export interface RunPublishItemOptions {
    *  a free-form string here; if your tenant uses a different value
    *  (e.g. "Item" or "ContentItem"), pass it explicitly. */
   itemType?: string;
-  /** Languages (e.g. en-US). Mapped to xmc.locales. */
+  /** Languages (e.g. en-US). Mapped to xmc.locales. When unset and
+   *  `site` is provided, scai resolves the site's configured languages
+   *  via the Sites API before submitting. */
   languages?: string[];
+  /** Site name (e.g. `marketing-site`). When set, scai auto-fills
+   *  `languages` from the site's configured language list (Sites API).
+   *  Has no effect when `languages` is already provided. */
+  site?: string;
   /** Map to xmc.items.publishChildren — matches dotnet --subitems. */
   includeSubitems?: boolean;
   /** Map to xmc.items.publishRelatedItems — matches dotnet --related. */
@@ -109,9 +116,26 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
 
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
   const itemType = options.itemType ?? "item";
-  const languages = options.languages ?? [];
+  let languages = options.languages ?? [];
   const target = "Edge";
   const mode: PublishItemsMode = options.mode ?? "Smart";
+
+  // Auto-fill languages from the named site when the operator didn't
+  // pass --languages directly. Sites API is the canonical source of
+  // truth for per-site language configuration; this avoids the
+  // English-default fallback that bites non-English-primary tenants.
+  if (languages.length === 0 && options.site) {
+    logger.info(`Looking up languages for site '${options.site}'...`, "gray");
+    languages = await lookupSiteLanguages(environment, options.site);
+    if (languages.length === 0) {
+      throw createScaiError(
+        `Site '${options.site}' has no configured languages.`,
+        "INPUT_INVALID",
+        { hint: "Add a language to the site (Sites API addLanguage / Cloud Portal) or pass --languages explicitly." }
+      );
+    }
+    logger.info(`  → ${languages.join(", ")}`, "gray");
+  }
 
   // Resolve paths → IDs up front so the dry-run scope (and the scope
   // hash) reflects the actual items the API will see. Resolution

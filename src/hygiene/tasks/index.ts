@@ -118,6 +118,13 @@ export type {
   SiteResidueReport,
 } from "./audit-site-residue";
 
+export { runCleanupSiteResidue } from "./cleanup-site-residue";
+export type {
+  CleanupSiteResidueOptions,
+  SiteResidueCleanupAction,
+  InboundRef,
+} from "./cleanup-site-residue";
+
 export { runCleanupWorkflowAdvance } from "./cleanup-workflow-advance";
 export type {
   CleanupWorkflowAdvanceOptions,

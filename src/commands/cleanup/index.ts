@@ -5,6 +5,7 @@ import { createCleanupDuplicatesCommand } from "./duplicates";
 import { createCleanupEmptyFoldersCommand } from "./empty-folders";
 import { createCleanupFindReplaceCommand } from "./find-replace";
 import { createCleanupRolesCommand } from "./roles";
+import { createCleanupSiteResidueCommand } from "./site-residue";
 import { createCleanupUsersCommand } from "./users";
 import { createCleanupVersionsCommand } from "./versions";
 import { createCleanupWorkflowCommand } from "./workflow";
@@ -20,6 +21,7 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupEmptyFoldersCommand());
   command.addCommand(createCleanupFindReplaceCommand());
   command.addCommand(createCleanupRolesCommand());
+  command.addCommand(createCleanupSiteResidueCommand());
   command.addCommand(createCleanupUsersCommand());
   command.addCommand(createCleanupVersionsCommand());
   command.addCommand(createCleanupWorkflowCommand());
@@ -35,6 +37,7 @@ export const createCleanupCommand = (): Command => {
       "  $ scai cleanup workflow advance --root /sitecore/content/MySite --command-name Submit --stale-days 60 --what-if\n" +
       "  $ scai cleanup empty-folders purge --root /sitecore/content/MySite --what-if\n" +
       "  $ scai cleanup roles purge-empty --domain sitecore --what-if\n" +
+      "  $ scai cleanup site-residue purge --what-if\n" +
       "  $ scai cleanup users purge-stale --not-active-days 365 --what-if\n"
   );
 

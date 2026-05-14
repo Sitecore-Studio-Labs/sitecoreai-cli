@@ -15,13 +15,17 @@ export const createPublishAllCommand = (): Command => {
     )
     .option(
       "-l, --languages <list>",
-      "Comma-separated languages (e.g. en-US,fr-CA). Defaults to env-configured languages.",
+      "Comma-separated languages (e.g. en-US,fr-CA). When unset, scai uses --site to look up the site's configured languages via the Sites API; otherwise the Publishing API falls back to env-configured publish languages.",
       (value: string) =>
         value
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
       [] as string[]
+    )
+    .option(
+      "--site <name>",
+      "Site name. When set and --languages is empty, scai auto-fills locales from the site's language set (Sites API). The publish itself is still whole-tenant; --site is a convenience for locale scoping only."
     )
     .addOption(
       new Option("--mode <mode>", "Site publish mode")

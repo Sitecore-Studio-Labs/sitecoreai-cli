@@ -5,7 +5,7 @@ import { promptConfirm } from "@/shared/prompt";
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
-import { lookupSiteLanguages, lookupTenantLanguages } from "../sitecore-api/languages";
+import { resolvePublishingLocales } from "../sitecore-api/languages";
 import type {
   CreatePublishJobRequest,
   PublishItemsMode,

@@ -15,7 +15,7 @@ export const createPublishAllCommand = (): Command => {
     )
     .option(
       "-l, --languages <list>",
-      "Comma-separated languages (e.g. en-US,fr-CA). When unset, scai uses --site to look up the site's configured languages via the Sites API; otherwise the Publishing API falls back to env-configured publish languages.",
+      "Literal language list. Mutually exclusive with --languages-from-site / --all-tenant-languages.",
       (value: string) =>
         value
           .split(",")
@@ -24,8 +24,12 @@ export const createPublishAllCommand = (): Command => {
       [] as string[]
     )
     .option(
-      "--site <name>",
-      "Site name. When set and --languages is empty, scai auto-fills locales from the site's language set (Sites API). The publish itself is still whole-tenant; --site is a convenience for locale scoping only."
+      "--languages-from-site <name>",
+      "Resolve locales from the named site (Sites API). NOTE: the publish is still whole-tenant — this flag scopes locales only, not items."
+    )
+    .option(
+      "--all-tenant-languages",
+      "Resolve locales to every language registered in the tenant."
     )
     .addOption(
       new Option("--mode <mode>", "Site publish mode")

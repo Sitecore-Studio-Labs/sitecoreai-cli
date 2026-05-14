@@ -28,13 +28,17 @@ export const createPublishUnpublishCommand = (): Command => {
     )
     .option(
       "-l, --languages <list>",
-      "Comma-separated languages (e.g. en-US,fr-CA). When unset, scai uses --site to look up the site's configured languages via the Sites API; otherwise falls back to 'en' for field writes.",
+      "Literal language list. Mutually exclusive with --languages-from-site / --all-tenant-languages.",
       collectList,
       [] as string[]
     )
     .option(
-      "--site <name>",
-      "Site name. When set and --languages is empty, scai auto-fills languages from the named site (Sites API)."
+      "--languages-from-site <name>",
+      "Resolve the language list from the named site (Sites API)."
+    )
+    .option(
+      "--all-tenant-languages",
+      "Resolve the language list to every language registered in the tenant."
     )
     .option("--include-subitems", "Publish descendants in the follow-up publish job.")
     .option("--include-related", "Publish referenced items in the follow-up publish job.")

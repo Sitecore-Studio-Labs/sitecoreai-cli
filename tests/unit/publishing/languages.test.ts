@@ -3,8 +3,12 @@ import type { EnvironmentConfiguration } from "../../../src/config/types";
 import {
   lookupSiteLanguages,
   lookupTenantLanguages,
+  resolvePublishingLocales,
 } from "../../../src/publishing/sitecore-api/languages";
+import { Logger } from "../../../src/shared/logger";
 import { ScaiError } from "../../../src/shared/errors";
+
+const noopLogger = new Logger(false, false, false, true);
 
 vi.mock("../../../src/serialization/sitecore-api/auth", () => ({
   getAccessToken: vi.fn(async () => "test-token"),
@@ -95,5 +99,77 @@ describe("lookupTenantLanguages", () => {
   it("filters out entries with no name", async () => {
     mockListLanguages.mockResolvedValue([{ name: "en" }, { name: null }, { name: "" }]);
     expect(await lookupTenantLanguages(env)).toEqual(["en"]);
+  });
+});
+
+describe("resolvePublishingLocales", () => {
+  it("returns the literal list when --languages is set", async () => {
+    const out = await resolvePublishingLocales(noopLogger, env, {
+      languages: ["en-US", "fr-CA"],
+    });
+    expect(out).toEqual(["en-US", "fr-CA"]);
+    expect(mockListSites).not.toHaveBeenCalled();
+    expect(mockListLanguages).not.toHaveBeenCalled();
+  });
+
+  it("returns empty (env defaults) when no flags are set", async () => {
+    const out = await resolvePublishingLocales(noopLogger, env, {});
+    expect(out).toEqual([]);
+    expect(mockListSites).not.toHaveBeenCalled();
+    expect(mockListLanguages).not.toHaveBeenCalled();
+  });
+
+  it("resolves from a site when --languages-from-site is set", async () => {
+    mockListSites.mockResolvedValue([{ name: "marketing", languages: ["en", "de"] }]);
+    const out = await resolvePublishingLocales(noopLogger, env, {
+      languagesFromSite: "marketing",
+    });
+    expect(out).toEqual(["en", "de"]);
+  });
+
+  it("resolves tenant-wide when --all-tenant-languages is set", async () => {
+    mockListLanguages.mockResolvedValue([{ name: "en" }, { name: "fr" }]);
+    const out = await resolvePublishingLocales(noopLogger, env, {
+      allTenantLanguages: true,
+    });
+    expect(out).toEqual(["en", "fr"]);
+  });
+
+  it("rejects when --languages AND --languages-from-site are both set", async () => {
+    await expect(
+      resolvePublishingLocales(noopLogger, env, {
+        languages: ["en"],
+        languagesFromSite: "marketing",
+      })
+    ).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+      message: expect.stringContaining("over-specified"),
+    });
+  });
+
+  it("rejects when --languages-from-site AND --all-tenant-languages are both set", async () => {
+    await expect(
+      resolvePublishingLocales(noopLogger, env, {
+        languagesFromSite: "marketing",
+        allTenantLanguages: true,
+      })
+    ).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+      message: expect.stringContaining("over-specified"),
+    });
+  });
+
+  it("rejects when --languages-from-site resolves to an empty list", async () => {
+    mockListSites.mockResolvedValue([{ name: "marketing", languages: [] }]);
+    await expect(
+      resolvePublishingLocales(noopLogger, env, { languagesFromSite: "marketing" })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("rejects when --all-tenant-languages resolves to an empty list", async () => {
+    mockListLanguages.mockResolvedValue([]);
+    await expect(
+      resolvePublishingLocales(noopLogger, env, { allTenantLanguages: true })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 });

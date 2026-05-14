@@ -157,6 +157,45 @@ describe("audit translation-coverage", () => {
     expect(result[0].missingItems).toBe(2);
     expect(result[0].coveragePercent).toBe(50);
   });
+
+  // Regression: previously `missingItems` was derived from the
+  // 100-cap sample list, so any language with > 100 missing items
+  // reported exactly 100 missing regardless of the real number.
+  it("counts every missing item even when over the 100-sample cap", async () => {
+    setupEnv();
+    const referenceIds = Array.from({ length: 250 }, (_, i) => `id${i.toString().padStart(4, "0")}`);
+    stubClient({
+      searchAll: vi.fn().mockImplementation((q: { language?: string }) => {
+        const lang = q.language ?? "";
+        return (async function* () {
+          if (lang === "en") {
+            for (const id of referenceIds) {
+              yield {
+                itemId: id,
+                path: `/sitecore/content/x/${id}`,
+                name: id,
+                language: { name: "en" },
+                version: 1,
+              };
+            }
+          }
+          // ja-JP has zero items — every reference id is missing.
+        })();
+      }) as never,
+    });
+    const result = await runAuditTranslationCoverage({
+      referenceLanguage: "en",
+      targetLanguages: ["ja-JP"],
+      json: true,
+    } as never);
+    expect(result).toHaveLength(1);
+    expect(result[0].totalReferenceItems).toBe(250);
+    expect(result[0].translatedItems).toBe(0);
+    expect(result[0].missingItems).toBe(250);
+    expect(result[0].coveragePercent).toBe(0);
+    // Sample list stays capped at 100.
+    expect(result[0].missingSamples).toHaveLength(100);
+  });
 });
 
 describe("audit fallback-drift", () => {

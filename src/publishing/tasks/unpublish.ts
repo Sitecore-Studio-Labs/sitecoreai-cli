@@ -42,7 +42,7 @@ import {
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
 import { resolveItemPathsToIds } from "../sitecore-api/path-resolver";
-import { lookupSiteLanguages } from "../sitecore-api/languages";
+import { resolvePublishingLocales } from "../sitecore-api/languages";
 import type {
   CreatePublishJobRequest,
   PublishingApiClientOptions,
@@ -67,10 +67,12 @@ export interface RunPublishUnpublishOptions {
   environmentName?: string;
   itemIds?: string[];
   paths?: string[];
+  /** Literal language list. See `PublishLocaleOptions`. */
   languages?: string[];
-  /** Site name. When set and `languages` is empty, scai auto-fills
-   *  languages from the named site via the Sites API. */
-  site?: string;
+  /** Resolve languages from the named site via Sites API. */
+  languagesFromSite?: string;
+  /** Resolve languages from the tenant-wide registered set. */
+  allTenantLanguages?: boolean;
   includeSubitems?: boolean;
   includeRelated?: boolean;
   /** Defaults to `"never-publish"`. */
@@ -416,23 +418,8 @@ export const runPublishUnpublish = async (
   const strategy: UnpublishStrategy = options.strategy ?? "never-publish";
 
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
-  let languages = options.languages ?? [];
   const target = "Edge";
-
-  // Site → languages auto-fill: only when --languages wasn't passed.
-  // Sites API is the canonical source for per-site language config.
-  if (languages.length === 0 && options.site) {
-    logger.info(`Looking up languages for site '${options.site}'...`, "gray");
-    languages = await lookupSiteLanguages(environment, options.site);
-    if (languages.length === 0) {
-      throw createScaiError(
-        `Site '${options.site}' has no configured languages.`,
-        "INPUT_INVALID",
-        { hint: "Add a language to the site or pass --languages explicitly." }
-      );
-    }
-    logger.info(`  → ${languages.join(", ")}`, "gray");
-  }
+  const languages = await resolvePublishingLocales(logger, environment, options);
 
   // Resolve paths → IDs up-front so the dry-run scope reflects the
   // actual items the field-write + publish-job will see.

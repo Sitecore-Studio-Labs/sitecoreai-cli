@@ -126,21 +126,27 @@ export const runAuditTranslationCoverage = async (
   const reports: TranslationCoverageReport[] = [];
   for (const target of targets) {
     const translated = await enumerateLanguage(target);
-    const missing: TranslationCoverageReport["missingSamples"] = [];
+    // `missingSamples` is a capped illustrative list. The true missing
+    // count is `missingCount`, which keeps counting after the sample
+    // list reaches its cap — otherwise every tenant with > 100 missing
+    // items reported exactly 100 missing regardless of the real number.
+    const missingSamples: TranslationCoverageReport["missingSamples"] = [];
+    let missingCount = 0;
     for (const [id, info] of reference) {
       if (!translated.has(id)) {
-        if (missing.length < 100) missing.push({ itemId: id, path: info.path });
+        missingCount += 1;
+        if (missingSamples.length < 100) missingSamples.push({ itemId: id, path: info.path });
       }
     }
-    const translatedCount = reference.size - missing.length;
+    const translatedCount = reference.size - missingCount;
     const coverage = reference.size === 0 ? 100 : (translatedCount / reference.size) * 100;
     reports.push({
       language: target,
       totalReferenceItems: reference.size,
       translatedItems: translatedCount,
-      missingItems: reference.size - translatedCount,
+      missingItems: missingCount,
       coveragePercent: Math.round(coverage * 10) / 10,
-      missingSamples: missing,
+      missingSamples,
     });
   }
 

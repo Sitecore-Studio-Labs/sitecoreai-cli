@@ -4,7 +4,7 @@ import { resolveEnvironment } from "@/shared/env";
 import { promptText } from "@/shared/prompt";
 import { acquirePublishingToken } from "../sitecore-api/auth";
 import { submitPublishJob } from "../sitecore-api/client";
-import { lookupSiteLanguages } from "../sitecore-api/languages";
+import { resolvePublishingLocales } from "../sitecore-api/languages";
 import type {
   CreatePublishJobRequest,
   PublishSiteMode,
@@ -16,18 +16,15 @@ import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } f
 export interface RunPublishAllOptions {
   config?: string;
   environmentName?: string;
-  /** Locales to include in the whole-tenant publish. When unset and
-   *  `site` is provided, scai auto-fills from the named site's
-   *  configured languages via the Sites API. Otherwise the Publishing
-   *  API falls back to the env's configured publish languages. */
+  /** Literal language list. See `PublishLocaleOptions`. */
   languages?: string[];
-  /** Site name. When set and `languages` is empty, scai auto-fills
-   *  locales from the site's language set. NOTE: this does NOT scope
-   *  the publish to a single site — the Publishing API's
-   *  `xmc.site.mode` is whole-tenant regardless. `--site` here is a
-   *  convenience for "republish everything but only in the languages
-   *  this site uses." */
-  site?: string;
+  /** Resolve locales from the named site's language config via Sites
+   *  API. NOTE: the publish itself is still whole-tenant — the
+   *  Publishing API has no site-scoping field. This flag scopes
+   *  locales only. */
+  languagesFromSite?: string;
+  /** Resolve locales to every language registered in the tenant. */
+  allTenantLanguages?: boolean;
   mode?: "Republish" | "Smart" | "Incremental";
   /** Required to actually call the API. */
   allowWrite?: boolean;
@@ -58,25 +55,9 @@ const toLogger = (options: RunPublishAllOptions): Logger =>
 export const runPublishAll = async (options: RunPublishAllOptions): Promise<void> => {
   const logger = toLogger(options);
   const { envName, environment, timeoutMs } = resolveEnvironment(options);
-  let languages = options.languages ?? [];
   const mode: PublishSiteMode = options.mode ?? "Republish";
   const target = "Edge";
-
-  // Auto-fill locales from the named site if the operator didn't pass
-  // --languages directly. The publish itself is still whole-tenant
-  // (the API has no site-scoping field — see SiteOptionsModel).
-  if (languages.length === 0 && options.site) {
-    logger.info(`Looking up languages for site '${options.site}'...`, "gray");
-    languages = await lookupSiteLanguages(environment, options.site);
-    if (languages.length === 0) {
-      throw createScaiError(
-        `Site '${options.site}' has no configured languages.`,
-        "INPUT_INVALID",
-        { hint: "Add a language to the site or pass --languages explicitly." }
-      );
-    }
-    logger.info(`  → ${languages.join(", ")}`, "gray");
-  }
+  const languages = await resolvePublishingLocales(logger, environment, options);
 
   const scope: PublishAuditScope = {
     envName,

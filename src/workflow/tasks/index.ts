@@ -30,6 +30,18 @@ export {
   type WorkflowAdvanceStatus,
 } from "./advance";
 export {
+  runWorkflowReset,
+  type WorkflowResetOptions,
+  type WorkflowResetResult,
+  type WorkflowResetStatus,
+} from "./reset";
+export {
+  runWorkflowApply,
+  type WorkflowApplyOptions,
+  type WorkflowApplyResult,
+  type WorkflowApplyStatus,
+} from "./apply";
+export {
   type WorkflowTaskOptions,
   type ResolvedWorkflowTenant,
   resolveWorkflowTenant,

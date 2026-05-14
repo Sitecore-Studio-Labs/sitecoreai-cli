@@ -18,7 +18,7 @@ const fakeContext: McpContext = {
 describe("MCP resources", () => {
   const registry = buildScaiMcpRegistry();
 
-  it("registers the 7 required URIs", () => {
+  it("registers the 8 required URIs", () => {
     const uris = registry
       .listResources()
       .map((r) => r.uri)
@@ -30,6 +30,7 @@ describe("MCP resources", () => {
       "scai://help/deploy-lifecycle",
       "scai://help/overview",
       "scai://help/recipes-grammar",
+      "scai://help/recipes-workflow",
       "scai://help/sitecore-apis",
     ]);
   });

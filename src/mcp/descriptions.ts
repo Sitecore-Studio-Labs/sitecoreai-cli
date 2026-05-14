@@ -76,9 +76,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
   // Workflow
   workflow_inspect:
-    "Read-side workflow surface over a discriminated { verb } input — `inspect` (one item's workflow + state + available commands), `list-commands` (transitions available on one item), `list-defs` (workflow definitions on the tenant), `status` (per-site rollup from XM Apps REST), or `assigned` (search items by workflow state). No writes; use this to plan a workflow action before invoking workflow_lifecycle.",
+    "Read-side workflow surface over a discriminated { verb } input — `inspect` (auto-routes: a Workflow-templated ref returns the full definition tree (states/commands/actions/validations), any other ref returns one item's workflow + state + available commands), `list-commands` (transitions available on one item), `list-defs` (workflow definitions on the tenant), `status` (per-site rollup from XM Apps REST), or `assigned` (search items by workflow state). The `item` field on verb='inspect' accepts a GUID, content-tree path, OR a workflow display/item name (case-insensitive). Returns a discriminated `{ kind: 'item' | 'definition', ... }` envelope on the inspect verb — branch on `result.kind` before reading further. No writes; use this to plan a workflow action before invoking workflow_lifecycle.",
   workflow_lifecycle:
-    "Mutating workflow surface — currently exposes the `advance` verb (move one item through a named workflow command). Requires allowWrite: true. Pair with workflow_inspect first to confirm the item's state + the available command name; pass --what-if equivalent via the `whatIf` flag for plan-only mode.",
+    "Mutating workflow surface over a discriminated { verb } input — `advance` (move one item through a named command), `reset` (force an item back to its workflow's initial state — bypasses validation actions), `bulk-advance` (sweep items matched by stale-days / from-state / root and advance each via a named command), or `apply-workflow` (attach a workflow + set initial state on an item that isn't yet under workflow). Every verb requires allowWrite: true. Pair with workflow_inspect first to confirm state shape + command names; pass the `whatIf` flag for plan-only mode where supported.",
 
   // Webhook
   webhook_inspect:

@@ -200,6 +200,27 @@ export interface WorkflowApiClient {
     name: string,
     options?: { rootPath?: string }
   ): Promise<{ summary: WorkflowDefinitionSummary; duplicateMatches: number } | null>;
+  /**
+   * Force-write the standard `__Workflow` and/or `__Workflow state`
+   * fields on an item, bypassing the workflow engine. Used for
+   * `workflow reset` (state-only) and `workflow apply` (workflow + state).
+   *
+   * **Bypasses validation actions.** Submit actions on the new state
+   * do NOT fire either — this is a raw field write, not a transition.
+   * Use the workflow engine's `executeWorkflowCommand` for normal
+   * transitions; use this only when you need an admin escape hatch
+   * (recovering a stuck item, attaching a workflow for the first time).
+   */
+  setItemWorkflowState(input: {
+    itemId?: string;
+    path?: string;
+    /** Workflow item ID. Omit to leave `__Workflow` unchanged. */
+    workflowId?: string;
+    /** State item ID. Omit to leave `__Workflow state` unchanged. */
+    stateId?: string;
+  }): Promise<void>;
+  /** Resolve the workflow's `__Initial state` field — the State item ID it points at. */
+  getWorkflowInitialStateId(workflowItemId: string): Promise<string | null>;
 }
 
 export interface WorkflowClientOptions {
@@ -294,6 +315,33 @@ query($itemId: ID!) {
             }
           }
         }
+      }
+    }
+  }
+}`;
+
+const UPDATE_ITEM_FIELDS_MUTATION = `
+mutation($input: UpdateItemInput!) {
+  updateItem(input: $input) {
+    item { itemId }
+  }
+}`;
+
+/**
+ * Read the workflow's `__Initial state` field. Used by reset/apply to
+ * find the state to land an item on. The Authoring API returns field
+ * values as strings; for a reference field this is the target item ID
+ * (sometimes braced, sometimes bare — both forms accepted by SetField
+ * on the consuming side).
+ */
+const GET_WORKFLOW_INITIAL_STATE = `
+query($itemId: ID!) {
+  item(where: { itemId: $itemId }) {
+    itemId
+    fields(ownFields: false) {
+      nodes {
+        name
+        value
       }
     }
   }
@@ -683,6 +731,60 @@ export const createWorkflowApiClient = (options: WorkflowClientOptions): Workflo
     };
   };
 
+  const setItemWorkflowState = async (input: {
+    itemId?: string;
+    path?: string;
+    workflowId?: string;
+    stateId?: string;
+  }): Promise<void> => {
+    if (!input.itemId && !input.path) {
+      throw createScaiError(
+        "setItemWorkflowState requires either itemId or path.",
+        "INPUT_INVALID"
+      );
+    }
+    if (input.workflowId === undefined && input.stateId === undefined) {
+      throw createScaiError(
+        "setItemWorkflowState requires at least one of workflowId or stateId.",
+        "INPUT_INVALID"
+      );
+    }
+    const fields: Array<{ name: string; value: string }> = [];
+    if (input.workflowId !== undefined) {
+      fields.push({ name: "__Workflow", value: input.workflowId });
+    }
+    if (input.stateId !== undefined) {
+      fields.push({ name: "__Workflow state", value: input.stateId });
+    }
+    const payload: Record<string, unknown> = {
+      database: "master",
+      language: "en",
+      fields,
+    };
+    if (input.itemId) payload.itemId = input.itemId;
+    else if (input.path) payload.path = input.path;
+    await runWorkflowAuthoringGraphQL(
+      environment,
+      UPDATE_ITEM_FIELDS_MUTATION,
+      { input: payload },
+      writeRequest
+    );
+  };
+
+  const getWorkflowInitialStateId = async (
+    workflowItemId: string
+  ): Promise<string | null> => {
+    const data = await runWorkflowAuthoringGraphQL<{
+      item: { fields: { nodes: Array<{ name: string; value: string }> } } | null;
+    }>(environment, GET_WORKFLOW_INITIAL_STATE, { itemId: workflowItemId }, readRequest);
+    const fields = data.item?.fields?.nodes ?? [];
+    const initial = fields.find((f) => f.name === "__Initial state");
+    const raw = initial?.value ?? null;
+    if (!raw) return null;
+    // Strip braces if Sitecore returned them.
+    return raw.replace(/[{}]/g, "");
+  };
+
   const findWorkflowDefinitionByName = async (
     name: string,
     options?: { rootPath?: string }
@@ -707,5 +809,7 @@ export const createWorkflowApiClient = (options: WorkflowClientOptions): Workflo
     searchItemsByWorkflowState,
     getWorkflowDefinitionDetail,
     findWorkflowDefinitionByName,
+    setItemWorkflowState,
+    getWorkflowInitialStateId,
   };
 };

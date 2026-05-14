@@ -108,7 +108,7 @@ describe("scai mcp serve — stdio integration", () => {
     expect(result.tools.length).toBeGreaterThanOrEqual(18);
   });
 
-  it("lists the 7 required resources", async () => {
+  it("lists the 8 required resources", async () => {
     const result = await client.listResources();
     const uris = result.resources.map((r) => r.uri).sort();
     expect(uris).toEqual([
@@ -118,14 +118,20 @@ describe("scai mcp serve — stdio integration", () => {
       "scai://help/deploy-lifecycle",
       "scai://help/overview",
       "scai://help/recipes-grammar",
+      "scai://help/recipes-workflow",
       "scai://help/sitecore-apis",
     ]);
   });
 
-  it("lists the 3 workflow prompts", async () => {
+  it("lists the 4 workflow prompts", async () => {
     const result = await client.listPrompts();
     const names = result.prompts.map((p) => p.name).sort();
-    expect(names).toEqual(["scai.deploy_recipe", "scai.diff_envs", "scai.recover_failed_deploy"]);
+    expect(names).toEqual([
+      "scai.compose_workflow",
+      "scai.deploy_recipe",
+      "scai.diff_envs",
+      "scai.recover_failed_deploy",
+    ]);
   });
 
   it("scai_overview returns server metadata envelope", async () => {

@@ -89,16 +89,33 @@ export const runAuditMissingMeta = async (
     if (templateRegex && !templateRegex.test(item.templateName ?? "")) continue;
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
-    const have = new Set<string>();
+    // Track two sets:
+    //   - `present` — every field the item's template defines (regardless
+    //     of value). If a required field isn't in this set, the template
+    //     itself doesn't declare it, which is a content-model decision,
+    //     not a content-quality issue — skip rather than flag.
+    //   - `populated` — fields whose value is non-empty after trimming.
+    // A required field is reported missing only when `present && !populated`.
+    // Prior to this distinction the audit fired on every item in tenants
+    // whose content model didn't include the SEO field set at all (e.g.
+    // an internal-tools tenant without `meta-title`), generating one
+    // finding per item across the entire content tree.
+    const present = new Set<string>();
+    const populated = new Set<string>();
     for (const f of fields) {
-      if (!f.value || !f.value.trim()) continue;
-      // Index both literal name + hyphenated form.
-      have.add(f.name.toLowerCase());
-      have.add(f.name.toLowerCase().replace(/\s+/g, "-"));
+      const name = f.name.toLowerCase();
+      const hyphenated = name.replace(/\s+/g, "-");
+      present.add(name);
+      present.add(hyphenated);
+      if (f.value && f.value.trim()) {
+        populated.add(name);
+        populated.add(hyphenated);
+      }
     }
     const missing: string[] = [];
     for (const req of required) {
-      if (!have.has(req)) missing.push(req);
+      if (!present.has(req)) continue;
+      if (!populated.has(req)) missing.push(req);
     }
     if (missing.length > 0) {
       reports.push({

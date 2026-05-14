@@ -21,12 +21,15 @@
 import { z } from "zod";
 import {
   runWorkflowAdvance,
+  runWorkflowApply,
   runWorkflowAssigned,
   runWorkflowInspect,
   runWorkflowListCommands,
   runWorkflowListDefs,
+  runWorkflowReset,
   runWorkflowStatus,
 } from "@/workflow/tasks";
+import { runCleanupWorkflowAdvance } from "@/hygiene/tasks";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -63,7 +66,7 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         .string()
         .optional()
         .describe(
-          "Item GUID or content-tree path. Required for verb='inspect' and verb='list-commands'."
+          "Item reference. Required for verb='inspect' and verb='list-commands'. Accepts one of: a Sitecore item GUID (with or without braces/hyphens), a content-tree path starting with /sitecore/, OR a workflow display name / item name (case-insensitive, matched against `Workflow`-templated items under /sitecore/system/Workflows). For verb='inspect', the result is a discriminated `{ kind: 'item' | 'definition', ... }` envelope — `definition` for Workflow-templated refs (returns states/commands/actions tree), `item` for items under workflow (returns current state + available commands). Branch on `result.kind` before reading further fields."
         ),
       root: z
         .string()
@@ -219,38 +222,101 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
     description: TOOL_DESCRIPTIONS.workflow_lifecycle,
     auth: "write",
     annotations: {
-      title: "Advance a workflow item",
+      title: "Mutate workflow state (advance / reset / bulk-advance / apply)",
       readOnlyHint: false,
-      // Workflow advance writes server-side state and triggers any
-      // attached submit/validation webhooks — surface as destructive so
-      // the host's confirmation UX kicks in.
+      // Every verb writes server-side state and/or triggers attached
+      // webhooks. Surface as destructive so the host's confirmation
+      // UX kicks in.
       destructiveHint: true,
       openWorldHint: true,
     },
     inputSchema: {
       verb: z
-        .enum(["advance"])
-        .describe("Which mutation to run. Only `advance` is supported today."),
+        .enum(["advance", "reset", "bulk-advance", "apply-workflow"])
+        .describe(
+          "Which mutation to run. `advance` moves one item through one command. `reset` force-writes one item back to its workflow's initial state (bypasses validation + submit actions). `bulk-advance` sweeps stale items under a root and advances each via a named command (wraps `scai cleanup workflow advance`). `apply-workflow` attaches a workflow to an item not yet under one (sets `__Workflow` + `__Workflow state` directly)."
+        ),
+
+      // advance / reset / apply-workflow target
       item: z
         .string()
-        .describe("Item GUID or content-tree path of the workflow-bound item."),
+        .optional()
+        .describe(
+          "Item GUID or content-tree path. Required for `advance`, `reset`, `apply-workflow`."
+        ),
+
+      // advance
       command: z
         .string()
+        .optional()
         .describe(
-          "Workflow command display name (matched case-insensitively against commands available at the item's current state). Use workflow_inspect to enumerate options."
+          "Workflow command display name (advance only). Matched case-insensitively against commands available at the item's current state."
         ),
       comments: z
         .string()
         .optional()
-        .describe("Comment recorded with the transition (audit trail)."),
+        .describe("Comment recorded with the transition (advance only; audit trail)."),
+
+      // apply-workflow
+      workflow: z
+        .string()
+        .optional()
+        .describe(
+          "Workflow GUID, content-tree path, or display/item name (apply-workflow only). Same resolver as workflow_inspect verb=inspect."
+        ),
+      state: z
+        .string()
+        .optional()
+        .describe(
+          "Target state override for apply-workflow (state GUID or name). Defaults to the workflow's `__Initial state`."
+        ),
+
+      // bulk-advance
+      root: z
+        .string()
+        .optional()
+        .describe(
+          "Content-tree root to scan for bulk-advance. Default `/sitecore/content`."
+        ),
+      commandName: z
+        .string()
+        .optional()
+        .describe(
+          "Workflow command name for bulk-advance (e.g. 'Approve'). Required for bulk-advance."
+        ),
+      fromState: z
+        .string()
+        .optional()
+        .describe("Limit bulk-advance to items currently in this state name."),
+      staleDays: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe("Bulk-advance eligibility: only items not updated in this many days. Default 30."),
+      maxAdvances: z
+        .number()
+        .int()
+        .positive()
+        .max(10000)
+        .optional()
+        .describe("Bulk-advance blast-radius cap. Default 100."),
+
       ...whatIfShape,
       ...allowWriteShape,
     },
     handler: async (input, context) => {
+      const taskOpts = baseTaskOptions(context.configPath, context.envName);
       switch (input.verb) {
         case "advance": {
+          if (!input.item || !input.command) {
+            throw createScaiError(
+              "verb='advance' requires `item` and `command`.",
+              "INPUT_INVALID"
+            );
+          }
           const result = await runWorkflowAdvance({
-            ...baseTaskOptions(context.configPath, context.envName),
+            ...taskOpts,
             item: input.item,
             command: input.command,
             ...(input.comments !== undefined && { comments: input.comments }),
@@ -270,6 +336,93 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
               },
             ],
             structuredContent: { verb: input.verb, result },
+          };
+        }
+
+        case "reset": {
+          if (!input.item) {
+            throw createScaiError("verb='reset' requires `item`.", "INPUT_INVALID");
+          }
+          const result = await runWorkflowReset({
+            ...taskOpts,
+            item: input.item,
+            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: result.message ?? `reset → ${result.status}`,
+              },
+            ],
+            structuredContent: { verb: input.verb, result },
+          };
+        }
+
+        case "apply-workflow": {
+          if (!input.item || !input.workflow) {
+            throw createScaiError(
+              "verb='apply-workflow' requires `item` and `workflow`.",
+              "INPUT_INVALID"
+            );
+          }
+          const result = await runWorkflowApply({
+            ...taskOpts,
+            item: input.item,
+            workflow: input.workflow,
+            ...(input.state !== undefined && { state: input.state }),
+            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: result.message ?? `apply-workflow → ${result.status}`,
+              },
+            ],
+            structuredContent: { verb: input.verb, result },
+          };
+        }
+
+        case "bulk-advance": {
+          if (!input.commandName) {
+            throw createScaiError(
+              "verb='bulk-advance' requires `commandName`.",
+              "INPUT_INVALID"
+            );
+          }
+          // Delegates to the existing `runCleanupWorkflowAdvance` task
+          // — same semantics as `scai cleanup workflow advance`. Kept
+          // MCP-only (no `scai workflow bulk-advance` CLI alias) per
+          // the "leave cleanup verbs in place" decision.
+          const actions = await runCleanupWorkflowAdvance({
+            ...taskOpts,
+            commandName: input.commandName,
+            ...(input.fromState !== undefined && { fromState: input.fromState }),
+            ...(input.root !== undefined && { root: input.root }),
+            ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
+            ...(input.maxAdvances !== undefined && { maxAdvances: input.maxAdvances }),
+            ...(input.comments !== undefined && { comments: input.comments }),
+            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+          } as never);
+          const advanced = actions.filter((a) => a.status === "advanced").length;
+          const failed = actions.filter((a) => a.status === "failed").length;
+          const skipped = actions.filter((a) => a.status === "skipped-no-command").length;
+          const whatIfCount = actions.filter((a) => a.status === "what-if").length;
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  input.whatIf === true
+                    ? `bulk-advance plan: ${whatIfCount} item(s) would advance.`
+                    : `bulk-advance: advanced ${advanced}, failed ${failed}, skipped ${skipped}.`,
+              },
+            ],
+            structuredContent: { verb: input.verb, actions },
           };
         }
       }

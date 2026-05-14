@@ -91,27 +91,44 @@ export const runAuditDeadTemplates = async (
   const checks: Check[] = await mapWithConcurrency(
     bounded,
     async (template) => {
-      // Count items deriving from this template. We don't need the full
-      // result set — a single page with totalCount is enough.
+      // A template is "dead" only when nothing — direct or inherited —
+      // depends on it. We need both signals:
       //
-      // Note: the Sitecore search index typically excludes Standard
-      // Values items from `_template` indexing (they live under the
-      // template itself and aren't real content). On tenants where SV
-      // items DO appear, the count will be 1 for "dead" templates that
-      // only have their SV item. The cleanup mutation `deleteItemTemplate`
-      // succeeds anyway in that case — it cascades the SV deletion.
-      // We err on the conservative side: count > 0 means "not flagged
-      // as dead", reducing false positives.
+      //   1. `_template = <id>` → items whose primary template IS this
+      //      one. The Sitecore search index typically excludes Standard
+      //      Values items here; on tenants where SVs do leak in, count
+      //      is 1 and the template is correctly NOT flagged as dead.
+      //
+      //   2. `_basetemplates CONTAINS <id>` → templates that derive
+      //      from this one through any depth of inheritance. SXA's
+      //      base templates (`Project`, `Experience Accelerator`,
+      //      etc.) have zero direct items but many derived templates
+      //      — without this check they would be misclassified as dead.
+      //
+      // OR'd together via SHOULD: "dead" requires both to be empty.
+      const value = normalizeItemId(template.templateId);
       const page = await client.search({
         index: options.index,
         latestVersionOnly: true,
         paging: { pageSize: 1 },
         searchStatement: {
-          criteria: {
-            field: "_template",
-            value: normalizeItemId(template.templateId),
-            criteriaType: "EXACT",
-          },
+          operator: "SHOULD",
+          subStatements: [
+            {
+              criteria: {
+                field: "_template",
+                value,
+                criteriaType: "EXACT",
+              },
+            },
+            {
+              criteria: {
+                field: "_basetemplates",
+                value,
+                criteriaType: "CONTAINS",
+              },
+            },
+          ],
         },
       });
       return { template, itemCount: page.totalCount };

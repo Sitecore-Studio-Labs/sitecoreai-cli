@@ -1,9 +1,11 @@
 import { Command } from "commander";
 import { createWorkflowAdvanceCommand } from "./advance";
+import { createWorkflowApplyCommand } from "./apply";
 import { createWorkflowAssignedCommand } from "./assigned";
 import { createWorkflowInspectCommand } from "./inspect";
 import { createWorkflowListCommandsCommand } from "./list-commands";
 import { createWorkflowListDefsCommand } from "./list-defs";
+import { createWorkflowResetCommand } from "./reset";
 import { createWorkflowStatusCommand } from "./status";
 
 export const createWorkflowCommand = (): Command => {
@@ -17,18 +19,21 @@ export const createWorkflowCommand = (): Command => {
   command.addCommand(createWorkflowStatusCommand());
   command.addCommand(createWorkflowAssignedCommand());
   command.addCommand(createWorkflowAdvanceCommand());
+  command.addCommand(createWorkflowResetCommand());
+  command.addCommand(createWorkflowApplyCommand());
 
   command.addHelpText(
     "after",
     "\nExamples:\n" +
+      "  $ scai workflow inspect 'Blog Article Approval'   # by display name\n" +
       "  $ scai workflow inspect /sitecore/content/MySite/Home\n" +
-      "  $ scai workflow inspect 110D559FDEA542EA9C1C8A5DF7E70EF9 --json\n" +
       "  $ scai workflow list-commands /sitecore/content/MySite/Home\n" +
       "  $ scai workflow list-defs\n" +
       "  $ scai workflow status --site <siteId>\n" +
       "  $ scai workflow assigned --state <stateId> --limit 100\n" +
-      "  $ scai workflow advance /sitecore/content/MySite/Home --command Approve --comments 'auto-batched'\n" +
-      "  $ scai workflow advance <itemId> --command Submit --what-if\n"
+      "  $ scai workflow advance /sitecore/content/MySite/Home --command Approve\n" +
+      "  $ scai workflow reset /sitecore/content/MySite/Home --what-if\n" +
+      "  $ scai workflow apply /sitecore/content/MySite/Home --workflow 'Blog Article Approval'\n"
   );
 
   return command;

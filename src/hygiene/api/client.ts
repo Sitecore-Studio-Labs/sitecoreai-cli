@@ -1099,6 +1099,13 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
             criteriaType: "EXACT" as const,
           },
         };
+    // Dedup by templateId. The search index returns the same template
+    // multiple times when its `_path` contains the root itemId in
+    // multiple language indexes / version rows, even with
+    // `latestVersionOnly: true` (SXA tenants in particular surface
+    // `Project`, `Experience Accelerator`, etc. 4–5x each). Without
+    // this Set, every downstream audit double-counts.
+    const seen = new Set<string>();
     for await (const r of searchAll(
       {
         latestVersionOnly: true,
@@ -1106,6 +1113,8 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       },
       opts.pageSize ?? 100
     )) {
+      if (!r.itemId || seen.has(r.itemId)) continue;
+      seen.add(r.itemId);
       const fullName = r.path ? r.path.replace(/^\/sitecore\/templates\//i, "") : null;
       results.push({
         templateId: r.itemId,

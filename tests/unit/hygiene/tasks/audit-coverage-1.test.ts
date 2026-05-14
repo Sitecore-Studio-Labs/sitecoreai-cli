@@ -109,11 +109,14 @@ describe("audit large-fields", () => {
 });
 
 describe("audit missing-meta", () => {
-  it("reports items lacking any required field", async () => {
+  it("reports items whose template defines a required field but leaves it empty", async () => {
     setup([
       {
         id: "a",
-        fields: [{ name: "Title", value: "Hello" }],
+        fields: [
+          { name: "Title", value: "Hello" },
+          { name: "Description", value: "" }, // present on item, empty value
+        ],
       },
       {
         id: "b",
@@ -128,7 +131,25 @@ describe("audit missing-meta", () => {
       json: true,
     } as never);
     expect(result).toHaveLength(1);
+    expect(result[0].path).toContain("/a");
     expect(result[0].missingFields).toEqual(["description"]);
+  });
+
+  it("auto-skips items whose template doesn't define the required field at all", async () => {
+    // Before the auto-skip, this audit fired on every item in a tenant
+    // whose content model doesn't include the SEO field set (e.g. an
+    // internal-tools tenant). The fix: report only fields that exist on
+    // the item's template but are empty — absence is a content-model
+    // property, not a content-quality issue.
+    setup([
+      { id: "a", fields: [{ name: "Title", value: "Hello" }] },
+      { id: "b", fields: [{ name: "Title", value: "World" }] },
+    ]);
+    const result = await runAuditMissingMeta({
+      requiredFields: ["meta-title", "meta-description"],
+      json: true,
+    } as never);
+    expect(result).toHaveLength(0);
   });
 
   it("matches hyphenated and spaced variants", async () => {

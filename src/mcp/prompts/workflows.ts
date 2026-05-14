@@ -73,6 +73,78 @@ export const registerWorkflowPrompts = (registry: McpRegistry): void => {
   });
 
   registry.registerPrompt({
+    name: "scai.compose_workflow",
+    description:
+      "Guided workflow: design a Sitecore workflow from a natural-language description, emit a recipe, and walk the user through dry-run + apply.",
+    argsSchema: {
+      intent: z
+        .string()
+        .describe(
+          "Plain-English description of the workflow's purpose, the states it should have, and the webhook hooks (if any). Example: 'Editorial workflow for blog articles. Draft → In Review → Approved. In Review notifies a Slack channel; approval runs a lint webhook; Approved auto-publishes.'"
+        ),
+      handle: z
+        .string()
+        .optional()
+        .describe(
+          "Recipe handle, format `<kebab-name>@<major>`. The agent should propose a sensible one if omitted (e.g. `blog-article-approval@1`)."
+        ),
+      targetEnv: z
+        .string()
+        .optional()
+        .describe("Environment to push to. When omitted, uses the bound env."),
+    },
+    handler: async (args) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Compose a workflow recipe from this intent:`,
+              "",
+              `> ${args.intent}`,
+              "",
+              args.handle
+                ? `Use the handle '${args.handle}'.`
+                : "Choose a stable handle in `<kebab-name>@<major>` form and tell the user what you chose + why.",
+              "",
+              "Step 1. **Read the reference first.** Call `resources/read` with `uri: 'scai://help/recipes-workflow'`. The reference covers the runtime model, recipe schema for both `workflow` and `webhook-authorization` kinds, authorization types + the `$ENV:VAR` secret-ref pattern, content-tree mapping, and failure modes.",
+              "",
+              "Step 2. **Verify the tenant supports webhook-action templates** before designing actions. Call `workflow_inspect verb='inspect' item: 'Sample Workflow'`. If the response's `result.definition.states[].actions[]` contains items templated `Webhook Submit Action` or `Webhook Validation Action`, the tenant supports webhook actions. If not, design WITHOUT `actions`/`validations`.",
+              "",
+              "Step 3. **Plan the workflow shape with the user before writing code.** Confirm:",
+              "  - State keys + display names (kebab-case keys; need at least one `final: true`)",
+              "  - Commands per state + their `nextState` targets",
+              "  - For each webhook action: URL, kind (submit vs validation), authorization choice",
+              "",
+              "Step 4. **Emit the recipe.** Construct a `WorkflowRecipe` object literal matching the schema. If the design uses webhook authorizations not already on the tenant, also emit one or more `WebhookAuthorizationRecipe` objects. Don't write to disk yourself — present the TypeScript to the user and ask where they want it saved (typically `recipes/workflows/<handle>.recipe.ts`).",
+              "",
+              "Step 5. **Dry-run via the recipe MCP tools**:",
+              "  - `recipe_compile` with the file path to confirm it parses to the expected IR.",
+              "  - `recipe_diff` to surface what would change against the tenant.",
+              "  - Show the IR + diff to the user.",
+              "",
+              "Step 6. **Apply on explicit confirmation only**:",
+              args.targetEnv
+                ? `  - The target environment is '${args.targetEnv}'. Confirm with the user before pushing.`
+                : "  - Confirm the target environment is what the user expects (check the bound env via `scai_overview`).",
+              "  - Call `recipe_push` with `inputPath: <file>`, `whatIf: false`, `allowWrite: true`.",
+              "  - Show the per-op apply summary back to the user.",
+              "",
+              "Step 7. **Verify** by calling `workflow_inspect verb='inspect' item: '<displayName>'`. Walk the user through the state tree the response returns.",
+              "",
+              "Guardrails:",
+              "- Never set `allowWrite: true` without an explicit user confirmation in this turn.",
+              "- If a planned action's `authorizationRef` resolves nothing, abort and ask whether to (a) author a `webhook-authorization` recipe, (b) point at a tenant-side path via `authorizationPath`, or (c) drop authorization for now.",
+              "- Recommend `webhook-validation` for synchronous gates (data quality, approval) and `webhook-submit` for one-way notifications (Slack, publish triggers).",
+            ].join("\n"),
+          },
+        },
+      ],
+    }),
+  });
+
+  registry.registerPrompt({
     name: "scai.recover_failed_deploy",
     description:
       "Guided workflow: inspect the last failed deployment, pull its logs, and present a remediation plan.",

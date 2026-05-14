@@ -19,6 +19,7 @@ import { registerWebhookTools } from "./tools/webhook";
 import { registerWorkflowTools } from "./tools/workflow";
 import { registerHelpResources } from "./resources/help";
 import { registerEnvironmentResources } from "./resources/env";
+import { registerRecipeResources } from "./resources/recipes";
 import { registerWorkflowPrompts } from "./prompts/workflows";
 
 export const buildScaiMcpRegistry = (): McpRegistry => {
@@ -32,6 +33,7 @@ export const buildScaiMcpRegistry = (): McpRegistry => {
   registerInspectorTools(registry);
   registerHelpResources(registry);
   registerEnvironmentResources(registry);
+  registerRecipeResources(registry);
   registerWorkflowPrompts(registry);
   return registry;
 };

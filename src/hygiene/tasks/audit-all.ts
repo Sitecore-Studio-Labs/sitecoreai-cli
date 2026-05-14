@@ -151,6 +151,13 @@ export const runAuditAll = async (options: AuditAllOptions): Promise<void> => {
     // --json + --quiet — we emit the consolidated report ourselves.
     json: true,
     quiet: true,
+    // CRITICAL: strip the file-output flags. Without this, every
+    // sub-audit calls `writeAuditOutput` against the same path and
+    // overwrites the consolidated envelope mid-run; only the last
+    // audit's findings would survive, and any earlier ones would be
+    // visible only via the in-memory `results` array we keep here.
+    output: undefined,
+    format: undefined,
   };
 
   const results: SubAuditResult[] = [];

@@ -66,39 +66,45 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — 🗓️ planned (REST API + tiered consent model)
+### `sitecore publish` (Publishing plugin) — 🗓️ planned (Authoring GraphQL + tiered consent model)
 
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only
 target is Experience Edge.
 
-**Decision:** scope to four verbs backed by the **SAI Publishing REST
-API** (`https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs`,
-documented at [api-docs.sitecore.com/sai/publishing-api](https://api-docs.sitecore.com/sai/publishing-api)),
-not the legacy Authoring GraphQL `publish()` mutation. Same
-automation-client JWT auth as the Sites and Pages APIs.
+**Decision:** scope to three verbs backed by the **Authoring GraphQL
+publish surface** that scai already has helpers for in
+[src/serialization/sitecore-api/publish.ts](../src/serialization/sitecore-api/publish.ts) (`publishItems`,
+`checkPublishStatus`, `fetchPublishingTargets`). Same auth flow as
+the rest of scai's CM-side work — the existing `xmcloud.cm:admin`
+scope on the deploy token is sufficient; no separate publishing-
+scope acquisition needed. Validated 2026-05-14 against sandbox:
+`listOfTargets` returned `["Edge(experienceedge)"]` with the
+existing cached token.
 
-- `scai publish item --path <id-or-path> [--languages …]
-[--include-subitems] [--include-related]` → item / subtree publish.
-- `scai publish all [--languages …]` → whole-tenant republish to Edge.
-  Real ops button (needed sometimes after big serialization pushes,
-  rollbacks, or migrations where Edge has drifted from CM). Maximum
-  gating, see Tier 2 below.
-- `scai publish status [<jobId>]` → `GET /authoring/publishing/v1/jobs/{id}`
-  with a jobId; without one, lists currently-running jobs so an
-  operator who closed their terminal can recover the jobId.
-- `scai publish cancel <jobId>` → `POST /jobs/{jobId}/cancel`.
-  First-class because `publish all` is a heavy operation that
-  operators may need to abort mid-flight.
+- `scai publish item --path <id-or-path> [--item-id <guid>]
+  [--languages …] [--republish]` → item / subtree publish via the
+  `publish(itemIds, path, languages, republish, target)` mutation.
+- `scai publish all [--languages …]` → whole-tenant republish via
+  the same mutation with `republish: true` and no `itemIds`. Real
+  ops button (needed sometimes after big serialization pushes,
+  rollbacks, or migrations where Edge has drifted from CM).
+  Maximum gating, see Tier 2 below.
+- `scai publish status [<jobId>]` → `publishingStatus(id)` query.
+  With a jobId: fetch state. Without: not supported by the GraphQL
+  surface; CLI prints "specify a job id" and lists known recent
+  jobs from the audit log.
 
 Bare `scai publish` (no subcommand) errors out — no accidental
 invocation path.
 
 Out of scope (XM Cloud constraint): `list-targets` and multi-target
-publishing — Experience Edge is the only target and `listOfTargets`
-just returns `["Edge"]`. Anything that depends on multiple targets
-(per-target republish, target-set selection) is meaningless on
-XM Cloud and not ported.
+publishing — `listOfTargets` returns a single Edge target and
+multi-target is meaningless on XM Cloud. `scai publish cancel` is
+**also out of scope** because the Authoring GraphQL surface has no
+cancel mutation. The legacy dotnet CLI didn't have cancel either;
+publishing-job cancel is a SAI Publishing REST API feature we deferred
+along with that API (see "Why not the SAI Publishing REST API" below).
 
 **Safety model — non-negotiable.** Publishing pushes content to
 Experience Edge and is immediately visible to end users. Agents must
@@ -131,20 +137,21 @@ never auto-invoke. Two tiers:
 3. **Library + MCP require a structured consent record.** The
    publish library function (e.g. `publishJob`) is typed to require
    a `PublishConsent { confirmedBy, scope, scopeHash, issuedAt, ttl }`
-   argument and refuses to call `POST /jobs` without one. The library
-   recomputes `scopeHash` from the actual arguments and rejects on
-   mismatch — the caller cannot lie about scope. Production-tier
-   publishes require `confirmedBy.type === "human"` by default; CI
-   principals can publish to production only when the env config
-   explicitly lists their pipeline ID. An agent cannot synthesize a
-   valid consent record; it must come from a layer the agent does
-   not control (CLI prompt, MCP host approval modal, CI gate).
+   argument and refuses to call the GraphQL `publish` mutation
+   without one. The library recomputes `scopeHash` from the actual
+   arguments and rejects on mismatch — the caller cannot lie about
+   scope. Production-tier publishes require
+   `confirmedBy.type === "human"` by default; CI principals can
+   publish to production only when the env config explicitly lists
+   their pipeline ID. An agent cannot synthesize a valid consent
+   record; it must come from a layer the agent does not control
+   (CLI prompt, MCP host approval modal, CI gate).
 
    On the MCP surface, publishing follows the workflow-shaped tool
    pattern (see [scai-mcp-tool-shape] memory) — exposed as a single
    `publishing_lifecycle` tool with a discriminated `action`
-   (`submit_item`, `status`, `cancel`), **never** `submit_all` (see
-   Tier 2 #5). The tool inherits the per-call `allowWrite: true` gate
+   (`submit_item`, `status`), **never** `submit_all` (see Tier 2
+   #5). The tool inherits the per-call `allowWrite: true` gate
    already enforced by the MCP dispatcher; the `PublishConsent`
    record is an additional gate that the dispatcher's generic write
    check cannot satisfy. Tool description explicitly directs agents
@@ -184,54 +191,52 @@ these overrides:
    republish, it returns text recommending the CLI verb; the
    operator runs it manually. Hard cut.
 
-6. **Pre-flight serialization.** CLI calls `GET /jobs` first and
-   refuses if any `publish all` is already running on the same
-   tenant. One full republish at a time per tenant — prevents
-   concurrent storms hitting rate limits or doubling load on Edge.
+6. **Pre-flight serialization.** CLI queries recent publishing
+   status from the audit log first and refuses if any `publish all`
+   is recorded as in-flight for the same env within the last
+   N minutes. One full republish at a time per env — prevents
+   concurrent storms doubling load on Edge.
 
 7. **Audit log marks `publish all` distinctly.** `scope: "full"`,
-   `risk: "high"`, resolved tenant ID, env name, token used, who
-   cancelled if cancelled. Grep-able.
+   `risk: "high"`, resolved tenant ID, env name, token used.
+   Grep-able.
 
 Every publish call (Tier 1 or Tier 2) writes a JSON-Lines entry to
 `~/.sitecoreai/audit.log` (configurable via `SITECOREAI_AUDIT_LOG`):
 caller identity, timestamp, scope, consent record, API response.
 The audit log is never redacted — it's the production trail.
 
-**Open implementation detail:** the request body schema for
-`POST /authoring/publishing/v1/jobs` is rendered dynamically by
-Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
-Lock it during implementation from a real tenant's browser network
-traffic or from the OpenAPI YAML directly.
+**Why not the SAI Publishing REST API
+(`edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs`)?**
+A full research pass on 2026-05-14 (see git log: PR 1, PR 2a,
+investigation smokes) attempted to ship publishing on the REST API.
+Findings, in order:
 
-**Auth model (resolved 2026-05-14 during PR 1 + PR 2a research):**
-the Publishing API requires OAuth scopes the default scai deploy
-flow doesn't request. Decoded inspection found:
+1. The API requires scopes `xmcpub.jobs.a:r/w` + `xmcpub.queue:r`
+   on the Auth0 client-grant for the resource server
+   `https://api-webapp.sitecorecloud.io`.
+2. Neither scai's default device-flow client
+   (`Chi8EwfFnEejksk3Sed9hlalGiM9B2v7`) nor a typical Portal-created
+   M2M client carries these grants by default — confirmed by
+   explicit Auth0 errors ("client has not been granted scopes" /
+   "client not authorized to access resource server").
+3. A `liveContextId` from the env response (now surfaced on
+   `DeployEnvironment`) is consumed by the publishing service
+   *inside* the request body, but the API's auth middleware fires
+   first; the context id cannot bypass the scope gate (11 header
+   and query variants all returned 403; no-auth and arbitrary auth
+   both 404 with `"Failed to decode JWT"`, confirming JWT is
+   required and there's no alt-auth path).
+4. Updating an operator's Auth0 client-grant to add the publishing
+   scopes is a Sitecore-side change that isn't reliably self-
+   serve in the Cloud Portal today.
 
-- The scopes are `xmcpub.jobs.a:r`, `xmcpub.jobs.a:w`,
-  `xmcpub.queue:r` (matched against a Pages-UI user token).
-- The scai default Auth0 device-flow client
-  `Chi8EwfFnEejksk3Sed9hlalGiM9B2v7` **is authorized** to grant
-  them — verified by a non-interactive probe against the
-  device-authorization endpoint.
-- The default deploy token, requested without an explicit `scope`,
-  carries `xmclouddeploy.*` + `xmcloud.cm:admin` only and returns
-  403 against the Publishing API.
-
-**Resolution shipped in PR 2a:** a separate `scai publish login`
-command runs the device-code flow with the publishing scopes
-explicitly requested, stores the resulting JWT in a publishing-
-specific keychain entry (separate from the deploy token), and the
-publishing API client looks up that entry instead of the deploy
-token. CI use is supported via M2M client credentials *if* the
-operator's automation client is authorized for the publishing
-scopes; otherwise the command surfaces `AUTH_REQUIRED` with a hint
-pointing at `scai publish login`.
-
-The M2M scope authorization on automation clients remains unproven
-— testing it requires an automation client config we don't have
-locally. PR 2b validates the user-flow path against the sandbox;
-M2M will get validated whenever a CI environment first hits it.
+The Authoring GraphQL surface, by contrast, works with the
+`xmcloud.cm:admin` scope that every scai operator already has on
+their deploy token. Same surface the legacy dotnet
+`Sitecore.DevEx` CLI uses. Cancel / list / summary capabilities
+that only the REST API offers are deferred along with the REST API
+itself; revisit when the operator-side scope-grant story improves.
 
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 

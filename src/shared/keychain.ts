@@ -29,7 +29,6 @@ type CmTokenBundle = {
 const SERVICE_NAME = "SitecoreAI CLI";
 const DEPLOY_ACCOUNT_PREFIX = "deploy:";
 const CM_ACCOUNT_PREFIX = "cm:";
-const PUBLISHING_ACCOUNT_PREFIX = "publishing:";
 
 let cachedKeyring: KeyringModule | null | undefined;
 let warnedKeyringUnavailable = false;
@@ -138,48 +137,6 @@ export const clearDeployToken = async (envName: string): Promise<boolean> => {
     return entry.deleteCredential();
   } catch {
     // NoEntry on delete is idempotent success; other errors warn.
-    return false;
-  }
-};
-
-export const getPublishingToken = async (envName: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName));
-};
-
-export const setPublishingToken = async (envName: string, token: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
-    );
-    await entry.setPassword(token);
-    return true;
-  } catch {
-    warnOnce("Unable to write publishing token to the OS keychain.", "error");
-    return false;
-  }
-};
-
-export const clearPublishingToken = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
-    );
-    return entry.deleteCredential();
-  } catch {
     return false;
   }
 };

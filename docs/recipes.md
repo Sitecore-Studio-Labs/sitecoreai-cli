@@ -37,11 +37,17 @@ Defenses already in place:
 | `ComponentSectionRecipe`         | Reusable field section shared between components                                           |
 | `DesignParametersTemplateRecipe` | Reusable rendering-parameters template                                                     |
 | `EnumerationRecipe`              | Droplink-backed reusable enum (e.g. ColorScheme)                                           |
+| `WorkflowRecipe`                 | Sitecore workflow + states + commands + submit/validation webhook actions                  |
+| `WebhookAuthorizationRecipe`     | Reusable webhook Authorization item (ApiKey / Basic / OAuth2)                              |
 
 Composition kinds (`PartialDesignRecipe`, `PageDesignRecipe`,
 `SiteTemplateRecipe`, `SiteRecipe`, `ContentItemRecipe`) are present in
 the source but not part of the 0.1.0 stability promise. They'll graduate
 in a follow-up release.
+
+The workflow + webhook-authorization kinds have a dedicated reference
+covering payload shape, endpoint contract, authorization handling, and
+failure modes: [`docs/recipes/workflow.md`](recipes/workflow.md).
 
 ## File layout
 

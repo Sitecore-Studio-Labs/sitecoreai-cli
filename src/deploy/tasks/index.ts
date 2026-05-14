@@ -4,6 +4,7 @@ export * from "./source-control";
 export * from "./deployments";
 export * from "./environments";
 export * from "./editing-host";
+export * from "./health";
 export * from "./logs";
 export * from "./site";
 export * from "./site-bind";

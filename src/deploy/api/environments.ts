@@ -244,6 +244,30 @@ export const probeEnvironmentHealth = async (
   }
 };
 
+/**
+ * Translate the Deploy API's numeric `provisioningStatus` to a stable
+ * string label. See the doc comment on `DeployEnvironmentProvisioningStatus`
+ * for which codes are observed vs inferred.
+ */
+export const getProvisioningStatus = (
+  environment: Pick<DeployEnvironment, "provisioningStatus">
+): DeployEnvironmentProvisioningStatus => {
+  switch (environment.provisioningStatus) {
+    case 0:
+      return "unprovisioned";
+    case 1:
+      return "provisioning";
+    case 2:
+      return "provisioned";
+    case 3:
+      return "failed";
+    case 4:
+      return "deleting";
+    default:
+      return "unknown";
+  }
+};
+
 export const resolveHostFromEnvironment = (environment: DeployEnvironment): string | undefined => {
   const direct = environment.cmUrl ?? environment.cmHost ?? environment.host ?? environment.url;
   if (direct) {

@@ -9,6 +9,7 @@ import { normalizeArgs } from "./commands/shared";
 import { createStatusCommand } from "./commands/status";
 import { createLoginCommand } from "./commands/login";
 import { createDeployCommand } from "./commands/deploy";
+import { createHealthCommand } from "./commands/health";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
@@ -249,6 +250,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createCleanupCommand());
   program.addCommand(createConfigCommand());
   program.addCommand(createDeployCommand());
+  program.addCommand(createHealthCommand());
   program.addCommand(createHistoryCommand());
   program.addCommand(createInitCommand());
   program.addCommand(createLoginCommand());

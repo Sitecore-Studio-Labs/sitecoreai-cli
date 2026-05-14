@@ -26,6 +26,7 @@ export {
   type DeployOrganization,
   type DeployProject,
   type DeployEnvironment,
+  type DeployEnvironmentProvisioningStatus,
 } from "./common/types";
 
 export { withOrganizationHeaders } from "./common/headers";
@@ -80,6 +81,7 @@ export {
   restartEnvironment,
   probeEnvironmentHealth,
   resolveHostFromEnvironment,
+  getProvisioningStatus,
   type EnvironmentHealthResult,
   type FetchAllEnvironmentsResult,
 } from "./environments";

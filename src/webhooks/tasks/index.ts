@@ -14,3 +14,8 @@ export {
 export { runWebhookInspect, parseWebhookRef, type WebhookInspectOptions } from "./inspect";
 export { runWebhookCreate, type WebhookCreateOptions, type WebhookCreateResult } from "./create";
 export { runWebhookDelete, type WebhookDeleteOptions, type WebhookDeleteResult } from "./delete";
+export {
+  runWebhookEventTypes,
+  type WebhookEventTypesOptions,
+  type WebhookEventTypesResult,
+} from "./event-types";

@@ -96,7 +96,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 
   // Webhook
   webhook_inspect:
-    "Read-side webhook handler surface over a discriminated { verb } input — `list` (handler items under /sitecore/system/Webhooks or a workflow state) or `get` (one handler's full field detail). Use this to enumerate existing handlers, audit URLs + auth bindings, or confirm what would be deleted before a destructive call.",
+    "Read-side webhook handler surface over a discriminated { verb } input — `list` (handler items under /sitecore/system/Webhooks or a workflow state), `get` (one handler's full field detail), or `event-types` (catalog of strings the tenant accepts for the `events` field on webhook_manage create). Use `event-types` to discover valid event names BEFORE invoking webhook_manage — typos otherwise surface only at create-time with a generic 'unknown event type' error.",
   webhook_manage:
     "Mutating webhook handler surface — `create` (item/publish event handler or workflow submit/validation action) or `delete` (any webhook item by id or path). Requires allowWrite: true. Workflow webhooks attach at a workflow state's Actions subfolder; pass the state's content-tree path via `onState`.",
 };

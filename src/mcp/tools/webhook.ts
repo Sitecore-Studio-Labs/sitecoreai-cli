@@ -13,6 +13,7 @@ import { z } from "zod";
 import {
   runWebhookCreate,
   runWebhookDelete,
+  runWebhookEventTypes,
   runWebhookInspect,
   runWebhookList,
 } from "@/webhooks/tasks";
@@ -46,7 +47,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       openWorldHint: true,
     },
     inputSchema: {
-      verb: z.enum(["list", "get"]).describe("Which read operation to run."),
+      verb: z.enum(["list", "get", "event-types"]).describe("Which read operation to run."),
       root: z
         .string()
         .optional()
@@ -64,6 +65,10 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
         .describe(
           "Item GUID or content-tree path of the webhook handler. Required for verb='get'."
         ),
+      category: z
+        .enum(["item", "publish"])
+        .optional()
+        .describe("Catalog branch for verb='event-types'. Omit to list both branches."),
     },
     handler: async (input, context) => {
       const taskOpts = baseTaskOptions(context.configPath, context.envName);
@@ -100,6 +105,21 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
                 text: result
                   ? `Webhook '${result.name}' at ${result.path} (enabled=${result.fields.enabled}).`
                   : `No webhook handler found at ${input.webhook}.`,
+              },
+            ],
+            structuredContent: { verb: input.verb, result },
+          };
+        }
+        case "event-types": {
+          const result = await runWebhookEventTypes({
+            ...taskOpts,
+            ...(input.category !== undefined && { category: input.category }),
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `${result.eventTypes.length} event type(s) in tenant catalog.`,
               },
             ],
             structuredContent: { verb: input.verb, result },

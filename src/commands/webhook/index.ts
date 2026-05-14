@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { createWebhookCreateCommand } from "./create";
 import { createWebhookDeleteCommand } from "./delete";
+import { createWebhookEventTypesCommand } from "./event-types";
 import { createWebhookInspectCommand } from "./inspect";
 import { createWebhookListCommand } from "./list";
 
@@ -11,6 +12,7 @@ export const createWebhookCommand = (): Command => {
 
   command.addCommand(createWebhookListCommand());
   command.addCommand(createWebhookInspectCommand());
+  command.addCommand(createWebhookEventTypesCommand());
   command.addCommand(createWebhookCreateCommand());
   command.addCommand(createWebhookDeleteCommand());
 
@@ -19,6 +21,8 @@ export const createWebhookCommand = (): Command => {
     "\nExamples:\n" +
       "  $ scai webhook list\n" +
       "  $ scai webhook list --event-type publish --enabled-only --json\n" +
+      "  $ scai webhook event-types\n" +
+      "  $ scai webhook event-types --category publish --json\n" +
       "  $ scai webhook inspect /sitecore/system/Webhooks/CI-Notify\n" +
       "  $ scai webhook create --name CI-Notify --url https://ci.example.com/hook \\\n" +
       "        --event item --events item:saved,item:deleted\n" +

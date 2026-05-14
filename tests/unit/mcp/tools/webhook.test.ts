@@ -35,6 +35,22 @@ const taskMocks = vi.hoisted(() => ({
     },
   }),
   runWebhookDelete: vi.fn().mockResolvedValue({ status: "deleted", webhook: "/x" }),
+  runWebhookEventTypes: vi.fn().mockResolvedValue({
+    eventTypes: [
+      {
+        itemId: "e1",
+        name: "item:saved",
+        category: "item",
+        path: "/sitecore/system/Settings/Webhooks/Event Types/Item/item:saved",
+      },
+      {
+        itemId: "e2",
+        name: "publish:end",
+        category: "publish",
+        path: "/sitecore/system/Settings/Webhooks/Event Types/Publish/publish:end",
+      },
+    ],
+  }),
 }));
 
 vi.mock("../../../../src/webhooks/tasks", () => ({ ...taskMocks }));
@@ -87,6 +103,30 @@ describe("webhook_inspect tool", () => {
     await expect(
       reg.getTool("webhook_inspect")!.handler({ verb: "get" } as never, fakeContext, fakeExtra)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='event-types' without requiring extra inputs", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("webhook_inspect")!
+      .handler({ verb: "event-types" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWebhookEventTypes).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "test-env" })
+    );
+    expect(result.structuredContent).toMatchObject({
+      verb: "event-types",
+      result: { eventTypes: expect.any(Array) },
+    });
+  });
+
+  it("forwards the category filter on verb='event-types'", async () => {
+    const reg = await setup();
+    await reg
+      .getTool("webhook_inspect")!
+      .handler({ verb: "event-types", category: "publish" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWebhookEventTypes).toHaveBeenCalledWith(
+      expect.objectContaining({ category: "publish" })
+    );
   });
 });
 

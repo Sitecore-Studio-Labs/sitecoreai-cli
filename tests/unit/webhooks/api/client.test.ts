@@ -132,6 +132,115 @@ describe("webhook client — listEventHandlers", () => {
   });
 });
 
+describe("webhook client — listEventTypes", () => {
+  it("walks both Item and Publish roots and merges children with their category", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1. children of Item root
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "e1",
+                    name: "item:saved",
+                    path: "/sitecore/system/Settings/Webhooks/Event Types/Item/item:saved",
+                    template: { templateId: "t-evt", name: "Webhook Event Type" },
+                    fields: { nodes: [] },
+                  },
+                  {
+                    itemId: "e2",
+                    name: "item:deleted",
+                    path: "/sitecore/system/Settings/Webhooks/Event Types/Item/item:deleted",
+                    template: { templateId: "t-evt", name: "Webhook Event Type" },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      )
+      // 2. children of Publish root
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "e3",
+                    name: "publish:end",
+                    path: "/sitecore/system/Settings/Webhooks/Event Types/Publish/publish:end",
+                    template: { templateId: "t-evt", name: "Webhook Event Type" },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createWebhookApiClient({ environment: baseEnv });
+    const all = await client.listEventTypes();
+
+    expect(all.map((e) => `${e.category}:${e.name}:${e.itemId}`)).toEqual([
+      "item:item:saved:e1",
+      "item:item:deleted:e2",
+      "publish:publish:end:e3",
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("limits to a single branch when category is set", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      okResponse({
+        data: {
+          item: {
+            children: {
+              nodes: [
+                {
+                  itemId: "e3",
+                  name: "publish:end",
+                  path: "/sitecore/system/Settings/Webhooks/Event Types/Publish/publish:end",
+                  template: { templateId: "t-evt", name: "Webhook Event Type" },
+                  fields: { nodes: [] },
+                },
+              ],
+            },
+          },
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createWebhookApiClient({ environment: baseEnv });
+    const result = await client.listEventTypes({ category: "publish" });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ category: "publish", name: "publish:end" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The single fetch must target the Publish root, not Item.
+    const body = lastFetchBody(fetchMock);
+    expect(body.variables?.path).toMatch(/Publish/);
+  });
+
+  it("returns an empty list when both roots are missing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse({ data: { item: null } }))
+      .mockResolvedValueOnce(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createWebhookApiClient({ environment: baseEnv });
+    expect(await client.listEventTypes()).toEqual([]);
+  });
+});
+
 describe("webhook client — getEventHandler", () => {
   it("flattens fields into a friendly map", async () => {
     const fetchMock = vi.fn().mockResolvedValue(

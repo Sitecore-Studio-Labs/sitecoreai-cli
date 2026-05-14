@@ -3,6 +3,7 @@ import { runWebhookList } from "../../../../src/webhooks/tasks/list";
 import { runWebhookInspect } from "../../../../src/webhooks/tasks/inspect";
 import { runWebhookCreate } from "../../../../src/webhooks/tasks/create";
 import { runWebhookDelete } from "../../../../src/webhooks/tasks/delete";
+import { runWebhookEventTypes } from "../../../../src/webhooks/tasks/event-types";
 import * as sharedModule from "../../../../src/webhooks/tasks/shared";
 import * as allowWriteModule from "../../../../src/shared/allow-write";
 import type { WebhookApiClient } from "../../../../src/webhooks/api/client";
@@ -28,6 +29,7 @@ const stubClient = (overrides: Partial<WebhookApiClient> = {}): WebhookApiClient
   createWorkflowSubmitAction: vi.fn(),
   createWorkflowValidationAction: vi.fn(),
   deleteWebhookItem: vi.fn().mockResolvedValue(undefined),
+  listEventTypes: vi.fn().mockResolvedValue([]),
   templates: {} as never,
   ...overrides,
 });
@@ -72,6 +74,43 @@ describe("runWebhookList", () => {
     expect(client.listEventHandlers).toHaveBeenCalledWith({
       rootPath: "/sitecore/system/Workflows/Sample/Draft",
     });
+  });
+});
+
+describe("runWebhookEventTypes", () => {
+  it("returns the full catalog when no category is provided", async () => {
+    const eventTypes = [
+      {
+        itemId: "e1",
+        name: "item:saved",
+        category: "item" as const,
+        path: "/sitecore/system/Settings/Webhooks/Event Types/Item/item:saved",
+      },
+      {
+        itemId: "e2",
+        name: "publish:end",
+        category: "publish" as const,
+        path: "/sitecore/system/Settings/Webhooks/Event Types/Publish/publish:end",
+      },
+    ];
+    const listEventTypes = vi.fn().mockResolvedValue(eventTypes);
+    const client = stubClient({ listEventTypes });
+    installClient(client);
+
+    const result = await runWebhookEventTypes({ json: true });
+
+    expect(result.eventTypes).toEqual(eventTypes);
+    expect(listEventTypes).toHaveBeenCalledWith(undefined);
+  });
+
+  it("forwards the category filter to the client", async () => {
+    const listEventTypes = vi.fn().mockResolvedValue([]);
+    const client = stubClient({ listEventTypes });
+    installClient(client);
+
+    await runWebhookEventTypes({ category: "publish", json: true });
+
+    expect(listEventTypes).toHaveBeenCalledWith({ category: "publish" });
   });
 });
 

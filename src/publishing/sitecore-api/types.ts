@@ -1,49 +1,172 @@
 /**
- * SAI Publishing API — type shapes for the REST surface documented at
- * https://api-docs.sitecore.com/sai/publishing-api. Backed by host
- * `https://edge-platform.sitecorecloud.io`, path prefix
- * `/authoring/publishing/v1/jobs`. Bearer JWT (automation-client
- * client-credentials), same auth flow as the Sites + Pages APIs.
+ * Shape types for the SAI Publishing REST API.
  *
- * PR 1 covers the read shapes only. Submit / cancel land in later PRs
- * once a real-tenant request body capture pins the POST /jobs schema.
+ * Spec: https://api-docs.sitecore.com/sai/publishing-api
+ * OpenAPI YAML (raw, fetchable): https://api-docs.sitecore.com/_bundle/sai/publishing-api/index.yaml
+ *
+ * Host: `https://edge-platform.sitecorecloud.io`
+ * Path prefix on the wire: `/authoring/publishing/v1/jobs`
+ *   (Internal route also responds at `/api/publishing/v1/jobs` —
+ *   both paths reach the same handler.)
+ *
+ * Auth: Bearer JWT minted via env-level automation client; scopes
+ * `xmcpub.jobs.t:r/w` + `xmcpub.queue:r` (`.t` = tenant tier; `.a`
+ * admin variants are for Pages-UI user tokens only).
  */
 
 /**
- * Job state vocabulary. The catalog page lists "queued, running,
- * completed, failed, cancelled" but does not pin the exact wire form
- * (string casing, numeric code, etc.). The client normalizes whatever
- * the API returns to this union — keep the rest of the codebase
- * insulated from a future field-name change.
+ * Lifecycle states from the `system.status` field on PublishJobResponse.
+ * Note `Canceled` (US) and `Canceling` (US) — the API uses US spelling
+ * in this enum. Internally we normalize "Canceled" → "cancelled" so
+ * the rest of the codebase carries one consistent vocabulary, but we
+ * preserve the wire form here so callers reading raw responses see
+ * what the API actually sent.
  */
-export type PublishJobState = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type PublishJobStatusWire =
+  | "Queued"
+  | "Running"
+  | "Completed"
+  | "Failed"
+  | "Canceled"
+  | "Canceling";
 
+export type PublishJobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "cancelling";
+
+/** A single item in the Tier 1 (`publish item`) request body. */
+export interface PublishItemModel {
+  /** Item GUID. Required, 1–50 chars. */
+  id: string;
+  /** Item type / kind — see `ItemModel.type` in the OpenAPI spec.
+   *  Required, 1–256 chars. scai sends "item" by default; the exact
+   *  enum / accepted values are spec-documented as a free string. */
+  type: string;
+  /** Language code (e.g. "en-US"). Optional, 0–20 chars. */
+  locale?: string;
+}
+
+/** Mode for whole-site publish (Tier 2). */
+export type PublishSiteMode = "Republish" | "Incremental" | "Smart";
+
+/** Mode for item / subtree publish (Tier 1). */
+export type PublishItemsMode = "Republish" | "Smart";
+
+export interface PublishSiteOptions {
+  mode: PublishSiteMode;
+}
+
+export interface PublishItemsOptions {
+  mode: PublishItemsMode;
+  /** Publish items referenced by the targeted items (matches the
+   *  legacy dotnet `--related` flag). Default false. */
+  publishRelatedItems?: boolean;
+  /** Publish descendants of the targeted items (matches `--subitems`).
+   *  Default false. */
+  publishChildren?: boolean;
+}
+
+export interface XmcPublishingOptions {
+  /** Languages to publish. When omitted, defaults to the env's
+   *  configured publish languages. */
+  locales?: string[];
+  /** Set for Tier 2 (`publish all`). */
+  site?: PublishSiteOptions;
+  /** Set for Tier 1 (`publish item`). */
+  items?: PublishItemsOptions;
+}
+
+export interface PublishOptionsModel {
+  /** Explicit per-item list (Tier 1). Optional in the spec; in
+   *  practice scai sets `items` for Tier 1 and `xmc.site` for
+   *  Tier 2, never both. */
+  items?: PublishItemModel[];
+  /** XM Cloud-specific publish controls — mode, locales, etc. */
+  xmc?: XmcPublishingOptions;
+}
+
+/** Body for `POST /authoring/publishing/v1/jobs`. */
+export interface CreatePublishJobRequest {
+  name: string;
+  source: string;
+  description?: string;
+  options: PublishOptionsModel;
+}
+
+export interface PublishJobUserRef {
+  id?: string | null;
+  name?: string | null;
+}
+
+export interface PublishJobSystem {
+  organizationId?: string | null;
+  tenantId: string;
+  tenantJobId?: string | null;
+  status: PublishJobStatusWire;
+  queuedTime?: string | null;
+  startTime?: string | null;
+  finishTime?: string | null;
+  createdBy: PublishJobUserRef;
+  canceledBy?: PublishJobUserRef | null;
+}
+
+export interface PublishJobPermissions {
+  canViewDetails: boolean;
+  canCancel: boolean;
+}
+
+export interface PublishJobResponse {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  source?: string | null;
+  options: PublishOptionsModel;
+  statistics?: Record<string, unknown> | null;
+  system: PublishJobSystem;
+  permissions: PublishJobPermissions;
+}
+
+/**
+ * Normalized job shape consumed by scai's CLI / library callers.
+ * Smaller surface than the raw API response — the rest is kept on
+ * the `raw` field for callers that need it.
+ */
 export interface PublishJob {
   id: string;
   state: PublishJobState;
+  name?: string;
+  source?: string;
+  /** Number of items processed so far — when statistics expose it. */
   processedCount?: number;
+  /** Number of items total — when statistics expose it. */
   totalCount?: number;
   startedAt?: string;
   completedAt?: string;
+  /** Whether the API permits cancelling this job. */
+  canCancel: boolean;
+  /** Full raw response, for callers that need fields not in this
+   *  normalized shape. */
+  raw: PublishJobResponse;
 }
 
 export interface PublishingApiClientOptions {
-  /**
-   * Bearer JWT for the Publishing API. Acquired via
-   * `getAccessToken(environment)` in
-   * `src/serialization/sitecore-api/auth.ts`. Required — no anonymous
-   * access.
-   */
+  /** Bearer JWT with the publishing-scope grants. */
   accessToken: string;
-  /**
-   * Base host override. Defaults to
-   * `https://edge-platform.sitecorecloud.io`. Tests point this at a
-   * fixture server; ops typically don't override it.
-   */
+  /** Base host override. Default `https://edge-platform.sitecorecloud.io`. */
   baseUrl?: string;
-  /**
-   * Optional client-side fetch timeout in ms. When undefined, only
-   * the server-side timeout applies.
-   */
+  /** Per-call timeout in ms. */
   timeoutMs?: number;
+}
+
+export interface ListPublishJobsQuery {
+  pageNumber?: number;
+  pageSize?: number;
+  /** Filter to jobs in these states (using wire form). */
+  statuses?: PublishJobStatusWire[];
+  /** Free-form source filter; matches the `source` query param. */
+  source?: string[];
 }

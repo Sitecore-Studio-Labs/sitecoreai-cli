@@ -8,6 +8,8 @@ export {
   type WebhookSerializationType,
   type CreateEventHandlerInput,
   type CreateWorkflowActionInput,
+  type WebhookEventTypeCategory,
+  type WebhookEventTypeSummary,
   DEFAULT_WEBHOOK_HANDLERS_ROOT,
   WEBHOOK_FIELD_DESCRIPTION,
   WEBHOOK_FIELD_URL,

@@ -2,7 +2,12 @@ import type { EnvironmentConfiguration } from "@/config";
 import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import { runWebhookAuthoringGraphQL, type WebhookRequestOptions } from "./graphql";
-import { createWebhookTemplateResolver, type WebhookTemplateResolver } from "./templates";
+import {
+  createWebhookTemplateResolver,
+  EVENT_TYPE_ITEM_ROOT,
+  EVENT_TYPE_PUBLISH_ROOT,
+  type WebhookTemplateResolver,
+} from "./templates";
 
 /**
  * Authoring GraphQL operations for the Sitecore webhook content tree.
@@ -82,6 +87,19 @@ export interface CreateWorkflowActionInput {
   serializationType?: WebhookSerializationType;
 }
 
+export type WebhookEventTypeCategory = "item" | "publish";
+
+export interface WebhookEventTypeSummary {
+  /** Event-type display name (e.g. `item:saved`, `publish:end`). */
+  name: string;
+  /** Catalog item GUID. Stable per tenant; not a Sitecore-published contract. */
+  itemId: string;
+  /** Catalog branch the item lives under. */
+  category: WebhookEventTypeCategory;
+  /** Full content-tree path of the catalog item. */
+  path: string;
+}
+
 export interface WebhookApiClient {
   /**
    * List webhook event handler items under the given root (default
@@ -107,6 +125,18 @@ export interface WebhookApiClient {
   createWorkflowValidationAction(input: CreateWorkflowActionInput): Promise<WebhookHandlerSummary>;
   /** Delete any webhook item by ID or path. */
   deleteWebhookItem(input: { itemId?: string; path?: string }): Promise<void>;
+  /**
+   * List event-type catalog items the tenant exposes — the strings
+   * callers pass to `createEventHandler({ events: [...] })`. Walks
+   * `/sitecore/system/Settings/Webhooks/Event Types/{Item,Publish}` and
+   * returns each catalog item's display name + GUID + category. The
+   * catalog is per-tenant (Sitecore base content seeds it, customers
+   * can extend it); resolve at runtime rather than baking a static
+   * union into the SDK.
+   */
+  listEventTypes(options?: {
+    category?: WebhookEventTypeCategory;
+  }): Promise<WebhookEventTypeSummary[]>;
   /** Underlying template resolver, exposed for testing and cross-task use. */
   readonly templates: WebhookTemplateResolver;
 }
@@ -313,6 +343,38 @@ export const createWebhookApiClient = (options: WebhookClientOptions): WebhookAp
     return results;
   };
 
+  const listEventTypes = async (opts?: {
+    category?: WebhookEventTypeCategory;
+  }): Promise<WebhookEventTypeSummary[]> => {
+    // Roots: Item/, Publish/. Walk one level — each child IS the
+    // catalog item (no nested folders in base content). If a tenant
+    // organizes the catalog into folders later, the surfaced names
+    // skip them — operators authoring webhooks reference catalog
+    // strings by their leaf name, not their tree path, so flattening
+    // is the right behavior here.
+    const roots: Array<[WebhookEventTypeCategory, string]> = [];
+    if (opts?.category === undefined || opts.category === "item") {
+      roots.push(["item", EVENT_TYPE_ITEM_ROOT]);
+    }
+    if (opts?.category === undefined || opts.category === "publish") {
+      roots.push(["publish", EVENT_TYPE_PUBLISH_ROOT]);
+    }
+
+    const results: WebhookEventTypeSummary[] = [];
+    for (const [category, root] of roots) {
+      const children = await listChildrenRaw(root);
+      for (const c of children) {
+        results.push({
+          name: c.name,
+          itemId: c.itemId,
+          category,
+          path: c.path,
+        });
+      }
+    }
+    return results;
+  };
+
   const getEventHandler = async (input: {
     itemId?: string;
     path?: string;
@@ -505,6 +567,7 @@ export const createWebhookApiClient = (options: WebhookClientOptions): WebhookAp
     createWorkflowSubmitAction,
     createWorkflowValidationAction,
     deleteWebhookItem,
+    listEventTypes,
     templates,
   };
 };

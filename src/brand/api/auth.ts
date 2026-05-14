@@ -75,33 +75,6 @@ export const hasAiSkillsScopes = (token: string): boolean => {
   return AI_SKILLS_REQUIRED_SCOPES.every((s) => granted.has(s));
 };
 
-/**
- * Build a specific, actionable error when a minted token lacks the AI
- * Skills scopes. Names what it DID get and infers the likely cause
- * (e.g. operator pasted the Pages/Sites automation client by mistake)
- * so they know what to fix.
- */
-const buildScopeMissingError = (
-  orgId: string,
-  token: string
-): ReturnType<typeof createScaiError> => {
-  const granted = extractScopes(token);
-  const looksLikePagesSitesClient =
-    granted.some((s) => s.startsWith("xmclouddeploy.") || s.startsWith("xmcpub.")) &&
-    !granted.some((s) => s.startsWith("ai.org"));
-
-  const grantSummary = granted.length > 0 ? granted.join(", ") : "(no scope claim in token)";
-  const inference = looksLikePagesSitesClient
-    ? "The credentials look like the Pages/Sites automation client (xmclouddeploy.* / xmcpub.* scopes), not an AI APIs key. The AI Skills APIs require a separate credential created under Cloud Portal → Stream → Admin → AI APIs keys."
-    : "The credentials don't carry the expected AI Skills scopes.";
-
-  return createScaiError(
-    `Token minted for org '${orgId}' but missing AI Skills scopes. Expected: ${AI_SKILLS_REQUIRED_SCOPES.join(", ")}. Granted: ${grantSummary}.`,
-    "AUTH_AI_SKILLS_REQUIRED",
-    { hint: inference }
-  );
-};
-
 const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
 
 /**
@@ -128,9 +101,12 @@ export const acquireAiSkillsToken = async (
 ): Promise<string> => {
   const { orgId, credential } = options;
 
-  // 1. Cached token keyed by orgId.
+  // 1. Cached token keyed by orgId. No scope assertion — the real
+  //    server-side scope enforcement happens on the API call itself,
+  //    and gating here would skip a perfectly usable token whenever
+  //    the operation it's used for doesn't need the validated scope.
   const cached = await getAiSkillsToken(orgId);
-  if (cached && hasAiSkillsScopes(cached)) {
+  if (cached) {
     return cached;
   }
 
@@ -179,9 +155,13 @@ export const acquireAiSkillsToken = async (
       { hint: NO_CREDENTIAL_HINT }
     );
   }
-  if (!hasAiSkillsScopes(result.accessToken)) {
-    throw buildScopeMissingError(orgId, result.accessToken);
-  }
+  // Deliberately do NOT pre-validate scopes here. The Brand API's own
+  // server-side scope enforcement is the source of truth; gating
+  // here either over-blocks (when the API is more permissive than
+  // scai's expected scope list) or under-protects (when scai's list
+  // drifts from the API's actual requirement). Let the call go
+  // through and surface the real `BRAND_API_FAILED` with the
+  // server's `error_description` if the scope is genuinely missing.
   await setAiSkillsToken(orgId, result.accessToken);
   return result.accessToken;
 };

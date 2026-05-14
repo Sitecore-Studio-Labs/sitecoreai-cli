@@ -157,4 +157,21 @@ describe("computeContentHash", () => {
     const b = await computeContentHash([{ name: "Title", value: "Hello" }]);
     expect(a).toBe(b);
   });
+
+  // Regression: items with zero authored content used to all hash to
+  // sha256("") = "e3b0c44298fc1c14", which made `audit duplicates`
+  // bucket every blank item into one giant false-positive group.
+  // Empty-content now returns "" so the duplicates audit's
+  // `if (!hash) continue;` guard skips them entirely.
+  it("returns empty string when there's no authored content (no false-positive duplicate bucket)", async () => {
+    const empty = await computeContentHash([]);
+    const whitespace = await computeContentHash([{ name: "Title", value: "   " }]);
+    const systemOnly = await computeContentHash([
+      { name: "__Created", value: "2026-01-01" },
+      { name: "__Updated", value: "2026-12-31" },
+    ]);
+    expect(empty).toBe("");
+    expect(whitespace).toBe("");
+    expect(systemOnly).toBe("");
+  });
 });

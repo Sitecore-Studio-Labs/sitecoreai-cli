@@ -465,6 +465,12 @@ export const computeContentHash = async (
     .filter((f) => options.includeSystem || !f.name.startsWith("__"))
     .map((f) => ({ name: f.name, value: (f.value ?? "").trim() }))
     .filter((f) => f.value.length > 0);
+  // An item with no authored content has nothing to fingerprint. Return
+  // empty string so callers' `if (!hash) continue;` correctly skips it —
+  // otherwise every empty item shares sha256("") = "e3b0c44298fc1c14",
+  // bucketing unrelated blank items into a single false-positive
+  // "duplicate group" in `audit duplicates`.
+  if (filtered.length === 0) return "";
   filtered.sort((a, b) => a.name.localeCompare(b.name));
   const input = filtered.map((f) => `${f.name}\0${f.value}`).join("");
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);

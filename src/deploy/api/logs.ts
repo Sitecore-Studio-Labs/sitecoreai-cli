@@ -1,12 +1,7 @@
 import { createScaiError } from "@/shared/errors";
-import {
-  DEFAULT_MONITORING_API_BASE,
-  DeployApiClientOptions,
-  deployRequest,
-  extractErrorMessage,
-  parseJsonIfPossible,
-  withOrganizationHeaders,
-} from "./common";
+import { withOrganizationHeaders } from "./common/headers";
+import { deployRequest, extractErrorMessage, parseJsonIfPossible } from "./common/request";
+import { DEFAULT_MONITORING_API_BASE, type DeployApiClientOptions } from "./common/types";
 
 export type LogFileResponse = {
   buffer: Buffer;

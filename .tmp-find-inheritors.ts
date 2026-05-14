@@ -15,10 +15,8 @@ const norm = (s: string) => s.replace(/[{}-]/g, "").toLowerCase();
 const main = async () => {
   const { client, envName } = resolveTenant({ environmentName: "test" });
 
-  // Scan the whole /sitecore tree's templates + content for any item whose
-  // __Base templates field contains one of our targets.
-  // Use master DB root.
-  console.log("Scanning entire /sitecore for items with __Base templates referencing ui targets…");
+  // Broader: any field anywhere whose value contains a target GUID.
+  console.log("Scanning entire /sitecore for ANY field referencing ui targets…");
   const { scanned, fieldsByItemId } = await scanItemsAndFields({
     client,
     envName,
@@ -35,9 +33,6 @@ const main = async () => {
     if (!fields) continue;
     for (const f of fields) {
       if (!f.value) continue;
-      // Check any base-template-like field
-      const fname = f.name.toLowerCase();
-      if (!fname.includes("base") && !fname.includes("template")) continue;
       const matches: string[] = [];
       const re = /\{?([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})\}?/gi;
       let m: RegExpExecArray | null;
@@ -52,9 +47,9 @@ const main = async () => {
   }
 
   if (hits.length === 0) {
-    console.log("\nNo __Base templates references found pointing into ui targets.");
+    console.log("\nNo references found anywhere in /sitecore. The deleteItem block must be something else.");
   } else {
-    console.log(`\nFound ${hits.length} hits:`);
+    console.log(`\nFound ${hits.length} hits across all fields:`);
     for (const h of hits) {
       console.log(`\n  ${h.path}`);
       console.log(`    field: ${h.fieldName}`);

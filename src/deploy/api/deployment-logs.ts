@@ -1,5 +1,5 @@
 import { createScaiError } from "@/shared/errors";
-import { extractErrorMessage, parseJsonIfPossible } from "./common";
+import { extractErrorMessage, parseJsonIfPossible } from "./common/request";
 
 const DEFAULT_DEPLOY_MONITORING_BASE = "https://xmcloud-monitoring-api.sitecorecloud.io";
 

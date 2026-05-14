@@ -1,13 +1,11 @@
+import { createScaiError } from "../../shared/errors";
+import { withOrganizationHeaders } from "./common/headers";
+import { deployRequest, extractErrorMessage, parseJsonIfPossible } from "./common/request";
 import {
   DEFAULT_DEPLOY_API_BASE,
-  DeployApiClientOptions,
-  DeployQueryValueList,
-  deployRequest,
-  extractErrorMessage,
-  parseJsonIfPossible,
-  withOrganizationHeaders,
-} from "./common";
-import { createScaiError } from "../../shared/errors";
+  type DeployApiClientOptions,
+  type DeployQueryValueList,
+} from "./common/types";
 
 export const fetchDeployments = async (
   options: DeployApiClientOptions,

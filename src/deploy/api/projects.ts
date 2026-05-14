@@ -1,10 +1,10 @@
-import {
+import { deployRequest } from "./common/request";
+import type {
   DeployApiClientOptions,
   DeployEnvironment,
   DeployProject,
   DeployQueryValueList,
-  deployRequest,
-} from "./common";
+} from "./common/types";
 
 export const fetchProjects = async (
   options: DeployApiClientOptions,

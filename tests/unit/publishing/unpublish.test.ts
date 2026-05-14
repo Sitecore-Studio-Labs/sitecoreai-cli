@@ -80,16 +80,60 @@ describe("runPublishUnpublish", () => {
     await expect(runPublishUnpublish({})).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("rejects --strategy delete with a clear hint", async () => {
+  it("dry-run for --strategy delete mints a scope token without calling deleteItem", async () => {
     setupEnv();
+    await runPublishUnpublish({
+      itemIds: ["id-1"],
+      strategy: "delete",
+    });
+    // Dry-run never touches the wire: no Authoring read, no
+    // deleteItem mutation, no publish-job submit. The operator gets
+    // a token they can pass back with --allow-write --confirm-token
+    // (and either --confirm-item-path or the interactive prompt).
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(fs.existsSync(auditPath)).toBe(false);
+  });
+
+  it("delete in non-interactive mode requires --yes and --confirm-item-path", async () => {
+    setupEnv();
+    mockRun.mockResolvedValueOnce({
+      item: { itemId: "id-1", path: "/sitecore/content/Home" },
+    });
     await expect(
       runPublishUnpublish({
         itemIds: ["id-1"],
         strategy: "delete",
+        allowWrite: true,
+        whatIf: false,
+        yes: true,
+        nonInteractive: true,
+        // --confirm-item-path intentionally absent
       })
     ).rejects.toMatchObject({
       code: "INPUT_INVALID",
-      message: expect.stringContaining("not yet implemented"),
+      message: expect.stringContaining("--confirm-item-path"),
+    });
+  });
+
+  it("delete refuses when --confirm-item-path doesn't match the resolved path", async () => {
+    setupEnv();
+    mockRun.mockResolvedValueOnce({
+      item: { itemId: "id-1", path: "/sitecore/content/Home" },
+    });
+    await expect(
+      runPublishUnpublish({
+        itemIds: ["id-1"],
+        strategy: "delete",
+        allowWrite: true,
+        whatIf: false,
+        yes: true,
+        nonInteractive: true,
+        confirmItemPath: "/sitecore/content/WRONG-PATH",
+      })
+    ).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+      message: expect.stringContaining("mismatch"),
     });
   });
 

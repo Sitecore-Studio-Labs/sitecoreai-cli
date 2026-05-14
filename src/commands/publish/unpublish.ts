@@ -12,7 +12,7 @@ import {
 export const createPublishUnpublishCommand = (): Command => {
   const command = new Command("unpublish")
     .description(
-      "Unpublish one or more items. Writes a publish-state field via the Authoring API, then submits a publish job so Edge picks up the removal. Defaults to the reversible `never-publish` strategy; pass --strategy expire-now to set `__Valid to: now` instead. The destructive `delete` strategy is reserved for a follow-up."
+      "Unpublish one or more items. Writes a publish-state field via the Authoring API (or calls deleteItem for --strategy delete), then submits a publish job so Edge picks up the removal. Defaults to the reversible `never-publish` strategy; pass --strategy expire-now to set `__Valid to: now`, or --strategy delete for permanent removal (typed-item-path confirmation required)."
     )
     .option(
       "--items <guid>",
@@ -28,16 +28,20 @@ export const createPublishUnpublishCommand = (): Command => {
     )
     .option(
       "-l, --languages <list>",
-      "Comma-separated languages (e.g. en-US,fr-CA). Defaults to env-configured publish languages for the publish job; field writes default to 'en'.",
+      "Comma-separated languages (e.g. en-US,fr-CA). When unset, scai uses --site to look up the site's configured languages via the Sites API; otherwise falls back to 'en' for field writes.",
       collectList,
       [] as string[]
+    )
+    .option(
+      "--site <name>",
+      "Site name. When set and --languages is empty, scai auto-fills languages from the named site (Sites API)."
     )
     .option("--include-subitems", "Publish descendants in the follow-up publish job.")
     .option("--include-related", "Publish referenced items in the follow-up publish job.")
     .addOption(
       new Option(
         "--strategy <mode>",
-        "Unpublish mechanism. `never-publish` (default, reversible) sets `__Never publish: true`. `expire-now` (reversible) sets `__Valid to: <now>`. `delete` is reserved (not yet implemented)."
+        "Unpublish mechanism. `never-publish` (default, reversible) sets `__Never publish: true`. `expire-now` (reversible) sets `__Valid to: <now>`. `delete` (NOT reversible) calls deleteItem and requires typed-item-path confirmation per item."
       )
         .choices(["never-publish", "expire-now", "delete"])
         .default("never-publish")
@@ -47,8 +51,12 @@ export const createPublishUnpublishCommand = (): Command => {
       "Scope token obtained from a previous dry-run. Required on production-tier envs."
     )
     .option(
+      "--confirm-item-path <path>",
+      "For --strategy delete with --yes: the exact resolved item path the operator is authorizing to delete. Must match scai's path resolution for each item. Without this (and --yes), scai prompts interactively per item."
+    )
+    .option(
       "--yes",
-      "Skip the [y/N] prompt on non-production envs. Has no effect on production-tier — those always require --confirm-token."
+      "Skip the [y/N] prompt on non-production envs. Has no effect on production-tier — those always require --confirm-token. For --strategy delete: also requires --confirm-item-path."
     )
     .addOption(
       new Option("--name <name>", "Override the API job name for the follow-up publish job.")

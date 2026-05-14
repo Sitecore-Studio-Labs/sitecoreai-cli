@@ -12,6 +12,7 @@ import {
   toLogger,
 } from "./shared";
 import type { HygieneApiClient } from "../api/client";
+import { pruneFieldValue } from "./cleanup-subtree-prune";
 
 /** Policy for handling external inbound references to the subtree. */
 export type OrphanExternalRefsPolicy =
@@ -20,13 +21,17 @@ export type OrphanExternalRefsPolicy =
    * fields (droplists, single-link). Blunt for multi-value fields:
    * a treelist or multi-list field carrying ten GUIDs would lose all
    * ten, not just the one targeting the subtree.
-   *
-   * v1.1 ships only this mode. `prune` (surgical removal preserving
-   * sibling entries in multi-value fields) follows in v1.2 once
-   * per-field-type renderers exist for `__Renderings` layout XML,
-   * pipe-separated multi-lists, and treelist values.
    */
-  | "clear";
+  | "clear"
+  /**
+   * Surgical removal — preserve sibling entries in multi-value fields.
+   * Dispatches by field-value shape: `__Renderings`-style XML drops
+   * just the `<r ... />` elements pointing at the subtree; pipe-
+   * separated multi-list / treelist fields drop just the offending
+   * GUIDs. Single-value fields with no shape to preserve fall through
+   * to a clear (empty-string write).
+   */
+  | "prune";
 
 export interface CleanupSubtreeOptions extends HygieneCommonOptions {
   /** Required. Root path of the subtree to delete. */
@@ -81,7 +86,16 @@ export interface InboundBlocker {
   fieldName: string;
   /** Item inside the subtree the field value references. */
   targetItemId: string;
-  /** Whether the referring field was cleared (apply mode + policy=clear). */
+  /**
+   * The field's value at scan time. Captured so `prune` can compute
+   * surgical removals without a re-read; `clear` ignores it.
+   */
+  fieldValue?: string;
+  /**
+   * Whether the referring field was successfully written (cleared OR
+   * pruned) in apply mode. Stays undefined in what-if mode and on
+   * update failures. Name kept for back-compat with the v1.1 API.
+   */
   cleared?: boolean;
 }
 
@@ -177,6 +191,7 @@ const findInboundBlockers = async (
             referrerTemplateName: item.templateName,
             fieldName: field.name,
             targetItemId: targetId,
+            fieldValue: field.value,
           });
           seenTargets.add(targetId);
         }

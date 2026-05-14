@@ -29,9 +29,13 @@ export const createPublishItemCommand = (): Command => {
     .option("--item-type <type>", "ItemModel.type for the request body. Defaults to `item`.")
     .option(
       "-l, --languages <list>",
-      "Comma-separated languages (e.g. en-US,fr-CA). Defaults to env-configured publish languages.",
+      "Comma-separated languages (e.g. en-US,fr-CA). When unset, scai uses --site to look up the site's configured languages via the Sites API; otherwise the Publishing API falls back to env-configured publish languages.",
       collectList,
       [] as string[]
+    )
+    .option(
+      "--site <name>",
+      "Site name. When set and --languages is empty, scai auto-fills languages from the named site (Sites API)."
     )
     .option("--include-subitems", "Publish descendants of the items (xmc.items.publishChildren).")
     .option("--include-related", "Publish referenced items (xmc.items.publishRelatedItems).")
@@ -75,7 +79,8 @@ export const createPublishItemCommand = (): Command => {
       "  $ scai publish item --paths /sitecore/content/Home,/sitecore/content/About -n sandbox\n" +
       "  $ scai publish item --items abc123 --paths /sitecore/content/Home -n sandbox  # mix both\n" +
       "  $ scai publish item --items abc123 --include-subitems -n sandbox              # + descendants\n" +
-      "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox             # force re-emit\n"
+      "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox             # force re-emit\n" +
+      "  $ scai publish item --paths /sitecore/content/Home --site marketing -n sandbox # auto-locales\n"
   );
 
   command.action(async (options) => {

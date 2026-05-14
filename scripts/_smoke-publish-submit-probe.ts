@@ -43,23 +43,28 @@ const main = async (): Promise<void> => {
     process.exit(1);
   }
 
-  // A progression from empty → richer body. The API's 400 responses
-  // should name missing/invalid fields and let us reverse-engineer
-  // the schema field-by-field.
+  // A progression from empty → richer body. All variants use an
+  // obviously-non-existent item path (`/scai-probe-does-not-exist`)
+  // so even if the API accepts the shape it can't fire a real
+  // publish — at worst it returns "item not found", which is just
+  // as informative as "missing field X" for schema-discovery
+  // purposes.
+  const SAFE_PATH = "/sitecore/content/scai-probe-does-not-exist-DELETE-ME";
+  const SAFE_ITEM_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
   const variants: Array<{ label: string; body: unknown }> = [
     { label: "empty object", body: {} },
     {
-      label: "items[] with one item path",
-      body: { items: [{ path: "/sitecore/content/Home" }] },
+      label: "items[] with one safe path",
+      body: { items: [{ path: SAFE_PATH }] },
     },
     {
-      label: "items[] with itemId only",
-      body: { items: [{ itemId: "00000000-0000-0000-0000-000000000000" }] },
+      label: "items[] with safe itemId",
+      body: { items: [{ itemId: SAFE_ITEM_ID }] },
     },
     {
       label: "items[] + languages + target",
       body: {
-        items: [{ path: "/sitecore/content/Home" }],
+        items: [{ path: SAFE_PATH }],
         languages: ["en"],
         target: "Edge",
       },
@@ -67,7 +72,7 @@ const main = async (): Promise<void> => {
     {
       label: "alternate keys: path + republish",
       body: {
-        path: "/sitecore/content/Home",
+        path: SAFE_PATH,
         republish: false,
         languages: ["en"],
         target: "Edge",
@@ -76,7 +81,7 @@ const main = async (): Promise<void> => {
     {
       label: "with includeSubitems / includeRelated",
       body: {
-        items: [{ path: "/sitecore/content/Home" }],
+        items: [{ path: SAFE_PATH }],
         languages: ["en"],
         target: "Edge",
         includeSubitems: false,

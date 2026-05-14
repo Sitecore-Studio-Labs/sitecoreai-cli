@@ -5,6 +5,7 @@ import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import {
   computeExitCode,
   detectInputFormat,
+  parseSectionSelectors,
   resolveReviewInputs,
 } from "../../../src/brand/tasks/review";
 import type { ReviewOutcome } from "../../../src/brand/review/outcomes";
@@ -104,5 +105,47 @@ describe("brand/tasks/review — resolveReviewInputs", () => {
   it("filters out directories silently", async () => {
     const resolved = await resolveReviewInputs(["content"], [], tmpDir);
     expect(resolved).toHaveLength(0);
+  });
+});
+
+describe("brand/tasks/review — parseSectionSelectors", () => {
+  it("returns undefined for empty / missing input (API evaluates all sections)", () => {
+    expect(parseSectionSelectors(undefined)).toBeUndefined();
+    expect(parseSectionSelectors([])).toBeUndefined();
+  });
+
+  it("parses bare section UUIDs into Section[] without fieldIds", () => {
+    const result = parseSectionSelectors([
+      "0b3197be-f0b7-462a-a2e5-3388a132ee3f",
+      "1aaa2222-bbbb-cccc-dddd-eeeeeeeeeeee",
+    ]);
+    expect(result).toEqual([
+      { sectionId: "0b3197be-f0b7-462a-a2e5-3388a132ee3f", fieldIds: undefined },
+      { sectionId: "1aaa2222-bbbb-cccc-dddd-eeeeeeeeeeee", fieldIds: undefined },
+    ]);
+  });
+
+  it("parses <sectionId>:<fieldId> into Section.fieldIds", () => {
+    const result = parseSectionSelectors([
+      "0b3197be-f0b7-462a-a2e5-3388a132ee3f:8cf1b172-0277-4aa3-9bb4-252f09f148fd",
+    ]);
+    expect(result).toEqual([
+      {
+        sectionId: "0b3197be-f0b7-462a-a2e5-3388a132ee3f",
+        fieldIds: ["8cf1b172-0277-4aa3-9bb4-252f09f148fd"],
+      },
+    ]);
+  });
+
+  it("merges multiple field selections for the same sectionId", () => {
+    const result = parseSectionSelectors(["sec1:field-a", "sec1:field-b", "sec2"]);
+    expect(result).toEqual([
+      { sectionId: "sec1", fieldIds: ["field-a", "field-b"] },
+      { sectionId: "sec2", fieldIds: undefined },
+    ]);
+  });
+
+  it("throws INPUT_INVALID for entries with an empty sectionId", () => {
+    expect(() => parseSectionSelectors([":field-only"])).toThrow(/Invalid --section-id/);
   });
 });

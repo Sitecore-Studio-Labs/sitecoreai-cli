@@ -39,8 +39,8 @@ export const createBrandReviewCommand = (): Command => {
     )
     .addOption(
       new Option(
-        "--section <name>",
-        "Restrict the review to this section (repeatable, comma-separated)"
+        "--section-id <id>",
+        "Restrict to a section UUID (repeatable, comma-separated). Use <sectionId>:<fieldId> to narrow to a subsection. List section IDs with the Brand Management API."
       ).argParser(collectList)
     )
     .addOption(new Option("--glob <pattern>", "Glob pattern(s) to expand").argParser(collectList))

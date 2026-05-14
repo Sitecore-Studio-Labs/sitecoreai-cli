@@ -8,7 +8,7 @@ import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { generateBrandReview } from "../review/generate";
 import type { BrandApiClientOptions } from "../api/client";
-import type { BrandReviewInput, BrandReviewScore, BrandKitSectionName } from "../api/types";
+import type { BrandReviewInput, BrandReviewScore, BrandReviewSectionSelector } from "../api/types";
 import { summarizeOutcomes, type ReviewOutcome } from "../review/outcomes";
 import { buildJsonReport, type BrandReviewJsonReport } from "../review/format-json";
 import { buildSarifReport, type SarifReport } from "../review/format-sarif";
@@ -26,8 +26,14 @@ export interface BrandReviewCommandOptions extends CommonOptions {
   glob?: string[];
   /** Brand kit ID to evaluate against. Required for v1. */
   kit?: string;
-  /** Restrict the review to these brand kit sections. */
-  section?: string[];
+  /**
+   * Restrict the review to these brand kit section UUIDs. Each value
+   * may be a bare section UUID, or `<sectionId>:<fieldId>` to narrow
+   * to a specific subsection within that section. Section names
+   * (e.g. "Tone of Voice") are NOT accepted — name lookup lands when
+   * the Brand Management read primitives ship.
+   */
+  sectionId?: string[];
   /** 1–5; exit non-zero if any score is below this. */
   threshold?: number;
   /** Parallel in-flight reviews. Defaults to 4. */
@@ -73,17 +79,61 @@ const asThreshold = (raw: number | undefined): BrandReviewScore | undefined => {
 };
 
 /**
- * Detect the API `format` hint from a file extension. Brand Review
- * accepts text, markdown, JSON, etc.; this picks the closest known
- * format and falls back to "text" for unknowns. Centralized so the
- * mapping is testable and the API contract is the only place that
- * needs updating when new formats land.
+ * Detect a file's content-format hint from its extension. The Brand
+ * Review API uses a flexible `input` map and doesn't surface a
+ * format-discriminator field today — this helper exists for callers
+ * that want a stable categorization (e.g. logging, future routing of
+ * `.json` content through an `ExtractableFile` reference instead of
+ * raw text). Returns one of `"text" | "markdown" | "json"`.
  */
-export const detectInputFormat = (filePath: string): BrandReviewInput["format"] => {
+export type InputFormatHint = "text" | "markdown" | "json";
+
+export const detectInputFormat = (filePath: string): InputFormatHint => {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".md" || ext === ".markdown" || ext === ".mdx") return "markdown";
   if (ext === ".json") return "json";
   return "text";
+};
+
+/**
+ * Parse CLI `--section-id` values into the Brand Review API's
+ * `Section[]` selector shape.
+ *
+ * Each value is either:
+ *   - `<sectionId>`              → section-level evaluation
+ *   - `<sectionId>:<fieldId>`    → field-level evaluation (multiple
+ *                                  `--section-id <sectionId>:<a>`
+ *                                  occurrences merge into one
+ *                                  `Section` entry)
+ *
+ * Multiple values for the same sectionId accumulate into the
+ * section's `fieldIds[]`. An empty / undefined input list returns
+ * `undefined` (= API evaluates every section).
+ */
+export const parseSectionSelectors = (
+  raw: readonly string[] | undefined
+): BrandReviewSectionSelector[] | undefined => {
+  if (!raw?.length) return undefined;
+  const bySection = new Map<string, Set<string>>();
+  for (const entry of raw) {
+    const [sectionId, fieldId] = entry.split(":");
+    if (!sectionId) {
+      throw inputError(
+        `Invalid --section-id value '${entry}'.`,
+        "Use <sectionId> or <sectionId>:<fieldId>. IDs are UUIDs from the Brand Management API."
+      );
+    }
+    if (!bySection.has(sectionId)) {
+      bySection.set(sectionId, new Set());
+    }
+    if (fieldId) {
+      bySection.get(sectionId)!.add(fieldId);
+    }
+  }
+  return Array.from(bySection.entries()).map(([sectionId, fieldIds]) => ({
+    sectionId,
+    fieldIds: fieldIds.size > 0 ? Array.from(fieldIds) : undefined,
+  }));
 };
 
 /**
@@ -153,7 +203,6 @@ const buildReviewInput = (filePath: string, cwd: string): BrandReviewInput => {
   const relative = path.relative(cwd, filePath);
   return {
     text: content,
-    format: detectInputFormat(filePath),
     label: relative || filePath,
   };
 };
@@ -162,7 +211,7 @@ interface FanOutOptions {
   inputs: BrandReviewInput[];
   client: BrandApiClientOptions;
   kit: string;
-  sections: BrandKitSectionName[] | undefined;
+  sections: BrandReviewSectionSelector[] | undefined;
   concurrency: number;
   failFast: boolean;
   threshold: BrandReviewScore | undefined;
@@ -315,7 +364,7 @@ export const runBrandReview = async (
 
   const inputs = filePaths.map((p) => buildReviewInput(p, cwd));
   const client: BrandApiClientOptions = { orgId, credential };
-  const sections = options.section?.length ? (options.section as BrandKitSectionName[]) : undefined;
+  const sections = parseSectionSelectors(options.sectionId);
 
   // Text format streams as files complete. JSON / SARIF buffer (order
   // matters for those payloads and the formats aggregate per-file

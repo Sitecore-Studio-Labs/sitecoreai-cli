@@ -37,8 +37,10 @@ import { readRootConfiguration } from "@/config/root-config";
 import {
   acquireAiSkillsToken,
   AI_SKILLS_API_HOST,
+  BRAND_MANAGEMENT_BASE_PATH,
   BRAND_REVIEW_BASE_PATH,
   generateBrandReview,
+  requestBrandApi,
   type BrandApiClientOptions,
 } from "@/brand";
 import { ScaiError } from "@/shared/errors";
@@ -93,15 +95,67 @@ const main = async (): Promise<void> => {
   try {
     // Step 1: prove we can mint a token with the right scopes. Fails
     // early if the credential is broken before we send any payload.
-    process.stderr.write("[1/2] minting Brand Review token...\n");
+    process.stderr.write("[1/3] minting Brand Review token...\n");
     const token = await acquireAiSkillsToken({ orgId, credential });
     process.stderr.write(`      ok (len=${token.length})\n\n`);
 
-    // Step 2: send the probe payload. This exercises:
+    // Step 2: list brand kits — verifies the kit UUID the caller
+    // passed actually exists in this org. Server's Brand Review
+    // 500s with `'name'` for a phantom kit, so this diagnostic
+    // upgrades that to "kit not found" up front.
+    process.stderr.write("[2/3] listing brand kits for the org...\n");
+    const clientForList: BrandApiClientOptions = { orgId, credential };
+    type BrandKitList = {
+      totalCount?: number;
+      data?: Array<{ id?: string; name?: string; status?: string }>;
+      [key: string]: unknown;
+    };
+    const list = await requestBrandApi<BrandKitList>(clientForList, {
+      basePath: BRAND_MANAGEMENT_BASE_PATH,
+      path: `/api/brands/v1/organizations/${orgId}/brandkits`,
+      method: "GET",
+    });
+    const kits = list.data ?? [];
+    process.stderr.write(`      ok (${kits.length} kit(s) returned)\n`);
+    for (const k of kits) {
+      process.stderr.write(`      - ${k.id} ${k.name ?? "(unnamed)"} [${k.status ?? "?"}]\n`);
+    }
+    const kitFound = kits.some((k) => k.id === brandKitId);
+    if (!kitFound) {
+      process.stderr.write(
+        `\nWARN: brandKitId '${brandKitId}' not in the list. Use one of the IDs above.\n`
+      );
+    }
+
+    // Step 2b: list sections for the chosen kit. Empty / unpopulated
+    // sections may be what's crashing the Brand Review server.
+    process.stderr.write(`\n[2b/3] listing sections for kit '${brandKitId}'...\n`);
+    type SectionList = {
+      totalCount?: number;
+      data?: Array<{ id?: string; name?: string; status?: string; intent?: string }>;
+      [key: string]: unknown;
+    };
+    const sections = await requestBrandApi<SectionList>(clientForList, {
+      basePath: BRAND_MANAGEMENT_BASE_PATH,
+      path: `/api/brands/v1/organizations/${orgId}/brandkits/${brandKitId}/sections`,
+      method: "GET",
+    });
+    const sectionRows = sections.data ?? [];
+    process.stderr.write(`      ok (${sectionRows.length} section(s))\n`);
+    for (const s of sectionRows) {
+      process.stderr.write(`      - ${s.id} ${s.name ?? "(unnamed)"} [${s.status ?? "?"}]\n`);
+    }
+    if (sectionRows.length === 0) {
+      process.stderr.write(
+        "\nWARN: kit has no sections — Brand Review has nothing to evaluate against. The kit needs the Documents + Pipeline pass first to populate sections.\n"
+      );
+    }
+
+    // Step 3: send the probe payload. This exercises:
     //   - request body shape (brandkitId lowercase, input map, sections[])
     //   - response normalization (reviews → flattened sectionResults)
     //   - overallScore aggregation (client-side min)
-    process.stderr.write("[2/2] POST /api/skills/v1/brandreview/generate...\n");
+    process.stderr.write("[3/3] POST /api/skills/v1/brandreview/generate...\n");
     const client: BrandApiClientOptions = { orgId, credential };
     // Tap fetch so the request body is visible to the probe — the
     // server's error messages are opaque, so we want to see exactly
@@ -111,11 +165,7 @@ const main = async (): Promise<void> => {
       url: Parameters<typeof globalThis.fetch>[0],
       init?: Parameters<typeof globalThis.fetch>[1]
     ): ReturnType<typeof globalThis.fetch> => {
-      if (
-        typeof url === "string" &&
-        url.includes("/brandreview/generate") &&
-        init?.body
-      ) {
+      if (typeof url === "string" && url.includes("/brandreview/generate") && init?.body) {
         process.stderr.write(`\n=== wire request body ===\n${init.body}\n\n`);
       }
       return realFetch(url, init);

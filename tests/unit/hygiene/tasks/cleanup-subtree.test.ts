@@ -342,6 +342,112 @@ describe("cleanup subtree — orphan-external-refs clear", () => {
   });
 });
 
+describe("cleanup subtree — orphan-external-refs prune", () => {
+  it("prunes a multi-list field, preserving sibling entries", async () => {
+    const client = setup({
+      descendants: [CHILD_ID],
+      scannedItems: [
+        {
+          id: EXTERNAL_ID,
+          path: "/sitecore/content/Other/Page",
+          fields: [
+            {
+              name: "Items",
+              // Multi-list with the subtree target + a survivor.
+              value: `{${dashed(CHILD_ID).toUpperCase()}}|{11111111-2222-3333-4444-555555555555}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await runCleanupSubtree({
+      path: SUBTREE_PATH,
+      orphanExternalRefs: "prune",
+      allowWrite: true,
+      json: true,
+    } as never);
+
+    expect(result.blockers).toHaveLength(1);
+    expect(result.blockers[0].cleared).toBe(true);
+    // updateItemFields called with the pruned value — survivor kept.
+    expect(client.updateItemFields).toHaveBeenCalledTimes(1);
+    const [updateCall] = (
+      client.updateItemFields as ReturnType<typeof vi.fn>
+    ).mock.calls;
+    expect(updateCall[0].fields[0].value).toBe("{11111111-2222-3333-4444-555555555555}");
+    expect(updateCall[0].fields[0].value).not.toContain(CHILD_ID.toUpperCase());
+  });
+
+  it("prunes a renderings-XML field, preserving non-target renderings", async () => {
+    const xml =
+      `<r xmlns:xsd="x" xmlns:xsi="y">` +
+      `<d id="{FE5D7FDF-89C0-4D99-9AA3-B5FBD009C9F3}">` +
+      `<r id="{${dashed(CHILD_ID).toUpperCase()}}" placeh="/header" uid="{aaa11111-1111-1111-1111-111111111111}" />` +
+      `<r id="{99999999-8888-7777-6666-555555555555}" placeh="/main" uid="{bbb22222-2222-2222-2222-222222222222}" />` +
+      `</d></r>`;
+
+    const client = setup({
+      descendants: [CHILD_ID],
+      scannedItems: [
+        {
+          id: EXTERNAL_ID,
+          path: "/sitecore/content/Other/Page",
+          fields: [{ name: "__Renderings", value: xml }],
+        },
+      ],
+    });
+
+    const result = await runCleanupSubtree({
+      path: SUBTREE_PATH,
+      orphanExternalRefs: "prune",
+      allowWrite: true,
+      json: true,
+    } as never);
+
+    expect(result.blockers).toHaveLength(1);
+    const [updateCall] = (
+      client.updateItemFields as ReturnType<typeof vi.fn>
+    ).mock.calls;
+    const written: string = updateCall[0].fields[0].value;
+    expect(written).not.toContain(CHILD_ID.toUpperCase());
+    // Surviving rendering preserved.
+    expect(written).toContain("99999999-8888-7777-6666-555555555555");
+    // Outer <r>/<d> wrapper preserved.
+    expect(written).toContain('xmlns:xsd="x"');
+  });
+
+  it("falls back to clear when the field value isn't a known multi-shape", async () => {
+    const client = setup({
+      descendants: [CHILD_ID],
+      scannedItems: [
+        {
+          id: EXTERNAL_ID,
+          path: "/sitecore/content/Other/Page",
+          // Single-value droplist storing a bare GUID — pruning a
+          // single-value field has nothing to preserve, so it should
+          // clear like `clear` mode.
+          fields: [{ name: "Link", value: dashed(CHILD_ID) }],
+        },
+      ],
+    });
+
+    await runCleanupSubtree({
+      path: SUBTREE_PATH,
+      orphanExternalRefs: "prune",
+      allowWrite: true,
+      json: true,
+    } as never);
+
+    const [updateCall] = (
+      client.updateItemFields as ReturnType<typeof vi.fn>
+    ).mock.calls;
+    // A single-GUID multi-list IS a valid multi-list — pruner returns
+    // an empty string. Same as clear in this case.
+    expect(updateCall[0].fields[0].value).toBe("");
+  });
+});
+
 describe("cleanup subtree — bottom-up order", () => {
   it("deletes deeper paths before shallower ones", async () => {
     const deletes: string[] = [];

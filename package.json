@@ -46,6 +46,10 @@
       "types": "./dist/publishing/index.d.ts",
       "default": "./dist/publishing/index.js"
     },
+    "./content": {
+      "types": "./dist/content/index.d.ts",
+      "default": "./dist/content/index.js"
+    },
     "./hygiene": {
       "types": "./dist/hygiene/index.d.ts",
       "default": "./dist/hygiene/index.js"

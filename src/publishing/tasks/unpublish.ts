@@ -315,7 +315,9 @@ export const runPublishUnpublish = async (
           command: "publish unpublish",
           caller,
           scope: { ...scope, itemIds: [itemId], languages: [language] },
-          risk: strategy === "delete" ? "high" : "normal",
+          // strategy narrowed to "never-publish" | "expire-now" (delete
+          // was thrown earlier); both are reversible, so "normal" risk.
+          risk: "normal",
           scopeHash,
           scopeToken: options.confirmToken,
           outcome: "ok",
@@ -328,7 +330,9 @@ export const runPublishUnpublish = async (
           command: "publish unpublish",
           caller,
           scope: { ...scope, itemIds: [itemId], languages: [language] },
-          risk: strategy === "delete" ? "high" : "normal",
+          // strategy narrowed to "never-publish" | "expire-now" (delete
+          // was thrown earlier); both are reversible, so "normal" risk.
+          risk: "normal",
           scopeHash,
           scopeToken: options.confirmToken,
           outcome: "error",
@@ -379,7 +383,9 @@ export const runPublishUnpublish = async (
       command: "publish unpublish",
       caller,
       scope,
-      risk: strategy === "delete" ? "high" : "normal",
+      // Strategy narrowed to "never-publish" | "expire-now" earlier;
+      // both reversible, so "normal" risk.
+      risk: "normal",
       scopeHash,
       scopeToken: options.confirmToken,
       jobId: job.id,
@@ -404,7 +410,9 @@ export const runPublishUnpublish = async (
       command: "publish unpublish",
       caller,
       scope,
-      risk: strategy === "delete" ? "high" : "normal",
+      // Strategy narrowed to "never-publish" | "expire-now" earlier;
+      // both reversible, so "normal" risk.
+      risk: "normal",
       scopeHash,
       scopeToken: options.confirmToken,
       outcome: "error",

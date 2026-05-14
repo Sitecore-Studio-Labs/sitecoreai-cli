@@ -151,7 +151,6 @@ export type SafetyGateResult =
  */
 export const runSafetyGate = async (input: SafetyGateInput): Promise<SafetyGateResult> => {
   const { envName, environment, scope, operationLabel, options, logger } = input;
-  const scopeHash = computeScopeHash(scope);
   const whatIf = options.allowWrite ? Boolean(options.whatIf) : true;
   const productionTier = isProductionTier(environment);
 

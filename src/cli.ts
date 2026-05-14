@@ -5,6 +5,7 @@ import packageJson from "../package.json";
 import { createAuditCommand } from "./commands/audit";
 import { createBrandCommand } from "./commands/brand";
 import { createCleanupCommand } from "./commands/cleanup";
+import { createContentCommand } from "./commands/content";
 import { createSerializationCommand } from "./commands/serialization";
 import { normalizeArgs } from "./commands/shared";
 import { createStatusCommand } from "./commands/status";
@@ -252,6 +253,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createBrandCommand());
   program.addCommand(createCleanupCommand());
   program.addCommand(createConfigCommand());
+  program.addCommand(createContentCommand());
   program.addCommand(createDeployCommand());
   program.addCommand(createHealthCommand());
   program.addCommand(createHistoryCommand());

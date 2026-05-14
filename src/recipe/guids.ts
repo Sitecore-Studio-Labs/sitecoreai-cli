@@ -540,3 +540,65 @@ export const NAMESPACE_SECTION_DEFINITION = uuidv5("section-definition", NAMESPA
 
 export const sectionDefinitionId = (handle: string): string =>
   uuidv5(handle, NAMESPACE_SECTION_DEFINITION);
+
+/**
+ * Deterministic refKey for a system template referenced by content-tree
+ * path (workflow/webhook/etc. system templates whose GUIDs aren't
+ * published). Same identity for the same path forever — the push
+ * pipeline seeds `crossRecipeRefs[<this refKey>] = path`; the executor
+ * batches a single `getItemsByPaths` lookup and the planner resolves
+ * `templateOf: ref-path` ops through the existing `capturedItemIds`
+ * map.
+ */
+export const NAMESPACE_TEMPLATE_BY_PATH = uuidv5("template-by-path", NAMESPACE_ROOT);
+export const templatePathRefKey = (path: string): string =>
+  uuidv5(path, NAMESPACE_TEMPLATE_BY_PATH);
+
+/**
+ * Workflow recipe identities.
+ *
+ * Workflows live at `/sitecore/system/Workflows/[<group>/]<name>` and
+ * are tenant-wide (not site-scoped), so GUIDs derive from the recipe
+ * handle directly. Sub-items (states, commands, actions) nest under
+ * the workflow's GUID to keep the hierarchy stable across renames at
+ * deeper levels.
+ */
+export const NAMESPACE_WORKFLOW = uuidv5("workflow", NAMESPACE_ROOT);
+export const workflowId = (handle: string): string =>
+  uuidv5(handle, NAMESPACE_WORKFLOW);
+export const workflowStateId = (handle: string, stateKey: string): string =>
+  uuidv5(`state:${stateKey}`, workflowId(handle));
+export const workflowCommandId = (
+  handle: string,
+  stateKey: string,
+  commandKey: string
+): string =>
+  uuidv5(`command:${commandKey}`, workflowStateId(handle, stateKey));
+/** Webhook submit/validation action under a workflow STATE's `Actions` folder. */
+export const workflowStateActionId = (
+  handle: string,
+  stateKey: string,
+  index: number
+): string =>
+  uuidv5(`action:${index}`, workflowStateId(handle, stateKey));
+/** Webhook validation action under a workflow COMMAND's `Actions` folder. */
+export const workflowCommandValidationId = (
+  handle: string,
+  stateKey: string,
+  commandKey: string,
+  index: number
+): string =>
+  uuidv5(`validation:${index}`, workflowCommandId(handle, stateKey, commandKey));
+/** Workflow group folder under /sitecore/system/Workflows (when meta.tax.group is set). */
+export const workflowGroupFolderId = (group: string): string =>
+  uuidv5(`group:${group}`, NAMESPACE_WORKFLOW);
+
+/**
+ * Webhook Authorization recipe identity. Items live at
+ * `/sitecore/system/Settings/Webhooks/Authorizations/<name>` — flat,
+ * tenant-wide. Used by workflow webhook actions + event handlers to
+ * carry credentials.
+ */
+export const NAMESPACE_WEBHOOK_AUTHORIZATION = uuidv5("webhook-authorization", NAMESPACE_ROOT);
+export const webhookAuthorizationId = (handle: string): string =>
+  uuidv5(handle, NAMESPACE_WEBHOOK_AUTHORIZATION);

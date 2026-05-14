@@ -13,7 +13,7 @@ import {
   saveRecipeCache,
 } from "../cache";
 import { compileRecipeSet } from "../compile";
-import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
+import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
 import type { Operation, OperationIr } from "../ir/operations";
@@ -192,7 +192,16 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const crossRecipeRefs = new Map<string, string>();
   for (const { ir } of irs) {
     for (const op of ir.operations) {
-      if (op.op === "CreateItem") crossRecipeRefs.set(op.id, op.path);
+      if (op.op === "CreateItem") {
+        crossRecipeRefs.set(op.id, op.path);
+        // templateOf: ref-path needs the same lookup-before-plan seed
+        // path-parent resolution uses. Compute the deterministic
+        // refKey + the target path; the executor's
+        // `getItemsByPaths` batch picks it up alongside parent paths.
+        if (typeof op.templateOf !== "string" && op.templateOf.kind === "ref-path") {
+          crossRecipeRefs.set(templatePathRefKey(op.templateOf.value), op.templateOf.value);
+        }
+      }
     }
   }
   // Seed the synthetic Page Designs root refKey so the cross-recipe

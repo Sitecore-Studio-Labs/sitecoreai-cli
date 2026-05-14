@@ -65,6 +65,11 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // to the recipe and re-push; CMS edits to enumeration items get
   // overwritten.
   enumeration: "template-structure",
+  // Workflows + webhook authorizations are registry-owned tenant-wide
+  // structure. CreateAndUpdate so re-pushes update state/command labels,
+  // webhook URLs, and authorization metadata as the recipe evolves.
+  workflow: "composition-structure",
+  "webhook-authorization": "composition-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

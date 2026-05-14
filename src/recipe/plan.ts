@@ -12,6 +12,7 @@ import type {
   SetStandardValuesOp,
 } from "./ir/operations";
 import { SYSTEM_FIELDS } from "./ir/sitecore-templates";
+import { templatePathRefKey } from "./guids";
 import { renderRefValue, resolveRecipeRefs } from "./api/ref-encoding";
 import type {
   AuthoringApiClient,
@@ -247,20 +248,41 @@ const resolveCreateItemParent = (
   return { unresolvedRefKey: op.parent.refKey };
 };
 
-/** Resolve a CreateItem op's templateOf — usually a constant Sitecore GUID,
- *  but the SV item case has it as the recipe's own template refKey. */
+/**
+ * Resolve a CreateItem op's templateOf to a Sitecore item ID.
+ *
+ *   - String form: usually a constant Sitecore built-in GUID. If it
+ *     matches a refKey captured during this push (e.g. SV item under
+ *     a recipe-created template), resolve to the captured itemId.
+ *   - `{kind: "ref-path"}` form: late-resolved against a content-tree
+ *     path. The push pipeline seeds `crossRecipeRefs[templatePathRefKey(path)] = path`;
+ *     the executor's `getItemsByPaths` batch lookup populates
+ *     `capturedItemIds` before planning starts. A miss here means the
+ *     template item doesn't exist on the tenant — planner skips with a
+ *     clear reason rather than letting the upstream createItem throw.
+ */
 const resolveTemplateOf = (
   op: CreateItemOp,
   capturedItemIds: ReadonlyMap<string, string>
-): { resolved: string } | { unresolvedRefKey: string } => {
-  // If templateOf matches a refKey in our captured map, resolve it.
-  // Otherwise it's a known Sitecore built-in GUID and we use as-is.
-  const captured = capturedItemIds.get(op.templateOf);
-  if (captured) {
-    return { resolved: captured };
+): { resolved: string } | { unresolvedRefKey: string; reason?: string } => {
+  if (typeof op.templateOf === "string") {
+    // If templateOf matches a refKey in our captured map, resolve it.
+    // Otherwise it's a known Sitecore built-in GUID and we use as-is.
+    const captured = capturedItemIds.get(op.templateOf);
+    if (captured) {
+      return { resolved: captured };
+    }
+    // Known Sitecore built-in (Template, Section, Field, Folder, Rendering, etc.).
+    return { resolved: op.templateOf };
   }
-  // Known Sitecore built-in (Template, Section, Field, Folder, Rendering, etc.).
-  return { resolved: op.templateOf };
+  // ref-path: resolve via the seed map.
+  const refKey = templatePathRefKey(op.templateOf.value);
+  const captured = capturedItemIds.get(refKey);
+  if (captured) return { resolved: captured };
+  return {
+    unresolvedRefKey: refKey,
+    reason: `templateOf path '${op.templateOf.value}' did not resolve. The template item is missing from the tenant or the path is wrong — verify the template exists.`,
+  };
 };
 
 const planCreateItem = (
@@ -285,7 +307,7 @@ const planCreateItem = (
         index,
         operation: op,
         status: "skip",
-        reason: `templateOf ref ${tpl.unresolvedRefKey} not yet captured.`,
+        reason: tpl.reason ?? `templateOf ref ${tpl.unresolvedRefKey} not yet captured.`,
       };
     }
     // Plan-mode preview tolerates unresolved field refs: we report status

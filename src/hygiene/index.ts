@@ -155,6 +155,13 @@ export type {
   DuplicatePurgeAction,
   DuplicatesKeepRule,
 } from "./tasks/cleanup-duplicates";
+export { runCleanupSlugConflicts } from "./tasks/cleanup-slug-conflicts";
+export type {
+  CleanupSlugConflictsOptions,
+  SlugConflictPurgeAction,
+  SlugConflictsAction,
+  SlugConflictsKeepRule,
+} from "./tasks/cleanup-slug-conflicts";
 export { runCleanupVersionsArchive } from "./tasks/cleanup-versions-archive";
 export type {
   CleanupVersionsArchiveOptions,

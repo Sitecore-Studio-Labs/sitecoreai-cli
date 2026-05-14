@@ -31,6 +31,7 @@ import { runCleanupPublish } from "@/hygiene/tasks/cleanup-publish";
 import { runCleanupRename } from "@/hygiene/tasks/cleanup-rename";
 import { runCleanupRoles } from "@/hygiene/tasks/cleanup-roles";
 import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup-site-residue";
+import { runCleanupSlugConflicts } from "@/hygiene/tasks/cleanup-slug-conflicts";
 import { runCleanupSubtree } from "@/hygiene/tasks/cleanup-subtree";
 import { runCleanupUsers } from "@/hygiene/tasks/cleanup-users";
 import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup-versions-archive";
@@ -89,6 +90,7 @@ const CLEANUP_RUNNERS: Record<string, LoosedRunner> = {
   rename: loosen(runCleanupRename),
   roles: loosen(runCleanupRoles),
   "site-residue": loosen(runCleanupSiteResidue),
+  "slug-conflicts": loosen(runCleanupSlugConflicts),
   subtree: loosen(async (options: Parameters<typeof runCleanupSubtree>[0]) => {
     const r = await runCleanupSubtree(options);
     // Flatten the {blockers, deletions} envelope so the MCP dispatch
@@ -344,13 +346,14 @@ const cleanupInputSchema = () =>
         "rename",
         "roles",
         "site-residue",
+        "slug-conflicts",
         "subtree",
         "users",
         "workflow-advance",
         "workflow-apply",
       ])
       .describe(
-        "Which cleanup operation to run. Each verb maps 1:1 to a `scai cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); publish (`items` OR `root`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
+        "Which cleanup operation to run. Each verb maps 1:1 to a `scai cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); publish (`items` OR `root`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). slug-conflicts honors `keepRule` + `action` (`delete` default, or `rename` with optional `renameSuffix`) — `audit slug-conflicts` first to preview groups. subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
       ),
 
     // versions-prune / versions-archive
@@ -438,12 +441,32 @@ const cleanupInputSchema = () =>
       .enum(["oldest", "newest", "shortest-path"])
       .optional()
       .describe(
-        "duplicates: which group member survives. Default `oldest`. (interactive keep is CLI-only — not exposed via MCP.)"
+        "duplicates / slug-conflicts: which group member survives. Default `oldest`. (interactive keep is CLI-only — not exposed via MCP.)"
       ),
     includeSystemFields: z
       .boolean()
       .optional()
       .describe("duplicates / find-replace: hash/scan __-prefixed system fields. Off by default."),
+
+    // slug-conflicts
+    action: z
+      .enum(["delete", "rename"])
+      .optional()
+      .describe(
+        "slug-conflicts: what to do with losing siblings. `delete` (default) calls deleteItem(permanently: true) — breaks inbound refs. `rename` calls renameItem with a suffix derived from `renameSuffix` — preserves inbound refs but leaves stale slugs."
+      ),
+    renameSuffix: z
+      .string()
+      .optional()
+      .describe(
+        "slug-conflicts: suffix template when `action: 'rename'`. Placeholders: `{shortId}` (8-char itemId prefix), `{full}` (32-char id). Default: '-{shortId}'."
+      ),
+    caseInsensitive: z
+      .boolean()
+      .optional()
+      .describe(
+        "slug-conflicts: treat sibling names as case-insensitive when grouping. Default true — matches the audit's default and most renderers' URL resolution."
+      ),
 
     // empty-folders
     maxDeletions: z

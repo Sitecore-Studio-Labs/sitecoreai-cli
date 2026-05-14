@@ -126,6 +126,16 @@ export const fingerprintFinding = (audit: string, finding: unknown): string => {
     case "duplicates":
       // Hash IS the identity for duplicates.
       return hashJson({ audit, contentHash: f.contentHash });
+    case "slug-conflicts":
+      // (parent, slug, sorted member ids) — the conflict's identity. Sort
+      // the member ids so an audit run that returns the same group in a
+      // different order produces the same fingerprint.
+      return hashJson({
+        audit,
+        parentPath: f.parentPath,
+        slug: f.slug,
+        members: (f.members as Array<{ itemId: string }>)?.map((m) => m.itemId).sort(),
+      });
     case "find-replace":
       // Per (item, pattern) since the same item could match different
       // patterns. The pattern is part of the call, not the row, so we

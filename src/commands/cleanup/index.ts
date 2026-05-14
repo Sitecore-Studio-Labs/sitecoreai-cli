@@ -10,6 +10,7 @@ import { createCleanupPublishCommand } from "./publish";
 import { createCleanupRenameCommand } from "./rename";
 import { createCleanupRolesCommand } from "./roles";
 import { createCleanupSiteResidueCommand } from "./site-residue";
+import { createCleanupSlugConflictsCommand } from "./slug-conflicts";
 import { createCleanupSubtreeCommand } from "./subtree";
 import { createCleanupUsersCommand } from "./users";
 import { createCleanupVersionsCommand } from "./versions";
@@ -31,6 +32,7 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupRenameCommand());
   command.addCommand(createCleanupRolesCommand());
   command.addCommand(createCleanupSiteResidueCommand());
+  command.addCommand(createCleanupSlugConflictsCommand());
   command.addCommand(createCleanupSubtreeCommand());
   command.addCommand(createCleanupUsersCommand());
   command.addCommand(createCleanupVersionsCommand());
@@ -56,6 +58,8 @@ export const createCleanupCommand = (): Command => {
       "  $ scai cleanup archive purge --older-than-days 30 --allow-write\n" +
       "  $ scai cleanup dead-templates purge --root /sitecore/templates/Project --what-if\n" +
       "  $ scai cleanup duplicates purge --root /sitecore/content/MySite --keep-rule oldest --what-if\n" +
+      "  $ scai cleanup slug-conflicts purge --root /sitecore/content/MySite --keep-rule oldest --what-if\n" +
+      "  $ scai cleanup slug-conflicts purge --action rename --rename-suffix '-{shortId}' --allow-write\n" +
       "  $ scai cleanup workflow advance --root /sitecore/content/MySite --command-name Submit --stale-days 60 --what-if\n" +
       "  $ scai cleanup workflow apply --root /sitecore/content/MySite --workflow 'Article Workflow' --template /sitecore/templates/Foundation/Article --what-if\n" +
       "  $ scai cleanup empty-folders purge --root /sitecore/content/MySite --what-if\n" +

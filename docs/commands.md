@@ -1649,6 +1649,7 @@ scai cleanup [options] [command]
 - [`scai cleanup rename`](#scai-cleanup-rename) — Bulk-rename items by pattern (modifies item Name and thus the URL slug)
 - [`scai cleanup roles`](#scai-cleanup-roles) — Delete empty roles (the cleanup counterpart to `audit empty-roles`)
 - [`scai cleanup site-residue`](#scai-cleanup-site-residue) — Delete SXA tenant/site folders left behind after a Sites-API delete (templates/Project, layout/Renderings/Project, media library/Project)
+- [`scai cleanup slug-conflicts`](#scai-cleanup-slug-conflicts) — Resolve sibling-name conflicts surfaced by `audit slug-conflicts` (delete or rename losers per --keep-rule)
 - [`scai cleanup subtree`](#scai-cleanup-subtree) — Delete a Sitecore subtree bottom-up, with hard-block on external inbound references
 - [`scai cleanup users`](#scai-cleanup-users) — Delete stale users (the cleanup counterpart to `audit stale-users`)
 - [`scai cleanup versions`](#scai-cleanup-versions) — Prune or archive per-item version history down to the N most recent versions
@@ -2112,6 +2113,51 @@ scai cleanup site-residue purge [options]
 - `--skip-ref-check` — Skip the inbound-ref pre-flight scan. Faster but loses the safety net — pair with `audit broken-links` if you use this.
 - `--index <name>` — Override the search index name (default: sitecore_master_index)
 - `--concurrency <count>` — Concurrent deletes / pre-flight scans (default: 4)
+
+### scai cleanup slug-conflicts
+
+Resolve sibling-name conflicts surfaced by `audit slug-conflicts` (delete or rename losers per --keep-rule)
+
+```
+scai cleanup slug-conflicts [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup slug-conflicts purge`](#scai-cleanup-slug-conflicts-purge) — Delete or rename losing siblings per --keep-rule (default: oldest wins, action delete)
+
+#### scai cleanup slug-conflicts purge
+
+Delete or rename losing siblings per --keep-rule (default: oldest wins, action delete)
+
+```
+scai cleanup slug-conflicts purge [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--root <path>` — Content-tree root (default: /sitecore/content)
+- `--language <code>` — Restrict to one language (default: include all)
+- `--limit <count>` — Cap on the number of items inspected (default: 5000)
+- `--index <name>` — Override the search index name
+- `--include-system` — Include /sitecore/system items in the scan (off by default)
+- `--case-insensitive` — Treat sibling names as case-insensitive (default: on; pass --no-case-insensitive to disable)
+- `--no-case-insensitive` — Treat sibling names as case-sensitive (off by default — most renderers do case-insensitive URL resolution)
+- `--keep-rule <rule>` — Which member of each conflict group survives (default: `"oldest"`)
+- `--action <action>` — What to do with the losers (default: `"delete"`)
+- `--rename-suffix <template>` — Suffix template for --action rename. Placeholders: {shortId} (8-char itemId prefix), {full} (32-char id). Default: '-{shortId}'.
+- `--concurrency <count>` — Delete/rename concurrency (default: 4)
 
 ### scai cleanup subtree
 

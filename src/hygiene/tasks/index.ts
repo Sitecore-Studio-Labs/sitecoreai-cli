@@ -87,6 +87,15 @@ export type { AuditMissingMetaOptions, MissingMetaReport } from "./audit-missing
 export { runAuditAltTextMissing } from "./audit-alt-text-missing";
 export type { AuditAltTextMissingOptions, AltTextMissingReport } from "./audit-alt-text-missing";
 
+export { runAuditRoleBloat } from "./audit-role-bloat";
+export type { AuditRoleBloatOptions, RoleBloatReport } from "./audit-role-bloat";
+
+export { runAuditEmptyRoles } from "./audit-empty-roles";
+export type { AuditEmptyRolesOptions, EmptyRoleReport } from "./audit-empty-roles";
+
+export { runAuditStaleUsers } from "./audit-stale-users";
+export type { AuditStaleUsersOptions, StaleUserReport } from "./audit-stale-users";
+
 export { runAuditAll, auditNames } from "./audit-all";
 export type { AuditAllOptions } from "./audit-all";
 

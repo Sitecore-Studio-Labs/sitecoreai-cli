@@ -5,7 +5,10 @@ import { createAuditBaselineCommand } from "./baseline";
 import { createAuditBrokenLinksCommand } from "./broken-links";
 import { createAuditHeavyTemplatesCommand } from "./heavy-templates";
 import { createAuditLargeFieldsCommand } from "./large-fields";
+import { createAuditEmptyRolesCommand } from "./empty-roles";
 import { createAuditMissingMetaCommand } from "./missing-meta";
+import { createAuditRoleBloatCommand } from "./role-bloat";
+import { createAuditStaleUsersCommand } from "./stale-users";
 import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
 import { createAuditDuplicatesCommand } from "./duplicates";
@@ -35,12 +38,15 @@ export const createAuditCommand = (): Command => {
   command.addCommand(createAuditDeadTemplatesCommand());
   command.addCommand(createAuditDuplicatesCommand());
   command.addCommand(createAuditEmptyItemsCommand());
+  command.addCommand(createAuditEmptyRolesCommand());
   command.addCommand(createAuditFindReplaceCommand());
   command.addCommand(createAuditLanguageDataCommand());
   command.addCommand(createAuditOrphansCommand());
   command.addCommand(createAuditPageDesignOrphansCommand());
   command.addCommand(createAuditPersonalizationBrokenCommand());
+  command.addCommand(createAuditRoleBloatCommand());
   command.addCommand(createAuditStaleContentCommand());
+  command.addCommand(createAuditStaleUsersCommand());
   command.addCommand(createAuditStaleWorkflowCommand());
   command.addCommand(createAuditUnusedMediaCommand());
 

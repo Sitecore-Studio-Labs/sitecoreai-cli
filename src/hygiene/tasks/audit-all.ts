@@ -3,6 +3,9 @@ import { writeAuditOutput, type OutputFormat } from "../output-adapters";
 import { type HygieneCommonOptions, toLogger } from "./shared";
 import { runAuditAltTextMissing } from "./audit-alt-text-missing";
 import { runAuditBrokenLinks } from "./audit-broken-links";
+import { runAuditEmptyRoles } from "./audit-empty-roles";
+import { runAuditRoleBloat } from "./audit-role-bloat";
+import { runAuditStaleUsers } from "./audit-stale-users";
 import { runAuditDatasourceMissing } from "./audit-datasource-missing";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import { runAuditDuplicates } from "./audit-duplicates";
@@ -86,6 +89,9 @@ interface AuditDef {
 const AUDIT_REGISTRY: AuditDef[] = [
   { name: "alt-text-missing", run: runAuditAltTextMissing as never },
   { name: "broken-links", run: runAuditBrokenLinks as never },
+  { name: "empty-roles", run: runAuditEmptyRoles as never },
+  { name: "role-bloat", run: runAuditRoleBloat as never },
+  { name: "stale-users", run: runAuditStaleUsers as never },
   { name: "datasource-missing", run: runAuditDatasourceMissing as never },
   { name: "dead-templates", run: runAuditDeadTemplates as never },
   { name: "duplicates", run: runAuditDuplicates as never },

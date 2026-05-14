@@ -216,6 +216,39 @@ export interface HygieneApiClient {
     itemId: string;
     fields: Array<{ name: string; value: string }>;
   }): Promise<void>;
+  /** Page through every user. */
+  listUsers(options?: { pageSize?: number }): Promise<UserSummary[]>;
+  /** Page through every role. Returns name + memberCount. */
+  listRoles(options?: { pageSize?: number }): Promise<RoleSummary[]>;
+  /**
+   * Fetch a single user's roles + profile.lastActivity. Used by the
+   * stale-user audit; one round trip per user, kept here so audits
+   * can wrap with bounded concurrency.
+   */
+  getUserDetail(userName: string): Promise<UserDetail | null>;
+}
+
+export interface UserSummary {
+  name: string;
+  isAdministrator: boolean;
+  isAuthenticated: boolean;
+  domain: string | null;
+}
+
+export interface RoleSummary {
+  name: string;
+  domain: string | null;
+  memberCount: number;
+}
+
+export interface UserDetail {
+  name: string;
+  isAdministrator: boolean;
+  roles: string[];
+  /** From UserProfile.lastLoginDate. */
+  lastLogin: string | null;
+  /** From UserProfile.lastActivityDate (broader signal — any session activity). */
+  lastActivity: string | null;
 }
 
 export interface HygieneClientOptions {
@@ -411,6 +444,42 @@ mutation($input: UpdateItemInput!) {
   }
 }`;
 
+const LIST_USERS_QUERY = `
+query($first: PaginationAmount, $after: String) {
+  users(first: $first, after: $after) {
+    nodes { name isAdministrator isAuthenticated domain { name } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
+ * Per-role member sampling: `nodes` on `AccountConnection` doesn't
+ * expose `totalCount`, so we page-1 the members and check `nodes`
+ * length. >= 1 → has members; 0 → empty role. Quickest signal we can
+ * get without an O(R*M) per-role member walk.
+ */
+const LIST_ROLES_QUERY = `
+query($first: PaginationAmount, $after: String) {
+  roles(first: $first, after: $after) {
+    nodes {
+      name
+      domain { name }
+      members(first: 1) { nodes { name } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+const GET_USER_DETAIL_QUERY = `
+query($userName: String!) {
+  user(userName: $userName) {
+    name
+    isAdministrator
+    roles { name }
+    profile { lastLoginDate lastActivityDate }
+  }
+}`;
+
 const DELETE_ARCHIVED_ITEM_MUTATION = `
 mutation($input: DeleteArchivedItemInput!) {
   deleteArchivedItem(input: $input) {
@@ -498,6 +567,38 @@ type GraphQLDeleteArchivedItemResponse = {
 };
 type GraphQLUpdateItemResponse = {
   updateItem: { item: { itemId: string } | null } | null;
+};
+type GraphQLUsersResponse = {
+  users: {
+    nodes: Array<{
+      name: string;
+      isAdministrator: boolean;
+      isAuthenticated: boolean;
+      domain: { name: string } | null;
+    }>;
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  } | null;
+};
+type GraphQLRolesResponse = {
+  roles: {
+    nodes: Array<{
+      name: string;
+      domain: { name: string } | null;
+      members: { nodes: Array<{ name: string }> } | null;
+    }>;
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  } | null;
+};
+type GraphQLUserDetailResponse = {
+  user: {
+    name: string;
+    isAdministrator: boolean;
+    roles: Array<{ name: string }>;
+    profile: {
+      lastLoginDate: string | null;
+      lastActivityDate: string | null;
+    } | null;
+  } | null;
 };
 type GraphQLArchiveVersionResponse = {
   archiveVersion: { archiveVersionId: string | null } | null;
@@ -1075,6 +1176,82 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     }
   };
 
+  const listUsers = async (opts: { pageSize?: number } = {}): Promise<UserSummary[]> => {
+    const pageSize = opts.pageSize ?? 100;
+    const result: UserSummary[] = [];
+    let after: string | null = null;
+    while (true) {
+      const variables: Record<string, unknown> = { first: pageSize };
+      if (after) variables.after = after;
+      const data = await runHygieneAuthoringGraphQL<GraphQLUsersResponse>(
+        environment,
+        LIST_USERS_QUERY,
+        variables,
+        readRequest
+      );
+      const conn = data.users;
+      if (!conn) break;
+      for (const u of conn.nodes) {
+        result.push({
+          name: u.name,
+          isAdministrator: u.isAdministrator,
+          isAuthenticated: u.isAuthenticated,
+          domain: u.domain?.name ?? null,
+        });
+      }
+      if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
+      after = conn.pageInfo.endCursor;
+    }
+    return result;
+  };
+
+  const listRoles = async (opts: { pageSize?: number } = {}): Promise<RoleSummary[]> => {
+    const pageSize = opts.pageSize ?? 100;
+    const result: RoleSummary[] = [];
+    let after: string | null = null;
+    while (true) {
+      const variables: Record<string, unknown> = { first: pageSize };
+      if (after) variables.after = after;
+      const data = await runHygieneAuthoringGraphQL<GraphQLRolesResponse>(
+        environment,
+        LIST_ROLES_QUERY,
+        variables,
+        readRequest
+      );
+      const conn = data.roles;
+      if (!conn) break;
+      for (const r of conn.nodes) {
+        // members(first:1) — count signal only. >= 1 → role has at
+        // least one direct member. 0 → empty role.
+        result.push({
+          name: r.name,
+          domain: r.domain?.name ?? null,
+          memberCount: r.members?.nodes.length ?? 0,
+        });
+      }
+      if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
+      after = conn.pageInfo.endCursor;
+    }
+    return result;
+  };
+
+  const getUserDetail = async (userName: string): Promise<UserDetail | null> => {
+    const data = await runHygieneAuthoringGraphQL<GraphQLUserDetailResponse>(
+      environment,
+      GET_USER_DETAIL_QUERY,
+      { userName },
+      readRequest
+    );
+    if (!data.user) return null;
+    return {
+      name: data.user.name,
+      isAdministrator: data.user.isAdministrator,
+      roles: data.user.roles.map((r) => r.name),
+      lastLogin: data.user.profile?.lastLoginDate ?? null,
+      lastActivity: data.user.profile?.lastActivityDate ?? null,
+    };
+  };
+
   return {
     search,
     searchAll,
@@ -1093,6 +1270,9 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     listItemTemplates,
     getChildren,
     updateItemFields,
+    listUsers,
+    listRoles,
+    getUserDetail,
   };
 };
 

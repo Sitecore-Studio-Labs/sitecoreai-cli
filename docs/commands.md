@@ -44,12 +44,15 @@ scai audit [options] [command]
 - [`scai audit dead-templates`](#scai-audit-dead-templates) — Find item templates with zero items derived from them
 - [`scai audit duplicates`](#scai-audit-duplicates) — Find items with byte-identical authored content
 - [`scai audit empty-items`](#scai-audit-empty-items) — Find items with no authored field values
+- [`scai audit empty-roles`](#scai-audit-empty-roles) — Find roles with zero direct members
 - [`scai audit find-replace`](#scai-audit-find-replace) — Search content field values for a pattern (regex or literal). Read-only counterpart to `cleanup find-replace`.
 - [`scai audit language-data`](#scai-audit-language-data) — Find items with empty per-language entries (no versions) — read-only diagnostic
 - [`scai audit orphans`](#scai-audit-orphans) — Find items in the Sitecore archive (recycle bin) — the XM Cloud analogue of orphan items
 - [`scai audit page-design-orphans`](#scai-audit-page-design-orphans) — Find pages referencing missing page designs (XM Cloud SXA)
 - [`scai audit personalization-broken`](#scai-audit-personalization-broken) — Find pages with personalization rules referencing missing items
+- [`scai audit role-bloat`](#scai-audit-role-bloat) — Find users with more than N role memberships (default 10)
 - [`scai audit stale-content`](#scai-audit-stale-content) — Find content items not updated in N days — the abandoned-content (graveyard) signal
+- [`scai audit stale-users`](#scai-audit-stale-users) — Find users inactive for N days (default 180)
 - [`scai audit stale-workflow`](#scai-audit-stale-workflow) — Find items stuck in a workflow state past a stale-after threshold
 - [`scai audit unused-media`](#scai-audit-unused-media) — Find media library items with zero references from content
 
@@ -606,6 +609,51 @@ scai audit empty-items list [options]
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 
+### scai audit empty-roles
+
+Find roles with zero direct members
+
+```
+scai audit empty-roles [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit empty-roles list`](#scai-audit-empty-roles-list) — List roles whose members(first:1) returns an empty connection
+
+#### scai audit empty-roles list
+
+List roles whose members(first:1) returns an empty connection
+
+```
+scai audit empty-roles list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--domain <name>` — Restrict to a specific domain (e.g. sitecore, extranet)
+
 ### scai audit find-replace
 
 Search content field values for a pattern (regex or literal). Read-only counterpart to `cleanup find-replace`.
@@ -829,6 +877,52 @@ scai audit personalization-broken list [options]
 - `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 
+### scai audit role-bloat
+
+Find users with more than N role memberships (default 10)
+
+```
+scai audit role-bloat [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit role-bloat list`](#scai-audit-role-bloat-list) — List users whose direct role count exceeds --threshold
+
+#### scai audit role-bloat list
+
+List users whose direct role count exceeds --threshold
+
+```
+scai audit role-bloat list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--threshold <count>` — Role-count threshold (default 10)
+- `--include-admins` — Include administrators (off by default)
+
 ### scai audit stale-content
 
 Find content items not updated in N days — the abandoned-content (graveyard) signal
@@ -876,6 +970,54 @@ scai audit stale-content list [options]
 - `--not-updated-in-days <count>` — Threshold in days (default: 365)
 - `--language <code>` — Restrict to one language
 - `--no-exclude-workflow-items` — Include items currently in a non-final workflow state (off by default to keep this distinct from `audit stale-workflow`)
+
+### scai audit stale-users
+
+Find users inactive for N days (default 180)
+
+```
+scai audit stale-users [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit stale-users list`](#scai-audit-stale-users-list) — List users whose UserProfile.lastActivity is older than --not-active-days or null
+
+#### scai audit stale-users list
+
+List users whose UserProfile.lastActivity is older than --not-active-days or null
+
+```
+scai audit stale-users list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--not-active-days <count>` — Inactivity threshold in days (default 180)
+- `--include-admins` — Include administrators (off by default)
+- `--include-service-accounts` — Include likely service accounts (off by default; lastLoginDate doesn't reflect OAuth client-credential access)
+- `--use-activity-date` — Use UserProfile.lastActivityDate instead of lastLoginDate (broader signal)
 
 ### scai audit stale-workflow
 

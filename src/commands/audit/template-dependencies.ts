@@ -15,7 +15,7 @@ export const createAuditTemplateDependenciesCommand = (): Command => {
   );
   list.option(
     "--skip <kind>",
-    "Skip a reference kind: primary-template, base-template, insert-options, branch-source. Repeat or comma-separate.",
+    "Skip a reference kind: primary-template, base-template, insert-options, branch-source, datasource-template. Repeat or comma-separate.",
     (v: string, prev: string[] = []) =>
       prev.concat(
         v

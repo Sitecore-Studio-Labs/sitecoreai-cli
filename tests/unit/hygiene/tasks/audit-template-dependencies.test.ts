@@ -129,6 +129,18 @@ describe("audit template-dependencies", () => {
           ],
         };
       }
+      if (call.field === "datasource template") {
+        return {
+          totalCount: 1,
+          results: [
+            {
+              itemId: "rd1",
+              path: "/sitecore/layout/Renderings/Project/MyRendering",
+              name: "MyRendering",
+            },
+          ],
+        };
+      }
       return { totalCount: 0, results: [] };
     });
 
@@ -137,7 +149,7 @@ describe("audit template-dependencies", () => {
       json: true,
     });
 
-    expect(reports).toHaveLength(4);
+    expect(reports).toHaveLength(5);
     const byKind = new Map(reports.map((r) => [r.referenceKind, r]));
     expect(byKind.get("primary-template")?.path).toBe("/sitecore/content/A");
     expect(byKind.get("base-template")?.path).toBe("/sitecore/templates/B");
@@ -146,6 +158,9 @@ describe("audit template-dependencies", () => {
     );
     expect(byKind.get("branch-source")?.path).toBe(
       "/sitecore/templates/Branches/Bar"
+    );
+    expect(byKind.get("datasource-template")?.path).toBe(
+      "/sitecore/layout/Renderings/Project/MyRendering"
     );
   });
 
@@ -158,7 +173,7 @@ describe("audit template-dependencies", () => {
       json: true,
     });
 
-    expect(client.search).toHaveBeenCalledTimes(3);
+    expect(client.search).toHaveBeenCalledTimes(4);
     const fieldsCalled = (client.search as ReturnType<typeof vi.fn>).mock.calls.map(
       (call) => call[0].searchStatement.criteria.field
     );

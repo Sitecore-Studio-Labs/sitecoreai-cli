@@ -29,9 +29,17 @@ export const createPublishItemCommand = (): Command => {
     )
     .option("--include-subitems", "Publish descendants of the items (xmc.items.publishChildren).")
     .option("--include-related", "Publish referenced items (xmc.items.publishRelatedItems).")
+    .addOption(
+      new Option(
+        "--mode <mode>",
+        "Publish mode. `Smart` skips items unchanged since the last publish; `Republish` forces re-emit of every item in the batch. Incremental is whole-site only and lives on `publish all`."
+      )
+        .choices(["Smart", "Republish"])
+        .default("Smart")
+    )
     .option(
       "--republish",
-      "Use Republish mode instead of Smart (forces re-emit of unchanged items)."
+      "Alias for `--mode Republish` (matches the dotnet `sitecore publish item --republish` flag). When both are set, `--mode` wins."
     )
     .option(
       "--confirm-token <token>",
@@ -62,7 +70,8 @@ export const createPublishItemCommand = (): Command => {
       "  $ scai publish item --items abc123 -n sandbox\n" +
       "  $ scai publish item --items abc123,def456,ghi789 -n sandbox\n" +
       "  $ scai publish item --items abc123 --items def456 -n sandbox      # repeated flag\n" +
-      "  $ scai publish item --items abc123 --include-subitems -n sandbox  # + descendants\n"
+      "  $ scai publish item --items abc123 --include-subitems -n sandbox  # + descendants\n" +
+      "  $ scai publish item --items abc1,def4 --mode Republish -n sandbox # force re-emit\n"
   );
 
   command.action(async (options) => {

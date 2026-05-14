@@ -32,7 +32,13 @@ export interface RunPublishItemOptions {
   includeSubitems?: boolean;
   /** Map to xmc.items.publishRelatedItems — matches dotnet --related. */
   includeRelated?: boolean;
-  /** Republish mode (vs Smart). Default Smart. */
+  /** Publish mode. Per the Publishing API spec, items-level publish
+   *  supports only `Smart` (default) and `Republish` — Incremental
+   *  is whole-site only and lives on `publish all`. */
+  mode?: PublishItemsMode;
+  /** Legacy alias for `mode: "Republish"`. When both are set, `mode`
+   *  wins. Kept because the dotnet `sitecore publish item --republish`
+   *  flag is muscle memory for many operators. */
   republish?: boolean;
   /** Dry-run; default true. Real publish requires --allow-write. */
   whatIf?: boolean;
@@ -97,7 +103,8 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
   const itemType = options.itemType ?? "item";
   const languages = options.languages ?? [];
   const target = "Edge";
-  const mode: PublishItemsMode = options.republish ? "Republish" : "Smart";
+  const mode: PublishItemsMode =
+    options.mode ?? (options.republish ? "Republish" : "Smart");
 
   const scope: PublishAuditScope = {
     envName,

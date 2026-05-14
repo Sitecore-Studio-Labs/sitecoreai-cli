@@ -35,3 +35,24 @@ export {
 export { generateBrandReview, type GenerateBrandReviewOptions } from "./review/generate";
 
 export { runAiSkillsLogin, type AiSkillsLoginOptions } from "./tasks/login";
+
+export {
+  runBrandReview,
+  resolveReviewInputs,
+  detectInputFormat,
+  computeExitCode,
+  type BrandReviewCommandOptions,
+  type BrandReviewRunResult,
+  type BrandReviewFormat,
+} from "./tasks/review";
+
+export {
+  scoreToSarifLevel,
+  summarizeOutcomes,
+  type ReviewOutcome,
+  type OutcomeSummary,
+} from "./review/outcomes";
+
+export { buildJsonReport, type BrandReviewJsonReport } from "./review/format-json";
+export { buildSarifReport, type SarifReport } from "./review/format-sarif";
+export { buildTextReport, formatTextRow, formatTextSummary } from "./review/format-text";

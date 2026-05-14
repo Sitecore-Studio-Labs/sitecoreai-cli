@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import packageJson from "../package.json";
 import { createAuditCommand } from "./commands/audit";
+import { createBrandCommand } from "./commands/brand";
 import { createCleanupCommand } from "./commands/cleanup";
 import { createSerializationCommand } from "./commands/serialization";
 import { normalizeArgs } from "./commands/shared";
@@ -247,6 +248,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
     .version(packageJson.version, "-V, --version", "Display the CLI version");
 
   program.addCommand(createAuditCommand());
+  program.addCommand(createBrandCommand());
   program.addCommand(createCleanupCommand());
   program.addCommand(createConfigCommand());
   program.addCommand(createDeployCommand());

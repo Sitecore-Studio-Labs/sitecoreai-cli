@@ -153,6 +153,18 @@ describe("public library surface — /brand", () => {
 
     // Login task.
     expect(typeof brand.runAiSkillsLogin).toBe("function");
+
+    // Batch review task + formatters + SARIF level mapping.
+    expect(typeof brand.runBrandReview).toBe("function");
+    expect(typeof brand.resolveReviewInputs).toBe("function");
+    expect(typeof brand.detectInputFormat).toBe("function");
+    expect(typeof brand.computeExitCode).toBe("function");
+    expect(typeof brand.buildJsonReport).toBe("function");
+    expect(typeof brand.buildSarifReport).toBe("function");
+    expect(typeof brand.buildTextReport).toBe("function");
+    expect(brand.scoreToSarifLevel(1)).toBe("error");
+    expect(brand.scoreToSarifLevel(3)).toBe("warning");
+    expect(brand.scoreToSarifLevel(5)).toBe("note");
   });
 });
 

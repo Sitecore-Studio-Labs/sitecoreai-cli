@@ -87,6 +87,21 @@ describe("publishing/client.getPublishJob", () => {
     });
   });
 
+  it("maps 403 to AUTH_REQUIRED with a scope-specific hint", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errResponse(403, "Forbidden")));
+    await expect(getPublishJob(baseClient, "j")).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+      hint: expect.stringContaining("publishing scopes"),
+    });
+  });
+
+  it("maps 401 to AUTH_REQUIRED", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errResponse(401, "Unauthorized")));
+    await expect(getPublishJob(baseClient, "j")).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+  });
+
   it("honors a baseUrl override (for tests / mock servers)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okJson({ id: "j", state: "queued" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -101,27 +116,6 @@ describe("publishing/client.listPublishJobs", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         okJson([
-  it("maps 403 to AUTH_REQUIRED with a scope-specific hint", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(errResponse(403, "Forbidden"))
-    );
-    await expect(getPublishJob(baseClient, "j")).rejects.toMatchObject({
-      code: "AUTH_REQUIRED",
-      hint: expect.stringContaining("publishing scopes"),
-    });
-  });
-
-  it("maps 401 to AUTH_REQUIRED", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(errResponse(401, "Unauthorized"))
-    );
-    await expect(getPublishJob(baseClient, "j")).rejects.toMatchObject({
-      code: "AUTH_REQUIRED",
-    });
-  });
-
           { id: "a", state: "running" },
           { id: "b", state: "queued" },
           { id: "c", state: "completed" },

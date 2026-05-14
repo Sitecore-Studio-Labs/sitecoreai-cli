@@ -71,3 +71,26 @@ export const deleteSite = (options: SitesApiClientOptions, siteId: string): Prom
  */
 export const listSiteTemplates = (options: SitesApiClientOptions): Promise<SiteTemplate[]> =>
   sitesRequest<SiteTemplate[]>(options, "/api/v1/sites/templates");
+
+export type WorkflowsStatistics = components["schemas"]["WorkflowsStatistics"];
+export type WorkflowStatistics = components["schemas"]["WorkflowStatistics"];
+export type WorkflowStateStatistics = components["schemas"]["WorkflowStateStatistics"];
+
+/**
+ * Fetch the per-site workflow rollup: workflows defined on the site,
+ * their states, and the count of pages in each state. Backs
+ * `scai workflow status --site <siteId>`.
+ *
+ * Optional `environmentId` query param ("main" by default server-side)
+ * scopes to a specific Content Services environment.
+ */
+export const retrieveWorkflowStatistics = (
+  options: SitesApiClientOptions,
+  siteId: string,
+  query?: { environmentId?: string }
+): Promise<WorkflowsStatistics> =>
+  sitesRequest<WorkflowsStatistics>(
+    options,
+    `/api/v1/sites/${encodeURIComponent(siteId)}/statistics/workflow`,
+    query?.environmentId ? { query: { environmentId: query.environmentId } } : undefined
+  );

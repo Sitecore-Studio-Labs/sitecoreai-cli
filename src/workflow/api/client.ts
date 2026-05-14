@@ -51,6 +51,48 @@ export interface ExecuteWorkflowCommandInput {
   comments?: string;
 }
 
+export interface WorkflowDefinitionSummary {
+  /** Sitecore item ID — also the `workflowId` accepted by the API. */
+  itemId: string;
+  name: string;
+  displayName: string | null;
+  path: string;
+}
+
+export interface ListWorkflowDefinitionsOptions {
+  /**
+   * Content-tree root to scan. Defaults to `/sitecore/system/Workflows`.
+   * Workflows nested under Workflow-Folder items are followed one level
+   * deep; deeper nesting requires an explicit root override.
+   */
+  rootPath?: string;
+}
+
+export interface AssignedItemSummary {
+  itemId: string;
+  path: string;
+  templateName: string | null;
+  updatedDate: string | null;
+}
+
+export interface SearchItemsByWorkflowStateOptions {
+  /** Sitecore state GUID — the item ID of the workflow State item. */
+  stateId: string;
+  /** Override the search index. Defaults to `sitecore_master_index`. */
+  index?: string;
+  /**
+   * Override the search field. Defaults to `__workflow state` (the
+   * standard system field name, lowercased and space-preserved). Some
+   * tenants index the field as `__workflow_state` instead; supply
+   * explicitly when the default returns no hits.
+   */
+  field?: string;
+  /** Page size. Defaults to 100. */
+  pageSize?: number;
+  /** Cap on items returned. Defaults to 500. */
+  maxItems?: number;
+}
+
 export interface WorkflowApiClient {
   /**
    * Fetch an item's current workflow + state. Accepts either an item
@@ -69,6 +111,25 @@ export interface WorkflowApiClient {
   }): Promise<WorkflowCommandSummary[]>;
   /** Execute a workflow command on an item, advancing its state. */
   executeWorkflowCommand(input: ExecuteWorkflowCommandInput): Promise<WorkflowExecutionResult>;
+  /**
+   * List Sitecore workflow definitions under `/sitecore/system/Workflows`
+   * (override via `rootPath`). Walks direct children plus one level of
+   * `Workflow Folder` items. Items whose template name is `"Workflow"`
+   * are returned as definitions; folders are traversed, everything else
+   * is skipped.
+   */
+  listWorkflowDefinitions(
+    options?: ListWorkflowDefinitionsOptions
+  ): Promise<WorkflowDefinitionSummary[]>;
+  /**
+   * Find items currently in the given workflow state. Backed by the
+   * Sitecore search index — see `SearchItemsByWorkflowStateOptions` for
+   * the field/index overrides if the default index naming doesn't match
+   * the tenant.
+   */
+  searchItemsByWorkflowState(
+    options: SearchItemsByWorkflowStateOptions
+  ): Promise<AssignedItemSummary[]>;
 }
 
 export interface WorkflowClientOptions {
@@ -115,6 +176,62 @@ mutation($input: ExecuteWorkflowCommandInput!) {
   }
 }`;
 
+const LIST_WORKFLOW_CHILDREN_QUERY = `
+query($path: String!) {
+  item(where: { path: $path }) {
+    itemId
+    children {
+      nodes {
+        itemId
+        name
+        displayName
+        path
+        template { templateId name }
+      }
+    }
+  }
+}`;
+
+const WORKFLOW_TEMPLATE_NAME = "Workflow";
+const WORKFLOW_FOLDER_TEMPLATE_NAME = "Workflow Folder";
+const DEFAULT_WORKFLOWS_ROOT = "/sitecore/system/Workflows";
+const DEFAULT_SEARCH_INDEX = "sitecore_master_index";
+const DEFAULT_WORKFLOW_STATE_FIELD = "__workflow state";
+
+/**
+ * Build the workflow-state search query as an inlined GraphQL document.
+ *
+ * **Why inline rather than variable-bound.** The XM Cloud Authoring API
+ * rejects `SearchCriteriaType` (and likely every search-enum type) when
+ * passed via JSON variables — the server responds with
+ * `EXEC_INVALID_TYPE: "The value of $query has a wrong structure."`
+ * even for spec-conformant variable bindings. Inlining the enum as a
+ * bare GraphQL token (`criteriaType: EXACT`) is the only shape the
+ * resolver accepts. String values pass through `JSON.stringify`, which
+ * is safe because GraphQL's string syntax is a strict subset of JSON's.
+ */
+const buildSearchByWorkflowStateDocument = (opts: {
+  stateId: string;
+  field: string;
+  index: string;
+  pageSize: number;
+  pageIndex: number;
+}): string => `query { search(query: {
+  index: ${JSON.stringify(opts.index)}
+  latestVersionOnly: true
+  paging: { pageIndex: ${opts.pageIndex}, pageSize: ${opts.pageSize} }
+  searchStatement: {
+    criteria: {
+      field: ${JSON.stringify(opts.field)}
+      value: ${JSON.stringify(opts.stateId)}
+      criteriaType: EXACT
+    }
+  }
+}) {
+  totalCount
+  results { itemId path templateName updatedDate }
+} }`;
+
 type GraphQLWorkflowResponse = {
   item: {
     itemId: string;
@@ -138,6 +255,33 @@ type GraphQLExecuteWorkflowCommandResponse = {
     nextStateId: string | null;
     message: string | null;
     error: string | null;
+  } | null;
+};
+
+type GraphQLChildrenResponse = {
+  item: {
+    itemId: string;
+    children: {
+      nodes: Array<{
+        itemId: string;
+        name: string;
+        displayName: string | null;
+        path: string;
+        template: { templateId: string; name: string } | null;
+      }>;
+    };
+  } | null;
+};
+
+type GraphQLWorkflowStateSearchResponse = {
+  search: {
+    totalCount: number;
+    results: Array<{
+      itemId: string;
+      path: string;
+      templateName: string | null;
+      updatedDate: string | null;
+    }>;
   } | null;
 };
 
@@ -234,9 +378,91 @@ export const createWorkflowApiClient = (options: WorkflowClientOptions): Workflo
     };
   };
 
+  const listChildren = async (path: string): Promise<GraphQLChildrenResponse["item"]> => {
+    const data = await runWorkflowAuthoringGraphQL<GraphQLChildrenResponse>(
+      environment,
+      LIST_WORKFLOW_CHILDREN_QUERY,
+      { path },
+      readRequest
+    );
+    return data.item;
+  };
+
+  const listWorkflowDefinitions = async (
+    options?: ListWorkflowDefinitionsOptions
+  ): Promise<WorkflowDefinitionSummary[]> => {
+    const rootPath = options?.rootPath ?? DEFAULT_WORKFLOWS_ROOT;
+    const definitions: WorkflowDefinitionSummary[] = [];
+
+    const visit = async (path: string, depth: number): Promise<void> => {
+      const node = await listChildren(path);
+      if (!node) return;
+      for (const child of node.children.nodes) {
+        const tname = child.template?.name;
+        if (tname === WORKFLOW_TEMPLATE_NAME) {
+          definitions.push({
+            itemId: child.itemId,
+            name: child.name,
+            displayName: child.displayName,
+            path: child.path,
+          });
+        } else if (tname === WORKFLOW_FOLDER_TEMPLATE_NAME && depth < 1) {
+          // Recurse one level into folders. Deeper nesting would require
+          // an explicit `rootPath` override — we bail to keep traversal
+          // bounded on tenants with unusual structures.
+          await visit(child.path, depth + 1);
+        }
+      }
+    };
+
+    await visit(rootPath, 0);
+    return definitions;
+  };
+
+  const searchItemsByWorkflowState = async (
+    opts: SearchItemsByWorkflowStateOptions
+  ): Promise<AssignedItemSummary[]> => {
+    const pageSize = opts.pageSize ?? 100;
+    const maxItems = opts.maxItems ?? 500;
+    const index = opts.index ?? DEFAULT_SEARCH_INDEX;
+    const field = opts.field ?? DEFAULT_WORKFLOW_STATE_FIELD;
+    const collected: AssignedItemSummary[] = [];
+
+    for (let pageIndex = 0; collected.length < maxItems; pageIndex += 1) {
+      const document = buildSearchByWorkflowStateDocument({
+        stateId: opts.stateId,
+        field,
+        index,
+        pageSize,
+        pageIndex,
+      });
+      const data = await runWorkflowAuthoringGraphQL<GraphQLWorkflowStateSearchResponse>(
+        environment,
+        document,
+        undefined,
+        readRequest
+      );
+      const results = data.search?.results ?? [];
+      if (results.length === 0) break;
+      for (const r of results) {
+        collected.push({
+          itemId: r.itemId,
+          path: r.path,
+          templateName: r.templateName,
+          updatedDate: r.updatedDate,
+        });
+        if (collected.length >= maxItems) break;
+      }
+      if (results.length < pageSize) break;
+    }
+    return collected;
+  };
+
   return {
     getItemWorkflow,
     getWorkflowCommandsForItem,
     executeWorkflowCommand,
+    listWorkflowDefinitions,
+    searchItemsByWorkflowState,
   };
 };

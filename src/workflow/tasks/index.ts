@@ -9,6 +9,21 @@ export {
   type WorkflowListCommandsResult,
 } from "./list-commands";
 export {
+  runWorkflowListDefs,
+  type WorkflowListDefsOptions,
+  type WorkflowListDefsResult,
+} from "./list-defs";
+export {
+  runWorkflowStatus,
+  type WorkflowStatusOptions,
+  type WorkflowStatusResult,
+} from "./status";
+export {
+  runWorkflowAssigned,
+  type WorkflowAssignedOptions,
+  type WorkflowAssignedResult,
+} from "./assigned";
+export {
   type WorkflowTaskOptions,
   type ResolvedWorkflowTenant,
   resolveWorkflowTenant,

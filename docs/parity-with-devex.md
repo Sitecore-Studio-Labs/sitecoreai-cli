@@ -211,8 +211,19 @@ automation client lacks the right scopes returns `403 Forbidden` on
 every Publishing API call. The CLI surfaces this as `AUTH_REQUIRED`
 with a hint pointing the operator at the Sitecore Cloud Portal →
 automation clients UI to add publishing scopes and re-run
-`scai login`. The exact scope names should be documented in
-`docs/operator-setup.md` once we confirm them from the Portal UI.
+`scai login`.
+
+A typical scai-provisioned automation client carries
+`xmclouddeploy.<resource>:<verb>` scopes (Deploy API) plus
+`xmcloud.cm:admin` (CM admin) — confirmed by decoding a sandbox
+token. None of those grant Publishing API access. The Publishing
+API likely needs a scope along the lines of
+`xmcloud.publishing.<…>:<…>`, but the exact name is not in the
+public Redoc and the credentials-management doc on
+`doc.sitecore.com` is auth-walled. Operator must either inspect the
+Cloud Portal automation-client UI's scope catalog, or open a
+Sitecore support ticket. Document the exact scope name in
+`docs/operator-setup.md` once confirmed.
 
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai audit` + `scai cleanup` (shipped 2026-05-13)
 

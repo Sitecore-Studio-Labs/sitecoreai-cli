@@ -14,6 +14,8 @@ const stubClient = (overrides: Partial<WorkflowApiClient> = {}): WorkflowApiClie
   getItemWorkflow: vi.fn(),
   getWorkflowCommandsForItem: vi.fn().mockResolvedValue([]),
   executeWorkflowCommand: vi.fn(),
+  listWorkflowDefinitions: vi.fn().mockResolvedValue([]),
+  searchItemsByWorkflowState: vi.fn().mockResolvedValue([]),
   ...overrides,
 });
 

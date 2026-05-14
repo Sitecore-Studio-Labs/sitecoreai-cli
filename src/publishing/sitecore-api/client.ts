@@ -41,12 +41,6 @@ const fetchPublishingApi = async (
       } catch {
         // upstream body unreadable — surface status alone
       }
-      throw createScaiError(
-        `Publishing API ${options.method} ${url} returned ${response.status}.`,
-        response.status === 401 || response.status === 403
-          ? "AUTH_REQUIRED"
-          : "NETWORK",
-        { hint }
       // 403 from the Publishing API almost always means the automation
       // client's JWT lacks publishing scopes. The API host accepts the
       // tenant's token issuer but rejects the call. Point operators at
@@ -55,6 +49,10 @@ const fetchPublishingApi = async (
         response.status === 403
           ? "The automation client's JWT does not include publishing scopes. In the Sitecore Cloud Portal, edit the automation client for this environment and add the publishing scopes, then re-run 'scai login'."
           : detail || response.statusText || undefined;
+      throw createScaiError(
+        `Publishing API ${options.method} ${url} returned ${response.status}.`,
+        response.status === 401 || response.status === 403 ? "AUTH_REQUIRED" : "NETWORK",
+        { hint }
       );
     }
     if (response.status === 204) {

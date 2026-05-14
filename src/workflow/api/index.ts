@@ -7,6 +7,10 @@ export {
   type WorkflowCommandSummary,
   type WorkflowExecutionResult,
   type ExecuteWorkflowCommandInput,
+  type WorkflowDefinitionSummary,
+  type ListWorkflowDefinitionsOptions,
+  type AssignedItemSummary,
+  type SearchItemsByWorkflowStateOptions,
 } from "./client";
 export {
   resolveWorkflowCommandId,

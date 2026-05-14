@@ -18,8 +18,23 @@ export * from "./types";
 export { sitesRequest } from "./request";
 
 // Sites
-export { createSite, retrieveSite, listSites, deleteSite, listSiteTemplates } from "./sites";
-export type { Site, SiteTemplate, NewSiteInput, JobResponse } from "./sites";
+export {
+  createSite,
+  retrieveSite,
+  listSites,
+  deleteSite,
+  listSiteTemplates,
+  retrieveWorkflowStatistics,
+} from "./sites";
+export type {
+  Site,
+  SiteTemplate,
+  NewSiteInput,
+  JobResponse,
+  WorkflowsStatistics,
+  WorkflowStatistics,
+  WorkflowStateStatistics,
+} from "./sites";
 
 // Collections
 export { listCollections, createCollection, retrieveCollection } from "./collections";

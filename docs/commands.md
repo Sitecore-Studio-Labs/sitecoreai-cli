@@ -12,7 +12,7 @@ SitecoreAI Deploy & Sync CLI for serialization and deploy workflows
 **Top-level commands**
 
 - [`audit`](#scai-audit) — Read-only diagnostics over Sitecore content — links, media, archive, workflow, languages, templates, datasources, duplicates, empty items, page designs, personalization
-- [`cleanup`](#scai-cleanup) — Mutating hygiene operations — versions, archive, dead templates, duplicates. Honours --what-if and --allow-write.
+- [`cleanup`](#scai-cleanup) — Mutating hygiene operations — versions, archive, templates, duplicates, find-replace, workflow, folders, roles, users. Honours --what-if and --allow-write.
 - [`config`](#scai-config) — Configuration utilities
 - [`deploy`](#scai-deploy) — XM Cloud Deploy API commands
 - [`history`](#scai-history) — Show CLI activity history
@@ -1311,7 +1311,7 @@ scai audit unused-media list [options]
 
 ## scai cleanup
 
-Mutating hygiene operations — versions, archive, dead templates, duplicates. Honours --what-if and --allow-write.
+Mutating hygiene operations — versions, archive, templates, duplicates, find-replace, workflow, folders, roles, users. Honours --what-if and --allow-write.
 
 ```
 scai cleanup [options] [command]
@@ -1322,8 +1322,12 @@ scai cleanup [options] [command]
 - [`scai cleanup archive`](#scai-cleanup-archive) — Operations against the Sitecore archive (recycle bin)
 - [`scai cleanup dead-templates`](#scai-cleanup-dead-templates) — Delete templates that have zero items derived from them
 - [`scai cleanup duplicates`](#scai-cleanup-duplicates) — Delete duplicate-content items, keeping one per group per --keep-rule
+- [`scai cleanup empty-folders`](#scai-cleanup-empty-folders) — Delete folder-like items with no children, recursively bottom-up
 - [`scai cleanup find-replace`](#scai-cleanup-find-replace) — Apply a find-replace operation across content field values
+- [`scai cleanup roles`](#scai-cleanup-roles) — Delete empty roles (the cleanup counterpart to `audit empty-roles`)
+- [`scai cleanup users`](#scai-cleanup-users) — Delete stale users (the cleanup counterpart to `audit stale-users`)
 - [`scai cleanup versions`](#scai-cleanup-versions) — Prune or archive per-item version history down to the N most recent versions
+- [`scai cleanup workflow`](#scai-cleanup-workflow) — Mutating workflow operations (advance stale items, etc.)
 
 ### scai cleanup archive
 
@@ -1447,6 +1451,42 @@ scai cleanup duplicates purge [options]
 - `--concurrency <count>` — Delete concurrency (default: 4)
 - `--batch-size <count>` — Aliased GraphQL batch size for field reads
 
+### scai cleanup empty-folders
+
+Delete folder-like items with no children, recursively bottom-up
+
+```
+scai cleanup empty-folders [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup empty-folders purge`](#scai-cleanup-empty-folders-purge) — Walk --root depth-first and delete every item whose subtree is empty
+
+#### scai cleanup empty-folders purge
+
+Walk --root depth-first and delete every item whose subtree is empty
+
+```
+scai cleanup empty-folders purge [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--root <path>` — Content root to clean up under
+- `--max-deletions <count>` — Cap on total deletions per run (default 500)
+
 ### scai cleanup find-replace
 
 Apply a find-replace operation across content field values
@@ -1494,6 +1534,81 @@ scai cleanup find-replace apply [options]
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
 - `--cache` — Use the on-disk field cache for the discovery phase
+
+### scai cleanup roles
+
+Delete empty roles (the cleanup counterpart to `audit empty-roles`)
+
+```
+scai cleanup roles [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup roles purge-empty`](#scai-cleanup-roles-purge-empty) — Delete every role flagged by `audit empty-roles list`
+
+#### scai cleanup roles purge-empty
+
+Delete every role flagged by `audit empty-roles list`
+
+```
+scai cleanup roles purge-empty [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--domain <name>` — Restrict to a specific domain
+- `--max-deletions <count>` — Cap on total deletions per run (default 50)
+
+### scai cleanup users
+
+Delete stale users (the cleanup counterpart to `audit stale-users`)
+
+```
+scai cleanup users [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup users purge-stale`](#scai-cleanup-users-purge-stale) — Delete users inactive for more than --not-active-days (default 365)
+
+#### scai cleanup users purge-stale
+
+Delete users inactive for more than --not-active-days (default 365)
+
+```
+scai cleanup users purge-stale [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--not-active-days <count>` — Inactivity threshold in days (default 365)
+- `--max-deletions <count>` — Cap on total deletions per run (default 25)
+- `--include-admins` — Include administrators (strongly discouraged)
+- `--include-service-accounts` — Include likely service accounts (their lastLoginDate doesn't reflect OAuth access)
+- `--use-activity-date` — Use UserProfile.lastActivityDate instead of lastLoginDate
 
 ### scai cleanup versions
 
@@ -1566,6 +1681,49 @@ scai cleanup versions archive [options]
 - `--concurrency <count>` — Concurrency
 - `--include-system` — Include platform items
 - `--archive-name <name>` — Name of the Sitecore archive bucket (default: tenant default)
+
+### scai cleanup workflow
+
+Mutating workflow operations (advance stale items, etc.)
+
+```
+scai cleanup workflow [options] [command]
+```
+
+**Subcommands**
+
+- [`scai cleanup workflow advance`](#scai-cleanup-workflow-advance) — Execute a workflow command on items stuck past --stale-days
+
+#### scai cleanup workflow advance
+
+Execute a workflow command on items stuck past --stale-days
+
+```
+scai cleanup workflow advance [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--command-name <name>` — Workflow command name (e.g. 'Submit', 'Approve'). Resolved case-insensitively against the item's workflow.
+- `--stale-days <count>` — Days since last update for an item to be eligible (default 30)
+- `--from-state <name>` — Only act on items currently in this state name
+- `--comments <text>` — Comment recorded with the workflow execution (audit trail)
+- `--root <path>` — Content root (default: /sitecore/content)
+- `--max-advances <count>` — Cap on items advanced per run (default 100)
+- `--limit <count>` — Cap on items inspected
+- `--index <name>` — Override the search index
+- `--include-system` — Include /sitecore/system items
 
 ## scai config
 

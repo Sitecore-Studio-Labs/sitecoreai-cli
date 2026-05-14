@@ -111,6 +111,21 @@ export type {
 export { runAuditFallbackDrift } from "./audit-fallback-drift";
 export type { AuditFallbackDriftOptions, FallbackDriftReport } from "./audit-fallback-drift";
 
+export { runCleanupWorkflowAdvance } from "./cleanup-workflow-advance";
+export type {
+  CleanupWorkflowAdvanceOptions,
+  WorkflowAdvanceAction,
+} from "./cleanup-workflow-advance";
+
+export { runCleanupEmptyFolders } from "./cleanup-empty-folders";
+export type { CleanupEmptyFoldersOptions, EmptyFolderAction } from "./cleanup-empty-folders";
+
+export { runCleanupRoles } from "./cleanup-roles";
+export type { CleanupRolesOptions, RoleCleanupAction } from "./cleanup-roles";
+
+export { runCleanupUsers } from "./cleanup-users";
+export type { CleanupUsersOptions, UserCleanupAction } from "./cleanup-users";
+
 export { runAuditAll, auditNames } from "./audit-all";
 export type { AuditAllOptions } from "./audit-all";
 

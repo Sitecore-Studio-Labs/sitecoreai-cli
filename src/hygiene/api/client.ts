@@ -226,6 +226,41 @@ export interface HygieneApiClient {
    * can wrap with bounded concurrency.
    */
   getUserDetail(userName: string): Promise<UserDetail | null>;
+  /** Delete a user account. */
+  deleteUser(userName: string): Promise<void>;
+  /** Delete a role. */
+  deleteRole(roleName: string): Promise<void>;
+  /**
+   * Execute a workflow command on an item. Used by
+   * `cleanup workflow advance` to push stale in-flight items
+   * to their next state.
+   */
+  executeWorkflowCommand(input: {
+    commandId: string;
+    itemId?: string;
+    path?: string;
+    comments?: string;
+  }): Promise<{
+    successful: boolean;
+    nextStateId: string | null;
+    message: string | null;
+  }>;
+  /**
+   * Resolve a workflow's available commands at a given state. Used by
+   * the cleanup task to map a human-friendly command name (e.g.
+   * "Submit") to its commandId for the current state.
+   */
+  /**
+   * Resolve the workflow commands available for a specific item.
+   * The Authoring API's `Workflow.commands` requires a
+   * state-or-item context (`WorkflowStateOrItemQueryInput`) — same
+   * workflow can expose different commands depending on the item's
+   * current state.
+   */
+  getWorkflowCommandsForItem(input: {
+    workflowId: string;
+    itemId: string;
+  }): Promise<Array<{ commandId: string; displayName: string }>>;
 }
 
 export interface UserSummary {
@@ -480,6 +515,35 @@ query($userName: String!) {
   }
 }`;
 
+const DELETE_USER_MUTATION = `
+mutation($input: DeleteUserInput!) {
+  deleteUser(input: $input) { successful }
+}`;
+
+const DELETE_ROLE_MUTATION = `
+mutation($input: DeleteRoleInput!) {
+  deleteRole(input: $input) { successful }
+}`;
+
+const EXECUTE_WORKFLOW_COMMAND_MUTATION = `
+mutation($input: ExecuteWorkflowCommandInput!) {
+  executeWorkflowCommand(input: $input) {
+    successful
+    nextStateId
+    message
+    error
+  }
+}`;
+
+const GET_WORKFLOW_COMMANDS_FOR_ITEM_QUERY = `
+query($workflowId: String!, $itemId: ID!) {
+  workflow(where: { workflowId: $workflowId }) {
+    commands(query: { item: { itemId: $itemId } }) {
+      nodes { commandId displayName }
+    }
+  }
+}`;
+
 const DELETE_ARCHIVED_ITEM_MUTATION = `
 mutation($input: DeleteArchivedItemInput!) {
   deleteArchivedItem(input: $input) {
@@ -598,6 +662,21 @@ type GraphQLUserDetailResponse = {
       lastLoginDate: string | null;
       lastActivityDate: string | null;
     } | null;
+  } | null;
+};
+type GraphQLDeleteUserResponse = { deleteUser: { successful: boolean } | null };
+type GraphQLDeleteRoleResponse = { deleteRole: { successful: boolean } | null };
+type GraphQLExecuteWorkflowCommandResponse = {
+  executeWorkflowCommand: {
+    successful: boolean;
+    nextStateId: string | null;
+    message: string | null;
+    error: string | null;
+  } | null;
+};
+type GraphQLWorkflowCommandsResponse = {
+  workflow: {
+    commands: { nodes: Array<{ commandId: string; displayName: string }> } | null;
   } | null;
 };
 type GraphQLArchiveVersionResponse = {
@@ -1252,6 +1331,83 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     };
   };
 
+  const deleteUser = async (userName: string): Promise<void> => {
+    const data = await runHygieneAuthoringGraphQL<GraphQLDeleteUserResponse>(
+      environment,
+      DELETE_USER_MUTATION,
+      { input: { userName } },
+      writeRequest
+    );
+    if (!data.deleteUser?.successful) {
+      throw createScaiError(
+        `deleteUser returned successful=${data.deleteUser?.successful} for ${userName}`,
+        "UNKNOWN"
+      );
+    }
+  };
+
+  const deleteRole = async (roleName: string): Promise<void> => {
+    const data = await runHygieneAuthoringGraphQL<GraphQLDeleteRoleResponse>(
+      environment,
+      DELETE_ROLE_MUTATION,
+      { input: { roleName } },
+      writeRequest
+    );
+    if (!data.deleteRole?.successful) {
+      throw createScaiError(
+        `deleteRole returned successful=${data.deleteRole?.successful} for ${roleName}`,
+        "UNKNOWN"
+      );
+    }
+  };
+
+  const executeWorkflowCommand = async (input: {
+    commandId: string;
+    itemId?: string;
+    path?: string;
+    comments?: string;
+  }): Promise<{ successful: boolean; nextStateId: string | null; message: string | null }> => {
+    if (!input.itemId && !input.path) {
+      throw createScaiError(
+        "executeWorkflowCommand requires either itemId or path.",
+        "INPUT_INVALID"
+      );
+    }
+    const itemInput: Record<string, unknown> = { database: "master" };
+    if (input.itemId) itemInput.itemId = input.itemId;
+    else if (input.path) itemInput.path = input.path;
+    const payload: Record<string, unknown> = {
+      commandId: input.commandId,
+      item: itemInput,
+    };
+    if (input.comments !== undefined) payload.comments = input.comments;
+    const data = await runHygieneAuthoringGraphQL<GraphQLExecuteWorkflowCommandResponse>(
+      environment,
+      EXECUTE_WORKFLOW_COMMAND_MUTATION,
+      { input: payload },
+      writeRequest
+    );
+    const r = data.executeWorkflowCommand;
+    return {
+      successful: r?.successful ?? false,
+      nextStateId: r?.nextStateId ?? null,
+      message: r?.message ?? r?.error ?? null,
+    };
+  };
+
+  const getWorkflowCommandsForItem = async (input: {
+    workflowId: string;
+    itemId: string;
+  }): Promise<Array<{ commandId: string; displayName: string }>> => {
+    const data = await runHygieneAuthoringGraphQL<GraphQLWorkflowCommandsResponse>(
+      environment,
+      GET_WORKFLOW_COMMANDS_FOR_ITEM_QUERY,
+      { workflowId: input.workflowId, itemId: input.itemId },
+      readRequest
+    );
+    return data.workflow?.commands?.nodes ?? [];
+  };
+
   return {
     search,
     searchAll,
@@ -1273,6 +1429,10 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     listUsers,
     listRoles,
     getUserDetail,
+    deleteUser,
+    deleteRole,
+    executeWorkflowCommand,
+    getWorkflowCommandsForItem,
   };
 };
 

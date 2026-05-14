@@ -186,9 +186,7 @@ export const runCleanupWorkflowApply = async (
   const includeSystem = Boolean(options.includeSystem);
   const staleDays = options.staleDays;
   const cutoff =
-    staleDays !== undefined && staleDays > 0
-      ? Date.now() - staleDays * 24 * 60 * 60 * 1000
-      : null;
+    staleDays !== undefined && staleDays > 0 ? Date.now() - staleDays * 24 * 60 * 60 * 1000 : null;
 
   // Phase 2: resolve root → itemId for the `_path` filter.
   const rootSearch = await client.search({
@@ -249,15 +247,10 @@ export const runCleanupWorkflowApply = async (
         const existingWorkflowGuid = existingWf?.workflowId
           ? normalizeItemId(existingWf.workflowId)
           : null;
-        const existingStateGuid = existingWf?.stateId
-          ? normalizeItemId(existingWf.stateId)
-          : null;
+        const existingStateGuid = existingWf?.stateId ? normalizeItemId(existingWf.stateId) : null;
 
         // Already on the target workflow + state — idempotent skip.
-        if (
-          existingWorkflowGuid === targetWorkflowGuid &&
-          existingStateGuid === targetStateGuid
-        ) {
+        if (existingWorkflowGuid === targetWorkflowGuid && existingStateGuid === targetStateGuid) {
           return {
             itemId: c.itemId,
             path: c.path,
@@ -273,7 +266,11 @@ export const runCleanupWorkflowApply = async (
         }
 
         // Attached to a different workflow and we're not reattaching.
-        if (existingWorkflowGuid && existingWorkflowGuid !== targetWorkflowGuid && !options.reattach) {
+        if (
+          existingWorkflowGuid &&
+          existingWorkflowGuid !== targetWorkflowGuid &&
+          !options.reattach
+        ) {
           return {
             itemId: c.itemId,
             path: c.path,
@@ -456,7 +453,11 @@ const buildCandidateStatement = (
     criteria: { field: string; value: string; criteriaType: "EXACT" | "CONTAINS" };
   }> = [];
   if (rootItemId) {
-    clauses.push(buildPathFilterStatement(rootItemId) as { criteria: { field: string; value: string; criteriaType: "CONTAINS" } });
+    clauses.push(
+      buildPathFilterStatement(rootItemId) as {
+        criteria: { field: string; value: string; criteriaType: "CONTAINS" };
+      }
+    );
   }
   if (templateId) {
     clauses.push({

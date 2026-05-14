@@ -271,7 +271,7 @@ describe("cleanup workflow-advance — advance logic", () => {
 
   it("captures execution failures without aborting the run", async () => {
     setup();
-    const client = stub({
+    stub({
       search: vi.fn().mockResolvedValue({
         totalCount: 1,
         results: [{ itemId: "rootid", path: "/sitecore/content/MySite" }],

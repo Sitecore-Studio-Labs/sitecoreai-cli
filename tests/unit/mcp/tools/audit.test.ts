@@ -82,8 +82,7 @@ const historyMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
+  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
   return { ...actual, ...hygieneMocks };
 });
 vi.mock("../../../../src/hygiene/baseline", () => ({ ...baselineMocks }));
@@ -202,9 +201,7 @@ describe("audit_inspect — CLI/MCP parity", () => {
     // future drift.
     for (const name of names) {
       await expect(
-        reg
-          .getTool("audit_inspect")!
-          .handler({ verb: "run", audit: name }, fakeContext, fakeExtra),
+        reg.getTool("audit_inspect")!.handler({ verb: "run", audit: name }, fakeContext, fakeExtra),
         `audit '${name}' should be dispatchable`
       ).resolves.toBeDefined();
     }

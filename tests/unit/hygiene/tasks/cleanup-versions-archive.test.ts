@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config";
-import type {
-  HygieneApiClient,
-  ItemVersion,
-  SearchPage,
-} from "../../../../src/hygiene/api/client";
+import type { HygieneApiClient, ItemVersion, SearchPage } from "../../../../src/hygiene/api/client";
 import { runCleanupVersionsArchive } from "../../../../src/hygiene/tasks/cleanup-versions-archive";
 
 vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
@@ -227,7 +223,7 @@ describe("cleanup versions archive — archive logic", () => {
 
   it("collects per-version errors without aborting the run", async () => {
     setup();
-    const client = stub({
+    stub({
       search: vi.fn().mockResolvedValue({
         totalCount: 1,
         results: [{ itemId: "rootid", path: "/sitecore/content/MySite" }],

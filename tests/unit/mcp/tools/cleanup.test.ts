@@ -22,8 +22,7 @@ const hygieneMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
+  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
   return { ...actual, ...hygieneMocks };
 });
 
@@ -92,6 +91,48 @@ describe("cleanup_execute — verb routing", () => {
       unknown
     >;
     expect(call.commandName).toBe("Submit");
+    expect(call.allowWrite).toBe(true);
+    expect(call.whatIf).toBe(false);
+  });
+
+  it("verb='workflow-apply' requires workflow", async () => {
+    const reg = await setup();
+    await expect(
+      reg.getTool("cleanup_execute")!.handler(
+        {
+          verb: "workflow-apply",
+          allowWrite: true,
+        },
+        fakeContext,
+        fakeExtra
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='workflow-apply' forwards workflow + template + reattach + maxApplies to the runner", async () => {
+    const reg = await setup();
+    await reg.getTool("cleanup_execute")!.handler(
+      {
+        verb: "workflow-apply",
+        workflow: "Article Workflow",
+        template: "/sitecore/templates/Foundation/Article",
+        reattach: true,
+        maxApplies: 50,
+        root: "/sitecore/content/MySite",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    const call = hygieneMocks.runCleanupWorkflowApply.mock.calls.at(-1)?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(call.workflow).toBe("Article Workflow");
+    expect(call.template).toBe("/sitecore/templates/Foundation/Article");
+    expect(call.reattach).toBe(true);
+    expect(call.maxApplies).toBe(50);
+    expect(call.root).toBe("/sitecore/content/MySite");
     expect(call.allowWrite).toBe(true);
     expect(call.whatIf).toBe(false);
   });
@@ -192,9 +233,7 @@ describe("cleanup_execute — CLI/MCP parity", () => {
     // — that was the bug for workflow + site-residue before this fix.
     for (const group of cliGroups) {
       const matched = mcpVerbs.some((v) => v === group || v.startsWith(`${group}-`));
-      expect(matched, `CLI cleanup group '${group}' has no MCP verb in cleanup_execute`).toBe(
-        true
-      );
+      expect(matched, `CLI cleanup group '${group}' has no MCP verb in cleanup_execute`).toBe(true);
     }
   });
 

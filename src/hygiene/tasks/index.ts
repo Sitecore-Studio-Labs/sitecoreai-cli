@@ -115,11 +115,7 @@ export { runAuditEmptyLinks } from "./audit-empty-links";
 export type { AuditEmptyLinksOptions, EmptyLinkReport } from "./audit-empty-links";
 
 export { runCleanupFieldSet } from "./cleanup-field-set";
-export type {
-  CleanupFieldSetOptions,
-  FieldSetAction,
-  FieldSetMode,
-} from "./cleanup-field-set";
+export type { CleanupFieldSetOptions, FieldSetAction, FieldSetMode } from "./cleanup-field-set";
 
 export { runCleanupPublish } from "./cleanup-publish";
 export type { CleanupPublishOptions, PublishAction } from "./cleanup-publish";

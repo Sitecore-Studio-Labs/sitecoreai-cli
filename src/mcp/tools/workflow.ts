@@ -74,30 +74,19 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         .describe(
           "Content-tree root for verb='list-defs' (defaults to /sitecore/system/Workflows)."
         ),
-      site: z
-        .string()
-        .optional()
-        .describe("Site identifier. Required for verb='status'."),
+      site: z.string().optional().describe("Site identifier. Required for verb='status'."),
       contentEnvironmentId: z
         .string()
         .optional()
-        .describe(
-          "Optional Content Services environment ID for verb='status' (e.g. 'main')."
-        ),
-      state: z
-        .string()
-        .optional()
-        .describe("Workflow state GUID. Required for verb='assigned'."),
+        .describe("Optional Content Services environment ID for verb='status' (e.g. 'main')."),
+      state: z.string().optional().describe("Workflow state GUID. Required for verb='assigned'."),
       field: z
         .string()
         .optional()
         .describe(
           "Search field override for verb='assigned' (default: '__workflow state'). Use '__workflow_state' if the default returns no hits."
         ),
-      index: z
-        .string()
-        .optional()
-        .describe("Override the search index (verb='assigned')."),
+      index: z.string().optional().describe("Override the search index (verb='assigned')."),
       limit: z
         .number()
         .int()
@@ -333,10 +322,7 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
       switch (input.verb) {
         case "advance": {
           if (!input.item || !input.command) {
-            throw createScaiError(
-              "verb='advance' requires `item` and `command`.",
-              "INPUT_INVALID"
-            );
+            throw createScaiError("verb='advance' requires `item` and `command`.", "INPUT_INVALID");
           }
           const result = await runWorkflowAdvance({
             ...taskOpts,
@@ -411,10 +397,7 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
 
         case "bulk-advance": {
           if (!input.commandName) {
-            throw createScaiError(
-              "verb='bulk-advance' requires `commandName`.",
-              "INPUT_INVALID"
-            );
+            throw createScaiError("verb='bulk-advance' requires `commandName`.", "INPUT_INVALID");
           }
           // Delegates to the existing `runCleanupWorkflowAdvance` task
           // — same semantics as `scai cleanup workflow advance`. Kept
@@ -451,10 +434,7 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
 
         case "bulk-apply": {
           if (!input.workflow) {
-            throw createScaiError(
-              "verb='bulk-apply' requires `workflow`.",
-              "INPUT_INVALID"
-            );
+            throw createScaiError("verb='bulk-apply' requires `workflow`.", "INPUT_INVALID");
           }
           // Delegates to `runCleanupWorkflowApply` — same semantics as
           // `scai cleanup workflow apply`. Workflow-shaped here for

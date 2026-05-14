@@ -44,30 +44,54 @@ import type { McpRegistry } from "../registry";
 import { allowWriteShape, whatIfShape } from "../schemas/common";
 
 /**
+ * Loose-typed runner shape. The MCP boundary hands every runner an
+ * untyped `Record<string, unknown>` option bag; the routing table
+ * forwards verbatim.
+ */
+type LoosedRunner = (options: Record<string, unknown>) => Promise<readonly unknown[]>;
+
+/**
+ * Convert a typed runner into the loose-typed dispatch shape. Replaces
+ * the prior `as never` casts. Still an unsafe cast at its core, but
+ * localized to one helper *and* the caller's runner is required to
+ * return `Promise<readonly X[]>` — so if a runner is refactored to
+ * return a non-array (the way `runCleanupDeadTemplates` historically
+ * did), the call to `loosen` fails type-check and surfaces the bug
+ * here instead of leaking into the dispatch path.
+ */
+const loosen = <O>(fn: (options: O) => Promise<readonly unknown[]>): LoosedRunner =>
+  fn as unknown as LoosedRunner;
+
+/**
  * Cleanup verb registry — verb name → task runner. Each runner accepts
  * an option bag whose shape varies per verb; the input schema below
  * documents which options each verb honors.
+ *
+ * Dead-templates returns `{templates, folders}` rather than a flat
+ * array, so it gets an inline flatten so the dispatch handler can treat
+ * every runner's output uniformly (`actions.length`, iterable for
+ * `summarizeActions`).
  */
-const CLEANUP_RUNNERS: Record<
-  string,
-  (options: Record<string, unknown>) => Promise<unknown[]>
-> = {
-  "versions-prune": runCleanupVersionsPrune as never,
-  "versions-archive": runCleanupVersionsArchive as never,
-  "archive-purge": runCleanupArchivePurge as never,
-  "dead-templates": runCleanupDeadTemplates as never,
-  duplicates: runCleanupDuplicates as never,
-  "empty-folders": runCleanupEmptyFolders as never,
-  "field-set": runCleanupFieldSet as never,
-  "find-replace": runCleanupFindReplace as never,
-  "language-versions-add": runCleanupLanguageVersionAdd as never,
-  publish: runCleanupPublish as never,
-  rename: runCleanupRename as never,
-  roles: runCleanupRoles as never,
-  "site-residue": runCleanupSiteResidue as never,
-  users: runCleanupUsers as never,
-  "workflow-advance": runCleanupWorkflowAdvance as never,
-  "workflow-apply": runCleanupWorkflowApply as never,
+const CLEANUP_RUNNERS: Record<string, LoosedRunner> = {
+  "versions-prune": loosen(runCleanupVersionsPrune),
+  "versions-archive": loosen(runCleanupVersionsArchive),
+  "archive-purge": loosen(runCleanupArchivePurge),
+  "dead-templates": loosen(async (options: Parameters<typeof runCleanupDeadTemplates>[0]) => {
+    const r = await runCleanupDeadTemplates(options);
+    return [...r.templates, ...r.folders.map((f) => ({ ...f, kind: "folder" as const }))];
+  }),
+  duplicates: loosen(runCleanupDuplicates),
+  "empty-folders": loosen(runCleanupEmptyFolders),
+  "field-set": loosen(runCleanupFieldSet),
+  "find-replace": loosen(runCleanupFindReplace),
+  "language-versions-add": loosen(runCleanupLanguageVersionAdd),
+  publish: loosen(runCleanupPublish),
+  rename: loosen(runCleanupRename),
+  roles: loosen(runCleanupRoles),
+  "site-residue": loosen(runCleanupSiteResidue),
+  users: loosen(runCleanupUsers),
+  "workflow-advance": loosen(runCleanupWorkflowAdvance),
+  "workflow-apply": loosen(runCleanupWorkflowApply),
 };
 
 /**
@@ -117,28 +141,19 @@ const validateVerbInputs = (verb: string, input: Record<string, unknown>): void 
       break;
     case "workflow-advance":
       if (!input.commandName) {
-        throw createScaiError(
-          "verb='workflow-advance' requires `commandName`.",
-          "INPUT_INVALID"
-        );
+        throw createScaiError("verb='workflow-advance' requires `commandName`.", "INPUT_INVALID");
       }
       break;
     case "workflow-apply":
       if (!input.workflow) {
-        throw createScaiError(
-          "verb='workflow-apply' requires `workflow`.",
-          "INPUT_INVALID"
-        );
+        throw createScaiError("verb='workflow-apply' requires `workflow`.", "INPUT_INVALID");
       }
       break;
     case "field-set":
       if (!input.field) {
         throw createScaiError("verb='field-set' requires `field`.", "INPUT_INVALID");
       }
-      if (
-        input.mode !== "clear" &&
-        (input.value === undefined || input.value === null)
-      ) {
+      if (input.mode !== "clear" && (input.value === undefined || input.value === null)) {
         throw createScaiError(
           `verb='field-set' requires \`value\` (mode='${(input.mode as string) ?? "replace"}').`,
           "INPUT_INVALID"
@@ -147,10 +162,7 @@ const validateVerbInputs = (verb: string, input: Record<string, unknown>): void 
       break;
     case "publish":
       if (!input.items && !input.root) {
-        throw createScaiError(
-          "verb='publish' requires `items` or `root`.",
-          "INPUT_INVALID"
-        );
+        throw createScaiError("verb='publish' requires `items` or `root`.", "INPUT_INVALID");
       }
       break;
     case "rename":
@@ -172,7 +184,7 @@ const validateVerbInputs = (verb: string, input: Record<string, unknown>): void 
   }
 };
 
-const summarizeActions = (verb: string, actions: unknown[]): string => {
+const summarizeActions = (verb: string, actions: readonly unknown[]): string => {
   const counts = new Map<string, number>();
   for (const a of actions) {
     const status = (a as { status?: string }).status ?? "unknown";
@@ -383,10 +395,7 @@ const cleanupInputSchema = () =>
       .describe(
         "archive-purge: only purge items archived more than N days ago. Default 30. Setting to 0 purges every archived item."
       ),
-    archiveName: z
-      .string()
-      .optional()
-      .describe("archive-purge: limit to one archive name."),
+    archiveName: z.string().optional().describe("archive-purge: limit to one archive name."),
     pageSize: z
       .number()
       .int()
@@ -427,9 +436,7 @@ const cleanupInputSchema = () =>
       .positive()
       .max(10_000)
       .optional()
-      .describe(
-        "Blast-radius cap. Default per-verb (empty-folders 500, roles 50, users 25)."
-      ),
+      .describe("Blast-radius cap. Default per-verb (empty-folders 500, roles 50, users 25)."),
 
     // find-replace
     pattern: z
@@ -452,10 +459,7 @@ const cleanupInputSchema = () =>
       .string()
       .optional()
       .describe("find-replace: regex flags string (e.g. 'gim'). Mutually exclusive with literal."),
-    fields: z
-      .array(z.string())
-      .optional()
-      .describe("find-replace: restrict to these field names."),
+    fields: z.array(z.string()).optional().describe("find-replace: restrict to these field names."),
     batchSize: z
       .number()
       .int()
@@ -468,14 +472,8 @@ const cleanupInputSchema = () =>
       .positive()
       .optional()
       .describe("find-replace: scan-page parallelism."),
-    cache: z
-      .boolean()
-      .optional()
-      .describe("find-replace: enable on-disk field cache."),
-    exclude: z
-      .array(z.string())
-      .optional()
-      .describe("find-replace: glob patterns to exclude."),
+    cache: z.boolean().optional().describe("find-replace: enable on-disk field cache."),
+    exclude: z.array(z.string()).optional().describe("find-replace: glob patterns to exclude."),
 
     // roles
     domain: z
@@ -543,9 +541,7 @@ const cleanupInputSchema = () =>
       .int()
       .nonnegative()
       .optional()
-      .describe(
-        "workflow-advance: items not updated for this many days are eligible. Default 30."
-      ),
+      .describe("workflow-advance: items not updated for this many days are eligible. Default 30."),
     maxAdvances: z
       .number()
       .int()
@@ -702,5 +698,7 @@ const cleanupInputSchema = () =>
       .positive()
       .max(50_000)
       .optional()
-      .describe("language-versions-add: cap on (item, language) versions created per run. Default 500."),
+      .describe(
+        "language-versions-add: cap on (item, language) versions created per run. Default 500."
+      ),
   }) as const;

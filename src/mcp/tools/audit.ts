@@ -68,41 +68,56 @@ import type { McpRegistry } from "../registry";
 import { allowWriteShape } from "../schemas/common";
 
 /**
- * Routing table for `audit_inspect` verb=run. The list mirrors
- * `AUDIT_REGISTRY` in `src/hygiene/tasks/audit-all.ts`. We can't import
- * that array directly because each entry there is typed `as never`; we
- * need typed runners to coerce the input options here.
+ * Loose-typed runner shape — the dispatch path hands every runner a
+ * `Record<string, unknown>` option bag because the MCP boundary doesn't
+ * know the per-audit option type at compile time.
  */
-const SINGLE_AUDIT_RUNNERS: Record<
-  string,
-  (options: Record<string, unknown>) => Promise<unknown[]>
-> = {
-  "alt-text-missing": runAuditAltTextMissing as never,
-  "broken-images": runAuditBrokenImages as never,
-  "broken-links": runAuditBrokenLinks as never,
-  "datasource-missing": runAuditDatasourceMissing as never,
-  "dead-templates": runAuditDeadTemplates as never,
-  duplicates: runAuditDuplicates as never,
-  "empty-items": runAuditEmptyItems as never,
-  "empty-links": runAuditEmptyLinks as never,
-  "empty-roles": runAuditEmptyRoles as never,
-  "fallback-drift": runAuditFallbackDrift as never,
-  "find-replace": runAuditFindReplace as never,
-  "heavy-templates": runAuditHeavyTemplates as never,
-  "language-data": runAuditLanguageData as never,
-  "large-fields": runAuditLargeFields as never,
-  "missing-meta": runAuditMissingMeta as never,
-  orphans: runAuditOrphans as never,
-  "page-design-orphans": runAuditPageDesignOrphans as never,
-  "personalization-broken": runAuditPersonalizationBroken as never,
-  "role-bloat": runAuditRoleBloat as never,
-  "site-residue": runAuditSiteResidue as never,
-  "slug-conflicts": runAuditSlugConflicts as never,
-  "stale-content": runAuditStaleContent as never,
-  "stale-users": runAuditStaleUsers as never,
-  "stale-workflow": runAuditStaleWorkflow as never,
-  "translation-coverage": runAuditTranslationCoverage as never,
-  "unused-media": runAuditUnusedMedia as never,
+type LoosedRunner = (options: Record<string, unknown>) => Promise<readonly unknown[]>;
+
+/**
+ * Convert a typed runner into a loose-typed one for the dispatch table.
+ * The inner cast is the same unsafe move that `as never` used to make,
+ * but it's localized to one helper *and* it requires the caller to
+ * supply a function whose return type is `Promise<readonly X[]>` — so
+ * if a runner ever stops returning a flat array (the way
+ * `runCleanupDeadTemplates` does — see cleanup.ts for the workaround),
+ * the call to `loosen` fails type-check and the bug surfaces here
+ * instead of in production.
+ */
+const loosen = <O>(fn: (options: O) => Promise<readonly unknown[]>): LoosedRunner =>
+  fn as unknown as LoosedRunner;
+
+/**
+ * Routing table for `audit_inspect` verb=run. The list mirrors
+ * `AUDIT_REGISTRY` in `src/hygiene/tasks/audit-all.ts`.
+ */
+const SINGLE_AUDIT_RUNNERS: Record<string, LoosedRunner> = {
+  "alt-text-missing": loosen(runAuditAltTextMissing),
+  "broken-images": loosen(runAuditBrokenImages),
+  "broken-links": loosen(runAuditBrokenLinks),
+  "datasource-missing": loosen(runAuditDatasourceMissing),
+  "dead-templates": loosen(runAuditDeadTemplates),
+  duplicates: loosen(runAuditDuplicates),
+  "empty-items": loosen(runAuditEmptyItems),
+  "empty-links": loosen(runAuditEmptyLinks),
+  "empty-roles": loosen(runAuditEmptyRoles),
+  "fallback-drift": loosen(runAuditFallbackDrift),
+  "find-replace": loosen(runAuditFindReplace),
+  "heavy-templates": loosen(runAuditHeavyTemplates),
+  "language-data": loosen(runAuditLanguageData),
+  "large-fields": loosen(runAuditLargeFields),
+  "missing-meta": loosen(runAuditMissingMeta),
+  orphans: loosen(runAuditOrphans),
+  "page-design-orphans": loosen(runAuditPageDesignOrphans),
+  "personalization-broken": loosen(runAuditPersonalizationBroken),
+  "role-bloat": loosen(runAuditRoleBloat),
+  "site-residue": loosen(runAuditSiteResidue),
+  "slug-conflicts": loosen(runAuditSlugConflicts),
+  "stale-content": loosen(runAuditStaleContent),
+  "stale-users": loosen(runAuditStaleUsers),
+  "stale-workflow": loosen(runAuditStaleWorkflow),
+  "translation-coverage": loosen(runAuditTranslationCoverage),
+  "unused-media": loosen(runAuditUnusedMedia),
 };
 
 const baseTaskOptions = (
@@ -144,9 +159,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
       root: z
         .string()
         .optional()
-        .describe(
-          "Content-tree root to scope the audit to. Default `/sitecore/content`."
-        ),
+        .describe("Content-tree root to scope the audit to. Default `/sitecore/content`."),
       limit: z
         .number()
         .int()
@@ -168,10 +181,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
         .string()
         .optional()
         .describe("ISO-8601 datetime — restrict to items updated since this instant."),
-      owner: z
-        .string()
-        .optional()
-        .describe("Filter to items last-updated by this user."),
+      owner: z.string().optional().describe("Filter to items last-updated by this user."),
       baseline: z
         .boolean()
         .optional()
@@ -207,9 +217,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
         case "list": {
           const names = auditNames();
           return {
-            content: [
-              { type: "text", text: `${names.length} audit(s) registered.` },
-            ],
+            content: [{ type: "text", text: `${names.length} audit(s) registered.` }],
             structuredContent: { verb: input.verb, audits: names },
           };
         }
@@ -328,9 +336,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
           const snapshots = listHistory({ envName: context.envName, configDir });
           // Invoke the task runner too, so the logger trail mirrors the CLI
           // (no-op when quiet=true; included for parity with other tools).
-          await runHistoryList(
-            baseTaskOptions(context.configPath, context.envName) as never
-          );
+          await runHistoryList(baseTaskOptions(context.configPath, context.envName) as never);
           return {
             content: [
               {
@@ -348,9 +354,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
         case "history-diff": {
           // runHistoryDiff prints; we need the structured diff too.
           // Re-implement against the same primitives.
-          const { listHistory, loadSnapshot, diffSnapshots } = await import(
-            "@/hygiene/history"
-          );
+          const { listHistory, loadSnapshot, diffSnapshots } = await import("@/hygiene/history");
           const path = await import("node:path");
           const configDir = context.configPath?.endsWith(".json")
             ? path.dirname(context.configPath)
@@ -427,10 +431,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
         .describe(
           "For `update`: drop existing entries for the target audits before re-running, instead of merging. Default false (merge)."
         ),
-      root: z
-        .string()
-        .optional()
-        .describe("Forwarded to the audit run when `verb='update'`."),
+      root: z.string().optional().describe("Forwarded to the audit run when `verb='update'`."),
       limit: z
         .number()
         .int()
@@ -564,10 +565,7 @@ export const registerAuditTools = (registry: McpRegistry): void => {
         .describe(
           "Path to the suite YAML file. Resolved relative to the MCP server's working directory."
         ),
-      baseline: z
-        .boolean()
-        .optional()
-        .describe("Override the suite's `baseline.enabled` setting."),
+      baseline: z.boolean().optional().describe("Override the suite's `baseline.enabled` setting."),
       output: z
         .string()
         .optional()

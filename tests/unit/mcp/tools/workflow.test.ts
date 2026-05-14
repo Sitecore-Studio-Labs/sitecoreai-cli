@@ -40,9 +40,31 @@ const taskMocks = vi.hoisted(() => ({
     commandUsed: "Submit",
     status: "advanced",
   }),
+  runWorkflowReset: vi.fn(),
+  runWorkflowApply: vi.fn(),
+}));
+
+const hygieneTaskMocks = vi.hoisted(() => ({
+  runCleanupWorkflowAdvance: vi.fn().mockResolvedValue([]),
+  runCleanupWorkflowApply: vi.fn().mockResolvedValue([
+    {
+      itemId: "x",
+      path: "/sitecore/content/x/Page1",
+      templateId: null,
+      workflowItemId: "wf-1",
+      workflowName: "Article Workflow",
+      stateItemId: "s1",
+      stateName: "Draft",
+      status: "applied",
+    },
+  ]),
 }));
 
 vi.mock("../../../../src/workflow/tasks", () => ({ ...taskMocks }));
+vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
+  return { ...actual, ...hygieneTaskMocks };
+});
 
 const fakeContext: McpContext = {
   envName: "test-env",
@@ -97,11 +119,13 @@ describe("workflow_inspect tool", () => {
 
   it("routes verb='list-defs' to runWorkflowListDefs with optional root", async () => {
     const reg = await setup();
-    await reg.getTool("workflow_inspect")!.handler(
-      { verb: "list-defs", root: "/sitecore/system/Workflows/Editorial" },
-      fakeContext,
-      fakeExtra
-    );
+    await reg
+      .getTool("workflow_inspect")!
+      .handler(
+        { verb: "list-defs", root: "/sitecore/system/Workflows/Editorial" },
+        fakeContext,
+        fakeExtra
+      );
     expect(taskMocks.runWorkflowListDefs).toHaveBeenCalledWith(
       expect.objectContaining({ root: "/sitecore/system/Workflows/Editorial" })
     );
@@ -116,11 +140,13 @@ describe("workflow_inspect tool", () => {
 
   it("routes verb='assigned' with --field override", async () => {
     const reg = await setup();
-    await reg.getTool("workflow_inspect")!.handler(
-      { verb: "assigned", state: "s1", field: "__workflow_state", limit: 50 },
-      fakeContext,
-      fakeExtra
-    );
+    await reg
+      .getTool("workflow_inspect")!
+      .handler(
+        { verb: "assigned", state: "s1", field: "__workflow_state", limit: 50 },
+        fakeContext,
+        fakeExtra
+      );
     expect(taskMocks.runWorkflowAssigned).toHaveBeenCalledWith(
       expect.objectContaining({ state: "s1", field: "__workflow_state", limit: 50 })
     );
@@ -157,5 +183,69 @@ describe("workflow_lifecycle tool", () => {
       })
     );
     expect(result.structuredContent).toMatchObject({ verb: "advance" });
+  });
+
+  it("verb='bulk-apply' requires workflow", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler({ verb: "bulk-apply", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='bulk-apply' to runCleanupWorkflowApply with workflow + template + reattach", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "bulk-apply",
+        workflow: "Article Workflow",
+        template: "/sitecore/templates/Foundation/Article",
+        reattach: true,
+        maxApplies: 25,
+        root: "/sitecore/content/MySite",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(hygieneTaskMocks.runCleanupWorkflowApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: "Article Workflow",
+        template: "/sitecore/templates/Foundation/Article",
+        reattach: true,
+        maxApplies: 25,
+        root: "/sitecore/content/MySite",
+        allowWrite: true,
+      })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "bulk-apply" });
+    expect(result.content[0]!.text).toContain("attached");
+  });
+
+  it("verb='bulk-apply' with whatIf=true reports the plan", async () => {
+    hygieneTaskMocks.runCleanupWorkflowApply.mockResolvedValueOnce([
+      {
+        itemId: "x",
+        path: "/sitecore/content/x/Page1",
+        templateId: null,
+        workflowItemId: "wf-1",
+        workflowName: "Article Workflow",
+        stateItemId: "s1",
+        stateName: "Draft",
+        status: "what-if",
+      },
+    ]);
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "bulk-apply",
+        workflow: "Article Workflow",
+        whatIf: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(result.content[0]!.text).toContain("would attach");
   });
 });

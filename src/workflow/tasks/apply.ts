@@ -143,7 +143,9 @@ export const runWorkflowApply = async (
     }
     targetStateId = initialStateId;
     const initial = workflowDetail.states.find(
-      (s) => s.itemId.replace(/[{}]/g, "").toLowerCase() === initialStateId.replace(/[{}]/g, "").toLowerCase()
+      (s) =>
+        s.itemId.replace(/[{}]/g, "").toLowerCase() ===
+        initialStateId.replace(/[{}]/g, "").toLowerCase()
     );
     targetStateName = initial?.displayName ?? initial?.name ?? null;
   }

@@ -52,14 +52,16 @@ const WORKFLOW_DETAIL = {
   ],
 } as never;
 
-const stubWorkflowClient = (
-  overrides: Partial<WorkflowApiClient> = {}
-): WorkflowApiClient => {
+const stubWorkflowClient = (overrides: Partial<WorkflowApiClient> = {}): WorkflowApiClient => {
   const base = {
     getWorkflowDefinitionDetail: vi.fn().mockResolvedValue(WORKFLOW_DETAIL),
     getWorkflowInitialStateId: vi.fn().mockResolvedValue(WORKFLOW_DETAIL.states[0]!.itemId),
     findWorkflowDefinitionByName: vi.fn().mockResolvedValue({
-      summary: { itemId: WORKFLOW_DETAIL.itemId, name: WORKFLOW_DETAIL.name, path: WORKFLOW_DETAIL.path },
+      summary: {
+        itemId: WORKFLOW_DETAIL.itemId,
+        name: WORKFLOW_DETAIL.name,
+        path: WORKFLOW_DETAIL.path,
+      },
       duplicateMatches: 0,
     }),
     getItemWorkflow: vi.fn().mockResolvedValue(null),
@@ -179,16 +181,11 @@ describe("cleanup workflow-apply — safety rails", () => {
 
   it("rejects an unresolvable template ref", async () => {
     setup();
-    // First search call resolves root, second resolves template (returns
-    // nothing), so the task throws.
+    // Template lookup runs before the root lookup. Return 0 results on
+    // the first search call so the task throws INPUT_INVALID on the
+    // template ref instead of carrying on with a null templateId.
     stubHygieneClient({
-      search: vi
-        .fn()
-        .mockResolvedValueOnce({
-          totalCount: 1,
-          results: [{ itemId: "rootid", path: "/sitecore/content/MySite" }],
-        })
-        .mockResolvedValueOnce({ totalCount: 0, results: [] }),
+      search: vi.fn().mockResolvedValue({ totalCount: 0, results: [] }),
     });
     stubWorkflowClient();
     await expect(

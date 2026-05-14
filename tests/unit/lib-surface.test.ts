@@ -128,6 +128,31 @@ describe("public library surface — /serialization", () => {
   });
 });
 
+describe("public library surface — /brand", () => {
+  it("exports the AI Skills auth primitives, transport seam, and Brand Review op", async () => {
+    const brand = await import("../../src/brand/index");
+
+    // Auth surface.
+    expect(typeof brand.acquireAiSkillsToken).toBe("function");
+    expect(typeof brand.extractScopes).toBe("function");
+    expect(typeof brand.hasAiSkillsScopes).toBe("function");
+    expect([...brand.AI_SKILLS_REQUIRED_SCOPES]).toEqual([
+      "ai.org.brd:r",
+      "ai.org.brd:w",
+      "ai.orgs.br:gen",
+    ]);
+
+    // Transport seam.
+    expect(typeof brand.requestBrandApi).toBe("function");
+    expect(brand.AI_SKILLS_API_HOST).toBe("https://edge-platform.sitecorecloud.io");
+    expect(brand.BRAND_MANAGEMENT_BASE_PATH).toBe("/stream/ai-brands-api");
+    expect(brand.BRAND_REVIEW_BASE_PATH).toBe("/stream/ai-skills-api");
+
+    // Brand Review primitive.
+    expect(typeof brand.generateBrandReview).toBe("function");
+  });
+});
+
 describe("public library surface — /recipe", () => {
   it("compiler + planner + executor entry points resolve", async () => {
     const recipe = await import("../../src/recipe/index");

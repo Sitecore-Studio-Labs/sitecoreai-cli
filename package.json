@@ -36,6 +36,10 @@
       "types": "./dist/shared/errors.d.ts",
       "default": "./dist/shared/errors.js"
     },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "default": "./dist/brand/index.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {

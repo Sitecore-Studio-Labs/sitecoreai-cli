@@ -89,9 +89,9 @@ describe("cleanup dead-templates — safety rails", () => {
   it("requires allowWrite outside --what-if", async () => {
     setup(false);
     stub({});
-    await expect(
-      runCleanupDeadTemplates({ json: true } as never)
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    await expect(runCleanupDeadTemplates({ json: true } as never)).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+    });
   });
 
   it("--what-if bypasses allowWrite enforcement", async () => {

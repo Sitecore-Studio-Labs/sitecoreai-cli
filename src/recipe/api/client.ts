@@ -60,6 +60,18 @@ export interface CreateItemInput {
   /** Default language for versioned fields; defaults to "en". */
   language?: string;
   fields: FieldValue[];
+  /**
+   * When true, the implementation does an authoritative
+   * parent-children lookup BEFORE issuing the create mutation. If a
+   * sibling with `name` already exists, returns its itemId without
+   * mutating. Recipe push opts in because the planner reads existence
+   * via the path index, which lags writes by seconds-to-minutes — so
+   * a rapid second push can plan a create against a path the tenant
+   * already has, and Sitecore's create mutation does not always
+   * reject the duplicate. Off by default for explicit one-shot
+   * createItem calls.
+   */
+  idempotencyCheck?: boolean;
 }
 
 export interface CreateItemResult {

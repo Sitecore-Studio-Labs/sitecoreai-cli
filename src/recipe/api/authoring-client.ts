@@ -579,6 +579,28 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
     async createItem(input: CreateItemInput): Promise<CreateItemResult> {
       const parentItemId = await resolveParentItemId(input.parent);
+      // Optional pre-create idempotency check. The planner reads
+      // existence via `getItem({path})`, which hits Sitecore's path
+      // index — that index lags writes by seconds-to-minutes. On a
+      // rapid second push, the planner can see "missing" and plan a
+      // create against a path the tenant actually already has.
+      // Parent-child storage is not lag-prone, so `findChildByName`
+      // here is authoritative: if the sibling exists, return its
+      // itemId without ever calling the mutation. Catches the case
+      // where Sitecore's create-mutation does NOT reject the duplicate
+      // (observed in the field — `audit slug-conflicts` kept catching
+      // duplicates that should have been upserts on rapid re-push).
+      //
+      // Opt-in via `idempotencyCheck: true` because it adds one
+      // parent-children read per CreateItem op — recipe push opts in
+      // (idempotency is the whole point), one-shot callers that
+      // explicitly asked to create skip the check.
+      if (input.idempotencyCheck) {
+        const preExisting = await findChildByName(parentItemId, input.name);
+        if (preExisting) {
+          return { itemId: preExisting.itemId };
+        }
+      }
       try {
         const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
           environment,

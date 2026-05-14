@@ -358,6 +358,14 @@ const planCreateItem = (
           templateId: tpl.resolved,
           name: op.name,
           fields: resolvedFields,
+          // The planner reads existence via the path index, which lags
+          // writes by seconds-to-minutes. On a rapid second push the
+          // planner can see "missing" and plan a create against a path
+          // the tenant already has — request an authoritative
+          // parent-children pre-check at apply time to prevent
+          // duplicate-sibling creation (the root cause of the
+          // `audit slug-conflicts` false positives after re-push).
+          idempotencyCheck: true,
         },
       },
     };

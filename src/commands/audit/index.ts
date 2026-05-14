@@ -1,7 +1,11 @@
 import { Command } from "commander";
 import { createAuditAllCommand } from "./all";
+import { createAuditAltTextMissingCommand } from "./alt-text-missing";
 import { createAuditBaselineCommand } from "./baseline";
 import { createAuditBrokenLinksCommand } from "./broken-links";
+import { createAuditHeavyTemplatesCommand } from "./heavy-templates";
+import { createAuditLargeFieldsCommand } from "./large-fields";
+import { createAuditMissingMetaCommand } from "./missing-meta";
 import { createAuditDatasourceMissingCommand } from "./datasource-missing";
 import { createAuditDeadTemplatesCommand } from "./dead-templates";
 import { createAuditDuplicatesCommand } from "./duplicates";
@@ -21,8 +25,12 @@ export const createAuditCommand = (): Command => {
   );
 
   command.addCommand(createAuditAllCommand());
+  command.addCommand(createAuditAltTextMissingCommand());
   command.addCommand(createAuditBaselineCommand());
   command.addCommand(createAuditBrokenLinksCommand());
+  command.addCommand(createAuditHeavyTemplatesCommand());
+  command.addCommand(createAuditLargeFieldsCommand());
+  command.addCommand(createAuditMissingMetaCommand());
   command.addCommand(createAuditDatasourceMissingCommand());
   command.addCommand(createAuditDeadTemplatesCommand());
   command.addCommand(createAuditDuplicatesCommand());

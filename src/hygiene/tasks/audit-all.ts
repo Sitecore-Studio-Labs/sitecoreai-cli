@@ -1,13 +1,17 @@
 import { openBaseline, splitByBaseline } from "../baseline";
 import { writeAuditOutput, type OutputFormat } from "../output-adapters";
 import { type HygieneCommonOptions, toLogger } from "./shared";
+import { runAuditAltTextMissing } from "./audit-alt-text-missing";
 import { runAuditBrokenLinks } from "./audit-broken-links";
 import { runAuditDatasourceMissing } from "./audit-datasource-missing";
 import { runAuditDeadTemplates } from "./audit-dead-templates";
 import { runAuditDuplicates } from "./audit-duplicates";
 import { runAuditEmptyItems } from "./audit-empty-items";
 import { runAuditFindReplace } from "./audit-find-replace";
+import { runAuditHeavyTemplates } from "./audit-heavy-templates";
 import { runAuditLanguageData } from "./audit-language-data";
+import { runAuditLargeFields } from "./audit-large-fields";
+import { runAuditMissingMeta } from "./audit-missing-meta";
 import { runAuditOrphans } from "./audit-orphans";
 import { runAuditPageDesignOrphans } from "./audit-page-design-orphans";
 import { runAuditPersonalizationBroken } from "./audit-personalization-broken";
@@ -80,6 +84,7 @@ interface AuditDef {
 }
 
 const AUDIT_REGISTRY: AuditDef[] = [
+  { name: "alt-text-missing", run: runAuditAltTextMissing as never },
   { name: "broken-links", run: runAuditBrokenLinks as never },
   { name: "datasource-missing", run: runAuditDatasourceMissing as never },
   { name: "dead-templates", run: runAuditDeadTemplates as never },
@@ -87,7 +92,10 @@ const AUDIT_REGISTRY: AuditDef[] = [
   { name: "empty-items", run: runAuditEmptyItems as never },
   // find-replace needs --pattern; only run if explicitly included AND pattern provided.
   { name: "find-replace", run: runAuditFindReplace as never, requiresExtraConfig: true },
+  { name: "heavy-templates", run: runAuditHeavyTemplates as never },
   { name: "language-data", run: runAuditLanguageData as never },
+  { name: "large-fields", run: runAuditLargeFields as never },
+  { name: "missing-meta", run: runAuditMissingMeta as never },
   { name: "orphans", run: runAuditOrphans as never },
   { name: "page-design-orphans", run: runAuditPageDesignOrphans as never },
   { name: "personalization-broken", run: runAuditPersonalizationBroken as never },

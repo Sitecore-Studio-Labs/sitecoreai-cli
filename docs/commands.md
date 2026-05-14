@@ -34,8 +34,12 @@ scai audit [options] [command]
 **Subcommands**
 
 - [`scai audit all`](#scai-audit-all) — Run every audit and emit a consolidated report (skip find-replace; it needs --pattern)
+- [`scai audit alt-text-missing`](#scai-audit-alt-text-missing) — Find Image-field values with empty alt text (accessibility audit)
 - [`scai audit baseline`](#scai-audit-baseline) — Manage the per-env audit baseline (ignore-list of accepted findings)
 - [`scai audit broken-links`](#scai-audit-broken-links) — Find content items with internal links that point to deleted items
+- [`scai audit heavy-templates`](#scai-audit-heavy-templates) — Find templates with more than N fields (slow editor + brittle fixtures)
+- [`scai audit large-fields`](#scai-audit-large-fields) — Find content items with field values exceeding a byte-size threshold
+- [`scai audit missing-meta`](#scai-audit-missing-meta) — Find items missing required (SEO) field values
 - [`scai audit datasource-missing`](#scai-audit-datasource-missing) — Find page items with rendering datasources that don't resolve
 - [`scai audit dead-templates`](#scai-audit-dead-templates) — Find item templates with zero items derived from them
 - [`scai audit duplicates`](#scai-audit-duplicates) — Find items with byte-identical authored content
@@ -84,6 +88,52 @@ scai audit all [options]
 - `--exclude-audit <audits>` — Comma-separated list of audit names to skip (default: `[]`)
 - `--update-baseline` — After running, write the current findings to the baseline file (use after manual review)
 - `--root <path>` — Default content root for sub-audits (default: /sitecore/content)
+
+### scai audit alt-text-missing
+
+Find Image-field values with empty alt text (accessibility audit)
+
+```
+scai audit alt-text-missing [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit alt-text-missing list`](#scai-audit-alt-text-missing-list) — List items whose Image fields have empty or missing alt attribute
+
+#### scai audit alt-text-missing list
+
+List items whose Image fields have empty or missing alt attribute
+
+```
+scai audit alt-text-missing list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--root <path>` — Content-tree root (default: /sitecore/content)
+- `--language <code>` — Restrict to one language
 
 ### scai audit baseline
 
@@ -228,6 +278,148 @@ scai audit broken-links list [options]
 - `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
 - `--format <fmt>` — Output format: json (default), csv, markdown
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
+
+### scai audit heavy-templates
+
+Find templates with more than N fields (slow editor + brittle fixtures)
+
+```
+scai audit heavy-templates [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit heavy-templates list`](#scai-audit-heavy-templates-list) — List templates with field count >= --threshold (default 50)
+
+#### scai audit heavy-templates list
+
+List templates with field count >= --threshold (default 50)
+
+```
+scai audit heavy-templates list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--root <path>` — Template-tree root (default: /sitecore/templates)
+- `--threshold <count>` — Field-count threshold (default 50)
+
+### scai audit large-fields
+
+Find content items with field values exceeding a byte-size threshold
+
+```
+scai audit large-fields [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit large-fields list`](#scai-audit-large-fields-list) — List items whose individual field values are >= --threshold bytes (default 100KB)
+
+#### scai audit large-fields list
+
+List items whose individual field values are >= --threshold bytes (default 100KB)
+
+```
+scai audit large-fields list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--root <path>` — Content-tree root (default: /sitecore/content)
+- `--language <code>` — Restrict to one language
+- `--threshold <bytes>` — Field-size threshold in bytes (default 100000 = 100KB)
+- `--include-system-fields` — Include \_\_-prefixed system fields in the size check
+
+### scai audit missing-meta
+
+Find items missing required (SEO) field values
+
+```
+scai audit missing-meta [options] [command]
+```
+
+**Subcommands**
+
+- [`scai audit missing-meta list`](#scai-audit-missing-meta-list) — List items lacking any of the required fields (default SEO set)
+
+#### scai audit missing-meta list
+
+List items lacking any of the required fields (default SEO set)
+
+```
+scai audit missing-meta list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--include-system` — Include /sitecore/system and platform items in the scan
+- `--limit <count>` — Maximum number of items to inspect
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
+- `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
+- `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
+- `--owner <user>` — Filter by createdBy or updatedBy (post-fetch filter on Authoring API)
+- `--baseline` — Filter out findings present in the per-env baseline at .scai/audit-baseline-<envName>.json
+- `--output <file>` — Write the report to a file instead of stdout. Format inferred from extension (.json, .csv, .md)
+- `--format <fmt>` — Output format: json (default), csv, markdown
+- `--root <path>` — Content-tree root (default: /sitecore/content)
+- `--language <code>` — Restrict to one language
+- `--required-fields <names>` — Comma-separated required field names (default: meta-title,meta-description,og-image,og-title) (default: `[]`)
+- `--template-pattern <regex>` — Only check items whose templateName matches (e.g. 'Page' for SXA pages)
 
 ### scai audit datasource-missing
 

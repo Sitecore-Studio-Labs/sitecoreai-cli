@@ -75,6 +75,18 @@ export type { AuditStaleContentOptions, StaleContentReport } from "./audit-stale
 export { runCleanupFindReplace } from "./cleanup-find-replace";
 export type { CleanupFindReplaceOptions, FindReplaceAction } from "./cleanup-find-replace";
 
+export { runAuditLargeFields } from "./audit-large-fields";
+export type { AuditLargeFieldsOptions, LargeFieldReport } from "./audit-large-fields";
+
+export { runAuditHeavyTemplates } from "./audit-heavy-templates";
+export type { AuditHeavyTemplatesOptions, HeavyTemplateReport } from "./audit-heavy-templates";
+
+export { runAuditMissingMeta } from "./audit-missing-meta";
+export type { AuditMissingMetaOptions, MissingMetaReport } from "./audit-missing-meta";
+
+export { runAuditAltTextMissing } from "./audit-alt-text-missing";
+export type { AuditAltTextMissingOptions, AltTextMissingReport } from "./audit-alt-text-missing";
+
 export { runAuditAll, auditNames } from "./audit-all";
 export type { AuditAllOptions } from "./audit-all";
 

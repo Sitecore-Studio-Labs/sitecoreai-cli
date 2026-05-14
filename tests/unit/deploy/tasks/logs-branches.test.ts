@@ -8,7 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchLogFile: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/logs", () => ({
   ...apiMocks,
 }));
 

@@ -37,8 +37,20 @@ const fsMocks = vi.hoisted(() => ({
   removeUserFromFilesystem: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => apiMocks);
-vi.mock("../../../../src/serialization/filesystem-store", () => fsMocks);
+vi.mock("../../../../src/serialization/sitecore-api/items", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/history", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/roles", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/users", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/publish", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/auth", () => ({
+  ...apiMocks,
+  DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
+  acquireAccessToken: vi.fn().mockResolvedValue("token"),
+  getAccessToken: vi.fn().mockResolvedValue("token"),
+}));
+vi.mock("../../../../src/serialization/filesystem-store/items", () => fsMocks);
+vi.mock("../../../../src/serialization/filesystem-store/roles", () => fsMocks);
+vi.mock("../../../../src/serialization/filesystem-store/users", () => fsMocks);
 vi.mock("../../../../src/shared/keychain", () => ({
   getCmTokens: vi.fn().mockResolvedValue({ accessToken: "cm-token" }),
   setCmTokens: vi.fn().mockResolvedValue(true),
@@ -146,7 +158,7 @@ describe("two-environment ser diff", () => {
 
   it("fetches source and target metadata in parallel (one call per env per subtree)", async () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     await tasks.runDiff({
       config: rootDir,
       source: "source",
@@ -166,7 +178,7 @@ describe("two-environment ser diff", () => {
   it("emits mode=instance-vs-instance in --json output when source !== destination", async () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
       logs.push(String(chunk));
       return true;
@@ -191,7 +203,7 @@ describe("two-environment ser diff", () => {
   it("emits mode=local-vs-instance when source === destination", async () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     const logs: string[] = [];
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
       logs.push(String(chunk));
       return true;
@@ -218,7 +230,7 @@ describe("two-environment ser diff", () => {
       return [destMeta];
     });
     apiMocks.fetchItemData.mockResolvedValue([sourceItem]);
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     await expect(
       tasks.runDiff({
         config: rootDir,
@@ -233,7 +245,7 @@ describe("two-environment ser diff", () => {
   it("--push --what-if builds the plan but does not write (executeSerializationCommands sees whatIf=true)", async () => {
     apiMocks.fetchItemMetadata.mockResolvedValue([sourceMeta]);
     apiMocks.fetchItemData.mockResolvedValue([sourceItem]);
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     await tasks.runDiff({
       config: rootDir,
       source: "source",
@@ -253,7 +265,7 @@ describe("two-environment ser diff", () => {
       return [destMeta];
     });
     const logs: string[] = [];
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
       logs.push(String(chunk));
       return true;
@@ -284,7 +296,7 @@ describe("two-environment ser diff", () => {
   });
 
   it("throws INPUT_INVALID when source environment is not defined", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     await expect(
       tasks.runDiff({
         config: rootDir,
@@ -295,7 +307,7 @@ describe("two-environment ser diff", () => {
   });
 
   it("throws INPUT_INVALID when target environment is not defined", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await import("../../../../src/serialization/tasks/diff");
     await expect(
       tasks.runDiff({
         config: rootDir,

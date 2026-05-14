@@ -8,14 +8,17 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-vi.mock("../../../../src/workflow/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/workflow/api")>();
+vi.mock("../../../../src/workflow/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/workflow/api/client")>();
   return { ...actual, createWorkflowApiClient: vi.fn() };
 });
 
 import { resolveEnvironment } from "../../../../src/shared/env";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
-import { createWorkflowApiClient, type WorkflowApiClient } from "../../../../src/workflow/api";
+import {
+  createWorkflowApiClient,
+  type WorkflowApiClient,
+} from "../../../../src/workflow/api/client";
 
 const ENV_NAME = "sandbox";
 

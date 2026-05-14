@@ -22,7 +22,12 @@ const configMocks = vi.hoisted(() => ({
   normalizeModuleConfiguration: vi.fn(),
 }));
 
-vi.mock("../../../../src/config", () => configMocks);
+vi.mock("../../../../src/config/root-config", () => ({
+  readRootConfiguration: configMocks.readRootConfiguration,
+}));
+vi.mock("../../../../src/config/modules", () => ({
+  normalizeModuleConfiguration: configMocks.normalizeModuleConfiguration,
+}));
 
 const fsMocks = vi.hoisted(() => ({
   access: vi.fn(),
@@ -60,8 +65,10 @@ const storeMocks = vi.hoisted(() => ({
   readUsersFromFilesystem: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/filesystem-store", () => ({
+vi.mock("../../../../src/serialization/filesystem-store/roles", () => ({
   readRolesFromFilesystem: (...args: unknown[]) => storeMocks.readRolesFromFilesystem(...args),
+}));
+vi.mock("../../../../src/serialization/filesystem-store/users", () => ({
   readUsersFromFilesystem: (...args: unknown[]) => storeMocks.readUsersFromFilesystem(...args),
 }));
 
@@ -69,7 +76,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchItemMetadata: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../src/serialization/sitecore-api/items", () => ({
   fetchItemMetadata: (...args: unknown[]) => apiMocks.fetchItemMetadata(...args),
 }));
 
@@ -88,10 +95,16 @@ const helperMocks = vi.hoisted(() => ({
   collectItemData: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/tasks/helpers", () => ({
+vi.mock("../../../../src/serialization/tasks/helpers/sitecore", () => ({
   applySitecoreCommands: (...args: unknown[]) => helperMocks.applySitecoreCommands(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/commands", () => ({
   buildCommandsForDatabase: (...args: unknown[]) => helperMocks.buildCommandsForDatabase(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/items", () => ({
   buildItemDataMap: (...args: unknown[]) => helperMocks.buildItemDataMap(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/collect", () => ({
   collectItemData: (...args: unknown[]) => helperMocks.collectItemData(...args),
 }));
 

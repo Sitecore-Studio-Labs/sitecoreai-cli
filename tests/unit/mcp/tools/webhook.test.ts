@@ -53,7 +53,21 @@ const taskMocks = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("../../../../src/webhooks/tasks", () => ({ ...taskMocks }));
+vi.mock("../../../../src/webhooks/tasks/list", () => ({
+  runWebhookList: taskMocks.runWebhookList,
+}));
+vi.mock("../../../../src/webhooks/tasks/inspect", () => ({
+  runWebhookInspect: taskMocks.runWebhookInspect,
+}));
+vi.mock("../../../../src/webhooks/tasks/create", () => ({
+  runWebhookCreate: taskMocks.runWebhookCreate,
+}));
+vi.mock("../../../../src/webhooks/tasks/delete", () => ({
+  runWebhookDelete: taskMocks.runWebhookDelete,
+}));
+vi.mock("../../../../src/webhooks/tasks/event-types", () => ({
+  runWebhookEventTypes: taskMocks.runWebhookEventTypes,
+}));
 
 const fakeContext: McpContext = {
   envName: "test-env",

@@ -81,7 +81,7 @@ const configMocks = vi.hoisted(() => ({
   readRootConfigurationFile: vi.fn(),
   readRootConfiguration: vi.fn(),
 }));
-vi.mock("../../../src/config", () => configMocks);
+vi.mock("../../../src/config/root-config", () => configMocks);
 const keychainMocks = vi.hoisted(() => ({
   getDeployToken: vi.fn(),
 }));
@@ -90,7 +90,10 @@ const taskMocks = vi.hoisted(() => ({
   runInit: vi.fn(),
   runDeployToken: vi.fn(),
 }));
-vi.mock("../../../src/serialization/tasks", () => taskMocks);
+vi.mock("../../../src/serialization/tasks/env/init", () => ({ runInit: taskMocks.runInit }));
+vi.mock("../../../src/serialization/tasks/env/deploy-token", () => ({
+  runDeployToken: taskMocks.runDeployToken,
+}));
 
 describe("cli entrypoint", () => {
   const originalArgv = process.argv;

@@ -54,9 +54,16 @@ const tasksMocks = vi.hoisted(() => ({
   ]),
 }));
 
-vi.mock("../../../../src/recipe", () => ({ ...recipeMocks }));
+vi.mock("../../../../src/recipe/compile", () => ({
+  compileRecipe: recipeMocks.compileRecipe,
+}));
+vi.mock("../../../../src/recipe/schema/recipe", () => ({
+  RecipeSchema: recipeMocks.RecipeSchema,
+}));
 vi.mock("../../../../src/recipe/io", () => ({ ...ioMocks }));
-vi.mock("../../../../src/recipe/tasks", () => ({ ...tasksMocks }));
+vi.mock("../../../../src/recipe/tasks/plan", () => ({ runRecipePlan: tasksMocks.runRecipePlan }));
+vi.mock("../../../../src/recipe/tasks/diff", () => ({ runRecipeDiff: tasksMocks.runRecipeDiff }));
+vi.mock("../../../../src/recipe/tasks/push", () => ({ runRecipePush: tasksMocks.runRecipePush }));
 
 const fakeContext: McpContext = {
   envName: "test-env",

@@ -8,7 +8,8 @@ const apiMocks = vi.hoisted(() => ({
   resolveHostFromEnvironment: vi.fn(),
   getProvisioningStatus: vi.fn(),
 }));
-vi.mock("../../../../src/deploy/api", () => ({ ...apiMocks }));
+vi.mock("../../../../src/deploy/api/environments", () => ({ ...apiMocks }));
+vi.mock("../../../../src/deploy/api/projects", () => ({ ...apiMocks }));
 
 const sharedMocks = vi.hoisted(() => ({
   getDeployContext: vi.fn(),

@@ -23,8 +23,9 @@ const fsMocks = vi.hoisted(() => ({
 const runPull = vi.fn();
 
 vi.mock("../../../../src/serialization/tasks/shared", () => sharedMocks);
-vi.mock("../../../../src/serialization/sitecore-api", () => apiMocks);
-vi.mock("../../../../src/serialization/filesystem-store", () => fsMocks);
+vi.mock("../../../../src/serialization/sitecore-api/history", () => apiMocks);
+vi.mock("../../../../src/serialization/sitecore-api/items", () => apiMocks);
+vi.mock("../../../../src/serialization/filesystem-store/items", () => fsMocks);
 vi.mock("../../../../src/serialization/tasks/pull", () => ({
   runPull: (...args: unknown[]) => runPull(...args),
 }));

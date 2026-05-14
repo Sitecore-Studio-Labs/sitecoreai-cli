@@ -5,7 +5,7 @@ const readRootConfigurationFile = vi.fn();
 const readRootConfiguration = vi.fn();
 const writeRootConfigurationFile = vi.fn();
 
-vi.mock("../../../../../src/config", () => ({
+vi.mock("../../../../../src/config/root-config", () => ({
   readRootConfigurationFile,
   readRootConfiguration,
   writeRootConfigurationFile,
@@ -35,10 +35,11 @@ vi.mock("../../../../../src/shared/prompt", () => ({
 const requestClientCredentialsToken = vi.fn();
 const requestDeviceAuthorization = vi.fn();
 const pollDeviceToken = vi.fn();
-vi.mock("../../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../../src/serialization/sitecore-api/auth", () => ({
   requestClientCredentialsToken,
   requestDeviceAuthorization,
   pollDeviceToken,
+  DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
 }));
 
 const logger = {

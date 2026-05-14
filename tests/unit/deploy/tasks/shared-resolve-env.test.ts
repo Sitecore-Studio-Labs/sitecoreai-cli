@@ -16,7 +16,9 @@ const apiMocks = vi.hoisted(() => ({
   fetchAllProjects: vi.fn(),
   fetchOrganization: vi.fn(),
 }));
-vi.mock("../../../../src/deploy/api", () => ({ ...apiMocks }));
+vi.mock("../../../../src/deploy/api/organizations", () => ({ ...apiMocks }));
+vi.mock("../../../../src/deploy/api/projects", () => ({ ...apiMocks }));
+vi.mock("../../../../src/deploy/api/environments", () => ({ ...apiMocks }));
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: vi.fn().mockResolvedValue("token"),

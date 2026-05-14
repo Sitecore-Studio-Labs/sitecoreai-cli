@@ -10,7 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   pushRoleCommands: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../src/serialization/sitecore-api/roles", () => ({
   fetchRoles: (...args: unknown[]) => apiMocks.fetchRoles(...args),
   pushRoleCommands: (...args: unknown[]) => apiMocks.pushRoleCommands(...args),
 }));
@@ -21,7 +21,7 @@ const fsMocks = vi.hoisted(() => ({
   removeRoleFromFilesystem: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/filesystem-store", () => ({
+vi.mock("../../../../src/serialization/filesystem-store/roles", () => ({
   readRolesFromFilesystem: (...args: unknown[]) => fsMocks.readRolesFromFilesystem(...args),
   writeRoleToFilesystem: (...args: unknown[]) => fsMocks.writeRoleToFilesystem(...args),
   removeRoleFromFilesystem: (...args: unknown[]) => fsMocks.removeRoleFromFilesystem(...args),

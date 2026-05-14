@@ -51,9 +51,20 @@ const filterMocks = vi.hoisted(() => ({
   createFieldFilterSet: vi.fn().mockReturnValue({}),
 }));
 
-vi.mock("../../../../src/serialization/tasks", () => ({ ...taskMocks }));
+vi.mock("../../../../src/serialization/tasks/pull", () => ({ runPull: taskMocks.runPull }));
+vi.mock("../../../../src/serialization/tasks/push", () => ({ runPush: taskMocks.runPush }));
+vi.mock("../../../../src/serialization/tasks/diff", () => ({ runDiff: taskMocks.runDiff }));
+vi.mock("../../../../src/serialization/tasks/validate", () => ({
+  runValidate: taskMocks.runValidate,
+}));
+vi.mock("../../../../src/serialization/tasks/info", () => ({ runInfo: taskMocks.runInfo }));
 vi.mock("../../../../src/serialization/tasks/shared", () => ({ ...sharedMocks }));
-vi.mock("../../../../src/serialization/sitecore-api", () => ({ ...apiMocks }));
+vi.mock("../../../../src/serialization/sitecore-api/publish", () => ({
+  publishItems: apiMocks.publishItems,
+}));
+vi.mock("../../../../src/serialization/sitecore-api/items", () => ({
+  fetchItemMetadata: apiMocks.fetchItemMetadata,
+}));
 vi.mock("../../../../src/serialization/field-filter", () => ({ ...filterMocks }));
 
 const fakeContext: McpContext = {

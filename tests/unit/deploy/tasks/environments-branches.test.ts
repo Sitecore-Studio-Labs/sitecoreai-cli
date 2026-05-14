@@ -23,7 +23,10 @@ const apiMocks = vi.hoisted(() => ({
   promoteEnvironmentDeployment: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/environments", () => ({
+  ...apiMocks,
+}));
+vi.mock("../../../../src/deploy/api/projects", () => ({
   ...apiMocks,
 }));
 

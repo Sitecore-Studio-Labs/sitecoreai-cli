@@ -13,7 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   unlinkProjectRepository: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/projects", () => ({
   ...apiMocks,
 }));
 

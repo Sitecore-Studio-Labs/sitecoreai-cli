@@ -21,10 +21,54 @@ const hygieneMocks = vi.hoisted(() => ({
   runCleanupWorkflowApply: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
-  return { ...actual, ...hygieneMocks };
-});
+vi.mock("../../../../src/hygiene/tasks/cleanup-archive-purge", () => ({
+  runCleanupArchivePurge: hygieneMocks.runCleanupArchivePurge,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-dead-templates", () => ({
+  runCleanupDeadTemplates: hygieneMocks.runCleanupDeadTemplates,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-duplicates", () => ({
+  runCleanupDuplicates: hygieneMocks.runCleanupDuplicates,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-empty-folders", () => ({
+  runCleanupEmptyFolders: hygieneMocks.runCleanupEmptyFolders,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-field-set", () => ({
+  runCleanupFieldSet: hygieneMocks.runCleanupFieldSet,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-find-replace", () => ({
+  runCleanupFindReplace: hygieneMocks.runCleanupFindReplace,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-language-version-add", () => ({
+  runCleanupLanguageVersionAdd: hygieneMocks.runCleanupLanguageVersionAdd,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-publish", () => ({
+  runCleanupPublish: hygieneMocks.runCleanupPublish,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-rename", () => ({
+  runCleanupRename: hygieneMocks.runCleanupRename,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-roles", () => ({
+  runCleanupRoles: hygieneMocks.runCleanupRoles,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-site-residue", () => ({
+  runCleanupSiteResidue: hygieneMocks.runCleanupSiteResidue,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-users", () => ({
+  runCleanupUsers: hygieneMocks.runCleanupUsers,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-versions-archive", () => ({
+  runCleanupVersionsArchive: hygieneMocks.runCleanupVersionsArchive,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-versions-prune", () => ({
+  runCleanupVersionsPrune: hygieneMocks.runCleanupVersionsPrune,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-workflow-advance", () => ({
+  runCleanupWorkflowAdvance: hygieneMocks.runCleanupWorkflowAdvance,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-workflow-apply", () => ({
+  runCleanupWorkflowApply: hygieneMocks.runCleanupWorkflowApply,
+}));
 
 const fakeContext: McpContext = {
   envName: "test-env",

@@ -81,10 +81,101 @@ const historyMocks = vi.hoisted(() => ({
   diffSnapshots: vi.fn(() => ({ totals: { added: 0, removed: 0, net: 0 } })),
 }));
 
-vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
-  return { ...actual, ...hygieneMocks };
-});
+vi.mock("../../../../src/hygiene/tasks/audit-all", () => ({
+  auditNames: hygieneMocks.auditNames,
+  runAuditAll: hygieneMocks.runAuditAll,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-alt-text-missing", () => ({
+  runAuditAltTextMissing: hygieneMocks.runAuditAltTextMissing,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-broken-images", () => ({
+  runAuditBrokenImages: hygieneMocks.runAuditBrokenImages,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-broken-links", () => ({
+  runAuditBrokenLinks: hygieneMocks.runAuditBrokenLinks,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-datasource-missing", () => ({
+  runAuditDatasourceMissing: hygieneMocks.runAuditDatasourceMissing,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-dead-templates", () => ({
+  runAuditDeadTemplates: hygieneMocks.runAuditDeadTemplates,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-duplicates", () => ({
+  runAuditDuplicates: hygieneMocks.runAuditDuplicates,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-empty-items", () => ({
+  runAuditEmptyItems: hygieneMocks.runAuditEmptyItems,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-empty-links", () => ({
+  runAuditEmptyLinks: hygieneMocks.runAuditEmptyLinks,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-empty-roles", () => ({
+  runAuditEmptyRoles: hygieneMocks.runAuditEmptyRoles,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-fallback-drift", () => ({
+  runAuditFallbackDrift: hygieneMocks.runAuditFallbackDrift,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-find-replace", () => ({
+  runAuditFindReplace: hygieneMocks.runAuditFindReplace,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-heavy-templates", () => ({
+  runAuditHeavyTemplates: hygieneMocks.runAuditHeavyTemplates,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-language-data", () => ({
+  runAuditLanguageData: hygieneMocks.runAuditLanguageData,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-large-fields", () => ({
+  runAuditLargeFields: hygieneMocks.runAuditLargeFields,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-missing-meta", () => ({
+  runAuditMissingMeta: hygieneMocks.runAuditMissingMeta,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-orphans", () => ({
+  runAuditOrphans: hygieneMocks.runAuditOrphans,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-page-design-orphans", () => ({
+  runAuditPageDesignOrphans: hygieneMocks.runAuditPageDesignOrphans,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-personalization-broken", () => ({
+  runAuditPersonalizationBroken: hygieneMocks.runAuditPersonalizationBroken,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-role-bloat", () => ({
+  runAuditRoleBloat: hygieneMocks.runAuditRoleBloat,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-site-residue", () => ({
+  runAuditSiteResidue: hygieneMocks.runAuditSiteResidue,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-slug-conflicts", () => ({
+  runAuditSlugConflicts: hygieneMocks.runAuditSlugConflicts,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-stale-content", () => ({
+  runAuditStaleContent: hygieneMocks.runAuditStaleContent,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-stale-users", () => ({
+  runAuditStaleUsers: hygieneMocks.runAuditStaleUsers,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-stale-workflow", () => ({
+  runAuditStaleWorkflow: hygieneMocks.runAuditStaleWorkflow,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-suite-run", () => ({
+  runAuditSuiteRun: hygieneMocks.runAuditSuiteRun,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-translation-coverage", () => ({
+  runAuditTranslationCoverage: hygieneMocks.runAuditTranslationCoverage,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-unused-media", () => ({
+  runAuditUnusedMedia: hygieneMocks.runAuditUnusedMedia,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-baseline", () => ({
+  runBaselineCreate: hygieneMocks.runBaselineCreate,
+  runBaselineRemove: hygieneMocks.runBaselineRemove,
+  runBaselineReset: hygieneMocks.runBaselineReset,
+  runBaselineShow: hygieneMocks.runBaselineShow,
+}));
+vi.mock("../../../../src/hygiene/tasks/audit-history", () => ({
+  runHistoryCapture: hygieneMocks.runHistoryCapture,
+  runHistoryList: hygieneMocks.runHistoryList,
+}));
 vi.mock("../../../../src/hygiene/baseline", () => ({ ...baselineMocks }));
 vi.mock("../../../../src/hygiene/history", () => ({ ...historyMocks }));
 

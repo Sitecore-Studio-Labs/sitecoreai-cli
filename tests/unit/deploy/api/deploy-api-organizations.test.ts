@@ -10,10 +10,20 @@ vi.mock("../../../../src/deploy/api/common/headers", () => ({
 }));
 
 let request: typeof import("../../../../src/deploy/api/common/request");
+let headers: typeof import("../../../../src/deploy/api/common/headers");
 let api: typeof import("../../../../src/deploy/api/organizations");
+const common = {
+  get deployRequest() {
+    return request.deployRequest;
+  },
+  get withOrganizationHeaders() {
+    return headers.withOrganizationHeaders;
+  },
+};
 
 beforeAll(async () => {
   request = await import("../../../../src/deploy/api/common/request");
+  headers = await import("../../../../src/deploy/api/common/headers");
   api = await import("../../../../src/deploy/api/organizations");
 });
 

@@ -1,14 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", () => ({
+vi.mock("../../../../src/deploy/api/common/request", () => ({
   deployRequest: vi.fn().mockResolvedValue({}),
 }));
 
-let common: typeof import("../../../../src/deploy/api/common");
+let common: typeof import("../../../../src/deploy/api/common/request");
 let api: typeof import("../../../../src/deploy/api/projects");
 
 beforeAll(async () => {
-  common = await import("../../../../src/deploy/api/common");
+  common = await import("../../../../src/deploy/api/common/request");
   api = await import("../../../../src/deploy/api/projects");
 });
 

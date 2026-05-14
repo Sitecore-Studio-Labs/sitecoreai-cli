@@ -60,11 +60,36 @@ const hygieneTaskMocks = vi.hoisted(() => ({
   ]),
 }));
 
-vi.mock("../../../../src/workflow/tasks", () => ({ ...taskMocks }));
-vi.mock("../../../../src/hygiene/tasks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/hygiene/tasks")>();
-  return { ...actual, ...hygieneTaskMocks };
-});
+vi.mock("../../../../src/workflow/tasks/advance", () => ({
+  runWorkflowAdvance: taskMocks.runWorkflowAdvance,
+}));
+vi.mock("../../../../src/workflow/tasks/apply", () => ({
+  runWorkflowApply: taskMocks.runWorkflowApply,
+}));
+vi.mock("../../../../src/workflow/tasks/assigned", () => ({
+  runWorkflowAssigned: taskMocks.runWorkflowAssigned,
+}));
+vi.mock("../../../../src/workflow/tasks/inspect", () => ({
+  runWorkflowInspect: taskMocks.runWorkflowInspect,
+}));
+vi.mock("../../../../src/workflow/tasks/list-commands", () => ({
+  runWorkflowListCommands: taskMocks.runWorkflowListCommands,
+}));
+vi.mock("../../../../src/workflow/tasks/list-defs", () => ({
+  runWorkflowListDefs: taskMocks.runWorkflowListDefs,
+}));
+vi.mock("../../../../src/workflow/tasks/reset", () => ({
+  runWorkflowReset: taskMocks.runWorkflowReset,
+}));
+vi.mock("../../../../src/workflow/tasks/status", () => ({
+  runWorkflowStatus: taskMocks.runWorkflowStatus,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-workflow-advance", () => ({
+  runCleanupWorkflowAdvance: hygieneTaskMocks.runCleanupWorkflowAdvance,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup-workflow-apply", () => ({
+  runCleanupWorkflowApply: hygieneTaskMocks.runCleanupWorkflowApply,
+}));
 
 const fakeContext: McpContext = {
   envName: "test-env",

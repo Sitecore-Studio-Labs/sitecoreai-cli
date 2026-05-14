@@ -16,8 +16,12 @@ import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } f
 export interface RunPublishItemOptions {
   config?: string;
   environmentName?: string;
-  /** Item ID (GUID) to publish. Required. */
-  itemId?: string;
+  /** Item IDs (GUIDs) to publish. At least one required. The API
+   *  accepts an array; scai bundles all IDs into a single publishing
+   *  job (one POST /jobs, one job id, one audit entry). For
+   *  large batches consider tenant rate limits — the API documents
+   *  no hard cap but treats each item as a unit of work. */
+  itemIds?: string[];
   /** ItemModel.type — defaults to "item". The Publishing API accepts
    *  a free-form string here; if your tenant uses a different value
    *  (e.g. "Item" or "ContentItem"), pass it explicitly. */
@@ -82,9 +86,10 @@ const printScope = (logger: Logger, scope: PublishAuditScope): void => {
 export const runPublishItem = async (options: RunPublishItemOptions): Promise<void> => {
   const logger = toLogger(options);
 
-  if (!options.itemId) {
-    throw createScaiError("Publish requires --item-id <guid>.", "INPUT_INVALID", {
-      hint: "scai publish item only operates on item IDs today; pass --item-id <guid>. Path-based publishing is on the roadmap once we wire path→id resolution.",
+  const itemIds = options.itemIds ?? [];
+  if (itemIds.length === 0) {
+    throw createScaiError("Publish requires at least one --items <guid>.", "INPUT_INVALID", {
+      hint: "Pass --items <guid> (repeatable) or --items <guid1,guid2,...> to publish a batch in one job. Path-based publishing is on the roadmap once we wire path→id resolution.",
     });
   }
 
@@ -99,7 +104,7 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
     resolvedTenantId: environment.tenantId,
     target,
     kind: "item",
-    itemIds: [options.itemId],
+    itemIds,
     languages,
     includeSubitems: options.includeSubitems,
     includeRelated: options.includeRelated,
@@ -114,7 +119,7 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
 
   if (whatIf) {
     // Dry-run path — print the scope, mint a scope token, exit.
-    logger.info(`What-if: would publish 1 item to ${target}.`, "yellow");
+    logger.info(`What-if: would publish ${itemIds.length} item(s) to ${target}.`, "yellow");
     printScope(logger, scope);
     const token = mintScopeToken(scope);
     logger.info("", "gray");
@@ -158,7 +163,10 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
         "INPUT_INVALID"
       );
     }
-    logger.info(`About to publish 1 item to ${target} in env '${envName}'.`, "yellow");
+    logger.info(
+      `About to publish ${itemIds.length} item(s) to ${target} in env '${envName}'.`,
+      "yellow"
+    );
     printScope(logger, scope);
     const ok = await promptConfirm("Proceed with publish?", false);
     if (!ok) {
@@ -171,11 +179,19 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
   const client: PublishingApiClientOptions = { accessToken, timeoutMs };
 
   const caller: PublishAuditCaller = { type: "human", via: "cli" };
+  const defaultName =
+    itemIds.length === 1
+      ? `scai publish item ${itemIds[0]} (${envName})`
+      : `scai publish ${itemIds.length} items (${envName})`;
   const request: CreatePublishJobRequest = {
-    name: options.name ?? `scai publish item ${options.itemId} (${envName})`,
+    name: options.name ?? defaultName,
     source: options.source ?? "scai",
     options: {
-      items: [{ id: options.itemId, type: itemType, locale: languages[0] }],
+      // One ItemModel per requested id. `locale` left undefined so the
+      // top-level `xmc.locales` controls the language set for the whole
+      // batch; callers needing per-item locale targeting can use the
+      // lower-level `submitPublishJob` API directly.
+      items: itemIds.map((id) => ({ id, type: itemType })),
       xmc: {
         locales: languages.length > 0 ? languages : undefined,
         items: {

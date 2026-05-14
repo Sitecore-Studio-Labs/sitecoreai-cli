@@ -7,7 +7,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeployLogsData: vi.fn(),
 }));
 
-vi.mock("../../../src/deploy/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks/logs", () => taskMocks);
 
 const runLogs = async (args: string[]): Promise<void> => {
   const command = createDeployLogsCommand();

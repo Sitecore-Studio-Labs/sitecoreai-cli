@@ -16,11 +16,11 @@ vi.mock("../../../../src/serialization/sitecore-api/auth", () => ({
   getAccessToken: vi.fn().mockResolvedValue("test-token"),
 }));
 
-vi.mock("../../../../src/sites/api", () => ({
+vi.mock("../../../../src/sites/api/sites", () => ({
   retrieveWorkflowStatistics: vi.fn(),
 }));
 
-import { retrieveWorkflowStatistics } from "../../../../src/sites/api";
+import { retrieveWorkflowStatistics } from "../../../../src/sites/api/sites";
 import { getAccessToken } from "../../../../src/serialization/sitecore-api/auth";
 
 const stubClient = (overrides: Partial<WorkflowApiClient> = {}): WorkflowApiClient => ({

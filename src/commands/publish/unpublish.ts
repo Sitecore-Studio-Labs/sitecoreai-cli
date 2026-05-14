@@ -91,7 +91,10 @@ export const createPublishUnpublishCommand = (): Command => {
       "\nExamples:\n" +
       "  $ scai publish unpublish --items abc123 -n sandbox\n" +
       "  $ scai publish unpublish --paths /sitecore/content/Home -n sandbox\n" +
-      "  $ scai publish unpublish --items abc123 --strategy expire-now -n sandbox\n"
+      "  $ scai publish unpublish --site marketing -n sandbox                           # site root only\n" +
+      "  $ scai publish unpublish --site marketing --include-subitems -n sandbox        # whole site\n" +
+      "  $ scai publish unpublish --items abc123 --strategy expire-now -n sandbox\n" +
+      "  $ scai publish unpublish --items abc123 --strategy delete -n sandbox           # destructive\n"
   );
 
   command.action(async (options) => {

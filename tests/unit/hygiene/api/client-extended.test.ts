@@ -220,6 +220,53 @@ describe("hygiene client — listItemTemplates", () => {
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // Regression: the search index returns the same template multiple times
+  // when its `_path` covers multiple language/version index rows. On SXA
+  // tenants the `Project` / `Experience Accelerator` base templates can
+  // surface 4-5x each, which used to make `audit heavy-templates` and
+  // `audit dead-templates` double-count. listItemTemplates dedupes by
+  // templateId so every downstream audit sees one row per template.
+  it("dedupes templates by templateId across paged results", async () => {
+    let calls = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(
+          okResponse({
+            data: {
+              search: {
+                totalCount: 1,
+                results: [{ itemId: "rootid", path: "/sitecore/templates/Project" }],
+              },
+            },
+          })
+        );
+      }
+      // Simulate the index returning the same template id 5 times.
+      return Promise.resolve(
+        okResponse({
+          data: {
+            search: {
+              totalCount: 5,
+              results: [
+                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+              ],
+            },
+          },
+        })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHygieneApiClient({ environment: baseEnv });
+    const result = await client.listItemTemplates({ rootPath: "/sitecore/templates/Project" });
+    expect(result).toHaveLength(1);
+    expect(result[0].templateId).toBe("dup-id");
+  });
 });
 
 describe("hygiene client — getChildren", () => {

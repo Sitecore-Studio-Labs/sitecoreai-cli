@@ -4,15 +4,17 @@ import { createTelemetryCommand } from "../../../src/commands/telemetry";
 
 describe("telemetry command", () => {
   it("prints telemetry status as json", async () => {
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
     process.env.SITECOREAI_TELEMETRY = "1";
 
     const command = createTelemetryCommand();
     await command.parseAsync(["node", "scai", "status", "--json"]);
 
-    expect(infoSpy).toHaveBeenCalled();
+    expect(stdoutSpy).toHaveBeenCalled();
     delete process.env.SITECOREAI_TELEMETRY;
-    infoSpy.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
   it("prints telemetry status as text", async () => {

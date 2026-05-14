@@ -1,7 +1,14 @@
 import type { EnvironmentConfiguration } from "@/config";
 import { createScaiError } from "@/shared/errors";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
+import {
+  createWorkflowApiClient,
+  type ItemWorkflowState,
+  type WorkflowApiClient,
+} from "@/workflow/api";
 import { runHygieneAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
+
+export type { ItemWorkflowState } from "@/workflow/api";
 
 /**
  * Authoring GraphQL operations used by `scai audit` and `scai cleanup`.
@@ -95,16 +102,6 @@ export interface ItemField {
   fieldId: string;
   name: string;
   value: string;
-}
-
-export interface ItemWorkflowState {
-  itemId: string;
-  path: string;
-  workflowName: string | null;
-  workflowId: string | null;
-  stateId: string | null;
-  stateName: string | null;
-  stateIsFinal: boolean;
 }
 
 export interface ArchivedItem {
@@ -406,25 +403,6 @@ query($itemId: ID!, $language: String) {
   }
 }`;
 
-const GET_ITEM_WORKFLOW = `
-query($itemId: ID!) {
-  item(where: { itemId: $itemId }) {
-    itemId
-    path
-    workflow {
-      workflowState {
-        stateId
-        displayName
-        final
-      }
-      workflow {
-        workflowId
-        displayName
-      }
-    }
-  }
-}`;
-
 const LIST_ARCHIVED_ITEMS_DEFAULT = `
 query($pageIndex: Int, $pageSize: Int) {
   archivedItems(pageIndex: $pageIndex, pageSize: $pageSize) {
@@ -525,25 +503,6 @@ mutation($input: DeleteRoleInput!) {
   deleteRole(input: $input) { successful }
 }`;
 
-const EXECUTE_WORKFLOW_COMMAND_MUTATION = `
-mutation($input: ExecuteWorkflowCommandInput!) {
-  executeWorkflowCommand(input: $input) {
-    successful
-    nextStateId
-    message
-    error
-  }
-}`;
-
-const GET_WORKFLOW_COMMANDS_FOR_ITEM_QUERY = `
-query($workflowId: String!, $itemId: ID!) {
-  workflow(where: { workflowId: $workflowId }) {
-    commands(query: { item: { itemId: $itemId } }) {
-      nodes { commandId displayName }
-    }
-  }
-}`;
-
 const DELETE_ARCHIVED_ITEM_MUTATION = `
 mutation($input: DeleteArchivedItemInput!) {
   deleteArchivedItem(input: $input) {
@@ -608,16 +567,6 @@ type GraphQLFieldsResponse = {
 type GraphQLVersionsResponse = {
   item: { versions: Array<ItemVersion> } | null;
 };
-type GraphQLWorkflowResponse = {
-  item: {
-    itemId: string;
-    path: string;
-    workflow: {
-      workflowState: { stateId: string; displayName: string; final: boolean } | null;
-      workflow: { workflowId: string; displayName: string } | null;
-    } | null;
-  } | null;
-};
 type GraphQLArchivedResponse = { archivedItems: ArchivedItem[] | null };
 type GraphQLDeleteVersionResponse = {
   deleteItemVersion: { successful: boolean } | null;
@@ -666,19 +615,6 @@ type GraphQLUserDetailResponse = {
 };
 type GraphQLDeleteUserResponse = { deleteUser: { successful: boolean } | null };
 type GraphQLDeleteRoleResponse = { deleteRole: { successful: boolean } | null };
-type GraphQLExecuteWorkflowCommandResponse = {
-  executeWorkflowCommand: {
-    successful: boolean;
-    nextStateId: string | null;
-    message: string | null;
-    error: string | null;
-  } | null;
-};
-type GraphQLWorkflowCommandsResponse = {
-  workflow: {
-    commands: { nodes: Array<{ commandId: string; displayName: string }> } | null;
-  } | null;
-};
 type GraphQLArchiveVersionResponse = {
   archiveVersion: { archiveVersionId: string | null } | null;
 };
@@ -715,6 +651,14 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     ...(request ?? {}),
     retry: { maxAttempts: 1 },
   };
+
+  // Workflow primitives live in @/workflow/api; we delegate the
+  // hygiene-facing methods so cleanup-workflow-advance and
+  // audit-stale-workflow keep their existing HygieneApiClient surface.
+  const workflowClient: WorkflowApiClient = createWorkflowApiClient({
+    environment,
+    request,
+  });
 
   const buildSearchQuery = (query: SearchQuery): Record<string, unknown> => ({
     index: query.index ?? defaultIndex,
@@ -955,24 +899,9 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     itemId: string,
     path: string
   ): Promise<ItemWorkflowState | null> => {
-    const data = await runHygieneAuthoringGraphQL<GraphQLWorkflowResponse>(
-      environment,
-      GET_ITEM_WORKFLOW,
-      { itemId },
-      readRequest
-    );
-    if (!data.item) return null;
-    const wf = data.item.workflow;
-    if (!wf || !wf.workflow) return null;
-    return {
-      itemId: data.item.itemId,
-      path: data.item.path ?? path,
-      workflowId: wf.workflow?.workflowId ?? null,
-      workflowName: wf.workflow?.displayName ?? null,
-      stateId: wf.workflowState?.stateId ?? null,
-      stateName: wf.workflowState?.displayName ?? null,
-      stateIsFinal: wf.workflowState?.final ?? false,
-    };
+    const result = await workflowClient.getItemWorkflow({ itemId });
+    if (!result) return null;
+    return { ...result, path: result.path ?? path };
   };
 
   const listArchivedItems = async (
@@ -1361,52 +1290,8 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     }
   };
 
-  const executeWorkflowCommand = async (input: {
-    commandId: string;
-    itemId?: string;
-    path?: string;
-    comments?: string;
-  }): Promise<{ successful: boolean; nextStateId: string | null; message: string | null }> => {
-    if (!input.itemId && !input.path) {
-      throw createScaiError(
-        "executeWorkflowCommand requires either itemId or path.",
-        "INPUT_INVALID"
-      );
-    }
-    const itemInput: Record<string, unknown> = { database: "master" };
-    if (input.itemId) itemInput.itemId = input.itemId;
-    else if (input.path) itemInput.path = input.path;
-    const payload: Record<string, unknown> = {
-      commandId: input.commandId,
-      item: itemInput,
-    };
-    if (input.comments !== undefined) payload.comments = input.comments;
-    const data = await runHygieneAuthoringGraphQL<GraphQLExecuteWorkflowCommandResponse>(
-      environment,
-      EXECUTE_WORKFLOW_COMMAND_MUTATION,
-      { input: payload },
-      writeRequest
-    );
-    const r = data.executeWorkflowCommand;
-    return {
-      successful: r?.successful ?? false,
-      nextStateId: r?.nextStateId ?? null,
-      message: r?.message ?? r?.error ?? null,
-    };
-  };
-
-  const getWorkflowCommandsForItem = async (input: {
-    workflowId: string;
-    itemId: string;
-  }): Promise<Array<{ commandId: string; displayName: string }>> => {
-    const data = await runHygieneAuthoringGraphQL<GraphQLWorkflowCommandsResponse>(
-      environment,
-      GET_WORKFLOW_COMMANDS_FOR_ITEM_QUERY,
-      { workflowId: input.workflowId, itemId: input.itemId },
-      readRequest
-    );
-    return data.workflow?.commands?.nodes ?? [];
-  };
+  const executeWorkflowCommand = workflowClient.executeWorkflowCommand;
+  const getWorkflowCommandsForItem = workflowClient.getWorkflowCommandsForItem;
 
   return {
     search,

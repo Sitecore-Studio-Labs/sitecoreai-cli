@@ -196,6 +196,27 @@ export type EnvironmentConfiguration = {
    * without bloating each env profile.
    */
   recipeRoots?: EnvironmentRecipeRoots;
+  /**
+   * Production-tier marker. Read by `scai publish` to decide between
+   * the simple `[y/N]` confirmation path and the two-step typed-scope-
+   * token flow. Auto-flags `true` when the env name matches `/prod/i`
+   * or `/^live/i`; set explicitly to `false` to override the heuristic
+   * (e.g. an env named `prod-test` that isn't really production).
+   */
+  production?: boolean;
+  /**
+   * Permits `scai publish all` (whole-tenant republish) from CI on
+   * this env. Default is human-only. Only honored when `production`
+   * is true; otherwise has no effect.
+   */
+  allowFullRepublish?: boolean;
+  /**
+   * CI pipeline identifiers allowed to run `scai publish` against
+   * this env. The CLI/library compares the runtime principal's
+   * pipeline ID against this list; an empty/unset list means
+   * human-only.
+   */
+  allowedCiPipelines?: string[];
 };
 
 export type RootConfiguration = {

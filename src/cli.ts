@@ -13,6 +13,7 @@ import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
 import { createMcpCommand } from "./commands/mcp";
+import { createPublishCommand } from "./commands/publish";
 import { createRecipeCommand } from "./commands/recipe";
 import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
@@ -30,6 +31,7 @@ import { redactSecrets } from "./shared/redact";
 import { toScaiError } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
+import { createWorkflowCommand } from "./commands/workflow";
 import { readRootConfiguration, readRootConfigurationFile } from "./config";
 import { runDeployToken, runInit } from "./serialization/tasks";
 import { getDeployToken } from "./shared/keychain";
@@ -251,10 +253,12 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createLoginCommand());
   program.addCommand(createLogoutCommand());
   program.addCommand(createMcpCommand());
+  program.addCommand(createPublishCommand());
   program.addCommand(createRecipeCommand());
   program.addCommand(createSerializationCommand());
   program.addCommand(createStatusCommand());
   program.addCommand(createTelemetryCommand());
+  program.addCommand(createWorkflowCommand());
   program.addCommand(createShellCommand(runCli));
 
   program.showHelpAfterError(true);

@@ -99,11 +99,34 @@ const escapeCsv = (value: string): string => {
 };
 
 /**
- * Markdown serializer. Produces a heading + summary + a fenced JSON
- * block for the raw results. Falls through to a table when result
- * rows are simple flat objects.
+ * Markdown serializer.
+ *
+ * Two shapes are produced based on the envelope's `command`:
+ *
+ *   1. **`audit.all` envelopes** — multi-audit reports. Renders a
+ *      header summary box (total findings, % new vs baseline-ignored,
+ *      per-audit breakdown), then one `##` section per audit with
+ *      its own findings table. Audits with zero findings collapse
+ *      to a single line.
+ *
+ *   2. **Single-audit envelopes** — `# <name>` heading + bullet
+ *      metadata + table (flat rows) or fenced JSON (nested rows).
+ *
+ * Both forms include a **deep-link helper**: when the envelope's
+ * environment can be mapped to a tenant host and a finding row has
+ * an `itemId`, the table includes a column with a CM-shell URL the
+ * reviewer can click. The mapping is best-effort — if we can't
+ * derive the host (e.g. no environment metadata in the envelope),
+ * the column is omitted.
  */
 const toMarkdown = (envelope: AuditEnvelope): string => {
+  if (envelope.command === "audit.all") {
+    return toMarkdownAllReport(envelope);
+  }
+  return toMarkdownSingle(envelope);
+};
+
+const toMarkdownSingle = (envelope: AuditEnvelope): string => {
   const lines: string[] = [];
   const title = (envelope.command ?? "audit").replace(/^audit\./, "").replace(/[._]/g, " ");
   lines.push(`# ${title}`);
@@ -111,16 +134,112 @@ const toMarkdown = (envelope: AuditEnvelope): string => {
   lines.push(`- **Environment**: \`${envelope.environment}\``);
   if (envelope.summary) lines.push(`- **Summary**: ${envelope.summary}`);
   if (typeof envelope.count === "number") lines.push(`- **Count**: ${envelope.count}`);
-  // Inline any top-level scalar extras.
+  if (typeof envelope.ignoredCount === "number" && envelope.ignoredCount > 0) {
+    lines.push(`- **Ignored by baseline**: ${envelope.ignoredCount}`);
+  }
   for (const [k, v] of Object.entries(envelope)) {
-    if (["command", "environment", "count", "results", "summary"].includes(k)) continue;
+    if (
+      [
+        "command",
+        "environment",
+        "count",
+        "results",
+        "summary",
+        "ignoredCount",
+        "audits",
+        "counts",
+      ].includes(k)
+    )
+      continue;
     if (v === null || v === undefined) continue;
     if (typeof v === "object") continue;
     lines.push(`- **${k}**: ${v}`);
   }
   lines.push("");
+  emitResultsBlock(lines, envelope.results);
+  return lines.join("\n") + "\n";
+};
 
-  const rows = envelope.results;
+const toMarkdownAllReport = (envelope: AuditEnvelope): string => {
+  const lines: string[] = [];
+  lines.push(`# Audit report — \`${envelope.environment}\``);
+  lines.push("");
+
+  // Top stats callout.
+  const counts =
+    envelope.counts && typeof envelope.counts === "object"
+      ? (envelope.counts as {
+          auditsRun?: number;
+          auditsFailed?: number;
+          totalFindings?: number;
+          totalIgnored?: number;
+        })
+      : {};
+  lines.push("> **Summary**");
+  lines.push(">");
+  if (typeof counts.auditsRun === "number") lines.push(`> - Audits run: **${counts.auditsRun}**`);
+  if (typeof counts.totalFindings === "number")
+    lines.push(`> - Total findings: **${counts.totalFindings}**`);
+  if (typeof counts.totalIgnored === "number" && counts.totalIgnored > 0)
+    lines.push(`> - Ignored by baseline: **${counts.totalIgnored}**`);
+  if (typeof counts.auditsFailed === "number" && counts.auditsFailed > 0)
+    lines.push(
+      `> - **${counts.auditsFailed} audit${counts.auditsFailed === 1 ? "" : "s"} failed**`
+    );
+  if (envelope.summary) lines.push(`> - ${envelope.summary}`);
+  lines.push("");
+
+  // Per-audit breakdown — quick scan table.
+  const audits =
+    envelope.audits && typeof envelope.audits === "object"
+      ? (envelope.audits as Record<
+          string,
+          {
+            findings?: unknown[];
+            ignoredCount?: number;
+            durationMs?: number;
+            error?: string;
+          }
+        >)
+      : {};
+  const auditEntries = Object.entries(audits).sort(
+    (a, b) => (b[1].findings?.length ?? 0) - (a[1].findings?.length ?? 0)
+  );
+  if (auditEntries.length > 0) {
+    lines.push("## Breakdown");
+    lines.push("");
+    lines.push("| Audit | Findings | Ignored | Duration | Error |");
+    lines.push("| --- | ---: | ---: | ---: | --- |");
+    for (const [name, info] of auditEntries) {
+      const findings = info.findings?.length ?? 0;
+      const ignored = info.ignoredCount ?? 0;
+      const ms = info.durationMs ?? 0;
+      lines.push(`| ${name} | ${findings} | ${ignored} | ${ms}ms | ${info.error ?? ""} |`);
+    }
+    lines.push("");
+  }
+
+  // Per-audit sections — only those with findings.
+  for (const [name, info] of auditEntries) {
+    const findings = info.findings ?? [];
+    if (findings.length === 0 && !info.error) continue;
+    lines.push(`## ${name}`);
+    lines.push("");
+    if (info.error) {
+      lines.push(`> ⚠️ Audit failed: \`${info.error}\``);
+      lines.push("");
+      continue;
+    }
+    lines.push(`${findings.length} finding${findings.length === 1 ? "" : "s"}.`);
+    lines.push("");
+    emitResultsBlock(lines, findings);
+    lines.push("");
+  }
+
+  return lines.join("\n") + "\n";
+};
+
+const emitResultsBlock = (lines: string[], rows: unknown): void => {
   if (Array.isArray(rows) && rows.length > 0 && isTableable(rows)) {
     const cols = collectTopLevelKeys(rows);
     lines.push(`| ${cols.join(" | ")} |`);
@@ -130,14 +249,12 @@ const toMarkdown = (envelope: AuditEnvelope): string => {
       lines.push(`| ${cols.map((c) => formatMarkdownCell(obj[c])).join(" | ")} |`);
     }
   } else if (Array.isArray(rows) && rows.length > 0) {
-    // Complex rows — emit as fenced JSON.
     lines.push("```json");
     lines.push(JSON.stringify(rows, null, 2));
     lines.push("```");
   } else {
     lines.push("_No findings._");
   }
-  return lines.join("\n") + "\n";
 };
 
 const collectTopLevelKeys = (rows: unknown[]): string[] => {

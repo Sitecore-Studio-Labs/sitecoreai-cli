@@ -1,5 +1,6 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
+import { resolveWorkflowCommandId } from "@/workflow/api";
 import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
@@ -112,7 +113,6 @@ export const runCleanupWorkflowAdvance = async (
   const root = options.root ?? "/sitecore/content";
   const includeSystem = Boolean(options.includeSystem);
   const fromState = options.fromState?.toLowerCase();
-  const commandWanted = options.commandName.toLowerCase();
 
   const rootSearch = await client.search({
     index: options.index,
@@ -146,17 +146,6 @@ export const runCleanupWorkflowAdvance = async (
   }
   logger.verbose(`Scanned ${scanned} items; ${candidates.length} stale candidates.`);
 
-  // Per-item command resolution. Commands depend on the item's
-  // current state (Authoring API requires `commands(query: {item})`),
-  // so caching across items isn't valid.
-  const resolveCommand = async (
-    workflowId: string,
-    itemId: string
-  ): Promise<{ commandId: string; displayName: string } | null> => {
-    const commands = await client.getWorkflowCommandsForItem({ workflowId, itemId });
-    return commands.find((c) => c.displayName.toLowerCase() === commandWanted) ?? null;
-  };
-
   // Phase 2: per-candidate check + advance.
   const actions: WorkflowAdvanceAction[] = (
     await mapWithConcurrency(
@@ -166,7 +155,14 @@ export const runCleanupWorkflowAdvance = async (
         const wf = await client.getItemWorkflow(c.itemId, c.path);
         if (!wf || !wf.workflowId || wf.stateIsFinal) return null;
         if (fromState && wf.stateName?.toLowerCase() !== fromState) return null;
-        const command = await resolveCommand(wf.workflowId, dashifyItemId(c.itemId));
+        // Commands depend on the item's current state (Authoring API
+        // requires `commands(query: {item})`), so caching across items
+        // isn't valid.
+        const command = await resolveWorkflowCommandId(client, {
+          workflowId: wf.workflowId,
+          itemId: dashifyItemId(c.itemId),
+          commandName: options.commandName,
+        });
         if (!command) {
           return {
             itemId: c.itemId,

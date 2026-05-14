@@ -145,7 +145,7 @@ export const applyEnvOverrides = (
   const availableRenderingsRoot = getEnvOverride(
     envName,
     "AVAILABLE_RENDERINGS_ROOT",
-    includeGlobal,
+    includeGlobal
   );
   if (availableRenderingsRoot !== undefined) {
     overrides.availableRenderingsRoot = availableRenderingsRoot;
@@ -162,7 +162,7 @@ export const applyEnvOverrides = (
   const placeholderSettingsRoots = getEnvOverride(
     envName,
     "PLACEHOLDER_SETTINGS_ROOTS",
-    includeGlobal,
+    includeGlobal
   );
   if (placeholderSettingsRoots !== undefined) {
     overrides.placeholderSettingsRoots = placeholderSettingsRoots
@@ -192,6 +192,25 @@ export const applyEnvOverrides = (
     if (normalized === "cm" || normalized === "eh") {
       overrides.environmentType = normalized as EnvironmentConfiguration["environmentType"];
     }
+  }
+  // Publishing safety flags — read by `scai publish` to decide
+  // production-tier gating and CI eligibility.
+  const production = toBoolean(getEnvOverride(envName, "PRODUCTION", includeGlobal));
+  if (production !== undefined) {
+    overrides.production = production;
+  }
+  const allowFullRepublish = toBoolean(
+    getEnvOverride(envName, "ALLOW_FULL_REPUBLISH", includeGlobal)
+  );
+  if (allowFullRepublish !== undefined) {
+    overrides.allowFullRepublish = allowFullRepublish;
+  }
+  const allowedCiPipelines = getEnvOverride(envName, "ALLOWED_CI_PIPELINES", includeGlobal);
+  if (allowedCiPipelines !== undefined) {
+    overrides.allowedCiPipelines = allowedCiPipelines
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
   }
 
   return { ...env, ...overrides };

@@ -66,34 +66,50 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — 🗓️ planned (REST API + consent model)
+### `sitecore publish` (Publishing plugin) — 🗓️ planned (REST API + tiered consent model)
 
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only
 target is Experience Edge.
 
-**Decision:** scope to two verbs — `scai publish` (item / subtree) and
-`scai publish status <jobId>` — backed by the **SAI Publishing REST
+**Decision:** scope to four verbs backed by the **SAI Publishing REST
 API** (`https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs`,
 documented at [api-docs.sitecore.com/sai/publishing-api](https://api-docs.sitecore.com/sai/publishing-api)),
 not the legacy Authoring GraphQL `publish()` mutation. Same
-automation-client JWT auth as the Sites and Pages APIs. `cancel`,
-`list`, and `summary` are adjacent endpoints we'll consider as
-follow-ups when there's a real need.
+automation-client JWT auth as the Sites and Pages APIs.
+
+- `scai publish item --path <id-or-path> [--languages …]
+[--include-subitems] [--include-related]` → item / subtree publish.
+- `scai publish all [--languages …]` → whole-tenant republish to Edge.
+  Real ops button (needed sometimes after big serialization pushes,
+  rollbacks, or migrations where Edge has drifted from CM). Maximum
+  gating, see Tier 2 below.
+- `scai publish status [<jobId>]` → `GET /authoring/publishing/v1/jobs/{id}`
+  with a jobId; without one, lists currently-running jobs so an
+  operator who closed their terminal can recover the jobId.
+- `scai publish cancel <jobId>` → `POST /jobs/{jobId}/cancel`.
+  First-class because `publish all` is a heavy operation that
+  operators may need to abort mid-flight.
+
+Bare `scai publish` (no subcommand) errors out — no accidental
+invocation path.
 
 Out of scope (XM Cloud constraint): `list-targets` and multi-target
-publishing (Edge is the only target), whole-DB republish (implicit
-in the deploy pipeline; an out-of-band CLI republish is the wrong
-shape).
+publishing — Experience Edge is the only target and `listOfTargets`
+just returns `["Edge"]`. Anything that depends on multiple targets
+(per-target republish, target-set selection) is meaningless on
+XM Cloud and not ported.
 
 **Safety model — non-negotiable.** Publishing pushes content to
-Experience Edge and is immediately visible to end users. An agent
-must never auto-invoke. Three layers, all required:
+Experience Edge and is immediately visible to end users. Agents must
+never auto-invoke. Two tiers:
 
-1. **CLI defaults to `--what-if`.** Running `scai publish` without
-   `--allow-write` prints the resolved scope (env, target, item
-   count + IDs, languages) and exits without calling the API.
-   Same pattern as `scai cleanup versions prune`.
+#### Tier 1 — item / subtree publish (`scai publish item`)
+
+1. **CLI defaults to `--what-if`.** Running without `--allow-write`
+   prints the resolved scope (env, tenant ID, target, item count +
+   IDs, languages) and exits without calling the API. Same pattern
+   as `scai cleanup versions prune`.
 
 2. **Production envs require a typed scope token, two-step flow.**
    An environment is "production-tier" if its `sitecoreai.cli.json`
@@ -101,8 +117,9 @@ must never auto-invoke. Three layers, all required:
    `/^live/i` (auto-flag, operator can override per-env). Production
    publishes are:
    - Step 1: dry-run prints scope summary plus a short token of the
-     form `pub-<env>-<hash>-<ts>`, hashed over `(envName, resolved
-itemIds, languages, target)`, TTL 5 minutes.
+     form `pub-<env>-<hash>-<ts>`, hashed over
+     `(envName, resolvedTenantId, resolved itemIds, languages, target)`,
+     TTL 5 minutes.
    - Step 2: real call requires `--allow-write --confirm-token <token>`.
      Changing scope between steps invalidates the token. CI pipelines
      follow the same two-step flow (`--json --what-if` → parse token
@@ -126,16 +143,57 @@ itemIds, languages, target)`, TTL 5 minutes.
    On the MCP surface, publishing follows the workflow-shaped tool
    pattern (see [scai-mcp-tool-shape] memory) — exposed as a single
    `publishing_lifecycle` tool with a discriminated `action`
-   (`submit`, `status`, and later `cancel` / `list`), not a 1:1
-   `publish_item` wrapper. The tool inherits the per-call
-   `allowWrite: true` gate already enforced by the MCP dispatcher;
-   the `PublishConsent` record is an additional gate that the
-   dispatcher's generic write check cannot satisfy. Tool description
-   explicitly directs agents to surface scope to the operator and
-   never invoke `submit` without an unambiguous green-light naming
-   the target environment.
+   (`submit_item`, `status`, `cancel`), **never** `submit_all` (see
+   Tier 2 #5). The tool inherits the per-call `allowWrite: true` gate
+   already enforced by the MCP dispatcher; the `PublishConsent`
+   record is an additional gate that the dispatcher's generic write
+   check cannot satisfy. Tool description explicitly directs agents
+   to surface scope to the operator and never invoke `submit_item`
+   without an unambiguous green-light naming the target environment.
 
-Every publish call writes a JSON-Lines entry to
+#### Tier 2 — whole-tenant republish (`scai publish all`)
+
+Strictly stricter than Tier 1. The same three layers apply, with
+these overrides:
+
+1. **Always production-tier semantics.** The env-config heuristic
+   doesn't apply — `publish all` is treated as max-risk regardless
+   of whether the env is flagged production. Sandbox tenants get the
+   same gating; "I typed `all` instead of `item`" is a real failure
+   mode that the token requirement catches.
+
+2. **Two-step token, mandatory. No `[y/N]` fallback ever.** Same
+   5-minute TTL as Tier 1. scopeHash inputs:
+   `(envName, "FULL", languages, target, resolvedTenantId)` — bound
+   to the resolved tenant GUID, not just the local env alias, so
+   re-pointing `sitecoreai.cli.json` between dry-run and real call
+   invalidates the token.
+
+3. **Real call requires both `--confirm-token <token>` AND typing
+   the env name back interactively.** The env-name prompt is a
+   verbatim case-sensitive string match, echoed in dry-run output
+   as `Type 'prod' to confirm.` No `--yes` flag suppresses it.
+
+4. **CI requires three explicit opt-ins.** Env config must set all
+   of `production: true`, `allowFullRepublish: true`, and
+   `allowedCiPipelines: [pipelineId, …]`. Default is human-only.
+
+5. **Not exposed on the MCP surface at all.** The
+   `publishing_lifecycle` tool's `action` discriminator does **not**
+   include `submit_all`. If an agent ever wants to recommend a full
+   republish, it returns text recommending the CLI verb; the
+   operator runs it manually. Hard cut.
+
+6. **Pre-flight serialization.** CLI calls `GET /jobs` first and
+   refuses if any `publish all` is already running on the same
+   tenant. One full republish at a time per tenant — prevents
+   concurrent storms hitting rate limits or doubling load on Edge.
+
+7. **Audit log marks `publish all` distinctly.** `scope: "full"`,
+   `risk: "high"`, resolved tenant ID, env name, token used, who
+   cancelled if cancelled. Grep-able.
+
+Every publish call (Tier 1 or Tier 2) writes a JSON-Lines entry to
 `~/.sitecoreai/audit.log` (configurable via `SITECOREAI_AUDIT_LOG`):
 caller identity, timestamp, scope, consent record, API response.
 The audit log is never redacted — it's the production trail.
@@ -183,6 +241,44 @@ language-data list`). The Authoring API exposes only tenant-wide
   guards against very large tenants.
 
 The SQL-only operations remain explicitly out of scope.
+
+### Security / per-role ACL audits — ❌ not buildable from XM Cloud APIs
+
+A natural complement to `audit empty-roles` / `audit role-bloat` /
+`audit stale-users` would be:
+
+- `audit anonymous-write` — items writable by the Anonymous user.
+- `audit excessive-acls` — per-role per-item permission matrix.
+- `audit unapproved-users` — users with `isApproved: false` or
+  missing email.
+
+**Authoring API (introspected 2026-05-13).** `Item.access` returns
+only `canRead / canWrite / canDelete / ...` booleans from the
+**caller's** perspective (the OAuth client-credentials identity).
+No per-role ACL detail; no way to inspect anonymous-perspective
+access without impersonation (which OAuth client-credentials
+doesn't support).
+
+**Management API (introspected 2026-05-14).** Has `users(predicates: [Predicate])`
+and `roles(predicates: [Predicate])` that _do_ expose `isApproved`,
+`email`, and other administrative fields the Authoring API hides.
+**But:**
+
+- `Predicate.pattern` is substring match (not glob, not SQL LIKE).
+  `*` errors with `ARGUMENT`, `%` returns empty.
+- The resolver is unreliable under repeated OAuth client-credentials
+  calls — same query that succeeded once returns `ARGUMENT_NULL`
+  on subsequent calls without an obvious trigger.
+- Even with working calls, the per-role ACL bindings aren't
+  surfaced.
+
+Net: neither API exposes what these audits would need. The dotnet
+CLI never had them either (it relied on direct SQL access to the
+`ItemAccess` / `Domains_*` tables). They stay out of scope.
+
+If a future XM Cloud release adds per-role ACL queries to either
+API, revisit. Until then, operators inspecting tenant security
+should use the Sitecore Security Editor UI directly.
 
 ### `sitecore itemres` (ResourcePackage plugin) — 🗓️ planned
 

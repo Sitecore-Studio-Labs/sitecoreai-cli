@@ -96,6 +96,52 @@ describe("formatAuditOutput — markdown", () => {
     const out = formatAuditOutput({ ...envelope, results: [], count: 0 }, "markdown");
     expect(out).toContain("_No findings._");
   });
+
+  it("renders audit.all envelopes with a summary callout + breakdown table + per-audit sections", () => {
+    const allEnvelope = {
+      command: "audit.all",
+      environment: "sandbox",
+      summary: "5 audits run, 7 findings.",
+      counts: {
+        auditsRun: 5,
+        auditsFailed: 0,
+        totalFindings: 7,
+        totalIgnored: 2,
+      },
+      audits: {
+        "broken-links": {
+          findings: [{ itemId: "a", path: "/x/a", brokenRefs: 1 }],
+          ignoredCount: 0,
+          durationMs: 250,
+        },
+        orphans: {
+          findings: [],
+          ignoredCount: 2,
+          durationMs: 100,
+        },
+        "stale-content": {
+          findings: [],
+          ignoredCount: 0,
+          durationMs: 50,
+          error: "Auth timed out",
+        },
+      },
+      results: [],
+      count: 0,
+    };
+    const out = formatAuditOutput(allEnvelope, "markdown");
+    expect(out).toContain("# Audit report — `sandbox`");
+    expect(out).toContain("> **Summary**");
+    expect(out).toContain("- Total findings: **7**");
+    expect(out).toContain("- Ignored by baseline: **2**");
+    expect(out).toContain("## Breakdown");
+    expect(out).toMatch(/\| broken-links \| 1 \|/);
+    expect(out).toContain("## broken-links");
+    expect(out).toContain("## stale-content");
+    expect(out).toContain("⚠️ Audit failed: `Auth timed out`");
+    // Audit with zero findings + no error should not get a `##` section.
+    expect(out).not.toContain("## orphans");
+  });
 });
 
 describe("writeAuditOutput", () => {

@@ -67,7 +67,7 @@
     "prepare": "husky",
     "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
-    "smoke": "npm run build && node scripts/smoke.cjs",
+    "smoke": "npm run build && node scripts/smoke.cjs && node scripts/smoke-mcp.cjs",
     "start": "node dist/cli.js",
     "pretest": "tsc --noEmit",
     "test": "vitest run",
@@ -88,6 +88,7 @@
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@napi-rs/keyring": "^1.3.0",
     "adm-zip": "^0.5.16",
     "ajv": "^8.17.1",

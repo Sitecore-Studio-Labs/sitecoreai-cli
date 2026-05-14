@@ -27,6 +27,37 @@ These are larger pieces of work scoped during the parity audit
 (see [parity-with-devex.md](./parity-with-devex.md)). Each one is
 sized for its own branch/PR.
 
+### ✅ `scai mcp serve` — shipped 2026-05-14
+
+Built-in MCP (Model Context Protocol) server bound to a single
+Sitecore environment for the lifetime of the process. Exposes scai's
+deploy, serialization, and recipe library surfaces as
+**workflow-shaped** agent tools (not 1:1 wrappers of library
+functions). Stdio transport only in v1; HTTP/SSE deferred.
+
+Surface:
+
+- **24 tools** across deploy (12), serialization (4), recipe (4),
+  bootstrap (2), inspector (2). Every write tool requires a per-call
+  `allowWrite: true` — there is no session-wide override.
+- **5 resources** under `scai://help/*` and `scai://env/current/*` for
+  agent self-orientation.
+- **3 prompts** (`scai.deploy_recipe`, `scai.diff_envs`,
+  `scai.recover_failed_deploy`) as compatible-client slash commands.
+- **CLI inspector** — `scai mcp tools list` and
+  `scai mcp tools schema [--name <name>]` for offline introspection.
+
+Architectural decisions:
+
+- Closed binary — no plugin SDK; if external extensions are needed,
+  the fallback design is subprocess plugins (`scai-plugin-*`).
+- Library surfaces (`@sitecoreai-labs/sitecoreai-cli/deploy`,
+  `/serialization`, `/recipe`) must remain stdout-silent so the stdio
+  transport stays uncorrupted. A post-build smoke
+  (`scripts/smoke-mcp.cjs`) verifies this for every release.
+
+See [mcp.md](./mcp.md).
+
 ### ✅ `scai audit` + `scai cleanup` — shipped 2026-05-13, expanded 2026-05-14
 
 Replaces the XM-Cloud-shaped subset of dotnet `sitecore dbcleanup` with

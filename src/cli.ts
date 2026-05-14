@@ -12,6 +12,7 @@ import { createDeployCommand } from "./commands/deploy";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
+import { createMcpCommand } from "./commands/mcp";
 import { createRecipeCommand } from "./commands/recipe";
 import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
@@ -87,7 +88,7 @@ const shouldSkipAutoWizard = (args: string[]): boolean => {
     return true;
   }
   const commandName = args[0];
-  if (["init", "login", "logout", "telemetry", "config", "history"].includes(commandName)) {
+  if (["init", "login", "logout", "telemetry", "config", "history", "mcp"].includes(commandName)) {
     return true;
   }
   return false;
@@ -249,6 +250,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createInitCommand());
   program.addCommand(createLoginCommand());
   program.addCommand(createLogoutCommand());
+  program.addCommand(createMcpCommand());
   program.addCommand(createRecipeCommand());
   program.addCommand(createSerializationCommand());
   program.addCommand(createStatusCommand());
@@ -411,7 +413,11 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
 // drive `runCli` directly, and `process.exit` inside a test worker
 // surfaces as an "Uncaught Exception" failure. `process.env.VITEST`
 // is set automatically by Vitest's runner.
-const shouldForceExit = !process.env.VITEST;
+// Skipped under Vitest (see comment block above) AND under `scai mcp
+// serve`: the stdio MCP server holds stdin open for the lifetime of
+// the connection, so the natural exit path is when the parent (an MCP
+// client) hangs up — never via process.exit from this wrapper.
+const shouldForceExit = !process.env.VITEST && !process.env.SITECOREAI_MCP_SERVE;
 const cliPromise = runCli(process.argv);
 if (shouldForceExit) {
   void cliPromise.finally(() => {

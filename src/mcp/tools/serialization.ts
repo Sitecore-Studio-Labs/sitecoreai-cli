@@ -1,0 +1,287 @@
+/**
+ * Serialization domain — wraps the local-vs-tenant sync flows (pull,
+ * push, diff) plus inspect / validate / publish around a workflow-shaped
+ * tool surface.
+ *
+ * `serialization_sync` consolidates `runPull` / `runPush` / `runDiff`
+ * behind a single `{ direction }` discriminator. Push and diff-with-push
+ * require `allowWrite: true`; pull is technically a write-to-disk but
+ * remains read-class because it never mutates the tenant.
+ *
+ * Detailed line-item output is intentionally suppressed at the tool
+ * boundary — long-form item-by-item logs would explode the response.
+ * Agents re-inspect via `serialization_inspect` (filesystem) or
+ * `environment_status` (tenant) after a sync to confirm the new state.
+ */
+
+import { z } from "zod";
+import { runPull, runPush, runDiff, runValidate, runInfo } from "@/serialization/tasks";
+import { loadConfigAndModules } from "@/serialization/tasks/shared";
+import { publishItems, fetchItemMetadata } from "@/serialization/sitecore-api";
+import { createFieldFilterSet } from "@/serialization/field-filter";
+import { createScaiError } from "@/shared/errors";
+import { TOOL_DESCRIPTIONS } from "../descriptions";
+import type { McpRegistry } from "../registry";
+import { allowWriteShape, environmentBindingShape, whatIfShape } from "../schemas/common";
+
+const baseSyncOptions = (
+  config: string,
+  envName: string,
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> => ({
+  config,
+  environmentName: envName,
+  quiet: true,
+  json: false,
+  ...overrides,
+});
+
+export const registerSerializationTools = (registry: McpRegistry): void => {
+  registry.registerTool({
+    name: "serialization_inspect",
+    description: TOOL_DESCRIPTIONS.serialization_inspect,
+    auth: "read",
+    annotations: {
+      title: "Inspect serialization modules",
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      path: z
+        .string()
+        .optional()
+        .describe(
+          "Optional Sitecore item path. When provided, returns the per-subtree explanation; otherwise returns the full module set."
+        ),
+      ...environmentBindingShape,
+    },
+    handler: async (input, context) => {
+      const envName = input.environmentName ?? context.envName;
+      const options = baseSyncOptions(context.configPath, envName);
+      const { root, modules } = await loadConfigAndModules(options as never);
+      // runInfo also writes to consola (stderr per our redirector) but
+      // we don't need its side-effect — we already have the data shape.
+      void runInfo;
+      const filtered = input.path
+        ? modules
+            .map((module) => ({
+              ...module,
+              items: {
+                ...module.items,
+                includes: module.items.includes.filter(
+                  (sub) => sub.path.toPathString().toLowerCase() === input.path!.toLowerCase()
+                ),
+              },
+            }))
+            .filter((module) => module.items.includes.length > 0)
+        : modules;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Resolved ${filtered.length} module(s) for environment '${envName}'.`,
+          },
+        ],
+        structuredContent: {
+          environment: envName,
+          excludedFields: root.serialization.excludedFields,
+          modules: filtered.map((module) => ({
+            namespace: module.namespace,
+            description: module.description,
+            sourceIdentifier: module.sourceIdentifier,
+            references: module.references,
+            subtrees: module.items.includes.map((subtree) => ({
+              name: subtree.name,
+              database: subtree.database,
+              path: subtree.path.toPathString(),
+              scope: subtree.scope,
+              physicalPath: subtree.physicalPath,
+              allowedPushOperations: subtree.allowedPushOperations,
+            })),
+            roleCount: module.roles.length,
+            userCount: module.users.length,
+          })),
+        },
+      };
+    },
+  });
+
+  registry.registerTool({
+    name: "serialization_sync",
+    description: TOOL_DESCRIPTIONS.serialization_sync,
+    auth: "write",
+    annotations: {
+      title: "Pull / push / diff serialized items",
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      direction: z.enum(["pull", "push", "diff"]),
+      path: z.string().optional().describe("Optional Sitecore item path narrow (sync only)."),
+      modules: z.array(z.string()).optional().describe("Optional module namespace include filter."),
+      source: z.string().optional().describe("Source environment name (direction=diff only)."),
+      destination: z
+        .string()
+        .optional()
+        .describe("Destination environment name (direction=diff only)."),
+      pushOnDiff: z
+        .boolean()
+        .default(false)
+        .describe(
+          "When direction=diff, push the diff to the destination. Requires allowWrite: true."
+        ),
+      ...whatIfShape,
+      ...environmentBindingShape,
+      ...allowWriteShape,
+    },
+    handler: async (input, context) => {
+      const envName = input.environmentName ?? context.envName;
+      const isWrite =
+        input.direction === "push" || (input.direction === "diff" && input.pushOnDiff);
+      if (isWrite && !input.allowWrite) {
+        throw createScaiError(
+          "Direction 'push' (and 'diff' with pushOnDiff) requires allowWrite: true.",
+          "INPUT_INVALID"
+        );
+      }
+      const include = input.modules ?? [];
+      const baseOptions = baseSyncOptions(context.configPath, envName, {
+        whatIf: input.whatIf,
+        allowWrite: input.allowWrite,
+        include,
+        exclude: [],
+      });
+      switch (input.direction) {
+        case "pull":
+          await runPull(baseOptions as never);
+          break;
+        case "push":
+          await runPush(baseOptions as never);
+          break;
+        case "diff": {
+          const diffOptions = {
+            ...baseOptions,
+            source: input.source ?? envName,
+            destination: input.destination ?? envName,
+            push: input.pushOnDiff,
+            path: input.path,
+          };
+          await runDiff(diffOptions as never);
+          break;
+        }
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `serialization ${input.direction} completed for '${envName}'${input.whatIf ? " (whatIf)" : ""}.`,
+          },
+        ],
+        structuredContent: {
+          direction: input.direction,
+          environment: envName,
+          whatIf: Boolean(input.whatIf),
+          modulesIncluded: include,
+          status: "completed",
+        },
+      };
+    },
+  });
+
+  registry.registerTool({
+    name: "serialization_validate",
+    description: TOOL_DESCRIPTIONS.serialization_validate,
+    auth: "read",
+    annotations: {
+      title: "Validate serialization config",
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      fix: z.boolean().default(false).describe("Attempt automatic fixes for safe issues."),
+      ...environmentBindingShape,
+    },
+    handler: async (input, context) => {
+      const envName = input.environmentName ?? context.envName;
+      try {
+        await runValidate(
+          baseSyncOptions(context.configPath, envName, { fix: input.fix }) as never
+        );
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `serialization validation failed for '${envName}'.`,
+            },
+          ],
+          structuredContent: {
+            valid: false,
+            environment: envName,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+      return {
+        content: [{ type: "text", text: `serialization validation passed for '${envName}'.` }],
+        structuredContent: { valid: true, environment: envName },
+      };
+    },
+  });
+
+  registry.registerTool({
+    name: "serialization_publish",
+    description: TOOL_DESCRIPTIONS.serialization_publish,
+    auth: "write",
+    annotations: {
+      title: "Publish item subtree",
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      path: z.string().describe("Sitecore item path (master database) to publish."),
+      database: z.string().default("master").describe("Source database to read the item from."),
+      target: z.string().optional().describe("Optional publish target name."),
+      ...allowWriteShape,
+    },
+    handler: async (input, context) => {
+      const env = context.resolved.environment;
+      const fieldFilter = createFieldFilterSet([], []);
+      const metadata = await fetchItemMetadata(
+        env,
+        input.database,
+        input.path,
+        "ItemAndDescendants",
+        fieldFilter,
+        false
+      );
+      const itemIds = metadata.map((entry) => entry.id);
+      if (itemIds.length === 0) {
+        throw createScaiError(
+          `No items found under path '${input.path}' in database '${input.database}'.`,
+          "INPUT_INVALID"
+        );
+      }
+      const receipt = await publishItems(env, itemIds, input.target);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Published ${itemIds.length} item(s) under '${input.path}'. Job '${receipt.id}' state '${receipt.stateName}'.`,
+          },
+        ],
+        structuredContent: {
+          path: input.path,
+          database: input.database,
+          target: input.target,
+          itemCount: itemIds.length,
+          job: receipt,
+        },
+      };
+    },
+  });
+};

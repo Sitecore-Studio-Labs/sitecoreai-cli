@@ -50,6 +50,9 @@ Features that have no dotnet counterpart:
 - **Telemetry honoring `DO_NOT_TRACK`** — opt-out via the standard
   Console Do Not Track env var, plus `DISABLE_TELEMETRY` and
   `SITECOREAI_TELEMETRY=false`.
+- **`scai mcp serve`** — built-in MCP (Model Context Protocol) server
+  exposing scai's library surfaces as agent tools. Developer-side
+  counterpart to Sitecore's managed Marketer MCP. See [mcp.md](./mcp.md).
 
 ## Deliberately not ported
 

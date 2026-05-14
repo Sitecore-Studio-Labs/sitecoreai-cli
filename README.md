@@ -129,6 +129,19 @@ the trust-model defenses, authoring examples, and graduation roadmap for
 composition kinds (PartialDesign, PageDesign, SiteTemplate, SiteRecipe,
 ContentItem — present in source, not in the 0.1.0 stability promise).
 
+## MCP — agent integration
+
+```bash
+scai mcp serve --environment-name dev
+```
+
+Launches a Model Context Protocol server bound to one Sitecore
+environment, exposing scai's deploy / serialization / recipe surfaces
+as agent tools. Compatible with Claude Code, Claude Desktop, Cursor,
+Cline, and any other MCP-speaking client. See
+[docs/mcp.md](./docs/mcp.md) for client config snippets, the tool
+inventory, write-gate semantics, and v1 limitations.
+
 ## Going deeper
 
 - [Command reference](./docs/commands.md) — every command and flag,
@@ -141,6 +154,8 @@ ContentItem — present in source, not in the 0.1.0 stability promise).
   editing hosts.
 - [Recipes](./docs/recipes.md) — declarative recipe authoring, trust
   model, lifecycle commands, cross-recipe references.
+- [MCP](./docs/mcp.md) — `scai mcp serve`, tool inventory, write gate,
+  agent integration.
 - [Telemetry and privacy](./docs/telemetry-and-privacy.md) — what gets
   sent, how to opt out.
 - [Release process](./docs/release.md) — versioning and publishing.

@@ -103,14 +103,26 @@ const main = async (): Promise<void> => {
 
     // 3. UPLOAD document (Sitecore re-fetches the URL to MMS)
     process.stderr.write(`[3/6] uploading document to kit...\n`);
+    // If SCAI_BRAND_PROBE_PDF_PATH is set, upload as local bytes via
+    // base64 data URL — exercises the local-file path. Otherwise fall
+    // back to URL fetch.
+    const localPath = process.env.SCAI_BRAND_PROBE_PDF_PATH;
+    let source: Parameters<typeof uploadDocument>[0]["source"];
+    if (localPath) {
+      const fs = await import("node:fs");
+      const bytes = fs.readFileSync(localPath);
+      process.stderr.write(`      [local-file mode] ${localPath} (${bytes.length} bytes)\n`);
+      source = { kind: "bytes", bytes, mimeType: "application/pdf" };
+    } else {
+      source = { url: PROBE_PDF_URL };
+    }
     const uploaded = await uploadDocument({
       client,
       brandKitId: kitId,
-      url: PROBE_PDF_URL,
+      source,
       title: "Brand Guidelines",
       summary: "scai seed probe",
       type: "brand guidelines",
-      // MIME, not "PDF" label — matches working Sync kit docs.
       fileType: "application/pdf",
     });
     process.stderr.write(`      ok — documentId=${uploaded.id} status=${uploaded.status}\n\n`);

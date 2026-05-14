@@ -61,6 +61,7 @@ export {
   uploadDocument,
   DOCUMENTS_BASE_PATH,
   type UploadDocumentOptions,
+  type UploadDocumentSource,
   type UploadedDocument,
   type DocumentUploadReference,
 } from "./documents/upload";

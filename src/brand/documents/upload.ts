@@ -19,20 +19,31 @@ export interface DocumentUploadReference {
   path: string;
 }
 
+export type UploadDocumentSource =
+  | { kind: "url"; url: string }
+  | { kind: "bytes"; bytes: Buffer | Uint8Array; mimeType?: string };
+
 export interface UploadDocumentOptions {
   client: BrandApiClientOptions;
   /** Brand kit UUID to attach the document to. */
   brandKitId: string;
   /**
-   * Publicly-reachable URL to the document the Sitecore edge can
-   * download. Today, scai only supports URL-based uploads — the
-   * v2 `multipart/form-data` endpoint with a `file` binary part is
-   * broken on Sitecore's side (the FastAPI parser drops the
-   * `create_request` field whenever a `file` part is included).
-   * Local-file upload waits on a Sitecore fix or a separate MMS
-   * upload API.
+   * Source of the document bytes. Two modes:
+   *
+   *   - `{ kind: "url", url }` — Sitecore fetches the file from the
+   *     URL and copies into MMS. URL must be reachable from
+   *     Sitecore's edge.
+   *   - `{ kind: "bytes", bytes, mimeType }` — local file. scai
+   *     base64-encodes the bytes and sends as `data:<mime>;base64,…`
+   *     in the `url` field. The v2 multipart `file` part is
+   *     server-broken (FastAPI parser drops `create_request`
+   *     whenever a `file` part is present), so the data-URL path is
+   *     the only working route for local uploads.
+   *
+   * The string form `{ url }` is shorthand for `{ kind: "url", url }`
+   * — preserves the previous callable shape.
    */
-  url: string;
+  source: UploadDocumentSource | { url: string };
   /** Document type tag, e.g. "brand guidelines". */
   type?: string;
   /**
@@ -93,17 +104,26 @@ const buildReferencePath = (orgId: string, brandKitId: string): string =>
  * MMS asynchronously. Local-file upload requires the multipart `file`
  * part to be fixed server-side OR a separate MMS direct-upload API.
  */
-export const uploadDocument = async (
-  options: UploadDocumentOptions
-): Promise<UploadedDocument> => {
+export const uploadDocument = async (options: UploadDocumentOptions): Promise<UploadedDocument> => {
   const host = options.client.host ?? AI_SKILLS_API_HOST;
   const url = new URL(
     `${DOCUMENTS_BASE_PATH}/api/documents/v2/organizations/${options.client.orgId}/documents`,
     host
   ).toString();
 
+  const source =
+    "kind" in options.source ? options.source : ({ kind: "url", url: options.source.url } as const);
+  const resolvedUrl =
+    source.kind === "url"
+      ? source.url
+      : (() => {
+          const mime = source.mimeType ?? "application/pdf";
+          const buf = Buffer.isBuffer(source.bytes) ? source.bytes : Buffer.from(source.bytes);
+          return `data:${mime};base64,${buf.toString("base64")}`;
+        })();
+
   const createRequestJson = JSON.stringify({
-    url: options.url,
+    url: resolvedUrl,
     setMetadata: options.setMetadata ?? true,
     type: options.type ?? "brand guidelines",
     fileType: options.fileType ?? "application/pdf",

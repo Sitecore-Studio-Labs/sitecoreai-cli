@@ -66,7 +66,20 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — ✅ shipped (REST API + tiered consent model, 2026-05-14)
+### `sitecore publish` (Publishing plugin) — ✅ shipped + live-validated (REST API + tiered consent model, 2026-05-14)
+
+**Live validation (2026-05-14, sandbox-equivalent tenant):** end-to-end
+exercise of submit → list → get → cancel against a real env confirmed
+the request shape, all four operations, state-transition handling
+(`Queued` → `Running` → `Canceling`), and the `canceledBy` audit info
+returned by the API. Two minor bugs found and fixed during the live
+run: `PublishJob.canCancel` was blindly mirroring
+`permissions.canCancel` (a permission flag, always true) instead of
+combining permission with state-cancellability; and the response
+statistics shape uses `itemsSent` / `itemsProcessed` / `itemsFailed`
+rather than the flat `processedCount` / `totalCount` from the spec
+extract.
+
 
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only

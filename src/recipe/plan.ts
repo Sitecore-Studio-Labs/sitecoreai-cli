@@ -249,6 +249,26 @@ const resolveCreateItemParent = (
 };
 
 /**
+ * Strict variant of parent resolution for the plan-time sibling-name
+ * fallback. Unlike `resolveCreateItemParent` (which has plan-mode-friendly
+ * path-string fallbacks), this returns an itemId ONLY when one is
+ * actually in the captured map — so the caller can safely pass the
+ * result to `getChildren({ itemId })` without risk of feeding it a path.
+ */
+const resolveParentItemIdForFallback = (
+  op: CreateItemOp,
+  capturedItemIds: ReadonlyMap<string, string>
+): string | null => {
+  const candidate =
+    op.parent.kind === "ref-path"
+      ? capturedItemIds.get(op.parent.value)
+      : capturedItemIds.get(op.parent.refKey);
+  if (!candidate) return null;
+  if (candidate.startsWith("/")) return null;
+  return candidate;
+};
+
+/**
  * Resolve a CreateItem op's templateOf to a Sitecore item ID.
  *
  *   - String form: usually a constant Sitecore built-in GUID. If it
@@ -537,7 +557,7 @@ export const buildAction = async (
   }
 
   const selector = lookupSelector(op, capturedItemIds);
-  const remote = await (async (): Promise<RemoteItem | null> => {
+  let remote = await (async (): Promise<RemoteItem | null> => {
     if (!selector) return null;
     if (selector.path) return cachedReadByPath(selector.path);
     return client.getItem(selector);
@@ -556,6 +576,31 @@ export const buildAction = async (
       const parentRemote = await cachedReadByPath(parentPath);
       if (parentRemote) {
         capturedItemIds.set(parentPath, parentRemote.itemId);
+      }
+    }
+  }
+  // Sibling-name lag-immune fallback for CreateItem against a null-cached
+  // path. Sitecore's path index lags writes by seconds-to-minutes, so a
+  // repeat push within that window can see `getItem({path})` return null
+  // for a path the tenant already has — without this fallback the
+  // planner schedules a duplicate create, the `createItem` mutation
+  // either errors and falls through the authoring-client's name-conflict
+  // trap (best case) or, on tenants where the conflict surfaces in a
+  // form the trap doesn't match, silently produces a duplicate item.
+  //
+  // `getChildren(parent)` walks the live item tree and is not lag-prone,
+  // so a name match here is a definitive "exists." Gated on
+  // parent-itemId-known so we don't pay an extra getChildren round trip
+  // on a true first push (where the parent itself is null too).
+  if (op.op === "CreateItem" && !remote) {
+    const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
+    if (parentItemId) {
+      const siblings = await client.getChildren({ itemId: parentItemId });
+      const match = siblings.find((s) => s.name === op.name);
+      if (match) {
+        remote = match;
+        capturedItemIds.set(op.id, match.itemId);
+        pathSnapshotCache?.set(op.path, match);
       }
     }
   }

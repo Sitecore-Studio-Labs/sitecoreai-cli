@@ -213,6 +213,24 @@ export interface HygieneApiClient {
     itemId: string;
     fields: Array<{ name: string; value: string }>;
   }): Promise<void>;
+  /**
+   * Rename an item — sets the item's `name` (which becomes the path
+   * slug). Backed by the same `updateItem` mutation as updateItemFields;
+   * called separately so the cleanup task can validate the new name
+   * shape (no slashes, non-empty) before the wire call.
+   */
+  renameItem(input: { itemId: string; name: string }): Promise<void>;
+  /**
+   * Create a new versioned form of an item in the given language.
+   * Used by `cleanup language-version-add` to seed empty translation
+   * stubs so translators can pick them up without per-item clicking.
+   */
+  addItemVersion(input: {
+    itemId: string;
+    language: string;
+    /** Optional source version to copy fields from. */
+    baseVersion?: number;
+  }): Promise<{ versionNumber: number | null }>;
   /** Page through every user. */
   listUsers(options?: { pageSize?: number }): Promise<UserSummary[]>;
   /** Page through every role. Returns name + memberCount. */
@@ -457,6 +475,14 @@ mutation($input: UpdateItemInput!) {
   }
 }`;
 
+const ADD_ITEM_VERSION_MUTATION = `
+mutation($input: AddItemVersionInput!) {
+  addItemVersion(input: $input) {
+    item { itemId }
+    versionNumber
+  }
+}`;
+
 const LIST_USERS_QUERY = `
 query($first: PaginationAmount, $after: String) {
   users(first: $first, after: $after) {
@@ -580,6 +606,12 @@ type GraphQLDeleteArchivedItemResponse = {
 };
 type GraphQLUpdateItemResponse = {
   updateItem: { item: { itemId: string } | null } | null;
+};
+type GraphQLAddItemVersionResponse = {
+  addItemVersion: {
+    item: { itemId: string } | null;
+    versionNumber: number | null;
+  } | null;
 };
 type GraphQLUsersResponse = {
   users: {
@@ -1193,6 +1225,65 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     }
   };
 
+  const renameItem = async (input: { itemId: string; name: string }): Promise<void> => {
+    if (!input.itemId) {
+      throw createScaiError("renameItem requires itemId.", "INPUT_INVALID");
+    }
+    if (!input.name || !input.name.trim()) {
+      throw createScaiError("renameItem requires a non-empty name.", "INPUT_INVALID");
+    }
+    if (/[/\\]/.test(input.name)) {
+      // Slashes in a Sitecore item name produce paths the resolver can't
+      // round-trip; reject at the API boundary so the caller doesn't
+      // hand the foot-gun to the user.
+      throw createScaiError(
+        "Item names cannot contain '/' or '\\'.",
+        "INPUT_INVALID"
+      );
+    }
+    const data = await runHygieneAuthoringGraphQL<GraphQLUpdateItemResponse>(
+      environment,
+      UPDATE_ITEM_MUTATION,
+      { input: { itemId: input.itemId, name: input.name } },
+      writeRequest
+    );
+    if (!data.updateItem?.item?.itemId) {
+      throw createScaiError(`renameItem returned no itemId for ${input.itemId}.`, "UNKNOWN");
+    }
+  };
+
+  const addItemVersion = async (input: {
+    itemId: string;
+    language: string;
+    baseVersion?: number;
+  }): Promise<{ versionNumber: number | null }> => {
+    if (!input.itemId) {
+      throw createScaiError("addItemVersion requires itemId.", "INPUT_INVALID");
+    }
+    if (!input.language) {
+      throw createScaiError("addItemVersion requires language.", "INPUT_INVALID");
+    }
+    const data = await runHygieneAuthoringGraphQL<GraphQLAddItemVersionResponse>(
+      environment,
+      ADD_ITEM_VERSION_MUTATION,
+      {
+        input: {
+          itemId: input.itemId,
+          language: input.language,
+          ...(input.baseVersion !== undefined && { versionNumber: input.baseVersion }),
+        },
+      },
+      writeRequest
+    );
+    if (!data.addItemVersion?.item?.itemId) {
+      throw createScaiError(
+        `addItemVersion returned no itemId for ${input.itemId}/${input.language}.`,
+        "UNKNOWN"
+      );
+    }
+    return { versionNumber: data.addItemVersion.versionNumber };
+  };
+
   const listUsers = async (opts: { pageSize?: number } = {}): Promise<UserSummary[]> => {
     const pageSize = opts.pageSize ?? 100;
     const result: UserSummary[] = [];
@@ -1320,6 +1411,8 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     listItemTemplates,
     getChildren,
     updateItemFields,
+    renameItem,
+    addItemVersion,
     listUsers,
     listRoles,
     getUserDetail,

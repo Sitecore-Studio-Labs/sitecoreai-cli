@@ -2,14 +2,28 @@
 
 import { Command } from "commander";
 import packageJson from "../package.json";
+import { createAuditCommand } from "./commands/audit";
+import { createBrandCommand } from "./commands/brand";
+import { createCleanupCommand } from "./commands/cleanup";
+import { createContentVersionCommand } from "./commands/content/version";
 import { createSerializationCommand } from "./commands/serialization";
 import { normalizeArgs } from "./commands/shared";
 import { createStatusCommand } from "./commands/status";
 import { createLoginCommand } from "./commands/login";
 import { createDeployCommand } from "./commands/deploy";
+import { createExplainCommand } from "./commands/explain";
+import { createHealthCommand } from "./commands/health";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
+import { createSetupEnvCommand } from "./commands/setup-env";
+import { createSetupClientsCommand } from "./commands/setup-clients";
+import { createMcpCommand } from "./commands/mcp";
+import { createBriefCommand } from "./commands/brief";
+import { createCampaignCommand } from "./commands/campaign";
+import { createAgentsCommand } from "./commands/agents";
+import { createPublishCommand } from "./commands/publish";
+import { createTopicsCommand } from "./commands/topics";
 import { createRecipeCommand } from "./commands/recipe";
 import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
@@ -24,11 +38,14 @@ import {
 } from "./shared/telemetry";
 import { resolveOutputOptionsFromArgs } from "./shared/output";
 import { redactSecrets } from "./shared/redact";
-import { toCliError } from "./shared/errors";
+import { toScaiError } from "./shared/errors";
 import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
-import { readRootConfiguration, readRootConfigurationFile } from "./config";
-import { runDeployToken, runInit } from "./serialization/tasks";
+import { createWebhookCommand } from "./commands/webhook";
+import { createWorkflowCommand } from "./commands/workflow";
+import { readRootConfiguration, readRootConfigurationFile } from "./config/root-config";
+import { runDeployToken } from "./serialization/tasks/env/deploy-token";
+import { runInit } from "./serialization/tasks/env/init";
 import { getDeployToken } from "./shared/keychain";
 
 type AutoWizardNeed =
@@ -84,8 +101,17 @@ const shouldSkipAutoWizard = (args: string[]): boolean => {
   if (args.some((arg) => ["--help", "-h", "--version", "-V"].includes(arg))) {
     return true;
   }
-  const commandName = args[0];
-  if (["init", "login", "logout", "telemetry", "config", "history"].includes(commandName)) {
+  // Commands that must not trigger auto-init/auto-login. Most now live
+  // under the `setup` and `cli` parents, so match the [parent, child]
+  // pair; `mcp` stayed top-level.
+  const [parent, child] = args;
+  if (parent === "mcp") {
+    return true;
+  }
+  if (parent === "setup" && ["init", "login", "logout", "env", "clients"].includes(child)) {
+    return true;
+  }
+  if (parent === "cli" && ["telemetry", "config", "history"].includes(child)) {
     return true;
   }
   return false;
@@ -100,19 +126,19 @@ const resolveAutoWizardNeed = async (
   try {
     configFile = readRootConfigurationFile(configBasePath);
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_NOT_FOUND") {
       return {
         kind: "init",
         envName: envFromArgs,
-        hint: "Run 'scai init' to create a configuration file.",
+        hint: "Run 'scai setup init' to create a configuration file.",
       };
     }
     if (cliError.code === "CONFIG_INVALID") {
       return {
         kind: "init",
         envName: envFromArgs,
-        hint: "Run 'scai init' to repair the configuration file.",
+        hint: "Run 'scai setup init' to repair the configuration file.",
       };
     }
     return null;
@@ -124,7 +150,7 @@ const resolveAutoWizardNeed = async (
     return {
       kind: "init",
       envName: envFromArgs,
-      hint: "Run 'scai init' to configure an environment.",
+      hint: "Run 'scai setup init' to configure an environment.",
     };
   }
 
@@ -136,7 +162,7 @@ const resolveAutoWizardNeed = async (
     return {
       kind: "init",
       envName,
-      hint: "Run 'scai init' to configure an environment.",
+      hint: "Run 'scai setup init' to configure an environment.",
     };
   }
 
@@ -145,12 +171,12 @@ const resolveAutoWizardNeed = async (
     const root = readRootConfiguration(configBasePath, envName);
     resolvedEnv = root.environments[envName] ?? envProfiles[envName];
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_INVALID") {
       return {
         kind: "init",
         envName,
-        hint: "Run 'scai init' to repair the configuration file.",
+        hint: "Run 'scai setup init' to repair the configuration file.",
       };
     }
     return null;
@@ -165,7 +191,7 @@ const resolveAutoWizardNeed = async (
     return {
       kind: "login",
       envName,
-      hint: `Run 'scai login -n ${envName}' to authenticate.`,
+      hint: `Run 'scai setup login -n ${envName}' to authenticate.`,
     };
   }
 
@@ -236,20 +262,72 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   const program = new Command();
   program
     .name("scai")
-    .description("SitecoreAI Deploy & Sync CLI for serialization and deploy workflows")
+    .description(
+      "SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and MCP"
+    )
     .version(packageJson.version, "-V, --version", "Display the CLI version");
 
-  program.addCommand(createConfigCommand());
-  program.addCommand(createDeployCommand());
-  program.addCommand(createHistoryCommand());
-  program.addCommand(createInitCommand());
-  program.addCommand(createLoginCommand());
-  program.addCommand(createLogoutCommand());
-  program.addCommand(createRecipeCommand());
-  program.addCommand(createSerializationCommand());
-  program.addCommand(createStatusCommand());
-  program.addCommand(createTelemetryCommand());
-  program.addCommand(createShellCommand(runCli));
+  // Top-level command groups. The CLI surface is organized by product
+  // area, not flat — each parent below is a namespace, and the leaf
+  // command builders are unchanged (only where they attach moved).
+  const setup = new Command("setup").description(
+    "Configure environments and authenticate — init, login, env, logout, status"
+  );
+  setup.addCommand(createInitCommand());
+  setup.addCommand(createLoginCommand());
+  setup.addCommand(createSetupEnvCommand());
+  setup.addCommand(createSetupClientsCommand());
+  setup.addCommand(createLogoutCommand());
+  setup.addCommand(createStatusCommand());
+
+  const hygiene = new Command("hygiene").description(
+    "Content quality — read-only audits, mutating cleanup, and composed diagnostics"
+  );
+  hygiene.addCommand(createAuditCommand());
+  hygiene.addCommand(createCleanupCommand());
+  hygiene.addCommand(createExplainCommand());
+
+  // `webhook` nests under `workflow`; the old standalone `content`
+  // wrapper is dropped — its only child (`version`) attaches directly.
+  const workflow = createWorkflowCommand();
+  workflow.addCommand(createWebhookCommand());
+  const content = new Command("content").description(
+    "Operate on content items — publish, workflow handlers, and content-state"
+  );
+  content.addCommand(createPublishCommand());
+  content.addCommand(workflow);
+  content.addCommand(createContentVersionCommand());
+
+  const ops = new Command("ops").description("Sitecore Content Operations — briefs and campaigns");
+  ops.addCommand(createBriefCommand());
+  ops.addCommand(createCampaignCommand());
+
+  const provision = new Command("provision").description(
+    "Provision environments and content-as-code — deploy, serialization, recipes"
+  );
+  provision.addCommand(createDeployCommand());
+  provision.addCommand(createSerializationCommand());
+  provision.addCommand(createRecipeCommand());
+
+  const cli = new Command("cli").description("CLI tooling — config, diagnostics, history, REPL");
+  cli.addCommand(createConfigCommand());
+  cli.addCommand(createHealthCommand());
+  cli.addCommand(createHistoryCommand());
+  cli.addCommand(createShellCommand(runCli));
+  cli.addCommand(createTelemetryCommand());
+  cli.addCommand(createTopicsCommand());
+
+  program.addCommand(setup);
+  program.addCommand(hygiene);
+  program.addCommand(content);
+  program.addCommand(ops);
+  program.addCommand(createBrandCommand());
+  program.addCommand(createAgentsCommand());
+  program.addCommand(provision);
+  // `mcp` stays top-level: `scai mcp serve` is wired into external MCP
+  // client configs, so its path must not move under a group.
+  program.addCommand(createMcpCommand());
+  program.addCommand(cli);
 
   program.showHelpAfterError(true);
   program.showSuggestionAfterError(true);
@@ -366,7 +444,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
       Boolean(outputOptions.quiet),
       outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
     );
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     const redactedMessage = redactSecrets(cliError.message);
     const finalError = cliError;
     if (baseLogger.isJson()) {
@@ -407,7 +485,23 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
 // drive `runCli` directly, and `process.exit` inside a test worker
 // surfaces as an "Uncaught Exception" failure. `process.env.VITEST`
 // is set automatically by Vitest's runner.
-const shouldForceExit = !process.env.VITEST;
+//
+// Skipped for `scai mcp serve` (either transport): the MCP server is a
+// long-lived process — stdio holds stdin open, http holds a listener
+// open — so the natural exit path is the client hanging up or a
+// signal, never a force-exit the instant the command's promise
+// settles. Detected from argv: `installMcpStdoutDiscipline()` sets
+// `SITECOREAI_MCP_SERVE` inside the command action, which is too late
+// to be read at this module-eval point (it only lands in time when a
+// parent process — smoke / integration harness — exports it).
+const isMcpServeInvocation = (argv: string[]): boolean => {
+  const positionals = argv.slice(2).filter((arg) => !arg.startsWith("-"));
+  return positionals[0] === "mcp" && positionals[1] === "serve";
+};
+const shouldForceExit =
+  !process.env.VITEST &&
+  !process.env.SITECOREAI_MCP_SERVE &&
+  !isMcpServeInvocation(process.argv);
 const cliPromise = runCli(process.argv);
 if (shouldForceExit) {
   void cliPromise.finally(() => {

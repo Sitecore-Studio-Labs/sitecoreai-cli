@@ -6,14 +6,12 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import {
-  runRecipeCompile,
-  runRecipeDiff,
-  runRecipePlan,
-  runRecipePruneDefaults,
-  runRecipePush,
-} from "../../recipe/tasks";
-import { createCliError } from "../../shared/errors";
+import { runRecipeCompile } from "../../recipe/tasks/compile";
+import { runRecipeDiff } from "../../recipe/tasks/diff";
+import { runRecipePlan } from "../../recipe/tasks/plan";
+import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
+import { runRecipePush } from "../../recipe/tasks/push";
+import { createScaiError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
   command.addOption(
@@ -193,7 +191,7 @@ const createPushCommand = (): Command => {
           lastAction?.reason ?? "apply error (see events[])"
         }${rollback}`;
       });
-      throw createCliError(
+      throw createScaiError(
         `Recipe push failed: ${abortedRecipes.length} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
         "DEPLOY_FAILED",
         {
@@ -258,28 +256,28 @@ export const createRecipeCommand = (): Command => {
       "",
       "Examples:",
       "  # Compile a single recipe to IR",
-      "  $ scai recipe compile -i ./recipes/cta-button.recipe.ts \\",
+      "  $ scai provision recipe compile -i ./recipes/cta-button.recipe.ts \\",
       '      --templates-root "/sitecore/templates/Project/my-site/Components" \\',
       '      --renderings-root "/sitecore/layout/Renderings/Project/my-site"',
       "",
       "  # Plan against a tenant from a pre-compiled IR",
-      "  $ scai recipe plan -i ./recipes/.scai/cta-button_v1.ir.json -n my-tenant",
+      "  $ scai provision recipe plan -i ./recipes/.scai/cta-button_v1.ir.json -n my-tenant",
       "",
       "  # Diff every recipe in the config glob against a tenant (read-only)",
-      "  $ scai recipe diff -n my-tenant",
+      "  $ scai provision recipe diff -n my-tenant",
       "",
       "  # Push every recipe in the config glob (default `recipes/**/*.recipe.ts`)",
-      "  $ scai recipe push -n my-tenant --what-if",
-      "  $ scai recipe push -n my-tenant --allow-write",
+      "  $ scai provision recipe push -n my-tenant --what-if",
+      "  $ scai provision recipe push -n my-tenant --allow-write",
       "",
       "  # Push a single recipe explicitly",
-      "  $ scai recipe push -i ./recipes/cta-button.recipe.ts -n my-tenant --allow-write",
+      "  $ scai provision recipe push -i ./recipes/cta-button.recipe.ts -n my-tenant --allow-write",
       "",
       "  # Preview the SXA OOTB prune (no mutations)",
-      "  $ scai recipe prune-defaults -n my-tenant --what-if",
+      "  $ scai provision recipe prune-defaults -n my-tenant --what-if",
       "",
       "  # Apply the SXA OOTB prune",
-      "  $ scai recipe prune-defaults -n my-tenant --allow-write",
+      "  $ scai provision recipe prune-defaults -n my-tenant --allow-write",
     ].join("\n")
   );
 

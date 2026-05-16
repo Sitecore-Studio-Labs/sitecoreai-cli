@@ -9,7 +9,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeployEditingHostDeploy: vi.fn(),
 }));
 
-vi.mock("../../../src/deploy/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks/editing-host", () => taskMocks);
 
 const runEditingHost = async (args: string[]): Promise<void> => {
   const command = createDeployEditingHostCommand();

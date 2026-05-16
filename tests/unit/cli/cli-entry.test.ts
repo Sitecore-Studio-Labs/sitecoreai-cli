@@ -69,7 +69,7 @@ vi.mock("../../../src/shared/history", () => ({
 }));
 vi.mock("../../../src/shared/telemetry", () => ({
   ensureTelemetryConsent: vi.fn(),
-  formatTelemetryCommand: vi.fn().mockReturnValue("scai status"),
+  formatTelemetryCommand: vi.fn().mockReturnValue("scai setup status"),
   recordTelemetry: vi.fn(),
   resolveConfigPathFromArgs: vi.fn().mockReturnValue(undefined),
   setTelemetryVersion: vi.fn(),
@@ -81,7 +81,7 @@ const configMocks = vi.hoisted(() => ({
   readRootConfigurationFile: vi.fn(),
   readRootConfiguration: vi.fn(),
 }));
-vi.mock("../../../src/config", () => configMocks);
+vi.mock("../../../src/config/root-config", () => configMocks);
 const keychainMocks = vi.hoisted(() => ({
   getDeployToken: vi.fn(),
 }));
@@ -90,7 +90,10 @@ const taskMocks = vi.hoisted(() => ({
   runInit: vi.fn(),
   runDeployToken: vi.fn(),
 }));
-vi.mock("../../../src/serialization/tasks", () => taskMocks);
+vi.mock("../../../src/serialization/tasks/env/init", () => ({ runInit: taskMocks.runInit }));
+vi.mock("../../../src/serialization/tasks/env/deploy-token", () => ({
+  runDeployToken: taskMocks.runDeployToken,
+}));
 
 describe("cli entrypoint", () => {
   const originalArgv = process.argv;
@@ -144,20 +147,20 @@ describe("cli entrypoint", () => {
   });
 
   it("runs with a basic command", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     await import("../../../src/cli");
   });
 
   it("sets non-interactive mode when flag is present", async () => {
-    process.argv = ["node", "scai", "status", "--non-interactive"];
+    process.argv = ["node", "scai", "setup", "status", "--non-interactive"];
     vi.resetModules();
     await import("../../../src/cli");
     expect(process.env.SITECOREAI_NON_INTERACTIVE).toBe("1");
   });
 
   it("sets output flags based on args", async () => {
-    process.argv = ["node", "scai", "status", "--quiet", "--json", "-t"];
+    process.argv = ["node", "scai", "setup", "status", "--quiet", "--json", "-t"];
     vi.resetModules();
     await import("../../../src/cli");
     expect(process.env.SITECOREAI_QUIET).toBe("1");
@@ -167,19 +170,19 @@ describe("cli entrypoint", () => {
 
   it("sets non-interactive mode when no TTY is available", async () => {
     setTty(false);
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     await import("../../../src/cli");
     expect(process.env.SITECOREAI_NON_INTERACTIVE).toBe("1");
   });
 
   it("emits JSON errors with exit code on failure", async () => {
-    process.argv = ["node", "scai", "status", "--json"];
+    process.argv = ["node", "scai", "setup", "status", "--json"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     actionMock.mockRejectedValueOnce(
-      createCliError("Deploy token not found", "AUTH_REQUIRED", {
-        hint: "Run 'scai login' to authenticate.",
+      createScaiError("Deploy token not found", "AUTH_REQUIRED", {
+        hint: "Run 'scai setup login' to authenticate.",
       })
     );
     await import("../../../src/cli");
@@ -192,12 +195,12 @@ describe("cli entrypoint", () => {
     };
     expect(payload.code).toBe("AUTH_REQUIRED");
     expect(payload.exitCode).toBe(3);
-    expect(payload.hint).toBe("Run 'scai login' to authenticate.");
+    expect(payload.hint).toBe("Run 'scai setup login' to authenticate.");
   });
 
-  it("emits UNKNOWN code for bare Errors thrown outside CliError contract", async () => {
+  it("emits UNKNOWN code for bare Errors thrown outside ScaiError contract", async () => {
     actionMock.mockRejectedValueOnce(new Error("Some unexpected failure"));
-    process.argv = ["node", "scai", "status", "--json"];
+    process.argv = ["node", "scai", "setup", "status", "--json"];
     vi.resetModules();
     await import("../../../src/cli");
 
@@ -210,11 +213,11 @@ describe("cli entrypoint", () => {
   });
 
   it("prints non-JSON errors with details and hints", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     actionMock.mockRejectedValueOnce(
-      createCliError("Input required", "INPUT_INVALID", {
+      createScaiError("Input required", "INPUT_INVALID", {
         hint: "Use --environment-name",
         details: ["Missing configuration"],
       })
@@ -227,7 +230,7 @@ describe("cli entrypoint", () => {
   });
 
   it("swallows history and telemetry failures", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     const history = await import("../../../src/shared/history");
     const telemetry = await import("../../../src/shared/telemetry");
@@ -260,11 +263,11 @@ describe("cli entrypoint", () => {
   });
 
   it("runs init wizard when config is missing", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );
@@ -276,11 +279,11 @@ describe("cli entrypoint", () => {
   });
 
   it("runs init wizard when config is invalid", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Invalid configuration file at /tmp/sitecoreai.cli.json.",
         "CONFIG_INVALID"
       );
@@ -293,9 +296,9 @@ describe("cli entrypoint", () => {
   it("runs init wizard when no command is provided", async () => {
     process.argv = ["node", "scai"];
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );
@@ -306,7 +309,7 @@ describe("cli entrypoint", () => {
   });
 
   it("runs login when deploy token is missing", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     keychainMocks.getDeployToken.mockResolvedValue(undefined);
     await import("../../../src/cli");
@@ -317,7 +320,7 @@ describe("cli entrypoint", () => {
   });
 
   it("runs login when deploy token is expired", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     configMocks.readRootConfiguration.mockReturnValue({
       environments: {
@@ -336,13 +339,13 @@ describe("cli entrypoint", () => {
   });
 
   it("skips auto-wizard in non-interactive mode", async () => {
-    process.argv = ["node", "scai", "status"];
+    process.argv = ["node", "scai", "setup", "status"];
     setTty(false);
     process.env.SITECOREAI_NON_INTERACTIVE = "1";
     vi.resetModules();
-    const { createCliError } = await import("../../../src/shared/errors");
+    const { createScaiError } = await import("../../../src/shared/errors");
     configMocks.readRootConfigurationFile.mockImplementation(() => {
-      throw createCliError(
+      throw createScaiError(
         "Couldn't resolve a root configuration file (sitecoreai.cli.json).",
         "CONFIG_NOT_FOUND"
       );

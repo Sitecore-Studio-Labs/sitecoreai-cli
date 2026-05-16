@@ -5,8 +5,19 @@ import {
   runDeployEditingHostDelete,
   runDeployEditingHostUpdate,
   runDeployEditingHostDeploy,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/editing-host";
+import { withApplyGate } from "../shared";
 import { addDeployBaseOptions } from "./shared";
+
+const parsePositiveInt =
+  (label: string) =>
+  (value: string): number => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+    return parsed;
+  };
 
 export const createDeployEditingHostCommand = (): Command => {
   const editingHost = new Command("editing-host")
@@ -15,7 +26,25 @@ export const createDeployEditingHostCommand = (): Command => {
 
   const list = new Command("list").description("List editing host environments");
   addDeployBaseOptions(list);
-  list.addOption(new Option("--project <value>", "Project name or ID (Deploy API)"));
+  list
+    .addOption(new Option("--project <value>", "Project name or ID (Deploy API)"))
+    .addOption(
+      new Option(
+        "--no-all",
+        "Return only one page of environments before filtering (default: walk every page)"
+      )
+    )
+    .addOption(
+      new Option("--page <n>", "1-based page number; implies --no-all").argParser(
+        parsePositiveInt("--page")
+      )
+    )
+    .addOption(
+      new Option(
+        "--page-size <n>",
+        "Page size. Defaults to 50 when walking, otherwise the API default (10)."
+      ).argParser(parsePositiveInt("--page-size"))
+    );
   list.action(async (options) => runDeployEditingHostList(options));
 
   const create = new Command("create").description("Create an editing host environment");
@@ -37,7 +66,7 @@ export const createDeployEditingHostCommand = (): Command => {
   del
     .addOption(new Option("--id <id>", "Editing host environment ID"))
     .addOption(new Option("--force", "Force delete environment"));
-  del.action(async (options) => runDeployEditingHostDelete(options));
+  del.action(withApplyGate(runDeployEditingHostDelete));
 
   const deploy = new Command("deploy").description("Deploy an editing host environment");
   addDeployBaseOptions(deploy);

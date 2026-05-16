@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createCliError } from "../shared/errors";
+import { createScaiError } from "../shared/errors";
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_RECIPES_GLOBS,
@@ -24,8 +24,8 @@ export const readRootConfigurationFile = (
     rootJson = readJsonFile<RootConfigurationFile>(rootPath);
   } catch (error) {
     const details = error instanceof Error && error.message ? [error.message] : undefined;
-    throw createCliError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
-      hint: "Fix the configuration or re-run 'scai init' to regenerate it.",
+    throw createScaiError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
+      hint: "Fix the configuration or re-run 'scai setup init' to regenerate it.",
       details,
     });
   }
@@ -34,8 +34,8 @@ export const readRootConfigurationFile = (
     const details = validateRootConfig.errors
       ? formatValidationErrors(validateRootConfig.errors)
       : undefined;
-    throw createCliError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
-      hint: "Fix the configuration or re-run 'scai init' to regenerate it.",
+    throw createScaiError(`Invalid configuration file at ${rootPath}.`, "CONFIG_INVALID", {
+      hint: "Fix the configuration or re-run 'scai setup init' to regenerate it.",
       details,
     });
   }
@@ -91,6 +91,7 @@ export const readRootConfiguration = (
     },
     settings,
     environments: envWithOverrides,
+    aiSkills: rootJson.aiSkills ?? {},
     physicalPath: rootPath,
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,
@@ -111,11 +112,14 @@ const RECIPE_ROOT_PAIRS: ReadonlyArray<
   ["contentModels", "contentModelsRoot"],
   ["partialDesigns", "partialDesignsRoot"],
   ["pageDesigns", "pageDesignsRoot"],
+  ["pageTemplates", "pageTemplatesRoot"],
+  ["pages", "pagesRoot"],
   ["contentItems", "contentItemsRoot"],
   ["headlessVariants", "headlessVariantsRoot"],
   ["availableRenderings", "availableRenderingsRoot"],
   ["enumerations", "enumerationsRoot"],
   ["placeholderSettings", "placeholderSettingsRoots"],
+  ["placeholderSettingsCreate", "placeholderSettingsRoot"],
 ];
 
 /**
@@ -160,13 +164,17 @@ const resolveEnvironmentReferences = (
 
   const resolveOne = (name: string): EnvironmentConfiguration => {
     if (resolving.has(name)) {
-      throw createCliError(`Environment references are circular for '${name}'.`, "CONFIG_INVALID", {
-        hint: "Remove circular refs in envProfiles.",
-      });
+      throw createScaiError(
+        `Environment references are circular for '${name}'.`,
+        "CONFIG_INVALID",
+        {
+          hint: "Remove circular refs in envProfiles.",
+        }
+      );
     }
     const current = environments[name];
     if (!current) {
-      throw createCliError(`Referenced environment '${name}' was not found.`, "CONFIG_INVALID", {
+      throw createScaiError(`Referenced environment '${name}' was not found.`, "CONFIG_INVALID", {
         hint: "Update envProfiles to reference a valid environment name.",
       });
     }

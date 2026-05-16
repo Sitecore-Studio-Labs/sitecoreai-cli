@@ -1,0 +1,101 @@
+import { Command } from "commander";
+import { createAuditAllCommand } from "./all";
+import { createAuditAltTextMissingCommand } from "./alt-text-missing";
+import { createAuditBaselineCommand } from "./baseline";
+import { createAuditBrokenLinksCommand } from "./broken-links";
+import { createAuditHeavyTemplatesCommand } from "./heavy-templates";
+import { createAuditLargeFieldsCommand } from "./large-fields";
+import { createAuditBrokenImagesCommand } from "./broken-images";
+import { createAuditEmptyRolesCommand } from "./empty-roles";
+import { createAuditHistoryCommand } from "./history";
+import { createAuditSuiteCommand } from "./suite";
+import { createAuditFallbackDriftCommand } from "./fallback-drift";
+import { createAuditMissingMetaCommand } from "./missing-meta";
+import { createAuditRoleBloatCommand } from "./role-bloat";
+import { createAuditSlugConflictsCommand } from "./slug-conflicts";
+import { createAuditStaleUsersCommand } from "./stale-users";
+import { createAuditTranslationCoverageCommand } from "./translation-coverage";
+import { createAuditDatasourceMissingCommand } from "./datasource-missing";
+import { createAuditDeadTemplatesCommand } from "./dead-templates";
+import { createAuditDuplicatesCommand } from "./duplicates";
+import { createAuditEmptyItemsCommand } from "./empty-items";
+import { createAuditEmptyLinksCommand } from "./empty-links";
+import { createAuditFindReplaceCommand } from "./find-replace";
+import { createAuditLanguageDataCommand } from "./language-data";
+import { createAuditOrphansCommand } from "./orphans";
+import { createAuditPageDesignOrphansCommand } from "./page-design-orphans";
+import { createAuditPersonalizationBrokenCommand } from "./personalization-broken";
+import { createAuditReferencesCommand } from "./references";
+import { createAuditSiteResidueCommand } from "./site-residue";
+import { createAuditStaleContentCommand } from "./stale-content";
+import { createAuditStaleWorkflowCommand } from "./stale-workflow";
+import { createAuditTemplateDependenciesCommand } from "./template-dependencies";
+import { createAuditUnusedMediaCommand } from "./unused-media";
+
+export const createAuditCommand = (): Command => {
+  const command = new Command("audit").description(
+    "Read-only diagnostics over Sitecore content — links, media, archive, workflow, languages, templates, datasources, duplicates, empty items, page designs, personalization"
+  );
+
+  command.addCommand(createAuditAllCommand());
+  command.addCommand(createAuditAltTextMissingCommand());
+  command.addCommand(createAuditBaselineCommand());
+  command.addCommand(createAuditBrokenImagesCommand());
+  command.addCommand(createAuditBrokenLinksCommand());
+  command.addCommand(createAuditHeavyTemplatesCommand());
+  command.addCommand(createAuditLargeFieldsCommand());
+  command.addCommand(createAuditMissingMetaCommand());
+  command.addCommand(createAuditDatasourceMissingCommand());
+  command.addCommand(createAuditDeadTemplatesCommand());
+  command.addCommand(createAuditDuplicatesCommand());
+  command.addCommand(createAuditEmptyItemsCommand());
+  command.addCommand(createAuditEmptyLinksCommand());
+  command.addCommand(createAuditEmptyRolesCommand());
+  command.addCommand(createAuditFallbackDriftCommand());
+  command.addCommand(createAuditFindReplaceCommand());
+  command.addCommand(createAuditLanguageDataCommand());
+  command.addCommand(createAuditOrphansCommand());
+  command.addCommand(createAuditPageDesignOrphansCommand());
+  command.addCommand(createAuditPersonalizationBrokenCommand());
+  command.addCommand(createAuditReferencesCommand());
+  command.addCommand(createAuditRoleBloatCommand());
+  command.addCommand(createAuditSiteResidueCommand());
+  command.addCommand(createAuditSlugConflictsCommand());
+  command.addCommand(createAuditStaleContentCommand());
+  command.addCommand(createAuditStaleUsersCommand());
+  command.addCommand(createAuditStaleWorkflowCommand());
+  command.addCommand(createAuditTemplateDependenciesCommand());
+  command.addCommand(createAuditHistoryCommand());
+  command.addCommand(createAuditSuiteCommand());
+  command.addCommand(createAuditTranslationCoverageCommand());
+  command.addCommand(createAuditUnusedMediaCommand());
+
+  command.addHelpText(
+    "after",
+    "\nDatabase scope:\n" +
+      "  Every audit reads from the master database via the XM Cloud\n" +
+      "  Authoring API. XM Cloud has no `web` database — published content\n" +
+      "  lives on Experience Edge, which is a separate query surface and\n" +
+      '  is not in scope for these audits. "Stale" / "orphaned" / "dead"\n' +
+      "  findings reflect master-side state only; whether a master item is\n" +
+      "  still served by Edge is independent and must be checked via the\n" +
+      "  Edge Delivery / Edge Preview endpoints.\n" +
+      "\nExamples:\n" +
+      "  $ scai hygiene audit broken-links list --root /sitecore/content/MySite\n" +
+      "  $ scai hygiene audit dead-templates list --root /sitecore/templates/Project\n" +
+      "  $ scai hygiene audit template-dependencies list --template-id {ABC123…}\n" +
+      "  $ scai hygiene audit references list --to {ABC123…} --root /sitecore/content\n" +
+      "  $ scai hygiene audit duplicates list --min-group-size 3 --json\n" +
+      "  $ scai hygiene audit datasource-missing list\n" +
+      "  $ scai hygiene audit empty-items list --language en\n" +
+      "  $ scai hygiene audit page-design-orphans list\n" +
+      "  $ scai hygiene audit personalization-broken list\n" +
+      "  $ scai hygiene audit orphans list\n" +
+      "  $ scai hygiene audit stale-workflow list --days 60\n" +
+      "  $ scai hygiene audit site-residue list\n" +
+      "  $ scai hygiene audit unused-media list --json\n" +
+      "  $ scai hygiene audit language-data list --languages en,fr\n"
+  );
+
+  return command;
+};

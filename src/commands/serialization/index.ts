@@ -12,15 +12,12 @@ import {
   addWhatIfOption,
 } from "../shared";
 import { createPackageCommand } from "./package";
-import {
-  runDiff,
-  runExplain,
-  runInfo,
-  runPull,
-  runPush,
-  runValidate,
-  runWatch,
-} from "../../serialization/tasks";
+import { runDiff } from "../../serialization/tasks/diff";
+import { runExplain, runInfo } from "../../serialization/tasks/info";
+import { runPull } from "../../serialization/tasks/pull";
+import { runPush } from "../../serialization/tasks/push";
+import { runValidate } from "../../serialization/tasks/validate";
+import { runWatch } from "../../serialization/tasks/watch";
 
 const createInfoCommand = (): Command => {
   const command = new Command("info").description("Shows serialization configuration information");
@@ -140,7 +137,7 @@ export const createSerializationCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nAlias: ser\nExamples:\n  $ scai serialization pull -n demo\n  $ scai ser diff -s demo -d prod\n"
+    "\nAlias: ser\nExamples:\n  $ scai provision serialization pull -n demo\n  $ scai provision ser diff -s demo -d prod\n"
   );
 
   return command;

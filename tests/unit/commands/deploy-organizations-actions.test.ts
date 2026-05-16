@@ -8,7 +8,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeployOrganizationsLaunchDemo: vi.fn(),
 }));
 
-vi.mock("../../../src/deploy/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks/organizations", () => taskMocks);
 
 const runOrganizations = async (args: string[]): Promise<void> => {
   const command = createDeployOrganizationsCommand();

@@ -4,7 +4,7 @@ import {
   runDeployOrganizationsHealth,
   runDeployOrganizationsLicense,
   runDeployOrganizationsLaunchDemo,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/organizations";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployOrganizationsCommand = (): Command => {

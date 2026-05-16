@@ -36,11 +36,16 @@ export type EnvironmentRecipeRoots = {
   contentModels?: string;
   partialDesigns?: string;
   pageDesigns?: string;
+  pageTemplates?: string;
+  pages?: string;
   contentItems?: string;
   headlessVariants?: string;
   availableRenderings?: string;
   enumerations?: string;
+  /** Walk roots for resolving `placedIn` against pre-existing placeholders. */
   placeholderSettings?: string[];
+  /** Create root for recipe-defined Placeholder Settings items. */
+  placeholderSettingsCreate?: string;
 };
 
 export type EnvironmentConfiguration = {
@@ -49,6 +54,18 @@ export type EnvironmentConfiguration = {
   authority?: string;
   environmentType?: "cm" | "eh";
   allowWrite?: boolean;
+  /**
+   * When `true`, MCP write tools refuse to operate against this
+   * environment even when the host has cleared their own
+   * write-confirmation UX. Use for production-shaped environments
+   * where every destructive op must originate from a human-driven CLI
+   * call (`--allow-write`) and never from an MCP-elevated context. The
+   * gate fires at the MCP tool boundary — direct CLI use is
+   * unaffected.
+   *
+   * Defaults to `false` (MCP elevation allowed).
+   */
+  denyMcpElevation?: boolean;
   accessToken?: string;
   refreshToken?: string;
   refreshTokenParameters?: Record<string, string>;
@@ -70,7 +87,7 @@ export type EnvironmentConfiguration = {
   ref?: string;
   cacheAuthenticationToken?: boolean;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * template items. Tenant-specific because each site has its own
    * `/sitecore/templates/Project/<site>/Components` location.
    *
@@ -78,14 +95,14 @@ export type EnvironmentConfiguration = {
    */
   templatesRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * rendering items. Tenant-specific.
    *
    * Used as fallback when the CLI flag `--renderings-root` is not passed.
    */
   renderingsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * component template items in the per-site folder layout
    * (`<componentsRoot>/<section>/<Component>`). When unset, the compiler
    * falls back to `templatesRoot` and emits the legacy flat layout.
@@ -97,7 +114,7 @@ export type EnvironmentConfiguration = {
    */
   componentsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * content-template items
    * (`<contentModelsRoot>/<group>/<name>` when grouped, flat otherwise).
    * When unset, content templates fall back to `templatesRoot` — which
@@ -107,7 +124,7 @@ export type EnvironmentConfiguration = {
    */
   contentModelsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * partial-design items (Phase 4). Typically
    * `/sitecore/content/<site>/Presentation/Partial Designs`.
    *
@@ -115,7 +132,7 @@ export type EnvironmentConfiguration = {
    */
   partialDesignsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * page-design items (Phase 4). Typically
    * `/sitecore/content/<site>/Presentation/Page Designs`.
    *
@@ -125,7 +142,7 @@ export type EnvironmentConfiguration = {
    */
   pageDesignsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * shared content items (Phase 4). Typically
    * `/sitecore/content/<site>/Data` or a sub-bucket.
    *
@@ -133,7 +150,7 @@ export type EnvironmentConfiguration = {
    */
   contentItemsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * SXA Headless rendering variants. Typically
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants`.
    *
@@ -150,7 +167,7 @@ export type EnvironmentConfiguration = {
    */
   headlessVariantsRoot?: string;
   /**
-   * Sitecore parent path under which `scai recipe compile|push` creates
+   * Sitecore parent path under which `scai provision recipe compile|push` creates
    * SXA `Available Renderings` section items. Typically
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
    *
@@ -189,13 +206,85 @@ export type EnvironmentConfiguration = {
    */
   placeholderSettingsRoots?: string[];
   /**
-   * Preferred nested form of the 11 `*Root` fields above. When set,
+   * Sitecore parent path under which `scai provision recipe compile|push`
+   * CREATES recipe-defined Placeholder Settings items — one per unique
+   * placeholder key from a `PlaceholderRecipe` or an inline
+   * `ComponentTemplateRecipe.placeholders` slot. Typically
+   * `/sitecore/content/<site>/Presentation/Placeholder Settings`.
+   *
+   * Distinct from `placeholderSettingsRoots` (plural) above: that list
+   * is WALKED at apply time to find PRE-EXISTING tenant placeholders for
+   * `placedIn` allow-control patching; this single path is where the
+   * compiler MATERIALISES recipe-owned placeholders. Operators usually
+   * set this to a path inside one of the walk roots.
+   *
+   * Required when the recipe set declares any placeholder; the compiler
+   * throws INPUT_INVALID with a hint when needed but missing.
+   */
+  placeholderSettingsRoot?: string;
+  /**
+   * Sitecore parent path under which `scai provision recipe compile|push`
+   * creates `PageTemplateRecipe` items — typically
+   * `/sitecore/templates/Project/<site>`. Optional; falls back to
+   * `templatesRoot` when unset.
+   */
+  pageTemplatesRoot?: string;
+  /**
+   * Sitecore content-tree root under which `scai provision recipe
+   * compile|push` creates `PageRecipe` items — typically
+   * `/sitecore/content/<tenant>/<site>/Home`. Optional; only
+   * `PageRecipe` compilation requires it.
+   */
+  pagesRoot?: string;
+  /**
+   * Preferred nested form of the `*Root` fields above. When set,
    * `readRootConfiguration` flattens entries into the matching flat
    * fields before internal consumers read them. New configs should
    * use this shape — it scales as new recipe-tree roots get added
    * without bloating each env profile.
    */
   recipeRoots?: EnvironmentRecipeRoots;
+  /**
+   * Production-tier marker. Read by `scai content publish` to decide between
+   * the simple `[y/N]` confirmation path and the two-step typed-scope-
+   * token flow. Auto-flags `true` when the env name matches `/prod/i`
+   * or `/^live/i`; set explicitly to `false` to override the heuristic
+   * (e.g. an env named `prod-test` that isn't really production).
+   */
+  production?: boolean;
+  /**
+   * Permits `scai content publish all` (whole-tenant republish) from CI on
+   * this env. Default is human-only. Only honored when `production`
+   * is true; otherwise has no effect.
+   */
+  allowFullRepublish?: boolean;
+  /**
+   * CI pipeline identifiers allowed to run `scai content publish` against
+   * this env. The CLI/library compares the runtime principal's
+   * pipeline ID against this list; an empty/unset list means
+   * human-only.
+   */
+  allowedCiPipelines?: string[];
+};
+
+/**
+ * AI Skills credential record, keyed by Sitecore organization ID.
+ *
+ * AI APIs keys are created in Cloud Portal → Stream → Admin → AI APIs
+ * keys, are bound to a single org (confirmed one-org-per-credential),
+ * and carry their own scope set (`ai.org.brd:r/w`, `ai.org.docs:r/w`,
+ * `ai.orgs.br:gen`). They are NOT the env-level automation client
+ * `scai setup login` provisions for Pages/Sites/Authoring. The
+ * `clientSecret` is never stored on disk — it lives only in the OS
+ * keychain. Token cache timings here are advisory; the actual cached
+ * access token is also in the keychain.
+ */
+export type AiSkillsCredential = {
+  clientId: string;
+  audience?: string;
+  authority?: string;
+  tokenExpiresIn?: number | null;
+  tokenLastUpdated?: string | null;
 };
 
 export type RootConfiguration = {
@@ -203,11 +292,13 @@ export type RootConfiguration = {
   serialization: SerializationRootConfiguration;
   settings: Settings;
   environments: Record<string, EnvironmentConfiguration>;
+  /** AI Skills credentials, keyed by Sitecore `organizationId`. */
+  aiSkills: Record<string, AiSkillsCredential>;
   physicalPath: string;
   defaultEnvironment: string;
   /**
    * Globs (relative to the project root) that locate `.recipe.ts` /
-   * `.recipe.json` files for `scai recipe compile|plan|push`. When the
+   * `.recipe.json` files for `scai provision recipe compile|plan|push`. When the
    * commands run without `--input`, they fall back to this glob set.
    * Defaults to `["recipes/**\/*.recipe.ts"]` if unset.
    */
@@ -221,6 +312,13 @@ export type RootConfigurationFile = {
   settings?: Partial<Settings>;
   envProfiles?: Record<string, EnvironmentConfiguration>;
   defaultEnvProfile?: string;
+  /**
+   * AI Skills credentials, keyed by Sitecore `organizationId`. Stored
+   * separately from `envProfiles` because the AI APIs key is org-scoped,
+   * not env-scoped — multiple env profiles in the same org share one
+   * credential.
+   */
+  aiSkills?: Record<string, AiSkillsCredential>;
   /** Globs locating recipe files. See `RootConfiguration.recipes`. */
   recipes?: string[];
   [key: string]: unknown;

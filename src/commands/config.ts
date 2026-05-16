@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { readRootConfigurationFile } from "../config";
+import { readRootConfigurationFile } from "../config/root-config";
 import { Logger } from "../shared/logger";
 import { addConfigOption, addVerbosityOptions } from "./shared";
 
@@ -36,6 +36,6 @@ export const createConfigCommand = (): Command => {
   });
 
   command.addCommand(validate);
-  command.addHelpText("after", "\nExample:\n  $ scai config validate\n");
+  command.addHelpText("after", "\nExample:\n  $ scai cli config validate\n");
   return command;
 };

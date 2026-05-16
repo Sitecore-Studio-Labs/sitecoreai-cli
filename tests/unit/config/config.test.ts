@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import {
-  readRootConfiguration,
-  readSerializationModules,
-  resolveRootConfigurationPath,
-} from "../../../src/config";
+import { readRootConfiguration } from "../../../src/config/root-config";
+import { readSerializationModules } from "../../../src/config/modules";
+import { resolveRootConfigurationPath } from "../../../src/config/paths";
 
 const writeConfig = async (dir: string, config: Record<string, unknown>): Promise<string> => {
   const filePath = path.join(dir, "sitecoreai.cli.json");

@@ -1,6 +1,6 @@
 import fg from "fast-glob";
 import path from "node:path";
-import { createCliError } from "../shared/errors";
+import { createScaiError } from "../shared/errors";
 import { ItemPath } from "../serialization/item-path";
 import {
   AllowedPushOperations,
@@ -152,7 +152,7 @@ export const readSerializationModules = async (
   exclude?: string[]
 ): Promise<SerializationModuleConfiguration[]> => {
   if (!rootConfig.modules.length) {
-    throw createCliError(
+    throw createScaiError(
       "Root configuration does not contain any module path definitions.",
       "CONFIG_INVALID"
     );
@@ -173,7 +173,7 @@ export const readSerializationModules = async (
       const details = validateModuleConfig.errors
         ? formatValidationErrors(validateModuleConfig.errors)
         : undefined;
-      throw createCliError(`Invalid module configuration at ${moduleFile}.`, "CONFIG_INVALID", {
+      throw createScaiError(`Invalid module configuration at ${moduleFile}.`, "CONFIG_INVALID", {
         hint: "Fix the module JSON to match the serialization module schema.",
         details,
       });

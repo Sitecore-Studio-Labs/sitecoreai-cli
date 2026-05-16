@@ -1,13 +1,14 @@
 /**
- * `scai deploy site` — read-only discovery of SXA sites in a CM
+ * `scai provision deploy site` — read-only discovery of SXA sites in a CM
  * environment via the Authoring GraphQL API.
  *
  * Sibling of `deploy editing-host` (which talks to the Deploy API).
- * Uses the same env profile + auth as `scai recipe push`.
+ * Uses the same env profile + auth as `scai provision recipe push`.
  */
 
 import { Command, Option } from "commander";
-import { runDeploySiteBind, runDeploySiteList } from "@/deploy/tasks";
+import { runDeploySiteBind } from "@/deploy/tasks/site-bind";
+import { runDeploySiteList } from "@/deploy/tasks/site";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeploySiteCommand = (): Command => {

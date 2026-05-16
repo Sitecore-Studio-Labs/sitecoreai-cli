@@ -9,7 +9,7 @@ describe("history command", () => {
   it("prints the history path as json", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
     const historyPath = path.join(tmpDir, "history.log");
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([
@@ -22,8 +22,8 @@ describe("history command", () => {
       historyPath,
     ]);
 
-    expect(infoSpy).toHaveBeenCalled();
-    infoSpy.mockRestore();
+    expect(stdoutSpy).toHaveBeenCalled();
+    stdoutSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -45,7 +45,7 @@ describe("history command", () => {
     const historyPath = path.join(tmpDir, "history.log");
     await fs.writeFile(
       historyPath,
-      `{"timestamp":"1","event":"start","command":"scai status"}\nnot-json\n`,
+      `{"timestamp":"1","event":"start","command":"scai setup status"}\nnot-json\n`,
       "utf8"
     );
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
@@ -73,7 +73,7 @@ describe("history command", () => {
     const historyPath = path.join(tmpDir, "history.log");
     await fs.writeFile(
       historyPath,
-      `{"timestamp":"1","event":"start","command":"scai status","error":"boom"}\nnot-json\n`,
+      `{"timestamp":"1","event":"start","command":"scai setup status","error":"boom"}\nnot-json\n`,
       "utf8"
     );
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
@@ -81,7 +81,7 @@ describe("history command", () => {
     const command = createHistoryCommand();
     await command.parseAsync(["node", "scai", "history", "--path", historyPath]);
 
-    expect(infoSpy).toHaveBeenCalledWith("1 [start] scai status - boom");
+    expect(infoSpy).toHaveBeenCalledWith("1 [start] scai setup status - boom");
     expect(infoSpy).toHaveBeenCalledWith("not-json");
     infoSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
@@ -92,10 +92,10 @@ describe("history command", () => {
     const historyPath = path.join(tmpDir, "history.log");
     await fs.writeFile(
       historyPath,
-      `{"timestamp":"1","event":"start","command":"scai status"}\nnot-json\n`,
+      `{"timestamp":"1","event":"start","command":"scai setup status"}\nnot-json\n`,
       "utf8"
     );
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const command = createHistoryCommand();
     await command.parseAsync([
@@ -109,13 +109,13 @@ describe("history command", () => {
       historyPath,
     ]);
 
-    const payload = infoSpy.mock.calls[0]?.[0];
+    const payload = stdoutSpy.mock.calls[0]?.[0];
     const parsed = typeof payload === "string" ? JSON.parse(payload) : [];
     expect(parsed).toEqual([
-      { timestamp: "1", event: "start", command: "scai status" },
+      { timestamp: "1", event: "start", command: "scai setup status" },
       { raw: "not-json" },
     ]);
-    infoSpy.mockRestore();
+    stdoutSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

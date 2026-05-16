@@ -9,7 +9,7 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import { runPackageCreate, runPackageInstall } from "../../serialization/tasks";
+import { runPackageCreate, runPackageInstall } from "../../serialization/tasks/package";
 
 const createPackageCreateCommand = (): Command => {
   const command = new Command("create").description("Creates a new serialized item package");

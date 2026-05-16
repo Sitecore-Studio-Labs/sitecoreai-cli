@@ -12,7 +12,7 @@ import {
   runDeploySourceControlProviders,
   runDeploySourceControlGet,
   runDeploySourceControlDelete,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/source-control";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeploySourceControlCommand = (): Command => {

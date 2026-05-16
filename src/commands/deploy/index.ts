@@ -22,7 +22,7 @@ export const createDeployCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    '\nExamples:\n  $ scai deploy projects list\n  $ scai deploy environments list --project "My Project" --type cm\n  $ scai deploy site list --environment-name myenv --hostnames\n'
+    '\nExamples:\n  $ scai provision deploy projects list\n  $ scai provision deploy environments list --project "My Project" --type cm\n  $ scai provision deploy site list --environment-name myenv --hostnames\n'
   );
 
   return command;

@@ -5,7 +5,6 @@
   "type": "object",
   "description": "Defines the Sitecore AI CLI root configuration",
   "additionalProperties": false,
-  "required": ["modules"],
   "properties": {
     "$schema": { "type": "string" },
     "defaultEnvProfile": {
@@ -21,13 +20,12 @@
     },
     "modules": {
       "type": "array",
-      "description": "Sitecore module file resolution globs",
-      "minItems": 1,
+      "description": "Sitecore module file resolution globs. Optional — only used by serialization-driven workflows (`scai provision ser …`, `scai provision recipe …`). Brief / Pages / publish-only configs can omit it.",
       "items": { "type": "string" }
     },
     "recipes": {
       "type": "array",
-      "description": "Globs locating .recipe.ts / .recipe.json files for `scai recipe compile|plan|push`. Defaults to `recipes/**/*.recipe.ts` if unset.",
+      "description": "Globs locating .recipe.ts / .recipe.json files for `scai provision recipe compile|plan|push`. Defaults to `recipes/**/*.recipe.ts` if unset.",
       "items": { "type": "string" }
     },
     "serialization": {
@@ -37,6 +35,13 @@
     "settings": {
       "description": "Cli settings",
       "oneOf": [{ "$ref": "#/definitions/Settings" }]
+    },
+    "aiSkills": {
+      "type": "object",
+      "description": "Sitecore AI Skills credentials (Brand Management, Brand Review, Documents, Pipeline), keyed by Sitecore organizationId. AI APIs keys are one-org-per-credential and use scopes separate from the Pages/Sites automation client.",
+      "additionalProperties": {
+        "$ref": "#/definitions/AiSkillsCredential"
+      }
     }
   },
   "definitions": {
@@ -83,6 +88,33 @@
       "properties": {
         "fieldId": { "type": "string" },
         "description": { "type": "string" }
+      }
+    },
+    "AiSkillsCredential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clientId"],
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "Client ID of the AI APIs key created in Cloud Portal → Stream → Admin → AI APIs keys. The matching secret lives in the OS keychain, never on disk."
+        },
+        "audience": {
+          "type": "string",
+          "description": "OAuth audience to request. Defaults to https://api.sitecorecloud.io."
+        },
+        "authority": {
+          "type": "string",
+          "description": "OAuth authority. Defaults to https://auth.sitecorecloud.io."
+        },
+        "tokenExpiresIn": {
+          "type": ["integer", "null"],
+          "description": "Last-known expires_in (seconds) of the cached access token. Advisory only — actual cached token lives in the keychain."
+        },
+        "tokenLastUpdated": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the last token mint. Advisory only."
+        }
       }
     },
     "Settings": {
@@ -133,6 +165,10 @@
         "allowWrite": {
           "type": "boolean",
           "description": "Whether writing data to this endpoint is allowed (i.e. to prevent accidental writes to production)"
+        },
+        "denyMcpElevation": {
+          "type": "boolean",
+          "description": "When true, MCP write tools refuse to operate against this environment regardless of the host's write-confirmation UX. Use for production-shaped envs where destructive ops must originate from a human CLI call (--allow-write) and never an MCP-elevated context. Defaults to false."
         },
         "host": {
           "type": "string",
@@ -208,48 +244,60 @@
         },
         "templatesRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates template items (e.g. /sitecore/templates/Project/<site>/Components). Tenant-specific. Used as fallback when --templates-root is not passed."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates template items (e.g. /sitecore/templates/Project/<site>/Components). Tenant-specific. Used as fallback when --templates-root is not passed."
         },
         "componentsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates component template items in the per-site folder layout (`<componentsRoot>/<section>/<Component>`). When unset, the compiler falls back to `templatesRoot` and emits the legacy flat layout. Used as fallback when --components-root is not passed."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates component template items in the per-site folder layout (`<componentsRoot>/<section>/<Component>`). When unset, the compiler falls back to `templatesRoot` and emits the legacy flat layout. Used as fallback when --components-root is not passed."
         },
         "contentModelsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates content-template items (`<contentModelsRoot>/<group>/<name>` when grouped, flat otherwise). When unset, content templates fall back to `templatesRoot` and land mixed in with components. Used as fallback when --content-models-root is not passed."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates content-template items (`<contentModelsRoot>/<group>/<name>` when grouped, flat otherwise). When unset, content templates fall back to `templatesRoot` and land mixed in with components. Used as fallback when --content-models-root is not passed."
         },
         "renderingsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates rendering items (e.g. /sitecore/layout/Renderings/Project/<site>). Tenant-specific. Used as fallback when --renderings-root is not passed."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates rendering items (e.g. /sitecore/layout/Renderings/Project/<site>). Tenant-specific. Used as fallback when --renderings-root is not passed."
         },
         "partialDesignsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates partial-design items (e.g. /sitecore/content/<site>/Presentation/Partial Designs). Required for PartialDesignRecipe compilation."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates partial-design items (e.g. /sitecore/content/<site>/Presentation/Partial Designs). Required for PartialDesignRecipe compilation."
         },
         "pageDesignsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates page-design items (e.g. /sitecore/content/<site>/Presentation/Page Designs). Required for PageDesignRecipe compilation; also seeds crossRecipeRefs for the cross-recipe TemplatesMapping aggregate."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates page-design items (e.g. /sitecore/content/<site>/Presentation/Page Designs). Required for PageDesignRecipe compilation; also seeds crossRecipeRefs for the cross-recipe TemplatesMapping aggregate."
         },
         "contentItemsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates shared content items (e.g. /sitecore/content/<site>/Data). Required for ContentItemRecipe compilation."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates shared content items (e.g. /sitecore/content/<site>/Data). Required for ContentItemRecipe compilation."
         },
         "headlessVariantsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates SXA Headless rendering variants (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants). Required when any recipe in the set declares variants."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates SXA Headless rendering variants (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants). Required when any recipe in the set declares variants."
         },
         "availableRenderingsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates SXA Available Renderings section items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings). One section per `recipe.section` is emitted with all renderings in that section listed in the Renderings field."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates SXA Available Renderings section items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings). One section per `recipe.section` is emitted with all renderings in that section listed in the Renderings field."
         },
         "enumerationsRoot": {
           "type": "string",
-          "description": "Sitecore parent path under which `scai recipe compile|push` creates EnumerationRecipe items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Enumerations). Each enum lands as `<enumerationsRoot>/<EnumName>` with one child item per declared value. Required for EnumerationRecipe compilation, and for any recipe whose fields carry `sitecore.enumHandle`."
+          "description": "Sitecore parent path under which `scai provision recipe compile|push` creates EnumerationRecipe items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Enumerations). Each enum lands as `<enumerationsRoot>/<EnumName>` with one child item per declared value. Required for EnumerationRecipe compilation, and for any recipe whose fields carry `sitecore.enumHandle`."
         },
         "placeholderSettingsRoots": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Sitecore content-tree paths to walk when resolving recipe-declared `placeholders` to Placeholder Settings items (matched by their `Placeholder Key` field). Typically the per-site Presentation/Placeholder Settings AND the Layout/Placeholder Settings/Project/<site> path."
+        },
+        "placeholderSettingsRoot": {
+          "type": "string",
+          "description": "Sitecore content-tree root under which `scai provision recipe compile|push` CREATES recipe-defined Placeholder Settings items (e.g. /sitecore/content/<site>/Presentation/Placeholder Settings). Distinct from placeholderSettingsRoots (the plural walk list)."
+        },
+        "pageTemplatesRoot": {
+          "type": "string",
+          "description": "Sitecore templates root under which `scai provision recipe compile|push` creates PageTemplateRecipe items (e.g. /sitecore/templates/Project/<site>). Optional; falls back to templatesRoot."
+        },
+        "pagesRoot": {
+          "type": "string",
+          "description": "Sitecore content-tree root under which `scai provision recipe compile|push` creates PageRecipe items (e.g. /sitecore/content/<tenant>/<site>/Home). Required for PageRecipe compilation."
         },
         "recipeRoots": {
           "type": "object",
@@ -262,6 +310,8 @@
             "contentModels": { "type": "string" },
             "partialDesigns": { "type": "string" },
             "pageDesigns": { "type": "string" },
+            "pageTemplates": { "type": "string" },
+            "pages": { "type": "string" },
             "contentItems": { "type": "string" },
             "headlessVariants": { "type": "string" },
             "availableRenderings": { "type": "string" },
@@ -269,7 +319,8 @@
             "placeholderSettings": {
               "type": "array",
               "items": { "type": "string" }
-            }
+            },
+            "placeholderSettingsCreate": { "type": "string" }
           }
         }
       }

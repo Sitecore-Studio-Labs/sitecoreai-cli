@@ -37,6 +37,6 @@ export const createTelemetryCommand = (): Command => {
   });
 
   command.addCommand(status);
-  command.addHelpText("after", "\nExample:\n  $ scai telemetry status\n");
+  command.addHelpText("after", "\nExample:\n  $ scai cli telemetry status\n");
   return command;
 };

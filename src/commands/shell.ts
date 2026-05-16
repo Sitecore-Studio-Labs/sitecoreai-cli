@@ -156,6 +156,6 @@ export const createShellCommand = (runCli: RunCli): Command => {
       });
     });
 
-  command.addHelpText("after", "\nExample:\n  $ scai shell\n  scai> status\n  scai> exit\n");
+  command.addHelpText("after", "\nExample:\n  $ scai cli shell\n  scai> status\n  scai> exit\n");
   return command;
 };

@@ -9,8 +9,17 @@ const splitComma = (value: string): string[] =>
 export const collectList = (value: string, previous: string[] = []): string[] =>
   previous.concat(splitComma(value));
 
-export const normalizeArgs = (argv: string[]): string[] =>
-  argv.map((arg) => {
+export const normalizeArgs = (argv: string[]): string[] => {
+  // Drop a leading `--` separator (argv[2]). `pnpm dev -- <subcmd> ...`
+  // injects a literal `--` before the subcommand; commander then treats
+  // it as an end-of-options marker for the root program and routes
+  // every subsequent flag (e.g. `--what-if`) into positional args
+  // instead of parsing them. The separator carries no scai-level
+  // meaning, so strip it before commander sees it. Position 2 only:
+  // `--` later in argv (e.g. for a hypothetical pass-through arg) is
+  // preserved.
+  const cleaned = argv[2] === "--" ? [...argv.slice(0, 2), ...argv.slice(3)] : argv;
+  return cleaned.map((arg) => {
     if (arg === "-fr") {
       return "--force";
     }
@@ -20,8 +29,17 @@ export const normalizeArgs = (argv: string[]): string[] =>
     if (arg === "-q") {
       return "--quiet";
     }
+    // `ser diff` aliases that match dotnet `Sitecore.DevEx`
+    // `ser diff --source-env / --target-env [--push]`.
+    if (arg === "--source-env") {
+      return "--source";
+    }
+    if (arg === "--target-env") {
+      return "--destination";
+    }
     return arg;
   });
+};
 
 export const addConfigOption = (command: Command): Command =>
   command.addOption(
@@ -72,6 +90,49 @@ export const addIncludeExcludeOptions = (command: Command): Command =>
 export const addWhatIfOption = (command: Command): Command =>
   command.option("-w, --what-if", "Lists commands that would be executed, without executing them");
 
+/**
+ * `--apply` is the universal "yes really execute" flag for destructive
+ * commands. Without it, scai dry-runs as if `--what-if` were set.
+ * Agent-first: no destruction without an explicit affirmative in the
+ * command line.
+ *
+ * Pre-2026-05-14, destructive commands ran whenever the operator passed
+ * `--allow-write` (cleanup) or `--force` (deploy). That made "I forgot
+ * `--what-if`" the same keystroke as "delete." Inverting the default
+ * costs one flag for intentional mutations and removes the muscle-
+ * memory hazard for everything else.
+ */
+export const addApplyOption = (command: Command): Command =>
+  command.option(
+    "--apply",
+    "Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set."
+  );
+
+/**
+ * Wrap a CLI command runner with the `--apply` gate. Without `--apply`
+ * (and absent an explicit `--what-if`), the runner is invoked with
+ * `whatIf: true` so it produces a plan-only output. Emits a one-line
+ * stderr hint so operators don't wonder why no mutation happened.
+ *
+ * Use at the CLI command layer (in `.action()` handlers). Library
+ * callers (MCP tools, direct programmatic use) bypass this wrapper and
+ * are gated by their own contract (e.g. MCP's per-call `allowWrite`).
+ */
+export const withApplyGate = <T extends { apply?: boolean; whatIf?: boolean }>(
+  runner: (options: T) => unknown | Promise<unknown>
+): ((options: T) => Promise<void>) => {
+  return async (options: T): Promise<void> => {
+    let coerced = options;
+    if (!options.apply && !options.whatIf) {
+      process.stderr.write(
+        "Dry run (no --apply flag set). Pass --apply to execute the mutation.\n"
+      );
+      coerced = { ...options, whatIf: true };
+    }
+    await runner(coerced);
+  };
+};
+
 export const addSkipValidationOption = (command: Command): Command =>
   command.option("-s, --skip-validation", "Skips filesystem integrity validation prior to syncing");
 
@@ -113,15 +174,30 @@ export const addExplainOptions = (command: Command): Command =>
 
 export const addDiffOptions = (command: Command): Command =>
   command
-    .option("-s, --source <name>", "Named Sitecore endpoint to use as a source for comparison")
+    .option(
+      "-s, --source <name>",
+      "Named Sitecore endpoint to use as a source for comparison (alias: --source-env)"
+    )
     .option(
       "-d, --destination <name>",
-      "Named Sitecore endpoint to use as a destination for comparison"
+      "Named Sitecore endpoint to use as a destination for comparison (alias: --target-env)"
     )
     .option("-p, --path <path>", "Item path to compare (instead of include/exclude)")
     .option("--source-database <database>", "Source database (when used with --path)")
     .option("--destination-database <database>", "Destination database (when used with --path)")
-    .option("--push", "Applies the differences detected to the destination (diff + push)");
+    .option("--push", "Applies the differences detected to the destination (diff + push)")
+    .option(
+      "-w, --what-if",
+      "With --push: builds the plan and prints it without writing to the destination"
+    )
+    .option(
+      "--allow-write",
+      "With --push: allow writes to the destination for this invocation without updating config"
+    )
+    .option(
+      "--force",
+      "With --push: skip the empty-source confirmation guard. Required if source has zero items."
+    );
 
 export const addValidateOptions = (command: Command): Command =>
   command.option(

@@ -5,7 +5,7 @@ const configMocks = vi.hoisted(() => ({
   readRootConfigurationFile: vi.fn(),
 }));
 
-vi.mock("../../../src/config", () => configMocks);
+vi.mock("../../../src/config/root-config", () => configMocks);
 
 const loggerState: {
   last?: { json: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };

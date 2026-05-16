@@ -46,7 +46,7 @@ vi.mock("../../../src/shared/telemetry", async () => {
     recordTelemetry: vi.fn(),
     setTelemetryVersion: vi.fn(),
     resolveConfigPathFromArgs: vi.fn().mockReturnValue(undefined),
-    formatTelemetryCommand: vi.fn().mockReturnValue("scai status"),
+    formatTelemetryCommand: vi.fn().mockReturnValue("scai setup status"),
   };
 });
 vi.mock("../../../src/shared/style", () => ({

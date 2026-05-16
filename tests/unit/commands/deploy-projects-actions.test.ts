@@ -13,7 +13,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeployProjectsDelete: vi.fn(),
 }));
 
-vi.mock("../../../src/deploy/tasks", () => taskMocks);
+vi.mock("../../../src/deploy/tasks/projects", () => taskMocks);
 
 const runProjects = async (args: string[]): Promise<void> => {
   const command = createDeployProjectsCommand();

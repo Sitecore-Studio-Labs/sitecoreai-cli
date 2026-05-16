@@ -85,7 +85,7 @@ export const applyEnvOverrides = (
   }
   // CM/admin access token override — useful when keychain storage is
   // unreliable (e.g. headless CI, sandboxed shells) or for one-off
-  // debugging. Read by `getAccessToken` in serialization/sitecore-api/auth.ts
+  // debugging. Read by `getAccessToken` in serialization/api/auth.ts
   // before falling through to client-credentials.
   const accessToken = getEnvOverride(envName, "ACCESS_TOKEN", includeGlobal);
   if (accessToken !== undefined) {
@@ -145,7 +145,7 @@ export const applyEnvOverrides = (
   const availableRenderingsRoot = getEnvOverride(
     envName,
     "AVAILABLE_RENDERINGS_ROOT",
-    includeGlobal,
+    includeGlobal
   );
   if (availableRenderingsRoot !== undefined) {
     overrides.availableRenderingsRoot = availableRenderingsRoot;
@@ -162,13 +162,33 @@ export const applyEnvOverrides = (
   const placeholderSettingsRoots = getEnvOverride(
     envName,
     "PLACEHOLDER_SETTINGS_ROOTS",
-    includeGlobal,
+    includeGlobal
   );
   if (placeholderSettingsRoots !== undefined) {
     overrides.placeholderSettingsRoots = placeholderSettingsRoots
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
+  }
+  // Page-template create root → `CompileContext.pageTemplatesRoot`.
+  const pageTemplatesRoot = getEnvOverride(envName, "PAGE_TEMPLATES_ROOT", includeGlobal);
+  if (pageTemplatesRoot !== undefined) {
+    overrides.pageTemplatesRoot = pageTemplatesRoot;
+  }
+  // Pages content-tree root → `CompileContext.pagesRoot`.
+  const pagesRoot = getEnvOverride(envName, "PAGES_ROOT", includeGlobal);
+  if (pagesRoot !== undefined) {
+    overrides.pagesRoot = pagesRoot;
+  }
+  // Placeholder Settings CREATE root → `CompileContext.placeholderSettingsRoot`.
+  // Distinct from PLACEHOLDER_SETTINGS_ROOTS (the plural walk list).
+  const placeholderSettingsRoot = getEnvOverride(
+    envName,
+    "PLACEHOLDER_SETTINGS_ROOT",
+    includeGlobal
+  );
+  if (placeholderSettingsRoot !== undefined) {
+    overrides.placeholderSettingsRoot = placeholderSettingsRoot;
   }
   const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
   if (organizationId !== undefined) {
@@ -192,6 +212,25 @@ export const applyEnvOverrides = (
     if (normalized === "cm" || normalized === "eh") {
       overrides.environmentType = normalized as EnvironmentConfiguration["environmentType"];
     }
+  }
+  // Publishing safety flags — read by `scai content publish` to decide
+  // production-tier gating and CI eligibility.
+  const production = toBoolean(getEnvOverride(envName, "PRODUCTION", includeGlobal));
+  if (production !== undefined) {
+    overrides.production = production;
+  }
+  const allowFullRepublish = toBoolean(
+    getEnvOverride(envName, "ALLOW_FULL_REPUBLISH", includeGlobal)
+  );
+  if (allowFullRepublish !== undefined) {
+    overrides.allowFullRepublish = allowFullRepublish;
+  }
+  const allowedCiPipelines = getEnvOverride(envName, "ALLOWED_CI_PIPELINES", includeGlobal);
+  if (allowedCiPipelines !== undefined) {
+    overrides.allowedCiPipelines = allowedCiPipelines
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
   }
 
   return { ...env, ...overrides };

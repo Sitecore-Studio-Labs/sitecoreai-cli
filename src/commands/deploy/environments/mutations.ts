@@ -8,7 +8,8 @@ import {
   runDeployEnvironmentsLinkRepository,
   runDeployEnvironmentsUnlinkRepository,
   runDeployEnvironmentsDelete,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/environments";
+import { withApplyGate } from "../../shared";
 import { addDeployBaseOptions } from "../shared";
 
 export const createEnvironmentsCreateCommand = (): Command => {
@@ -108,9 +109,7 @@ export const createEnvironmentsUnlinkRepositoryCommand = (): Command => {
     .addOption(new Option("--id <id>", "Environment ID"))
     .addOption(new Option("--name <name>", "Environment name"))
     .addOption(new Option("--project <value>", "Project name or ID"));
-  environmentsUnlinkRepository.action(async (options) =>
-    runDeployEnvironmentsUnlinkRepository(options)
-  );
+  environmentsUnlinkRepository.action(withApplyGate(runDeployEnvironmentsUnlinkRepository));
   return environmentsUnlinkRepository;
 };
 
@@ -124,6 +123,6 @@ export const createEnvironmentsDeleteCommand = (): Command => {
     .addOption(new Option("--name <name>", "Environment name"))
     .addOption(new Option("--project <value>", "Project name or ID"))
     .addOption(new Option("--force", "Force delete environment"));
-  environmentsDelete.action(async (options) => runDeployEnvironmentsDelete(options));
+  environmentsDelete.action(withApplyGate(runDeployEnvironmentsDelete));
   return environmentsDelete;
 };

@@ -8,7 +8,7 @@ import {
   runDeployDeploymentsSource,
   runDeployDeploymentsWatch,
   runDeployDeploymentLogs,
-} from "@/deploy/tasks";
+} from "@/deploy/tasks/deployments";
 import { addDeployBaseOptions } from "./shared";
 
 export const createDeployDeploymentsCommand = (): Command => {

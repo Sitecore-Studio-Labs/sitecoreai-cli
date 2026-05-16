@@ -47,7 +47,7 @@ export const createHistoryCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nExamples:\n  $ scai history --limit 20\n  $ scai history --show-path\n"
+    "\nExamples:\n  $ scai cli history --limit 20\n  $ scai cli history --show-path\n"
   );
 
   command.action(async (options: HistoryOptions) => {

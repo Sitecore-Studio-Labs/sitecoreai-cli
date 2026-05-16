@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runInit } from "../serialization/tasks";
+import { runInit } from "../serialization/tasks/env/init";
 
 export const createInitCommand = (): Command => {
   const command = new Command("init").description(
@@ -39,7 +39,7 @@ export const createInitCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    '\nExamples:\n  $ scai init --wizard\n  $ scai init -n demo --project "My Project" --environment "Dev"\n'
+    '\nExamples:\n  $ scai setup init --wizard\n  $ scai setup init -n demo --project "My Project" --environment "Dev"\n'
   );
 
   command.action(async (options) => runInit(options));

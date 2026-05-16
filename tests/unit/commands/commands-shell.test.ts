@@ -89,7 +89,7 @@ describe("shell command", () => {
 
     const current = readlineMocks.getCurrent();
     expect(current).not.toBeNull();
-    current?.emitLine("scai status");
+    current?.emitLine("scai setup status");
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(runCli).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ describe("shell command", () => {
     await parsePromise;
 
     const [argv, options] = runCli.mock.calls[0];
-    expect(argv).toEqual(["node", "scai", "status"]);
+    expect(argv).toEqual(["node", "scai", "setup", "status"]);
     expect(options).toEqual(
       expect.objectContaining({
         skipBanner: true,

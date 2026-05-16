@@ -73,6 +73,9 @@ describe("serialization commands", () => {
       "--source-database",
       "--destination-database",
       "--push",
+      "--what-if",
+      "--allow-write",
+      "--force",
       ...includeExclude,
       ...baseOptions,
     ]);

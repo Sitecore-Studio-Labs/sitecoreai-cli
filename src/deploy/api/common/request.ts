@@ -46,22 +46,17 @@ export const parseJsonIfPossible = async (response: Response): Promise<unknown> 
   }
 };
 
-export const extractErrorMessage = (body: unknown): string | undefined => {
-  if (typeof body === "string") {
-    return body;
-  }
-  if (!body || typeof body !== "object") {
-    return undefined;
-  }
-  const record = body as Record<string, unknown>;
-  const candidates = [record.detail, record.message, record.title, record.error];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate;
-    }
-  }
-  if (Array.isArray(record.errors)) {
-    const parts = record.errors
+/**
+ * Pull the field-level detail out of an error body's `errors` member.
+ * ASP.NET `ValidationProblemDetails` shapes it as `Record<string,
+ * string[]>` (field → messages); some endpoints use an array of
+ * `{ message }` objects instead. This detail is the part that actually
+ * says what was wrong — the sibling `title` is only the generic
+ * "One or more validation errors occurred."
+ */
+const extractFieldErrors = (errors: unknown): string | undefined => {
+  if (Array.isArray(errors)) {
+    const parts = errors
       .map((entry) => {
         if (typeof entry === "string") {
           return entry;
@@ -76,18 +71,50 @@ export const extractErrorMessage = (body: unknown): string | undefined => {
         return undefined;
       })
       .filter((value): value is string => Boolean(value));
-    if (parts.length > 0) {
-      return parts.join("; ");
-    }
+    return parts.length > 0 ? parts.join("; ") : undefined;
   }
-  if (record.errors && typeof record.errors === "object" && !Array.isArray(record.errors)) {
-    try {
-      return JSON.stringify(record.errors);
-    } catch {
-      return undefined;
+  if (errors && typeof errors === "object") {
+    const parts: string[] = [];
+    for (const [field, messages] of Object.entries(errors as Record<string, unknown>)) {
+      if (Array.isArray(messages)) {
+        const flat = messages.filter((m): m is string => typeof m === "string");
+        if (flat.length > 0) {
+          parts.push(field ? `${field}: ${flat.join(" ")}` : flat.join(" "));
+        }
+      } else if (typeof messages === "string" && messages.trim().length > 0) {
+        parts.push(field ? `${field}: ${messages.trim()}` : messages.trim());
+      }
     }
+    return parts.length > 0 ? parts.join("; ") : undefined;
   }
   return undefined;
+};
+
+export const extractErrorMessage = (body: unknown): string | undefined => {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+  const record = body as Record<string, unknown>;
+
+  // The generic summary. For an ASP.NET ValidationProblemDetails this is
+  // only "One or more validation errors occurred." — so it must NOT
+  // short-circuit ahead of the field-level `errors` detail below.
+  let summary: string | undefined;
+  for (const candidate of [record.detail, record.message, record.title, record.error]) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      summary = candidate.trim();
+      break;
+    }
+  }
+
+  const fieldErrors = extractFieldErrors(record.errors);
+  if (fieldErrors) {
+    return summary ? `${summary} ${fieldErrors}` : fieldErrors;
+  }
+  return summary;
 };
 
 type SpinnerHandle = { succeed: () => void; fail: () => void; stop: () => void };

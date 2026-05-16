@@ -1,18 +1,27 @@
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
-import { resolveClientCredential } from "@/shared/client-credential";
+import {
+  DEFAULT_SITECORE_API_AUDIENCE,
+  requestClientCredentialsToken,
+} from "@/serialization/api/auth";
+import type { BrandCredential } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
-import { getCampaignToken, setCampaignToken } from "@/shared/keychain";
+import { getBrandClientSecret, getCampaignToken, setCampaignToken } from "@/shared/keychain";
 
 /**
  * Auth seam for the Campaign (Orchestrate) API.
  *
- * **Unverified scope.** The HAR capture this client was built from had
- * its Authorization headers stripped, so the exact OAuth scope the
- * Orchestrate API requires is unknown. The mint below requests **no
- * scope** — Auth0 then grants whatever the M2M client carries, the
- * same permissive pattern the Brief API client-credentials flow uses.
- * Once a scope is confirmed, pin it here. See `docs/campaigns-followups.md`.
+ * The Orchestrate API is an AI API (`ai-workflows-*.sitecorecloud.io`) and
+ * authenticates with the **AI APIs key** — the same org-scoped credential
+ * `scai brand` uses (`brand[orgId]` in the config; secret in the keychain).
+ *
+ * Verified 2026-05-16: a token minted from the AI APIs key calls
+ * `/api/orchestrate/v1/projects` successfully, where a Deploy-clients-API
+ * automation client (`cm` or `deploy` type) gets `403 Insufficient scope`
+ * — those clients carry `xmcloud*`/`co.*` scopes, not the `ai.*` family
+ * the Orchestrate API requires.
+ *
+ * Minted with no `scope` parameter — Auth0 issues the AI APIs key's full
+ * (per-key) grant; the Orchestrate API enforces scope server-side. There
+ * is no interactive login flow — campaign calls are agent-driven.
  */
 
 /**
@@ -41,74 +50,64 @@ const isFresh = (jwt: string, skewSeconds = 60): boolean => {
 };
 
 export interface AcquireCampaignTokenOptions {
-  envName: string;
-  environment: SitecoreApiClientOptions;
+  /** Org id behind the campaign environment — keys the AI APIs key. */
+  organizationId: string | undefined;
+  /** The `brand[orgId]` AI APIs key block from the root config. */
+  brandCredential: BrandCredential | undefined;
 }
 
 /**
  * Returns a Bearer JWT for the Sitecore Orchestrate (Campaign) API.
  *
  * Resolution order:
- *   1. Campaign-specific keychain entry, if the cached JWT is unexpired.
- *   2. M2M client-credentials mint. The `clientId` + `clientSecret` are
- *      resolved by `resolveClientCredential` — the shared three-tier
- *      chain: the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` env-var override,
- *      then the env-scoped automation client in the OS keychain, then
- *      the org-scoped one. The minted token is cached for next time.
+ *   1. Campaign-specific keychain entry (keyed by org id), if unexpired.
+ *   2. Fresh M2M client-credentials mint from the org's AI APIs key —
+ *      `clientId` from the `brand[orgId]` config block, secret from the
+ *      keychain. Cached for next time.
  *
- * Refuses with `AUTH_REQUIRED` if neither path yields a token. There is
- * no interactive login flow — campaign calls are agent-driven.
+ * Refuses with `AUTH_BRAND_REQUIRED` when no AI APIs key is registered.
  */
 export const acquireCampaignToken = async (
   options: AcquireCampaignTokenOptions
 ): Promise<string> => {
-  const cached = await getCampaignToken(options.envName);
+  const { organizationId, brandCredential } = options;
+  if (!organizationId) {
+    throw createScaiError(
+      "Campaign auth needs the environment's organizationId.",
+      "AUTH_BRAND_REQUIRED",
+      { hint: "Set organizationId on the env profile, or run `scai setup init`." }
+    );
+  }
+
+  const cached = await getCampaignToken(organizationId);
   if (cached && isFresh(cached)) {
     return cached;
   }
 
-  const env = options.environment;
-  // The client secret never lives in the config file — `resolveClientCredential`
-  // walks the three tiers (env-var override → env-scoped keychain client →
-  // org-scoped keychain client) and pairs the secret with the `clientId`
-  // it is handed from the config-resident metadata.
-  const credential = await resolveClientCredential({
-    envName: options.envName,
-    clientId: env.clientId,
-    automationClientId: env.automationClient?.clientId,
-    organizationId: env.organizationId,
-    orgClientId: env.orgClientId,
-  });
-
-  if (credential && env.authority) {
-    try {
-      const result = await requestClientCredentialsToken({
-        ...env,
-        clientId: credential.clientId,
-        clientSecret: credential.clientSecret,
-      });
-      if (result.accessToken) {
-        await setCampaignToken(options.envName, result.accessToken);
-        return result.accessToken;
+  const clientSecret = await getBrandClientSecret(organizationId);
+  if (!brandCredential?.clientId || !clientSecret) {
+    throw createScaiError(
+      `No AI APIs key is registered for org '${organizationId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      {
+        hint: "The Orchestrate (Campaign) API authenticates with the AI APIs key — the same credential `scai brand` uses. Register one with `scai setup client register-brand`.",
       }
-    } catch (error) {
-      throw createScaiError(
-        "Could not acquire an Orchestrate-scoped token via client credentials.",
-        "AUTH_REQUIRED",
-        {
-          hint: `Confirm the environment's automation client is authorized for the Orchestrate API. Underlying error: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        }
-      );
-    }
+    );
   }
 
-  throw createScaiError(
-    "No Orchestrate-scoped token available for this environment.",
-    "AUTH_REQUIRED",
-    {
-      hint: "Provide the environment's automation client — run `scai setup env` to store it in the OS keychain, or set SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Campaign API does not support interactive operator login.",
-    }
-  );
+  const result = await requestClientCredentialsToken({
+    authority: brandCredential.authority ?? "https://auth.sitecorecloud.io",
+    clientId: brandCredential.clientId,
+    clientSecret,
+    audience: brandCredential.audience ?? DEFAULT_SITECORE_API_AUDIENCE,
+  });
+  if (!result.accessToken) {
+    throw createScaiError(
+      `Sitecore returned no access token for org '${organizationId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: "Re-register the AI APIs key with `scai setup client register-brand`." }
+    );
+  }
+  await setCampaignToken(organizationId, result.accessToken);
+  return result.accessToken;
 };

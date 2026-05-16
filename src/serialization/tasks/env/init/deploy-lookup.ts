@@ -241,6 +241,22 @@ export const resolveDeployLookup = async (
     if (!resolvedEnvironment) {
       if (!environmentSelection && runWizard && selectionPool.length > 1) {
         resolvedEnvironment = await selectFromList(logger, environmentLabel, selectionPool);
+      } else if (!environmentSelection && runWizard && selectionPool.length === 1) {
+        // Only one candidate. Auto-select it, but announce it by name —
+        // silently locking onto an environment the user never saw reads
+        // as "the project step just exited without asking anything".
+        resolvedEnvironment = selectionPool[0];
+        const autoName =
+          resolvedEnvironment.name ??
+          resolvedEnvironment.id ??
+          resolvedEnvironment.environmentId ??
+          "(unknown)";
+        const autoId = resolvedEnvironment.id ?? resolvedEnvironment.environmentId ?? "-";
+        const poolKind = cmEnvironments.length > 0 ? "CM environment" : "environment";
+        logger.info(
+          `Using the only ${poolKind} in '${resolvedProjectLabel}': ${autoName} (${autoId})`,
+          "cyan"
+        );
       } else {
         resolvedEnvironment = selectMatch(
           selectionPool,

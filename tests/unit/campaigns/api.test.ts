@@ -49,9 +49,7 @@ describe("campaign API — projects", () => {
 
     await getProject(baseOptions, "p1/with/slash");
 
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${B}/api/orchestrate/v1/projects/p1%2Fwith%2Fslash`
-    );
+    expect(fetchMock.mock.calls[0][0]).toBe(`${B}/api/orchestrate/v1/projects/p1%2Fwith%2Fslash`);
   });
 
   it("createProject POSTs a body with server-defaulted fields", async () => {
@@ -183,5 +181,36 @@ describe("campaign API — transport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getProject(baseOptions, "missing")).rejects.toThrow();
+  });
+
+  it("surfaces the required scope from the WWW-Authenticate header on a 403", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Insufficient scope" }), {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate":
+            'Bearer error="insufficient_scope", scope="orchestrate.projects:read"',
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listProjects(baseOptions)).rejects.toMatchObject({
+      code: "CAMPAIGN_API_FAILED",
+      hint: expect.stringContaining("orchestrate.projects:read"),
+    });
+  });
+
+  it("hints at the Orchestrate scope authorization even without a WWW-Authenticate header", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listProjects(baseOptions)).rejects.toMatchObject({
+      code: "CAMPAIGN_API_FAILED",
+      hint: expect.stringContaining("not authorized for the Orchestrate API"),
+    });
   });
 });

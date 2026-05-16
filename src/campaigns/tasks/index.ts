@@ -68,20 +68,15 @@ const prepareCampaignClient = async (
 ): Promise<{ logger: Logger; client: CampaignApiClientOptions; envName: string }> => {
   const logger = toLogger(options);
   const { envName, environment, root } = resolveEnvironment(options);
-  // Carry the org-scoped automation client's non-secret `clientId` from
-  // the root config so `resolveClientCredential` can pair it with the
-  // org-client secret in the keychain (tier 3).
-  const orgClientId = environment.organizationId
-    ? root.orgClients[environment.organizationId]?.clientId
-    : undefined;
+  const orgId = environment.organizationId;
   const accessToken = await acquireCampaignToken({
-    envName,
-    environment: { ...environment, orgClientId },
+    organizationId: orgId,
+    brandCredential: orgId ? root.brand?.[orgId] : undefined,
   });
   // Host is region-resolved from the org id (shared resolver). An env
   // profile may still pin `campaignBaseUrl` to override it outright.
-  // The Orchestrate token is minted with no scope — it carries
-  // `platform.tenants:listall`, so the region lookup reuses it.
+  // The AI APIs key token may lack `platform.tenants:listall`; region
+  // resolution is best-effort and falls back to DEFAULT_REGION if so.
   const baseUrl = await resolveRegionalBaseUrl({
     hostTemplate: CAMPAIGN_API_HOST_TEMPLATE,
     organizationId: environment.organizationId,

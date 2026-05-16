@@ -50,15 +50,16 @@ export type SetupEnvOptions = CommonOptions & {
 
 export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
   const logger = toLogger(options);
-  const envName = options.environmentName;
+  const configPath = options.config ?? process.cwd();
+  const envName =
+    options.environmentName ?? readRootConfigurationFile(configPath).config.defaultEnvProfile;
   if (!envName) {
     throw inputError(
-      "Environment name is required.",
-      "Pass the environment name: `scai setup env <name>`."
+      "No environment specified and no defaultEnvProfile is set.",
+      "Pass an environment name: `scai setup client create <name>`."
     );
   }
 
-  const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, envName);
   const env = root.environments[envName];
   if (!env) {
@@ -156,7 +157,6 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
         surface: "CLI",
         version: packageJson.version,
         envName,
-        projectId,
       }),
       projectId,
       environmentId,

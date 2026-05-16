@@ -39,15 +39,16 @@ export type SetupOrgClientOptions = CommonOptions & {
 
 export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise<void> => {
   const logger = toLogger(options);
-  const envName = options.environmentName;
+  const configPath = options.config ?? process.cwd();
+  const envName =
+    options.environmentName ?? readRootConfigurationFile(configPath).config.defaultEnvProfile;
   if (!envName) {
     throw inputError(
-      "Environment name is required.",
-      "Pass an environment name to resolve the organization: `scai setup client create --org <name>`."
+      "No environment specified and no defaultEnvProfile is set.",
+      "Pass an environment name to resolve the organization, or set a default env first."
     );
   }
 
-  const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, envName);
   const env = root.environments[envName];
   if (!env) {

@@ -38,10 +38,12 @@ slot. "deploy" and "cm" are **not** separate credentials; they are this
 one client at org vs. env scope.
 
 **Used by:** Deploy API, Authoring / Management GraphQL (serialization,
-recipes, hygiene), Publishing, Sites, Pages, Brief, Campaign. An env
-profile that has a project + environment uses its **env-scoped** client; an
-org-level profile (no project/environment of its own — e.g. `agents`) uses
-the **org-scoped** client.
+recipes, hygiene), Publishing, Sites, Pages, Brief. **Not** Campaign — the
+Orchestrate (Campaign) API is an AI API and uses the brand / AI APIs key
+below (verified 2026-05-16). An env profile that has a project +
+environment uses its **env-scoped** client; an org-level profile (no
+project/environment of its own — e.g. `agents`) uses the **org-scoped**
+client.
 
 ### 2. Brand / AI APIs key
 
@@ -55,8 +57,12 @@ operator creates it in Cloud Portal → Stream → Admin → AI APIs keys, then
 | Keychain slot | `ai-skills-secret:<orgId>` (the secret)                                       |
 | Config        | `brand[orgId]` block — `clientId`, `authority`, `audience` (never the secret) |
 
-**Used by:** `scai brand` only. The automation client cannot do brand
-work; the brand key cannot do automation work — hence two credentials.
+**Used by:** `scai brand` **and** `scai ops campaign` — the Orchestrate
+(Campaign) API is an AI API and authenticates with this key, not the
+automation client (verified 2026-05-16: a token minted from the AI APIs
+key calls `/api/orchestrate/v1/projects`; a `cm`/`deploy` automation
+client gets `403 Insufficient scope`). The automation client cannot do
+brand/campaign work and vice versa — hence two credentials.
 
 ## Tokens are not credentials
 

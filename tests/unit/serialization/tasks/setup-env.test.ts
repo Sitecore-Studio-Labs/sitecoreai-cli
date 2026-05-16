@@ -89,8 +89,8 @@ afterEach(() => {
 });
 
 describe("runSetupEnv — guards", () => {
-  it("rejects when no environment name is given", async () => {
-    await expect(runSetupEnv({ quiet: true })).rejects.toThrow(/Environment name is required/);
+  it("rejects when no environment name is given and no default is set", async () => {
+    await expect(runSetupEnv({ quiet: true })).rejects.toThrow(/no defaultEnvProfile is set/);
   });
 
   it("rejects when the environment is not configured", async () => {

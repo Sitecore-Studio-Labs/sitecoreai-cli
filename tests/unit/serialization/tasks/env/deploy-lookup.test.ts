@@ -135,6 +135,42 @@ describe("resolveDeployLookup", () => {
     expect(promptText).toHaveBeenCalledWith("Environment (CM) (number or id/name)");
   });
 
+  it("auto-selects the only CM environment in wizard mode and announces it by name", async () => {
+    fetchOrganization.mockResolvedValue({ id: "org-1", tenantId: "tenant-1" });
+    fetchProjects.mockResolvedValue([{ id: "proj-1", name: "Project One" }]);
+    fetchProjectEnvironments.mockResolvedValue([
+      { id: "env-cm", name: "CM Only", environmentType: "cm", tenantId: "tenant-1" },
+      { id: "env-eh", name: "EH", environmentType: "eh" },
+    ]);
+    fetchProject.mockResolvedValue({ id: "proj-1", repositoryId: "repo-1" });
+    resolveHostFromEnvironment.mockReturnValue("https://cm.host");
+
+    const info = vi.fn();
+    const updated = {};
+    const result = await resolveDeployLookup({
+      options: {},
+      runWizard: true,
+      deployToken: "token",
+      updated,
+      existing: {},
+      baseEnv: {},
+      host: undefined,
+      projectSelection: undefined,
+      environmentSelection: undefined,
+      logger: { info, warn: vi.fn() },
+    });
+
+    expect(result.host).toBe("https://cm.host");
+    expect(updated).toMatchObject({ environmentId: "env-cm", environmentType: "cm" });
+    // The single environment is auto-selected without a prompt...
+    expect(promptText).not.toHaveBeenCalled();
+    // ...but the wizard names which environment it locked onto.
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining("Using the only CM environment in 'Project One': CM Only (env-cm)"),
+      "cyan"
+    );
+  });
+
   it("keeps provided host and skips non CM/EH environment types", async () => {
     fetchOrganization.mockResolvedValue({ id: "org-1", tenantId: "tenant-1" });
     fetchProjects.mockResolvedValue([{ id: "proj-1", name: "Project One" }]);

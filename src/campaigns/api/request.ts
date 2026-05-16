@@ -38,6 +38,27 @@ const toQueryString = (query?: CampaignQueryRecord): string => {
   return output ? `?${output}` : "";
 };
 
+/**
+ * Parse the `auth-param`s out of an RFC 6750 `WWW-Authenticate: Bearer …`
+ * challenge — `error`, `error_description`, and (for `insufficient_scope`)
+ * the required `scope`. A 401/403 from an OAuth-protected API carries the
+ * reason here, not in the JSON body. The Orchestrate API's exact scope is
+ * otherwise unverified (see `auth.ts`), so this header is the one place
+ * scai can learn it. Keys are lower-cased; a missing header yields `{}`.
+ */
+const parseBearerChallenge = (header: string | null): Record<string, string> => {
+  if (!header) return {};
+  const challenge = /^\s*bearer\s+(.*)$/is.exec(header);
+  const params = challenge ? challenge[1] : header;
+  const out: Record<string, string> = {};
+  const pair = /([A-Za-z_-]+)\s*=\s*(?:"([^"]*)"|([^,\s]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = pair.exec(params)) !== null) {
+    out[match[1].toLowerCase()] = match[2] ?? match[3] ?? "";
+  }
+  return out;
+};
+
 export const campaignRequest = async <TResponse>(
   options: CampaignApiClientOptions,
   path: string,
@@ -84,9 +105,30 @@ export const campaignRequest = async <TResponse>(
     const responseBody = await parseJsonIfPossible(response);
     const message = extractErrorMessage(responseBody);
     const sanitized = message ? redactSecrets(message) : undefined;
+    // On an auth failure, the `WWW-Authenticate` Bearer challenge often
+    // names the scope the token is missing — surface it so the operator
+    // (and a future `acquireCampaignToken` scope pin) can act on it.
+    const challenge = parseBearerChallenge(response.headers.get("www-authenticate"));
+    const isAuthFailure =
+      response.status === 401 ||
+      response.status === 403 ||
+      challenge.error === "insufficient_scope";
+    let hint: string | undefined;
+    if (isAuthFailure) {
+      const required = challenge.scope
+        ? ` The Orchestrate API requires the '${challenge.scope}' scope.`
+        : "";
+      hint =
+        `The environment's automation client is not authorized for the Orchestrate API.${required} ` +
+        `Grant the missing scope to the client in the Sitecore Cloud Portal, then re-run.`;
+    }
     throw createScaiError(
-      sanitized ?? `Campaign API request failed (${response.status})`,
-      "CAMPAIGN_API_FAILED"
+      sanitized ??
+        challenge.error_description ??
+        challenge.error ??
+        `Campaign API request failed (${response.status})`,
+      "CAMPAIGN_API_FAILED",
+      hint ? { hint } : {}
     );
   }
 

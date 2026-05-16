@@ -21,22 +21,17 @@ import type { SyncContext } from "@/sync";
 export const resolveCampaignClient = async (
   ctx: SyncContext
 ): Promise<CampaignApiClientOptions> => {
-  const { envName, environment, root } = resolveEnvironment({
+  const { environment, root } = resolveEnvironment({
     config: ctx.configPath,
     environmentName: ctx.environmentName,
   });
-  // Carry the org-scoped automation client's non-secret `clientId` from
-  // the root config so `resolveClientCredential` can pair it with the
-  // org-client secret in the keychain (tier 3).
-  const orgClientId = environment.organizationId
-    ? root.orgClients[environment.organizationId]?.clientId
-    : undefined;
+  const orgId = environment.organizationId;
   const accessToken = await acquireCampaignToken({
-    envName,
-    environment: { ...environment, orgClientId },
+    organizationId: orgId,
+    brandCredential: orgId ? root.brand?.[orgId] : undefined,
   });
-  // Host is region-resolved from the org id; the no-scope Orchestrate
-  // token carries `platform.tenants:listall` so the lookup reuses it.
+  // Host is region-resolved from the org id; resolution is best-effort
+  // and falls back to DEFAULT_REGION when the token can't list tenants.
   const baseUrl = await resolveRegionalBaseUrl({
     hostTemplate: CAMPAIGN_API_HOST_TEMPLATE,
     organizationId: environment.organizationId,

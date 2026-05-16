@@ -137,7 +137,10 @@ export const createSetupClientCommand = (): Command => {
     .description(
       "Mint an automation client — env-scoped by default, org-scoped with --org (idempotent)."
     )
-    .argument("<env>", "Environment profile name from sitecoreai.cli.json")
+    .argument(
+      "[env]",
+      "Environment profile name (defaults to the configured default env; with --org, only used to resolve the organization)."
+    )
     .addOption(
       new Option(
         "--org",
@@ -150,7 +153,7 @@ export const createSetupClientCommand = (): Command => {
     );
   addConfigOption(create);
   addVerbosityOptions(create);
-  create.action(async (env: string, options) =>
+  create.action(async (env: string | undefined, options) =>
     options.org
       ? runSetupOrgClient({ ...options, environmentName: env })
       : runSetupEnv({ ...options, environmentName: env })
@@ -186,7 +189,9 @@ export const createSetupClientCommand = (): Command => {
     [
       "",
       "Examples:",
-      "  $ scai setup client create production           # mint the CM automation client",
+      "  $ scai setup client create                       # CM client for the default env",
+      "  $ scai setup client create production            # mint the CM automation client",
+      "  $ scai setup client create --org                 # org client for the default env's org",
       "  $ scai setup client create production --org      # mint the org-scoped automation client",
       "  $ scai setup client create production --rotate   # force delete + re-mint",
       "  $ scai setup client list                         # clients in the default env's org",

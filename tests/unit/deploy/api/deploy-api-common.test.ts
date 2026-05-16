@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { consola } from "consola";
 import {
   deployRequest,
+  extractErrorMessage,
   parseJsonIfPossible,
   startDeploySpinner,
 } from "../../../../src/deploy/api/common/request";
@@ -50,6 +51,42 @@ describe("parseJsonIfPossible", () => {
   it("returns text when JSON parsing fails", async () => {
     const response = new Response("not-json");
     await expect(parseJsonIfPossible(response)).resolves.toBe("not-json");
+  });
+});
+
+describe("extractErrorMessage", () => {
+  it("returns a plain string body unchanged", () => {
+    expect(extractErrorMessage("boom")).toBe("boom");
+  });
+
+  it("prefers detail/message/title over each other in order", () => {
+    expect(extractErrorMessage({ detail: "d", message: "m", title: "t" })).toBe("d");
+    expect(extractErrorMessage({ message: "m", title: "t" })).toBe("m");
+    expect(extractErrorMessage({ title: "t" })).toBe("t");
+  });
+
+  it("surfaces ASP.NET ValidationProblemDetails field errors instead of the generic title", () => {
+    const message = extractErrorMessage({
+      title: "One or more validation errors occurred.",
+      status: 400,
+      errors: {
+        ProjectId: ["The ProjectId field is required."],
+        Name: ["Name is too long.", "Name has invalid characters."],
+      },
+    });
+    // The generic title must not shadow the actionable field detail.
+    expect(message).toContain("One or more validation errors occurred.");
+    expect(message).toContain("ProjectId: The ProjectId field is required.");
+    expect(message).toContain("Name: Name is too long. Name has invalid characters.");
+  });
+
+  it("handles an array-shaped errors member", () => {
+    expect(extractErrorMessage({ errors: [{ message: "first" }, "second"] })).toBe("first; second");
+  });
+
+  it("returns undefined when no usable message is present", () => {
+    expect(extractErrorMessage({ status: 400 })).toBeUndefined();
+    expect(extractErrorMessage(undefined)).toBeUndefined();
   });
 });
 

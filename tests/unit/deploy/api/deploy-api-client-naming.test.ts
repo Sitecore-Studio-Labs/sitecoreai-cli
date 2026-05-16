@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SCAI_CLIENT_PREFIX,
+  CLIENT_DESCRIPTION_MAX_LENGTH,
   slugifyEnvName,
   buildScaiClientName,
   buildScaiClientDescription,
@@ -48,43 +49,47 @@ describe("buildScaiClientName", () => {
 });
 
 describe("buildScaiClientDescription", () => {
-  const at = new Date("2026-05-15T12:00:00Z");
-
-  it("describes an env-scoped client with environment + project", () => {
+  it("describes an env-scoped client with the environment name", () => {
     const d = buildScaiClientDescription("cm", {
       surface: "CLI",
       version: "0.0.4",
       envName: "production",
-      projectId: "proj-1",
-      createdAt: at,
     });
     expect(d).toBe(
-      "Managed by scai CLI v0.0.4. CM client for environment 'production' (project proj-1). " +
-        "Created 2026-05-15. Safe to delete if scai is no longer in use."
+      "Managed by scai CLI v0.0.4. CM client for environment 'production'. " +
+        "Safe to delete if scai is unused."
     );
   });
 
-  it("omits the project clause when projectId is absent", () => {
+  it("falls back to 'an environment' when envName is absent", () => {
     const d = buildScaiClientDescription("edge", {
       surface: "MCP",
       version: "1.2.3",
-      envName: "staging",
-      createdAt: at,
     });
-    expect(d).toContain("Edge client for environment 'staging'.");
-    expect(d).not.toContain("project");
+    expect(d).toContain("Edge client for an environment.");
   });
 
   it("describes the org-scoped deploy client", () => {
     const d = buildScaiClientDescription("deploy", {
       surface: "SDK",
       version: "0.0.4",
-      createdAt: at,
     });
     expect(d).toBe(
       "Managed by scai SDK v0.0.4. Deploy client for the organization. " +
-        "Created 2026-05-15. Safe to delete if scai is no longer in use."
+        "Safe to delete if scai is unused."
     );
+  });
+
+  it("stays within the clients API 140-char description cap", () => {
+    // The Deploy clients API rejects descriptions over 140 chars — a
+    // pathologically long env-profile name must not blow the cap.
+    const d = buildScaiClientDescription("ehbuild", {
+      surface: "CLI",
+      version: "0.0.4",
+      envName: "x".repeat(200),
+    });
+    expect(d.length).toBeLessThanOrEqual(CLIENT_DESCRIPTION_MAX_LENGTH);
+    expect(d.endsWith("…")).toBe(true);
   });
 });
 

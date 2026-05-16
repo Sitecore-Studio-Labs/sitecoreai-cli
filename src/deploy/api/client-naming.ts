@@ -82,30 +82,43 @@ export interface BuildScaiClientDescriptionOptions {
   version: string;
   /** Environment-profile name — for env-scoped clients. */
   envName?: string;
-  /** Project id — included for env-scoped clients when known. */
-  projectId?: string;
-  /** Creation date. Defaults to now; injectable for deterministic tests. */
-  createdAt?: Date;
 }
+
+/**
+ * The Deploy clients API caps the `description` field at 140 characters
+ * — `POST /api/clients/v1/*` rejects anything longer as a validation
+ * error. `buildScaiClientDescription` keeps its output within this.
+ */
+export const CLIENT_DESCRIPTION_MAX_LENGTH = 140;
 
 /**
  * Build the human-readable provenance string for a scai-minted client's
  * `description` field — records the surface, version, scope, and that
  * the credential is safe to delete.
+ *
+ * Stays within `CLIENT_DESCRIPTION_MAX_LENGTH`, truncating as a
+ * defensive backstop for pathologically long env-profile names. The
+ * project id and creation date are deliberately omitted: the clients
+ * API records `createdAt` itself, and the project is already encoded in
+ * the client name (`scai-cm-<env>`).
  */
 export const buildScaiClientDescription = (
   type: ScaiClientType,
   options: BuildScaiClientDescriptionOptions
 ): string => {
-  const date = (options.createdAt ?? new Date()).toISOString().slice(0, 10);
   const lead = `Managed by scai ${options.surface} v${options.version}.`;
-  const tail = `Created ${date}. Safe to delete if scai is no longer in use.`;
-  if (!ENV_SCOPED.has(type)) {
-    return `${lead} ${TYPE_LABELS[type]} client for the organization. ${tail}`;
+  const scope = ENV_SCOPED.has(type)
+    ? `${TYPE_LABELS[type]} client for ${
+        options.envName ? `environment '${options.envName}'` : "an environment"
+      }.`
+    : `${TYPE_LABELS[type]} client for the organization.`;
+  const tail = "Safe to delete if scai is unused.";
+  const full = `${lead} ${scope} ${tail}`;
+  if (full.length <= CLIENT_DESCRIPTION_MAX_LENGTH) {
+    return full;
   }
-  const env = options.envName ? `environment '${options.envName}'` : "an environment";
-  const project = options.projectId ? ` (project ${options.projectId})` : "";
-  return `${lead} ${TYPE_LABELS[type]} client for ${env}${project}. ${tail}`;
+  // Defensive: a very long env-profile name can still blow the cap.
+  return `${full.slice(0, CLIENT_DESCRIPTION_MAX_LENGTH - 1).trimEnd()}…`;
 };
 
 /** True if `name` carries the scai-managed prefix. */

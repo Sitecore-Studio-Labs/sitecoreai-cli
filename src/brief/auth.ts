@@ -113,6 +113,6 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
   }
 
   throw createScaiError("No brief-scoped token available for this environment.", "AUTH_REQUIRED", {
-    hint: "Provide the environment's automation client — run `scai setup env` to store it in the OS keychain, or set SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.",
+    hint: `Provide the environment's automation client — run \`scai setup client create ${options.envName}\` to mint one (its secret is stored in the OS keychain), or bring your own by setting SITECOREAI_ENV_<ENV>_CLIENT_ID and SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.`,
   });
 };

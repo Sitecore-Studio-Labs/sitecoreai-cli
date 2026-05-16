@@ -18,6 +18,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchOrganizationLicense: vi.fn().mockResolvedValue({ key: "license" }),
   createOrganizationDemoSolution: vi.fn().mockResolvedValue({ id: "demo" }),
   fetchProjects: vi.fn().mockResolvedValue([{ id: "proj-1", name: "Project One" }]),
+  fetchAllProjects: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "proj-1", name: "Project One" }],
+  }),
   fetchProjectsLimitation: vi.fn().mockResolvedValue({ limit: 1 }),
   validateProjectName: vi.fn().mockResolvedValue({ valid: true }),
   fetchProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "Project One" }),
@@ -54,6 +59,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironments: vi
     .fn()
     .mockResolvedValue([{ id: "env-1", name: "Env One", projectType: "cm" }]),
+  fetchAllEnvironments: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "env-1", name: "Env One", projectType: "cm" }],
+  }),
   fetchEnvironmentsLimitation: vi.fn().mockResolvedValue({ limit: 1 }),
   fetchEnvironment: vi
     .fn()
@@ -73,6 +83,11 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironmentEditingSecret: vi.fn().mockResolvedValue({ secret: "edit" }),
   regenerateEnvironmentContext: vi.fn().mockResolvedValue({ ok: true }),
   fetchProjectEnvironments: vi.fn().mockResolvedValue([{ id: "env-1", name: "Env One" }]),
+  fetchAllProjectEnvironments: vi.fn().mockResolvedValue({
+    totalCount: 1,
+    pageSize: 50,
+    items: [{ id: "env-1", name: "Env One" }],
+  }),
   createProjectEnvironment: vi.fn().mockResolvedValue({ id: "env-2" }),
   deleteEnvironment: vi.fn().mockResolvedValue({ deleted: true }),
   updateEnvironment: vi.fn().mockResolvedValue({ updated: true }),
@@ -86,11 +101,62 @@ const apiMocks = vi.hoisted(() => ({
   promoteEnvironmentDeployment: vi.fn().mockResolvedValue({ promoted: true }),
 }));
 
-vi.mock("../../../src/deploy/api", () => ({
-  ...apiMocks,
-  DeployEnvironment: {},
-  DeployProject: {},
-}));
+vi.mock("../../../src/deploy/api/organizations", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/projects", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/environments", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/deployments", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/deployment-logs", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/source-control", () => ({ ...apiMocks }));
+vi.mock("../../../src/deploy/api/logs", () => ({ ...apiMocks }));
+
+const loadTasks = async (): Promise<
+  typeof import("../../../src/deploy/tasks/organizations") &
+    typeof import("../../../src/deploy/tasks/projects") &
+    typeof import("../../../src/deploy/tasks/source-control") &
+    typeof import("../../../src/deploy/tasks/deployments") &
+    typeof import("../../../src/deploy/tasks/environments") &
+    typeof import("../../../src/deploy/tasks/logs") &
+    typeof import("../../../src/deploy/tasks/editing-host") &
+    typeof import("../../../src/deploy/tasks/health") &
+    typeof import("../../../src/deploy/tasks/site") &
+    typeof import("../../../src/deploy/tasks/site-bind")
+> => {
+  const [
+    organizations,
+    projects,
+    sourceControl,
+    deployments,
+    environments,
+    logs,
+    editingHost,
+    health,
+    site,
+    siteBind,
+  ] = await Promise.all([
+    import("../../../src/deploy/tasks/organizations"),
+    import("../../../src/deploy/tasks/projects"),
+    import("../../../src/deploy/tasks/source-control"),
+    import("../../../src/deploy/tasks/deployments"),
+    import("../../../src/deploy/tasks/environments"),
+    import("../../../src/deploy/tasks/logs"),
+    import("../../../src/deploy/tasks/editing-host"),
+    import("../../../src/deploy/tasks/health"),
+    import("../../../src/deploy/tasks/site"),
+    import("../../../src/deploy/tasks/site-bind"),
+  ]);
+  return {
+    ...organizations,
+    ...projects,
+    ...sourceControl,
+    ...deployments,
+    ...environments,
+    ...logs,
+    ...editingHost,
+    ...health,
+    ...site,
+    ...siteBind,
+  };
+};
 
 describe("deploy task runners", () => {
   let rootDir: string;
@@ -140,7 +206,7 @@ describe("deploy task runners", () => {
   });
 
   it("runs deploy commands without throwing", async () => {
-    const tasks = await import("../../../src/deploy/tasks");
+    const tasks = await loadTasks();
     const base = { config: rootDir, environmentName: "demo" };
 
     await tasks.runDeployOrganizationsGet(base);
@@ -284,7 +350,7 @@ describe("deploy task runners", () => {
   });
 
   it("validates required deploy options", async () => {
-    const tasks = await import("../../../src/deploy/tasks");
+    const tasks = await loadTasks();
     const base = { config: rootDir, environmentName: "demo" };
 
     await expect(tasks.runDeployProjectsCreate(base)).rejects.toThrow();
@@ -296,7 +362,7 @@ describe("deploy task runners", () => {
   });
 
   it("watches deployments until completion", async () => {
-    const tasks = await import("../../../src/deploy/tasks");
+    const tasks = await loadTasks();
     const base = { config: rootDir, environmentName: "demo" };
     apiMocks.fetchDeploymentV3
       .mockResolvedValueOnce({

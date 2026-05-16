@@ -7,7 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   createOrganizationDemoSolution: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/organizations", () => ({
   ...apiMocks,
 }));
 

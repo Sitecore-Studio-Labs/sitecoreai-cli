@@ -1,14 +1,60 @@
-import {
+import { deployRequest } from "./common/request";
+import type {
   DeployApiClientOptions,
   DeployEnvironment,
+  DeployEnvironmentProvisioningStatus,
   DeployQueryValueList,
-  deployRequest,
-} from "./common";
+} from "./common/types";
 
 export const fetchEnvironments = async (
   options: DeployApiClientOptions,
   query?: Record<string, DeployQueryValueList | undefined>
 ): Promise<unknown> => deployRequest<unknown>(options, "/api/environments/v2", query);
+
+export type FetchAllEnvironmentsResult = {
+  totalCount?: number;
+  pageSize: number;
+  items: DeployEnvironment[];
+};
+
+/**
+ * Walk every page of `/api/environments/v2` and concatenate the results.
+ * The Deploy API caps each page at 10 unless `PageSize` is set; this
+ * helper bumps it to 50 by default and follows `totalCount` (or an
+ * under-full page) to know when to stop. Callers that want a single
+ * page should use `fetchEnvironments` directly.
+ */
+export const fetchAllEnvironments = async (
+  options: DeployApiClientOptions,
+  query?: Record<string, DeployQueryValueList | undefined>,
+  pageSize: number = 50
+): Promise<FetchAllEnvironmentsResult> => {
+  const items: DeployEnvironment[] = [];
+  let totalCount: number | undefined;
+  // Hard cap: defends against APIs that never report totalCount and
+  // keep returning full pages. At pageSize=50 this is 5000 envs — far
+  // beyond any plausible tenant.
+  const maxPages = 100;
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+    const page = (await fetchEnvironments(options, {
+      ...query,
+      PageNumber: pageNumber,
+      PageSize: pageSize,
+    })) as { data?: DeployEnvironment[]; totalCount?: number };
+    const data = Array.isArray(page?.data) ? page.data : [];
+    items.push(...data);
+    if (typeof page?.totalCount === "number") {
+      totalCount = page.totalCount;
+    }
+    if (data.length < pageSize) {
+      break;
+    }
+    if (totalCount !== undefined && items.length >= totalCount) {
+      break;
+    }
+  }
+  return { totalCount, pageSize, items };
+};
 
 export const fetchEnvironmentsLimitation = async (
   options: DeployApiClientOptions
@@ -162,6 +208,66 @@ export const restartEnvironment = async (
   deployRequest<unknown>(options, `/api/environments/v1/${environmentId}/restart`, undefined, {
     method: "POST",
   });
+
+export type EnvironmentHealthResult = {
+  host: string;
+  url: string;
+  status: number;
+  ok: boolean;
+  body: string;
+};
+
+export const probeEnvironmentHealth = async (
+  host: string,
+  timeoutMs: number = 30_000
+): Promise<EnvironmentHealthResult> => {
+  const normalized =
+    host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`;
+  const url = `${normalized.replace(/\/$/, "")}/healthz/ready`;
+  const controller = timeoutMs > 0 ? new AbortController() : undefined;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "text/plain, application/json" },
+      signal: controller?.signal,
+    });
+    const body = await response.text();
+    return {
+      host: normalized,
+      url,
+      status: response.status,
+      ok: response.ok,
+      body: body.trim(),
+    };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
+
+/**
+ * Translate the Deploy API's numeric `provisioningStatus` to a stable
+ * string label. See the doc comment on `DeployEnvironmentProvisioningStatus`
+ * for which codes are observed vs inferred.
+ */
+export const getProvisioningStatus = (
+  environment: Pick<DeployEnvironment, "provisioningStatus">
+): DeployEnvironmentProvisioningStatus => {
+  switch (environment.provisioningStatus) {
+    case 0:
+      return "unprovisioned";
+    case 1:
+      return "provisioning";
+    case 2:
+      return "provisioned";
+    case 3:
+      return "failed";
+    case 4:
+      return "deleting";
+    default:
+      return "unknown";
+  }
+};
 
 export const resolveHostFromEnvironment = (environment: DeployEnvironment): string | undefined => {
   const direct = environment.cmUrl ?? environment.cmHost ?? environment.host ?? environment.url;

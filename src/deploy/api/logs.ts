@@ -1,12 +1,7 @@
-import { createCliError } from "@/shared/errors";
-import {
-  DEFAULT_MONITORING_API_BASE,
-  DeployApiClientOptions,
-  deployRequest,
-  extractErrorMessage,
-  parseJsonIfPossible,
-  withOrganizationHeaders,
-} from "./common";
+import { createScaiError } from "@/shared/errors";
+import { withOrganizationHeaders } from "./common/headers";
+import { deployRequest, extractErrorMessage, parseJsonIfPossible } from "./common/request";
+import { DEFAULT_MONITORING_API_BASE, type DeployApiClientOptions } from "./common/types";
 
 export type LogFileResponse = {
   buffer: Buffer;
@@ -47,7 +42,7 @@ export const fetchLogFile = async (
   if (!response.ok) {
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
-    throw createCliError(
+    throw createScaiError(
       message ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

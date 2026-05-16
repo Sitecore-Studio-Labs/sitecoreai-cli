@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
-import { fetchLogList, fetchLogFile } from "@/deploy/api";
+import { fetchLogList, fetchLogFile } from "@/deploy/api/logs";
 import {
   getDeployContext,
   inputError,

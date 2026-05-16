@@ -1,6 +1,6 @@
 import { consola } from "consola";
 import { redactSecrets } from "../../../shared/redact";
-import { createCliError } from "../../../shared/errors";
+import { createScaiError } from "../../../shared/errors";
 import {
   DEFAULT_DEPLOY_API_BASE,
   DeployApiClientOptions,
@@ -116,8 +116,12 @@ const installHandlers = (): void => {
 };
 
 export const startDeploySpinner = async (
-  text: string
+  text: string,
+  options?: { silent?: boolean }
 ): Promise<{ succeed: () => void; fail: () => void } | null> => {
+  if (options?.silent) {
+    return null;
+  }
   if (!process.stdout.isTTY) {
     return null;
   }
@@ -145,6 +149,29 @@ export const startDeploySpinner = async (
   return { succeed: handle.succeed, fail: handle.fail };
 };
 
+/**
+ * Resolve a transport tuning value: explicit caller value wins; falls
+ * back to env-var; falls back to built-in default. Pure-library callers
+ * pass these explicitly via `init.transport` so they don't depend on
+ * scai's env namespace; the CLI keeps env-var fallbacks unchanged.
+ */
+const resolveTransportInt = (
+  explicit: number | undefined,
+  envVar: string,
+  defaultValue: number
+): number => {
+  if (explicit !== undefined) return explicit;
+  const raw = process.env[envVar];
+  if (raw === undefined) return defaultValue;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+};
+
+const resolveTransportBool = (explicit: boolean | undefined, envVar: string): boolean => {
+  if (explicit !== undefined) return explicit;
+  return process.env[envVar] === "1";
+};
+
 export const deployRequest = async <T>(
   options: DeployApiClientOptions,
   path: string,
@@ -154,7 +181,7 @@ export const deployRequest = async <T>(
   const baseUrl = options.baseUrl ?? DEFAULT_DEPLOY_API_BASE;
   const url = `${baseUrl.replace(/\/$/, "")}${path}${toQueryString(query)}`;
   const method = init?.method ? init.method.toUpperCase() : "GET";
-  const spinner = await startDeploySpinner(`${method} ${path}`);
+  const spinner = await startDeploySpinner(`${method} ${path}`, { silent: init?.silent });
   if (init?.whatIf) {
     spinner?.succeed();
     return {
@@ -168,7 +195,7 @@ export const deployRequest = async <T>(
       },
     } as T;
   }
-  const traceEnabled = process.env.SITECOREAI_TRACE_HTTP === "1";
+  const traceEnabled = resolveTransportBool(init?.transport?.traceHttp, "SITECOREAI_TRACE_HTTP");
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.accessToken}`,
     Accept: "application/json",
@@ -181,14 +208,23 @@ export const deployRequest = async <T>(
     headers["Content-Type"] = "application/json";
     body = typeof init.body === "string" ? init.body : JSON.stringify(init.body);
   }
-  const maxRetries = Number(process.env.SITECOREAI_HTTP_RETRIES ?? 2);
-  const retryBaseMs = Number(process.env.SITECOREAI_HTTP_RETRY_BASE_MS ?? 500);
+  const maxRetries = resolveTransportInt(init?.transport?.maxRetries, "SITECOREAI_HTTP_RETRIES", 2);
+  const retryBaseMs = resolveTransportInt(
+    init?.transport?.retryBaseMs,
+    "SITECOREAI_HTTP_RETRY_BASE_MS",
+    500
+  );
   const shouldRetry = (status?: number): boolean =>
     method === "GET" && (status === 429 || (status !== undefined && status >= 500));
 
   // Default 60s per-attempt timeout. Override via SITECOREAI_REQUEST_TIMEOUT_MS
-  // (0 disables). Defends against slowloris / black-hole upstreams.
-  const timeoutMs = Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
+  // or init.transport.timeoutMs (0 disables). Defends against slowloris /
+  // black-hole upstreams.
+  const timeoutMs = resolveTransportInt(
+    init?.transport?.timeoutMs,
+    "SITECOREAI_REQUEST_TIMEOUT_MS",
+    60_000
+  );
 
   let response: Response;
   let attempt = 0;
@@ -214,7 +250,7 @@ export const deployRequest = async <T>(
         continue;
       }
       spinner?.fail();
-      throw createCliError("Deploy API request failed due to a network error.", "NETWORK", {
+      throw createScaiError("Deploy API request failed due to a network error.", "NETWORK", {
         hint: "Check network connectivity or try again later.",
       });
     }
@@ -234,7 +270,7 @@ export const deployRequest = async <T>(
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
     const sanitized = message ? redactSecrets(message) : undefined;
-    throw createCliError(
+    throw createScaiError(
       sanitized ?? `Deploy API request failed (${response.status})`,
       "DEPLOY_FAILED"
     );

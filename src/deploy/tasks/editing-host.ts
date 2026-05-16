@@ -1,12 +1,17 @@
 import {
   fetchEnvironment,
-  fetchProjectEnvironments,
+  fetchAllEnvironments,
   fetchEnvironments,
-  createProjectEnvironment,
   deleteEnvironment,
   updateEnvironment,
   createEnvironmentDeployment,
-} from "@/deploy/api";
+} from "@/deploy/api/environments";
+import {
+  fetchAllProjectEnvironments,
+  fetchProjectEnvironments,
+  createProjectEnvironment,
+} from "@/deploy/api/projects";
+import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   extractDeployEnvironmentList,
   getDeployContext,
@@ -73,13 +78,15 @@ export const runDeployEditingHostCreate = async (
   const tenantType = resolveTenantTypeValue(cmEnvironment.tenantType) ?? 0;
 
   // Look up an existing editing host in this project with the same
-  // name + cmEnvironmentId before creating a new one.
-  const projectEnvironments = await fetchProjectEnvironments(
+  // name + cmEnvironmentId before creating a new one. Walk every page
+  // — the API paginates at 10 by default, so a project with >10
+  // environments would otherwise duplicate-create on every rerun.
+  const projectEnvironments = await fetchAllProjectEnvironments(
     { accessToken: context.token, baseUrl: context.baseUrl },
     projectId
   );
   const existing = matchExistingEditingHosts(
-    projectEnvironments,
+    projectEnvironments.items,
     options.name,
     options.cmEnvironmentId
   );
@@ -145,6 +152,7 @@ export const runDeployEditingHostList = async (
 ): Promise<void> => {
   const logger = toLogger(options);
   const context = await getDeployContext(options);
+  const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
   let projectId: string | undefined;
 
   if (options.project) {
@@ -153,25 +161,44 @@ export const runDeployEditingHostList = async (
     projectId = context.projectId;
   } else if (context.environmentId) {
     try {
-      const env = await fetchEnvironment(
-        { accessToken: context.token, baseUrl: context.baseUrl },
-        context.environmentId
-      );
+      const env = await fetchEnvironment(apiOptions, context.environmentId);
       projectId = resolveProjectIdValue(env.projectId);
     } catch {
       projectId = undefined;
     }
   }
 
-  const result = projectId
-    ? await fetchProjectEnvironments(
-        { accessToken: context.token, baseUrl: context.baseUrl },
-        projectId
-      )
-    : await fetchEnvironments({ accessToken: context.token, baseUrl: context.baseUrl }, {});
+  // Default behaviour: walk every page. Editing-host lookups are
+  // almost always "show me all of them" — single-page semantics
+  // here are the same footgun as on `deploy environments list`,
+  // and worse because there's no useful name-by-name follow-up
+  // command to fall back on. Page through unless the operator
+  // explicitly opts into one-page mode via --page.
+  const walkAll = options.all !== false && options.page === undefined;
+  let listing: { items: DeployEnvironment[]; totalCount?: number; pageSize?: number };
+  if (projectId) {
+    listing = walkAll
+      ? await fetchAllProjectEnvironments(apiOptions, projectId, options.pageSize ?? 50)
+      : await (async () => {
+          const page = await fetchProjectEnvironments(apiOptions, projectId!, {
+            PageNumber: options.page,
+            PageSize: options.pageSize,
+          });
+          return { items: extractDeployEnvironmentList(page) };
+        })();
+  } else {
+    listing = walkAll
+      ? await fetchAllEnvironments(apiOptions, {}, options.pageSize ?? 50)
+      : await (async () => {
+          const page = await fetchEnvironments(apiOptions, {
+            PageNumber: options.page,
+            PageSize: options.pageSize,
+          });
+          return { items: extractDeployEnvironmentList(page) };
+        })();
+  }
 
-  const list = extractDeployEnvironmentList(result);
-  const editingHosts = list.filter((environment) => {
+  const editingHosts = listing.items.filter((environment) => {
     const type = getEnvironmentType(environment);
     return type ? type.toLowerCase().includes("eh") : false;
   });

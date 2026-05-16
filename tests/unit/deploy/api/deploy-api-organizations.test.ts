@@ -1,17 +1,29 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", () => ({
+vi.mock("../../../../src/deploy/api/common/request", () => ({
   deployRequest: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("../../../../src/deploy/api/common/headers", () => ({
   withOrganizationHeaders: vi.fn((id?: string) =>
     id ? { "x-organization-id": id, "x-org-id": id } : undefined
   ),
 }));
 
-let common: typeof import("../../../../src/deploy/api/common");
+let request: typeof import("../../../../src/deploy/api/common/request");
+let headers: typeof import("../../../../src/deploy/api/common/headers");
 let api: typeof import("../../../../src/deploy/api/organizations");
+const common = {
+  get deployRequest() {
+    return request.deployRequest;
+  },
+  get withOrganizationHeaders() {
+    return headers.withOrganizationHeaders;
+  },
+};
 
 beforeAll(async () => {
-  common = await import("../../../../src/deploy/api/common");
+  request = await import("../../../../src/deploy/api/common/request");
+  headers = await import("../../../../src/deploy/api/common/headers");
   api = await import("../../../../src/deploy/api/organizations");
 });
 

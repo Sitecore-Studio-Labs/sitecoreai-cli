@@ -1,9 +1,6 @@
-import {
-  DeployApiClientOptions,
-  DeployQueryValueList,
-  deployRequest,
-  withOrganizationHeaders,
-} from "./common";
+import { withOrganizationHeaders } from "./common/headers";
+import { deployRequest } from "./common/request";
+import type { DeployApiClientOptions, DeployQueryValueList } from "./common/types";
 
 export const fetchSourceControlIntegrations = async (
   options: DeployApiClientOptions

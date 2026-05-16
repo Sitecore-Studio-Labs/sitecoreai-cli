@@ -16,7 +16,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteSourceControlIntegration: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/source-control", () => ({
   ...apiMocks,
 }));
 

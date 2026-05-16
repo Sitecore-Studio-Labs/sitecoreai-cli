@@ -10,9 +10,9 @@ import {
   deployDeployment,
   cancelDeployment,
   uploadDeploymentSource,
-  fetchDeploymentLogs,
-} from "@/deploy/api";
-import { createCliError } from "@/shared/errors";
+} from "@/deploy/api/deployments";
+import { fetchDeploymentLogs } from "@/deploy/api/deployment-logs";
+import { createScaiError } from "@/shared/errors";
 import {
   getDeployContext,
   inputError,
@@ -183,7 +183,7 @@ export const runDeployDeploymentsWatch = async (
     }
 
     if (timeoutMs !== undefined && Date.now() - start > timeoutMs) {
-      throw createCliError(
+      throw createScaiError(
         `Deployment watch timed out after ${timeoutSeconds} seconds.`,
         "DEPLOY_FAILED",
         { hint: "Use --timeout to increase the watch duration." }

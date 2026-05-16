@@ -1,21 +1,35 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/deploy/api/common")>();
+vi.mock("../../../../src/deploy/api/common/request", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/deploy/api/common/request")>();
   return {
     ...actual,
-    DEFAULT_DEPLOY_API_BASE: "https://xmclouddeploy-api.sitecorecloud.io",
     deployRequest: vi.fn().mockResolvedValue({}),
     parseJsonIfPossible: vi.fn().mockResolvedValue({ ok: true }),
-    withOrganizationHeaders: vi.fn(() => undefined),
   };
 });
+vi.mock("../../../../src/deploy/api/common/headers", () => ({
+  withOrganizationHeaders: vi.fn(() => undefined),
+}));
 
-let common: typeof import("../../../../src/deploy/api/common");
+let request: typeof import("../../../../src/deploy/api/common/request");
+let headers: typeof import("../../../../src/deploy/api/common/headers");
 let api: typeof import("../../../../src/deploy/api/deployments");
+const common = {
+  get deployRequest() {
+    return request.deployRequest;
+  },
+  get parseJsonIfPossible() {
+    return request.parseJsonIfPossible;
+  },
+  get withOrganizationHeaders() {
+    return headers.withOrganizationHeaders;
+  },
+};
 
 beforeAll(async () => {
-  common = await import("../../../../src/deploy/api/common");
+  request = await import("../../../../src/deploy/api/common/request");
+  headers = await import("../../../../src/deploy/api/common/headers");
   api = await import("../../../../src/deploy/api/deployments");
 });
 

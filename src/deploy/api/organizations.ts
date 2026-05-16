@@ -1,9 +1,6 @@
-import {
-  DeployApiClientOptions,
-  DeployOrganization,
-  deployRequest,
-  withOrganizationHeaders,
-} from "./common";
+import { withOrganizationHeaders } from "./common/headers";
+import { deployRequest } from "./common/request";
+import type { DeployApiClientOptions, DeployOrganization } from "./common/types";
 
 export const fetchOrganization = async (
   options: DeployApiClientOptions

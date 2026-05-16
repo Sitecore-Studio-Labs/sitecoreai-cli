@@ -1,5 +1,5 @@
 /**
- * Helpers specific to `scai deploy` task runners — env-context
+ * Helpers specific to `scai provision deploy` task runners — env-context
  * resolution against the Deploy API, JSON-aware result printing,
  * project/environment/org lookup. Neutral helpers (`toLogger`,
  * `selectMatch`, `confirmDestructive`, etc.) live in
@@ -8,17 +8,15 @@
  */
 
 import { Logger } from "@/shared/logger";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { inputError, selectMatch } from "@/shared/cli-tasks";
 import { resolveEnvironment } from "@/shared/env";
-import {
-  fetchOrganization,
-  fetchProjects,
-  fetchProjectEnvironments,
-  fetchEnvironments,
-  DeployEnvironment,
-} from "@/deploy/api";
+import { buildScaiEnvelope } from "@/shared/envelope";
+import { fetchOrganization } from "@/deploy/api/organizations";
+import { fetchAllProjects, fetchAllProjectEnvironments } from "@/deploy/api/projects";
+import { fetchAllEnvironments } from "@/deploy/api/environments";
+import type { DeployEnvironment } from "@/deploy/api/common/types";
 
 // Re-export neutral helpers so deploy task runners can keep using
 // the local `./shared` import surface; new code can also import
@@ -51,8 +49,8 @@ export const getDeployContext = async (options: {
   const { envName, environment } = resolveEnvironment(options);
   const token = (await getDeployToken(envName)) ?? environment.deployToken;
   if (!token) {
-    throw createCliError(`Deploy token not found for environment '${envName}'.`, "AUTH_REQUIRED", {
-      hint: "Run 'scai init' or 'scai login' to authenticate.",
+    throw createScaiError(`Deploy token not found for environment '${envName}'.`, "AUTH_REQUIRED", {
+      hint: "Run 'scai setup init' or 'scai setup login' to authenticate.",
     });
   }
   return {
@@ -111,12 +109,12 @@ export const printDeployResultWithContext = (
   extra: Record<string, unknown> = {}
 ): void => {
   if (logger.isJson()) {
-    logger.json({
-      command,
-      environment: context.envName ?? null,
-      ...extra,
-      result,
-    });
+    // `extra` keys overlapping with canonical envelope fields
+    // (totalCount, pageSize, whatIf, etc.) are hoisted to envelope-
+    // level; anything else lands under `meta`. Keeps the top-level
+    // namespace clean while preserving the caller's ability to attach
+    // pagination metadata without nesting it under `data`.
+    logger.json(buildScaiEnvelope({ command, environment: context.envName, data: result, extra }));
     return;
   }
   printDeployResult(logger, result);
@@ -129,12 +127,14 @@ export const printDeployWhatIf = (
   request: Record<string, unknown>
 ): void => {
   if (logger.isJson()) {
-    logger.json({
-      command,
-      environment: context.envName ?? null,
-      whatIf: true,
-      request,
-    });
+    logger.json(
+      buildScaiEnvelope({
+        command,
+        environment: context.envName,
+        data: request,
+        extra: { whatIf: true },
+      })
+    );
     return;
   }
   printDeployResult(logger, { whatIf: true, request });
@@ -218,11 +218,14 @@ export const resolveDeployProjectId = async (
   if (context.whatIf) {
     return selection;
   }
-  const projects = await fetchProjects({
+  // Walk every page when matching a project by name/ID — the v2
+  // endpoint paginates at 10, so single-page lookups produce spurious
+  // "not found" errors the moment an org has more than 10 projects.
+  const aggregated = await fetchAllProjects({
     accessToken: context.token,
     baseUrl: context.baseUrl,
   });
-  const project = selectMatch(projects, "Project", selection);
+  const project = selectMatch(aggregated.items, "Project", selection);
   return project.id ?? project.projectId;
 };
 
@@ -236,7 +239,17 @@ export const resolveDeployEnvironmentId = async (
   },
   options: { id?: string; name?: string; project?: string }
 ): Promise<string> => {
-  const selection = options.id ?? options.name;
+  // `--id` is authoritative: skip the lookup round-trip entirely. The
+  // previous behaviour validated `--id` against a paginated project
+  // listing (`fetchProjectEnvironments` returns only the first page),
+  // which made `delete --id <known-good-id>` fall over with a spurious
+  // "not found" the moment a project grew past 10 environments. If the
+  // ID is wrong, the API call that follows will surface the 404 with
+  // its own clear error — no need to pre-validate.
+  if (options.id) {
+    return options.id;
+  }
+  const selection = options.name;
   if (context.whatIf) {
     if (selection) {
       return selection;
@@ -244,7 +257,7 @@ export const resolveDeployEnvironmentId = async (
     if (context.environmentId) {
       return context.environmentId;
     }
-    throw createCliError("Environment ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Environment ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit environment ID to avoid lookup calls.",
     });
   }
@@ -260,11 +273,14 @@ export const resolveDeployEnvironmentId = async (
 
   const projectId = await resolveDeployProjectId(context, options);
   if (projectId) {
-    const environments = await fetchProjectEnvironments(
+    // Walk every page of the project's environments. The default
+    // page size on this endpoint is 10, so a project with >10 envs
+    // would otherwise fail name lookups for anything past page one.
+    const aggregated = await fetchAllProjectEnvironments(
       { accessToken: context.token, baseUrl: context.baseUrl },
       projectId
     );
-    const environment = selectMatch(environments, "Environment", selection);
+    const environment = selectMatch(aggregated.items, "Environment", selection);
     const environmentId = environment.id ?? environment.environmentId;
     if (!environmentId) {
       throw inputError("Environment ID was not available.");
@@ -272,15 +288,14 @@ export const resolveDeployEnvironmentId = async (
     return environmentId;
   }
 
-  const listResult = await fetchEnvironments(
+  // Same reason as above: walk all pages when scanning the org-wide
+  // list. `fetchAllEnvironments` returns `{ items, totalCount, ... }`
+  // — only `items` matters here, since we're picking one by name/ID.
+  const aggregated = await fetchAllEnvironments(
     { accessToken: context.token, baseUrl: context.baseUrl },
     {}
   );
-  const list =
-    (listResult as { items?: DeployEnvironment[] }).items ??
-    (listResult as { data?: DeployEnvironment[] }).data ??
-    (Array.isArray(listResult) ? (listResult as DeployEnvironment[]) : []);
-  const environment = selectMatch(list, "Environment", selection);
+  const environment = selectMatch(aggregated.items, "Environment", selection);
   const environmentId = environment.id ?? environment.environmentId;
   if (!environmentId) {
     throw inputError("Environment ID was not available.");

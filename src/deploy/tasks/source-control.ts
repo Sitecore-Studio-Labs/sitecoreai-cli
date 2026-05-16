@@ -12,7 +12,7 @@ import {
   fetchSourceControlProviders,
   fetchSourceControlIntegration,
   deleteSourceControlIntegration,
-} from "@/deploy/api";
+} from "@/deploy/api/source-control";
 import {
   getDeployContext,
   inputError,

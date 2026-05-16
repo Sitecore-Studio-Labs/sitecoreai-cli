@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchEnvironments: vi.fn(),
+  fetchAllEnvironments: vi.fn(),
   fetchEnvironmentsLimitation: vi.fn(),
   fetchEnvironment: vi.fn(),
   fetchEnvironmentDeployments: vi.fn(),
@@ -13,6 +14,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironmentEditingSecret: vi.fn(),
   regenerateEnvironmentContext: vi.fn(),
   fetchProjectEnvironments: vi.fn(),
+  fetchAllProjectEnvironments: vi.fn(),
   createProjectEnvironment: vi.fn(),
   deleteEnvironment: vi.fn(),
   linkEnvironmentRepository: vi.fn(),
@@ -22,7 +24,10 @@ const apiMocks = vi.hoisted(() => ({
   promoteEnvironmentDeployment: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/environments", () => ({
+  ...apiMocks,
+}));
+vi.mock("../../../../src/deploy/api/projects", () => ({
   ...apiMocks,
 }));
 
@@ -72,58 +77,144 @@ describe("deploy environments branches", () => {
     logger.isJson.mockReturnValue(false);
   });
 
-  it("filters project environments by type", async () => {
-    apiMocks.fetchProjectEnvironments.mockResolvedValue([{ id: "env-1", type: "cm" }]);
-    sharedMocks.extractDeployEnvironmentList.mockReturnValue([{ id: "env-1", type: "cm" }]);
+  it("filters project environments by type (walker default)", async () => {
+    apiMocks.fetchAllProjectEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "env-1", type: "cm" }],
+    });
     sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-1", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ project: "proj-1", type: "cm" });
 
+    expect(apiMocks.fetchAllProjectEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "proj-1",
+      50
+    );
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
       "deploy.environments.list",
-      [{ id: "env-1", type: "cm" }]
+      { totalCount: 1, pageSize: 50, data: [{ id: "env-1", type: "cm" }] }
     );
   });
 
-  it("lists project environments without type filter", async () => {
-    const result = { items: [{ id: "env-1", type: "cm" }] };
-    apiMocks.fetchProjectEnvironments.mockResolvedValue(result);
+  it("walks every page for project list without filter (walker default)", async () => {
+    apiMocks.fetchAllProjectEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "env-1", type: "cm" }],
+    });
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ project: "proj-1" });
 
+    expect(apiMocks.fetchAllProjectEnvironments).toHaveBeenCalledTimes(1);
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
       "deploy.environments.list",
-      result
+      { totalCount: 1, pageSize: 50, data: [{ id: "env-1", type: "cm" }] }
     );
   });
 
-  it("lists environments without a type filter", async () => {
+  it("fetches a single page for project list when --page is explicit", async () => {
+    apiMocks.fetchProjectEnvironments.mockResolvedValue({
+      items: [{ id: "env-1", type: "cm" }],
+    });
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ project: "proj-1", page: 2, pageSize: 25 });
+
+    expect(apiMocks.fetchProjectEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "proj-1",
+      expect.objectContaining({ PageNumber: 2, PageSize: 25 })
+    );
+    expect(apiMocks.fetchAllProjectEnvironments).not.toHaveBeenCalled();
+  });
+
+  it("walks every page for org-wide list by default", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
-    const result = { items: [{ id: "env-2", type: "cm" }] };
-    apiMocks.fetchEnvironments.mockResolvedValue(result);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 2,
+      pageSize: 50,
+      items: [
+        { id: "env-2", type: "cm" },
+        { id: "env-3", type: "eh" },
+      ],
+    });
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({});
 
-    expect(apiMocks.fetchEnvironments).toHaveBeenCalledWith(
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledWith(
       { accessToken: "token", baseUrl: "https://api.example" },
-      { Types: undefined }
+      expect.objectContaining({ Types: undefined }),
+      50
+    );
+    expect(apiMocks.fetchEnvironments).not.toHaveBeenCalled();
+  });
+
+  it("honors explicit --all (no behavior change vs default)", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 30,
+      pageSize: 50,
+      items: [{ id: "a" }, { id: "b" }],
+    });
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ all: true });
+
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      expect.objectContaining({ Types: undefined }),
+      50
     );
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
       "deploy.environments.list",
-      result
+      { totalCount: 30, pageSize: 50, data: [{ id: "a" }, { id: "b" }] }
     );
   });
 
-  it("falls back when type filter returns empty list", async () => {
+  it("forwards --page and --page-size to the single-page fetch", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchEnvironments.mockResolvedValue({ items: [] });
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ page: 3, pageSize: 25 });
+
+    expect(apiMocks.fetchEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      expect.objectContaining({ PageNumber: 3, PageSize: 25 })
+    );
+    expect(apiMocks.fetchAllEnvironments).not.toHaveBeenCalled();
+  });
+
+  it("falls back when the type filter returns empty under the walker default", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchAllEnvironments
+      .mockResolvedValueOnce({ totalCount: 0, pageSize: 50, items: [] })
+      .mockResolvedValueOnce({
+        totalCount: 1,
+        pageSize: 50,
+        items: [{ id: "env-2", type: "cm" }],
+      });
+    sharedMocks.filterEnvironmentsByType
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([{ id: "env-2", type: "cm" }]);
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ type: "cm" });
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back when the type filter returns empty under explicit --page", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
     apiMocks.fetchEnvironments
       .mockResolvedValueOnce({ items: [] })
@@ -134,7 +225,7 @@ describe("deploy environments branches", () => {
     sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-2", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
-    await runDeployEnvironmentsList({ type: "cm" });
+    await runDeployEnvironmentsList({ type: "cm", page: 1 });
     expect(apiMocks.fetchEnvironments).toHaveBeenCalledTimes(2);
   });
 
@@ -308,6 +399,25 @@ describe("deploy environments branches", () => {
       "env-1",
       true
     );
+  });
+
+  it("dry-runs delete when --what-if is set, even with --force", async () => {
+    const { runDeployEnvironmentsDelete } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsDelete({ id: "env-x", whatIf: true, force: true });
+
+    expect(sharedMocks.printDeployWhatIf).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.delete",
+      expect.objectContaining({
+        method: "DELETE",
+        path: expect.stringContaining("/api/environments/v1/"),
+        query: { force: true },
+      })
+    );
+    expect(apiMocks.deleteEnvironment).not.toHaveBeenCalled();
+    expect(sharedMocks.confirmDestructive).not.toHaveBeenCalled();
   });
 
   it("requires all repository link fields", async () => {

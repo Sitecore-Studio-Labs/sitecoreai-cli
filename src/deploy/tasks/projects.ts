@@ -1,5 +1,6 @@
 import {
   fetchProjects,
+  fetchAllProjects,
   fetchProjectsLimitation,
   validateProjectName,
   fetchProject,
@@ -8,8 +9,8 @@ import {
   deleteProject,
   linkProjectRepository,
   unlinkProjectRepository,
-} from "@/deploy/api";
-import { createCliError } from "@/shared/errors";
+} from "@/deploy/api/projects";
+import { createScaiError } from "@/shared/errors";
 import {
   confirmDestructive,
   getDeployContext,
@@ -29,14 +30,48 @@ import type {
   DeployProjectUpdateOptions,
 } from "./types";
 
-export const runDeployProjectsList = async (options: DeployBaseOptions): Promise<void> => {
+export type DeployProjectsListOptions = DeployBaseOptions & {
+  all?: boolean;
+  page?: number;
+  pageSize?: number;
+};
+
+export const runDeployProjectsList = async (options: DeployProjectsListOptions): Promise<void> => {
   const logger = toLogger(options);
   const context = await getDeployContext(options);
-  const result = await fetchProjects({
+  const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
+  if (options.all) {
+    const aggregated = await fetchAllProjects(apiOptions, options.pageSize ?? 50);
+    const result = {
+      totalCount: aggregated.totalCount,
+      pageSize: aggregated.pageSize,
+      data: aggregated.items,
+    };
+    printDeployResultWithContext(logger, context, "deploy.projects.list", result);
+    return;
+  }
+  const result = await fetchProjects(apiOptions, {
+    PageNumber: options.page,
+    PageSize: options.pageSize,
+  });
+  printDeployResultWithContext(logger, context, "deploy.projects.list", result);
+};
+
+/**
+ * Resolve a project name/ID to a concrete projectId. Walks every page
+ * of `/api/projects/v2` so orgs with >10 projects don't see spurious
+ * "not found" errors on the second page and beyond.
+ */
+const lookupProjectIdByNameOrId = async (
+  context: { token: string; baseUrl?: string },
+  selection: string
+): Promise<string | undefined> => {
+  const aggregated = await fetchAllProjects({
     accessToken: context.token,
     baseUrl: context.baseUrl,
   });
-  printDeployResultWithContext(logger, context, "deploy.projects.list", result);
+  const project = selectMatch(aggregated.items, "Project", selection);
+  return project.id ?? project.projectId;
 };
 
 export const runDeployProjectsLimitation = async (options: DeployBaseOptions): Promise<void> => {
@@ -120,7 +155,7 @@ export const runDeployProjectsDelete = async (
   }
   if (options.whatIf) {
     if (!options.id) {
-      throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+      throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
         hint: "Provide an explicit project ID to avoid lookup calls.",
       });
     }
@@ -138,16 +173,7 @@ export const runDeployProjectsDelete = async (
     logger.info("Delete cancelled.", "yellow");
     return;
   }
-  const projectId =
-    options.id ??
-    (await (async () => {
-      const projects = await fetchProjects({
-        accessToken: context.token,
-        baseUrl: context.baseUrl,
-      });
-      const project = selectMatch(projects, "Project", selection);
-      return project.id ?? project.projectId;
-    })());
+  const projectId = options.id ?? (await lookupProjectIdByNameOrId(context, selection));
   if (!projectId) {
     throw inputError("Project ID was not available.");
   }
@@ -168,20 +194,11 @@ export const runDeployProjectsUpdate = async (
     throw inputError("Project name or ID is required. Use --name or --id.");
   }
   if (options.whatIf && !options.id) {
-    throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit project ID to avoid lookup calls.",
     });
   }
-  const projectId =
-    options.id ??
-    (await (async () => {
-      const projects = await fetchProjects({
-        accessToken: context.token,
-        baseUrl: context.baseUrl,
-      });
-      const project = selectMatch(projects, "Project", selection);
-      return project.id ?? project.projectId;
-    })());
+  const projectId = options.id ?? (await lookupProjectIdByNameOrId(context, selection));
   if (!projectId) {
     throw inputError("Project ID was not available.");
   }
@@ -287,20 +304,11 @@ export const runDeployProjectsUnlinkRepository = async (
     throw inputError("Project name or ID is required. Use --name or --id.");
   }
   if (options.whatIf && !options.id) {
-    throw createCliError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
+    throw createScaiError("Project ID is required for --what-if. Use --id.", "INPUT_INVALID", {
       hint: "Provide an explicit project ID to avoid lookup calls.",
     });
   }
-  const projectId =
-    options.id ??
-    (await (async () => {
-      const projects = await fetchProjects({
-        accessToken: context.token,
-        baseUrl: context.baseUrl,
-      });
-      const project = selectMatch(projects, "Project", selection);
-      return project.id ?? project.projectId;
-    })());
+  const projectId = options.id ?? (await lookupProjectIdByNameOrId(context, selection));
   if (!projectId) {
     throw inputError("Project ID was not available.");
   }

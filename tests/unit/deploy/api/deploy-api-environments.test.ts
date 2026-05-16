@@ -1,14 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/deploy/api/common", () => ({
+vi.mock("../../../../src/deploy/api/common/request", () => ({
   deployRequest: vi.fn().mockResolvedValue({}),
 }));
 
-let common: typeof import("../../../../src/deploy/api/common");
+let common: typeof import("../../../../src/deploy/api/common/request");
 let api: typeof import("../../../../src/deploy/api/environments");
 
 beforeAll(async () => {
-  common = await import("../../../../src/deploy/api/common");
+  common = await import("../../../../src/deploy/api/common/request");
   api = await import("../../../../src/deploy/api/environments");
 });
 
@@ -32,6 +32,28 @@ describe("environments api", () => {
       { accessToken: "token" },
       "/api/environments/v1/limitation"
     );
+  });
+
+  // Regression: the Deploy API caps `PageSize` at 10 by default. Resolvers
+  // that called the single-page `fetchEnvironments` silently truncated the
+  // search list to the first 10 results, so `deploy environments --name foo`
+  // would fail with "not found" the moment an org grew past one page.
+  // fetchAllEnvironments walks every page; this test pins the multi-page
+  // walk so a regression here can't quietly re-introduce the 10-row cap.
+  it("fetchAllEnvironments walks pages until a short page or totalCount stops it", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 50 }, (_, idx) => ({ id: `e-${idx}` })),
+        totalCount: 75,
+      })
+      .mockResolvedValueOnce({
+        data: Array.from({ length: 25 }, (_, idx) => ({ id: `e-${idx + 50}` })),
+        totalCount: 75,
+      });
+    const result = await api.fetchAllEnvironments({ accessToken: "token" });
+    expect(result.items).toHaveLength(75);
+    expect(result.totalCount).toBe(75);
   });
 
   it("fetchEnvironment gets by id", async () => {

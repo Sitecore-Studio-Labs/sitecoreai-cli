@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   fetchProjects: vi.fn(),
+  fetchAllProjects: vi.fn(),
   fetchProjectsLimitation: vi.fn(),
   validateProjectName: vi.fn(),
   fetchProject: vi.fn(),
@@ -12,7 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   unlinkProjectRepository: vi.fn(),
 }));
 
-vi.mock("../../../../src/deploy/api", () => ({
+vi.mock("../../../../src/deploy/api/projects", () => ({
   ...apiMocks,
 }));
 
@@ -161,7 +162,11 @@ describe("deploy projects branches", () => {
 
   it("deletes project by name when resolved", async () => {
     sharedMocks.confirmDestructive.mockResolvedValue(true);
-    apiMocks.fetchProjects.mockResolvedValue([{ id: "proj-9", name: "Project Nine" }]);
+    apiMocks.fetchAllProjects.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "proj-9", name: "Project Nine" }],
+    });
     sharedMocks.selectMatch.mockReturnValue({ projectId: "proj-9" });
     const { runDeployProjectsDelete } = await import("../../../../src/deploy/tasks/projects");
     await runDeployProjectsDelete({ name: "Project Nine" });
@@ -174,7 +179,11 @@ describe("deploy projects branches", () => {
 
   it("errors when project id cannot be resolved", async () => {
     sharedMocks.confirmDestructive.mockResolvedValue(true);
-    apiMocks.fetchProjects.mockResolvedValue([{ id: "p1", name: "Project One" }]);
+    apiMocks.fetchAllProjects.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "p1", name: "Project One" }],
+    });
     sharedMocks.selectMatch.mockReturnValue({});
     const { runDeployProjectsDelete } = await import("../../../../src/deploy/tasks/projects");
     await expect(runDeployProjectsDelete({ name: "Project One" })).rejects.toThrow(
@@ -183,7 +192,11 @@ describe("deploy projects branches", () => {
   });
 
   it("requires update data fields", async () => {
-    apiMocks.fetchProjects.mockResolvedValue([{ id: "proj-1", name: "Project One" }]);
+    apiMocks.fetchAllProjects.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "proj-1", name: "Project One" }],
+    });
     sharedMocks.selectMatch.mockReturnValue({ id: "proj-1" });
     const { runDeployProjectsUpdate } = await import("../../../../src/deploy/tasks/projects");
     await expect(runDeployProjectsUpdate({ name: "Project One" })).rejects.toThrow(

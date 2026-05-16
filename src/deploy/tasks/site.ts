@@ -1,5 +1,5 @@
 /**
- * `scai deploy site list` runner.
+ * `scai provision deploy site list` runner.
  *
  * Discovers SXA sites in a Sitecore CM environment via the Authoring
  * GraphQL API. Sibling of `editing-host list`, but where editing hosts
@@ -7,7 +7,7 @@
  * tree — so this command resolves env config the same way `scai
  * recipe push` does (via `resolveTenant`-style lookup) rather than
  * `getDeployContext`. Both flows authenticate against the same
- * env profile written by `scai login`.
+ * env profile written by `scai setup login`.
  */
 
 import { discoverSites } from "@/recipe/api/site-discovery";

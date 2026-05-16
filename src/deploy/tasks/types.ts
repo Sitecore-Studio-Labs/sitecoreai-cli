@@ -1,5 +1,5 @@
 /**
- * Option types for `scai deploy` task runners. Every option type
+ * Option types for `scai provision deploy` task runners. Every option type
  * extends `CommonOptions` (from `@/shared/cli-options`) directly or
  * via `DeployBaseOptions`.
  */
@@ -21,7 +21,7 @@ export type DeploySiteListOptions = DeployBaseOptions & {
 };
 
 /**
- * Options for `scai deploy site bind` — populate the SXA Site
+ * Options for `scai provision deploy site bind` — populate the SXA Site
  * Grouping fields the Pages/Channels app requires (HostName,
  * StartItem, RenderingHost) so a freshly-created site appears in
  * the Cloud Portal.
@@ -167,6 +167,16 @@ export type DeployEnvironmentOptions = DeployBaseOptions & {
   force?: boolean;
 };
 
+export type DeployEnvironmentsListOptions = DeployEnvironmentOptions & {
+  /** Walk every page until the result set is exhausted. */
+  all?: boolean;
+  /** Explicit page number (1-based). Ignored when `all` is set. */
+  page?: number;
+  /** Page size. Defaults to 50 when `all` is set, otherwise the API
+   *  default (10). */
+  pageSize?: number;
+};
+
 export type DeployEnvironmentDeleteOptions = DeployEnvironmentOptions & {
   force?: boolean;
 };
@@ -219,6 +229,11 @@ export type DeployEditingHostCreateOptions = DeployBaseOptions & {
 
 export type DeployEditingHostListOptions = DeployBaseOptions & {
   project?: string;
+  /** When false, fetch only one page. Default behaviour walks all
+   *  pages — see comment in `runDeployEditingHostList`. */
+  all?: boolean;
+  page?: number;
+  pageSize?: number;
 };
 
 export type DeployEditingHostDeleteOptions = DeployBaseOptions & {

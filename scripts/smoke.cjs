@@ -4,7 +4,7 @@
  * Build + spawn-based smoke checks for the published CLI surface.
  *
  * - `--help`                                  → commander help renders cleanly
- * - `telemetry status --json`                 → telemetry plumbing + JSON mode
+ * - `cli telemetry status --json`             → telemetry plumbing + JSON mode
  *
  * Failures here mean the published `dist/` is broken end-to-end. The unit
  * tests don't catch dist-only regressions (path aliases, exports field,
@@ -41,6 +41,6 @@ const run = (args, options = {}) => {
 };
 
 run(["--help"]);
-run(["telemetry", "status", "--json"]);
+run(["cli", "telemetry", "status", "--json"]);
 
 process.stdout.write("smoke: ok\n");

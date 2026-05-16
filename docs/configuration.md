@@ -1,7 +1,7 @@
 # Configuration
 
 Configuration is read from `sitecoreai.cli.json` at your project root. Pass
-`--config <path>` to point at a different directory. `scai init` creates or
+`--config <path>` to point at a different directory. `scai setup init` creates or
 updates an environment in the `envProfiles` section, creates the config if
 it does not exist, and can set the default environment with `--set-default`.
 
@@ -20,10 +20,10 @@ it does not exist, and can set the default environment with `--set-default`.
       "settings": {
         "cacheAuthenticationToken": true,
         "apiClientTimeoutInMinutes": 10,
-        "telemetryEnabled": true
-      }
-    }
-  }
+        "telemetryEnabled": true,
+      },
+    },
+  },
 }
 ```
 
@@ -43,14 +43,14 @@ A starter file lives at [`../sitecore.cli.example.json`](../sitecore.cli.example
 
 There are two distinct tokens:
 
-| Token        | Used by             | Stored where                                                  |
-| ------------ | ------------------- | ------------------------------------------------------------- |
-| Deploy token | Deploy API commands | OS keychain as `deployToken`; includes SitecoreAI CM/admin scopes |
+| Token        | Used by                                        | Stored where                                                             |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| Deploy token | Deploy API commands                            | OS keychain as `deployToken`; includes SitecoreAI CM/admin scopes        |
 | CM token     | Serialization (Authoring + Management GraphQL) | OS keychain when `settings.cacheAuthenticationToken` is `true` (default) |
 
-- `scai init` can accept `--deploy-token` directly, or obtain a token via
+- `scai setup init` can accept `--deploy-token` directly, or obtain a token via
   interactive login or client credentials.
-- `scai login` refreshes the Deploy token for an existing environment.
+- `scai setup login` refreshes the Deploy token for an existing environment.
 - For client credentials, provide secrets via environment variables
   (`SITECOREAI_CLIENT_SECRET` or `SITECOREAI_ENV_<NAME>_CLIENT_SECRET`).
 
@@ -68,7 +68,7 @@ or secrets handling.
 ## Validation
 
 ```sh
-scai config validate
+scai cli config validate
 ```
 
 Surfaces missing fields, malformed JSON, and schema violations against the
@@ -80,8 +80,8 @@ CLI history is written to `~/.sitecoreai/cli-history.log` (override with
 `SITECOREAI_HISTORY_PATH`). Sensitive flags are redacted before write.
 
 ```sh
-scai history              # show recent activity
-scai history --show-path  # print the log file path
+scai cli history              # show recent activity
+scai cli history --show-path  # print the log file path
 ```
 
 See [`telemetry-and-privacy.md`](./telemetry-and-privacy.md) for what does

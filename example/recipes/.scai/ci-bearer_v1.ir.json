@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "1",
+  "recipeHandle": "ci-bearer@1",
+  "operations": [
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "webhook-authorization:ci-bearer@1",
+      "id": "0ecc825e-8873-550a-8ff6-f193dd835ecd",
+      "path": "/sitecore/system/Settings/Webhooks/Authorizations/CI Bearer",
+      "parent": {
+        "kind": "ref-path",
+        "value": "/sitecore/system/Settings/Webhooks/Authorizations"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Webhooks/Authorizations/Api Key"
+      },
+      "name": "CI Bearer",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "CI Bearer Token"
+          }
+        },
+        {
+          "fieldId": "7b963d0e-5b94-5d20-ac4d-fac8431353ae",
+          "fieldName": "Description",
+          "value": {
+            "kind": "string",
+            "value": "Token used by CI to authenticate workflow + publish webhooks."
+          }
+        },
+        {
+          "fieldId": "9ed94a7c-5f04-50f6-9792-cda082f872d7",
+          "fieldName": "Header Name",
+          "value": {
+            "kind": "string",
+            "value": "Authorization"
+          }
+        },
+        {
+          "fieldId": "7eb7e08a-9461-56d7-8659-8e3331cac7fc",
+          "fieldName": "Key",
+          "value": {
+            "kind": "string",
+            "value": "$ENV:CI_WEBHOOK_TOKEN"
+          }
+        }
+      ]
+    }
+  ]
+}

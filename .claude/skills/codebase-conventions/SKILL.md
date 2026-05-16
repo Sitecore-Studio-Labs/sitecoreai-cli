@@ -112,6 +112,43 @@ Every command must work non-interactively:
 - `--json` output is structured + machine-parseable; never include
   decorative text in JSON-mode output
 
+## Destructive-ops contract (two-layer gate)
+
+Tenant writes (cleanup, workflow mutations, webhook create/delete, etc.)
+pass through **two** layers in series:
+
+1. **Library gate** — `ensureAllowWrite(root, envName, override?)` in
+   `src/shared/allow-write.ts`. Called from every destructive runner.
+   Throws `INPUT_INVALID` unless `env.allowWrite` or the per-call
+   `override` (typically `--allow-write`) is set.
+
+2. **MCP boundary gate** — `ensureMcpElevationAllowed(root, envName)`,
+   same module. Called from every MCP write tool's handler _before_ the
+   library runner. Throws `AUTH_DENIED` if the env has
+   `denyMcpElevation: true`.
+
+Why the second gate exists: when an MCP write tool is invoked, the
+registry dispatch has already cleared the host's confirmation UX, so
+the MCP layer auto-elevates `allowWrite: true` before calling runners.
+That makes the library gate effectively a no-op for MCP callers. The
+boundary gate is what lets an environment opt out of MCP-driven writes
+without changing CLI behaviour.
+
+**Adding a new destructive runner:**
+
+- Call `ensureAllowWriteForCleanup(root, envName, options.allowWrite)`
+  (or `ensureAllowWrite` directly) at the start, after `whatIf`
+  is checked.
+- Default `whatIf: true` on the CLI command (preview-first).
+- If you also expose the runner via MCP, the **MCP handler** must call
+  `ensureMcpElevationAllowed(context.resolved.root, context.envName)`
+  before delegating. The `tests/unit/architecture/` directory has a
+  parity test; consider adding a similar test if you're adding a new
+  MCP write tool.
+
+The runner's library gate stays in place for direct CLI use — don't
+remove it just because the MCP layer auto-elevates.
+
 ## Quality gates
 
 | Command                 | What it runs                                                | When to use                                 |

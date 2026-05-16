@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect } from "vitest";
 import "../setup";
 import { describeIfDeployAuth, getEnv, requireEnv, resolveDeployToken } from "../helpers";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
 import { designParametersTemplateId, renderingId, templateId } from "../../../src/recipe/guids";

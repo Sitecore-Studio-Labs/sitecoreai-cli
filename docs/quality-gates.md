@@ -58,12 +58,12 @@ This file is informational — it does not gate releases. CI does.
 
 ## Documentation & governance
 
-| Gate                          | Enforced by                                                                                                          |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| README accuracy               | Manually maintained; PRs touching public surface should update it                                                    |
-| Agent contract                | [`../AGENTS.md`](../AGENTS.md) — `--json`, `--non-interactive`, `SITECOREAI_AUTO_WIZARD=0` are stable invariants      |
-| Command reference             | [`commands.md`](./commands.md) is generated from the Commander tree via `pnpm docs:commands`                         |
-| Telemetry / history retention | [`telemetry-and-privacy.md`](./telemetry-and-privacy.md) — data-handling decisions live with the operator            |
+| Gate                          | Enforced by                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| README accuracy               | Manually maintained; PRs touching public surface should update it                                                |
+| Agent contract                | [`../AGENTS.md`](../AGENTS.md) — `--json`, `--non-interactive`, `SITECOREAI_AUTO_WIZARD=0` are stable invariants |
+| Command reference             | [`commands.md`](./commands.md) is generated from the Commander tree via `pnpm docs:commands`                     |
+| Telemetry / history retention | [`telemetry-and-privacy.md`](./telemetry-and-privacy.md) — data-handling decisions live with the operator        |
 
 ## Release process
 

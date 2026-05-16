@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "envName": "sandbox",
+  "capturedAt": "2026-05-14T04:22:53.293Z",
+  "audits": {
+    "empty-roles": [
+      {
+        "fingerprint": "8aaebc68a5c1f16c",
+        "sample": {
+          "name": "Creator-Owner"
+        }
+      },
+      {
+        "fingerprint": "93300d7706299e74",
+        "sample": {
+          "name": "default\\Everyone"
+        }
+      },
+      {
+        "fingerprint": "db8ad23931f659b5",
+        "sample": {
+          "name": "Everyone"
+        }
+      },
+      {
+        "fingerprint": "df1eb05eeb066ae4",
+        "sample": {
+          "name": "extranet\\Everyone"
+        }
+      },
+      {
+        "fingerprint": "7946d24be8b412f0",
+        "sample": {
+          "name": "sitecore\\Everyone"
+        }
+      },
+      {
+        "fingerprint": "c1545d0e9bd820f5",
+        "sample": {
+          "name": "sitecore\\Sitecore Client Advanced Publishing"
+        }
+      },
+      {
+        "fingerprint": "55fb293e27a92deb",
+        "sample": {
+          "name": "sitecore\\Sitecore Client Bucket Management"
+        }
+      },
+      {
+        "fingerprint": "17f8fb08f5e5279c",
+        "sample": {
+          "name": "sitecore\\Sitecore Client Content Reader"
+        }
+      },
+      {
+        "fingerprint": "b0470af1ab13478b",
+        "sample": {
+          "name": "sitecore\\Sitecore Client Site Template Managing"
+        }
+      },
+      {
+        "fingerprint": "880a87bc04fcf2eb",
+        "sample": {
+          "name": "sitecore\\Sitecore Client Translating"
+        }
+      },
+      {
+        "fingerprint": "0420a26d325da86d",
+        "sample": {
+          "name": "sitecore\\Sitecore Limited Content Editor"
+        }
+      },
+      {
+        "fingerprint": "f88a0eb8d342a539",
+        "sample": {
+          "name": "sitecore\\Sitecore Limited Page Editor"
+        }
+      },
+      {
+        "fingerprint": "25833ce9d5942260",
+        "sample": {
+          "name": "sitecore\\Sitecore Local Administrators"
+        }
+      },
+      {
+        "fingerprint": "2e6a41e7a4034626",
+        "sample": {
+          "name": "sitecore\\Sitecore Minimal Page Editor"
+        }
+      }
+    ],
+    "orphans": []
+  }
+}

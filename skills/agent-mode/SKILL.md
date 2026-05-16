@@ -23,7 +23,7 @@ description: Run the CLI safely in non-interactive or CI environments. Use when 
 - Avoid name-based lookups; prefer explicit `--id`.
 - Use `--timeout` for watch/promote/deploy operations.
 - Capture exit codes and parse JSON output.
-- Avoid `scai shell` (interactive-only).
+- Avoid `scai cli shell` (interactive-only).
 
 ## Reference
 

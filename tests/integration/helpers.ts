@@ -1,6 +1,6 @@
 import "./setup";
 import { describe, it } from "vitest";
-import { requestClientCredentialsToken } from "../../src/serialization/sitecore-api";
+import { requestClientCredentialsToken } from "../../src/serialization/api/auth";
 import { fetchEnvironments } from "../../src/deploy/api/environments";
 import { fetchProjectEnvironments } from "../../src/deploy/api/projects";
 import { extractDeployEnvironmentList, getEnvironmentType } from "../../src/deploy/tasks/shared";

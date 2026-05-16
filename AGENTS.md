@@ -60,17 +60,17 @@ in 0.0.x — neither `package.json` `exports` nor `scai --help` surface it. It
 graduates in the 0.1.0 release; the parked changeset under
 `.changeset-parked/` describes the surface coming online.
 
-When `scai recipe` runs (today via internal code paths, in 0.1.0 via the
-`scai recipe compile|plan|diff|push` commands), it loads `.recipe.ts` files
+When `scai provision recipe` runs (today via internal code paths, in 0.1.0 via the
+`scai provision recipe compile|plan|diff|push` commands), it loads `.recipe.ts` files
 through the `tsx` runtime. **These files are executed code, not data.**
 
 > **`.recipe.ts` files are executed code, not data.** When you run any
-> `scai recipe` command (including `recipe diff` and `recipe push --what-if`),
+> `scai provision recipe` command (including `recipe diff` and `recipe push --what-if`),
 > every matched `.recipe.ts` file is imported and its top-level code runs
 > with the full privileges of your shell — including filesystem access,
 > network, and environment variables. Treat recipe files like any other
 > build script (e.g. `webpack.config.js`, `vite.config.ts`): only run
-> `scai recipe` against repos and recipe files you trust. If you need to
+> `scai provision recipe` against repos and recipe files you trust. If you need to
 > inspect an untrusted recipe set, compile it to `.recipe.json` in a
 > sandboxed environment first and operate on the JSON form.
 
@@ -82,7 +82,7 @@ when 0.1.0 ships; track that integration in the release PR.
 ### Serialization push in CI
 
 ```sh
-scai serialization push \
+scai provision serialization push \
   --environment-name ci \
   --non-interactive \
   --json \
@@ -92,7 +92,7 @@ scai serialization push \
 ### Deploy environments list in CI
 
 ```sh
-scai deploy environments list \
+scai provision deploy environments list \
   --project "<project-id>" \
   --environment-name ci \
   --non-interactive \
@@ -102,7 +102,7 @@ scai deploy environments list \
 ### Watching a deployment with a bounded timeout
 
 ```sh
-scai deploy deployments watch --id <deployment-id> --timeout 3600
+scai provision deploy deployments watch --id <deployment-id> --timeout 3600
 ```
 
 Without `--timeout`, watch loops forever. Always bound them in CI.
@@ -110,7 +110,7 @@ Without `--timeout`, watch loops forever. Always bound them in CI.
 ### Dry-run a deploy command
 
 ```sh
-scai deploy environments create \
+scai provision deploy environments create \
   --project "X" --name "Y" --cm-only \
   --what-if
 ```

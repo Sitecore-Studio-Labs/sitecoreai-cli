@@ -1,0 +1,475 @@
+{
+  "schemaVersion": "1",
+  "recipeHandle": "blog-article-approval@1",
+  "operations": [
+    {
+      "op": "CreateItem",
+      "policy": "CreateOnly",
+      "label": "workflow-group:Editorial",
+      "id": "0b2609c2-d8e4-5bde-b549-5d7290d14b0f",
+      "path": "/sitecore/system/Workflows/Editorial",
+      "parent": {
+        "kind": "ref-path",
+        "value": "/sitecore/system/Workflows"
+      },
+      "templateOf": "a87a00b1-e6db-45ab-8b54-636fec3b5523",
+      "name": "Editorial",
+      "fields": []
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow:blog-article-approval@1",
+      "id": "0cf0b668-7944-5d94-bfef-c72523537e20",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "0b2609c2-d8e4-5bde-b549-5d7290d14b0f"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Workflow"
+      },
+      "name": "BlogArticleApproval",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Blog Article Approval"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-state:blog-article-approval@1:draft",
+      "id": "8b88d58a-5a35-5784-8d5e-2217c79ea1d5",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/Draft",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "0cf0b668-7944-5d94-bfef-c72523537e20"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/State"
+      },
+      "name": "Draft",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Draft"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-state:blog-article-approval@1:in-review",
+      "id": "491f42dc-7513-5700-a014-5a93a1274def",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/InReview",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "0cf0b668-7944-5d94-bfef-c72523537e20"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/State"
+      },
+      "name": "InReview",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "In Review"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-state:blog-article-approval@1:approved",
+      "id": "909a5eb1-eb64-52bb-a2d3-babd57c3d4dd",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/Approved",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "0cf0b668-7944-5d94-bfef-c72523537e20"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/State"
+      },
+      "name": "Approved",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Approved"
+          }
+        },
+        {
+          "fieldId": "26c82798-1a22-54ec-97c0-18fe94a3a2f3",
+          "fieldName": "Final",
+          "value": {
+            "kind": "bool",
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "op": "SetField",
+      "policy": "CreateAndUpdate",
+      "label": "workflow:blog-article-approval@1:initial-state",
+      "itemRefKey": "0cf0b668-7944-5d94-bfef-c72523537e20",
+      "fieldId": "1b61a046-dd01-50dd-abbc-7a553c24595d",
+      "fieldName": "__Initial state",
+      "value": {
+        "kind": "ref-recipe",
+        "refKey": "8b88d58a-5a35-5784-8d5e-2217c79ea1d5"
+      }
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-command:blog-article-approval@1:draft:submit",
+      "id": "1a6b379a-27c0-5781-bdd9-604cd235388b",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/Draft/Submit",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "8b88d58a-5a35-5784-8d5e-2217c79ea1d5"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Command"
+      },
+      "name": "Submit",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Submit for Review"
+          }
+        },
+        {
+          "fieldId": "3e4013c9-682e-58a8-9776-a1d79a7f4d7c",
+          "fieldName": "Next state",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "491f42dc-7513-5700-a014-5a93a1274def"
+          }
+        },
+        {
+          "fieldId": "2f6eb6f4-2098-5dd6-b136-95d9a3a9eb2f",
+          "fieldName": "__Auto Publish",
+          "value": {
+            "kind": "bool",
+            "value": false
+          }
+        },
+        {
+          "fieldId": "d38d1daa-0b22-54cb-876e-3a2709301cd5",
+          "fieldName": "Suppress comment",
+          "value": {
+            "kind": "bool",
+            "value": false
+          }
+        },
+        {
+          "fieldId": "caa60fea-a920-53cd-8443-1e28639adce2",
+          "fieldName": "Appearance Evaluator Type",
+          "value": {
+            "kind": "string",
+            "value": "default"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-command:blog-article-approval@1:in-review:approve",
+      "id": "5a45d2ac-7215-5ff0-a4bc-94584c3b52cb",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/InReview/Approve",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "491f42dc-7513-5700-a014-5a93a1274def"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Command"
+      },
+      "name": "Approve",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Approve"
+          }
+        },
+        {
+          "fieldId": "0ec1e555-7f25-5db4-9dc3-9cad64cec959",
+          "fieldName": "Next state",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "909a5eb1-eb64-52bb-a2d3-babd57c3d4dd"
+          }
+        },
+        {
+          "fieldId": "3b658b7f-cace-5577-85ff-8f0b0b4a065e",
+          "fieldName": "__Auto Publish",
+          "value": {
+            "kind": "bool",
+            "value": true
+          }
+        },
+        {
+          "fieldId": "99182a62-1ed6-59c4-8406-d32b542f4629",
+          "fieldName": "Suppress comment",
+          "value": {
+            "kind": "bool",
+            "value": false
+          }
+        },
+        {
+          "fieldId": "cd156ccf-208f-56cd-aab4-25c1480e7d07",
+          "fieldName": "Appearance Evaluator Type",
+          "value": {
+            "kind": "string",
+            "value": "default"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-validation:blog-article-approval@1:in-review:approve:lint-content",
+      "id": "8d833aef-6a47-5175-93a3-fdacb90eda3d",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/InReview/Approve/lint-content",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "5a45d2ac-7215-5ff0-a4bc-94584c3b52cb"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Webhook Validation Action"
+      },
+      "name": "lint-content",
+      "fields": [
+        {
+          "fieldId": "e6f1a78c-6fdf-50bd-87af-f8d500f45edb",
+          "fieldName": "Url",
+          "value": {
+            "kind": "string",
+            "value": "https://hooks.example.com/lint-content"
+          }
+        },
+        {
+          "fieldId": "e8f41e86-f59a-59d4-88b5-0541870117cd",
+          "fieldName": "Enabled",
+          "value": {
+            "kind": "bool",
+            "value": true
+          }
+        },
+        {
+          "fieldId": "d023de35-f76c-5fdd-86db-c55ea26bdec8",
+          "fieldName": "Serialization Type",
+          "value": {
+            "kind": "string",
+            "value": "JSON"
+          }
+        },
+        {
+          "fieldId": "8a98dc70-cfa2-5fd2-90aa-309f3c0c6885",
+          "fieldName": "Authorization",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "0ecc825e-8873-550a-8ff6-f193dd835ecd"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-command:blog-article-approval@1:in-review:reject",
+      "id": "73360b28-1763-57c5-9412-0dfa72e05227",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/InReview/Reject",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "491f42dc-7513-5700-a014-5a93a1274def"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Command"
+      },
+      "name": "Reject",
+      "fields": [
+        {
+          "fieldId": "b5e02ad9-d56f-4c41-a065-a133db87bdeb",
+          "language": "en",
+          "version": 1,
+          "value": {
+            "kind": "string",
+            "value": "Reject"
+          }
+        },
+        {
+          "fieldId": "0c75c047-865b-5cf5-96b7-475481306315",
+          "fieldName": "Next state",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "8b88d58a-5a35-5784-8d5e-2217c79ea1d5"
+          }
+        },
+        {
+          "fieldId": "8d4937d2-e0b1-5538-9310-e8ef277a6505",
+          "fieldName": "__Auto Publish",
+          "value": {
+            "kind": "bool",
+            "value": false
+          }
+        },
+        {
+          "fieldId": "3c35e333-4a24-52cc-be87-906e8e2e59dd",
+          "fieldName": "Suppress comment",
+          "value": {
+            "kind": "bool",
+            "value": false
+          }
+        },
+        {
+          "fieldId": "bd896afd-f562-5cb6-abb7-7a2d3e12eb0e",
+          "fieldName": "Appearance Evaluator Type",
+          "value": {
+            "kind": "string",
+            "value": "default"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-action:blog-article-approval@1:in-review:notify-reviewer",
+      "id": "e40cd95c-e65d-5356-a706-429c9e9a992c",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/InReview/notify-reviewer",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "491f42dc-7513-5700-a014-5a93a1274def"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Webhook Submit Action"
+      },
+      "name": "notify-reviewer",
+      "fields": [
+        {
+          "fieldId": "fb13d581-bed2-530b-8494-2bee0560900a",
+          "fieldName": "Url",
+          "value": {
+            "kind": "string",
+            "value": "https://hooks.example.com/notify-reviewer"
+          }
+        },
+        {
+          "fieldId": "38f50210-f7cd-5cfd-bf3b-5fc926ddc492",
+          "fieldName": "Enabled",
+          "value": {
+            "kind": "bool",
+            "value": true
+          }
+        },
+        {
+          "fieldId": "6b813f8f-6b6a-5172-9b8d-7213c2d5d188",
+          "fieldName": "Serialization Type",
+          "value": {
+            "kind": "string",
+            "value": "JSON"
+          }
+        },
+        {
+          "fieldId": "d6aa1594-6e17-52de-9e9a-b86bc5158d0d",
+          "fieldName": "Authorization",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "0ecc825e-8873-550a-8ff6-f193dd835ecd"
+          }
+        }
+      ]
+    },
+    {
+      "op": "CreateItem",
+      "policy": "CreateAndUpdate",
+      "label": "workflow-action:blog-article-approval@1:approved:publish-trigger",
+      "id": "859f6c0d-c452-50e7-aa0c-0b01088efe38",
+      "path": "/sitecore/system/Workflows/Editorial/BlogArticleApproval/Approved/publish-trigger",
+      "parent": {
+        "kind": "ref-recipe",
+        "refKey": "909a5eb1-eb64-52bb-a2d3-babd57c3d4dd"
+      },
+      "templateOf": {
+        "kind": "ref-path",
+        "value": "/sitecore/templates/System/Workflow/Webhook Submit Action"
+      },
+      "name": "publish-trigger",
+      "fields": [
+        {
+          "fieldId": "0d43642d-cce4-58ca-9972-2d4fa7ceaa1b",
+          "fieldName": "Url",
+          "value": {
+            "kind": "string",
+            "value": "https://hooks.example.com/publish-trigger"
+          }
+        },
+        {
+          "fieldId": "969c359e-efb4-5dc0-aebe-20f68aa9a6c8",
+          "fieldName": "Enabled",
+          "value": {
+            "kind": "bool",
+            "value": true
+          }
+        },
+        {
+          "fieldId": "f3d7ea3c-c131-5c0c-8fde-8b21f2fe73e0",
+          "fieldName": "Serialization Type",
+          "value": {
+            "kind": "string",
+            "value": "JSON"
+          }
+        },
+        {
+          "fieldId": "5a49535a-dde6-5a27-abce-b4498cf1d1eb",
+          "fieldName": "Authorization",
+          "value": {
+            "kind": "ref-recipe",
+            "refKey": "0ecc825e-8873-550a-8ff6-f193dd835ecd"
+          }
+        }
+      ]
+    }
+  ]
+}

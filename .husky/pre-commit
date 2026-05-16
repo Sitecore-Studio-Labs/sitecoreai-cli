@@ -1,1 +1,17 @@
+# Serialize lint-staged across every worktree of this repo. Without this,
+# parallel commits race the shared `git stash` ref under `.git/refs/stash`
+# — stash is repo-global, not per-worktree, so one session's `stash pop`
+# can grab another's entry and leave the wrong content staged in this
+# worktree. Symptom: a manual commit in one worktree ends up with hundreds
+# of phantom-staged files matching content from a parallel session.
+#
+# Atomic `mkdir` lock — flock isn't on macOS by default; mkdir is POSIX
+# and atomic enough. trap releases on any exit path so a Ctrl-C mid-commit
+# can't strand the lock.
+LOCK_DIR="$(git rev-parse --git-common-dir)/.husky-lint-staged.lock"
+while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+  sleep 0.2
+done
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+
 npx lint-staged

@@ -12,25 +12,25 @@ This page describes exactly what is sent, where it goes, and how to opt out.
   consent is recorded.
 - Opt out at any time:
   ```sh
-  scai telemetry disable
+  scai cli telemetry disable
   ```
   Or via env vars: `SITECOREAI_TELEMETRY=false`, `DISABLE_TELEMETRY=1`, or
   the broadly-honored `DO_NOT_TRACK=1`.
-- Check current state with `scai telemetry status`.
+- Check current state with `scai cli telemetry status`.
 
 ## What is sent
 
 Each telemetry event includes:
 
-| Field           | Example                                | Notes                                  |
-| --------------- | -------------------------------------- | -------------------------------------- |
-| Command name    | `deploy environments list`             | No full args; sensitive flags redacted |
-| Duration        | `1234` (ms)                            |                                        |
-| CLI version     | `0.0.4`                                |                                        |
-| Schema version  | `v1`                                   | Payload format version                 |
-| CI flag         | `ci=1`                                 | Present when CI is detected            |
-| Approximate region | `US-CA`                             | Derived from CDN headers by the server; client-supplied region values are ignored |
-| Nonce           | (random)                               | Per-event, no cross-event correlation  |
+| Field              | Example                    | Notes                                                                             |
+| ------------------ | -------------------------- | --------------------------------------------------------------------------------- |
+| Command name       | `deploy environments list` | No full args; sensitive flags redacted                                            |
+| Duration           | `1234` (ms)                |                                                                                   |
+| CLI version        | `0.0.4`                    |                                                                                   |
+| Schema version     | `v1`                       | Payload format version                                                            |
+| CI flag            | `ci=1`                     | Present when CI is detected                                                       |
+| Approximate region | `US-CA`                    | Derived from CDN headers by the server; client-supplied region values are ignored |
+| Nonce              | (random)                   | Per-event, no cross-event correlation                                             |
 
 Payloads are validated against the telemetry schema at
 `https://schemas.sitecoreai.dev/v1/telemetry.schema.json` before sending.
@@ -63,8 +63,8 @@ This file:
 - Has CLI arguments redacted via `src/shared/redact.ts` before write.
 - Grows until you delete or rotate it.
 
-View recent activity with `scai history`; print the path with
-`scai history --show-path`.
+View recent activity with `scai cli history`; print the path with
+`scai cli history --show-path`.
 
 ## Why we collect this
 

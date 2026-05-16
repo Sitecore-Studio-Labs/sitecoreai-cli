@@ -4,7 +4,7 @@
 
 /**
  * One-shot migration helper: delete an enumerations subtree on a tenant
- * so a subsequent `scai recipe push` can re-create the items conforming
+ * so a subsequent `scai provision recipe push` can re-create the items conforming
  * to the new per-site `Enumeration` / `Enumerations Folder` templates.
  *
  * Why this exists: the Authoring GraphQL `updateItem` mutation can't
@@ -20,7 +20,7 @@
  *     [--env-name sandbox] [--what-if] [--yes]
  *
  * Loads creds from the same env vars + sitecoreai.cli.json profile that
- * `scai recipe push` uses, so source the same `.env.test.local` first.
+ * `scai provision recipe push` uses, so source the same `.env.test.local` first.
  */
 
 const path = require("node:path");
@@ -120,7 +120,7 @@ async function main() {
   // recycle bin so a re-push doesn't collide on the recycled GUIDs.
   await client.deleteItem({ path: args.path });
   console.log(`Deleted ${lines.length} items rooted at ${args.path}.`);
-  console.log("Run `scai recipe push` to re-create with the new Enumeration templates.");
+  console.log("Run `scai provision recipe push` to re-create with the new Enumeration templates.");
 }
 
 main().catch((err) => {

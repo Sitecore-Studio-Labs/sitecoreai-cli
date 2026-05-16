@@ -27,26 +27,39 @@ mkdir -p ".claude"
 if [ -f "$LOCK_FILE" ]; then
   now_epoch=$(date +%s)
   lock_epoch=$(awk -F= '/^created_epoch=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
+  lock_pid=$(awk -F= '/^pid=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
+  # A lock is "live" only when (a) its recorded pid is still running and
+  # (b) it isn't past the stale-age cap. The pid check is the load-bearing
+  # one — Stop hooks fire at the end of every user message turn, not on
+  # process exit, so a release-on-Stop pattern (the prior design) cleared
+  # the lock between turns even while the agent process was still alive.
+  # The age cap stays as a belt-and-suspenders backup if the pid lookup
+  # fails or the lock is corrupted.
+  lock_live=0
+  if [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+    lock_live=1
+  fi
   if [[ "$lock_epoch" =~ ^[0-9]+$ ]]; then
     age=$((now_epoch - lock_epoch))
     if [ "$age" -gt "$STALE_LOCK_MAX_AGE_SECONDS" ]; then
-      mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
-    else
-      cat >&2 <<'EOF'
-[branch-create] RULE #1 violation: this checkout already has an active agent session.
+      lock_live=0
+    fi
+  fi
+  if [ "$lock_live" -eq 1 ]; then
+    cat >&2 <<EOF
+[branch-create] RULE #1 violation: this checkout already has an active agent session (pid ${lock_pid}).
 [branch-create] Start this agent in a separate git worktree/clone (one checkout per agent).
 [branch-create] If this lock is wrong, end the other session cleanly or remove .claude/session-checkout.lock.
 EOF
-      exit 42
-    fi
-  else
-    mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
+    exit 42
   fi
+  mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
 fi
 
 cat >"$LOCK_FILE" <<EOF
 created_epoch=$(date +%s)
 created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+pid=${CLAUDE_AGENT_PID:-$PPID}
 user=${USER:-unknown}
 host=$(hostname 2>/dev/null || echo unknown)
 cwd=$(pwd)

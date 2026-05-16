@@ -1,7 +1,7 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
   "version": "0.0.4",
-  "description": "SitecoreAI Deploy & Sync CLI for serialization and deployment workflows",
+  "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
   "author": "Liz Nelson <liz.nelson@sitecore.com>",
@@ -17,12 +17,62 @@
     "sitecoreai-cli": "bin/sitecoreai-cli",
     "scai": "bin/sitecoreai-cli"
   },
-  "main": "dist/cli.js",
   "exports": {
-    ".": "./dist/cli.js",
     "./recipe": {
       "types": "./dist/recipe/index.d.ts",
       "default": "./dist/recipe/index.js"
+    },
+    "./deploy": {
+      "types": "./dist/deploy/api/index.d.ts",
+      "default": "./dist/deploy/api/index.js"
+    },
+    "./serialization": {
+      "types": "./dist/serialization/api/index.d.ts",
+      "default": "./dist/serialization/api/index.js"
+    },
+    "./errors": {
+      "types": "./dist/shared/errors.d.ts",
+      "default": "./dist/shared/errors.js"
+    },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "default": "./dist/brand/index.js"
+    },
+    "./brief": {
+      "types": "./dist/brief/index.d.ts",
+      "default": "./dist/brief/index.js"
+    },
+    "./campaigns": {
+      "types": "./dist/campaigns/index.d.ts",
+      "default": "./dist/campaigns/index.js"
+    },
+    "./sites": {
+      "types": "./dist/sites/index.d.ts",
+      "default": "./dist/sites/index.js"
+    },
+    "./publishing": {
+      "types": "./dist/publishing/index.d.ts",
+      "default": "./dist/publishing/index.js"
+    },
+    "./content": {
+      "types": "./dist/content/index.d.ts",
+      "default": "./dist/content/index.js"
+    },
+    "./hygiene": {
+      "types": "./dist/hygiene/index.d.ts",
+      "default": "./dist/hygiene/index.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks/index.d.ts",
+      "default": "./dist/webhooks/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow/index.d.ts",
+      "default": "./dist/workflow/index.js"
+    },
+    "./scripting": {
+      "types": "./dist/scripting/index.d.ts",
+      "default": "./dist/scripting/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -46,6 +96,7 @@
     "changeset": "changeset",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx -r tsconfig-paths/register src/cli.ts",
+    "docs:commands": "tsx scripts/generate-commands-doc.ts",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",
@@ -54,7 +105,8 @@
     "prepare": "husky",
     "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
-    "smoke": "npm run build && node scripts/smoke.cjs",
+    "brand:codegen": "openapi-typescript src/brand/api/openapi.brand-management.yaml --output src/brand/api/schema.brand-management.d.ts && openapi-typescript src/brand/api/openapi.brand-review.yaml --output src/brand/api/schema.brand-review.d.ts && openapi-typescript src/brand/api/openapi.documents.yaml --output src/brand/api/schema.documents.d.ts && openapi-typescript src/brand/api/openapi.pipeline.yaml --output src/brand/api/schema.pipeline.d.ts",
+    "smoke": "npm run build && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-mcp.cjs",
     "start": "node dist/cli.js",
     "pretest": "tsc --noEmit",
     "test": "vitest run",
@@ -75,6 +127,7 @@
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@napi-rs/keyring": "^1.3.0",
     "adm-zip": "^0.5.16",
     "ajv": "^8.17.1",
@@ -114,5 +167,8 @@
     "typescript": "^5.7.3",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^4.0.18"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.60.0"
   }
 }

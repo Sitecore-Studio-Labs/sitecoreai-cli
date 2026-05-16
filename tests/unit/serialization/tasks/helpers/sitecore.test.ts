@@ -11,7 +11,7 @@ const sharedMocks = vi.hoisted(() => ({
   resolveApiTimeoutMs: vi.fn(),
 }));
 
-vi.mock("../../../../../src/serialization/sitecore-api", () => apiMocks);
+vi.mock("../../../../../src/serialization/api/items", () => apiMocks);
 vi.mock("../../../../../src/serialization/tasks/shared", () => sharedMocks);
 
 describe("applySitecoreCommands", () => {

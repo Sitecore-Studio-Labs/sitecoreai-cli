@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { RoleData } from "../types";
 import { readRoleYamlFromString, writeRoleYaml } from "../yaml";
-import { RootConfiguration, SerializationModuleConfiguration } from "@/config";
+import type { RootConfiguration, SerializationModuleConfiguration } from "@/config/types";
 import { ROLES_FOLDER_SUFFIX } from "./constants";
 import { exists } from "./utils";
 

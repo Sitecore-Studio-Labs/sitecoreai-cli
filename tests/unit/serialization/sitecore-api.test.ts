@@ -4,23 +4,27 @@ import {
   pollDeviceToken,
   requestClientCredentialsToken,
   requestPasswordToken,
+} from "../../../src/serialization/api/auth";
+import {
   fetchItemMetadata,
   fetchItemData,
   executeSerializationCommands,
+} from "../../../src/serialization/api/items";
+import {
   fetchHistoryTimestamp,
   fetchHistoryEntries,
-  fetchRoles,
-  pushRoleCommands,
-  fetchUsers,
-  pushUserCommands,
+} from "../../../src/serialization/api/history";
+import { fetchRoles, pushRoleCommands } from "../../../src/serialization/api/roles";
+import { fetchUsers, pushUserCommands } from "../../../src/serialization/api/users";
+import {
   publishItems,
   checkPublishStatus,
   fetchPublishingTargets,
-} from "../../../src/serialization/sitecore-api";
-import { runGraphQL } from "../../../src/serialization/sitecore-api/graphql";
+} from "../../../src/serialization/api/publish";
+import { runGraphQL } from "../../../src/serialization/api/graphql";
 import { ItemPath } from "../../../src/serialization/item-path";
 import { createFieldFilterSet } from "../../../src/serialization/field-filter";
-import { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 
 const makeEnv = (overrides: Partial<EnvironmentConfiguration> = {}): EnvironmentConfiguration => ({
   name: "demo",

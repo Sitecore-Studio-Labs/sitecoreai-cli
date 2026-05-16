@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CliError } from "../../../../src/shared/errors";
+import { ScaiError } from "../../../../src/shared/errors";
 import { sitesRequest } from "../../../../src/sites/api/request";
 import { DEFAULT_SITES_API_BASE } from "../../../../src/sites/api/types";
 
@@ -109,7 +109,7 @@ describe("sitesRequest — error mapping", () => {
       body: { siteName: "foo" },
     }).catch((e) => e);
 
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("SITES_API_FAILED");
     expect(error.message).toContain("Site name 'foo' already exists");
   });

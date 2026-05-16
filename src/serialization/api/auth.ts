@@ -1,6 +1,6 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { getCmTokens, setCmTokens } from "@/shared/keychain";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 
 const DISCOVERY_TIMEOUT_MS = Math.max(
   0,
@@ -15,11 +15,11 @@ const fetchDiscovery = async (authority: string): Promise<Response> => {
     return await fetch(url, { signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw createCliError("Identity discovery timed out.", "NETWORK", {
+      throw createScaiError("Identity discovery timed out.", "NETWORK", {
         hint: "Check network connectivity or set SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS.",
       });
     }
-    throw createCliError(
+    throw createScaiError(
       `Identity discovery failed: ${error instanceof Error ? error.message : String(error)}`,
       "NETWORK"
     );
@@ -42,13 +42,13 @@ const assertSameHost = (endpointUrl: string, authority: string, label: string): 
     parsedEndpoint = new URL(endpointUrl);
     parsedAuthority = new URL(authority);
   } catch {
-    throw createCliError(
+    throw createScaiError(
       `Discovery document returned an invalid ${label}: ${endpointUrl}.`,
       "NETWORK"
     );
   }
   if (parsedEndpoint.hostname.toLowerCase() !== parsedAuthority.hostname.toLowerCase()) {
-    throw createCliError(
+    throw createScaiError(
       `Discovery document's ${label} hostname (${parsedEndpoint.hostname}) does not match the authority hostname (${parsedAuthority.hostname}).`,
       "NETWORK",
       {
@@ -61,14 +61,14 @@ const assertSameHost = (endpointUrl: string, authority: string, label: string): 
 const getTokenEndpoint = async (authority: string): Promise<string> => {
   const response = await fetchDiscovery(authority);
   if (!response.ok) {
-    throw createCliError(`Failed to discover token endpoint from ${authority}.`, "NETWORK");
+    throw createScaiError(`Failed to discover token endpoint from ${authority}.`, "NETWORK");
   }
   const json = (await response.json()) as {
     token_endpoint?: string;
     device_authorization_endpoint?: string;
   };
   if (!json.token_endpoint) {
-    throw createCliError("Token endpoint not found in discovery document.", "NETWORK");
+    throw createScaiError("Token endpoint not found in discovery document.", "NETWORK");
   }
   assertSameHost(json.token_endpoint, authority, "token_endpoint");
   return json.token_endpoint;
@@ -77,7 +77,7 @@ const getTokenEndpoint = async (authority: string): Promise<string> => {
 const getDeviceAuthorizationEndpoint = async (authority: string): Promise<string> => {
   const response = await fetchDiscovery(authority);
   if (!response.ok) {
-    throw createCliError(
+    throw createScaiError(
       `Failed to discover device authorization endpoint from ${authority}.`,
       "NETWORK"
     );
@@ -147,14 +147,14 @@ const requestToken = async (
     } catch {
       // keep raw body text
     }
-    throw createCliError(
+    throw createScaiError(
       `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`,
       "AUTH_REQUIRED"
     );
   }
   const json = (await response.json()) as OAuthTokenResponse;
   if (!json.access_token) {
-    throw createCliError("Access token was not returned by the identity server.", "AUTH_REQUIRED");
+    throw createScaiError("Access token was not returned by the identity server.", "AUTH_REQUIRED");
   }
   return {
     accessToken: json.access_token,
@@ -165,11 +165,11 @@ const requestToken = async (
 };
 
 export const requestDeviceAuthorization = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   scope?: string
 ): Promise<DeviceAuthorizationResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw createCliError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
+    throw createScaiError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
   }
   const endpoint = await getDeviceAuthorizationEndpoint(environment.authority);
   const params = new URLSearchParams({
@@ -199,14 +199,14 @@ export const requestDeviceAuthorization = async (
     } catch {
       // keep raw body text
     }
-    throw createCliError(
+    throw createScaiError(
       `Failed to start device login (${response.status}): ${detail || "Unknown error"}`,
       "AUTH_REQUIRED"
     );
   }
   const json = (await response.json()) as DeviceAuthorizationResponse;
   if (!json.device_code || !json.verification_uri) {
-    throw createCliError(
+    throw createScaiError(
       "Device authorization response was missing required fields.",
       "AUTH_REQUIRED"
     );
@@ -228,11 +228,11 @@ const delay = (ms: number): Promise<void> =>
   });
 
 export const pollDeviceToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   device: DeviceAuthorizationResult
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw createCliError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
+    throw createScaiError("Authority and clientId are required for device login.", "AUTH_REQUIRED");
   }
   const tokenEndpoint = await getTokenEndpoint(environment.authority);
   const deadline = Date.now() + device.expiresIn * 1000;
@@ -255,7 +255,7 @@ export const pollDeviceToken = async (
     if (response.ok) {
       const json = JSON.parse(bodyText) as OAuthTokenResponse;
       if (!json.access_token) {
-        throw createCliError(
+        throw createScaiError(
           "Access token was not returned by the identity server.",
           "AUTH_REQUIRED"
         );
@@ -290,17 +290,17 @@ export const pollDeviceToken = async (
       continue;
     }
     if (errorCode === "access_denied") {
-      throw createCliError("Device login was cancelled.", "AUTH_REQUIRED");
+      throw createScaiError("Device login was cancelled.", "AUTH_REQUIRED");
     }
     if (errorCode === "expired_token") {
-      throw createCliError("Device login expired. Try again.", "AUTH_REQUIRED");
+      throw createScaiError("Device login expired. Try again.", "AUTH_REQUIRED");
     }
-    throw createCliError(
+    throw createScaiError(
       `Failed to obtain access token (${response.status}): ${detail || "Unknown error"}`,
       "AUTH_REQUIRED"
     );
   }
-  throw createCliError("Device login expired. Try again.", "AUTH_REQUIRED");
+  throw createScaiError("Device login expired. Try again.", "AUTH_REQUIRED");
 };
 
 /**
@@ -314,11 +314,11 @@ export const pollDeviceToken = async (
 export const DEFAULT_SITECORE_API_AUDIENCE = "https://api.sitecorecloud.io";
 
 export const requestClientCredentialsToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   scope?: string
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId || !environment.clientSecret) {
-    throw createCliError(
+    throw createScaiError(
       "Authority, clientId, and clientSecret are required for client credentials.",
       "AUTH_REQUIRED"
     );
@@ -338,13 +338,13 @@ export const requestClientCredentialsToken = async (
 };
 
 export const requestPasswordToken = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   username: string,
   password: string,
   scope?: string
 ): Promise<AccessTokenResult> => {
   if (!environment.authority || !environment.clientId) {
-    throw createCliError(
+    throw createScaiError(
       "Authority and clientId are required for username/password login.",
       "AUTH_REQUIRED"
     );
@@ -370,7 +370,7 @@ export const requestPasswordToken = async (
 };
 
 const requestRefreshToken = async (
-  environment: EnvironmentConfiguration
+  environment: SitecoreApiClientOptions
 ): Promise<AccessTokenResult | undefined> => {
   if (!environment.authority || !environment.refreshToken) {
     return undefined;
@@ -400,8 +400,31 @@ const requestRefreshToken = async (
   return requestToken(environment.authority, params);
 };
 
+/**
+ * Pure OAuth acquisition: refresh-token-on-env, then client-credentials.
+ * Does NOT read or write the keychain, and does NOT return the env's
+ * embedded `accessToken` literal — callers wanting the literal-or-acquired
+ * union should check `environment.accessToken` themselves first.
+ *
+ * Library callers (orchestrators, MCP servers, tests) that bring their
+ * own token cache should call this directly. The CLI uses `getAccessToken`
+ * which adds keychain-backed caching on top.
+ */
+export const acquireAccessToken = async (
+  environment: SitecoreApiClientOptions
+): Promise<AccessTokenResult | undefined> => {
+  const refreshed = await requestRefreshToken(environment);
+  if (refreshed?.accessToken) {
+    return refreshed;
+  }
+  if (environment.useClientCredentials) {
+    return requestClientCredentialsToken(environment);
+  }
+  return undefined;
+};
+
 export const getAccessToken = async (
-  environment: EnvironmentConfiguration
+  environment: SitecoreApiClientOptions
 ): Promise<string | undefined> => {
   const envName = environment.name;
   const shouldCache = environment.cacheAuthenticationToken !== false && Boolean(envName);
@@ -434,32 +457,18 @@ export const getAccessToken = async (
     return environment.accessToken;
   }
 
-  const refreshed = await requestRefreshToken(environment);
-  if (refreshed?.accessToken) {
+  const acquired = await acquireAccessToken(environment);
+  if (acquired?.accessToken) {
     if (shouldCache && envName) {
       await setCmTokens(envName, {
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken ?? environment.refreshToken,
+        accessToken: acquired.accessToken,
+        refreshToken: acquired.refreshToken ?? environment.refreshToken,
         refreshTokenParameters: environment.refreshTokenParameters,
-        expiresIn: refreshed.expiresIn,
+        expiresIn: acquired.expiresIn,
         lastUpdated: new Date().toISOString(),
       });
     }
-    return refreshed.accessToken;
-  }
-
-  if (environment.useClientCredentials) {
-    const token = await requestClientCredentialsToken(environment);
-    if (shouldCache && envName) {
-      await setCmTokens(envName, {
-        accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
-        refreshTokenParameters: environment.refreshTokenParameters,
-        expiresIn: token.expiresIn,
-        lastUpdated: new Date().toISOString(),
-      });
-    }
-    return token.accessToken;
+    return acquired.accessToken;
   }
 
   return undefined;

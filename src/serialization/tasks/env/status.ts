@@ -1,5 +1,6 @@
-import { readRootConfiguration, readRootConfigurationFile } from "@/config";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { getCmTokens, getDeployToken } from "@/shared/keychain";
+import { resolveCredentialMatrix } from "@/shared/credential-matrix";
 import { toLogger } from "../shared";
 import type { CommonOptions } from "../types";
 
@@ -15,6 +16,15 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     .filter((name) => name !== reservedName)
     .sort((a, b) => a.localeCompare(b));
 
+  /** Resolve the four-credential matrix for one environment. */
+  const resolveCredentials = (
+    name: string,
+    env: (typeof root.environments)[string]
+  ): ReturnType<typeof resolveCredentialMatrix> => {
+    const orgId = env.organizationId;
+    return resolveCredentialMatrix(name, env, Boolean(orgId && root.aiSkills?.[orgId]));
+  };
+
   if (logger.isJson()) {
     const results = [];
     for (const name of names) {
@@ -22,6 +32,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
       const cachedCmTokens =
         env.cacheAuthenticationToken === false ? undefined : await getCmTokens(name);
       const deployToken = (await getDeployToken(name)) ?? env.deployToken;
+      const credentials = await resolveCredentials(name, env);
       results.push({
         name,
         isDefault: name === defaultName,
@@ -51,6 +62,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
         allowWrite: Boolean(env.allowWrite),
         deployTokenExpiresIn: env.deployTokenExpiresIn ?? null,
         deployTokenLastUpdated: env.deployTokenLastUpdated ?? null,
+        credentials,
       });
     }
     logger.json({
@@ -154,5 +166,13 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
       }
     }
     logger.info(`  allowWrite: ${env.allowWrite ? "true" : "false"}`);
+
+    const credentials = await resolveCredentials(name, env);
+    const mark = (present: boolean): string => (present ? "ok" : "missing");
+    logger.info("  credentials:");
+    logger.info(`    deploy:    ${mark(credentials.deploy)}`);
+    logger.info(`    cm client: ${mark(credentials.cmClient)}`);
+    logger.info(`    ai skills: ${mark(credentials.aiSkills)}`);
+    logger.info(`    brief:     ${mark(credentials.brief)}`);
   }
 };

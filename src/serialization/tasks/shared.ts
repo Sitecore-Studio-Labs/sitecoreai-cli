@@ -1,5 +1,5 @@
 /**
- * Helpers specific to `scai serialization` task runners — config and
+ * Helpers specific to `scai provision serialization` task runners — config and
  * module loading, subtree grouping by database, allowWrite check.
  * Neutral helpers (`toLogger`, `selectMatch`, `confirmDestructive`,
  * etc.) live in `@/shared/cli-tasks`; deploy-specific helpers
@@ -7,15 +7,11 @@
  * `@/deploy/tasks/shared`.
  */
 
-import {
-  readRootConfiguration,
-  readRootConfigurationFile,
-  readSerializationModules,
-  RootConfiguration,
-  SerializationModuleConfiguration,
-} from "@/config";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
+import { readSerializationModules } from "@/config/modules";
+import type { RootConfiguration, SerializationModuleConfiguration } from "@/config/types";
 import { FilesystemTreeSpec } from "../tree-spec";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "./types";
 
 // Re-exports preserve the existing barrel surface; new code should
@@ -65,7 +61,7 @@ export const ensureAllowWrite = (root: RootConfiguration, environmentName: strin
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
-    throw createCliError(
+    throw createScaiError(
       `Environment ${environmentName} is not configured to allow writing data.`,
       "INPUT_INVALID",
       {

@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { redactSecrets } from "@/shared/redact";
 import { extractErrorMessage, parseJsonIfPossible } from "@/deploy/api/common/request";
 import {
@@ -22,7 +22,7 @@ import {
  *    operation and pass typed body / response generics through. Each
  *    operation gets a one-line wrapper; the transport stays generic.
  *
- * Errors map to scai's `CliError` — `NETWORK` for transport failures,
+ * Errors map to scai's `ScaiError` — `NETWORK` for transport failures,
  * `SITES_API_FAILED` for non-2xx responses with a message extracted
  * from the body when present.
  */
@@ -95,7 +95,7 @@ export const sitesRequest = async <TResponse>(
   try {
     response = await fetch(url, { method, headers, body, signal: controller?.signal });
   } catch (error) {
-    throw createCliError(
+    throw createScaiError(
       redactSecrets(
         `Sites API request failed: ${error instanceof Error ? error.message : String(error)}`
       ),
@@ -110,7 +110,7 @@ export const sitesRequest = async <TResponse>(
     const responseBody = await parseJsonIfPossible(response);
     const message = extractErrorMessage(responseBody);
     const sanitized = message ? redactSecrets(message) : undefined;
-    throw createCliError(
+    throw createScaiError(
       sanitized ?? `Sites API request failed (${response.status})`,
       "SITES_API_FAILED"
     );

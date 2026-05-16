@@ -1,0 +1,189 @@
+/**
+ * `scai setup env <name>` — provision the environment-scoped CM
+ * automation client for one environment.
+ *
+ * The flow is list-or-mint, keyed on the stable `scai-cm-<env>` client
+ * name so re-runs are idempotent:
+ *
+ *   1. Resolve the env profile — needs organizationId + projectId +
+ *      environmentId.
+ *   2. Use the env's deploy token (it carries `xmclouddeploy.clients:manage`,
+ *      requested at `scai setup login`) as the clients-API credential.
+ *   3. List the org's environment clients; look for `scai-cm-<env>`.
+ *   4. Reconcile:
+ *        - keychain has the secret AND the server lists it  → done.
+ *        - server lists it but the keychain has no secret    → orphan
+ *          (lost secret — unrecoverable); delete it, then mint fresh.
+ *        - `--rotate`                                        → delete +
+ *          re-mint regardless.
+ *        - neither                                           → mint.
+ *   5. Persist the minted clientId/clientSecret to the keychain.
+ */
+
+import { readRootConfiguration } from "@/config/root-config";
+import { getCmClientCredential, getDeployToken, setCmClientCredential } from "@/shared/keychain";
+import {
+  buildScaiClientDescription,
+  buildScaiClientName,
+  deleteClient,
+  listEnvironmentClients,
+  mintCmClient,
+} from "@/deploy/api";
+import { inputError, toLogger } from "@/shared/cli-tasks";
+import { createScaiError, toScaiError } from "@/shared/errors";
+import type { CommonOptions } from "@/shared/cli-options";
+import packageJson from "../../../../package.json";
+
+export type SetupEnvOptions = CommonOptions & {
+  environmentName?: string;
+  /** Preview the action without minting or deleting anything. */
+  whatIf?: boolean;
+  /** Delete and re-mint the client even if one is already provisioned. */
+  rotate?: boolean;
+};
+
+export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
+  const logger = toLogger(options);
+  const envName = options.environmentName;
+  if (!envName) {
+    throw inputError(
+      "Environment name is required.",
+      "Pass the environment name: `scai setup env <name>`."
+    );
+  }
+
+  const configPath = options.config ?? process.cwd();
+  const root = readRootConfiguration(configPath, envName);
+  const env = root.environments[envName];
+  if (!env) {
+    throw inputError(
+      `Environment '${envName}' is not configured.`,
+      "Run `scai setup init` to add it."
+    );
+  }
+
+  const { organizationId, projectId, environmentId } = env;
+  if (!organizationId || !projectId || !environmentId) {
+    throw inputError(
+      `Environment '${envName}' is missing organizationId, projectId, or environmentId.`,
+      "All three are required to mint an environment-scoped CM client. Run `scai setup init`."
+    );
+  }
+
+  const deployToken =
+    (await getDeployToken(envName)) ?? env.deployToken ?? process.env.SITECOREAI_DEPLOY_TOKEN;
+  if (!deployToken) {
+    throw createScaiError(
+      `No deploy token is available for environment '${envName}'.`,
+      "AUTH_REQUIRED",
+      {
+        hint: `Run \`scai setup login -n ${envName}\` first — minting a CM client needs a token with the xmclouddeploy.clients:manage scope.`,
+      }
+    );
+  }
+
+  const deployClient = { accessToken: deployToken };
+  const clientName = buildScaiClientName("cm", envName);
+
+  // Read-side reconciliation — safe to run even under --what-if.
+  const stored = await getCmClientCredential(envName);
+  let existingId: string | undefined;
+  try {
+    const listed = await listEnvironmentClients(deployClient, organizationId);
+    existingId = (listed.items ?? []).find((client) => client.name === clientName)?.id;
+  } catch (error) {
+    const scaiError = toScaiError(error);
+    throw createScaiError(
+      `Could not list environment clients for organization '${organizationId}'.`,
+      "DEPLOY_FAILED",
+      {
+        hint: `The deploy token may lack the xmclouddeploy.clients:manage scope. Re-run \`scai setup login -n ${envName}\`. Underlying error: ${scaiError.message}`,
+      }
+    );
+  }
+
+  const alreadyProvisioned = Boolean(stored) && Boolean(existingId);
+  if (alreadyProvisioned && !options.rotate) {
+    if (logger.isJson()) {
+      logger.json({ environment: envName, client: clientName, action: "none", provisioned: true });
+      return;
+    }
+    logger.info(`Environment '${envName}' already has its CM client (${clientName}).`, "green");
+    logger.info("  Nothing to do. Pass --rotate to delete and re-mint.");
+    return;
+  }
+
+  // An existing server-side client with no keychain secret is an
+  // orphan — the secret is unrecoverable, so it must be replaced.
+  const replaceExisting = Boolean(existingId) && (!stored || Boolean(options.rotate));
+
+  if (options.whatIf) {
+    const verb = replaceExisting ? "delete the existing client and re-mint" : "mint";
+    if (logger.isJson()) {
+      logger.json({
+        environment: envName,
+        client: clientName,
+        action: replaceExisting ? "replace" : "mint",
+        whatIf: true,
+      });
+      return;
+    }
+    logger.info(`[what-if] Would ${verb} CM client '${clientName}' for '${envName}'.`);
+    return;
+  }
+
+  if (replaceExisting && existingId) {
+    const reason = options.rotate ? "rotating" : "orphaned — secret not in keychain";
+    logger.info(`Removing the existing '${clientName}' client (${reason})…`);
+    await deleteClient(deployClient, existingId, organizationId);
+  }
+
+  const minted = await mintCmClient(
+    deployClient,
+    {
+      name: clientName,
+      description: buildScaiClientDescription("cm", {
+        surface: "CLI",
+        version: packageJson.version,
+        envName,
+        projectId,
+      }),
+      projectId,
+      environmentId,
+    },
+    organizationId
+  );
+  if (!minted.clientId || !minted.clientSecret) {
+    throw createScaiError(
+      "The clients API did not return a clientId/clientSecret.",
+      "DEPLOY_FAILED",
+      { hint: "Re-run the command; if it persists, mint the client in the Cloud Portal." }
+    );
+  }
+
+  const persisted = await setCmClientCredential(envName, {
+    clientId: minted.clientId,
+    clientSecret: minted.clientSecret,
+    name: clientName,
+    mintedAt: new Date().toISOString(),
+  });
+
+  if (logger.isJson()) {
+    logger.json({
+      environment: envName,
+      client: clientName,
+      action: replaceExisting ? "replace" : "mint",
+      clientId: minted.clientId,
+      persisted,
+    });
+    return;
+  }
+
+  logger.info(`Minted CM client '${clientName}' for '${envName}'.`, "green");
+  logger.info(`  clientId: ${minted.clientId}`);
+  if (!persisted) {
+    logger.warn(
+      "Keychain unavailable — the client secret was NOT persisted. The minted client is unusable; re-run when the keychain is available."
+    );
+  }
+};

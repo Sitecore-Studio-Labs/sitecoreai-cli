@@ -10,12 +10,12 @@ import {
   readRootConfiguration,
   readRootConfigurationFile,
   writeRootConfigurationFile,
-} from "@/config";
+} from "@/config/root-config";
 import { assertValidHost } from "@/shared/validate";
 import { resolveTargetPath, writeConfigTemplate } from "@/shared/config-template";
 import { setDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptText } from "@/shared/prompt";
-import { createCliError, toCliError } from "@/shared/errors";
+import { createScaiError, toScaiError } from "@/shared/errors";
 import { applyIfDefined, inputError, toLogger } from "../shared";
 import type { ConnectOptions } from "../types";
 import { resolveDeployAuth } from "./init/auth";
@@ -74,7 +74,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   try {
     rootConfigFile = readRootConfigurationFile(configPath);
   } catch (error) {
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_INVALID" && runWizard && isInteractive) {
       const recreate = await promptConfirm(
         `Configuration file at ${targetPath} is invalid. Recreate it?`,
@@ -154,7 +154,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
 
   if (options.setDefault && !hasOtherChanges) {
     if (!envProfiles[envName]) {
-      throw createCliError(
+      throw createScaiError(
         `Environment '${envName}' does not exist. Configure it before setting default.`,
         "ENV_NOT_FOUND"
       );
@@ -168,7 +168,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   if (options.ref) {
     const refEnv = envProfiles[options.ref];
     if (!refEnv) {
-      throw createCliError(
+      throw createScaiError(
         `Referenced environment '${options.ref}' was not found.`,
         "ENV_NOT_FOUND"
       );

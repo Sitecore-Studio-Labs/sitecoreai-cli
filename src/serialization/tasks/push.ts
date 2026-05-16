@@ -1,7 +1,8 @@
 import { createFieldFilterSet } from "../field-filter";
 import { ItemMetadata } from "../types";
-import { fetchItemMetadata, publishItems } from "../sitecore-api";
-import { loadFilesystemItems } from "../filesystem-store";
+import { fetchItemMetadata } from "../api/items";
+import { publishItems } from "../api/publish";
+import { loadFilesystemItems } from "../filesystem-store/items";
 import { startSpinner } from "@/shared/spinner";
 import {
   ensureAllowWrite,
@@ -12,12 +13,10 @@ import {
 } from "./shared";
 import { enrichCreateCommands, enrichUpdateCommands } from "../commands";
 import type { SyncOptions } from "./types";
-import {
-  applySitecoreCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applySitecoreCommands } from "./helpers/sitecore";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { syncRolesPush } from "./roles";
 import { syncUsersPush } from "./users";
 
@@ -53,6 +52,11 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
 
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
+    if (options.signal?.aborted) {
+      options.emit?.({ kind: "database-skipped", database, reason: "cancelled-by-client" });
+      break;
+    }
+    options.emit?.({ kind: "database-start", database, subtreeCount: subtrees.length });
     const spinner = await startSpinner(`Pushing ${database} items`);
     try {
       const { items: sourceItems, metadata: sourceMetadata } = await loadFilesystemItems(subtrees);
@@ -79,6 +83,7 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
       );
       const changes = commands.length;
       summary.totalChanges += changes;
+      options.emit?.({ kind: "database-changes-detected", database, changes });
       const summaryEntry = {
         database,
         changes,
@@ -131,6 +136,12 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
           logger.info("Publishing is finished.", "green");
         }
       }
+      options.emit?.({
+        kind: "database-applied",
+        database,
+        changes,
+        whatIf: Boolean(options.whatIf),
+      });
       spinner?.succeed();
       summary.databases.push(summaryEntry);
     } catch (error) {

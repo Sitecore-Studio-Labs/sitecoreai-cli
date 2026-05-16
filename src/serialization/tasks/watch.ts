@@ -2,8 +2,9 @@ import { FilesystemPathProvider } from "../path-provider";
 import { ItemPath } from "../item-path";
 import { ItemMetadata } from "../types";
 import { createFieldFilterSet } from "../field-filter";
-import { fetchHistoryEntries, fetchHistoryTimestamp, fetchItemData } from "../sitecore-api";
-import { removeItemFromFilesystem, writeItemToFilesystem } from "../filesystem-store";
+import { fetchHistoryEntries, fetchHistoryTimestamp } from "../api/history";
+import { fetchItemData } from "../api/items";
+import { removeItemFromFilesystem, writeItemToFilesystem } from "../filesystem-store/items";
 import {
   groupSubtreesByDatabase,
   loadConfigAndModules,

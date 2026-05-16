@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 
 const keychainMocks = vi.hoisted(() => ({
   getCmTokens: vi.fn(),
@@ -34,7 +34,7 @@ describe("sitecore api auth", () => {
 
   it("throws when device login is missing authority or clientId", async () => {
     const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/sitecore-api/auth");
+      await import("../../../src/serialization/api/auth");
     await expect(requestDeviceAuthorization({} as EnvironmentConfiguration)).rejects.toThrow(
       "Authority and clientId are required for device login."
     );
@@ -53,7 +53,7 @@ describe("sitecore api auth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/sitecore-api/auth");
+      await import("../../../src/serialization/api/auth");
     await requestDeviceAuthorization(makeEnv(), "openid");
 
     expect(fetchMock.mock.calls[1][0]).toBe("https://auth.example/oauth/device/code");
@@ -71,7 +71,7 @@ describe("sitecore api auth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/sitecore-api/auth");
+      await import("../../../src/serialization/api/auth");
     await expect(requestDeviceAuthorization(makeEnv())).rejects.toThrow(
       "Failed to start device login (400): bad request"
     );
@@ -84,7 +84,7 @@ describe("sitecore api auth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestClientCredentialsToken } =
-      await import("../../../src/serialization/sitecore-api/auth");
+      await import("../../../src/serialization/api/auth");
     await expect(requestClientCredentialsToken(makeEnv())).rejects.toMatchObject({
       code: "NETWORK",
       message: "Identity discovery timed out.",
@@ -101,7 +101,7 @@ describe("sitecore api auth", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestClientCredentialsToken } =
-      await import("../../../src/serialization/sitecore-api/auth");
+      await import("../../../src/serialization/api/auth");
     await expect(requestClientCredentialsToken(makeEnv())).rejects.toThrow(
       "Failed to obtain access token (401): invalid_client"
     );
@@ -120,7 +120,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { pollDeviceToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { pollDeviceToken } = await import("../../../src/serialization/api/auth");
     const device = {
       deviceCode: "device",
       verificationUri: "https://verify",
@@ -143,7 +143,7 @@ describe("sitecore api auth", () => {
       .mockResolvedValueOnce(jsonResponse({ access_token: "token" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const { pollDeviceToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { pollDeviceToken } = await import("../../../src/serialization/api/auth");
     const device = {
       deviceCode: "device",
       verificationUri: "https://verify",
@@ -166,7 +166,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { pollDeviceToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { pollDeviceToken } = await import("../../../src/serialization/api/auth");
     const device = {
       deviceCode: "device",
       verificationUri: "https://verify",
@@ -191,7 +191,7 @@ describe("sitecore api auth", () => {
       .mockResolvedValueOnce(jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
 
-    const { pollDeviceToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { pollDeviceToken } = await import("../../../src/serialization/api/auth");
     const device = {
       deviceCode: "device",
       verificationUri: "https://verify",
@@ -208,7 +208,7 @@ describe("sitecore api auth", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { getAccessToken } = await import("../../../src/serialization/api/auth");
     const token = await getAccessToken(makeEnv());
     expect(token).toBe("cached");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -227,7 +227,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { getAccessToken } = await import("../../../src/serialization/api/auth");
     const token = await getAccessToken(makeEnv());
     expect(token).toBe("new-access");
     expect(keychainMocks.setCmTokens).toHaveBeenCalledWith(
@@ -248,9 +248,76 @@ describe("sitecore api auth", () => {
       .mockResolvedValueOnce(jsonResponse({ access_token: "cc-access" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getAccessToken } = await import("../../../src/serialization/sitecore-api/auth");
+    const { getAccessToken } = await import("../../../src/serialization/api/auth");
     const token = await getAccessToken(makeEnv({ useClientCredentials: true }));
     expect(token).toBe("cc-access");
     expect(keychainMocks.setCmTokens).toHaveBeenCalled();
+  });
+});
+
+describe("acquireAccessToken (pure, no keychain)", () => {
+  beforeEach(() => {
+    keychainMocks.getCmTokens.mockReset();
+    keychainMocks.setCmTokens.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns client-credentials token when useClientCredentials is set", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ token_endpoint: "https://auth.example/token" }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "cc-pure", expires_in: 3600 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/api/auth");
+    const result = await acquireAccessToken(makeEnv({ useClientCredentials: true }));
+
+    expect(result?.accessToken).toBe("cc-pure");
+    expect(result?.expiresIn).toBe(3600);
+    // Crucial: keychain MUST NOT be touched.
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+    expect(keychainMocks.setCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("returns refresh-token result when env has a refresh token", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ token_endpoint: "https://auth.example/token" }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "refreshed", refresh_token: "rt" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/api/auth");
+    const result = await acquireAccessToken(makeEnv({ refreshToken: "rt-old" }));
+
+    expect(result?.accessToken).toBe("refreshed");
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+    expect(keychainMocks.setCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when no acquisition path is available", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/api/auth");
+    // No refreshToken, no useClientCredentials, no accessToken — nothing to do.
+    const result = await acquireAccessToken(makeEnv());
+
+    expect(result).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(keychainMocks.getCmTokens).not.toHaveBeenCalled();
+  });
+
+  it("does NOT return the env's embedded accessToken literal (that's getAccessToken's job)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { acquireAccessToken } = await import("../../../src/serialization/api/auth");
+    // Embedded accessToken on env — acquireAccessToken does not consider it.
+    const result = await acquireAccessToken(makeEnv({ accessToken: "literal" }));
+
+    expect(result).toBeUndefined();
   });
 });

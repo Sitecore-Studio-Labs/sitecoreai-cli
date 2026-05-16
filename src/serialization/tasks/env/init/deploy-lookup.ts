@@ -8,7 +8,7 @@ import {
   resolveHostFromEnvironment,
   DeployEnvironment,
 } from "@/deploy/api";
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import type { ConnectOptions } from "../../types";
 import { inputError, selectFromList, selectMatch } from "@/shared/cli-tasks";
 import {
@@ -18,7 +18,7 @@ import {
 } from "@/deploy/tasks/shared";
 import type { Logger } from "@/shared/logger";
 import { promptConfirm, promptText } from "@/shared/prompt";
-import { createCliError, toCliError } from "@/shared/errors";
+import { createScaiError, toScaiError } from "@/shared/errors";
 
 type ResolveDeployLookupInput = {
   options: ConnectOptions;
@@ -90,11 +90,11 @@ export const resolveDeployLookup = async (
     logger,
   } = input;
   if (!deployToken) {
-    throw createCliError(
+    throw createScaiError(
       "Deploy API access token is required. Provide --deploy-token or deploy credentials.",
       "AUTH_REQUIRED",
       {
-        hint: "Provide --deploy-token, or run 'scai login' to store credentials.",
+        hint: "Provide --deploy-token, or run 'scai setup login' to store credentials.",
       }
     );
   }
@@ -138,7 +138,7 @@ export const resolveDeployLookup = async (
         try {
           projectDetails = await fetchProject(deployOptions, resolvedProjectId);
         } catch (error) {
-          const cliError = toCliError(error);
+          const cliError = toScaiError(error);
           logger.warn(`Unable to verify repository linkage. ${cliError.message}`);
         }
       }
@@ -212,7 +212,7 @@ export const resolveDeployLookup = async (
           environments = await fetchProjectEnvironments(deployOptions, resolvedProjectId);
           break;
         } catch (error) {
-          const cliError = toCliError(error);
+          const cliError = toScaiError(error);
           logger.warn(`Environment creation failed. ${cliError.message}`);
           if (projects.length > 1) {
             const chooseAnother = await promptConfirm("Select a different project?", true);
@@ -277,7 +277,7 @@ export const resolveDeployLookup = async (
     if (!runWizard) {
       throw error;
     }
-    const cliError = toCliError(error);
+    const cliError = toScaiError(error);
     const isEnvScoped = /environment[- ]scoped/i.test(cliError.message);
     const warning = isEnvScoped
       ? "Deploy lookup failed. Environment-scoped credentials require an environment ID."

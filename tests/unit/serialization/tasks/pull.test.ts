@@ -19,7 +19,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchItemMetadata: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../src/serialization/api/items", () => ({
   fetchItemMetadata: (...args: unknown[]) => apiMocks.fetchItemMetadata(...args),
 }));
 
@@ -27,7 +27,7 @@ const fsMocks = vi.hoisted(() => ({
   loadFilesystemItems: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/filesystem-store", () => ({
+vi.mock("../../../../src/serialization/filesystem-store/items", () => ({
   loadFilesystemItems: (...args: unknown[]) => fsMocks.loadFilesystemItems(...args),
 }));
 
@@ -38,10 +38,16 @@ const helperMocks = vi.hoisted(() => ({
   collectItemData: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/tasks/helpers", () => ({
+vi.mock("../../../../src/serialization/tasks/helpers/filesystem", () => ({
   applyFilesystemCommands: (...args: unknown[]) => helperMocks.applyFilesystemCommands(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/commands", () => ({
   buildCommandsForDatabase: (...args: unknown[]) => helperMocks.buildCommandsForDatabase(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/items", () => ({
   buildItemDataMap: (...args: unknown[]) => helperMocks.buildItemDataMap(...args),
+}));
+vi.mock("../../../../src/serialization/tasks/helpers/collect", () => ({
   collectItemData: (...args: unknown[]) => helperMocks.collectItemData(...args),
 }));
 

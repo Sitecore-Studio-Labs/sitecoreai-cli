@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFieldFilterSet } from "../../../src/serialization/field-filter";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 
 const runGraphQL = vi.fn();
 
-vi.mock("../../../src/serialization/sitecore-api/graphql", () => ({
+vi.mock("../../../src/serialization/api/graphql", () => ({
   runGraphQL: (...args: unknown[]) => runGraphQL(...args),
 }));
 
@@ -17,7 +17,7 @@ describe("sitecore api items", () => {
   });
 
   it("maps scopes and debug signatures in metadata queries", async () => {
-    const { fetchItemMetadata } = await import("../../../src/serialization/sitecore-api/items");
+    const { fetchItemMetadata } = await import("../../../src/serialization/api/items");
 
     runGraphQL.mockResolvedValueOnce({
       serialize: [
@@ -88,7 +88,7 @@ describe("sitecore api items", () => {
   });
 
   it("parses item data and derives missing signatures", async () => {
-    const { fetchItemData } = await import("../../../src/serialization/sitecore-api/items");
+    const { fetchItemData } = await import("../../../src/serialization/api/items");
     const rawItem = {
       id: "id-1",
       parentId: "parent-1",
@@ -140,7 +140,7 @@ describe("sitecore api items", () => {
   });
 
   it("preserves existing signatures", async () => {
-    const { fetchItemData } = await import("../../../src/serialization/sitecore-api/items");
+    const { fetchItemData } = await import("../../../src/serialization/api/items");
     const rawItem = {
       id: "id-2",
       parentId: "parent-1",
@@ -160,7 +160,7 @@ describe("sitecore api items", () => {
   });
 
   it("throws when item data is missing from GraphQL responses", async () => {
-    const { fetchItemData } = await import("../../../src/serialization/sitecore-api/items");
+    const { fetchItemData } = await import("../../../src/serialization/api/items");
     runGraphQL.mockResolvedValueOnce({ serialize: [{ data: 123 }] });
     await expect(
       fetchItemData(env, "master", "/sitecore/content", "singleItem", filter)
@@ -169,7 +169,7 @@ describe("sitecore api items", () => {
 
   it("executes serialization commands via GraphQL", async () => {
     const { executeSerializationCommands } =
-      await import("../../../src/serialization/sitecore-api/items");
+      await import("../../../src/serialization/api/items");
     runGraphQL.mockResolvedValueOnce({ executeSerializationCommands: [{ ok: true }] });
     const result = await executeSerializationCommands(env, [{ command: "noop" }], "Information");
     expect(result).toEqual([{ ok: true }]);

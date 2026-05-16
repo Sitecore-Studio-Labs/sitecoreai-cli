@@ -1,10 +1,11 @@
-import { readRootConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
 import { FilesystemTreeSpec } from "../../tree-spec";
 import { createFieldFilterSet } from "../../field-filter";
 import { ItemData, ItemMetadata } from "../../types";
-import { fetchItemData, fetchItemMetadata } from "../../sitecore-api";
+import { fetchItemData, fetchItemMetadata } from "../../api/items";
 import { resolveApiTimeoutMs } from "../shared";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
+import { mapWithConcurrency } from "@/shared/concurrency";
 
 export const collectItemData = async (
   environmentName: string,
@@ -14,14 +15,17 @@ export const collectItemData = async (
 ): Promise<{ items: ItemData[]; metadata: ItemMetadata[] }> => {
   const env = root.environments[environmentName];
   if (!env) {
-    throw createCliError(`Environment ${environmentName} was not defined.`, "ENV_NOT_FOUND");
+    throw createScaiError(`Environment ${environmentName} was not defined.`, "ENV_NOT_FOUND");
   }
   const apiTimeoutMs = resolveApiTimeoutMs(root);
+  // Hoist filter creation: `excludedFields` is invariant across this call,
+  // so the same filter instance is safe to share across every fetch.
+  const filter = createFieldFilterSet(root.serialization.excludedFields, []);
 
-  const items: ItemData[] = [];
-  const metadata: ItemMetadata[] = [];
-  for (const subtree of subtrees) {
-    const filter = createFieldFilterSet(root.serialization.excludedFields, []);
+  // Subtree metadata fetches are independent — run concurrently with a
+  // bounded fan-out. Result ordering is preserved by mapWithConcurrency,
+  // matching the previous sequential behaviour.
+  const perSubtreeMetadata = await mapWithConcurrency(subtrees, async (subtree) => {
     const subtreeMetadata = await fetchItemMetadata(
       env,
       subtree.database,
@@ -31,23 +35,20 @@ export const collectItemData = async (
       useDebugSignatures,
       { timeoutMs: apiTimeoutMs }
     );
+    return subtreeMetadata.filter((item) => subtree.includesPath(item.path));
+  });
+  const metadata: ItemMetadata[] = perSubtreeMetadata.flat();
 
-    const filtered = subtreeMetadata.filter((item) => subtree.includesPath(item.path));
-    metadata.push(...filtered);
-  }
-
-  for (const meta of metadata) {
-    const filter = createFieldFilterSet(root.serialization.excludedFields, []);
-    const itemData = await fetchItemData(
-      env,
-      meta.database ?? "master",
-      meta.id,
-      "SingleItem",
-      filter,
-      { timeoutMs: apiTimeoutMs }
-    );
-    items.push(...itemData);
-  }
+  // Item-body fetches were sequential — the biggest perf hit in the
+  // diff/push/pull path. For N items at ~100 ms each, sequential was N *
+  // 100 ms; parallel with concurrency 8 is roughly N/8 * 100 ms. Order
+  // preserved so downstream callers see the same shape they always did.
+  const perItemData = await mapWithConcurrency(metadata, async (meta) =>
+    fetchItemData(env, meta.database ?? "master", meta.id, "SingleItem", filter, {
+      timeoutMs: apiTimeoutMs,
+    })
+  );
+  const items: ItemData[] = perItemData.flat();
 
   return { items, metadata };
 };

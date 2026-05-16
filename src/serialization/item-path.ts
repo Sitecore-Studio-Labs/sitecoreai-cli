@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { isWildcardMatch } from "./wildcard";
 
 export interface ItemPathMatchLike {
@@ -17,7 +17,7 @@ export class ItemPath implements ItemPathMatchLike {
 
   static fromPathString(pathString: string): ItemPath {
     if (!pathString || !pathString.startsWith("/")) {
-      throw createCliError(`Item path '${pathString}' did not start with /.`, "INPUT_INVALID");
+      throw createScaiError(`Item path '${pathString}' did not start with /.`, "INPUT_INVALID");
     }
 
     const segments = pathString.split("/").filter(Boolean);
@@ -76,7 +76,7 @@ export class ItemPath implements ItemPathMatchLike {
 
   prepend(segment: string): ItemPath {
     if (!segment || segment.includes("/")) {
-      throw createCliError("Cannot prepend multiple segments.", "INPUT_INVALID");
+      throw createScaiError("Cannot prepend multiple segments.", "INPUT_INVALID");
     }
 
     return new ItemPath([segment, ...this.segments]);
@@ -85,7 +85,10 @@ export class ItemPath implements ItemPathMatchLike {
   concatenate(segment: string | ItemPath): ItemPath {
     if (typeof segment === "string") {
       if (!segment || segment.includes("/")) {
-        throw createCliError("Cannot concatenate multiple segments using string.", "INPUT_INVALID");
+        throw createScaiError(
+          "Cannot concatenate multiple segments using string.",
+          "INPUT_INVALID"
+        );
       }
 
       return new ItemPath([...this.segments, segment]);

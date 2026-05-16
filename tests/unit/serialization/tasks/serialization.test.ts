@@ -48,8 +48,59 @@ const fsMocks = vi.hoisted(() => ({
   removeUserFromFilesystem: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => apiMocks);
-vi.mock("../../../../src/serialization/filesystem-store", () => fsMocks);
+vi.mock("../../../../src/serialization/api/items", () => apiMocks);
+vi.mock("../../../../src/serialization/api/history", () => apiMocks);
+vi.mock("../../../../src/serialization/api/roles", () => apiMocks);
+vi.mock("../../../../src/serialization/api/users", () => apiMocks);
+vi.mock("../../../../src/serialization/api/publish", () => apiMocks);
+vi.mock("../../../../src/serialization/api/auth", () => ({
+  ...apiMocks,
+  DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
+  acquireAccessToken: vi.fn().mockResolvedValue("token"),
+  getAccessToken: vi.fn().mockResolvedValue("token"),
+}));
+vi.mock("../../../../src/serialization/filesystem-store/items", () => fsMocks);
+vi.mock("../../../../src/serialization/filesystem-store/roles", () => fsMocks);
+vi.mock("../../../../src/serialization/filesystem-store/users", () => fsMocks);
+
+const loadSerializationTasks = async (): Promise<
+  typeof import("../../../../src/serialization/tasks/info") &
+    typeof import("../../../../src/serialization/tasks/pull") &
+    typeof import("../../../../src/serialization/tasks/push") &
+    typeof import("../../../../src/serialization/tasks/diff") &
+    typeof import("../../../../src/serialization/tasks/validate") &
+    typeof import("../../../../src/serialization/tasks/package") &
+    typeof import("../../../../src/serialization/tasks/env/status") &
+    typeof import("../../../../src/serialization/tasks/env/logout") &
+    typeof import("../../../../src/serialization/tasks/env/deploy-token") &
+    typeof import("../../../../src/serialization/tasks/env/init")
+> => {
+  const [info, pull, push, diff, validate, pkg, status, logout, deployToken, init] =
+    await Promise.all([
+      import("../../../../src/serialization/tasks/info"),
+      import("../../../../src/serialization/tasks/pull"),
+      import("../../../../src/serialization/tasks/push"),
+      import("../../../../src/serialization/tasks/diff"),
+      import("../../../../src/serialization/tasks/validate"),
+      import("../../../../src/serialization/tasks/package"),
+      import("../../../../src/serialization/tasks/env/status"),
+      import("../../../../src/serialization/tasks/env/logout"),
+      import("../../../../src/serialization/tasks/env/deploy-token"),
+      import("../../../../src/serialization/tasks/env/init"),
+    ]);
+  return {
+    ...info,
+    ...pull,
+    ...push,
+    ...diff,
+    ...validate,
+    ...pkg,
+    ...status,
+    ...logout,
+    ...deployToken,
+    ...init,
+  };
+};
 vi.mock("../../../../src/shared/keychain", () => ({
   getCmTokens: vi.fn().mockResolvedValue(undefined),
   setCmTokens: vi.fn().mockResolvedValue(true),
@@ -57,6 +108,7 @@ vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: vi.fn().mockResolvedValue("token"),
   setDeployToken: vi.fn().mockResolvedValue(true),
   clearDeployToken: vi.fn().mockResolvedValue(true),
+  getCmClientCredential: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("serialization task runners", () => {
@@ -154,7 +206,7 @@ Languages: []
   });
 
   it("runs core serialization flows", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const keychain = await import("../../../../src/shared/keychain");
     const base = { config: rootDir, environmentName: "demo" };
 
@@ -192,13 +244,13 @@ Languages: []
   });
 
   it("runs info in JSON mode and explains missing paths", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     await tasks.runInfo({ config: rootDir, json: true });
     await tasks.runExplain({ config: rootDir, path: "/sitecore/missing", database: "master" });
   });
 
   it("runs pull/push without what-if and publishes", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const base = { config: rootDir, environmentName: "demo" };
 
     apiMocks.fetchItemMetadata.mockResolvedValue([metadata]);
@@ -218,7 +270,7 @@ Languages: []
   });
 
   it("detects duplicate ids in validate", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const duplicateMeta: ItemMetadata = {
       id: "dup",
       parentId: "parent",
@@ -235,7 +287,7 @@ Languages: []
   });
 
   it("reports unresolvable errors when fix is enabled", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const duplicateMeta: ItemMetadata = {
       id: "dup",
       parentId: "parent",
@@ -254,12 +306,12 @@ Languages: []
   });
 
   it("runs diff without a path when push is disabled", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     await tasks.runDiff({ config: rootDir });
   });
 
   it("applies pull changes when differences exist", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const localRoot = await fs.mkdtemp(path.join(os.tmpdir(), "scai-pull-"));
     await fs.writeFile(
       path.join(localRoot, "module.module.json"),
@@ -373,7 +425,7 @@ Languages: []
   });
 
   it("applies push changes when differences exist", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const localRoot = await fs.mkdtemp(path.join(os.tmpdir(), "scai-push-"));
     await fs.writeFile(
       path.join(localRoot, "module.module.json"),
@@ -457,7 +509,7 @@ Languages: []
   });
 
   it("syncs roles and users on pull", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const localRoot = await fs.mkdtemp(path.join(os.tmpdir(), "scai-roles-pull-"));
     await fs.writeFile(
       path.join(localRoot, "module.module.json"),
@@ -551,7 +603,7 @@ Languages: []
   });
 
   it("syncs roles and users on push", async () => {
-    const tasks = await import("../../../../src/serialization/tasks");
+    const tasks = await loadSerializationTasks();
     const localRoot = await fs.mkdtemp(path.join(os.tmpdir(), "scai-roles-push-"));
     await fs.writeFile(
       path.join(localRoot, "module.module.json"),

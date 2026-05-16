@@ -9,15 +9,22 @@ import {
   loadFilesystemItems,
   writeItemToFilesystem,
   removeItemFromFilesystem,
+} from "../../../src/serialization/filesystem-store/items";
+import {
   readRolesFromFilesystem,
   writeRoleToFilesystem,
   removeRoleFromFilesystem,
+} from "../../../src/serialization/filesystem-store/roles";
+import {
   readUsersFromFilesystem,
   writeUserToFilesystem,
   removeUserFromFilesystem,
-} from "../../../src/serialization/filesystem-store";
+} from "../../../src/serialization/filesystem-store/users";
 import { ItemData, RoleData, UserData } from "../../../src/serialization/types";
-import { RootConfiguration, SerializationModuleConfiguration } from "../../../src/config";
+import type {
+  RootConfiguration,
+  SerializationModuleConfiguration,
+} from "../../../src/config/types";
 
 describe("filesystem store", () => {
   it("writes and loads items", async () => {

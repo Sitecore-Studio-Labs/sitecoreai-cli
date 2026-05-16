@@ -1,11 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { RootConfigurationFile } from "../../../../src/config";
+import type { RootConfigurationFile } from "../../../../src/config/types";
 
 const readRootConfigurationFile = vi.fn();
 const readRootConfiguration = vi.fn();
 const writeRootConfigurationFile = vi.fn();
 
-vi.mock("../../../../src/config", () => ({
+vi.mock("../../../../src/config/root-config", () => ({
   readRootConfigurationFile,
   readRootConfiguration,
   writeRootConfigurationFile,
@@ -16,6 +16,8 @@ const getDeployToken = vi.fn();
 const clearCmTokens = vi.fn();
 const clearDeployToken = vi.fn();
 const setDeployToken = vi.fn();
+const setCmTokens = vi.fn().mockResolvedValue(true);
+const getCmClientCredential = vi.fn();
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getCmTokens,
@@ -23,14 +25,17 @@ vi.mock("../../../../src/shared/keychain", () => ({
   clearCmTokens,
   clearDeployToken,
   setDeployToken,
+  setCmTokens,
+  getCmClientCredential,
 }));
 
 const requestClientCredentialsToken = vi.fn();
 
-vi.mock("../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../src/serialization/api/auth", () => ({
   requestClientCredentialsToken,
   requestDeviceAuthorization: vi.fn(),
   pollDeviceToken: vi.fn(),
+  DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
 }));
 
 const logger = {
@@ -55,7 +60,7 @@ describe("serialization env tasks", () => {
   });
 
   it("runs status in JSON mode", async () => {
-    const { runStatus } = await import("../../../../src/serialization/tasks/env");
+    const { runStatus } = await import("../../../../src/serialization/tasks/env/status");
     const configFile: RootConfigurationFile = {
       config: {
         defaultEnvProfile: "demo",
@@ -92,7 +97,7 @@ describe("serialization env tasks", () => {
   });
 
   it("runs status in text mode with reserved default warnings", async () => {
-    const { runStatus } = await import("../../../../src/serialization/tasks/env");
+    const { runStatus } = await import("../../../../src/serialization/tasks/env/status");
     const configFile: RootConfigurationFile = {
       config: {
         defaultEnvProfile: "default",
@@ -125,7 +130,7 @@ describe("serialization env tasks", () => {
   });
 
   it("warns when no environments are configured", async () => {
-    const { runStatus } = await import("../../../../src/serialization/tasks/env");
+    const { runStatus } = await import("../../../../src/serialization/tasks/env/status");
     const configFile: RootConfigurationFile = {
       config: {
         defaultEnvProfile: "demo",
@@ -147,7 +152,7 @@ describe("serialization env tasks", () => {
   });
 
   it("prints configured environment details and expiring token warnings", async () => {
-    const { runStatus } = await import("../../../../src/serialization/tasks/env");
+    const { runStatus } = await import("../../../../src/serialization/tasks/env/status");
     const configFile: RootConfigurationFile = {
       config: {
         defaultEnvProfile: "demo",
@@ -182,7 +187,7 @@ describe("serialization env tasks", () => {
   });
 
   it("logs out all environments", async () => {
-    const { runLogout } = await import("../../../../src/serialization/tasks/env");
+    const { runLogout } = await import("../../../../src/serialization/tasks/env/logout");
     const configFile: RootConfigurationFile = {
       config: {
         envProfiles: {
@@ -205,7 +210,7 @@ describe("serialization env tasks", () => {
   });
 
   it("errors when logging out without an environment name", async () => {
-    const { runLogout } = await import("../../../../src/serialization/tasks/env");
+    const { runLogout } = await import("../../../../src/serialization/tasks/env/logout");
     readRootConfigurationFile.mockReturnValue({ config: { envProfiles: {} } });
 
     await expect(runLogout({ config: "/tmp" })).rejects.toThrow(
@@ -214,7 +219,7 @@ describe("serialization env tasks", () => {
   });
 
   it("logs out a single environment", async () => {
-    const { runLogout } = await import("../../../../src/serialization/tasks/env");
+    const { runLogout } = await import("../../../../src/serialization/tasks/env/logout");
     const configFile: RootConfigurationFile = {
       config: {
         envProfiles: {
@@ -236,7 +241,7 @@ describe("serialization env tasks", () => {
   });
 
   it("fetches a deploy token using client credentials", async () => {
-    const { runDeployToken } = await import("../../../../src/serialization/tasks/env");
+    const { runDeployToken } = await import("../../../../src/serialization/tasks/env/deploy-token");
     const configFile: RootConfigurationFile = {
       config: {
         envProfiles: {

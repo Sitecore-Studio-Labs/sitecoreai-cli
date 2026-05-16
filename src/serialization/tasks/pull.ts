@@ -1,8 +1,8 @@
 import { FilesystemPathProvider } from "../path-provider";
 import { createFieldFilterSet } from "../field-filter";
 import { ItemMetadata } from "../types";
-import { fetchItemMetadata } from "../sitecore-api";
-import { loadFilesystemItems } from "../filesystem-store";
+import { fetchItemMetadata } from "../api/items";
+import { loadFilesystemItems } from "../filesystem-store/items";
 import { startSpinner } from "@/shared/spinner";
 import {
   loadConfigAndModules,
@@ -12,12 +12,10 @@ import {
 } from "./shared";
 import { enrichCreateCommands, enrichUpdateCommands } from "../commands";
 import type { SyncOptions } from "./types";
-import {
-  applyFilesystemCommands,
-  buildCommandsForDatabase,
-  buildItemDataMap,
-  collectItemData,
-} from "./helpers";
+import { applyFilesystemCommands } from "./helpers/filesystem";
+import { buildCommandsForDatabase } from "./helpers/commands";
+import { buildItemDataMap } from "./helpers/items";
+import { collectItemData } from "./helpers/collect";
 import { syncRolesPull } from "./roles";
 import { syncUsersPull } from "./users";
 
@@ -36,6 +34,11 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
 
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
+    if (options.signal?.aborted) {
+      options.emit?.({ kind: "database-skipped", database, reason: "cancelled-by-client" });
+      break;
+    }
+    options.emit?.({ kind: "database-start", database, subtreeCount: subtrees.length });
     const spinner = await startSpinner(`Pulling ${database} items`);
     try {
       const sourceMetadata: ItemMetadata[] = [];
@@ -68,6 +71,7 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
         changes,
         applied: changes > 0 && !options.whatIf,
       });
+      options.emit?.({ kind: "database-changes-detected", database, changes });
 
       if (changes === 0) {
         if (!logger.isJson()) {
@@ -96,6 +100,12 @@ export const runPull = async (options: SyncOptions): Promise<void> => {
 
       const pathProvider = new FilesystemPathProvider(subtrees);
       await applyFilesystemCommands(commands, pathProvider, dataMap, logger);
+      options.emit?.({
+        kind: "database-applied",
+        database,
+        changes,
+        whatIf: Boolean(options.whatIf),
+      });
       spinner?.succeed();
     } catch (error) {
       spinner?.fail();

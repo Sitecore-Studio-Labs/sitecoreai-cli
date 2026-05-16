@@ -5,6 +5,8 @@ import {
   listSites,
   listSiteTemplates,
   retrieveSite,
+  setSiteBrandKit,
+  updateSite,
 } from "../../../../src/sites/api/sites";
 import { DEFAULT_SITES_API_BASE } from "../../../../src/sites/api/types";
 
@@ -87,5 +89,51 @@ describe("sites API — recipe-required helpers", () => {
 
     expect(result).toHaveLength(1);
     expect(fetchMock.mock.calls[0][0]).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/templates`);
+  });
+
+  it("updateSite PATCHes /api/v1/sites/{siteId} with the partial body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "site-1", displayName: "Renamed" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await updateSite(baseOptions, "site-1", { displayName: "Renamed" });
+
+    expect(result).toEqual({ id: "site-1", displayName: "Renamed" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/site-1`);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ displayName: "Renamed" });
+  });
+
+  it("updateSite threads environmentId into the query string", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "site-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateSite(baseOptions, "site-1", { description: "x" }, { environmentId: "main" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${DEFAULT_SITES_API_BASE}/api/v1/sites/site-1?environmentId=main`
+    );
+  });
+
+  it("setSiteBrandKit PATCHes only brandKitId", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "site-1", brandKitId: "kit-9" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await setSiteBrandKit(baseOptions, "site-1", "kit-9");
+
+    expect(result).toEqual({ id: "site-1", brandKitId: "kit-9" });
+    const [, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ brandKitId: "kit-9" });
+  });
+
+  it("setSiteBrandKit sends brandKitId: null to detach a kit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "site-1", brandKitId: null }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await setSiteBrandKit(baseOptions, "site-1", null);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toEqual({ brandKitId: null });
   });
 });

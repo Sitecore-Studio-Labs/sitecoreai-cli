@@ -1,6 +1,6 @@
 import path from "node:path";
 import crypto from "node:crypto";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { FilesystemTreeSpec, FilesystemTreeSpecRule } from "./tree-spec";
 import { ItemPath } from "./item-path";
 
@@ -107,7 +107,7 @@ class SubtreeFilesystemPathProvider {
 
   getPhysicalPathForItemPath(itemPath: ItemPath, extension: string): string | null {
     if (!extension.startsWith(".")) {
-      throw createCliError("Extension must start with a period.", "INPUT_INVALID");
+      throw createScaiError("Extension must start with a period.", "INPUT_INVALID");
     }
 
     const childPath = this.getChildrenPathForItemPath(itemPath);
@@ -264,7 +264,7 @@ class SubtreeFilesystemPathProvider {
     }
 
     if (maxLength < 16) {
-      throw createCliError(
+      throw createScaiError(
         `MaxRelativePathLength ${maxLength} is below minimum value of 16.`,
         "CONFIG_INVALID"
       );
@@ -282,7 +282,7 @@ class SubtreeFilesystemPathProvider {
     }
 
     if (!currentPath || currentPath.count === 0) {
-      throw createCliError(
+      throw createScaiError(
         `The path ${relativeItemPath} could not be stored because its length could not be reduced below the maximum path length ${maxLength}.`,
         "INPUT_INVALID"
       );
@@ -333,7 +333,7 @@ export class FilesystemPathProvider {
     for (const subtree of this.subtrees.getAncestorAndSelfPathData(itemPath)) {
       const subtreeResult = fn(subtree);
       if (subtreeResult != null && result != null) {
-        throw createCliError(
+        throw createScaiError(
           `The item path ${itemPath} was included in multiple places. Found valid file paths within these modules: ${resultFoundOn} and ${subtree}`,
           "CONFIG_INVALID"
         );

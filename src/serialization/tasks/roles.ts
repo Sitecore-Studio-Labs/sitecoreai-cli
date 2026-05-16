@@ -1,11 +1,12 @@
-import { readRootConfiguration, SerializationModuleConfiguration } from "@/config";
+import { readRootConfiguration } from "@/config/root-config";
+import type { SerializationModuleConfiguration } from "@/config/types";
 import { Logger } from "@/shared/logger";
-import { fetchRoles, pushRoleCommands } from "../sitecore-api";
+import { fetchRoles, pushRoleCommands } from "../api/roles";
 import {
   readRolesFromFilesystem,
   removeRoleFromFilesystem,
   writeRoleToFilesystem,
-} from "../filesystem-store";
+} from "../filesystem-store/roles";
 import { resolveApiTimeoutMs } from "./shared";
 
 const normalizeRoleMembers = (roles: string[]): string[] =>

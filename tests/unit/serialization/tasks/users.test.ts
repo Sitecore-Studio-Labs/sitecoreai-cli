@@ -11,7 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   pushUserCommands: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/sitecore-api", () => ({
+vi.mock("../../../../src/serialization/api/users", () => ({
   fetchUsers: (...args: unknown[]) => apiMocks.fetchUsers(...args),
   pushUserCommands: (...args: unknown[]) => apiMocks.pushUserCommands(...args),
 }));
@@ -22,7 +22,7 @@ const fsMocks = vi.hoisted(() => ({
   removeUserFromFilesystem: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/filesystem-store", () => ({
+vi.mock("../../../../src/serialization/filesystem-store/users", () => ({
   readUsersFromFilesystem: (...args: unknown[]) => fsMocks.readUsersFromFilesystem(...args),
   writeUserToFilesystem: (...args: unknown[]) => fsMocks.writeUserToFilesystem(...args),
   removeUserFromFilesystem: (...args: unknown[]) => fsMocks.removeUserFromFilesystem(...args),

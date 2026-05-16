@@ -1,14 +1,14 @@
 import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import {
   requestClientCredentialsToken,
   requestDeviceAuthorization,
   pollDeviceToken,
-} from "@/serialization/sitecore-api";
-import type { EnvironmentConfiguration } from "@/config";
+} from "@/serialization/api/auth";
+import type { EnvironmentConfiguration } from "@/config/types";
 import type { ConnectOptions } from "../../types";
 import { DEFAULT_PUBLIC_CLIENT_ID } from "../constants";
 import type { Logger } from "@/shared/logger";
@@ -83,7 +83,7 @@ export const resolveDeployAuth = async (
     : Boolean(options.clientId);
   if (needsDeployToken && wantsClientCredentials && !loginClientId) {
     if (!isInteractive) {
-      throw createCliError("Client ID is required for client credentials.", "INPUT_INVALID", {
+      throw createScaiError("Client ID is required for client credentials.", "INPUT_INVALID", {
         hint: "Provide --client-id with --use-client-credentials, or set SITECOREAI_CLIENT_ID and SITECOREAI_CLIENT_SECRET.",
       });
     }
@@ -91,7 +91,7 @@ export const resolveDeployAuth = async (
   }
   if (needsDeployToken && wantsClientCredentials && !loginClientSecret) {
     if (!isInteractive) {
-      throw createCliError(
+      throw createScaiError(
         "Client ID and client secret are required for client credentials.",
         "INPUT_INVALID",
         {
@@ -106,7 +106,7 @@ export const resolveDeployAuth = async (
 
   if (needsDeployToken && !deployToken && wantsClientCredentials) {
     if (!loginAuthority || !loginClientId || !loginClientSecret) {
-      throw createCliError(
+      throw createScaiError(
         "Client ID and client secret are required for client credentials.",
         "AUTH_REQUIRED",
         {
@@ -128,7 +128,7 @@ export const resolveDeployAuth = async (
     updated.deployTokenLastUpdated = new Date().toISOString();
   } else if (needsDeployToken && !deployToken) {
     if (!loginAuthority || !loginClientId) {
-      throw createCliError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
+      throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
         hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
       });
     }

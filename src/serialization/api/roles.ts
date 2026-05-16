@@ -1,4 +1,4 @@
-import { EnvironmentConfiguration } from "@/config";
+import type { SitecoreApiClientOptions } from "./types";
 import { RoleData } from "../types";
 import { GraphQLRequestOptions, runGraphQL } from "./graphql";
 
@@ -29,7 +29,7 @@ mutation($commands: [RoleCommandGraphType]) {
 }`;
 
 export const fetchRoles = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   predicates: Array<{ domain: string; pattern: string }>,
   options?: GraphQLRequestOptions
 ): Promise<RoleData[]> => {
@@ -45,7 +45,7 @@ export const fetchRoles = async (
 };
 
 export const pushRoleCommands = async (
-  environment: EnvironmentConfiguration,
+  environment: SitecoreApiClientOptions,
   commands: unknown[],
   options?: GraphQLRequestOptions
 ): Promise<unknown[]> => {

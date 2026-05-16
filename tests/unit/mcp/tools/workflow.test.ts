@@ -1,0 +1,353 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { McpContext } from "../../../../src/mcp/auth";
+
+const authMocks = vi.hoisted(() => ({
+  resolveToolBinding: vi.fn(),
+}));
+
+vi.mock("../../../../src/mcp/auth", async () => {
+  const actual = await vi.importActual<typeof import("../../../../src/mcp/auth")>(
+    "../../../../src/mcp/auth"
+  );
+  return { ...actual, resolveToolBinding: authMocks.resolveToolBinding };
+});
+
+const taskMocks = vi.hoisted(() => ({
+  runWorkflowInspect: vi.fn().mockResolvedValue({
+    kind: "item",
+    item: {
+      itemId: "x",
+      path: "/sitecore/content/x",
+      workflow: { workflowId: "w1", workflowName: "Editorial" },
+      state: { stateId: "s1", stateName: "Draft", final: false },
+      availableCommands: [{ commandId: "c1", displayName: "Submit" }],
+    },
+  }),
+  runWorkflowListCommands: vi.fn().mockResolvedValue({
+    itemId: "x",
+    path: "/sitecore/content/x",
+    workflowId: "w1",
+    commands: [{ commandId: "c1", displayName: "Submit" }],
+  }),
+  runWorkflowListDefs: vi.fn().mockResolvedValue({
+    rootPath: "/sitecore/system/Workflows",
+    workflows: [{ itemId: "wf1", name: "Sample", displayName: "Sample", path: "..." }],
+  }),
+  runWorkflowStatus: vi.fn().mockResolvedValue({
+    siteId: "site-1",
+    statistics: { workflows: [{ name: "Sample" }] },
+  }),
+  runWorkflowAssigned: vi.fn().mockResolvedValue({
+    stateId: "s1",
+    items: [{ itemId: "a", path: "/sitecore/content/a", templateName: null, updatedDate: null }],
+  }),
+  runWorkflowAdvance: vi.fn().mockResolvedValue({
+    itemId: "x",
+    path: "/sitecore/content/x",
+    workflowName: "Editorial",
+    fromState: "Draft",
+    toState: "in-review",
+    commandRequested: "Submit",
+    commandUsed: "Submit",
+    status: "advanced",
+  }),
+  runWorkflowReset: vi.fn(),
+  runWorkflowApply: vi.fn(),
+}));
+
+const hygieneTaskMocks = vi.hoisted(() => ({
+  runCleanupWorkflowAdvance: vi.fn().mockResolvedValue([]),
+  runCleanupWorkflowApply: vi.fn().mockResolvedValue([
+    {
+      itemId: "x",
+      path: "/sitecore/content/x/Page1",
+      templateId: null,
+      workflowItemId: "wf-1",
+      workflowName: "Article Workflow",
+      stateItemId: "s1",
+      stateName: "Draft",
+      status: "applied",
+    },
+  ]),
+}));
+
+vi.mock("../../../../src/workflow/tasks/advance", () => ({
+  runWorkflowAdvance: taskMocks.runWorkflowAdvance,
+}));
+vi.mock("../../../../src/workflow/tasks/apply", () => ({
+  runWorkflowApply: taskMocks.runWorkflowApply,
+}));
+vi.mock("../../../../src/workflow/tasks/assigned", () => ({
+  runWorkflowAssigned: taskMocks.runWorkflowAssigned,
+}));
+vi.mock("../../../../src/workflow/tasks/inspect", () => ({
+  runWorkflowInspect: taskMocks.runWorkflowInspect,
+}));
+vi.mock("../../../../src/workflow/tasks/list-commands", () => ({
+  runWorkflowListCommands: taskMocks.runWorkflowListCommands,
+}));
+vi.mock("../../../../src/workflow/tasks/list-defs", () => ({
+  runWorkflowListDefs: taskMocks.runWorkflowListDefs,
+}));
+vi.mock("../../../../src/workflow/tasks/reset", () => ({
+  runWorkflowReset: taskMocks.runWorkflowReset,
+}));
+vi.mock("../../../../src/workflow/tasks/status", () => ({
+  runWorkflowStatus: taskMocks.runWorkflowStatus,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup/workflow-advance", () => ({
+  runCleanupWorkflowAdvance: hygieneTaskMocks.runCleanupWorkflowAdvance,
+}));
+vi.mock("../../../../src/hygiene/tasks/cleanup/workflow-apply", () => ({
+  runCleanupWorkflowApply: hygieneTaskMocks.runCleanupWorkflowApply,
+}));
+
+const fakeContext: McpContext = {
+  envName: "test-env",
+  configPath: "/tmp",
+  resolved: {
+    envName: "test-env",
+    environment: {} as never,
+    root: {} as never,
+    timeoutMs: undefined,
+  },
+  allowWriteEnabled: false,
+  deployToken: "tok",
+};
+
+const fakeExtra = {
+  signal: new AbortController().signal,
+  progressToken: undefined,
+  sendProgress: async () => undefined,
+  sendNotification: async () => undefined,
+};
+
+const setup = async () => {
+  const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");
+  return buildScaiMcpRegistry();
+};
+
+beforeEach(() => {
+  authMocks.resolveToolBinding.mockReset();
+  authMocks.resolveToolBinding.mockImplementation(
+    async (ctx: McpContext, environmentName?: string) => {
+      if (!environmentName || environmentName === ctx.envName) {
+        return ctx;
+      }
+      throw new Error(`unexpected retarget to '${environmentName}'`);
+    }
+  );
+});
+
+describe("workflow_inspect tool", () => {
+  it("registers with read auth + readOnlyHint=true", async () => {
+    const reg = await setup();
+    const tool = reg.getTool("workflow_inspect")!;
+    expect(tool.auth).toBe("read");
+    expect(tool.annotations.readOnlyHint).toBe(true);
+  });
+
+  it("routes verb='inspect' to runWorkflowInspect", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
+      expect.objectContaining({ item: "/x" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "inspect" });
+  });
+
+  it("requires `item` for verb='inspect'", async () => {
+    const reg = await setup();
+    await expect(
+      reg.getTool("workflow_inspect")!.handler({ verb: "inspect" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='list-defs' to runWorkflowListDefs with optional root", async () => {
+    const reg = await setup();
+    await reg
+      .getTool("workflow_inspect")!
+      .handler(
+        { verb: "list-defs", root: "/sitecore/system/Workflows/Editorial" },
+        fakeContext,
+        fakeExtra
+      );
+    expect(taskMocks.runWorkflowListDefs).toHaveBeenCalledWith(
+      expect.objectContaining({ root: "/sitecore/system/Workflows/Editorial" })
+    );
+  });
+
+  it("requires `site` for verb='status'", async () => {
+    const reg = await setup();
+    await expect(
+      reg.getTool("workflow_inspect")!.handler({ verb: "status" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='assigned' with --field override", async () => {
+    const reg = await setup();
+    await reg
+      .getTool("workflow_inspect")!
+      .handler(
+        { verb: "assigned", state: "s1", field: "__workflow_state", limit: 50 },
+        fakeContext,
+        fakeExtra
+      );
+    expect(taskMocks.runWorkflowAssigned).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "s1", field: "__workflow_state", limit: 50 })
+    );
+  });
+});
+
+describe("workflow_lifecycle tool", () => {
+  it("registers with write auth", async () => {
+    const reg = await setup();
+    const tool = reg.getTool("workflow_lifecycle")!;
+    expect(tool.auth).toBe("write");
+    expect(tool.annotations.readOnlyHint).toBe(false);
+  });
+
+  it("routes verb='advance' to runWorkflowAdvance, threading through allowWrite", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "advance",
+        item: "/sitecore/content/x",
+        command: "Submit",
+        comments: "auto",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(taskMocks.runWorkflowAdvance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        item: "/sitecore/content/x",
+        command: "Submit",
+        comments: "auto",
+        allowWrite: true,
+      })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "advance" });
+  });
+
+  it("verb='bulk-apply' requires workflow", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler({ verb: "bulk-apply", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='bulk-apply' to runCleanupWorkflowApply with workflow + template + reattach", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "bulk-apply",
+        workflow: "Article Workflow",
+        template: "/sitecore/templates/Foundation/Article",
+        reattach: true,
+        maxApplies: 25,
+        root: "/sitecore/content/MySite",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(hygieneTaskMocks.runCleanupWorkflowApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: "Article Workflow",
+        template: "/sitecore/templates/Foundation/Article",
+        reattach: true,
+        maxApplies: 25,
+        root: "/sitecore/content/MySite",
+        allowWrite: true,
+      })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "bulk-apply" });
+    expect(result.content[0]!.text).toContain("attached");
+  });
+
+  it("verb='bulk-apply' with whatIf=true reports the plan", async () => {
+    hygieneTaskMocks.runCleanupWorkflowApply.mockResolvedValueOnce([
+      {
+        itemId: "x",
+        path: "/sitecore/content/x/Page1",
+        templateId: null,
+        workflowItemId: "wf-1",
+        workflowName: "Article Workflow",
+        stateItemId: "s1",
+        stateName: "Draft",
+        status: "what-if",
+      },
+    ]);
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "bulk-apply",
+        workflow: "Article Workflow",
+        whatIf: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(result.content[0]!.text).toContain("would attach");
+  });
+});
+
+describe("workflow tools — per-call environment retargeting", () => {
+  it("workflow_inspect uses the bound env when environmentName is omitted", async () => {
+    const reg = await setup();
+    await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "test-env" })
+    );
+  });
+
+  it("workflow_inspect threads environmentName into the task runner when set", async () => {
+    taskMocks.runWorkflowInspect.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "inspect", item: "/x", environmentName: "prod" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "prod" })
+    );
+  });
+
+  it("workflow_lifecycle checks denyMcpElevation against the retargeted env", async () => {
+    authMocks.resolveToolBinding.mockResolvedValue({
+      envName: "prod",
+      resolved: {
+        envName: "prod",
+        environment: {},
+        root: { environments: {} },
+        timeoutMs: undefined,
+      },
+      allowWriteEnabled: true,
+      deployToken: "prod-token",
+    });
+    taskMocks.runWorkflowAdvance.mockClear();
+    const reg = await setup();
+    await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "advance",
+        item: "/sitecore/content/x",
+        command: "Submit",
+        environmentName: "prod",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(authMocks.resolveToolBinding).toHaveBeenCalledWith(fakeContext, "prod");
+    expect(taskMocks.runWorkflowAdvance).toHaveBeenCalledWith(
+      expect.objectContaining({ environmentName: "prod" })
+    );
+  });
+});

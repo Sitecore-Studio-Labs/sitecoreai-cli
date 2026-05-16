@@ -42,7 +42,9 @@ describe("resolveRegion", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("platform-inventory.sitecorecloud.io/api/inventory/v1/tenants");
     expect(url).toContain("organizationId=org-1");
-    expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer tok" });
+    expect((init as { headers?: Record<string, string> }).headers).toMatchObject({
+      Authorization: "Bearer tok",
+    });
   });
 
   it("reads the region from labels.RegionCode when the top-level field is absent", async () => {

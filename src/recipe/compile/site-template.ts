@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { templateId } from "../guids";
 import {
   type CreateItemOp,
@@ -70,7 +70,7 @@ export function compileSiteTemplateRecipe(
 ): OperationIr {
   const recipe = SiteTemplateRecipeSchema.parse(input);
   if (!context.siteTemplatesRoot) {
-    throw createCliError(
+    throw createScaiError(
       `compileSiteTemplateRecipe requires context.siteTemplatesRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
     );

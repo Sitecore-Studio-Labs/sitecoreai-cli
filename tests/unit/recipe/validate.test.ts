@@ -38,7 +38,7 @@ const logoTemplate: Recipe = {
 };
 
 const homePageTemplate: Recipe = {
-  kind: "content-template",
+  kind: "page-template",
   schemaVersion: "1",
   handle: "home-page@1",
   name: "HomePage",
@@ -111,6 +111,7 @@ describe("validateRecipeSet — happy path", () => {
         duplicateHandles: [],
         cycles: [],
         fieldShapeErrors: [],
+        placementViolations: [],
       })
     ).toBe(true);
     expect(
@@ -127,6 +128,7 @@ describe("validateRecipeSet — happy path", () => {
         duplicateHandles: [],
         cycles: [],
         fieldShapeErrors: [],
+        placementViolations: [],
       })
     ).toBe(false);
     expect(
@@ -139,6 +141,24 @@ describe("validateRecipeSet — happy path", () => {
             fromRecipe: "site-x@1",
             fromField: "collectionId, collectionName",
             message: "either collectionId or collectionName must be provided",
+          },
+        ],
+        placementViolations: [],
+      })
+    ).toBe(false);
+    expect(
+      isValid({
+        unresolvedHandles: [],
+        duplicateHandles: [],
+        cycles: [],
+        fieldShapeErrors: [],
+        placementViolations: [
+          {
+            fromRecipe: "demo-design@1",
+            fromField: "layout.placeholders./main.0",
+            componentHandle: "rogue@1",
+            placeholderKey: "/main",
+            allowedComponents: ["card@1"],
           },
         ],
       })
@@ -197,15 +217,15 @@ describe("validateRecipeSet — unresolved handles", () => {
   });
 
   it("flags a page-design appliesTo handle that resolves to the WRONG kind", () => {
-    // ctaButtonComponent is a component-template, not a content-template.
-    // appliesTo entries must be content-templates (page templates).
+    // ctaButtonComponent is a component-template — appliesTo entries
+    // must resolve to page-template recipes.
     const wrongKindDesign: Recipe = {
       kind: "page-design",
       schemaVersion: "1",
       handle: "wrong-kind-design@1",
       name: "WrongKindDesign",
       displayName: "Wrong Kind Design",
-      appliesTo: ["site-logo@1"], // component-template, not content-template
+      appliesTo: ["site-logo@1"], // component-template, not page-template
       partials: [],
     };
     const result = validateRecipeSet([ctaButtonComponent, wrongKindDesign]);
@@ -213,7 +233,7 @@ describe("validateRecipeSet — unresolved handles", () => {
       fromRecipe: "wrong-kind-design@1",
       fromField: "appliesTo.0",
       handle: "site-logo@1",
-      expectedKinds: ["content-template"],
+      expectedKinds: ["page-template"],
       actualKind: "component-template",
     });
   });
@@ -253,7 +273,7 @@ describe("validateRecipeSet — unresolved handles", () => {
       fromRecipe: "bad-content@1",
       fromField: "templateType",
       handle: "site-logo-content@1",
-      expectedKinds: ["component-template", "content-template"],
+      expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: "content-item",
     });
   });
@@ -281,7 +301,7 @@ describe("validateRecipeSet — unresolved handles", () => {
       fromRecipe: "bad-source@1",
       fromField: "fields.0.sitecore.sourceTypes.0",
       handle: "nonexistent@1",
-      expectedKinds: ["component-template", "content-template"],
+      expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: undefined,
     });
   });
@@ -298,7 +318,7 @@ describe("validateRecipeSet — unresolved handles", () => {
       fromRecipe: "bad-insert@1",
       fromField: "insertOptions.0",
       handle: "does-not-exist@1",
-      expectedKinds: ["component-template", "content-template"],
+      expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: undefined,
     });
   });
@@ -324,6 +344,9 @@ describe("validateRecipeSet — unresolved handles", () => {
         "component-template",
         "content-template",
         "content-item",
+        "page-template",
+        "page",
+        "placeholder",
         "design-parameters-template",
         "section-definition",
         "partial-design",
@@ -464,7 +487,7 @@ describe("validateRecipeSetOrThrow", () => {
 // ---------------------------------------------------------------------------
 
 const homePageTemplateForSites: Recipe = {
-  kind: "content-template",
+  kind: "page-template",
   schemaVersion: "1",
   handle: "home-page@1",
   name: "HomePage",
@@ -473,7 +496,7 @@ const homePageTemplateForSites: Recipe = {
 };
 
 const articlePageTemplate: Recipe = {
-  kind: "content-template",
+  kind: "page-template",
   schemaVersion: "1",
   handle: "article-page@1",
   name: "ArticlePage",
@@ -540,7 +563,7 @@ describe("validateRecipeSet — SiteTemplateRecipe references", () => {
       fromRecipe: "ccl-brand@1",
       fromField: "pageTemplates.1",
       handle: "missing-template@1",
-      expectedKinds: ["content-template"],
+      expectedKinds: ["page-template"],
       actualKind: undefined,
     });
   });
@@ -548,14 +571,14 @@ describe("validateRecipeSet — SiteTemplateRecipe references", () => {
   it("flags a pageDesigns entry that resolves to the wrong kind", () => {
     const result = validateRecipeSet([
       ...SITE_TEMPLATE_DEPS,
-      { ...cclBrand, pageDesigns: ["home-page@1"] }, // home-page is a content-template, not page-design
+      { ...cclBrand, pageDesigns: ["home-page@1"] }, // home-page is a page-template, not page-design
     ]);
     expect(result.unresolvedHandles).toContainEqual({
       fromRecipe: "ccl-brand@1",
       fromField: "pageDesigns.0",
       handle: "home-page@1",
       expectedKinds: ["page-design"],
-      actualKind: "content-template",
+      actualKind: "page-template",
     });
   });
 
@@ -571,7 +594,7 @@ describe("validateRecipeSet — SiteTemplateRecipe references", () => {
       fromRecipe: "ccl-brand@1",
       fromField: "insertOptionsMatrix.home-page@1.0",
       handle: "missing-child@1",
-      expectedKinds: ["content-template"],
+      expectedKinds: ["page-template"],
       actualKind: undefined,
     });
   });
@@ -632,7 +655,7 @@ describe("validateRecipeSet — SiteRecipe references", () => {
       fromField: "siteTemplate",
       handle: "home-page@1",
       expectedKinds: ["site-template"],
-      actualKind: "content-template",
+      actualKind: "page-template",
     });
   });
 

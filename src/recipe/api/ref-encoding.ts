@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { RefValue } from "../ir/operations";
 import { renderSourceFields } from "../schema/source-fields";
 
@@ -30,7 +30,7 @@ export const renderRefValue = (value: RefValue): string => {
     case "ref-recipe":
     case "ref-recipe-list":
     case "ref-source-fields":
-      throw createCliError(
+      throw createScaiError(
         `Unresolved ${value.kind} cannot be rendered — call resolveRecipeRefs first.`,
         "UNKNOWN"
       );
@@ -44,7 +44,7 @@ export const renderRefValue = (value: RefValue): string => {
         .join("&");
     default: {
       const exhaustive: never = value;
-      throw createCliError(`Unhandled RefValue kind: ${JSON.stringify(exhaustive)}`, "UNKNOWN");
+      throw createScaiError(`Unhandled RefValue kind: ${JSON.stringify(exhaustive)}`, "UNKNOWN");
     }
   }
 };
@@ -74,7 +74,7 @@ export const resolveRecipeRefs = (
       if (isGuid(value.refKey)) {
         return { kind: "ref-guid", value: value.refKey };
       }
-      throw createCliError(
+      throw createScaiError(
         `ref-recipe refKey ${value.refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
         "UNKNOWN"
       );
@@ -95,7 +95,7 @@ export const resolveRecipeRefs = (
           continue;
         }
         if (value.tolerateMissing) continue;
-        throw createCliError(
+        throw createScaiError(
           `ref-recipe-list refKey ${refKey} not in captured map — was the producing CreateItem op skipped or did it run after this op?`,
           "UNKNOWN"
         );
@@ -120,7 +120,7 @@ export const resolveRecipeRefs = (
           const refKey = templateIdForHandle(value.site, handle);
           const itemId = capturedItemIds.get(refKey);
           if (!itemId) {
-            throw createCliError(
+            throw createScaiError(
               `ref-source-fields references handle '${handle}' (refKey ${refKey}); not yet in captured map.`,
               "UNKNOWN"
             );

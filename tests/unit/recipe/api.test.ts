@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../src/config";
-import { CliError } from "../../../src/shared/errors";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
+import { ScaiError } from "../../../src/shared/errors";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
 import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
@@ -104,7 +104,7 @@ describe("runAuthoringGraphQL — error mapping", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const error = await runAuthoringGraphQL(baseEnv, "query {}").catch((e) => e);
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(error.message).toContain("401");
   });
@@ -116,7 +116,7 @@ describe("runAuthoringGraphQL — error mapping", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const error = await runAuthoringGraphQL(baseEnv, "query {}").catch((e) => e);
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(error.message).toContain("no such field 'foo'");
   });
@@ -849,6 +849,67 @@ describe("createAuthoringClient — idempotent createItem fallback", () => {
     ).rejects.toThrow(/already defined on this level/);
   });
 
+  // Regression: rapid second push used to create duplicate-named siblings
+  // because the planner's path-index lookup lagged and Sitecore's create
+  // mutation didn't always reject the duplicate. The opt-in
+  // `idempotencyCheck` flag runs an authoritative parent-children
+  // lookup BEFORE the mutation; if the sibling already exists, the
+  // mutation is skipped entirely and the existing itemId is returned.
+  it("with idempotencyCheck: true, returns existing child without calling the mutation", async () => {
+    const fetchMock = vi
+      .fn()
+      // resolveParentItemId: getItem by path resolves the parent.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      // findChildByName pre-check: sibling already exists.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "existing-sibling-id-cccccccccccc",
+                    name: "Layout",
+                    path: "/sitecore/templates/parent/Layout",
+                    parent: { itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa" },
+                    template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      parent: "/sitecore/templates/parent",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      name: "Layout",
+      fields: [],
+      idempotencyCheck: true,
+    });
+
+    expect(result.itemId).toBe("existing-sibling-id-cccccccccccc");
+    // Exactly 2 wire calls: parent resolve + pre-check. No createItem mutation.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not invoke the fallback when createItem fails for a non-conflict reason", async () => {
     const fetchMock = vi
       .fn()
@@ -927,7 +988,7 @@ describe("runAuthoringGraphQL — retry / backoff", () => {
       retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
     }).catch((e) => e);
 
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ScaiError);
     expect(error.code).toBe("NETWORK");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });

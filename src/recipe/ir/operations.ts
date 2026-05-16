@@ -147,7 +147,23 @@ export const CreateItemOpSchema = z.object({
     z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
     z.object({ kind: z.literal("ref-path"), value: NON_EMPTY }),
   ]),
-  templateOf: GUID,
+  /**
+   * Template the new item conforms to. Two shapes:
+   *
+   *   - **GUID string** — the conventional case: a Sitecore built-in
+   *     template ID (see `SITECORE_TEMPLATES`), or a refKey for a
+   *     template the same push creates (the planner resolves both
+   *     against `capturedItemIds`).
+   *   - **`{kind: "ref-path", value}`** — late-resolved against a
+   *     content-tree path. Used by recipes that conform new items to
+   *     system templates whose GUIDs aren't published as a public
+   *     contract (e.g. workflow `Workflow`/`State`/`Command` templates,
+   *     webhook authorization templates). The push pipeline pre-seeds
+   *     these via the same `crossRecipeRefs` mechanism that resolves
+   *     ref-path parents: a single `getItemsByPaths` batch lookup
+   *     before planning.
+   */
+  templateOf: z.union([GUID, z.object({ kind: z.literal("ref-path"), value: NON_EMPTY })]),
   name: NON_EMPTY,
   fields: z.array(FieldValueSchema),
 });
@@ -349,6 +365,43 @@ export const AppendToMultiListOpSchema = z.object({
   appendPolicy: z.literal("merge-unique"),
 });
 
+/**
+ * Add a numbered version (or a language version) to an existing item.
+ *
+ * `CreateItem` makes an item with version 1 in the default language;
+ * `SetField` writes a field on an *assumed-existing* `(language, version)`.
+ * Neither *creates* a version. Story-seed content recipes — which author
+ * en v1/v2/v3, fr v1, … — need this op to materialise the version slots
+ * the per-version `SetField` ops then fill.
+ *
+ * `version` declares intent: "version N should exist in `language`."
+ * Sitecore assigns numbered versions sequentially, so the executor
+ * reconciles — it adds versions until the item has at least `version` of
+ * them in `language`. Idempotent: a no-op when the version already
+ * exists, which is what lets a re-push converge cleanly. When `language`
+ * has no versions yet, the executor creates that language version too.
+ *
+ * Emitted in version order by the content-item compiler, between the
+ * `CreateItem` op and the per-version `SetField` ops.
+ */
+export const AddItemVersionOpSchema = z.object({
+  op: z.literal("AddItemVersion"),
+  ...BaseOpFields,
+  /** RefKey of the target item — resolves to a Sitecore itemId at execute time. */
+  itemRefKey: GUID,
+  /**
+   * Language whose version stack this op extends (ISO code, e.g. `en`,
+   * `fr`). When the language has no versions yet, the executor creates
+   * the language version as part of adding version 1.
+   */
+  language: z.string().min(1),
+  /**
+   * The numbered version this op ensures exists (1-based). The executor
+   * adds versions until the item has at least this many in `language`.
+   */
+  version: z.number().int().positive(),
+});
+
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
@@ -356,6 +409,7 @@ export const OperationSchema = z.discriminatedUnion("op", [
   SetStandardValuesOpSchema,
   CreateSiteFromTemplateOpSchema,
   AppendToMultiListOpSchema,
+  AddItemVersionOpSchema,
 ]);
 
 export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;
@@ -364,6 +418,7 @@ export type SetBaseTemplatesOp = z.infer<typeof SetBaseTemplatesOpSchema>;
 export type SetStandardValuesOp = z.infer<typeof SetStandardValuesOpSchema>;
 export type CreateSiteFromTemplateOp = z.infer<typeof CreateSiteFromTemplateOpSchema>;
 export type AppendToMultiListOp = z.infer<typeof AppendToMultiListOpSchema>;
+export type AddItemVersionOp = z.infer<typeof AddItemVersionOpSchema>;
 export type Operation = z.infer<typeof OperationSchema>;
 
 export const OperationIrSchema = z.object({

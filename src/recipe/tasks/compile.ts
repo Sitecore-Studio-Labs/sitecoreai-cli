@@ -1,6 +1,6 @@
 import path from "node:path";
-import { readRootConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import { readRootConfiguration } from "@/config/root-config";
+import { createScaiError } from "@/shared/errors";
 import { compileRecipe } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";
 import {
@@ -11,7 +11,7 @@ import {
 } from "./shared";
 
 /**
- * `scai recipe compile` — pure-logic: recipe (.ts or .json) → Operation IR JSON.
+ * `scai provision recipe compile` — pure-logic: recipe (.ts or .json) → Operation IR JSON.
  *
  * Resolves inputs from `--input` (single file) or the config `recipes`
  * glob (zero-to-many files). Writes one IR per recipe at
@@ -46,17 +46,22 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const partialDesignsRoot = options.partialDesignsRoot ?? environment?.partialDesignsRoot;
   const pageDesignsRoot = options.pageDesignsRoot ?? environment?.pageDesignsRoot;
   const contentItemsRoot = options.contentItemsRoot ?? environment?.contentItemsRoot;
-  const headlessVariantsRoot =
-    options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
+  const headlessVariantsRoot = options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
   const availableRenderingsRoot =
     options.availableRenderingsRoot ?? environment?.availableRenderingsRoot;
-  const enumerationsRoot =
-    options.enumerationsRoot ?? environment?.enumerationsRoot;
+  const enumerationsRoot = options.enumerationsRoot ?? environment?.enumerationsRoot;
+  // Page-level roots. `pageTemplatesRoot` falls back to `templatesRoot`
+  // inside the compiler; `placeholderSettingsRoot` has no fallback —
+  // `buildPlaceholderSettingsAggregate` errors when a set declares
+  // placeholders but the root is unset.
+  const pageTemplatesRoot = environment?.pageTemplatesRoot;
+  const placeholderSettingsRoot = environment?.placeholderSettingsRoot;
+  const pagesRoot = environment?.pagesRoot;
 
   const { files, source } = await resolveRecipeInputs(options, root);
 
   if (options.output && files.length > 1) {
-    throw createCliError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
+    throw createScaiError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
       hint: "Compile a single recipe with --input <file> --output <ir>, or omit --output to write per-recipe IRs to <dir>/<handle>.ir.json.",
     });
   }
@@ -81,6 +86,9 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
       headlessVariantsRoot,
       availableRenderingsRoot,
       enumerationsRoot,
+      pageTemplatesRoot,
+      placeholderSettingsRoot,
+      pagesRoot,
     });
 
     const outputPath =

@@ -112,6 +112,19 @@ export const SitecoreFieldAugmentSchema = z
      * not `params`/`variants`). Defaults to "Content".
      */
     section: z.string().optional(),
+    /**
+     * Sitecore field storage axis — how a value is scoped on items
+     * conforming to the template:
+     *  - `versioned` (default) — a value per language *and* per numbered
+     *    version.
+     *  - `unversioned` — a value per language, shared across numbered
+     *    versions.
+     *  - `shared` — a single value for the whole item, every language and
+     *    version.
+     * Omit for the Sitecore default (`versioned`). Determines whether
+     * per-language / per-version content is meaningful for this field.
+     */
+    storage: z.enum(["versioned", "unversioned", "shared"]).optional(),
   })
   .refine(
     (v) =>
@@ -179,14 +192,114 @@ export const RenderingVariantDefinitionSchema = z.object({
 
 export type RenderingVariantDefinition = z.infer<typeof RenderingVariantDefinitionSchema>;
 
+/**
+ * An inline placeholder slot a container component EXPOSES for child
+ * renderings to drop into. The hybrid placeholder model's component-owned
+ * half: a Section / Grid / Tabs component declares the slots it owns
+ * here; site-level chrome slots (`/header`, `/footer`) that belong to no
+ * single component are authored as a standalone `PlaceholderRecipe`
+ * instead.
+ *
+ * Both forms compile to the same artifact — one Sitecore Placeholder
+ * Settings item per unique `key` — emitted by the cross-recipe
+ * `buildPlaceholderSettingsAggregate` (see `compile.ts`). Identity is the
+ * `key`, so an inline slot and a `PlaceholderRecipe` MUST NOT name the
+ * same key; `validateRecipeSet` flags the collision.
+ */
 export const PlaceholderDefinitionSchema = z.object({
-  /** Placeholder key string used in layout XML. */
+  /**
+   * Sitecore Placeholder Key — the string layout XML references in its
+   * `placeh` attribute (e.g. `headless-main`, `grid-content`). For a
+   * `dynamic` placeholder this is the static PREFIX; SXA appends the
+   * `-{uid}-{index}` suffix at render time.
+   */
   key: z.string().min(1),
-  /** Optional restriction: only these rendering handles may drop here. */
-  allowedRenderingHandles: z.array(z.string()).optional(),
+  /** Author-facing label on the Placeholder Settings item. Defaults to `key`. */
+  displayName: z.string().min(1).optional(),
+  /**
+   * Optional grouping folder path under the placeholder settings root —
+   * the Placeholder Settings item lands at
+   * `<placeholderSettingsRoot>/<folder>/<name>`. Multi-segment paths
+   * (`"Partial Design/Header"`) split on `/`; each segment is
+   * materialised once as a `CreateOnly` folder conforming to the SXA
+   * `Placeholder Settings Folder` template, so it inherits the right
+   * Insert Options. Recipes naming the same folder share it. Omit → the
+   * item lands flat at the root.
+   */
+  folder: z.string().min(1).optional(),
+  /**
+   * SXA dynamic placeholder. When true the host rendering must also set
+   * `dynamicPlaceholders: true` so SXA generates per-instance keys; the
+   * Placeholder Settings item is still keyed by the static prefix here.
+   */
+  dynamic: z.boolean().optional(),
+  /**
+   * Restriction: only renderings of these `ComponentTemplateRecipe`
+   * handles may be dropped into this slot. Compiles to the slot's
+   * `Allowed Controls` whitelist, unioned with any component that names
+   * this `key` in its `placedIn`. Empty/omitted = no slot-side
+   * restriction (the union is then driven entirely by `placedIn`).
+   */
+  allowedComponents: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
 });
 
 export type PlaceholderDefinition = z.infer<typeof PlaceholderDefinitionSchema>;
+
+/**
+ * A standalone placeholder — the hybrid model's site-chrome half. Slots
+ * like `/header`, `/footer`, `/main`, or a page-design CTA band belong to
+ * no single component; they're authored as their own recipe so partials
+ * and page designs have a typed, validated target to place renderings
+ * into.
+ *
+ * Compiles (via `buildPlaceholderSettingsAggregate`) to one Sitecore
+ * Placeholder Settings item under the tenant's `placeholderSettingsRoot`,
+ * carrying the `Placeholder Key` and an `Allowed Controls` whitelist =
+ * `allowedComponents` ∪ every component whose `placedIn` names this
+ * `key`.
+ *
+ * Identity: `placeholderSettingsId(site, key)` — keyed by `key`, not
+ * `handle`. The `handle` is the authoring-surface identity used for
+ * cross-recipe references and validation messages.
+ */
+export const PlaceholderRecipeSchema = z.object({
+  kind: z.literal("placeholder"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. site-header-slot@1",
+  }),
+  /**
+   * Sitecore Placeholder Key — the string layout XML references. For a
+   * `dynamic` placeholder this is the static prefix. Load-bearing: the
+   * emitted item's GUID derives from `key`, so renaming it creates a
+   * different placeholder.
+   */
+  key: z.string().min(1),
+  /** Sitecore item name under the Placeholder Settings root. */
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  /**
+   * Optional grouping folder path under the placeholder settings root —
+   * the item lands at `<placeholderSettingsRoot>/<folder>/<name>`.
+   * Multi-segment (`"Partial Design/Header"`) splits on `/`; each
+   * segment is a `CreateOnly` folder conforming to the SXA `Placeholder
+   * Settings Folder` template (inheriting its Insert Options). Recipes
+   * naming the same folder share it. Omit → flat at the root.
+   */
+  folder: z.string().min(1).optional(),
+  /** SXA dynamic placeholder — see `PlaceholderDefinitionSchema.dynamic`. */
+  dynamic: z.boolean().default(false),
+  /**
+   * `ComponentTemplateRecipe` handles whose renderings may be dropped
+   * here. Unioned with any component naming this `key` in `placedIn` to
+   * form the `Allowed Controls` whitelist.
+   */
+  allowedComponents: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
+});
+
+export type PlaceholderRecipe = z.infer<typeof PlaceholderRecipeSchema>;
 
 /**
  * One entry in the modern semantic-scope datasource locations list.
@@ -424,13 +537,20 @@ export const ComponentTemplateRecipeSchema = z.object({
   params: z.array(DesignParameterSchema).default([]),
   /**
    * SXA placeholder keys this rendering can be PLACED INTO — the
-   * allow-list. At apply time scai walks the configured Placeholder
-   * Settings roots, finds items whose `Placeholder Key` field matches
-   * each entry here, and appends this rendering's itemId to their
-   * `Allowed Controls` field. Without this, the rendering exists in
-   * CM but Pages won't offer it in any placeholder picker.
+   * placement allow-list. Each key contributes this rendering to that
+   * placeholder's `Allowed Controls` whitelist; without it the rendering
+   * exists in CM but Pages won't offer it in the slot's picker.
    *
-   * Example: `["headless-main", "headless-main-{*}", "sxa-footer"]`.
+   * Resolution is split by whether the key is recipe-defined:
+   *   - Keys that match a `PlaceholderRecipe` or an inline
+   *     `placeholders` slot in the same set → folded into the
+   *     `buildPlaceholderSettingsAggregate` IR write (one-push
+   *     convergence on a fresh tenant).
+   *   - Keys with no recipe declaration → resolved post-IR by
+   *     `applyPlaceholderAllowControls`, which walks the tenant's
+   *     existing Placeholder Settings items and patches the match.
+   *
+   * Example: `["headless-main", "sxa-footer"]`.
    *
    * Distinct from `placeholders` (below), which declares slots THIS
    * component EXPOSES for child renderings.
@@ -438,10 +558,11 @@ export const ComponentTemplateRecipeSchema = z.object({
   placedIn: z.array(z.string().min(1)).default([]),
   /**
    * Container slots — placeholders this component DEFINES for child
-   * renderings to drop into. Only meaningful for container components
-   * (e.g. a section wrapper that exposes a `headless-main-{*}` slot).
-   * Each entry carries the placeholder key + an optional restriction
-   * on which rendering handles may be dropped there.
+   * renderings to drop into. The hybrid placeholder model's
+   * component-owned half: only meaningful for container components
+   * (a Section / Grid / Tabs wrapper). Each entry compiles to a
+   * Sitecore Placeholder Settings item via
+   * `buildPlaceholderSettingsAggregate`.
    *
    * Distinct from `placedIn` (above), which lists placeholder keys
    * this rendering can be placed INTO.
@@ -539,6 +660,16 @@ export const ContentTemplateRecipeSchema = z.object({
    * that allows item content templates underneath).
    */
   insertOptions: z.array(z.string()).optional(),
+  /**
+   * Optional `WorkflowRecipe` handle to bind on the template's
+   * `__Standard Values` item. When set, the compiler emits a
+   * `SetField` writing `__Default workflow` to the workflow's refKey,
+   * so new items conforming to this template enter the workflow at
+   * its initial state automatically. Equivalent to declaring the same
+   * handle in the workflow recipe's `bindings.templates[]` — pick
+   * whichever side is more natural to author.
+   */
+  defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
 export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
@@ -690,6 +821,63 @@ export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
 
 export type ContentFieldValue = z.infer<typeof ContentFieldValueSchema>;
 
+/** Per-language field values — a simple-mode translation of a content item. */
+export const ContentTranslationSchema = z.object({
+  /** Field values for this language, keyed by field name. */
+  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+});
+
+export type ContentTranslation = z.infer<typeof ContentTranslationSchema>;
+
+/**
+ * A personalization variant within a numbered version — an
+ * audience-conditional alternative. Carries a partial field delta (and an
+ * optional layout) against the version's default.
+ *
+ * The exact XM Cloud personalization wire model is unverified; the compiler
+ * mapping for `variants` is deferred — see docs/recipe-sync-architecture.md,
+ * "Personalization variants".
+ */
+export const ContentVariantSchema = z.object({
+  /** Audience / variant identifier the personalization rule targets. */
+  audience: z.string().min(1),
+  /** Field-value delta against the version's default. */
+  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /** Optional per-variant layout override. */
+  layout: z.lazy(() => LayoutSchema).optional(),
+});
+
+export type ContentVariant = z.infer<typeof ContentVariantSchema>;
+
+/**
+ * One numbered version of a content item in a single language — the unit a
+ * story-seed recipe authors. See docs/recipe-sync-architecture.md,
+ * "Content versioning — seeding a story".
+ */
+export const ContentVersionSchema = z.object({
+  /** Sitecore numbered version (1-based). */
+  version: z.number().int().positive(),
+  /** Field values for this version, keyed by field name. */
+  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /**
+   * Workflow STATE this version sits in (e.g. "Draft", "Approved") — the
+   * item's `__Workflow state`. Distinct from the item-level `workflow`,
+   * which names the workflow *definition* the item is attached to.
+   */
+  workflowState: z.string().min(1).optional(),
+  /** ISO 8601 timestamp narrating when this version lands in the story. */
+  date: z.string().optional(),
+  /**
+   * Per-version layout. Writes to the item's `__Final Renderings`
+   * (per-version) field — not the shared `__Renderings`.
+   */
+  layout: z.lazy(() => LayoutSchema).optional(),
+  /** Personalization variants for this version. */
+  variants: z.array(ContentVariantSchema).optional(),
+});
+
+export type ContentVersion = z.infer<typeof ContentVersionSchema>;
+
 /**
  * A concrete content item — one Sitecore item conforming to a content
  * template, populated with the recipe's field values. The Phase 4
@@ -721,8 +909,41 @@ export const ContentItemRecipeSchema = z.object({
   templateType: z.string().regex(HANDLE_PATTERN, {
     message: "templateType must match `<kebab-name>@<major>`, e.g. nav-link@1",
   }),
-  /** Field values keyed by field name on the template. */
+  /**
+   * Field values keyed by field name — the primary language, single
+   * version. The simple-mode common case; mutually exclusive with
+   * `versions` (story mode). The compiler enforces the exclusivity.
+   */
   fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /**
+   * Simple mode — additional languages, one version each, keyed by ISO
+   * language code (`fr`, `de`, …). Additive and backward-compatible: omit
+   * for a single-language item. Mutually exclusive with `versions`.
+   */
+  translations: z.record(z.string(), ContentTranslationSchema).optional(),
+  /**
+   * Story mode — explicit numbered versions for seeding a narrative, keyed
+   * by ISO language code, each an ordered list of `ContentVersion`s.
+   * Mutually exclusive with `fields` / `translations` — a recipe is simple
+   * OR a story. See docs/recipe-sync-architecture.md, "Content versioning".
+   */
+  versions: z.record(z.string(), z.array(ContentVersionSchema)).optional(),
+  /**
+   * Item-level `storage: shared` field values — one value for the whole
+   * item, no language or version. In story mode these have no version to
+   * live under, so they sit here.
+   */
+  shared: z.record(z.string(), ContentFieldValueSchema).optional(),
+  /**
+   * Optional `WorkflowRecipe` handle to attach this item to. When set,
+   * the compiler emits a `SetField` writing the item's `__Workflow`
+   * field to the workflow's refKey. Use this to override the template's
+   * `__Default workflow` for a single item, or to put items under a
+   * workflow without a template-level default. The item's
+   * `__Workflow state` is not written here — Sitecore initialises new
+   * items at the workflow's initial state from the workflow definition.
+   */
+  workflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
 export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
@@ -732,8 +953,8 @@ export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
  * and datasource binding. The Phase 4 compiler emits each ComponentPlacement
  * as one `<r>` element in Sitecore's layout XML.
  *
- * The single shape used by anything that holds layout — `PartialDesignRecipe`,
- * `PageDesignRecipe`, and (when Phase 3 lands) `PageRecipe`. The
+ * The single shape used by anything that holds layout —
+ * `PartialDesignRecipe`, `PageDesignRecipe`, and `PageRecipe`. The
  * `componentHandle` resolves to a `ComponentTemplateRecipe`'s rendering
  * GUID via `renderingId(handle)`.
  *
@@ -741,9 +962,10 @@ export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
  *
  *   shared  — points at a `ContentItemRecipe` by handle (catalog-shipped
  *             reusable content like `site-logo-content@1`).
- *   scoped  — page-local content at `<page>/<slot>`. Used by `PageRecipe`;
- *             `PartialDesignRecipe` and `PageDesignRecipe` typically don't
- *             use this kind, but the shared schema accepts it.
+ *   scoped  — page-local content materialised at `<page>/Data/<slot>`.
+ *             Only valid in a `PageRecipe` layout (a page has a content
+ *             home to scope under); `PartialDesignRecipe` and
+ *             `PageDesignRecipe` reject it — they have no host page.
  *   none    — config-driven rendering with no datasource (rare).
  */
 export const ComponentPlacementSchema = z.object({
@@ -765,7 +987,13 @@ export const ComponentPlacementSchema = z.object({
       }),
       z.object({
         kind: z.literal("scoped"),
-        /** Slot path within the host item, e.g. `/main/0`. */
+        /**
+         * Page-local datasource name. `compilePageRecipe` materialises
+         * a datasource item at `<page>/Data/<slot>` (conforming to the
+         * placed component's datasource template) and points the
+         * placement's `ds` at it. Must be a valid Sitecore item name.
+         * Only valid in a `PageRecipe` layout.
+         */
         slot: z.string().min(1),
       }),
       z.object({ kind: z.literal("none") }),
@@ -784,6 +1012,144 @@ export const LayoutSchema = z.object({
 });
 
 export type Layout = z.infer<typeof LayoutSchema>;
+
+/**
+ * A page template — a Sitecore data template that items in a site's
+ * content tree conform to in order to BE authorable pages. The
+ * page-level peer of `ComponentTemplateRecipe`: where a component
+ * template backs a placeable rendering, a page template backs a
+ * navigable page.
+ *
+ * Unlike `ContentTemplateRecipe` (a plain data shape), a page template
+ * inherits the SXA Headless page base set (`SXA_HEADLESS_PAGE_BASE_TEMPLATES`
+ * — Base Page + _Navigable + _Taggable + _Designable + _Sitemap) so
+ * items conforming to it pick up the layout/presentation fields, the
+ * navigation facet, taxonomy tagging, the page-design binding, and
+ * sitemap metadata. The compiler also stamps the template's
+ * `__Standard Values` `__Renderings` with a JSON-layout shell
+ * (`<r><d id="{device}" l="{jsonLayout}" /></r>`), optionally seeded
+ * with `layout` placements.
+ *
+ * Page templates are the resolution target for `PageDesignRecipe.appliesTo`,
+ * `SiteTemplateRecipe.pageTemplates`, `insertOptionsMatrix`, and
+ * `templatesToDesigns` keys. The default template→design binding is the
+ * `TemplatesMapping` aggregate on the Page Designs root (driven by
+ * `PageDesignRecipe.appliesTo`); the per-page `Page Design` override
+ * field is left unset.
+ *
+ * Identity: `templateId(site, handle)` — a page template IS a Sitecore
+ * template, same GUID family as component/content templates.
+ */
+export const PageTemplateRecipeSchema = z.object({
+  kind: z.literal("page-template"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. article-page@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /** Defaults to the SXA page icon if omitted. */
+  icon: z.string().optional(),
+  /**
+   * Optional taxonomy metadata. `meta.tax.group` nests the template one
+   * folder level deep: when set, the template lands at
+   * `<pageTemplatesRoot>/<group>/<name>` (the group folder is emitted
+   * once per recipe set as a `CreateOnly` op) instead of flat under
+   * `<pageTemplatesRoot>/<name>`. Other taxonomy fields pass through
+   * unmodified for downstream consumers.
+   */
+  meta: RecipeMetaSchema,
+  /**
+   * Page-specific fields beyond the inherited SXA base — SEO copy,
+   * hero overrides, structured metadata. Grouped into sections the
+   * same way component/content template fields are.
+   */
+  fields: z.array(FieldDefinitionSchema).default([]),
+  /**
+   * Page-template handles allowed as child pages under items of this
+   * template — the Sitecore Insert Options surface for content authors.
+   * Resolve to other `PageTemplateRecipe` handles.
+   */
+  insertOptions: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
+  /**
+   * Optional default presentation baked into the template's
+   * `__Standard Values` layout. Most page templates leave this empty —
+   * page chrome comes from the page design's partials, and page-local
+   * content lands on the page item's own `__Final Renderings`. Set it
+   * only for renderings every page of this template should carry
+   * regardless of design.
+   */
+  layout: LayoutSchema.optional(),
+  /**
+   * Optional `WorkflowRecipe` handle bound on the template's
+   * `__Standard Values` `__Default workflow` — new pages of this
+   * template enter the workflow automatically. Mirrors
+   * `ContentTemplateRecipe.defaultWorkflow`.
+   */
+  defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
+});
+
+export type PageTemplateRecipe = z.infer<typeof PageTemplateRecipeSchema>;
+
+/**
+ * A page — a concrete, navigable item in the site content tree. The
+ * page-level peer of `ContentItemRecipe`: where a content item is a
+ * shared datasource shape, a `PageRecipe` is an authorable page.
+ *
+ * It conforms to a `PageTemplateRecipe` (inheriting the SXA page
+ * presentation facets), carries field values for the page's own
+ * fields, and may declare a `layout` — written to the page item's
+ * `__Final Renderings` (the per-version final layout), distinct from a
+ * page design's `__Renderings`.
+ *
+ * Layout placements bind via `datasourceRef`: `shared` (a
+ * `ContentItemRecipe`), `scoped` (a page-local datasource item the
+ * compiler materialises at `<page>/Data/<slot>`), or `none`. Pages
+ * currently land flat under `pagesRoot` — page-tree nesting (a `parent`
+ * page handle) is the one deferred follow-up.
+ *
+ * Identity: `pageItemId(site, handle)`. `SiteRecipe.initialHome`
+ * resolves to a `PageRecipe` handle.
+ */
+export const PageRecipeSchema = z.object({
+  kind: z.literal("page"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. home@1",
+  }),
+  /** Sitecore item name under the pages root. */
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /**
+   * Handle of the `PageTemplateRecipe` this page conforms to. Compiler
+   * resolves via `templateId(handle)` to set the item's Template-Of.
+   */
+  template: z.string().regex(HANDLE_PATTERN, {
+    message: "template must reference a PageTemplateRecipe by handle, e.g. article-page@1",
+  }),
+  /**
+   * Field values keyed by field name on the page template. Same
+   * encoding surface as `ContentItemRecipe.fields` (`link-internal`
+   * is deferred — use `reference` or `link-external`).
+   */
+  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /**
+   * Optional page-local presentation, written to the page item's
+   * `__Final Renderings`. Placements use `datasourceRef` `shared`
+   * (a `ContentItemRecipe`), `scoped` (a page-local datasource at
+   * `<page>/Data/<slot>`, materialised by the compiler), or `none`.
+   */
+  layout: LayoutSchema.optional(),
+  /**
+   * Optional `WorkflowRecipe` handle — sets the page item's
+   * `__Workflow` field. Mirrors `ContentItemRecipe.workflow`.
+   */
+  workflow: z.string().regex(HANDLE_PATTERN).optional(),
+});
+
+export type PageRecipe = z.infer<typeof PageRecipeSchema>;
 
 /**
  * A reusable layout chunk — header, footer, sidebar, byline. Lives at
@@ -900,7 +1266,7 @@ export type SiteTemplateTaxonomyEntry = z.infer<typeof SiteTemplateTaxonomyEntry
  * Authoring GraphQL, not the Sites API.
  *
  * Cross-recipe handle resolution: `pageTemplates` and
- * `insertOptionsMatrix.*` resolve to `ContentTemplateRecipe` handles;
+ * `insertOptionsMatrix.*` resolve to `PageTemplateRecipe` handles;
  * `pageDesigns` and `templatesToDesigns.*` values resolve to
  * `PageDesignRecipe` handles. The cross-recipe validator
  * (`validateRecipeSet`) catches missing handles before push.
@@ -917,7 +1283,7 @@ export const SiteTemplateRecipeSchema = z.object({
   icon: z.string().optional(),
   /**
    * Page-template handles this brand offers (resolve to
-   * `ContentTemplateRecipe`). The site's content tree allows pages
+   * `PageTemplateRecipe`). The site's content tree allows pages
    * conforming to any of these.
    */
   pageTemplates: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
@@ -1012,8 +1378,7 @@ export type SiteGrouping = z.infer<typeof SiteGroupingSchema>;
  *
  * Cross-recipe handle resolution: `siteTemplate` resolves to a
  * `SiteTemplateRecipe`; `initialHome` (when present) resolves to a
- * `PageRecipe` (Phase 6+ — schema accepts the handle now, executor
- * support lands later).
+ * `PageRecipe`.
  */
 export const SiteRecipeSchema = z.object({
   kind: z.literal("site"),
@@ -1103,10 +1468,8 @@ export const SiteRecipeSchema = z.object({
    */
   taxonomyOverrides: z.record(z.string().min(1), z.array(z.string().min(1))).optional(),
   /**
-   * Optional initial home page — a `PageRecipe` handle. Phase 6+
-   * concern; schema accepts the handle now so SiteRecipes can
-   * declare it; the executor will materialise it once page-recipe
-   * execution lands.
+   * Optional initial home page — a `PageRecipe` handle. Cross-recipe
+   * validation resolves it to a `page` recipe in the set.
    */
   initialHome: z.string().regex(HANDLE_PATTERN).optional(),
 });
@@ -1245,11 +1608,226 @@ export const EnumerationRecipeSchema = z.object({
 
 export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;
 
+// ─────────────────────────────────────────────────────────────────────
+// Workflow + webhook recipes
+//
+// Full reference (behavior, payload, endpoint contract, auth types,
+// failure modes, troubleshooting): docs/recipes/workflow.md
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Stable, kebab-case key for a workflow state or command. Used as part
+ * of the deterministic GUID seed — renaming a key creates a different
+ * item (and orphans transitions that pointed at the old key). Format
+ * is restricted to lowercase letters, digits, and hyphens so the
+ * generated content-tree paths stay URL-safe across all Sitecore
+ * tenants without re-quoting.
+ */
+const WorkflowKeyPattern = /^[a-z][a-z0-9-]*$/;
+const WorkflowKey = z.string().regex(WorkflowKeyPattern, {
+  message: "key must match `^[a-z][a-z0-9-]*$` (lowercase, kebab)",
+});
+
+/** `$ENV:VAR_NAME` reference — secrets never inline in the recipe file. */
+const SecretRef = z.string().regex(/^\$ENV:[A-Z_][A-Z0-9_]*$/, {
+  message: "use $ENV:NAME for secret values; never inline plaintext credentials",
+});
+
+/**
+ * Webhook authorization recipe — declares a reusable `Webhook
+ * Authorization` item under `/sitecore/system/Settings/Webhooks/Authorizations`.
+ * Workflow webhook actions and event handlers reference one of these
+ * via `authorizationRef: <handle>`.
+ *
+ * The authorization templates live under
+ * `/sitecore/templates/System/Webhooks/Authorizations/...`. The
+ * compiler emits `templateOf: { kind: "ref-path", value: ... }` so the
+ * push pipeline resolves the template GUID at apply time — these
+ * GUIDs aren't published as a public contract.
+ *
+ * Secrets are always by `$ENV:VAR_NAME` reference; the apply step
+ * resolves the env var at push time. Missing env vars surface as a
+ * plan-phase error before any item write.
+ */
+const WebhookAuthorizationApiKeySchema = z.object({
+  type: z.literal("ApiKey"),
+  /** Header name to attach (e.g. `X-Api-Key`, `Authorization`). */
+  headerName: z.string().min(1),
+  /** `$ENV:VAR_NAME` reference to the key/token. */
+  key: SecretRef,
+});
+
+const WebhookAuthorizationBasicSchema = z.object({
+  type: z.literal("Basic"),
+  username: z.string().min(1),
+  password: SecretRef,
+});
+
+const WebhookAuthorizationOAuth2Schema = z.object({
+  type: z.literal("OAuth2ClientCredentialsGrant"),
+  tokenEndpoint: z.string().url(),
+  clientId: z.string().min(1),
+  clientSecret: SecretRef,
+  scope: z.string().optional(),
+  audience: z.string().optional(),
+});
+
+export const WebhookAuthorizationRecipeSchema = z.object({
+  kind: z.literal("webhook-authorization"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. ci-bearer@1",
+  }),
+  /** Sitecore item name. */
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  auth: z.discriminatedUnion("type", [
+    WebhookAuthorizationApiKeySchema,
+    WebhookAuthorizationBasicSchema,
+    WebhookAuthorizationOAuth2Schema,
+  ]),
+});
+
+export type WebhookAuthorizationRecipe = z.infer<typeof WebhookAuthorizationRecipeSchema>;
+
+/**
+ * Either an intra-recipe reference to a `webhook-authorization` recipe
+ * (`authorizationRef: <handle>`) or an absolute content-tree path
+ * (`authorizationPath: /sitecore/system/Settings/Webhooks/Authorizations/...`)
+ * to an existing tenant-side Authorization item. Exactly one of the two
+ * (enforced via superRefine on the workflow recipe).
+ */
+const WebhookActionAuthRefSchema = z.object({
+  authorizationRef: z.string().regex(HANDLE_PATTERN).optional(),
+  authorizationPath: z.string().startsWith("/sitecore/").optional(),
+});
+
+const WebhookActionBaseSchema = WebhookActionAuthRefSchema.extend({
+  /**
+   * Sitecore item name for the action item. Derived from the action's
+   * key within its state/command (e.g. `notify-reviewer`) — must be
+   * unique among siblings under that state or command.
+   */
+  key: WorkflowKey,
+  url: z.string().url(),
+  displayName: z.string().min(1).optional(),
+  description: z.string().optional(),
+  serializationType: z.enum(["JSON", "XML"]).default("JSON"),
+  enabled: z.boolean().default(true),
+});
+
+const WebhookSubmitActionSchema = WebhookActionBaseSchema.extend({
+  kind: z.literal("webhook-submit"),
+});
+
+const WebhookValidationActionSchema = WebhookActionBaseSchema.extend({
+  kind: z.literal("webhook-validation"),
+});
+
+const WorkflowActionSchema = z.discriminatedUnion("kind", [
+  WebhookSubmitActionSchema,
+  WebhookValidationActionSchema,
+]);
+
+const AppearanceEvaluatorSchema = z.enum(["default", "lock", "unlock"]);
+
+const WorkflowCommandSchema = z.object({
+  key: WorkflowKey,
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  nextState: WorkflowKey,
+  /** Maps to the standard `__Auto Publish` field on a workflow Command. */
+  autoPublish: z.boolean().default(false),
+  /** Maps to the standard `Suppress comment` field — silences the comment prompt. */
+  suppressComment: z.boolean().default(false),
+  /** Maps to `Appearance Evaluator Type`. */
+  appearanceEvaluator: AppearanceEvaluatorSchema.default("default"),
+  /**
+   * When true, the compiler emits a `SetField` to restrict the command
+   * to administrators (sets the standard `__Security` field with a
+   * deny-everyone ACL plus an allow-admin ACL). Suitable for sensitive
+   * commands like "Publish to Production" that shouldn't be available
+   * to all reviewers.
+   */
+  secured: z.boolean().default(false),
+  /** Validation actions attached to this command (synchronous gates). */
+  validations: z.array(WebhookValidationActionSchema).default([]),
+});
+
+const WorkflowStateSchema = z.object({
+  key: WorkflowKey,
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  /** Maps to the standard `Final` checkbox on the State item. */
+  final: z.boolean().default(false),
+  /** Maps to `Preview` — items in this state appear in the preview database. */
+  preview: z.boolean().default(false),
+  /** Submit or validation actions that fire on entry into this state. */
+  actions: z.array(WorkflowActionSchema).default([]),
+  commands: z.array(WorkflowCommandSchema).default([]),
+});
+
+const WorkflowBindingsSchema = z
+  .object({
+    /**
+     * Templates to bind this workflow to. Each entry is either an
+     * intra-recipe content-template handle (resolves via refKey) or an
+     * absolute path to a tenant-existing template (resolves via
+     * `crossRecipeRefs`). The compiler emits a `SetField` op against
+     * each template's `__Standard Values` item setting the
+     * `__Default workflow` field.
+     */
+    templates: z
+      .array(
+        z.union([z.string().regex(HANDLE_PATTERN), z.string().startsWith("/sitecore/templates/")])
+      )
+      .default([]),
+  })
+  .default({ templates: [] });
+
+/**
+ * Cross-field validations (`initialState` must match a declared state,
+ * `nextState` refs must resolve, at least one final state, action auth
+ * is `Ref` XOR `Path`) live in `compileWorkflowRecipe` — not on the
+ * schema — because Zod's `discriminatedUnion` rejects `ZodEffects`
+ * members and we need this schema in `RecipeSchema`. Same pattern
+ * `EnumerationRecipeSchema` uses for its `default ∈ values` check.
+ */
+export const WorkflowRecipeSchema = z.object({
+  kind: z.literal("workflow"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. blog-article-approval@1",
+  }),
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  /**
+   * Optional taxonomy metadata. `meta.tax.group` is the only field
+   * the compiler currently consumes — it drives a one-level Workflow
+   * Folder under `/sitecore/system/Workflows/<group>/<name>`. Other
+   * fields are accepted for registry → recipe pipeline compatibility
+   * but aren't load-bearing.
+   */
+  meta: RecipeMetaSchema,
+  /** State key of the workflow's initial state (must match one of `states`). */
+  initialState: WorkflowKey,
+  states: z.array(WorkflowStateSchema).min(1),
+  bindings: WorkflowBindingsSchema,
+});
+
+export type WorkflowRecipe = z.infer<typeof WorkflowRecipeSchema>;
+
 export const RecipeSchema = z.discriminatedUnion("kind", [
   ComponentSectionRecipeSchema,
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   ContentItemRecipeSchema,
+  PageTemplateRecipeSchema,
+  PageRecipeSchema,
+  PlaceholderRecipeSchema,
   DesignParametersTemplateRecipeSchema,
   SectionDefinitionRecipeSchema,
   PartialDesignRecipeSchema,
@@ -1257,6 +1835,8 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   SiteTemplateRecipeSchema,
   SiteRecipeSchema,
   EnumerationRecipeSchema,
+  WorkflowRecipeSchema,
+  WebhookAuthorizationRecipeSchema,
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;

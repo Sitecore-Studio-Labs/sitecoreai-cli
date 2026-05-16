@@ -1,15 +1,10 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { Logger } from "@/shared/logger";
 import type { AuthoringApiClient } from "../api/client";
-import {
-  ensureAllowWrite,
-  resolveTenant,
-  toLogger,
-  type RecipeTenantOptions,
-} from "./shared";
+import { ensureAllowWrite, resolveTenant, toLogger, type RecipeTenantOptions } from "./shared";
 
 /**
- * `scai recipe prune-defaults` — remove the SXA Headless OOTB content
+ * `scai provision recipe prune-defaults` — remove the SXA Headless OOTB content
  * that ships with every fresh site under `Available Renderings`,
  * `Headless Variants`, and the per-site `Data` bucket. Registry installs
  * ship their own renderings, variants, and datasources; the OOTB folders
@@ -92,7 +87,7 @@ export interface RecipePruneDefaultsResult {
 const buildTargets = (
   availableRenderingsRoot: string,
   headlessVariantsRoot: string,
-  contentItemsRoot: string,
+  contentItemsRoot: string
 ): Array<{ group: PruneGroup; path: string }> => {
   const ar = availableRenderingsRoot.replace(/\/+$/, "");
   const hv = headlessVariantsRoot.replace(/\/+$/, "");
@@ -116,7 +111,7 @@ const buildTargets = (
 /**
  * Detect the Authoring GraphQL "item is gone" response. The shared
  * graphql.ts wrapper joins all error.message strings into a single
- * `Authoring GraphQL errors: <messages>` payload on a NETWORK CliError;
+ * `Authoring GraphQL errors: <messages>` payload on a NETWORK ScaiError;
  * we match the canonical Sitecore phrasing that fires when an itemId
  * doesn't resolve at delete time.
  */
@@ -124,8 +119,7 @@ const isItemNotFoundError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
   const message = error.message;
   return (
-    message.includes("was not found") ||
-    message.includes("may have been deleted by another user")
+    message.includes("was not found") || message.includes("may have been deleted by another user")
   );
 };
 
@@ -144,9 +138,16 @@ interface PruneCoreOptions {
  * threading a full sitecoreai.cli.json through `resolveTenant`.
  */
 export const pruneDefaultsAgainstClient = async (
-  options: PruneCoreOptions,
+  options: PruneCoreOptions
 ): Promise<PruneAction[]> => {
-  const { client, availableRenderingsRoot, headlessVariantsRoot, contentItemsRoot, whatIf, logger } = options;
+  const {
+    client,
+    availableRenderingsRoot,
+    headlessVariantsRoot,
+    contentItemsRoot,
+    whatIf,
+    logger,
+  } = options;
   const targets = buildTargets(availableRenderingsRoot, headlessVariantsRoot, contentItemsRoot);
   const actions: PruneAction[] = [];
 
@@ -172,7 +173,7 @@ export const pruneDefaultsAgainstClient = async (
     } catch (error) {
       // Authoring GraphQL surfaces concurrent-delete as a "was not found"
       // / "may have been deleted by another user" message wrapped in a
-      // NETWORK CliError. Treat as a clean skip — the post-condition
+      // NETWORK ScaiError. Treat as a clean skip — the post-condition
       // (item gone) is satisfied either way.
       if (isItemNotFoundError(error)) {
         actions.push({ ...target, status: "missing", itemId: existing.itemId });
@@ -187,7 +188,7 @@ export const pruneDefaultsAgainstClient = async (
 };
 
 export const runRecipePruneDefaults = async (
-  options: RecipePruneDefaultsOptions,
+  options: RecipePruneDefaultsOptions
 ): Promise<RecipePruneDefaultsResult> => {
   const logger = toLogger(options);
   const tenant = resolveTenant(options);
@@ -201,8 +202,7 @@ export const runRecipePruneDefaults = async (
     options.headlessVariantsRoot ?? tenant.environment.headlessVariantsRoot;
   const availableRenderingsRoot =
     options.availableRenderingsRoot ?? tenant.environment.availableRenderingsRoot;
-  const contentItemsRoot =
-    options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
+  const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
   if (!headlessVariantsRoot || !availableRenderingsRoot || !contentItemsRoot) {
     const missing = [
       !headlessVariantsRoot && "headlessVariantsRoot",
@@ -211,19 +211,19 @@ export const runRecipePruneDefaults = async (
     ]
       .filter(Boolean)
       .join(", ");
-    throw createCliError(
+    throw createScaiError(
       `Recipe prune-defaults missing root path(s): ${missing} not configured for environment '${tenant.envName}'.`,
       "INPUT_INVALID",
       {
         hint: `Add 'headlessVariantsRoot', 'availableRenderingsRoot', and 'contentItemsRoot' to envProfiles.${tenant.envName} in sitecoreai.cli.json (or pass --headless-variants-root / --available-renderings-root / --content-items-root).`,
-      },
+      }
     );
   }
 
   if (!logger.isJson()) {
     logger.info(
       `${isDryRun ? "Dry-run prune-defaults" : "Pruning SXA defaults"} on ${tenant.envName}`,
-      "cyan",
+      "cyan"
     );
   }
 
@@ -255,7 +255,7 @@ export const runRecipePruneDefaults = async (
       `Summary: ${summary.deleted} deleted / ${summary.missing} not present${
         summary.wouldDelete ? ` / ${summary.wouldDelete} would-delete` : ""
       }`,
-      summary.deleted > 0 || summary.wouldDelete > 0 ? "green" : "gray",
+      summary.deleted > 0 || summary.wouldDelete > 0 ? "green" : "gray"
     );
   }
 

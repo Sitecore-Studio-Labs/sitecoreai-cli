@@ -103,7 +103,9 @@ describe("compileRecipeSet — TemplatesMapping aggregate", () => {
       ["article-page@1", "article-design@1"],
     ] as const) {
       expect(value).toContain(encodeURIComponent(`{${templateId(SITE, tplHandle).toUpperCase()}}`));
-      expect(value).toContain(encodeURIComponent(`{${pageDesignId(SITE, designHandle).toUpperCase()}}`));
+      expect(value).toContain(
+        encodeURIComponent(`{${pageDesignId(SITE, designHandle).toUpperCase()}}`)
+      );
     }
   });
 

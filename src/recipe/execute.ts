@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "./api/client";
 import { renderRefValue } from "./api/ref-encoding";
 import type { SitesApiClient } from "./api/sites-client";
@@ -12,9 +12,10 @@ import {
   type PlanSummary,
 } from "./plan";
 import { rollback, type RollbackError, type RollbackEvent, type RollbackResult } from "./rollback";
+import type { RollbackLogger, RollbackSummaryLog } from "./rollback-log";
 
 /**
- * `scai recipe push` and `scai recipe plan` share the same per-op
+ * `scai provision recipe push` and `scai provision recipe plan` share the same per-op
  * read-then-diff loop. Apply mode interleaves plan-and-apply: each op's
  * plan sees the cascading effect of earlier ops' applies — required for
  * idempotency.
@@ -83,6 +84,15 @@ export interface ExecuteOptions {
   mode: ExecutionMode;
   emit?: (event: ExecutionEvent) => void;
   /**
+   * Cooperative cancellation. When `signal.aborted` becomes true, the
+   * executor stops *between* operations, runs the same rollback path
+   * as a failed op, and returns an `ExecutionResult` with
+   * `aborted: true` and a reason indicating client-initiated cancel.
+   * In-flight requests are not interrupted — finishing the current op
+   * keeps the rollback inventory accurate.
+   */
+  signal?: AbortSignal;
+  /**
    * Cross-recipe ref pre-seed: `refKey → expectedPath` for items
    * produced by OTHER recipes in the same workspace. The executor
    * walks this map at start, calls `getItem({path})` for each entry,
@@ -125,6 +135,14 @@ export interface ExecuteOptions {
    * indicates a CreateItem is needed.
    */
   pathSnapshotCache?: Map<string, RemoteItem | null>;
+  /**
+   * On-disk rollback audit log. Threaded through to `rollback()` so each
+   * compensating-op outcome is captured, and to `executeIr` so the
+   * per-recipe summary line is written when a push aborts. Optional —
+   * when absent, the executor still rolls back in-memory but writes
+   * nothing to disk.
+   */
+  rollbackLog?: RollbackLogger;
 }
 
 /**
@@ -159,14 +177,14 @@ const awaitSitesJob = async (
       return;
     }
     if (phase === "Failed" || phase === "Errored") {
-      throw createCliError(
+      throw createScaiError(
         `Sites API job ${jobHandle} reported terminal state '${phase}'.`,
         "SITES_API_FAILED"
       );
     }
     await new Promise((resolve) => setTimeout(resolve, SITES_JOB_POLL_INTERVAL_MS));
   }
-  throw createCliError(
+  throw createScaiError(
     `Sites API job ${jobHandle} did not finish within ${SITES_JOB_POLL_BUDGET_MS}ms.`,
     "SITES_API_FAILED"
   );
@@ -248,12 +266,23 @@ const dispatchMutation = async (
     await client.updateItem(action.mutation.input);
     return;
   }
+  if (action.mutation.kind === "addItemVersion") {
+    // Sitecore assigns numbered versions sequentially, so adding `addCount`
+    // versions one at a time lands the item's version count at the op's
+    // declared target. `addCount` is normally 1 (the compiler emits one op
+    // per extra version); a larger value reconciles a gap.
+    const { itemId, language, addCount } = action.mutation;
+    for (let n = 0; n < addCount; n += 1) {
+      await client.addItemVersion({ itemId, language });
+    }
+    return;
+  }
   // createSite: dispatch through Sites API, await the async job, then
   // look up the materialised site by name to capture its itemId so
   // subsequent SetField overrides (dictionary, taxonomy) targeting
   // items under the site can resolve via late-path seeding.
   if (!sitesClient) {
-    throw createCliError(
+    throw createScaiError(
       "createSite mutation requires a SitesApiClient — none threaded into the executor.",
       "UNKNOWN"
     );
@@ -262,7 +291,7 @@ const dispatchMutation = async (
   const jobResponse = await sitesClient.createSite(input);
   const jobHandle = jobResponse.handle ?? jobResponse.jobHandle;
   if (!jobHandle) {
-    throw createCliError(
+    throw createScaiError(
       `createSite for '${input.siteName}' returned a JobResponse with no handle: ${JSON.stringify(jobResponse)}`,
       "SITES_API_FAILED"
     );
@@ -276,7 +305,7 @@ const dispatchMutation = async (
   if (created?.id) {
     capturedItemIds.set(siteRefKey, created.id);
   } else {
-    throw createCliError(
+    throw createScaiError(
       `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`,
       "SITES_API_FAILED"
     );
@@ -300,8 +329,24 @@ const runRollback = async (
   applied: PlannedAction[],
   client: AuthoringApiClient,
   capturedItemIds: ReadonlyMap<string, string>,
-  options: ExecuteOptions
-): Promise<RollbackResult> => rollback(applied, client, capturedItemIds, { emit: options.emit });
+  options: ExecuteOptions,
+  recipeHandle: string,
+  summary: { trigger: RollbackSummaryLog["trigger"]; forwardError: string }
+): Promise<RollbackResult> => {
+  const result = await rollback(applied, client, capturedItemIds, {
+    emit: options.emit,
+    log: options.rollbackLog ? { logger: options.rollbackLog, recipe: recipeHandle } : undefined,
+  });
+  if (options.rollbackLog) {
+    await options.rollbackLog.recordSummary(recipeHandle, {
+      trigger: summary.trigger,
+      rolledBack: result.rolledBack,
+      errorCount: result.errors.length,
+      forwardError: summary.forwardError,
+    });
+  }
+  return result;
+};
 
 const emitFailed = (
   options: ExecuteOptions,
@@ -435,6 +480,19 @@ export const executeIr = async (
   }
 
   for (let index = 0; index < ir.operations.length; index += 1) {
+    if (options.signal?.aborted) {
+      const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "cancelled", forwardError: cancelMessage }
+      );
+      emitFailed(options, index, applied, rollbackResult, cancelMessage);
+      return buildResult(ir, actions, summary, true, rollbackResult);
+    }
     const op = ir.operations[index];
     options.emit?.({ kind: "op-start", index, operation: op });
 
@@ -454,7 +512,14 @@ export const executeIr = async (
       options.emit?.({ kind: "op-error", index, operation: op, error: message });
       summary.error += 1;
       actions.push(action);
-      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "plan-error", forwardError: message }
+      );
       emitFailed(options, index, applied, rollbackResult, message);
       return buildResult(ir, actions, summary, true, rollbackResult);
     }
@@ -488,7 +553,14 @@ export const executeIr = async (
       action.status = "error";
       action.reason = message;
       options.emit?.({ kind: "apply-error", action, error: message });
-      const rollbackResult = await runRollback(applied, client, capturedItemIds, options);
+      const rollbackResult = await runRollback(
+        applied,
+        client,
+        capturedItemIds,
+        options,
+        ir.recipeHandle,
+        { trigger: "apply-error", forwardError: message }
+      );
       emitFailed(options, index, applied, rollbackResult, message);
       return buildResult(ir, actions, summary, true, rollbackResult);
     }

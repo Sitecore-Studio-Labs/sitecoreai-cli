@@ -60,6 +60,18 @@ export interface CreateItemInput {
   /** Default language for versioned fields; defaults to "en". */
   language?: string;
   fields: FieldValue[];
+  /**
+   * When true, the implementation does an authoritative
+   * parent-children lookup BEFORE issuing the create mutation. If a
+   * sibling with `name` already exists, returns its itemId without
+   * mutating. Recipe push opts in because the planner reads existence
+   * via the path index, which lags writes by seconds-to-minutes — so
+   * a rapid second push can plan a create against a path the tenant
+   * already has, and Sitecore's create mutation does not always
+   * reject the duplicate. Off by default for explicit one-shot
+   * createItem calls.
+   */
+  idempotencyCheck?: boolean;
 }
 
 export interface CreateItemResult {
@@ -69,7 +81,30 @@ export interface CreateItemResult {
 
 export interface UpdateItemInput {
   itemId: string;
+  /**
+   * Language to write the fields in. The Authoring API applies every
+   * `FieldValueInput` at this input-level language — per-field language is
+   * not on the wire. Omit for the item's default language.
+   */
+  language?: string;
+  /**
+   * Numbered version to write the fields to. Omit for the latest version.
+   * A `SetField` targeting a story-seed numbered version carries it here.
+   */
+  version?: number;
   fields: FieldValue[];
+}
+
+export interface AddItemVersionInput {
+  /** Sitecore itemId of the target item. */
+  itemId: string;
+  /** Language whose version stack to extend (ISO code, e.g. `en`, `fr`). */
+  language: string;
+}
+
+export interface AddItemVersionResult {
+  /** The numbered version that now exists — the one just added. */
+  version: number;
 }
 
 export interface GetItemOptions {
@@ -104,4 +139,21 @@ export interface AuthoringApiClient {
   updateItem(input: UpdateItemInput): Promise<void>;
   /** Phase 4 policy `CreateUpdateAndDelete` will use this. */
   deleteItem(selector: ItemSelector): Promise<void>;
+  /**
+   * Add a numbered version to `input.itemId` in `input.language`. Sitecore
+   * assigns the version number sequentially; the result carries the number
+   * of the version just created. When the language has no versions yet,
+   * this creates that language version as part of adding version 1.
+   *
+   * Backs the `AddItemVersion` IR op — story-seed content recipes that
+   * author multiple numbered versions of an item.
+   */
+  addItemVersion(input: AddItemVersionInput): Promise<AddItemVersionResult>;
+  /**
+   * The numbered versions an item currently has in `language`, ascending —
+   * empty when the item has no versions in that language or doesn't exist.
+   * The `AddItemVersion` planner reads this to stay idempotent (skip when
+   * the target version already exists).
+   */
+  getItemVersions(selector: ItemSelector, language: string): Promise<number[]>;
 }

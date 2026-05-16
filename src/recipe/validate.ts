@@ -1,4 +1,4 @@
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import type { Recipe } from "./schema/recipe";
 
 /**
@@ -16,20 +16,45 @@ import type { Recipe } from "./schema/recipe";
  *     params[*].sitecore.sourceTypes[*]   → any template-bearing recipe
  *     insertOptions[*]                    → any template-bearing recipe
  *
+ *   ComponentTemplateRecipe
+ *     placeholders[*].allowedComponents[*]→ ComponentTemplateRecipe
+ *
  *   ContentItemRecipe
  *     templateType                        → any template-bearing recipe
  *     fields[*].link-internal.ref         → any recipe
  *     fields[*].reference.refs[*]         → any recipe
+ *
+ *   PageTemplateRecipe
+ *     fields[*].sitecore.sourceTypes[*]   → any template-bearing recipe
+ *     insertOptions[*]                    → PageTemplateRecipe
+ *     layout.placeholders[*][*].componentHandle           → ComponentTemplateRecipe
+ *     layout.placeholders[*][*].datasourceRef.handle      → ContentItemRecipe
+ *
+ *   PlaceholderRecipe
+ *     allowedComponents[*]                → ComponentTemplateRecipe
+ *
+ *   PageRecipe
+ *     template                            → PageTemplateRecipe
+ *     fields[*].link-internal.ref          → any recipe
+ *     fields[*].reference.refs[*]          → any recipe
+ *     layout.placeholders[*][*].componentHandle      → ComponentTemplateRecipe
+ *     layout.placeholders[*][*].datasourceRef.handle → ContentItemRecipe
  *
  *   PartialDesignRecipe
  *     layout.placeholders[*][*].componentHandle           → ComponentTemplateRecipe
  *     layout.placeholders[*][*].datasourceRef.handle      → ContentItemRecipe
  *
  *   PageDesignRecipe
- *     appliesTo[*]                        → ContentTemplateRecipe (page templates)
+ *     appliesTo[*]                        → PageTemplateRecipe
  *     partials[*]                         → PartialDesignRecipe
  *     layout.placeholders[*][*].componentHandle           → ComponentTemplateRecipe
  *     layout.placeholders[*][*].datasourceRef.handle      → ContentItemRecipe
+ *
+ * Beyond reference resolution this also checks **placement legality** —
+ * a layout placement into a recipe-defined placeholder whose
+ * `Allowed Controls` whitelist doesn't include the component is reported
+ * as a `PlacementViolation` — and flags a placeholder `key` declared by
+ * more than one recipe.
  *
  * Cycle detection covers `insertOptions` chains
  * (`ComponentTemplate.insertOptions → ContentTemplate.insertOptions → …`)
@@ -41,9 +66,15 @@ import type { Recipe } from "./schema/recipe";
 
 export type RecipeKind = Recipe["kind"];
 
-const TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template", "content-template"];
+const TEMPLATE_KINDS: readonly RecipeKind[] = [
+  "component-template",
+  "content-template",
+  "page-template",
+];
 const COMPONENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template"];
 const CONTENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["content-template"];
+const PAGE_TEMPLATE_KINDS: readonly RecipeKind[] = ["page-template"];
+const PAGE_KINDS: readonly RecipeKind[] = ["page"];
 const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
 const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["design-parameters-template"];
 const SECTION_DEFINITION_KINDS: readonly RecipeKind[] = ["section-definition"];
@@ -54,6 +85,9 @@ const ANY_KINDS: readonly RecipeKind[] = [
   "component-template",
   "content-template",
   "content-item",
+  "page-template",
+  "page",
+  "placeholder",
   "design-parameters-template",
   "section-definition",
   "partial-design",
@@ -104,18 +138,45 @@ export interface FieldShapeError {
   message: string;
 }
 
+/**
+ * A layout placement that drops a component into a recipe-defined
+ * placeholder whose `Allowed Controls` whitelist doesn't include it —
+ * the "what's allowed in a placeholder" enforcement.
+ *
+ * Only raised for placeholders the recipe set itself defines (a
+ * `PlaceholderRecipe` or an inline `ComponentTemplateRecipe.placeholders`
+ * slot) AND that carry a non-empty whitelist. Placements into
+ * pre-existing tenant placeholders, or into recipe-defined placeholders
+ * with an empty (unrestricted) whitelist, are not checkable here and
+ * pass.
+ */
+export interface PlacementViolation {
+  /** Handle of the recipe that holds the offending layout. */
+  fromRecipe: string;
+  /** Dotted path to the placement — `layout.placeholders./header.0`. */
+  fromField: string;
+  /** The component handle being placed. */
+  componentHandle: string;
+  /** The placeholder key it was placed into. */
+  placeholderKey: string;
+  /** The component handles the placeholder's whitelist does allow. */
+  allowedComponents: readonly string[];
+}
+
 export interface ValidationResult {
   unresolvedHandles: UnresolvedHandle[];
   duplicateHandles: DuplicateHandle[];
   cycles: CyclicReference[];
   fieldShapeErrors: FieldShapeError[];
+  placementViolations: PlacementViolation[];
 }
 
 export const isValid = (result: ValidationResult): boolean =>
   result.unresolvedHandles.length === 0 &&
   result.duplicateHandles.length === 0 &&
   result.cycles.length === 0 &&
-  result.fieldShapeErrors.length === 0;
+  result.fieldShapeErrors.length === 0 &&
+  result.placementViolations.length === 0;
 
 /**
  * Render a `ValidationResult` as a multi-line, human-readable error
@@ -140,6 +201,11 @@ export function formatValidationErrors(result: ValidationResult): string {
   }
   for (const err of result.fieldShapeErrors) {
     lines.push(`${err.fromRecipe} → ${err.fromField}: ${err.message}`);
+  }
+  for (const v of result.placementViolations) {
+    lines.push(
+      `${v.fromRecipe} → ${v.fromField}: '${v.componentHandle}' is not allowed in placeholder '${v.placeholderKey}' (allowed: ${v.allowedComponents.join(", ") || "none"}).`
+    );
   }
   return lines.join("\n");
 }
@@ -195,6 +261,80 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
     }
   };
 
+  const placementViolations: PlacementViolation[] = [];
+
+  // Pre-pass: collect recipe-defined placeholder keys and their resolved
+  // `Allowed Controls` whitelists — standalone `PlaceholderRecipe` plus
+  // inline `ComponentTemplateRecipe.placeholders`, then `placedIn`
+  // pushes. Mirrors `buildPlaceholderSettingsAggregate` in `compile.ts`
+  // so the legality check sees the same allow-sets the compiler emits.
+  const placeholderAllow = new Map<string, Set<string>>();
+  const placeholderDefiners = new Map<string, string[]>();
+  const declarePlaceholder = (key: string, byRecipe: string): Set<string> => {
+    placeholderDefiners.set(key, [...(placeholderDefiners.get(key) ?? []), byRecipe]);
+    let set = placeholderAllow.get(key);
+    if (!set) {
+      set = new Set();
+      placeholderAllow.set(key, set);
+    }
+    return set;
+  };
+  for (const recipe of recipes) {
+    if (recipe.kind === "placeholder") {
+      const set = declarePlaceholder(recipe.key, recipe.handle);
+      for (const handle of recipe.allowedComponents ?? []) set.add(handle);
+    } else if (recipe.kind === "component-template") {
+      for (const slot of recipe.placeholders ?? []) {
+        const set = declarePlaceholder(slot.key, recipe.handle);
+        for (const handle of slot.allowedComponents ?? []) set.add(handle);
+      }
+    }
+  }
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-template") continue;
+    for (const key of recipe.placedIn ?? []) {
+      placeholderAllow.get(key)?.add(recipe.handle);
+    }
+  }
+  // A placeholder key declared by 2+ recipes is ambiguous — both would
+  // derive the same Placeholder Settings item GUID. Flag it once.
+  for (const [key, definers] of placeholderDefiners) {
+    if (definers.length > 1) {
+      fieldShapeErrors.push({
+        fromRecipe: definers[0],
+        fromField: "placeholder key",
+        message: `placeholder key '${key}' is declared by multiple recipes (${definers.join(", ")}) — a key maps to exactly one Placeholder Settings item; declare it once.`,
+      });
+    }
+  }
+
+  /**
+   * Check every placement in a layout against the placeholder allow-set.
+   * Only flags placements into recipe-defined placeholders with a
+   * non-empty whitelist — pre-existing tenant placeholders and
+   * unrestricted (empty-whitelist) ones can't be checked and pass.
+   */
+  const checkLayoutPlacements = (
+    fromRecipe: string,
+    placeholders: Record<string, ReadonlyArray<{ componentHandle: string }>>
+  ): void => {
+    for (const [phKey, placements] of Object.entries(placeholders)) {
+      const allow = placeholderAllow.get(phKey);
+      if (!allow || allow.size === 0) continue;
+      placements.forEach((placement, idx) => {
+        if (!allow.has(placement.componentHandle)) {
+          placementViolations.push({
+            fromRecipe,
+            fromField: `layout.placeholders.${phKey}.${idx}`,
+            componentHandle: placement.componentHandle,
+            placeholderKey: phKey,
+            allowedComponents: [...allow].sort((a, b) => a.localeCompare(b)),
+          });
+        }
+      });
+    }
+  };
+
   for (const recipe of recipes) {
     switch (recipe.kind) {
       case "component-template":
@@ -242,6 +382,16 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         });
         recipe.availableIn?.forEach((handle, idx) => {
           checkRef(recipe.handle, `availableIn.${idx}`, handle, SECTION_DEFINITION_KINDS);
+        });
+        (recipe.placeholders ?? []).forEach((slot, idx) => {
+          slot.allowedComponents?.forEach((handle, aIdx) => {
+            checkRef(
+              recipe.handle,
+              `placeholders.${idx}.allowedComponents.${aIdx}`,
+              handle,
+              COMPONENT_TEMPLATE_KINDS
+            );
+          });
         });
         break;
       case "design-parameters-template":
@@ -306,10 +456,11 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
             }
           });
         }
+        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
         break;
       case "page-design":
         recipe.appliesTo.forEach((handle, idx) => {
-          checkRef(recipe.handle, `appliesTo.${idx}`, handle, CONTENT_TEMPLATE_KINDS);
+          checkRef(recipe.handle, `appliesTo.${idx}`, handle, PAGE_TEMPLATE_KINDS);
         });
         recipe.partials.forEach((handle, idx) => {
           checkRef(recipe.handle, `partials.${idx}`, handle, PARTIAL_DESIGN_KINDS);
@@ -333,11 +484,89 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
               }
             });
           }
+          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+        }
+        break;
+
+      case "page-template":
+        (recipe.fields ?? []).forEach((field, idx) => {
+          field.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+            checkRef(
+              recipe.handle,
+              `fields.${idx}.sitecore.sourceTypes.${sIdx}`,
+              handle,
+              TEMPLATE_KINDS
+            );
+          });
+        });
+        recipe.insertOptions?.forEach((handle, idx) => {
+          checkRef(recipe.handle, `insertOptions.${idx}`, handle, PAGE_TEMPLATE_KINDS);
+        });
+        if (recipe.layout) {
+          for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
+            placements.forEach((placement, idx) => {
+              checkRef(
+                recipe.handle,
+                `layout.placeholders.${phKey}.${idx}.componentHandle`,
+                placement.componentHandle,
+                COMPONENT_TEMPLATE_KINDS
+              );
+              if (placement.datasourceRef?.kind === "shared") {
+                checkRef(
+                  recipe.handle,
+                  `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
+                  placement.datasourceRef.handle,
+                  CONTENT_ITEM_KINDS
+                );
+              }
+            });
+          }
+          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+        }
+        break;
+
+      case "placeholder":
+        (recipe.allowedComponents ?? []).forEach((handle, idx) => {
+          checkRef(recipe.handle, `allowedComponents.${idx}`, handle, COMPONENT_TEMPLATE_KINDS);
+        });
+        break;
+
+      case "page":
+        checkRef(recipe.handle, "template", recipe.template, PAGE_TEMPLATE_KINDS);
+        for (const [fieldName, value] of Object.entries(recipe.fields ?? {})) {
+          if (value.shape === "link-internal") {
+            checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
+          } else if (value.shape === "reference") {
+            value.refs.forEach((handle, idx) => {
+              checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
+            });
+          }
+        }
+        if (recipe.layout) {
+          for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
+            placements.forEach((placement, idx) => {
+              checkRef(
+                recipe.handle,
+                `layout.placeholders.${phKey}.${idx}.componentHandle`,
+                placement.componentHandle,
+                COMPONENT_TEMPLATE_KINDS
+              );
+              if (placement.datasourceRef?.kind === "shared") {
+                checkRef(
+                  recipe.handle,
+                  `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
+                  placement.datasourceRef.handle,
+                  CONTENT_ITEM_KINDS
+                );
+              }
+            });
+          }
+          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
         }
         break;
       case "site-template":
         recipe.pageTemplates.forEach((handle, idx) => {
-          checkRef(recipe.handle, `pageTemplates.${idx}`, handle, CONTENT_TEMPLATE_KINDS);
+          checkRef(recipe.handle, `pageTemplates.${idx}`, handle, PAGE_TEMPLATE_KINDS);
         });
         recipe.pageDesigns.forEach((handle, idx) => {
           checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
@@ -352,14 +581,14 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
               recipe.handle,
               `insertOptionsMatrix.${parentHandle}`,
               parentHandle,
-              CONTENT_TEMPLATE_KINDS
+              PAGE_TEMPLATE_KINDS
             );
             allowedChildren.forEach((childHandle, idx) => {
               checkRef(
                 recipe.handle,
                 `insertOptionsMatrix.${parentHandle}.${idx}`,
                 childHandle,
-                CONTENT_TEMPLATE_KINDS
+                PAGE_TEMPLATE_KINDS
               );
             });
           }
@@ -370,7 +599,7 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
               recipe.handle,
               `templatesToDesigns.${templateHandle} (key)`,
               templateHandle,
-              CONTENT_TEMPLATE_KINDS
+              PAGE_TEMPLATE_KINDS
             );
             checkRef(
               recipe.handle,
@@ -384,9 +613,7 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
       case "site":
         checkRef(recipe.handle, "siteTemplate", recipe.siteTemplate, SITE_TEMPLATE_KINDS);
         if (recipe.initialHome !== undefined) {
-          // PageRecipe doesn't exist yet — accept any kind. When
-          // PageRecipe lands, narrow this to PAGE_RECIPE_KINDS.
-          checkRef(recipe.handle, "initialHome", recipe.initialHome, ANY_KINDS);
+          checkRef(recipe.handle, "initialHome", recipe.initialHome, PAGE_KINDS);
         }
         // Cross-field shape: SiteRecipe must specify exactly one of
         // collectionId or collectionName. The Zod schema can't enforce
@@ -413,7 +640,13 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
 
   const cycles = detectInsertOptionsCycles(index, recipes);
 
-  return { unresolvedHandles: unresolved, duplicateHandles, cycles, fieldShapeErrors };
+  return {
+    unresolvedHandles: unresolved,
+    duplicateHandles,
+    cycles,
+    fieldShapeErrors,
+    placementViolations,
+  };
 }
 
 /**
@@ -478,7 +711,7 @@ function detectInsertOptionsCycles(
 export function validateRecipeSetOrThrow(recipes: readonly Recipe[]): void {
   const result = validateRecipeSet(recipes);
   if (!isValid(result)) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe set validation failed:\n${formatValidationErrors(result)}`,
       "INPUT_INVALID"
     );

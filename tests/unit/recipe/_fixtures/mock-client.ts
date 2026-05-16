@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AddItemVersionInput,
+  AddItemVersionResult,
   AuthoringApiClient,
   CreateItemInput,
   CreateItemResult,
@@ -28,12 +30,19 @@ export class MockAuthoringClient implements AuthoringApiClient {
   public readonly itemsById = new Map<string, MockItem>();
   public readonly creates: CreateItemInput[] = [];
   public readonly updates: UpdateItemInput[] = [];
+  public readonly versionAdds: AddItemVersionInput[] = [];
+  /** itemId (lowercased) → language → version count. Seeded to {en:1} by createItem. */
+  private readonly versionsByItem = new Map<string, Map<string, number>>();
   public throwOn?: { method: "createItem" | "updateItem"; match: string; message: string };
 
   /** Pre-load an item, e.g. for idempotency-on-second-push tests. */
   preload(item: MockItem): void {
     this.itemsByPath.set(lower(item.path), item);
     this.itemsById.set(lower(item.itemId), item);
+    // A preloaded item exists on the tenant — like any real Sitecore item
+    // it has version 1 in the default language. Tests that need a richer
+    // version stack call `addItemVersion` on top.
+    this.versionsByItem.set(lower(item.itemId), new Map([["en", 1]]));
   }
 
   peek(selector: ItemSelector): MockItem | undefined {
@@ -98,6 +107,8 @@ export class MockAuthoringClient implements AuthoringApiClient {
     };
     this.itemsByPath.set(lower(itemPath), item);
     this.itemsById.set(lower(itemId), item);
+    // A freshly created item has version 1 in the default language.
+    this.versionsByItem.set(lower(itemId), new Map([["en", 1]]));
     return { itemId };
   }
 
@@ -141,5 +152,26 @@ export class MockAuthoringClient implements AuthoringApiClient {
     if (!item) return;
     this.itemsByPath.delete(lower(item.path));
     this.itemsById.delete(lower(item.itemId));
+    this.versionsByItem.delete(lower(item.itemId));
+  }
+
+  async addItemVersion(input: AddItemVersionInput): Promise<AddItemVersionResult> {
+    this.versionAdds.push(input);
+    const key = lower(input.itemId);
+    let byLanguage = this.versionsByItem.get(key);
+    if (!byLanguage) {
+      byLanguage = new Map();
+      this.versionsByItem.set(key, byLanguage);
+    }
+    const next = (byLanguage.get(input.language) ?? 0) + 1;
+    byLanguage.set(input.language, next);
+    return { version: next };
+  }
+
+  async getItemVersions(selector: ItemSelector, language: string): Promise<number[]> {
+    const item = this.peek(selector);
+    if (!item) return [];
+    const count = this.versionsByItem.get(lower(item.itemId))?.get(language) ?? 0;
+    return Array.from({ length: count }, (_, i) => i + 1);
   }
 }

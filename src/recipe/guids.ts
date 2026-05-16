@@ -75,6 +75,18 @@ export const contentItemId = (site: string, handle: string): string =>
   uuidv5(`${site}::${handle}`, NAMESPACE_CONTENT_ITEM);
 
 /**
+ * Page item identity — a `PageRecipe`'s concrete page in the site
+ * content tree. Distinct namespace from `contentItemId`: a page is a
+ * navigable item conforming to a page template, not a shared datasource
+ * item, and `datasourceId(pageItemId(...), slot)` scopes page-local
+ * datasources beneath it. Site-scoped seed like the rest of the family.
+ */
+export const NAMESPACE_PAGE = uuidv5("page", NAMESPACE_ROOT);
+
+export const pageItemId = (site: string, handle: string): string =>
+  uuidv5(`${site}::${handle}`, NAMESPACE_PAGE);
+
+/**
  * Recipe-internal refKey for a `SiteRecipe`'s site item. The actual
  * Sitecore site itemId is server-assigned by the Sites API at
  * `createSite` time; this refKey is the IR's identity for cross-op
@@ -413,6 +425,16 @@ export const contentModelsGroupFolderId = (site: string, group: string): string 
   uuidv5(`${site}:Content Models:${group}`, NAMESPACE_PROJECT);
 
 /**
+ * Deterministic refKey for a page-template group folder under a site's
+ * `<pageTemplatesRoot>/<group>/`. Materialised once via a CreateOnly
+ * CreateItem when any `PageTemplateRecipe` in the set carries
+ * `meta.tax.group` matching this name. Same identity family as
+ * `contentModelsGroupFolderId` — a site-owned organisational folder.
+ */
+export const pageTemplatesGroupFolderId = (site: string, group: string): string =>
+  uuidv5(`${site}:Page Templates:${group}`, NAMESPACE_PROJECT);
+
+/**
  * Per-site shared Data Folder under `<contentItemsRoot>/<subfolder>`.
  * Emitted as a CreateOnly item by `compileComponentTemplateRecipe` when
  * a recipe declares a `site`-scoped datasource location with a
@@ -540,3 +562,105 @@ export const NAMESPACE_SECTION_DEFINITION = uuidv5("section-definition", NAMESPA
 
 export const sectionDefinitionId = (handle: string): string =>
   uuidv5(handle, NAMESPACE_SECTION_DEFINITION);
+
+/**
+ * Placeholder Settings item identity.
+ *
+ * A Placeholder Settings item is the gate for "what renderings can be
+ * dropped into this slot" — it carries a `Placeholder Key` and an
+ * `Allowed Controls` whitelist. Its identity is the **placeholder key**,
+ * not a recipe handle: one key = one settings item. A standalone
+ * `PlaceholderRecipe` and an inline `ComponentTemplateRecipe.placeholders`
+ * entry that name the same key therefore derive the *same* GUID — which
+ * is correct (they describe the same Sitecore item) and lets the
+ * cross-recipe validator flag the ambiguous double-declaration.
+ *
+ * Site-scoped like the rest of the per-Project item family, so the same
+ * recipe set pushed to two sites yields two distinct Placeholder
+ * Settings items under each site's Presentation tree.
+ */
+export const NAMESPACE_PLACEHOLDER = uuidv5("placeholder", NAMESPACE_ROOT);
+
+export const placeholderSettingsId = (site: string, key: string): string =>
+  uuidv5(`${site}::${key}`, NAMESPACE_PLACEHOLDER);
+
+/**
+ * Deterministic refKey for one segment of a placeholder `folder`
+ * grouping path under `<placeholderSettingsRoot>/<…segments…>`. Conforms
+ * to the SXA `Placeholder Settings Folder` template. Site-scoped + keyed
+ * on the segment's CUMULATIVE path so two recipes naming the same folder
+ * (`"Partial Design/Header"`) reuse the `Partial Design` and
+ * `Partial Design/Header` folders rather than colliding — pass the
+ * cumulative path, not the leaf segment.
+ *
+ * Same `NAMESPACE_PROJECT` "site organisational folder" family as
+ * section folders and the enumeration grouping folders.
+ */
+export const placeholderSettingsFolderId = (site: string, cumulativePath: string): string =>
+  uuidv5(`${site}:Placeholder Settings:${cumulativePath}`, NAMESPACE_PROJECT);
+
+/**
+ * Deterministic refKey for a system template referenced by content-tree
+ * path (workflow/webhook/etc. system templates whose GUIDs aren't
+ * published). Same identity for the same path forever — the push
+ * pipeline seeds `crossRecipeRefs[<this refKey>] = path`; the executor
+ * batches a single `getItemsByPaths` lookup and the planner resolves
+ * `templateOf: ref-path` ops through the existing `capturedItemIds`
+ * map.
+ */
+export const NAMESPACE_TEMPLATE_BY_PATH = uuidv5("template-by-path", NAMESPACE_ROOT);
+export const templatePathRefKey = (path: string): string =>
+  uuidv5(path, NAMESPACE_TEMPLATE_BY_PATH);
+
+/**
+ * Deterministic refKey for the `__Standard Values` item under a
+ * tenant-existing template referenced by content-tree path. Used by
+ * `WorkflowRecipe.bindings.templates` entries that point at an absolute
+ * template path (not an intra-recipe handle): the compiler emits a
+ * `SetField` op with `latePath: "<templatePath>/__Standard Values"`,
+ * and the executor's late-path resolution walks the path to seed the
+ * captured-itemId map before planning the field write. Same identity
+ * for the same path forever.
+ */
+export const NAMESPACE_STANDARD_VALUES_BY_PATH = uuidv5("standard-values-by-path", NAMESPACE_ROOT);
+export const standardValuesPathRefKey = (templatePath: string): string =>
+  uuidv5(templatePath, NAMESPACE_STANDARD_VALUES_BY_PATH);
+
+/**
+ * Workflow recipe identities.
+ *
+ * Workflows live at `/sitecore/system/Workflows/[<group>/]<name>` and
+ * are tenant-wide (not site-scoped), so GUIDs derive from the recipe
+ * handle directly. Sub-items (states, commands, actions) nest under
+ * the workflow's GUID to keep the hierarchy stable across renames at
+ * deeper levels.
+ */
+export const NAMESPACE_WORKFLOW = uuidv5("workflow", NAMESPACE_ROOT);
+export const workflowId = (handle: string): string => uuidv5(handle, NAMESPACE_WORKFLOW);
+export const workflowStateId = (handle: string, stateKey: string): string =>
+  uuidv5(`state:${stateKey}`, workflowId(handle));
+export const workflowCommandId = (handle: string, stateKey: string, commandKey: string): string =>
+  uuidv5(`command:${commandKey}`, workflowStateId(handle, stateKey));
+/** Webhook submit/validation action under a workflow STATE's `Actions` folder. */
+export const workflowStateActionId = (handle: string, stateKey: string, index: number): string =>
+  uuidv5(`action:${index}`, workflowStateId(handle, stateKey));
+/** Webhook validation action under a workflow COMMAND's `Actions` folder. */
+export const workflowCommandValidationId = (
+  handle: string,
+  stateKey: string,
+  commandKey: string,
+  index: number
+): string => uuidv5(`validation:${index}`, workflowCommandId(handle, stateKey, commandKey));
+/** Workflow group folder under /sitecore/system/Workflows (when meta.tax.group is set). */
+export const workflowGroupFolderId = (group: string): string =>
+  uuidv5(`group:${group}`, NAMESPACE_WORKFLOW);
+
+/**
+ * Webhook Authorization recipe identity. Items live at
+ * `/sitecore/system/Settings/Webhooks/Authorizations/<name>` — flat,
+ * tenant-wide. Used by workflow webhook actions + event handlers to
+ * carry credentials.
+ */
+export const NAMESPACE_WEBHOOK_AUTHORIZATION = uuidv5("webhook-authorization", NAMESPACE_ROOT);
+export const webhookAuthorizationId = (handle: string): string =>
+  uuidv5(handle, NAMESPACE_WEBHOOK_AUTHORIZATION);

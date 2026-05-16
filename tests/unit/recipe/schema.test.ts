@@ -201,6 +201,70 @@ describe("ContentItemRecipe Zod schema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("accepts simple-mode translations (additional languages)", () => {
+    const result = ContentItemRecipeSchema.safeParse({
+      ...minimalContentItem,
+      translations: {
+        fr: { fields: { Tagline: { shape: "text", value: "Bienvenue" } } },
+        de: { fields: { Tagline: { shape: "text", value: "Willkommen" } } },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts story-mode versions with workflowState, date, layout and variants", () => {
+    const result = ContentItemRecipeSchema.safeParse({
+      kind: "content-item",
+      schemaVersion: "1",
+      handle: "homepage-hero@1",
+      name: "HomepageHero",
+      displayName: "Homepage Hero",
+      templateType: "hero@1",
+      shared: { CampaignCode: { shape: "text", value: "LAUNCH26" } },
+      versions: {
+        en: [
+          {
+            version: 1,
+            fields: { Headline: { shape: "text", value: "Coming soon" } },
+            workflowState: "Draft",
+            date: "2026-01-10T00:00:00Z",
+          },
+          {
+            version: 2,
+            fields: { Headline: { shape: "text", value: "We launched!" } },
+            workflowState: "Approved",
+            layout: { placeholders: {} },
+            variants: [
+              {
+                audience: "returning-visitor",
+                fields: { Headline: { shape: "text", value: "Welcome back" } },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a story version whose `version` is not a positive integer", () => {
+    const base = {
+      kind: "content-item",
+      schemaVersion: "1",
+      handle: "homepage-hero@1",
+      name: "HomepageHero",
+      displayName: "Homepage Hero",
+      templateType: "hero@1",
+    };
+    for (const bad of [0, -1, 1.5]) {
+      const result = ContentItemRecipeSchema.safeParse({
+        ...base,
+        versions: { en: [{ version: bad, fields: {} }] },
+      });
+      expect(result.success).toBe(false);
+    }
+  });
 });
 
 describe("ComponentPlacement Zod schema", () => {

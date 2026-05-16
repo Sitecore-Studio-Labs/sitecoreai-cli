@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
 import type { RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
@@ -13,11 +14,12 @@ import {
   saveRecipeCache,
 } from "../cache";
 import { compileRecipeSet } from "../compile";
-import { PAGE_DESIGNS_ROOT_REF_KEY } from "../guids";
+import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
+import { createRollbackLogger } from "../rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
@@ -76,7 +78,7 @@ const collectPrefetchPaths = (
 };
 
 /**
- * `scai recipe push` — apply recipes to a tenant.
+ * `scai provision recipe push` — apply recipes to a tenant.
  *
  * Input resolution:
  *   - `--input <file>` — single recipe (`.recipe.ts/.recipe.json`) or IR
@@ -106,6 +108,12 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   if (!isDryRun) {
     ensureAllowWrite(tenant.root, tenant.envName, options.allowWrite);
   }
+
+  // One rollback-log scope per `recipe push` invocation. The file at
+  // `~/.sitecoreai/rollback/<runId>.jsonl` is created lazily by the
+  // logger on first write — successful pushes leave no file behind.
+  const rollbackRunId = randomUUID();
+  const rollbackLog = createRollbackLogger(rollbackRunId);
 
   const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
     options,
@@ -142,6 +150,12 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // Per-site enumerations bucket — required for EnumerationRecipe
   // compilation and for any field carrying `sitecore.enumHandle`.
   const enumerationsRoot = options.enumerationsRoot ?? tenant.environment.enumerationsRoot;
+  // Page-level roots. `pageTemplatesRoot` falls back to `templatesRoot`
+  // in the compiler; `placeholderSettingsRoot` is required when the set
+  // declares any placeholder (standalone or inline).
+  const pageTemplatesRoot = tenant.environment.pageTemplatesRoot;
+  const placeholderSettingsRoot = tenant.environment.placeholderSettingsRoot;
+  const pagesRoot = tenant.environment.pagesRoot;
 
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
@@ -182,6 +196,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,
+    pageTemplatesRoot,
+    placeholderSettingsRoot,
+    pagesRoot,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
   const irs: { ir: OperationIr }[] = [
@@ -192,7 +209,16 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const crossRecipeRefs = new Map<string, string>();
   for (const { ir } of irs) {
     for (const op of ir.operations) {
-      if (op.op === "CreateItem") crossRecipeRefs.set(op.id, op.path);
+      if (op.op === "CreateItem") {
+        crossRecipeRefs.set(op.id, op.path);
+        // templateOf: ref-path needs the same lookup-before-plan seed
+        // path-parent resolution uses. Compute the deterministic
+        // refKey + the target path; the executor's
+        // `getItemsByPaths` batch picks it up alongside parent paths.
+        if (typeof op.templateOf !== "string" && op.templateOf.kind === "ref-path") {
+          crossRecipeRefs.set(templatePathRefKey(op.templateOf.value), op.templateOf.value);
+        }
+      }
     }
   }
   // Seed the synthetic Page Designs root refKey so the cross-recipe
@@ -218,8 +244,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   if (hasSiteOp) {
     const accessToken = await getAccessToken(tenant.environment);
     if (!accessToken) {
-      throw createCliError(
-        `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai login' or set client credentials, then retry.`,
+      throw createScaiError(
+        `Failed to mint a Sites API access token for environment '${tenant.envName}'. Run 'scai setup login' or set client credentials, then retry.`,
         "AUTH_REQUIRED"
       );
     }
@@ -229,7 +255,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // Recipe-source files (vs pre-compiled `.ir.json`) are kept in scope
   // for the post-IR placeholder-allow phase. Pre-compiled IRs lose
   // their source-recipe handle/section/name → can't drive placeholder
-  // resolution; for those, callers should run `scai deploy placeholders`
+  // resolution; for those, callers should run `scai provision deploy placeholders`
   // separately if needed.
   const sourceRecipes = recipes;
 
@@ -251,6 +277,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,
+    pageTemplatesRoot,
+    placeholderSettingsRoot,
+    pagesRoot,
   });
   const irsToExecute: { ir: OperationIr; irHash: string; cached: false }[] = [];
   const cachedSkips: {
@@ -323,11 +352,18 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const runOne = async (ir: OperationIr): Promise<ExecutionResult> =>
     executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
-      emit: (event) => allEvents.push({ recipe: ir.recipeHandle, event }),
+      emit: (event) => {
+        allEvents.push({ recipe: ir.recipeHandle, event });
+        options.emit?.({ recipe: ir.recipeHandle, event });
+      },
+      signal: options.signal,
       crossRecipeRefs,
       sitesClient,
       pathItemIdCache,
       pathSnapshotCache,
+      // Dry-run never rolls back, so the logger is a no-op there. Pass
+      // it through anyway — the conditional lives inside the executor.
+      rollbackLog,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {
@@ -450,6 +486,10 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
   }
 
+  if (rollbackLog.wasUsed && !logger.isJson()) {
+    logger.warn(`Rollback audit log written to ${rollbackLog.logPath}`);
+  }
+
   if (logger.isJson()) {
     logger.json({
       command: "recipe.push",
@@ -457,6 +497,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       source,
       whatIf: isDryRun,
       placeholderAllowControls: placeholderAllowSummary ?? undefined,
+      rollbackLog: rollbackLog.wasUsed
+        ? { runId: rollbackLog.runId, path: rollbackLog.logPath }
+        : undefined,
       results: results.map((r) => ({
         recipeHandle: r.plan.recipeHandle,
         summary: r.summary,

@@ -1,11 +1,13 @@
-import type { EnvironmentConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import type { EnvironmentConfiguration } from "@/config/types";
+import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
 import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
 import { dashifyGuid, renderRefValue } from "./ref-encoding";
 import {
+  type AddItemVersionInput,
+  type AddItemVersionResult,
   type AuthoringApiClient,
   type CreateItemInput,
   type CreateItemResult,
@@ -176,6 +178,33 @@ mutation($input: DeleteItemInput!) {
   }
 }`;
 
+const ADD_ITEM_VERSION_MUTATION = `
+mutation($input: AddItemVersionInput!) {
+  addItemVersion(input: $input) {
+    item {
+      version
+    }
+  }
+}`;
+
+const GET_ITEM_VERSIONS_BY_ID = `
+query($itemId: ID!, $language: String!) {
+  item(where: { itemId: $itemId, language: $language }) {
+    versions {
+      version
+    }
+  }
+}`;
+
+const GET_ITEM_VERSIONS_BY_PATH = `
+query($path: String!, $language: String!) {
+  item(where: { path: $path, language: $language }) {
+    versions {
+      version
+    }
+  }
+}`;
+
 type RemoteItemNode = {
   itemId: string;
   name: string;
@@ -321,7 +350,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item;
     }
-    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
   };
 
   /**
@@ -382,7 +411,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       );
       return data.item?.children.nodes ?? [];
     }
-    throw createCliError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
   };
 
   /**
@@ -414,7 +443,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
     const lastSlash = path.lastIndexOf("/");
     if (lastSlash <= 0) {
-      throw createCliError(
+      throw createScaiError(
         `Cannot auto-create root path '${path}'. The Sitecore root must already exist on the tenant.`,
         "INPUT_INVALID"
       );
@@ -422,7 +451,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const parentPath = path.slice(0, lastSlash);
     const name = path.slice(lastSlash + 1);
     if (!name) {
-      throw createCliError(`Path '${rawPath}' has no leaf segment to create.`, "INPUT_INVALID");
+      throw createScaiError(`Path '${rawPath}' has no leaf segment to create.`, "INPUT_INVALID");
     }
     const parentItemId = await ensurePathExists(parentPath);
     const templateId = folderTemplateForPath(path);
@@ -444,7 +473,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     );
     const itemId = data.createItem?.item?.itemId;
     if (!itemId) {
-      throw createCliError(
+      throw createScaiError(
         `Auto-provisioning failed: Authoring API returned no itemId after creating folder '${path}'.`,
         "UNKNOWN"
       );
@@ -455,7 +484,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
   /**
    * Detect Sitecore's name-conflict error class. Authoring GraphQL
-   * surfaces these as wrapped CliError messages of the form:
+   * surfaces these as wrapped ScaiError messages of the form:
    *
    *   `Authoring GraphQL errors: The item name "X" is already defined on this level.`
    *
@@ -502,7 +531,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const trimmed = parent.trim();
     if (isItemId(trimmed)) return trimmed.replace(/[{}]/g, "");
     if (trimmed.startsWith("/")) return ensurePathExists(trimmed);
-    throw createCliError(
+    throw createScaiError(
       `createItem.input.parent must be a Sitecore itemId or content-tree path; got: '${trimmed}'.`,
       "INPUT_INVALID"
     );
@@ -579,6 +608,28 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
     async createItem(input: CreateItemInput): Promise<CreateItemResult> {
       const parentItemId = await resolveParentItemId(input.parent);
+      // Optional pre-create idempotency check. The planner reads
+      // existence via `getItem({path})`, which hits Sitecore's path
+      // index — that index lags writes by seconds-to-minutes. On a
+      // rapid second push, the planner can see "missing" and plan a
+      // create against a path the tenant actually already has.
+      // Parent-child storage is not lag-prone, so `findChildByName`
+      // here is authoritative: if the sibling exists, return its
+      // itemId without ever calling the mutation. Catches the case
+      // where Sitecore's create-mutation does NOT reject the duplicate
+      // (observed in the field — `audit slug-conflicts` kept catching
+      // duplicates that should have been upserts on rapid re-push).
+      //
+      // Opt-in via `idempotencyCheck: true` because it adds one
+      // parent-children read per CreateItem op — recipe push opts in
+      // (idempotency is the whole point), one-shot callers that
+      // explicitly asked to create skip the check.
+      if (input.idempotencyCheck) {
+        const preExisting = await findChildByName(parentItemId, input.name);
+        if (preExisting) {
+          return { itemId: preExisting.itemId };
+        }
+      }
       try {
         const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
           environment,
@@ -597,7 +648,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         );
         const itemId = data.createItem?.item?.itemId;
         if (!itemId) {
-          throw createCliError(
+          throw createScaiError(
             "createItem returned no itemId — Authoring API response was malformed.",
             "UNKNOWN"
           );
@@ -636,6 +687,11 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         {
           input: {
             itemId: input.itemId,
+            // `UpdateItemInput` carries language/version at the input level;
+            // the Authoring API has no per-field language/version. A
+            // SetField targeting a story-seed version lands here.
+            ...(input.language !== undefined && { language: input.language }),
+            ...(input.version !== undefined && { version: input.version }),
             fields: toAuthoringFieldsInput(input.fields),
           },
         },
@@ -654,18 +710,63 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       } = { permanently: true };
       if (selector.itemId) input.itemId = selector.itemId;
       else if (selector.path) input.path = selector.path;
-      else throw createCliError("deleteItem requires either path or itemId.", "INPUT_INVALID");
+      else throw createScaiError("deleteItem requires either path or itemId.", "INPUT_INVALID");
       const data = await runAuthoringGraphQL<{
         deleteItem: { successful: boolean } | null;
       }>(environment, DELETE_ITEM_MUTATION, { input }, writeRequest);
       if (!data.deleteItem?.successful) {
-        throw createCliError(
+        throw createScaiError(
           `deleteItem returned successful: ${data.deleteItem?.successful} for ${
             selector.itemId ?? selector.path ?? "(no selector)"
           }`,
           "UNKNOWN"
         );
       }
+    },
+
+    async addItemVersion(input: AddItemVersionInput): Promise<AddItemVersionResult> {
+      const data = await runAuthoringGraphQL<{
+        addItemVersion: { item: { version: number } | null } | null;
+      }>(
+        environment,
+        ADD_ITEM_VERSION_MUTATION,
+        { input: { itemId: input.itemId, language: input.language } },
+        writeRequest
+      );
+      const version = data.addItemVersion?.item?.version;
+      if (typeof version !== "number") {
+        throw createScaiError(
+          "addItemVersion returned no version — Authoring API response was malformed.",
+          "UNKNOWN"
+        );
+      }
+      return { version };
+    },
+
+    async getItemVersions(selector: ItemSelector, language: string): Promise<number[]> {
+      type VersionsResponse = { item: { versions: Array<{ version: number }> } | null };
+      let data: VersionsResponse;
+      if (selector.itemId) {
+        data = await runAuthoringGraphQL<VersionsResponse>(
+          environment,
+          GET_ITEM_VERSIONS_BY_ID,
+          { itemId: selector.itemId, language },
+          readRequest
+        );
+      } else if (selector.path) {
+        data = await runAuthoringGraphQL<VersionsResponse>(
+          environment,
+          GET_ITEM_VERSIONS_BY_PATH,
+          { path: selector.path, language },
+          readRequest
+        );
+      } else {
+        throw createScaiError("getItemVersions requires either path or itemId.", "INPUT_INVALID");
+      }
+      return (data.item?.versions ?? [])
+        .map((v) => v.version)
+        .filter((v): v is number => typeof v === "number")
+        .sort((a, b) => a - b);
     },
   };
 };

@@ -1,3 +1,4 @@
+import { createScaiError } from "@/shared/errors";
 import {
   availableRenderingsSectionId,
   enumerationFolderId,
@@ -5,6 +6,8 @@ import {
   enumerationsRootStandardValuesId,
   PAGE_DESIGNS_ROOT_REF_KEY,
   pageDesignId,
+  placeholderSettingsFolderId,
+  placeholderSettingsId,
   renderingId,
   sharedDataFolderStandardValuesId,
   sharedDataFolderTemplateId,
@@ -27,6 +30,9 @@ import {
   COMPOSITION_FIELDS,
   DEFAULT_ICON,
   ENUMERATION_ICON,
+  PLACEHOLDER_FIELDS,
+  PLACEHOLDER_SETTINGS_FOLDER_TEMPLATE_ID,
+  PLACEHOLDER_TEMPLATE_ID,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
@@ -41,11 +47,16 @@ import { compileDesignParametersTemplateRecipe } from "./compile/design-paramete
 import { compileSectionDefinitionRecipe } from "./compile/section-definition";
 import { compilePartialDesignRecipe } from "./compile/partial-design";
 import { compilePageDesignRecipe } from "./compile/page-design";
+import { compilePageTemplateRecipe } from "./compile/page-template";
+import { compilePageRecipe } from "./compile/page";
+import { compilePlaceholderRecipe } from "./compile/placeholder";
 import { compileContentItemRecipe } from "./compile/content-item";
 import { compileSiteTemplateRecipe } from "./compile/site-template";
 import { compileSiteRecipe } from "./compile/site";
 import { compileEnumerationRecipe } from "./compile/enumeration";
-import { joinPath, sharedField, siteOf, type CompileContext } from "./compile/shared";
+import { compileWorkflowRecipe } from "./compile/workflow";
+import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
+import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./compile/shared";
 
 // Re-export per-kind compile functions so existing import paths
 // (`import { compileComponentTemplateRecipe } from "@/recipe/compile"`)
@@ -58,10 +69,15 @@ export {
   compileSectionDefinitionRecipe,
   compilePartialDesignRecipe,
   compilePageDesignRecipe,
+  compilePageTemplateRecipe,
+  compilePageRecipe,
+  compilePlaceholderRecipe,
   compileContentItemRecipe,
   compileSiteTemplateRecipe,
   compileSiteRecipe,
   compileEnumerationRecipe,
+  compileWorkflowRecipe,
+  compileWebhookAuthorizationRecipe,
 };
 
 // Re-export the CompileContext type so callers can keep importing it
@@ -124,6 +140,56 @@ export const SITE_DATA_ROOT_AGGREGATE_HANDLE = "__site-data-root__";
  * per-recipe enumeration folder templates).
  */
 export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
+
+/**
+ * Stable handle for the synthetic IR `compileRecipeSet` emits to
+ * materialise the Placeholder Settings items — one per unique
+ * placeholder key declared anywhere in the set (a `PlaceholderRecipe`
+ * or an inline `ComponentTemplateRecipe.placeholders` slot). Each key's
+ * `Allowed Controls` whitelist is the union of slot-side
+ * `allowedComponents` and every component naming the key in `placedIn`.
+ *
+ * Same `__…__` compiler-synthesized convention as the other aggregate
+ * handles in this file.
+ */
+export const PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE = "__placeholder-settings__";
+
+/**
+ * Cross-recipe apply-ordering rank, by recipe kind. `compileRecipeSet`
+ * stably sorts per-recipe IRs by this rank so every recipe is applied
+ * after the definitions it references:
+ *
+ *   0  definitions — templates, sections, enums, workflows: referenced
+ *      by everything, reference nothing cross-recipe forward.
+ *   1  content items + placeholders — reference rank-0 templates.
+ *   2  partial designs — place components, bind shared content items.
+ *   3  page designs + pages — reference page templates, partials,
+ *      content items.
+ *   4  site templates — reference page templates + page designs.
+ *   5  sites — instance a site template, point at an initial page.
+ *
+ * The rank is coarse — it orders ACROSS kinds, not within. Intra-rank
+ * forward references (e.g. one component's `insertOptions` naming
+ * another) still rely on the executor's `crossRecipeRefs` path seeding.
+ */
+const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
+  "component-section": 0,
+  "component-template": 0,
+  "content-template": 0,
+  "page-template": 0,
+  "design-parameters-template": 0,
+  "section-definition": 0,
+  enumeration: 0,
+  workflow: 0,
+  "webhook-authorization": 0,
+  "content-item": 1,
+  placeholder: 1,
+  "partial-design": 2,
+  "page-design": 3,
+  page: 3,
+  "site-template": 4,
+  site: 5,
+};
 
 /**
  * Build the synthetic IR that materialises the SXA `Available Renderings`
@@ -638,6 +704,218 @@ const buildEnumerationsRootAggregate = (
 };
 
 /**
+ * Derive a Sitecore item name from a placeholder key. Keys carry shapes
+ * item names can't (`/header`, `headless-main-{*}`); this strips the
+ * leading slash, drops `{…}` dynamic segments, and collapses remaining
+ * slashes to hyphens. Used only for inline `placeholders` slots — a
+ * standalone `PlaceholderRecipe` supplies `name` explicitly.
+ */
+const placeholderItemName = (key: string): string => {
+  const cleaned = key
+    .replace(/^\/+/, "")
+    .replace(/\{[^}]*\}/g, "")
+    .replace(/\/+/g, "-")
+    .replace(/-+$/g, "")
+    .trim();
+  return cleaned.length > 0 ? cleaned : "placeholder";
+};
+
+/** One unique placeholder key collected across the recipe set. */
+interface PlaceholderDecl {
+  key: string;
+  /** Sitecore item name under the placeholder settings root. */
+  name: string;
+  displayName: string;
+  icon?: string;
+  /** Optional grouping folder path (`/`-separated) under the root. */
+  folder?: string;
+  /** `component-template` handles allowed in this placeholder. */
+  allowed: Set<string>;
+}
+
+/**
+ * Build the synthetic IR materialising the Placeholder Settings items
+ * for the recipe set — the hybrid placeholder model's emission seam.
+ *
+ * Collects every recipe-defined placeholder key:
+ *   - standalone `PlaceholderRecipe` (key + metadata + allowedComponents)
+ *   - inline `ComponentTemplateRecipe.placeholders` (key + allowedComponents)
+ *
+ * A `folder` (on either form) nests the item under
+ * `<placeholderSettingsRoot>/<folder>/<name>` — each path segment is a
+ * `CreateOnly` grouping folder conforming to the SXA `Placeholder
+ * Settings Folder` template (deduped across the set), so it inherits
+ * that template's Insert Options.
+ *
+ * For each unique key it emits:
+ *   1. `CreateItem` (CreateOnly) for the Placeholder Settings item under
+ *      `placeholderSettingsRoot` (or its `folder` subtree), carrying the
+ *      `Placeholder Key` field.
+ *   2. `SetField(Allowed Controls)` — a `ref-recipe-list` of rendering
+ *      refKeys, the UNION of slot-side `allowedComponents` and every
+ *      component naming the key in `placedIn`. One aggregated write per
+ *      key (full-replace is safe — scai owns these items), `tolerateMissing`
+ *      so an aborted sibling rendering IR doesn't fail the whole write.
+ *
+ * `placedIn` keys with no recipe declaration are NOT materialised here —
+ * those are pre-existing tenant placeholders, resolved post-IR by
+ * `applyPlaceholderAllowControls`.
+ *
+ * Returns null when the set declares no placeholders. Throws
+ * INPUT_INVALID when it declares placeholders but `placeholderSettingsRoot`
+ * is unconfigured.
+ */
+const buildPlaceholderSettingsAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext,
+  site: string
+): OperationIr | null => {
+  const byKey = new Map<string, PlaceholderDecl>();
+  const ensure = (key: string): PlaceholderDecl => {
+    let decl = byKey.get(key);
+    if (!decl) {
+      decl = { key, name: placeholderItemName(key), displayName: key, allowed: new Set() };
+      byKey.set(key, decl);
+    }
+    return decl;
+  };
+
+  for (const recipe of recipes) {
+    if (recipe.kind === "placeholder") {
+      const decl = ensure(recipe.key);
+      decl.name = recipe.name;
+      decl.displayName = recipe.displayName;
+      if (recipe.icon) decl.icon = recipe.icon;
+      if (recipe.folder) decl.folder = recipe.folder;
+      for (const handle of recipe.allowedComponents ?? []) decl.allowed.add(handle);
+    } else if (recipe.kind === "component-template") {
+      for (const slot of recipe.placeholders ?? []) {
+        const decl = ensure(slot.key);
+        // Inline displayName / folder only fill in when nothing better
+        // is set (a PlaceholderRecipe for the same key wins).
+        if (slot.displayName && decl.displayName === decl.key) {
+          decl.displayName = slot.displayName;
+        }
+        if (slot.folder && decl.folder === undefined) decl.folder = slot.folder;
+        for (const handle of slot.allowedComponents ?? []) decl.allowed.add(handle);
+      }
+    }
+  }
+
+  if (byKey.size === 0) return null;
+
+  if (!context.placeholderSettingsRoot) {
+    throw createScaiError(
+      "Recipe set declares placeholders (PlaceholderRecipe or inline component placeholders) but no placeholderSettingsRoot is configured.",
+      "INPUT_INVALID",
+      {
+        hint: "Set `placeholderSettingsRoot` on the active envProfile in sitecoreai.cli.json — e.g. `/sitecore/content/<site>/Presentation/Placeholder Settings`.",
+      }
+    );
+  }
+
+  // Component-side allow pushes: a `placedIn` entry naming a
+  // recipe-defined key contributes that component to the key's
+  // whitelist. `placedIn` keys with no declaration are skipped (left
+  // to the runtime placeholder-allow task).
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-template") continue;
+    for (const key of recipe.placedIn ?? []) {
+      byKey.get(key)?.allowed.add(recipe.handle);
+    }
+  }
+
+  const root = context.placeholderSettingsRoot;
+  const policy = defaultPolicyForRecipe("placeholder");
+  const operations: Operation[] = [];
+
+  // Materialise a placeholder `folder` path, emitting one CreateOnly
+  // grouping folder per segment (deduped across the aggregate). Each
+  // folder conforms to the SXA `Placeholder Settings Folder` template,
+  // so it inherits that template's Insert Options whitelist. Returns the
+  // parent ref + path the leaf placeholder item lands under.
+  const emittedFolders = new Set<string>();
+  const resolveFolderParent = (
+    folder: string | undefined
+  ): { parent: CreateItemOp["parent"]; basePath: string } => {
+    const segments = (folder ?? "")
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    let parentPath = root;
+    let parentRef: CreateItemOp["parent"] = { kind: "ref-path", value: root };
+    let cumulative = "";
+    for (const segment of segments) {
+      cumulative = cumulative ? `${cumulative}/${segment}` : segment;
+      const folderRefKey = placeholderSettingsFolderId(site, cumulative);
+      const folderPath = joinPath(parentPath, segment);
+      if (!emittedFolders.has(folderRefKey)) {
+        emittedFolders.add(folderRefKey);
+        operations.push({
+          op: "CreateItem",
+          policy: "CreateOnly",
+          label: `placeholder-settings-folder:${site}:${cumulative}`,
+          id: folderRefKey,
+          path: folderPath,
+          parent: parentRef,
+          templateOf: PLACEHOLDER_SETTINGS_FOLDER_TEMPLATE_ID,
+          name: segment,
+          // No fields — the folder inherits its icon and Insert Options
+          // from the Placeholder Settings Folder template.
+          fields: [],
+        } satisfies CreateItemOp);
+      }
+      parentPath = folderPath;
+      parentRef = { kind: "ref-recipe", refKey: folderRefKey };
+    }
+    return { parent: parentRef, basePath: parentPath };
+  };
+
+  for (const key of [...byKey.keys()].sort((a, b) => a.localeCompare(b))) {
+    const decl = byKey.get(key)!;
+    const refKey = placeholderSettingsId(site, key);
+    const { parent, basePath } = resolveFolderParent(decl.folder);
+    operations.push({
+      op: "CreateItem",
+      policy: "CreateOnly",
+      label: `placeholder-settings:${site}:${key}`,
+      id: refKey,
+      path: joinPath(basePath, decl.name),
+      parent,
+      templateOf: PLACEHOLDER_TEMPLATE_ID,
+      name: decl.name,
+      fields: [
+        sharedField(PLACEHOLDER_FIELDS.PLACEHOLDER_KEY, { kind: "string", value: decl.key }),
+        ...(decl.icon
+          ? [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: decl.icon })]
+          : []),
+        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: decl.displayName }),
+      ],
+    } satisfies CreateItemOp);
+
+    const sortedHandles = [...decl.allowed].sort((a, b) => a.localeCompare(b));
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `placeholder-allowed-controls:${site}:${key}`,
+      itemRefKey: refKey,
+      fieldId: PLACEHOLDER_FIELDS.ALLOWED_CONTROLS,
+      value: {
+        kind: "ref-recipe-list",
+        refKeys: sortedHandles.map((handle) => renderingId(site, handle)),
+        tolerateMissing: true,
+      },
+    } satisfies SetFieldOp);
+  }
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
+    operations,
+  });
+};
+
+/**
  * Compile a coherent set of recipes to a list of Operation IRs.
  *
  * Returns one IR per recipe (via `compileRecipe`), plus, when any
@@ -699,11 +977,21 @@ export function compileRecipeSet(
     }
   }
 
+  // Cross-recipe component map — `compilePageRecipe` uses it to resolve
+  // a scoped placement's component to its datasource template.
+  const componentsByHandle = new Map<string, import("./schema/recipe").ComponentTemplateRecipe>();
+  for (const recipe of recipes) {
+    if (recipe.kind === "component-template") {
+      componentsByHandle.set(recipe.handle, recipe);
+    }
+  }
+
   const perRecipeContext: CompileContext = {
     ...context,
     ...(sharedSubfolders.size > 0 ? { sharedSubfolders } : {}),
     ...(sectionsByHandle.size > 0 ? { sectionsByHandle } : {}),
     ...(enumsByHandle.size > 0 ? { enumsByHandle } : {}),
+    ...(componentsByHandle.size > 0 ? { componentsByHandle } : {}),
   };
 
   // Process section recipes FIRST so their rich-fields folder ops seed
@@ -729,6 +1017,9 @@ export function compileRecipeSet(
       case "content-template":
         ir = compileContentTemplateRecipe(recipe, perRecipeContext, emittedFolders);
         break;
+      case "page-template":
+        ir = compilePageTemplateRecipe(recipe, perRecipeContext, emittedFolders);
+        break;
       case "design-parameters-template":
         ir = compileDesignParametersTemplateRecipe(recipe, perRecipeContext, emittedFolders);
         break;
@@ -741,9 +1032,19 @@ export function compileRecipeSet(
     irByHandle.set(recipe.handle, ir);
   }
 
-  // Preserve INPUT order for IR output — section-first ordering was a
-  // compile-time emission concern only, not a wire-order requirement.
-  const irs: OperationIr[] = recipes.map((r) => irByHandle.get(r.handle)!);
+  // Order per-recipe IRs by cross-recipe dependency rank so a referencing
+  // recipe is always applied AFTER the definitions it points at — a page
+  // after its page template, a page design after its partials, a site
+  // after its site template. On a fresh push the executor resolves a
+  // cross-recipe `templateOf` / ref-recipe only once the defining
+  // recipe's IR has run; input (file-glob) order doesn't guarantee that
+  // (`home@1` sorts before `page@1`). The sort is STABLE — input order
+  // is preserved within a rank, so intra-rank emission order (section
+  // folders, etc.) is untouched.
+  const ranked = [...recipes].sort(
+    (a, b) => RECIPE_APPLY_RANK[a.kind] - RECIPE_APPLY_RANK[b.kind]
+  );
+  const irs: OperationIr[] = ranked.map((r) => irByHandle.get(r.handle)!);
 
   const setSite = siteOf(context);
   const entries: { templateGuid: string; designGuid: string }[] = [];
@@ -832,6 +1133,19 @@ export function compileRecipeSet(
     irs.push(enumerationsRoot);
   }
 
+  // Placeholder Settings aggregate — one CreateItem + Allowed Controls
+  // SetField per unique placeholder key (standalone PlaceholderRecipe +
+  // inline component placeholders). Emitted last so per-recipe rendering
+  // CreateItem ops have run before its ref-recipe-list resolves.
+  const placeholderSettings = buildPlaceholderSettingsAggregate(
+    recipes,
+    context,
+    setSiteForShared
+  );
+  if (placeholderSettings) {
+    irs.push(placeholderSettings);
+  }
+
   return irs;
 }
 
@@ -847,6 +1161,12 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileContentTemplateRecipe(recipe, context);
     case "content-item":
       return compileContentItemRecipe(recipe, context);
+    case "page-template":
+      return compilePageTemplateRecipe(recipe, context);
+    case "page":
+      return compilePageRecipe(recipe, context);
+    case "placeholder":
+      return compilePlaceholderRecipe(recipe, context);
     case "design-parameters-template":
       return compileDesignParametersTemplateRecipe(recipe, context);
     case "section-definition":
@@ -861,5 +1181,9 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileSiteRecipe(recipe, context);
     case "enumeration":
       return compileEnumerationRecipe(recipe, context);
+    case "workflow":
+      return compileWorkflowRecipe(recipe, context);
+    case "webhook-authorization":
+      return compileWebhookAuthorizationRecipe(recipe, context);
   }
 }

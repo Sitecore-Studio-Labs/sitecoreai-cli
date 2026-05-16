@@ -6,10 +6,16 @@ import {
   compileContentItemRecipe,
   compileRecipe,
 } from "../../../src/recipe/compile";
-import { contentItemId, fieldId, templateId } from "../../../src/recipe/guids";
+import {
+  contentItemId,
+  fieldId,
+  templateId,
+  workflowId,
+  workflowStateId,
+} from "../../../src/recipe/guids";
 import type { ContentFieldValue, ContentItemRecipe } from "../../../src/recipe/schema/recipe";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
-import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
+import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/Demo/Components",
@@ -22,10 +28,19 @@ const SITE = "default";
 const findCreate = (ops: Operation[]): CreateItemOp =>
   ops.find((op): op is CreateItemOp => op.op === "CreateItem")!;
 
-const findSet = (ops: Operation[], fieldName: string, recipeHandle: string): SetFieldOp =>
+// Field SetField labels carry a locator tag: `en` for the simple-mode
+// primary language, `shared` for storage:shared fields, `<lang>.v<n>` for
+// a story version. `tag` defaults to the simple-mode primary language.
+const findSet = (
+  ops: Operation[],
+  fieldName: string,
+  recipeHandle: string,
+  tag = "en"
+): SetFieldOp =>
   ops.find(
     (op): op is SetFieldOp =>
-      op.op === "SetField" && op.label === `content-item-field:${recipeHandle}:${fieldName}`
+      op.op === "SetField" &&
+      op.label === `content-item-field:${recipeHandle}:${tag}:${fieldName}`
   )!;
 
 const buildRecipe = (
@@ -102,6 +117,29 @@ describe("compileContentItemRecipe — IR shape", () => {
         renderingsRoot: CONTEXT.renderingsRoot,
       })
     ).toThrow(/contentItemsRoot/);
+  });
+
+  it("emits a SetField on __Workflow when workflow is set", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}, { workflow: "blog-approval@1" }), CONTEXT);
+    const wf = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "content-item-workflow:test-content@1"
+    )!;
+    expect(wf).toBeDefined();
+    expect(wf.itemRefKey).toBe(contentItemId(SITE, "test-content@1"));
+    expect(wf.fieldName).toBe("__Workflow");
+    expect(wf.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("blog-approval@1"),
+    });
+  });
+
+  it("omits the __Workflow SetField when workflow is unset", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}), CONTEXT);
+    const wf = ir.operations.find(
+      (op) => op.op === "SetField" && op.label.startsWith("content-item-workflow:")
+    );
+    expect(wf).toBeUndefined();
   });
 });
 
@@ -252,5 +290,198 @@ describe("compileRecipe dispatcher routes content-item", () => {
     const ir = compileRecipe(primaryNavContentRecipe, CONTEXT);
     expect(ir.recipeHandle).toBe("primary-nav-content@1");
     expect(ir.operations[0].op).toBe("CreateItem");
+  });
+});
+
+describe("compileContentItemRecipe — translations (simple mode)", () => {
+  it("emits AddItemVersion + SetFields per translation language", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe(
+        { Title: { shape: "text", value: "Welcome" } },
+        {
+          translations: {
+            fr: { fields: { Title: { shape: "text", value: "Bienvenue" } } },
+          },
+        }
+      ),
+      CONTEXT
+    );
+
+    // The primary language stays at en v1; fr needs its language version made.
+    const addFr = ir.operations.find(
+      (op) => op.op === "AddItemVersion" && op.language === "fr"
+    );
+    expect(addFr).toMatchObject({ op: "AddItemVersion", language: "fr", version: 1 });
+
+    const frTitle = findSet(ir.operations, "Title", "test-content@1", "fr");
+    expect(frTitle.language).toBe("fr");
+    expect(frTitle.version).toBe(1);
+    expect(frTitle.value).toEqual({ kind: "string", value: "Bienvenue" });
+
+    // Op order — every AddItemVersion precedes every SetField.
+    const lastAdd = ir.operations.map((o) => o.op).lastIndexOf("AddItemVersion");
+    const firstSet = ir.operations.map((o) => o.op).indexOf("SetField");
+    expect(lastAdd).toBeLessThan(firstSet);
+  });
+});
+
+describe("compileContentItemRecipe — story mode (versions)", () => {
+  const story = () =>
+    compileContentItemRecipe(
+      buildRecipe(
+        {},
+        {
+          versions: {
+            en: [
+              { version: 1, fields: { Headline: { shape: "text", value: "Coming soon" } } },
+              { version: 2, fields: { Headline: { shape: "text", value: "We launched" } } },
+            ],
+          },
+        }
+      ),
+      CONTEXT
+    );
+
+  it("adds an AddItemVersion for every version except the default-language v1", () => {
+    const adds = story().operations.filter((op) => op.op === "AddItemVersion");
+    // en v1 is made by CreateItem; only v2 needs an explicit AddItemVersion.
+    expect(adds).toHaveLength(1);
+    expect(adds[0]).toMatchObject({ op: "AddItemVersion", language: "en", version: 2 });
+  });
+
+  it("emits per-version SetFields targeting the right numbered version", () => {
+    const ops = story().operations;
+    expect(findSet(ops, "Headline", "test-content@1", "en.v1").version).toBe(1);
+    expect(findSet(ops, "Headline", "test-content@1", "en.v2").version).toBe(2);
+    expect(findSet(ops, "Headline", "test-content@1", "en.v2").value).toEqual({
+      kind: "string",
+      value: "We launched",
+    });
+  });
+
+  it("rejects a recipe that mixes story `versions` with simple `fields`", () => {
+    expect(() =>
+      compileContentItemRecipe(
+        buildRecipe(
+          { Title: { shape: "text", value: "x" } },
+          { versions: { en: [{ version: 1, fields: {} }] } }
+        ),
+        CONTEXT
+      )
+    ).toThrow(/either simple .* or a story/);
+  });
+
+  it("rejects per-version personalization variants (not yet compiled)", () => {
+    expect(() =>
+      compileContentItemRecipe(
+        buildRecipe(
+          {},
+          {
+            versions: {
+              en: [{ version: 1, fields: {}, variants: [{ audience: "returning-visitor" }] }],
+            },
+          }
+        ),
+        CONTEXT
+      )
+    ).toThrow(/not yet compiled/);
+  });
+
+  it("compiles a per-version layout into a __Final Renderings SetField", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe(
+        {},
+        {
+          versions: {
+            en: [
+              {
+                version: 1,
+                fields: {},
+                layout: { placeholders: { "headless-main": [{ componentHandle: "hero@1" }] } },
+              },
+            ],
+          },
+        }
+      ),
+      CONTEXT
+    );
+    const layoutSet = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS
+    );
+    expect(layoutSet).toBeDefined();
+    expect(layoutSet?.language).toBe("en");
+    expect(layoutSet?.version).toBe(1);
+    expect(layoutSet?.value).toMatchObject({ kind: "string" });
+  });
+
+  it("compiles per-version workflowState into a __Workflow state SetField", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe(
+        {},
+        {
+          workflow: "editorial@1",
+          versions: {
+            en: [
+              { version: 1, fields: {}, workflowState: "draft" },
+              { version: 2, fields: {}, workflowState: "approved" },
+            ],
+          },
+        }
+      ),
+      CONTEXT
+    );
+    const stateSets = ir.operations.filter(
+      (op): op is SetFieldOp => op.op === "SetField" && op.fieldName === "__Workflow state"
+    );
+    expect(stateSets).toHaveLength(2);
+    const v2 = stateSets.find((op) => op.version === 2);
+    expect(v2?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowStateId("editorial@1", "approved"),
+    });
+  });
+
+  it("rejects a per-version workflowState when the recipe has no workflow", () => {
+    expect(() =>
+      compileContentItemRecipe(
+        buildRecipe(
+          {},
+          { versions: { en: [{ version: 1, fields: {}, workflowState: "draft" }] } }
+        ),
+        CONTEXT
+      )
+    ).toThrow(/no `workflow`/);
+  });
+
+  it("compiles a per-version date into a __Created SetField", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe(
+        {},
+        { versions: { en: [{ version: 1, fields: {}, date: "2026-01-10T00:00:00Z" }] } }
+      ),
+      CONTEXT
+    );
+    const created = ir.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField" && op.fieldName === "__Created"
+    );
+    expect(created?.version).toBe(1);
+    expect(created?.value).toEqual({ kind: "string", value: "20260110T000000Z" });
+  });
+});
+
+describe("compileContentItemRecipe — shared fields", () => {
+  it("emits storage:shared fields as SetFields with no language/version", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe(
+        { Title: { shape: "text", value: "Hello" } },
+        { shared: { CampaignCode: { shape: "text", value: "LAUNCH26" } } }
+      ),
+      CONTEXT
+    );
+    const sharedSet = findSet(ir.operations, "CampaignCode", "test-content@1", "shared");
+    expect(sharedSet.language).toBeUndefined();
+    expect(sharedSet.version).toBeUndefined();
+    expect(sharedSet.value).toEqual({ kind: "string", value: "LAUNCH26" });
   });
 });

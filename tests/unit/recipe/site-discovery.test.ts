@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentConfiguration } from "../../../src/config";
+import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { discoverSites } from "../../../src/recipe/api/site-discovery";
 
 vi.mock("../../../src/recipe/api/auth", () => ({

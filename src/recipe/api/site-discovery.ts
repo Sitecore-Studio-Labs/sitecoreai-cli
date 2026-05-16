@@ -21,7 +21,7 @@
  * because it adds an N+1 round trip per site.
  */
 
-import { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { runAuthoringGraphQL } from "./graphql";
 
 export type DiscoveredSite = {

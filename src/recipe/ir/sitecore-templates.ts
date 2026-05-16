@@ -180,6 +180,25 @@ export const AVAILABLE_RENDERINGS_FIELDS = {
 export const PLACEHOLDER_TEMPLATE_ID = "d2a6884c-04d5-4089-a64e-d27ca9d68d4c";
 
 /**
+ * SXA `Placeholder Settings Folder` template
+ * (`/sitecore/templates/Foundation/JSS Experience Accelerator/Placeholder
+ * Settings/Placeholder Settings Folder`). The organisational folder
+ * inside a Placeholder Settings tree — recipe-defined placeholder
+ * grouping folders conform to this so they inherit its `__Standard
+ * Values` Insert Options (`Placeholder` + `Placeholder Settings
+ * Folder`), giving authors the right right-click → Insert UX without
+ * scai having to stamp `__Masters` explicitly.
+ *
+ * Verified against sandbox tenant (`xmc-lizsitecore088b-…`) on
+ * 2026-05-15 via Authoring API introspection — the `Placeholder
+ * Settings` root and its `Partial Design` child both conform to it, and
+ * the template's SV carries
+ * `__Masters = {D2A6884C-…}|{52288E39-…}` (see
+ * `scripts/_recon-page-template.cjs`).
+ */
+export const PLACEHOLDER_SETTINGS_FOLDER_TEMPLATE_ID = "52288e39-7830-4694-b62d-32a54c6ef7ba";
+
+/**
  * Fields of the Sitecore `Placeholder` template that recipes interact
  * with:
  *
@@ -266,6 +285,69 @@ export const SXA_HEADLESS_PARAMS_BASE_TEMPLATES = [
 ] as const;
 
 /**
+ * SXA Headless page base templates — what a recipe-emitted page template
+ * must inherit so XM Cloud Pages recognises items conforming to it as
+ * authorable pages: they pick up the layout/presentation fields, the
+ * navigation facet, taxonomy tagging, the page-design binding, and
+ * sitemap metadata.
+ *
+ * This is exactly the base set the OOTB per-site `Page` template
+ * carries. Captured 2026-05-15 by walking the `__Base template` chain of
+ * `/sitecore/templates/Project/demo-registry/Page` on the sandbox tenant
+ * (`xmc-lizsitecore088b-…`) via Authoring API introspection — see
+ * `scripts/_recon-page-template.cjs`. All five are SXA Foundation
+ * templates, so the GUIDs are stable across tenants (same identity model
+ * as `SXA_COMPONENT_BASE_TEMPLATES`).
+ *
+ *   - `Base Page`  ({47151711-26CA-434E-8132-D3E0B7D26683}) —
+ *     `/sitecore/templates/Foundation/JSS Experience Accelerator/Multisite/Base Page`.
+ *     The SXA Headless page base; chains in the EXA `Page` →
+ *     Standard template, so the Layout / Appearance / Publishing
+ *     sections all arrive transitively.
+ *   - `_Navigable`  ({371D5FBB-5498-4D94-AB2B-E3B70EEBE78C}) —
+ *     navigation facet: `NavigationTitle`, `ChangeFrequency`, `Priority`.
+ *   - `_Taggable`  ({F39A594A-7BC9-4DB0-BAA1-88543409C1F9}) —
+ *     taxonomy tagging facet.
+ *   - `_Designable`  ({6650FB34-7EA1-4245-A919-5CC0F002A6D7}) —
+ *     carries the `Page Design` Droplink field (the per-item
+ *     page-design override). The default template→design binding is
+ *     the `TemplatesMapping` aggregate on the Page Designs root, not
+ *     this field — see `compileRecipeSet`.
+ *   - `_Sitemap`  ({4414A1F9-826A-4647-8DF4-ED6A95E64C43}) —
+ *     sitemap metadata facet.
+ */
+export const SXA_HEADLESS_PAGE_BASE_TEMPLATES = [
+  "47151711-26ca-434e-8132-d3e0b7d26683",
+  "371d5fbb-5498-4d94-ab2b-e3b70eebe78c",
+  "f39a594a-7bc9-4db0-baa1-88543409c1f9",
+  "6650fb34-7ea1-4245-a919-5cc0f002a6d7",
+  "4414a1f9-826a-4647-8df4-ed6a95e64c43",
+] as const;
+
+/**
+ * `Page Design` field on the SXA `_Designable` facet — a Droplink whose
+ * Source is `query:$pageDesigns//*[@@templatename='Page Design']`. The
+ * per-item page-design override; recipe-emitted page templates leave it
+ * unset (the default binding flows through the Page Designs root's
+ * `TemplatesMapping`). Captured in the same 2026-05-15 recon pass.
+ */
+export const PAGE_DESIGN_FIELD_ID = "24171bf1-c0e1-480e-be76-4c0a1876f916";
+
+/**
+ * SXA Headless JSON `Layout` definition item (`/sitecore/layout/Layouts/
+ * Project/.../JSON Layout`). A page's `__Renderings` field wraps its
+ * device element with `l="{this}"` — `<d id="{device}" l="{layout}" />`.
+ * Recipe-emitted page templates stamp it on the `__Standard Values`
+ * layout shell so pages conforming to them render through the headless
+ * JSON layout pipeline.
+ *
+ * Captured 2026-05-15 from the `Page` template's `__Standard Values`
+ * `__Renderings` field on the sandbox tenant. SXA-shipped item, stable
+ * GUID across tenants.
+ */
+export const SXA_JSON_LAYOUT_ID = "96e5f4ba-a2cf-4a4c-a4e7-64da88226362";
+
+/**
  * Stable system-field GUIDs that recipes need to write.
  * Auto-generated metadata fields (__Created, __Updated, __Revision, __Owner)
  * are deliberately omitted — Sitecore writes those.
@@ -300,6 +382,14 @@ export const TEMPLATE_FIELD_FIELDS = {
    * value, not per-language). GUID is the well-known Sitecore built-in.
    */
   SHARED: "be351a73-fcb0-4213-93fa-c302d8ab4f51",
+  /**
+   * `Unversioned` toggle on a Template Field — `"1"` makes the field's
+   * value per-language but shared across numbered versions (vs `SHARED`,
+   * which is one value for the whole item). Verified against the live
+   * `test` tenant via Authoring API introspection on 2026-05-15. GUID is
+   * the well-known Sitecore built-in.
+   */
+  UNVERSIONED: "39847666-389d-409b-95bd-f2016f11eed5",
 } as const;
 
 /**
@@ -481,3 +571,11 @@ export const FOLDER_ICON = "office/16x16/folder.png";
  * icon through template-level inheritance.
  */
 export const ENUMERATION_ICON = "office/32x32/keyboard_key_e.png";
+
+/**
+ * Icon for recipe-emitted page templates — matches the icon the OOTB
+ * SXA Headless `Page` template carries (`Office/32x32/document_text.png`,
+ * verified 2026-05-15 on the sandbox tenant), so page templates read as
+ * pages — not generic data templates — in the content-tree.
+ */
+export const PAGE_TEMPLATE_ICON = "Office/32x32/document_text.png";

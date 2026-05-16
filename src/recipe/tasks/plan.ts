@@ -1,22 +1,22 @@
 import path from "node:path";
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { defaultPlanPath, loadIr, writePlan } from "../io";
 import { buildPlan, type Plan } from "../plan";
 import { resolveTenant, toLogger, type RecipePlanOptions } from "./shared";
 
 /**
- * `scai recipe plan` — read-then-diff against a tenant, no mutations.
+ * `scai provision recipe plan` — read-then-diff against a tenant, no mutations.
  *
- * Operates on a pre-compiled IR file (the artifact from `scai recipe
- * compile`). For the recipe-source workflow, use `scai recipe push
+ * Operates on a pre-compiled IR file (the artifact from `scai provision recipe
+ * compile`). For the recipe-source workflow, use `scai provision recipe push
  * --what-if` instead — it compiles in-memory and runs the planner.
  */
 export const runRecipePlan = async (options: RecipePlanOptions): Promise<Plan> => {
   const logger = toLogger(options);
   const tenant = resolveTenant(options);
   if (!options.input) {
-    throw createCliError("--input <ir.json> is required for `recipe plan`.", "INPUT_INVALID", {
-      hint: "Run `scai recipe compile` first, or use `scai recipe push --what-if` to plan from a recipe source.",
+    throw createScaiError("--input <ir.json> is required for `recipe plan`.", "INPUT_INVALID", {
+      hint: "Run `scai provision recipe compile` first, or use `scai provision recipe push --what-if` to plan from a recipe source.",
     });
   }
   const ir = await loadIr(options.input);

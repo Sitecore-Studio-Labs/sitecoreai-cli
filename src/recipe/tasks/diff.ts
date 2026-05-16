@@ -3,7 +3,7 @@ import type { ExecutionResult } from "../execute";
 import type { RecipePushOptions } from "./shared";
 
 /**
- * `scai recipe diff` — read-only "what would change" against a tenant.
+ * `scai provision recipe diff` — read-only "what would change" against a tenant.
  *
  * Drives the same input resolution, in-memory compile, and planner
  * as `recipe push`, but read-only by construction: `whatIf` is forced

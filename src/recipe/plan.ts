@@ -1,4 +1,5 @@
 import type {
+  AddItemVersionOp,
   AppendToMultiListOp,
   CreateItemOp,
   CreateSiteFromTemplateOp,
@@ -11,8 +12,11 @@ import type {
   SetFieldOp,
   SetStandardValuesOp,
 } from "./ir/operations";
-import { SYSTEM_FIELDS } from "./ir/sitecore-templates";
+import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "./ir/sitecore-templates";
+import { SCAI_HANDLE_FIELD_NAME } from "./marker";
+import { templatePathRefKey } from "./guids";
 import { renderRefValue, resolveRecipeRefs } from "./api/ref-encoding";
+import { layoutXmlEquivalent } from "./layout/parse";
 import type {
   AuthoringApiClient,
   CreateItemInput,
@@ -24,7 +28,7 @@ import type {
 import type { NewSiteInput, SitesApiClient } from "./api/sites-client";
 
 /**
- * `scai recipe plan` and `scai recipe push` share this read-then-diff path:
+ * `scai provision recipe plan` and `scai provision recipe push` share this read-then-diff path:
  *
  *   for each op:
  *     resolve the target item (path-based for CreateItem, captured-id
@@ -71,6 +75,15 @@ export interface PlannedAction {
          * overrides etc.) can resolve.
          */
         siteRefKey: string;
+      }
+    | {
+        kind: "addItemVersion";
+        /** Sitecore itemId of the target item. */
+        itemId: string;
+        /** Language whose numbered-version stack to extend. */
+        language: string;
+        /** How many versions to add to reach the op's declared `version`. */
+        addCount: number;
       };
   /**
    * Pre-mutation remote state captured during plan-time read. `null` means
@@ -166,6 +179,28 @@ const resolveAll = (
     value: resolveRecipeRefs(field.value, capturedItemIds),
   }));
 
+/**
+ * Build an `UpdateItemInput`, lifting a uniform field `language` / `version`
+ * to the input level. The Authoring API writes every `FieldValueInput` at
+ * the input's language/version — per-field language/version is not on the
+ * wire — so a `SetField` targeting a non-default language or a story-seed
+ * numbered version must surface it here. When the fields disagree (or carry
+ * none) the level is left unset and the write lands on the item's default
+ * language / latest version.
+ */
+const toUpdateItemInput = (itemId: string, fields: FieldValue[]): UpdateItemInput => {
+  const input: UpdateItemInput = { itemId, fields };
+  const languages = new Set(fields.map((field) => field.language));
+  if (languages.size === 1 && fields[0]?.language !== undefined) {
+    input.language = fields[0].language;
+  }
+  const versions = new Set(fields.map((field) => field.version));
+  if (versions.size === 1 && fields[0]?.version !== undefined) {
+    input.version = fields[0].version;
+  }
+  return input;
+};
+
 const computeFieldDrift = (
   desired: FieldValue[],
   remote: RemoteItem,
@@ -192,7 +227,18 @@ const computeFieldDrift = (
       });
       continue;
     }
-    if (found.value !== want) {
+    // Layout fields (`__Renderings` / `__Final Renderings`) carry XML
+    // that Sitecore's layout pipeline normalises on write (canonical →
+    // SXA delta, plus baseline `<p:da>` directives). A raw string
+    // compare would report a phantom update on every re-push, so diff
+    // them structurally — same placements ⇒ no drift.
+    const isLayoutField =
+      field.fieldId === LAYOUT_FIELDS.RENDERINGS ||
+      field.fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS;
+    const equal = isLayoutField
+      ? layoutXmlEquivalent(found.value, want)
+      : found.value === want;
+    if (!equal) {
       drift.push({
         fieldId: field.fieldId,
         before: found.value,
@@ -247,20 +293,78 @@ const resolveCreateItemParent = (
   return { unresolvedRefKey: op.parent.refKey };
 };
 
-/** Resolve a CreateItem op's templateOf — usually a constant Sitecore GUID,
- *  but the SV item case has it as the recipe's own template refKey. */
+/**
+ * Strict variant of parent resolution for the plan-time sibling-name
+ * fallback. Unlike `resolveCreateItemParent` (which has plan-mode-friendly
+ * path-string fallbacks), this returns an itemId ONLY when one is
+ * actually in the captured map — so the caller can safely pass the
+ * result to `getChildren({ itemId })` without risk of feeding it a path.
+ */
+const resolveParentItemIdForFallback = (
+  op: CreateItemOp,
+  capturedItemIds: ReadonlyMap<string, string>
+): string | null => {
+  const candidate =
+    op.parent.kind === "ref-path"
+      ? capturedItemIds.get(op.parent.value)
+      : capturedItemIds.get(op.parent.refKey);
+  if (!candidate) return null;
+  if (candidate.startsWith("/")) return null;
+  return candidate;
+};
+
+/**
+ * The `Scai Handle` recipe-identity marker `injectHandleMarker` stamped on a
+ * CreateItem op, or `undefined` for an op that carries none (e.g. an IR that
+ * never went through `injectHandleMarker`).
+ */
+const opHandleMarker = (op: CreateItemOp): string | undefined => {
+  const field = op.fields.find(
+    (f) => (f.fieldName ?? "").toLowerCase() === SCAI_HANDLE_FIELD_NAME.toLowerCase()
+  );
+  return field && field.value.kind === "string" ? field.value.value : undefined;
+};
+
+/** The `Scai Handle` marker value on a live item, or `undefined` when unmarked. */
+const remoteHandleMarker = (item: RemoteItem): string | undefined =>
+  item.fields.find((f) => (f.name ?? "").toLowerCase() === SCAI_HANDLE_FIELD_NAME.toLowerCase())
+    ?.value;
+
+/**
+ * Resolve a CreateItem op's templateOf to a Sitecore item ID.
+ *
+ *   - String form: usually a constant Sitecore built-in GUID. If it
+ *     matches a refKey captured during this push (e.g. SV item under
+ *     a recipe-created template), resolve to the captured itemId.
+ *   - `{kind: "ref-path"}` form: late-resolved against a content-tree
+ *     path. The push pipeline seeds `crossRecipeRefs[templatePathRefKey(path)] = path`;
+ *     the executor's `getItemsByPaths` batch lookup populates
+ *     `capturedItemIds` before planning starts. A miss here means the
+ *     template item doesn't exist on the tenant — planner skips with a
+ *     clear reason rather than letting the upstream createItem throw.
+ */
 const resolveTemplateOf = (
   op: CreateItemOp,
   capturedItemIds: ReadonlyMap<string, string>
-): { resolved: string } | { unresolvedRefKey: string } => {
-  // If templateOf matches a refKey in our captured map, resolve it.
-  // Otherwise it's a known Sitecore built-in GUID and we use as-is.
-  const captured = capturedItemIds.get(op.templateOf);
-  if (captured) {
-    return { resolved: captured };
+): { resolved: string } | { unresolvedRefKey: string; reason?: string } => {
+  if (typeof op.templateOf === "string") {
+    // If templateOf matches a refKey in our captured map, resolve it.
+    // Otherwise it's a known Sitecore built-in GUID and we use as-is.
+    const captured = capturedItemIds.get(op.templateOf);
+    if (captured) {
+      return { resolved: captured };
+    }
+    // Known Sitecore built-in (Template, Section, Field, Folder, Rendering, etc.).
+    return { resolved: op.templateOf };
   }
-  // Known Sitecore built-in (Template, Section, Field, Folder, Rendering, etc.).
-  return { resolved: op.templateOf };
+  // ref-path: resolve via the seed map.
+  const refKey = templatePathRefKey(op.templateOf.value);
+  const captured = capturedItemIds.get(refKey);
+  if (captured) return { resolved: captured };
+  return {
+    unresolvedRefKey: refKey,
+    reason: `templateOf path '${op.templateOf.value}' did not resolve. The template item is missing from the tenant or the path is wrong — verify the template exists.`,
+  };
 };
 
 const planCreateItem = (
@@ -285,7 +389,7 @@ const planCreateItem = (
         index,
         operation: op,
         status: "skip",
-        reason: `templateOf ref ${tpl.unresolvedRefKey} not yet captured.`,
+        reason: tpl.reason ?? `templateOf ref ${tpl.unresolvedRefKey} not yet captured.`,
       };
     }
     // Plan-mode preview tolerates unresolved field refs: we report status
@@ -316,6 +420,14 @@ const planCreateItem = (
           templateId: tpl.resolved,
           name: op.name,
           fields: resolvedFields,
+          // The planner reads existence via the path index, which lags
+          // writes by seconds-to-minutes. On a rapid second push the
+          // planner can see "missing" and plan a create against a path
+          // the tenant already has — request an authoritative
+          // parent-children pre-check at apply time to prevent
+          // duplicate-sibling creation (the root cause of the
+          // `audit slug-conflicts` false positives after re-push).
+          idempotencyCheck: true,
         },
       },
     };
@@ -351,7 +463,7 @@ const planCreateItem = (
     diff: drift,
     mutation: {
       kind: "updateItem",
-      input: { itemId: remote.itemId, fields: fieldsToSet },
+      input: toUpdateItemInput(remote.itemId, fieldsToSet),
     },
   };
 };
@@ -400,10 +512,7 @@ const planUpdateOp = (
     diff: drift,
     mutation: {
       kind: "updateItem",
-      input: {
-        itemId: remote.itemId,
-        fields: resolveAll(desiredFields, capturedItemIds),
-      },
+      input: toUpdateItemInput(remote.itemId, resolveAll(desiredFields, capturedItemIds)),
     },
   };
 };
@@ -456,7 +565,7 @@ const lookupSelector = (
   } else if (op.op === "SetStandardValues") {
     refKey = op.templateRefKey;
   } else {
-    // AppendToMultiList — target item is keyed by itemRefKey, same as SetField.
+    // AppendToMultiList / AddItemVersion — target item keyed by itemRefKey.
     refKey = op.itemRefKey;
   }
   const itemId = capturedItemIds.get(refKey);
@@ -515,7 +624,7 @@ export const buildAction = async (
   }
 
   const selector = lookupSelector(op, capturedItemIds);
-  const remote = await (async (): Promise<RemoteItem | null> => {
+  let remote = await (async (): Promise<RemoteItem | null> => {
     if (!selector) return null;
     if (selector.path) return cachedReadByPath(selector.path);
     return client.getItem(selector);
@@ -534,6 +643,49 @@ export const buildAction = async (
       const parentRemote = await cachedReadByPath(parentPath);
       if (parentRemote) {
         capturedItemIds.set(parentPath, parentRemote.itemId);
+      }
+    }
+  }
+  // Sibling fallback for CreateItem against a null-cached path. Two cases
+  // both end with the planner finding the live item it would otherwise
+  // duplicate:
+  //
+  //   1. Path-index lag — Sitecore's path index trails writes by
+  //      seconds-to-minutes, so a repeat push within that window sees
+  //      `getItem({path})` return null for a path the tenant already has.
+  //      A name match among the parent's children is the lag-immune fix.
+  //   2. Rename — a CMS user renamed the item, so neither the path nor the
+  //      sibling NAME matches. The `Scai Handle` marker is identity that
+  //      survives a rename: a child still carrying this recipe's handle IS
+  //      the item, just renamed. The marker carries the *recipe* handle, so
+  //      every item one recipe creates under a shared parent gets the same
+  //      marker — the match is trusted only when exactly one sibling
+  //      carries it (an unambiguous (parent, handle) pair); >1 falls
+  //      through to the name path, never risking a wrong rebind.
+  //
+  // Without this, the planner schedules a duplicate create — the
+  // `createItem` mutation then either errors through the authoring-client's
+  // name-conflict trap (best case) or silently produces a duplicate item.
+  //
+  // `getChildren(parent)` walks the live item tree and is not lag-prone.
+  // Gated on parent-itemId-known so we don't pay an extra getChildren round
+  // trip on a true first push (where the parent itself is null too).
+  if (op.op === "CreateItem" && !remote) {
+    const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
+    if (parentItemId) {
+      const siblings = await client.getChildren({ itemId: parentItemId });
+      let match = siblings.find((s) => s.name === op.name);
+      if (!match) {
+        const handle = opHandleMarker(op);
+        if (handle !== undefined) {
+          const marked = siblings.filter((s) => remoteHandleMarker(s) === handle);
+          if (marked.length === 1) match = marked[0];
+        }
+      }
+      if (match) {
+        remote = match;
+        capturedItemIds.set(op.id, match.itemId);
+        pathSnapshotCache?.set(op.path, match);
       }
     }
   }
@@ -576,6 +728,8 @@ export const buildAction = async (
         return planCreateSite(index, op, capturedItemIds, sitesClient);
       case "AppendToMultiList":
         return planAppendToMultiList(index, op, remote, capturedItemIds);
+      case "AddItemVersion":
+        return planAddItemVersion(index, op, remote, client);
     }
   })();
   return { ...action, snapshot: remote };
@@ -681,7 +835,55 @@ const planAppendToMultiList = (
     ],
     mutation: {
       kind: "updateItem",
-      input: { itemId: remote.itemId, fields: [updatedField] },
+      input: toUpdateItemInput(remote.itemId, [updatedField]),
+    },
+  };
+};
+
+/**
+ * Plan an `AddItemVersion` op. Reads the target item's current versions in
+ * `op.language` and emits an `addItemVersion` mutation only when the
+ * declared `version` doesn't exist yet — so a re-push of a story-seed
+ * recipe is an all-`skip` no-op once the version stack is materialised.
+ *
+ * `addCount` is `op.version - currentMax`: the executor adds that many
+ * versions (Sitecore assigns the numbers sequentially). When `language` has
+ * no versions yet `currentMax` is 0, and adding version 1 also creates the
+ * language version.
+ */
+const planAddItemVersion = async (
+  index: number,
+  op: AddItemVersionOp,
+  remote: RemoteItem | null,
+  client: AuthoringApiClient
+): Promise<PlannedAction> => {
+  if (!remote) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Target item (refKey ${op.itemRefKey}) not yet captured/created.`,
+    };
+  }
+  const existing = await client.getItemVersions({ itemId: remote.itemId }, op.language);
+  const currentMax = existing.length > 0 ? Math.max(...existing) : 0;
+  if (currentMax >= op.version) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Version ${op.version} already exists in '${op.language}'.`,
+    };
+  }
+  return {
+    index,
+    operation: op,
+    status: "create",
+    mutation: {
+      kind: "addItemVersion",
+      itemId: remote.itemId,
+      language: op.language,
+      addCount: op.version - currentMax,
     },
   };
 };

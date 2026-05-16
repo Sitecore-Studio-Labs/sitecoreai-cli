@@ -13,6 +13,7 @@ import {
   enumerationValueTemplateId,
   enumValueId,
   fieldId,
+  pageTemplatesGroupFolderId,
   presentationDesignParametersBucketId,
   renderingsSectionFolderId,
   sectionFolderId,
@@ -30,7 +31,7 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "../ir/operations";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
@@ -207,6 +208,16 @@ export interface CompileContext {
    */
   enumsByHandle?: ReadonlyMap<string, import("../schema/recipe").EnumerationRecipe>;
   /**
+   * Cross-recipe map of component handles → `ComponentTemplateRecipe`,
+   * populated by `compileRecipeSet`. `compilePageRecipe` uses it to
+   * resolve a scoped placement's component to its datasource template:
+   * `datasource.template.handle` when the component declares a separate
+   * content template, else the component template itself. Absent for
+   * standalone single-recipe compiles — the page compiler then assumes
+   * the component template is its own datasource template.
+   */
+  componentsByHandle?: ReadonlyMap<string, import("../schema/recipe").ComponentTemplateRecipe>;
+  /**
    * SXA Available Renderings root, e.g.
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
    * `compileRecipeSet` aggregates every component-template recipe by
@@ -222,6 +233,33 @@ export interface CompileContext {
    * skipped — there's no section to bucket them under.
    */
   availableRenderingsRoot?: string;
+  /**
+   * SXA Placeholder Settings root, e.g.
+   * `/sitecore/content/<site>/Presentation/Placeholder Settings`. Where
+   * `buildPlaceholderSettingsAggregate` creates the Placeholder Settings
+   * items for every recipe-defined placeholder key (standalone
+   * `PlaceholderRecipe` + inline `ComponentTemplateRecipe.placeholders`).
+   *
+   * Required when the recipe set contains any `PlaceholderRecipe` or any
+   * component with inline `placeholders`; the aggregate throws
+   * INPUT_INVALID with a clear hint when needed but missing.
+   */
+  placeholderSettingsRoot?: string;
+  /**
+   * Templates root for `PageTemplateRecipe` items, e.g.
+   * `/sitecore/templates/Project/<site>`. Page templates land at
+   * `<pageTemplatesRoot>/[<group>/]<name>`. Optional — falls back to
+   * `templatesRoot` when unset.
+   */
+  pageTemplatesRoot?: string;
+  /**
+   * Site content-tree root under which `PageRecipe` items land —
+   * typically `/sitecore/content/<tenant>/<site>` or its `Home`
+   * subtree. Required for `PageRecipe` compilation; the compiler
+   * throws INPUT_INVALID with a clear hint when a page recipe is in
+   * the set but this is unset.
+   */
+  pagesRoot?: string;
 }
 
 export const PARAMS_SECTION_NAME = "Parameters";
@@ -259,7 +297,7 @@ export const resolveEnumFolderPath = (
   consumerHandle: string
 ): string => {
   if (!context.enumerationsRoot) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no enumerationsRoot is configured.`,
       "INPUT_INVALID",
       {
@@ -269,7 +307,7 @@ export const resolveEnumFolderPath = (
   }
   const enumRecipe = context.enumsByHandle?.get(enumHandle);
   if (!enumRecipe) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${consumerHandle}' references sitecore.enumHandle='${enumHandle}' but no EnumerationRecipe with that handle is in the set.`,
       "INPUT_INVALID",
       {
@@ -509,6 +547,40 @@ export const ensureContentModelsGroupFolder = (
     id: refKey,
     path,
     parent: { kind: "ref-path", value: context.contentModelsRoot },
+    templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    name: group,
+    fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
+  } satisfies CreateItemOp);
+  return refKey;
+};
+
+/**
+ * Ensure a page-templates group folder exists under `<root>/<group>`,
+ * where `<root>` is `pageTemplatesRoot` (falling back to `templatesRoot`).
+ * Returns the refKey for `CreateItem.parent`, or `undefined` when no
+ * root resolves. Idempotent across one recipe-set compile via
+ * `emittedFolders`. Mirror of `ensureContentModelsGroupFolder` for the
+ * page-template tree.
+ */
+export const ensurePageTemplatesGroupFolder = (
+  operations: Operation[],
+  context: CompileContext,
+  group: string,
+  emittedFolders: Set<string>
+): string | undefined => {
+  const root = context.pageTemplatesRoot ?? context.templatesRoot;
+  if (!root) return undefined;
+  const site = siteOf(context);
+  const refKey = pageTemplatesGroupFolderId(site, group);
+  if (emittedFolders.has(refKey)) return refKey;
+  emittedFolders.add(refKey);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `page-templates-group-folder:${site}:${group}`,
+    id: refKey,
+    path: joinPath(root, group),
+    parent: { kind: "ref-path", value: root },
     templateOf: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
     name: group,
     fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
@@ -1020,6 +1092,15 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
     fields.push(sharedField(TEMPLATE_FIELD_FIELDS.SOURCE, sourceValue));
   }
 
+  // Field storage axis. `versioned` is Sitecore's default for a new
+  // Template Field (Shared + Unversioned both unset) — emit nothing.
+  const storage = field.sitecore?.storage;
+  if (storage === "shared") {
+    fields.push(sharedField(TEMPLATE_FIELD_FIELDS.SHARED, { kind: "string", value: "1" }));
+  } else if (storage === "unversioned") {
+    fields.push(sharedField(TEMPLATE_FIELD_FIELDS.UNVERSIONED, { kind: "string", value: "1" }));
+  }
+
   return [
     {
       op: "CreateItem",
@@ -1134,7 +1215,7 @@ function encodeStandardValueDefaultForField(
       // upstream call site, so this branch only fires if an enum field
       // somehow reached SV emission without going through field-op
       // construction. Throw rather than emit a broken default.
-      throw createCliError(
+      throw createScaiError(
         `Field '${field.name}' on recipe '${handle}' is shape=enum + Type=Droplink but declares no sitecore.enumHandle; inline Droplink isn't supported.`,
         "INPUT_INVALID",
         {
@@ -1240,7 +1321,7 @@ function resolveFieldSource(
       };
     }
     const rendered = renderSourceFields(fields, () => {
-      throw createCliError("compile-time render should not need handle resolution", "UNKNOWN");
+      throw createScaiError("compile-time render should not need handle resolution", "UNKNOWN");
     });
     if (rendered !== undefined) {
       return { kind: "string", value: rendered };
@@ -1252,7 +1333,7 @@ function resolveFieldSource(
     // enumerates the string directly and never reads a folder.
     if (type === "droplist") {
       if (!field.values || field.values.length === 0) {
-        throw createCliError(
+        throw createScaiError(
           `Field '${field.name}' on recipe '${recipeHandle}' overrides sitecore.type to 'droplist' but declares no inline values; Droplist needs an inline value list.`,
           "INPUT_INVALID",
           {
@@ -1270,7 +1351,7 @@ function resolveFieldSource(
       // Path is computable at compile time from the EnumerationRecipe
       // looked up via `context.enumsByHandle`.
       if (!context) {
-        throw createCliError(
+        throw createScaiError(
           `Field '${field.name}' on recipe '${recipeHandle}' uses sitecore.enumHandle='${sc.enumHandle}' but the field-op builder was invoked without a CompileContext.`,
           "INPUT_INVALID",
           {
@@ -1287,7 +1368,7 @@ function resolveFieldSource(
     // dropdown stayed empty in Pages. Force the author to commit:
     //   - Inline scale → `sitecore.type: "droplist"` + inline `values`.
     //   - Shared scale → `sitecore.enumHandle: "<EnumerationRecipe>@<v>"`.
-    throw createCliError(
+    throw createScaiError(
       `Field '${field.name}' on recipe '${recipeHandle}' is shape=enum but declares neither sitecore.type='droplist' (with inline values) nor sitecore.enumHandle (pointing at a shared EnumerationRecipe); inline Droplink isn't supported.`,
       "INPUT_INVALID",
       {

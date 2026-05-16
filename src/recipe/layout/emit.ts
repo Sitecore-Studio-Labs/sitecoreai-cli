@@ -1,6 +1,6 @@
 import { v5 as uuidv5 } from "uuid";
 
-import { createCliError } from "@/shared/errors";
+import { createScaiError } from "@/shared/errors";
 
 /**
  * Emit a Sitecore layout XML string from a structural `Layout` shape.
@@ -65,10 +65,20 @@ export interface LayoutEmitContext {
   /**
    * Whether `kind: "scoped"` datasource refs are permitted. False for
    * partial-design and page-design layouts (they don't have a host page
-   * to resolve scoped refs against). True will be set by Phase 5
-   * `PageRecipe` compilation when scoped refs become meaningful.
+   * to resolve scoped refs against); `PageRecipe` sets it true.
    */
   allowScoped: boolean;
+  /**
+   * Resolver for `kind: "scoped"` datasource refs — maps a placement's
+   * `slot` to the GUID of the page-local datasource item the caller
+   * materialises at `<page>/Data/<slot>`. `PageRecipe` passes this; the
+   * scoped `<r>` element then carries `ds="{resolvedGuid}"`.
+   *
+   * When `allowScoped` is true but this is absent, a scoped ref falls
+   * back to a `ds="local:<slot>"` sentinel (recognisable, fails loudly
+   * if executed) — kept only for forward-compat / diagnostics.
+   */
+  scopedDatasourceIdFor?: (slot: string) => string;
   /**
    * Wire form for the emitted XML.
    *
@@ -85,6 +95,16 @@ export interface LayoutEmitContext {
    *   mode (they preserve canonical and would diverge).
    */
   mode?: "canonical" | "delta";
+  /**
+   * SXA JSON Layout definition GUID. When set, the device element
+   * carries an `l="{layoutId}"` attribute — `<d id="{device}"
+   * l="{layout}">…</d>` — and `emitLayoutXml` emits the wrapper shell
+   * even when there are zero placements (a page-template `__Standard
+   * Values` layout: device + JSON-layout pointer, no renderings). Used
+   * only in `"canonical"` mode; `"delta"` ignores it. When unset, the
+   * device element has no `l` attribute (partial / page-design layouts).
+   */
+  layoutId?: string;
 }
 
 const formatGuidCurly = (guid: string): string => `{${guid.toUpperCase()}}`;
@@ -138,15 +158,20 @@ const resolvePlacement = (
         break;
       case "scoped":
         if (!ctx.allowScoped) {
-          throw createCliError(
+          throw createScaiError(
             `scoped datasourceRef is invalid in this layout context (no host page to resolve against). Slot: '${placement.datasourceRef.slot}'. Use 'shared' for reusable content or 'none' for config-driven renderings.`,
             "INPUT_INVALID"
           );
         }
-        // Scoped resolution is a Phase 5 concern (PageRecipe). Emit
-        // an explicit local-* sentinel so any premature execution
-        // fails loudly with a recognizable marker.
-        dsAttr = ` ds="local:${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
+        if (ctx.scopedDatasourceIdFor) {
+          // Page-local datasource — resolved to the GUID of the item the
+          // page compiler materialises at `<page>/Data/<slot>`.
+          dsAttr = ` ds="${formatGuidCurly(ctx.scopedDatasourceIdFor(placement.datasourceRef.slot))}"`;
+        } else {
+          // No resolver — emit an explicit `local:` sentinel so any
+          // premature execution fails loudly with a recognizable marker.
+          dsAttr = ` ds="local:${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
+        }
         break;
       case "none":
         // No ds attribute — rendering is config-driven via params.
@@ -182,7 +207,11 @@ export function emitLayoutXml(layout: LayoutInput, ctx: LayoutEmitContext): stri
   const placeholderEntries = Object.entries(layout.placeholders).filter(
     ([, placements]) => placements.length > 0
   );
-  if (placeholderEntries.length === 0) {
+  // With `layoutId` set the caller wants the device+layout shell even
+  // when empty (a page-template standard-values layout). Otherwise an
+  // empty layout emits nothing — the caller decides whether to skip the
+  // field write.
+  if (placeholderEntries.length === 0 && ctx.layoutId === undefined) {
     return "";
   }
 
@@ -206,7 +235,8 @@ const emitCanonical = (
       );
     });
   }
-  return `<r xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
+  const layoutAttr = ctx.layoutId ? ` l="${formatGuidCurly(ctx.layoutId)}"` : "";
+  return `<r xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><d id="${formatGuidCurly(ctx.deviceId)}"${layoutAttr}>${elements.join("")}</d></r>`;
 };
 
 /**

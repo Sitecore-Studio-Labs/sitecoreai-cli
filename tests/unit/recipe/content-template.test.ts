@@ -4,7 +4,7 @@ import {
   compileRecipe,
   type CompileContext,
 } from "../../../src/recipe/compile";
-import { templateId, standardValuesId } from "../../../src/recipe/guids";
+import { templateId, standardValuesId, workflowId } from "../../../src/recipe/guids";
 import {
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
@@ -79,6 +79,50 @@ describe("compileContentTemplateRecipe", () => {
       kind: "ref-recipe-list",
       refKeys: [templateId(SITE, "accordion-item@1"), templateId(SITE, "rich-text-block@1")],
     });
+  });
+
+  it("emits a __Default workflow SetField on Standard Values when defaultWorkflow is set", () => {
+    const ir = compileContentTemplateRecipe(
+      {
+        kind: "content-template",
+        schemaVersion: "1",
+        handle: "article@1",
+        name: "Article",
+        displayName: "Article",
+        fields: [{ name: "Title", shape: "text" }],
+        defaultWorkflow: "editorial@1",
+      },
+      CONTEXT
+    );
+    const wf = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "content-template-default-workflow:article@1"
+    )!;
+    expect(wf).toBeDefined();
+    expect(wf.itemRefKey).toBe(standardValuesId(SITE, "article@1"));
+    expect(wf.fieldName).toBe("__Default workflow");
+    expect(wf.value).toEqual({
+      kind: "ref-recipe",
+      refKey: workflowId("editorial@1"),
+    });
+  });
+
+  it("omits the __Default workflow SetField when defaultWorkflow is unset", () => {
+    const ir = compileContentTemplateRecipe(
+      {
+        kind: "content-template",
+        schemaVersion: "1",
+        handle: "minimal@1",
+        name: "Minimal",
+        displayName: "Minimal",
+        fields: [{ name: "Title", shape: "text" }],
+      },
+      CONTEXT
+    );
+    const wf = ir.operations.find(
+      (op) => op.op === "SetField" && op.label.startsWith("content-template-default-workflow:")
+    );
+    expect(wf).toBeUndefined();
   });
 
   it("the emitted template uses STANDARD_TEMPLATE_ID as its base", () => {
@@ -250,5 +294,55 @@ describe("insertOptions on a ComponentTemplateRecipe", () => {
       kind: "ref-recipe-list",
       refKeys: [templateId(SITE, "accordion-item@1")],
     });
+  });
+});
+
+describe("field storage axis (sitecore.storage)", () => {
+  const compileStorageFields = () =>
+    compileContentTemplateRecipe(
+      {
+        kind: "content-template",
+        schemaVersion: "1",
+        handle: "story@1",
+        name: "Story",
+        displayName: "Story",
+        fields: [
+          { name: "Headline", shape: "text" }, // no storage → versioned default
+          { name: "Locale", shape: "text", sitecore: { storage: "shared" } },
+          { name: "Summary", shape: "text", sitecore: { storage: "unversioned" } },
+          { name: "Body", shape: "richText", sitecore: { storage: "versioned" } },
+        ],
+      },
+      CONTEXT
+    );
+
+  const fieldOp = (ir: ReturnType<typeof compileStorageFields>, name: string): CreateItemOp =>
+    ir.operations.find((op): op is CreateItemOp => op.op === "CreateItem" && op.name === name)!;
+
+  it("emits the Shared flag only for storage: shared", () => {
+    const ir = compileStorageFields();
+    expect(findField(fieldOp(ir, "Locale"), TEMPLATE_FIELD_FIELDS.SHARED)?.value).toEqual({
+      kind: "string",
+      value: "1",
+    });
+    expect(findField(fieldOp(ir, "Headline"), TEMPLATE_FIELD_FIELDS.SHARED)).toBeUndefined();
+    expect(findField(fieldOp(ir, "Summary"), TEMPLATE_FIELD_FIELDS.SHARED)).toBeUndefined();
+  });
+
+  it("emits the Unversioned flag only for storage: unversioned", () => {
+    const ir = compileStorageFields();
+    expect(findField(fieldOp(ir, "Summary"), TEMPLATE_FIELD_FIELDS.UNVERSIONED)?.value).toEqual({
+      kind: "string",
+      value: "1",
+    });
+    expect(findField(fieldOp(ir, "Locale"), TEMPLATE_FIELD_FIELDS.UNVERSIONED)).toBeUndefined();
+  });
+
+  it("emits neither flag for storage: versioned (the Sitecore default)", () => {
+    const ir = compileStorageFields();
+    for (const name of ["Headline", "Body"]) {
+      expect(findField(fieldOp(ir, name), TEMPLATE_FIELD_FIELDS.SHARED)).toBeUndefined();
+      expect(findField(fieldOp(ir, name), TEMPLATE_FIELD_FIELDS.UNVERSIONED)).toBeUndefined();
+    }
   });
 });

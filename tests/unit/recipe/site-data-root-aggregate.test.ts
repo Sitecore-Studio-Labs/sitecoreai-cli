@@ -9,10 +9,7 @@ import {
   siteDataFolderTemplateId,
   siteDataRootStandardValuesId,
 } from "../../../src/recipe/guids";
-import {
-  SITECORE_TEMPLATES,
-  SYSTEM_FIELDS,
-} from "../../../src/recipe/ir/sitecore-templates";
+import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import type {
   CreateItemOp,
   Operation,
@@ -41,9 +38,7 @@ const CONTEXT: CompileContext = {
   sectionsByHandle: new Map([[UI_SECTION_RECIPE.handle, UI_SECTION_RECIPE]]),
 };
 
-const baseRecipe = (
-  overrides: Partial<ComponentTemplateRecipe>
-): ComponentTemplateRecipe =>
+const baseRecipe = (overrides: Partial<ComponentTemplateRecipe>): ComponentTemplateRecipe =>
   ({
     kind: "component-template",
     schemaVersion: "1",
@@ -79,10 +74,7 @@ describe("compileRecipeSet — site Data root Standard Values aggregator", () =>
     expect(aggregate).toBeDefined();
     expect(aggregate!.operations).toHaveLength(2);
 
-    const sv = findOp(
-      aggregate!.operations,
-      (op): op is CreateItemOp => op.op === "CreateItem"
-    );
+    const sv = findOp(aggregate!.operations, (op): op is CreateItemOp => op.op === "CreateItem");
     expect(sv).toBeDefined();
     expect(sv!.id).toBe(siteDataRootStandardValuesId(SITE));
     expect(sv!.name).toBe("__Standard Values");
@@ -92,10 +84,7 @@ describe("compileRecipeSet — site Data root Standard Values aggregator", () =>
     expect(sv!.policy).toBe("CreateOnly");
     expect(sv!.fields).toEqual([]);
 
-    const insert = findOp(
-      aggregate!.operations,
-      (op): op is SetFieldOp => op.op === "SetField"
-    );
+    const insert = findOp(aggregate!.operations, (op): op is SetFieldOp => op.op === "SetField");
     expect(insert).toBeDefined();
     expect(insert!.itemRefKey).toBe(siteDataRootStandardValuesId(SITE));
     expect(insert!.fieldId).toBe(SYSTEM_FIELDS.INSERT_OPTIONS);
@@ -141,10 +130,7 @@ describe("compileRecipeSet — site Data root Standard Values aggregator", () =>
     const aggregate = findAggregate(irs);
     expect(aggregate).toBeDefined();
 
-    const insert = findOp(
-      aggregate!.operations,
-      (op): op is SetFieldOp => op.op === "SetField"
-    );
+    const insert = findOp(aggregate!.operations, (op): op is SetFieldOp => op.op === "SetField");
     expect(insert!.value).toEqual({
       kind: "ref-recipe-list",
       // Folder, then sorted singletons (just solo-c@1), then sorted shared
@@ -185,10 +171,7 @@ describe("compileRecipeSet — site Data root Standard Values aggregator", () =>
     const irs = compileRecipeSet([UI_SECTION_RECIPE, recipeA, recipeB], CONTEXT);
     const aggregate = findAggregate(irs);
     expect(aggregate).toBeDefined();
-    const insert = findOp(
-      aggregate!.operations,
-      (op): op is SetFieldOp => op.op === "SetField"
-    );
+    const insert = findOp(aggregate!.operations, (op): op is SetFieldOp => op.op === "SetField");
     expect(insert!.value).toEqual({
       kind: "ref-recipe-list",
       refKeys: [SITECORE_TEMPLATES.FOLDER, sharedDataFolderTemplateId(SITE, "Shared")],

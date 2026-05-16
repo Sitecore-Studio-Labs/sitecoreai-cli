@@ -1,14 +1,14 @@
 import path from "node:path";
 import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
-import { type EnvironmentConfiguration, type RootConfiguration } from "@/config";
-import { createCliError } from "@/shared/errors";
+import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
+import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/shared/env";
 import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient } from "../api/client";
 
 /**
- * Shared option shapes for the three `scai recipe` tasks.
+ * Shared option shapes for the three `scai provision recipe` tasks.
  *
  * All three honor the standard verbosity options (`--quiet`, `--json`,
  * `--log-file`). Plan and push additionally need an environment to talk
@@ -108,6 +108,21 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    * sequentially — within a push, mutations land in topological order.
    */
   planConcurrency?: number;
+  /**
+   * Optional progress callback. Receives per-recipe execution events
+   * as they happen (op-start / op-result / apply-start / apply-success
+   * / apply-error / site-job-poll / rollback events). Used by external
+   * orchestrators (e.g. `scai mcp serve`) to forward live progress to
+   * a client. The CLI logger does not need this — it observes the same
+   * events via its own internal collator.
+   */
+  emit?: (event: { recipe: string; event: import("../execute").ExecutionEvent }) => void;
+  /**
+   * Cooperative cancellation. When the signal fires, the executor
+   * stops between operations, rolls back applied mutations, and the
+   * per-recipe `ExecutionResult.aborted` is set to true.
+   */
+  signal?: AbortSignal;
 }
 
 export const toLogger = (options: RecipeCommonOptions): Logger =>
@@ -170,7 +185,7 @@ export const resolveRecipeRoots = (
         : !templatesRoot
           ? "templatesRoot"
           : "renderingsRoot";
-    throw createCliError(
+    throw createScaiError(
       `Recipe parent path missing: ${missing} not configured for environment '${envName}'.`,
       "INPUT_INVALID",
       {
@@ -215,7 +230,7 @@ export const resolveRecipeInputs = async (
   // directory (e.g. via `..` segments in the glob input).
   const escaped = matched.filter((p) => path.relative(configDir, p).startsWith(".."));
   if (escaped.length > 0) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe glob resolved to ${escaped.length} path(s) outside the config directory: ${escaped.slice(0, 3).join(", ")}${escaped.length > 3 ? `, +${escaped.length - 3} more` : ""}.`,
       "INPUT_INVALID",
       {
@@ -224,7 +239,7 @@ export const resolveRecipeInputs = async (
     );
   }
   if (matched.length === 0) {
-    throw createCliError(
+    throw createScaiError(
       `No recipe files matched the config glob: ${root.recipes.join(", ")}.`,
       "INPUT_INVALID",
       {
@@ -249,7 +264,7 @@ export const ensureAllowWrite = (
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  throw createCliError(
+  throw createScaiError(
     `Environment ${envName} is not configured to allow writing data.`,
     "INPUT_INVALID",
     {

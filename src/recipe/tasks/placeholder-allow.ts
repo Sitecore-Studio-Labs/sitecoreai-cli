@@ -18,10 +18,7 @@
 
 import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { dashifyGuid } from "../api/ref-encoding";
-import {
-  PLACEHOLDER_FIELDS,
-  PLACEHOLDER_TEMPLATE_ID,
-} from "../ir/sitecore-templates";
+import { PLACEHOLDER_FIELDS, PLACEHOLDER_TEMPLATE_ID } from "../ir/sitecore-templates";
 import type { ComponentTemplateRecipe, Recipe } from "../schema/recipe";
 
 const joinPath = (parent: string, name: string): string =>
@@ -30,8 +27,7 @@ const joinPath = (parent: string, name: string): string =>
 const isPlaceholder = (item: RemoteItem): boolean =>
   normaliseGuid(item.templateId) === normaliseGuid(PLACEHOLDER_TEMPLATE_ID);
 
-const normaliseGuid = (guid: string): string =>
-  guid.replace(/[{}-]/g, "").toLowerCase();
+const normaliseGuid = (guid: string): string => guid.replace(/[{}-]/g, "").toLowerCase();
 
 const toCurly = (guid: string): string => `{${dashifyGuid(guid).toUpperCase()}}`;
 
@@ -49,7 +45,7 @@ const resolveRenderingItemId = async (
   client: AuthoringApiClient,
   renderingsRoot: string,
   recipe: ComponentTemplateRecipe,
-  sectionName: string | undefined,
+  sectionName: string | undefined
 ): Promise<string | null> => {
   const path = sectionName
     ? joinPath(joinPath(renderingsRoot, sectionName), recipe.name)
@@ -67,7 +63,7 @@ const resolveRenderingItemId = async (
  */
 const collectPlaceholders = async (
   client: AuthoringApiClient,
-  roots: readonly string[],
+  roots: readonly string[]
 ): Promise<Array<{ item: RemoteItem; placeholderKey: string }>> => {
   const found: Array<{ item: RemoteItem; placeholderKey: string }> = [];
   const visit = async (path: string): Promise<void> => {
@@ -75,9 +71,7 @@ const collectPlaceholders = async (
     if (!item) return;
     if (isPlaceholder(item)) {
       const keyField = item.fields.find(
-        (f) =>
-          normaliseGuid(f.fieldId) ===
-          normaliseGuid(PLACEHOLDER_FIELDS.PLACEHOLDER_KEY),
+        (f) => normaliseGuid(f.fieldId) === normaliseGuid(PLACEHOLDER_FIELDS.PLACEHOLDER_KEY)
       );
       const placeholderKey = keyField?.value?.trim();
       if (placeholderKey) {
@@ -100,9 +94,7 @@ const collectPlaceholders = async (
 
 const findAllowedControlsValue = (item: RemoteItem): string => {
   const field = item.fields.find(
-    (f) =>
-      normaliseGuid(f.fieldId) ===
-      normaliseGuid(PLACEHOLDER_FIELDS.ALLOWED_CONTROLS),
+    (f) => normaliseGuid(f.fieldId) === normaliseGuid(PLACEHOLDER_FIELDS.ALLOWED_CONTROLS)
   );
   return field?.value ?? "";
 };
@@ -115,7 +107,7 @@ const splitMultilist = (value: string): string[] =>
 
 const mergeAllowedControls = (
   existing: string,
-  toAdd: readonly string[],
+  toAdd: readonly string[]
 ): { value: string; added: number } => {
   // Normalise existing entries to dashed-curly form so de-dup works
   // regardless of what shape was previously stored (some tools write
@@ -175,10 +167,9 @@ export interface PlaceholderAllowOptions {
  *     other matches still apply.
  */
 export const applyPlaceholderAllowControls = async (
-  options: PlaceholderAllowOptions,
+  options: PlaceholderAllowOptions
 ): Promise<PlaceholderAllowResult> => {
-  const { client, recipes, renderingsRoot, placeholderSettingsRoots, apply, onUpdate } =
-    options;
+  const { client, recipes, renderingsRoot, placeholderSettingsRoots, apply, onUpdate } = options;
 
   // Build the section handle → name map so we can resolve each
   // component's `section.handle` to a name for the rendering path.
@@ -199,14 +190,12 @@ export const applyPlaceholderAllowControls = async (
     // is for slots this component DEFINES (handled elsewhere).
     const keys = recipe.placedIn ?? [];
     if (keys.length === 0) continue;
-    const sectionName = recipe.section
-      ? sectionsByHandle.get(recipe.section.handle)
-      : undefined;
+    const sectionName = recipe.section ? sectionsByHandle.get(recipe.section.handle) : undefined;
     const renderingItemId = await resolveRenderingItemId(
       client,
       renderingsRoot,
       recipe,
-      sectionName,
+      sectionName
     );
     if (!renderingItemId) {
       unresolvedRecipeHandles.push(recipe.handle);

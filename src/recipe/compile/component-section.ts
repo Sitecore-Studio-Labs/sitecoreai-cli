@@ -10,7 +10,7 @@ import {
   type OperationIr,
   OperationIrSchema,
 } from "../ir/operations";
-import { createCliError } from "../../shared/errors";
+import { createScaiError } from "../../shared/errors";
 import { FOLDER_ICON, SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type ComponentSectionRecipe, ComponentSectionRecipeSchema } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
@@ -157,7 +157,7 @@ export const resolveSectionRecipe = (
 ): ComponentSectionRecipe => {
   const section = sectionsByHandle?.get(sectionHandle);
   if (!section) {
-    throw createCliError(
+    throw createScaiError(
       `Recipe '${consumerHandle}' references section.handle='${sectionHandle}' but no ComponentSectionRecipe with that handle is in the set.`,
       "INPUT_INVALID",
       {

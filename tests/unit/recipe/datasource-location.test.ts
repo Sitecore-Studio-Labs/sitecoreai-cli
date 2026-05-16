@@ -47,9 +47,7 @@ const CONTEXT: CompileContext = {
 
 const SITE = "default";
 
-const baseRecipe = (
-  overrides: Partial<ComponentTemplateRecipe>
-): ComponentTemplateRecipe =>
+const baseRecipe = (overrides: Partial<ComponentTemplateRecipe>): ComponentTemplateRecipe =>
   ({
     kind: "component-template",
     schemaVersion: "1",
@@ -63,8 +61,7 @@ const baseRecipe = (
 
 const findRendering = (operations: Operation[], handle: string): CreateItemOp => {
   const op = operations.find(
-    (o): o is CreateItemOp =>
-      o.op === "CreateItem" && o.id === renderingId(SITE, handle)
+    (o): o is CreateItemOp => o.op === "CreateItem" && o.id === renderingId(SITE, handle)
   );
   if (!op) throw new Error(`rendering op not found for ${handle}`);
   return op;
@@ -139,8 +136,7 @@ describe("rendering datasource locations — site scope", () => {
     });
 
     const folderOps = ir.operations.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderOps).toHaveLength(1);
     const folderOp = folderOps[0];
@@ -210,8 +206,7 @@ describe("rendering datasource locations — site scope", () => {
     // Exactly ONE folder ITEM and it conforms to the SHARED template
     // (NOT either recipe's per-component template).
     const folderOps = allOps.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderOps).toHaveLength(1);
     expect(folderOps[0].id).toBe(siteDataFolderId(SITE, "Shared"));
@@ -293,8 +288,7 @@ describe("rendering datasource locations — site scope", () => {
 
     // Two folder ITEMs total — "Shared" and "OnlyMine".
     const folderOps = allOps.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     const sharedFolder = folderOps.find((op) => op.id === siteDataFolderId(SITE, "Shared"));
     const onlyMineFolder = folderOps.find((op) => op.id === siteDataFolderId(SITE, "OnlyMine"));
@@ -341,8 +335,7 @@ describe("rendering datasource locations — site scope", () => {
 
     // Folder item conforms to the per-recipe template.
     const folderOps = allOps.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderOps).toHaveLength(1);
     expect(folderOps[0].templateOf).toBe(siteDataFolderTemplateId(SITE, "solo@1"));
@@ -411,8 +404,7 @@ describe("rendering datasource locations — site scope", () => {
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
 
     const folderOps = ir.operations.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderOps).toHaveLength(1);
     expect(folderOps[0].templateOf).toBe(siteDataFolderTemplateId(SITE, "standalone@1"));
@@ -448,8 +440,7 @@ describe("rendering datasource locations — site scope", () => {
     });
 
     const folderOps = ir.operations.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderOps).toHaveLength(1);
     const folderOp = folderOps[0];
@@ -499,10 +490,7 @@ describe("rendering datasource locations — site scope", () => {
     expect(folderOps).toHaveLength(2);
     const ids = folderOps.map((op) => op.id).sort();
     expect(ids).toEqual(
-      [
-        siteDataFolderId(SITE, "ui/badges"),
-        siteDataFolderId(SITE, "ui/cards"),
-      ].sort()
+      [siteDataFolderId(SITE, "ui/badges"), siteDataFolderId(SITE, "ui/cards")].sort()
     );
     expect(folderOps.map((op) => op.name).sort()).toEqual(["badges", "cards"]);
     // Both parented at the shared intermediate `ui` path — executor
@@ -561,17 +549,14 @@ describe("rendering datasource locations — per-component Data Folder template"
     expect(tplOp).toBeDefined();
     if (!tplOp) throw new Error("expected tplOp");
     expect(tplOp.id).toBe(expectedTplRefKey);
-    expect(tplOp.path).toBe(
-      `${CONTEXT.templatesRoot}/ui/Component Folders/BadgeBlock Data Folder`
-    );
+    expect(tplOp.path).toBe(`${CONTEXT.templatesRoot}/ui/Component Folders/BadgeBlock Data Folder`);
     expect(tplOp.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
     expect(tplOp.name).toBe("BadgeBlock Data Folder");
 
     // SetBaseTemplates → [STANDARD_TEMPLATE_ID].
     const baseOp = ir.operations.find(
       (op): op is SetBaseTemplatesOp =>
-        op.op === "SetBaseTemplates" &&
-        op.label === "site-data-folder-base-templates:badge-block@1"
+        op.op === "SetBaseTemplates" && op.label === "site-data-folder-base-templates:badge-block@1"
     );
     expect(baseOp).toBeDefined();
     if (!baseOp) throw new Error("expected baseOp");
@@ -603,8 +588,7 @@ describe("rendering datasource locations — per-component Data Folder template"
     // recipe's own datasource template only.
     const insertOp = ir.operations.find(
       (op): op is SetFieldOp =>
-        op.op === "SetField" &&
-        op.label === "site-data-folder-insert-options:badge-block@1"
+        op.op === "SetField" && op.label === "site-data-folder-insert-options:badge-block@1"
     );
     expect(insertOp).toBeDefined();
     if (!insertOp) throw new Error("expected insertOp");
@@ -618,8 +602,7 @@ describe("rendering datasource locations — per-component Data Folder template"
     // The folder ITEM still emits and references the per-component
     // Data Folder template via templateOf.
     const folderItemOps = ir.operations.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderItemOps).toHaveLength(1);
     expect(folderItemOps[0].templateOf).toBe(expectedTplRefKey);
@@ -653,13 +636,10 @@ describe("rendering datasource locations — per-component Data Folder template"
 
     // But two folder ITEMs (one per declared subfolder).
     const folderItemOps = ir.operations.filter(
-      (op): op is CreateItemOp =>
-        op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
     );
     expect(folderItemOps).toHaveLength(2);
-    expect(folderItemOps.map((op) => op.name).sort()).toEqual(
-      ["Badges", "Featured Badges"].sort()
-    );
+    expect(folderItemOps.map((op) => op.name).sort()).toEqual(["Badges", "Featured Badges"].sort());
     // Both reference the same per-component Data Folder template.
     for (const op of folderItemOps) {
       expect(op.templateOf).toBe(expectedTplRefKey);
@@ -713,9 +693,7 @@ describe("rendering datasource locations — per-component Data Folder template"
     const insertA = insertOps.find(
       (op) => op.label === "site-data-folder-insert-options:badge-a@1"
     );
-    const insertB = insertOps.find(
-      (op) => op.label === "site-data-folder-insert-options:card-b@1"
-    );
+    const insertB = insertOps.find((op) => op.label === "site-data-folder-insert-options:card-b@1");
     expect(insertA?.value).toEqual({
       kind: "ref-recipe-list",
       refKeys: [templateId(SITE, "badge-a@1")],
@@ -767,4 +745,3 @@ describe("rendering datasource locations — IsAutoDatasourceRendering / OtherPr
     expect(otherProps.value.entries.IsAutoDatasourceRendering).toBeUndefined();
   });
 });
-

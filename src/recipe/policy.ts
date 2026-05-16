@@ -36,6 +36,19 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   "component-template": "template-structure",
   "content-template": "template-structure",
   "content-item": "datasource-item",
+  // Page templates are registry-owned data templates (with SXA page
+  // base inheritance + a layout-bearing standard values item) —
+  // template-structure, same CreateAndUpdate posture as component
+  // and content templates.
+  "page-template": "template-structure",
+  // A page is author-owned content — the registry seeds the page item
+  // and its layout; authors own it thereafter. CreateOnly (via the
+  // `page-item` purpose) so a re-push never clobbers author edits.
+  page: "page-item",
+  // Placeholder Settings items are registry-owned composition
+  // scaffolding — CreateAndUpdate so re-pushes can widen/narrow the
+  // Allowed Controls whitelist as the recipe set evolves.
+  placeholder: "composition-structure",
   // Standalone parameters templates and the synthesised inline-hoisted
   // ones share the same policy as component templates — they're
   // registry-owned and should overwrite tenant edits.
@@ -65,6 +78,11 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // to the recipe and re-push; CMS edits to enumeration items get
   // overwritten.
   enumeration: "template-structure",
+  // Workflows + webhook authorizations are registry-owned tenant-wide
+  // structure. CreateAndUpdate so re-pushes update state/command labels,
+  // webhook URLs, and authorization metadata as the recipe evolves.
+  workflow: "composition-structure",
+  "webhook-authorization": "composition-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

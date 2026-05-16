@@ -2,14 +2,14 @@
  * Authoring GraphQL transport for recipe execution.
  *
  * Thin wrapper over `src/shared/graphql.ts` — supplies the Authoring
- * service path and label. Parallels `src/serialization/sitecore-api/graphql.ts`
+ * service path and label. Parallels `src/serialization/api/graphql.ts`
  * which targets the Management endpoint.
  *
  * XM Cloud Authoring API path. If a SitecoreAI tenant ever exposes the
  * endpoint at a different path, override via `SITECOREAI_AUTHORING_PATH`.
  */
 
-import type { EnvironmentConfiguration } from "@/config";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { runSitecoreGraphQL, type GraphQLRequestOptions } from "@/shared/graphql";
 import { getAccessToken } from "./auth";
 

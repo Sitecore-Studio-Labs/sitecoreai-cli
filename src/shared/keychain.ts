@@ -26,9 +26,31 @@ type CmTokenBundle = {
   lastUpdated?: string | null;
 };
 
+/**
+ * A scai-minted CM (Content Management) automation client, as returned
+ * once by the Deploy clients API. The `clientSecret` is unrecoverable
+ * after the mint response, so this bundle is the only copy — it lives
+ * in the keychain, never in `sitecoreai.cli.json`.
+ */
+export type CmClientCredential = {
+  clientId: string;
+  clientSecret: string;
+  /** Display name of the client in the Cloud Portal (the scai-* name). */
+  name?: string;
+  /** ISO timestamp the client was minted. */
+  mintedAt?: string;
+};
+
 const SERVICE_NAME = "SitecoreAI CLI";
 const DEPLOY_ACCOUNT_PREFIX = "deploy:";
 const CM_ACCOUNT_PREFIX = "cm:";
+const CM_CLIENT_ACCOUNT_PREFIX = "cm-client:";
+const PUBLISHING_ACCOUNT_PREFIX = "publishing:";
+const BRIEF_ACCOUNT_PREFIX = "brief:";
+const CAMPAIGN_ACCOUNT_PREFIX = "campaign:";
+const AGENTS_ACCOUNT_PREFIX = "agents:";
+const AI_SKILLS_SECRET_ACCOUNT_PREFIX = "ai-skills-secret:";
+const AI_SKILLS_TOKEN_ACCOUNT_PREFIX = "ai-skills-token:";
 
 let cachedKeyring: KeyringModule | null | undefined;
 let warnedKeyringUnavailable = false;
@@ -141,6 +163,166 @@ export const clearDeployToken = async (envName: string): Promise<boolean> => {
   }
 };
 
+export const getPublishingToken = async (envName: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName));
+};
+
+export const setPublishingToken = async (envName: string, token: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
+    );
+    await entry.setPassword(token);
+    return true;
+  } catch {
+    warnOnce("Unable to write publishing token to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearPublishingToken = async (envName: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
+    );
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+export const getBriefToken = async (envName: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
+};
+
+export const setBriefToken = async (envName: string, token: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(token);
+    return true;
+  } catch {
+    warnOnce("Unable to write brief token to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearBriefToken = async (envName: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+export const getCampaignToken = async (envName: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
+};
+
+export const setCampaignToken = async (envName: string, token: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(token);
+    return true;
+  } catch {
+    warnOnce("Unable to write campaign token to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearCampaignToken = async (envName: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The Agentic Studio browser session for an environment, stored as a
+ * JSON-serialized `AgentsCredential` (see `src/agents/session/types.ts`).
+ * Unlike the other entries here this is not an OAuth token — Agentic
+ * Studio has no machine-credential path yet, so scai captures a browser
+ * session cookie instead. Temporary; tracked in that file.
+ */
+export const getAgentsCredential = async (envName: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
+};
+
+export const setAgentsCredential = async (
+  envName: string,
+  credential: string
+): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(credential);
+    return true;
+  } catch {
+    warnOnce("Unable to write the Agentic Studio session to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearAgentsCredential = async (envName: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
 export const getCmTokens = async (envName: string): Promise<CmTokenBundle | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
@@ -175,6 +357,149 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The scai-minted CM automation client for an environment. Stored under
+ * a distinct `cm-client:` prefix — separate from the `cm:` token bundle
+ * (which holds short-lived access/refresh tokens). This entry holds the
+ * long-lived clientId/clientSecret pair `scai setup env` provisions.
+ */
+export const getCmClientCredential = async (
+  envName: string
+): Promise<CmClientCredential | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  const raw = await readPassword(ring, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
+  if (!raw) {
+    return undefined;
+  }
+  return safeParse<CmClientCredential>(raw);
+};
+
+export const setCmClientCredential = async (
+  envName: string,
+  credential: CmClientCredential
+): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
+    await entry.setPassword(JSON.stringify(credential));
+    return true;
+  } catch {
+    warnOnce("Unable to write the CM client credential to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearCmClientCredential = async (envName: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * AI Skills credentials are keyed by Sitecore `organizationId`, not by
+ * env profile. The AI APIs key is one-org-per-credential (Cloud Portal
+ * → Stream → Admin → AI APIs keys), so every env profile in the same
+ * org shares one credential. We store the client secret and the cached
+ * access token under separate entries to keep their lifecycles
+ * independent (token rotates ~daily; secret is long-lived).
+ */
+export const getAiSkillsClientSecret = async (orgId: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId));
+};
+
+export const setAiSkillsClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+    );
+    await entry.setPassword(secret);
+    return true;
+  } catch {
+    warnOnce("Unable to write AI Skills client secret to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearAiSkillsClientSecret = async (orgId: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+    );
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+export const getAiSkillsToken = async (orgId: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId));
+};
+
+export const setAiSkillsToken = async (orgId: string, token: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
+    );
+    await entry.setPassword(token);
+    return true;
+  } catch {
+    warnOnce("Unable to write AI Skills token to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearAiSkillsToken = async (orgId: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(
+      SERVICE_NAME,
+      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
+    );
     return entry.deleteCredential();
   } catch {
     return false;

@@ -47,4 +47,48 @@ describe("keychain helpers", () => {
     expect(await keychain.setCmTokens("demo", { accessToken: "token" })).toBe(true);
     expect(await keychain.clearCmTokens("demo")).toBe(true);
   });
+
+  it("round-trips the CM client credential bundle via AsyncEntry", async () => {
+    vi.resetModules();
+    const credential = {
+      clientId: "client-abc",
+      clientSecret: "secret-xyz",
+      name: "scai-cm-demo",
+      mintedAt: "2026-05-15T12:00:00.000Z",
+    };
+    const getPassword = vi.fn().mockResolvedValue(JSON.stringify(credential));
+    const setPassword = vi.fn().mockResolvedValue(undefined);
+    const deleteCredential = vi.fn().mockResolvedValue(true);
+    vi.doMock("@napi-rs/keyring", () => ({
+      AsyncEntry: class {
+        getPassword() {
+          return getPassword();
+        }
+        setPassword(password: string) {
+          return setPassword(password);
+        }
+        deleteCredential() {
+          return deleteCredential();
+        }
+      },
+    }));
+    const keychain = await import("../../../src/shared/keychain");
+    expect(await keychain.getCmClientCredential("demo")).toEqual(credential);
+    expect(await keychain.setCmClientCredential("demo", credential)).toBe(true);
+    expect(setPassword).toHaveBeenCalledWith(JSON.stringify(credential));
+    expect(await keychain.clearCmClientCredential("demo")).toBe(true);
+  });
+
+  it("returns undefined for the CM client credential when the keyring is unavailable", async () => {
+    vi.resetModules();
+    vi.doMock("@napi-rs/keyring", () => {
+      throw new Error("missing");
+    });
+    const keychain = await import("../../../src/shared/keychain");
+    expect(await keychain.getCmClientCredential("demo")).toBeUndefined();
+    expect(await keychain.setCmClientCredential("demo", { clientId: "c", clientSecret: "s" })).toBe(
+      false
+    );
+    expect(await keychain.clearCmClientCredential("demo")).toBe(false);
+  });
 });

@@ -122,7 +122,7 @@ describe("telemetry and shared helpers", () => {
 
     await telemetry.recordTelemetry({
       event: "command_success",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
       durationMs: 10,
     });
@@ -371,7 +371,7 @@ describe("telemetry and shared helpers", () => {
     process.env.SITECOREAI_TELEMETRY_URL = "";
     await telemetry.recordTelemetry({
       event: "command_start",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
     });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -380,7 +380,7 @@ describe("telemetry and shared helpers", () => {
     process.env.SITECOREAI_TELEMETRY = "0";
     await telemetry.recordTelemetry({
       event: "command_start",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
     });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -411,7 +411,7 @@ describe("telemetry and shared helpers", () => {
 
     await telemetry.recordTelemetry({
       event: "command_success",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
       durationMs: -1,
     });
@@ -440,7 +440,7 @@ describe("telemetry and shared helpers", () => {
 
     await telemetry.recordTelemetry({
       event: "command_start",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
     });
 
@@ -470,7 +470,7 @@ describe("telemetry and shared helpers", () => {
 
     await telemetry.recordTelemetry({
       event: "command_error",
-      command: "scai status",
+      command: "scai setup status",
       args: [],
       durationMs: 5,
       error: "boom",

@@ -1,4 +1,4 @@
-import { createCliError } from "./errors";
+import { createScaiError } from "./errors";
 
 const isNonEmpty = (value?: string): boolean => Boolean(value && value.trim().length > 0);
 
@@ -11,7 +11,7 @@ export const assertValidUrl = (value: string, label: string): void => {
       throw new Error("Invalid URL");
     }
   } catch {
-    throw createCliError(`${label} must be a valid URL.`, "INPUT_INVALID", {
+    throw createScaiError(`${label} must be a valid URL.`, "INPUT_INVALID", {
       hint: `Provide a valid ${label.toLowerCase()} (e.g. https://example.com).`,
     });
   }
@@ -23,7 +23,7 @@ export const assertValidUrl = (value: string, label: string): void => {
     if (url.protocol === "http:" && process.env.SITECOREAI_ALLOW_HTTP === "1") {
       return;
     }
-    throw createCliError(`${label} must use https:// (got ${url.protocol}//).`, "INPUT_INVALID", {
+    throw createScaiError(`${label} must use https:// (got ${url.protocol}//).`, "INPUT_INVALID", {
       hint:
         url.protocol === "http:"
           ? "Bearer tokens would be sent in cleartext. Set SITECOREAI_ALLOW_HTTP=1 only for local development."
@@ -38,7 +38,7 @@ export const assertValidHost = (value: string, label: string): void => {
     return;
   }
   if (!isNonEmpty(value) || /\s/.test(value)) {
-    throw createCliError(`${label} must be a valid host.`, "INPUT_INVALID", {
+    throw createScaiError(`${label} must be a valid host.`, "INPUT_INVALID", {
       hint: "Provide a hostname or a full URL.",
     });
   }

@@ -42,13 +42,18 @@ describe("Logger", () => {
     expect(infoSpy).not.toHaveBeenCalled();
   });
 
-  it("emits JSON payloads via json()", () => {
+  it("emits JSON payloads directly to stdout without consola prefix", () => {
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const logger = new Logger(false, false, true, false);
 
     logger.json({ ok: true });
 
-    expect(infoSpy).toHaveBeenCalled();
-    expect(JSON.parse(infoSpy.mock.calls[0][0] as string)).toEqual({ ok: true });
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    const written = stdoutSpy.mock.calls[0][0] as string;
+    expect(written.endsWith("\n")).toBe(true);
+    expect(written.startsWith("ℹ")).toBe(false);
+    expect(JSON.parse(written)).toEqual({ ok: true });
   });
 });

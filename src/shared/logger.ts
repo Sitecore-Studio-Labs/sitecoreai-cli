@@ -65,6 +65,14 @@ export class Logger {
     return this.jsonEnabled;
   }
 
+  isVerbose(): boolean {
+    return this.verboseEnabled || this.traceEnabled;
+  }
+
+  isQuiet(): boolean {
+    return this.quietEnabled;
+  }
+
   info(message: string, color?: keyof typeof colors): void {
     this.writeToFile("info", message);
     if (this.quietEnabled) {
@@ -138,7 +146,12 @@ export class Logger {
   json(data: unknown): void {
     const output = JSON.stringify(data, null, 2);
     this.writeToFile("info", output);
-    consola.info(output);
+    // Write raw JSON to stdout — never through consola, which prefixes
+    // with `ℹ ` and would corrupt machine-readable output. This is the
+    // only Logger method that writes to stdout in --json mode; every
+    // other level (info/warn/error/verbose/debug/trace) is suppressed
+    // above when `jsonEnabled` is true.
+    process.stdout.write(`${output}\n`);
   }
 
   log(level: LogLevel, message: string, color?: keyof typeof colors): void {

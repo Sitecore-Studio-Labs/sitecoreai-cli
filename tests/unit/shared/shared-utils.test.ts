@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { consola } from "consola";
 import { resolveOutputOptionsFromArgs } from "../../../src/shared/output";
-import { createCliError, toCliError, withHint } from "../../../src/shared/errors";
+import { createScaiError, toScaiError, withHint } from "../../../src/shared/errors";
 import { redactArgs, redactSecrets } from "../../../src/shared/redact";
 import { assertValidHost, assertValidUrl } from "../../../src/shared/validate";
 import { recordHistory, ensureHistoryFile } from "../../../src/shared/history";
@@ -31,12 +31,12 @@ describe("shared utilities", () => {
   });
 
   it("creates and wraps CLI errors with hints", () => {
-    const err = createCliError("Bad config", "CONFIG_INVALID", { hint: "Fix it" });
+    const err = createScaiError("Bad config", "CONFIG_INVALID", { hint: "Fix it" });
     expect(err.code).toBe("CONFIG_INVALID");
     expect(err.exitCode).toBe(2);
     const wrapped = withHint(err, "Another hint");
     expect(wrapped.hint).toBe("Another hint");
-    expect(toCliError(new Error("Boom")).code).toBe("UNKNOWN");
+    expect(toScaiError(new Error("Boom")).code).toBe("UNKNOWN");
   });
 
   it("redacts secrets from strings", () => {
@@ -86,7 +86,7 @@ describe("shared utilities", () => {
     await ensureHistoryFile();
     await recordHistory({
       event: "start",
-      command: "scai status",
+      command: "scai setup status",
       args: ["deploy", "--deploy-token", "secret"],
       cwd: dir,
       error: "deployToken=secret",
@@ -110,14 +110,14 @@ describe("shared utilities", () => {
     await ensureHistoryFile();
     await recordHistory({
       event: "start",
-      command: "scai status",
+      command: "scai setup status",
       args: ["status"],
       cwd: dir,
     });
 
     await recordHistory({
       event: "success",
-      command: "scai status",
+      command: "scai setup status",
       args: ["status"],
       cwd: dir,
     });

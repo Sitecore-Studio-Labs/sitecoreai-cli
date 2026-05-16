@@ -22,11 +22,28 @@ export const createInitCommand = (): Command => {
         "Skip Deploy API lookups and prompt for the CM host directly"
       )
     )
-    .addOption(new Option("--organization-id <id>", "Sitecore organization ID"))
-    .addOption(new Option("--tenant-id <id>", "Sitecore tenant ID"))
-    .addOption(new Option("--organization <name>", "Organization name or ID (Deploy API)"))
-    .addOption(new Option("--project <value>", "Project name or ID (Deploy API)"))
-    .addOption(new Option("--environment <value>", "Environment name or ID (Deploy API)"))
+    .addOption(
+      new Option("--organization-id <id>", "Sitecore organization ID (written to the profile)")
+    )
+    .addOption(new Option("--tenant-id <id>", "Sitecore tenant ID (written to the profile)"))
+    .addOption(
+      new Option(
+        "--deploy-organization <value>",
+        "Organization name or ID for the Deploy API environment lookup"
+      )
+    )
+    .addOption(new Option("--project <value>", "Project name or ID for the Deploy API lookup"))
+    .addOption(
+      new Option(
+        "--deploy-environment <value>",
+        "Environment name or ID for the Deploy API environment lookup"
+      )
+    )
+    // Back-compat hidden aliases. The bare `--organization` / `--environment`
+    // collided with `--organization-id` / `--environment-name`; the
+    // `--deploy-*` spellings are the documented names. Old scripts keep working.
+    .addOption(new Option("--organization <value>", "Alias of --deploy-organization.").hideHelp())
+    .addOption(new Option("--environment <value>", "Alias of --deploy-environment.").hideHelp())
     .addOption(
       new Option("--deploy-token <token>", "SitecoreAI access token (Deploy + CM/admin scopes)")
     )
@@ -39,10 +56,41 @@ export const createInitCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    '\nExamples:\n  $ scai setup init --wizard\n  $ scai setup init -n demo --project "My Project" --environment "Dev"\n'
+    [
+      "",
+      "Most setups should just run the wizard — it fills in everything below:",
+      "  $ scai setup init --wizard",
+      "",
+      "For scripted (non-interactive) setup, the flags fall into groups:",
+      "",
+      "  Identify the environment — via the Deploy API:",
+      "    --deploy-organization  --project  --deploy-environment",
+      "  ...or skip the Deploy API and point at a CM host directly:",
+      "    --cm <url>  --skip-deploy-lookup",
+      "",
+      "  Authentication — pick one:",
+      "    --deploy-token <token>",
+      "    --client-id <id>  --client-secret <secret>  --use-client-credentials",
+      "",
+      "  Identifiers written to the profile:",
+      "    --organization-id  --tenant-id",
+      "",
+      "Examples:",
+      '  $ scai setup init -n demo --project "My Project" --deploy-environment "Dev"',
+      "",
+    ].join("\n")
   );
 
-  command.action(async (options) => runInit(options));
+  // `--deploy-organization` / `--deploy-environment` are the documented
+  // flags; `--organization` / `--environment` remain as hidden aliases.
+  // The task layer (runInit) still reads `organization` / `environment`.
+  command.action(async (options) =>
+    runInit({
+      ...options,
+      organization: options.deployOrganization ?? options.organization,
+      environment: options.deployEnvironment ?? options.environment,
+    })
+  );
 
   return command;
 };

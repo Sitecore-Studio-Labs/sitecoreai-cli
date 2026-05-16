@@ -1,26 +1,37 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
 import { runDeployToken } from "../serialization/tasks/env/deploy-token";
-import { runAiSkillsLogin } from "../brand/tasks/login";
+import { runBrandLogin } from "../brand/tasks/login";
 
 /**
- * `scai setup login ai-skills` — provision a Sitecore AI Skills credential
- * for the active environment's organization. AI APIs keys are
- * created at Cloud Portal → Stream → Admin → AI APIs keys and are
- * org-scoped (one-org-per-credential), so they live in a separate
- * `aiSkills[orgId]` config block from the env-scoped Pages/Sites
- * automation client `scai setup login` provisions.
+ * `scai setup login brand` — store a Sitecore AI APIs key for the
+ * active environment's organization (the credential `scai brand` uses).
+ *
+ * This is credential *provisioning*, not an interactive login: there
+ * is no browser flow. You paste (or are prompted for) the Client ID
+ * and Client Secret of an "AI APIs key" created at Cloud Portal →
+ * Stream → Admin → AI APIs keys, scai validates it by minting a test
+ * token, and stores it. AI APIs keys are a different credential class
+ * from the env automation client — org-scoped (one-org-per-credential),
+ * carrying `ai.org.*` scopes — so they live in a separate
+ * `brand[orgId]` config block. The env automation client (Deploy /
+ * CM / Brief / Campaign) cannot do brand work, hence the separate
+ * credential.
+ *
+ * Named `brand` because that is exactly — and only — what it powers.
+ * `ai-skills` (the former name, matching Sitecore's product taxonomy)
+ * stays as a command alias.
  */
-const createLoginAiSkillsCommand = (): Command => {
-  const command = new Command("ai-skills")
-    .aliases(["ai-skill", "aiskills", "aiskill"])
+const createLoginBrandCommand = (): Command => {
+  const command = new Command("brand")
+    .aliases(["ai-skills", "ai-skill", "aiskills", "aiskill"])
     .description(
-      "Provision a Sitecore AI Skills credential (Brand Management + Brand Review) for the active environment's organization"
+      "Store an AI APIs key (a client credential) for the org behind the active environment — powers `scai brand`. Credential provisioning, not an interactive login."
     );
 
   addEnvironmentOption(command);
   addConfigOption(command);
-  addVerbosityOptions(command);
+  addVerbosityOptions(command, { nonInteractive: false });
 
   command
     .addOption(
@@ -43,10 +54,23 @@ const createLoginAiSkillsCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nCreate the credential in Cloud Portal → Stream → Admin → AI APIs keys, then:\n  $ scai setup login ai-skills -n sandbox\n  $ scai setup login ai-skills --org-id org_xxx --client-id <id> --client-secret <secret>\n"
+    [
+      "",
+      "This stores a client credential — it never opens a browser. An AI APIs",
+      "key is a separate credential from the env automation client that",
+      "`scai setup login` provisions; the automation client cannot do brand",
+      "work, so this is its own command.",
+      "",
+      "Create the key in Cloud Portal → Stream → Admin → AI APIs keys, then:",
+      "  $ scai setup login brand -n sandbox",
+      "  $ scai setup login brand --org-id org_xxx --client-id <id> --client-secret <secret>",
+      "",
+      "(`ai-skills` still works as an alias for this command.)",
+      "",
+    ].join("\n")
   );
 
-  command.action(async (options) => runAiSkillsLogin(options));
+  command.action(async (options) => runBrandLogin(options));
 
   return command;
 };
@@ -58,7 +82,10 @@ export const createLoginCommand = (): Command => {
 
   addEnvironmentOption(command);
   addConfigOption(command);
-  addVerbosityOptions(command);
+  // No `--non-interactive`: interactive login is a browser device flow
+  // that cannot run headless, and the client-credentials path is
+  // already non-interactive once --client-id/--client-secret are given.
+  addVerbosityOptions(command, { nonInteractive: false });
 
   command
     .addOption(new Option("--client-id <id>", "SitecoreAI client ID"))
@@ -70,12 +97,25 @@ export const createLoginCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nExamples:\n  $ scai setup login -n demo\n  $ scai setup login -n demo --use-client-credentials\n  $ scai setup login ai-skills -n demo   (provision AI Skills credential)\n"
+    [
+      "",
+      "Two ways to authenticate:",
+      "  • interactive (default) — a browser device flow; a human signs in.",
+      "  • client credentials   — a machine credential (--use-client-credentials",
+      "    with --client-id/--client-secret); no browser, for CI and agents.",
+      "Both yield the same access token (it covers Deploy, CM/admin, and Brief).",
+      "",
+      "Examples:",
+      "  $ scai setup login -n demo",
+      "  $ scai setup login -n demo --use-client-credentials --client-id <id> --client-secret <secret>",
+      "  $ scai setup login brand -n demo   (store an AI APIs key — separate credential)",
+      "",
+    ].join("\n")
   );
 
   command.action(async (options) => runDeployToken(options));
 
-  command.addCommand(createLoginAiSkillsCommand());
+  command.addCommand(createLoginBrandCommand());
 
   return command;
 };

@@ -31,12 +31,12 @@ const resolveClient = (options: DocsCommonOptions): BrandApiClientOptions => {
       "Pass --org-id <id> or set organizationId on the env profile."
     );
   }
-  const credential = root.aiSkills?.[orgId];
+  const credential = root.brand?.[orgId];
   if (!credential) {
     throw createScaiError(
-      `No AI Skills credential is configured for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
-      { hint: `Run \`scai setup login ai-skills -n ${envName}\` to provision one.` }
+      `No Brand credential is configured for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
     );
   }
   return { orgId, credential };
@@ -100,7 +100,7 @@ const createUploadCommand = (): Command => {
       }
       logger.info(`Uploaded ${uploaded.id} (status: ${uploaded.status})`, "green");
       logger.info(
-        "\nNext: publish the kit, then run BrandIngestion + EnrichSections pipelines (or use `scai brand pipeline ingest|enrich`, or one-shot via `scai brand seed`)."
+        "\nNext: publish the kit, then `scai brand ingest <kitId>` + `scai brand enrich <kitId>` — or one-shot via `scai brand seed`."
       );
     }
   );

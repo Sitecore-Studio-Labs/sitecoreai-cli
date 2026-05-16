@@ -6,16 +6,18 @@ This page describes exactly what is sent, where it goes, and how to opt out.
 
 ## TL;DR
 
-- On first use, scai prompts for telemetry consent and stores the answer
-  in `settings.telemetryEnabled` in `sitecoreai.cli.json`.
-- If `settings.telemetryEnabled` is unset, **telemetry is disabled** until
-  consent is recorded.
+- Telemetry is **enabled by default** (opt-out). On the first interactive
+  run, scai prints a one-time notice and records `settings.telemetryEnabled`
+  in `sitecoreai.cli.json`.
+- If `settings.telemetryEnabled` is unset, telemetry is **on** — disable it
+  with any opt-out signal below.
 - Opt out at any time:
   ```sh
   scai cli telemetry disable
   ```
-  Or via env vars: `SITECOREAI_TELEMETRY=false`, `DISABLE_TELEMETRY=1`, or
-  the broadly-honored `DO_NOT_TRACK=1`.
+  Or via env vars: `SITECOREAI_TELEMETRY=false` or the broadly-honored
+  `DO_NOT_TRACK=1`. An env signal always wins over the config setting.
+- Re-enable with `scai cli telemetry enable`.
 - Check current state with `scai cli telemetry status`.
 
 ## What is sent

@@ -42,6 +42,13 @@ const findTypeByName = async (
   return page.data.find((type) => type.name === name) ?? null;
 };
 
+/** Enumerate every brief type on the remote. */
+const list = async (ctx: SyncContext): Promise<KindRef[]> => {
+  const client = await resolveBriefClient(ctx);
+  const page = await listBriefTypes(client);
+  return page.data.map((type) => ({ kind: "brief-type", id: type.name }));
+};
+
 /** Project a live brief-type field into the clean recipe shape. */
 const toRecipeField = (field: BriefField): BriefRecipeField => field as BriefRecipeField;
 
@@ -66,21 +73,14 @@ const toApiInput = (recipe: BriefTypeRecipe): CreateBriefTypeInput => ({
 });
 
 /** Capture a live brief type as a recipe. `null` when no type has the name. */
-const readCurrent = async (
-  ref: KindRef,
-  ctx: SyncContext
-): Promise<BriefTypeRecipe | null> => {
+const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefTypeRecipe | null> => {
   const client = await resolveBriefClient(ctx);
   const type = await findTypeByName(client, ref.id);
   return type ? toRecipe(type) : null;
 };
 
 /** Apply a plan — straight CRUD: create the type, or PUT-replace it. */
-const apply = async (
-  plan: RecipePlan,
-  ref: KindRef,
-  ctx: SyncContext
-): Promise<ApplyResult> => {
+const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
   const client = await resolveBriefClient(ctx);
   const applied: RecipeChange[] = [];
   const skipped: RecipeChange[] = [];
@@ -143,4 +143,5 @@ export const briefTypeKind: RecipeKind<BriefTypeRecipe> = {
   readCurrent,
   plan,
   apply,
+  list,
 };

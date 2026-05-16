@@ -91,7 +91,9 @@ export const readRootConfiguration = (
     },
     settings,
     environments: envWithOverrides,
-    aiSkills: rootJson.aiSkills ?? {},
+    // `aiSkills` is the pre-rename name; read it as a fallback so configs
+    // written by older CLI versions keep working. New writes use `brand`.
+    brand: rootJson.brand ?? rootJson.aiSkills ?? {},
     physicalPath: rootPath,
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,

@@ -36,6 +36,35 @@ describe("brandKitKind", () => {
     expect(brandKitKind.schema).toBeDefined();
     expect(typeof brandKitKind.readCurrent).toBe("function");
     expect(typeof brandKitKind.apply).toBe("function");
+    expect(typeof brandKitKind.list).toBe("function");
+  });
+});
+
+describe("list", () => {
+  it("enumerates every brand kit as KindRefs, paging the list endpoint", async () => {
+    brandApi.listBrandKits
+      .mockResolvedValueOnce({
+        totalCount: 3,
+        pageSize: 2,
+        data: [
+          { id: "k1", name: "Acme" },
+          { id: "k2", name: "Globex" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        totalCount: 3,
+        pageSize: 2,
+        data: [{ id: "k3", name: "Initech" }],
+      });
+
+    const refs = await brandKitKind.list?.(ctx);
+
+    expect(refs).toEqual([
+      { kind: "brand-kit", id: "Acme" },
+      { kind: "brand-kit", id: "Globex" },
+      { kind: "brand-kit", id: "Initech" },
+    ]);
+    expect(brandApi.listBrandKits).toHaveBeenCalledTimes(2);
   });
 });
 

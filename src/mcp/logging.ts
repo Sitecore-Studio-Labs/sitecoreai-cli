@@ -11,8 +11,10 @@
  *     `SITECOREAI_QUIET=1`, `SITECOREAI_NON_INTERACTIVE=1` BEFORE any
  *     other scai module loads. These suppress spinners, banners, and
  *     stdout JSON dumps in the existing task runners.
- *  2. Sets `SITECOREAI_TELEMETRY=false` (opt-out by default; the CLI
- *     command exposes `--telemetry` to flip back).
+ *  2. Honors `--no-telemetry`: when telemetry is disabled for the
+ *     session it sets `SITECOREAI_TELEMETRY=false`. Otherwise it leaves
+ *     the env var untouched so normal resolution applies — telemetry is
+ *     on by default and `DO_NOT_TRACK` still wins.
  *  3. Installs a consola reporter that pipes every log line to stderr,
  *     regardless of consola's default level/destination behaviour.
  *
@@ -41,7 +43,7 @@ export const installMcpStdoutDiscipline = (options: { telemetry?: boolean } = {}
   for (const [key, value] of FLAGS) {
     process.env[key] = value;
   }
-  if (!options.telemetry) {
+  if (options.telemetry === false) {
     process.env.SITECOREAI_TELEMETRY = "false";
   }
 

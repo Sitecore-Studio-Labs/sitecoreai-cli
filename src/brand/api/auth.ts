@@ -4,11 +4,11 @@ import {
 } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import { createScaiError } from "@/shared/errors";
-import { getAiSkillsClientSecret, getAiSkillsToken, setAiSkillsToken } from "@/shared/keychain";
-import type { AiSkillsCredential } from "@/config/types";
+import { getBrandClientSecret, getBrandToken, setBrandToken } from "@/shared/keychain";
+import type { BrandCredential } from "@/config/types";
 
 /**
- * OAuth scopes scai's *currently shipped* AI Skills operations require.
+ * OAuth scopes scai's *currently shipped* Brand operations require.
  *
  * The AI APIs key can carry any of:
  *
@@ -37,14 +37,14 @@ import type { AiSkillsCredential } from "@/config/types";
  * the operator what's missing — but per-operation calls will refuse
  * if their specific scope isn't present.
  */
-export const AI_SKILLS_REQUIRED_SCOPES = ["ai.org.br:gen"] as const;
+export const BRAND_REQUIRED_SCOPES = ["ai.org.br:gen"] as const;
 
 const NO_CREDENTIAL_HINT =
-  "Run `scai setup login ai-skills --env <env>` to provision the credential, or paste an existing AI APIs key into `aiSkills.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";
+  "Run `scai setup login brand --env <env>` to provision the credential, or paste an existing AI APIs key into `brand.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";
 
-export interface AcquireAiSkillsTokenOptions {
+export interface AcquireBrandTokenOptions {
   orgId: string;
-  credential: AiSkillsCredential;
+  credential: BrandCredential;
 }
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
@@ -73,52 +73,50 @@ export const extractScopes = (token: string): string[] => {
   return raw.split(/\s+/).filter(Boolean);
 };
 
-export const hasAiSkillsScopes = (token: string): boolean => {
+export const hasBrandScopes = (token: string): boolean => {
   const granted = new Set(extractScopes(token));
-  return AI_SKILLS_REQUIRED_SCOPES.every((s) => granted.has(s));
+  return BRAND_REQUIRED_SCOPES.every((s) => granted.has(s));
 };
 
 const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
 
 /**
- * Returns a Bearer JWT for the Sitecore AI Skills APIs.
+ * Returns a Bearer JWT for the Sitecore Brand APIs.
  *
  * Resolution order, cheapest first:
  *
- *   1. Cached AI Skills token in the keychain (keyed by orgId) — set
+ *   1. Cached Brand token in the keychain (keyed by orgId) — set
  *      by a previous mint via this function. Reused while it still
  *      carries the required scopes; cleared on next 401 by callers.
  *   2. Fresh M2M mint against the `auth.sitecorecloud.io/oauth/token`
  *      endpoint with `audience=https://api.sitecorecloud.io`, using
- *      the org-scoped `clientId` from `aiSkills[orgId]` and the
+ *      the org-scoped `clientId` from `brand[orgId]` and the
  *      matching secret from the keychain. Cached on success.
  *
- * Refuses with `AUTH_AI_SKILLS_REQUIRED` when none of these paths
+ * Refuses with `AUTH_BRAND_REQUIRED` when none of these paths
  * produces a token carrying the required scopes. The error message
  * decodes the granted-scope set and infers the credential class so
  * operators know whether they need to provision a new AI APIs key or
  * just re-login.
  */
-export const acquireAiSkillsToken = async (
-  options: AcquireAiSkillsTokenOptions
-): Promise<string> => {
+export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Promise<string> => {
   const { orgId, credential } = options;
 
   // 1. Cached token keyed by orgId. No scope assertion — the real
   //    server-side scope enforcement happens on the API call itself,
   //    and gating here would skip a perfectly usable token whenever
   //    the operation it's used for doesn't need the validated scope.
-  const cached = await getAiSkillsToken(orgId);
+  const cached = await getBrandToken(orgId);
   if (cached) {
     return cached;
   }
 
   // 2. Fresh M2M mint via the AI APIs key.
-  const clientSecret = await getAiSkillsClientSecret(orgId);
+  const clientSecret = await getBrandClientSecret(orgId);
   if (!credential.clientId || !clientSecret) {
     throw createScaiError(
-      `No AI Skills credential is configured for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      `No Brand credential is configured for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
       { hint: NO_CREDENTIAL_HINT }
     );
   }
@@ -146,15 +144,15 @@ export const acquireAiSkillsToken = async (
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw createScaiError(
-      `Auth0 refused the AI Skills scope request for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      `Auth0 refused the Brand scope request for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
       { hint: `Auth0 error: ${detail}. ${NO_CREDENTIAL_HINT}` }
     );
   }
   if (!result.accessToken) {
     throw createScaiError(
       `Sitecore did not return an access token for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      "AUTH_BRAND_REQUIRED",
       { hint: NO_CREDENTIAL_HINT }
     );
   }
@@ -165,6 +163,6 @@ export const acquireAiSkillsToken = async (
   // drifts from the API's actual requirement). Let the call go
   // through and surface the real `BRAND_API_FAILED` with the
   // server's `error_description` if the scope is genuinely missing.
-  await setAiSkillsToken(orgId, result.accessToken);
+  await setBrandToken(orgId, result.accessToken);
   return result.accessToken;
 };

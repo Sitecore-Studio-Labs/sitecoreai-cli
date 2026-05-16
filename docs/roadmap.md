@@ -91,9 +91,9 @@ Smaller content-side gaps surfaced by agent feedback:
   `scai/scripting` `subtree.move` helper.
 - **Multilist GUID removal → CLI.** The `removeRef` helper exists in
   `scai/scripting`; promote it to `scai hygiene cleanup multilist
-  remove-ref` (same read-mutate-write shape as `cleanup field-set`).
+remove-ref` (same read-mutate-write shape as `cleanup field-set`).
 - **`deleteItem` MCP coverage.** `deleteItem` is wired into `cleanup
-  subtree` and rollback paths but no MCP tool calls it directly — extend
+subtree` and rollback paths but no MCP tool calls it directly — extend
   `cleanup_tools` with a consent-guarded `delete-item` verb.
 
 ## Recipes — content-as-code expansion
@@ -151,7 +151,7 @@ The expansion beyond DevEx parity. Each is a full four-surface area
 
 The goal: **create and configure SitecoreAI agents as code.** Agentic
 Studio is SitecoreAI's workspace for building agents, spaces, workflow
-agents, and signals. The APIs that *create* agents aren't in the public
+agents, and signals. The APIs that _create_ agents aren't in the public
 api-docs catalog — they're the undocumented endpoints the Agentic Studio
 UI calls.
 
@@ -210,7 +210,7 @@ data model is still unknown and no client can be built. **Unblock:** an
 admin enables the Brands feature on a staging tenant scai has M2M
 credentials for, then re-run the probe to capture the `brand` +
 `brand-types` shapes. Planned once unblocked: a `brand` resource client
-under `src/brand/` (a separate auth seam from the AI Skills brand-kit
+under `src/brand/` (a separate auth seam from the brand-kit
 surface), `scai brand brands list|get`, and MCP `brand_inspect`
 coverage.
 
@@ -282,7 +282,7 @@ Recorded so they don't get re-proposed. Full rationale in
 - **DevEx `sitecore index` (content-search / indexing plugin)** —
   managing Solr / Azure Search index rebuilds for on-prem Sitecore. On
   XM Cloud, indexes are a managed service; cut. (Distinct from the
-  Sitecore Search *product*, which is future roadmap — see above.)
+  Sitecore Search _product_, which is future roadmap — see above.)
 - **SQL-level `dbcleanup`** (`clean-blobs`, `clean-fields`,
   `rebuild-descendants`) — needs direct DB access; not possible on
   XM Cloud.
@@ -291,15 +291,15 @@ Recorded so they don't get re-proposed. Full rationale in
 - **The runtime Agent API (`/sai/agent-api`) and Marketer MCP** —
   triggering and chatting with already-built agents. scai is a
   developer / authoring tool and ships its own MCP server as its agent
-  surface; *consuming* Sitecore's managed agentic runtime is out of
-  scope. (Authoring agents — *creating* them — is in scope; see Later.)
+  surface; _consuming_ Sitecore's managed agentic runtime is out of
+  scope. (Authoring agents — _creating_ them — is in scope; see Later.)
 - **A plugin SDK** — scai ships as one closed binary. If third-party
   extensions are ever needed, the fallback is subprocess plugins
   (`scai-plugin-*`).
 
 ## Recently shipped
 
-| Area                                                             | Shipped       |
+| Area                                                              | Shipped       |
 | ----------------------------------------------------------------- | ------------- |
 | `scai mcp serve` — MCP server, 24+ workflow-shaped tools          | 2026-05-14    |
 | `scai hygiene audit` (12 verbs) + `scai hygiene cleanup`          | 2026-05-13/14 |
@@ -307,5 +307,5 @@ Recorded so they don't get re-proposed. Full rationale in
 | Two-environment `ser diff` (`--source-env` / `--target-env`)      | 2026-05-14    |
 | `scai ops brief` — Content Operations brief types + instances     | 2026-05-15    |
 | `scai ops campaign` — Orchestrate projects / deliverables / tasks | 2026-05-15    |
-| `scai brand` — AI Skills Brand Management + Brand Review          | 2026-05       |
+| `scai brand` — Brand Management + Brand Review                    | 2026-05       |
 | npm publish via OIDC Trusted Publishing                           | 2026-05-13    |

@@ -22,7 +22,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     env: (typeof root.environments)[string]
   ): ReturnType<typeof resolveCredentialMatrix> => {
     const orgId = env.organizationId;
-    return resolveCredentialMatrix(name, env, Boolean(orgId && root.aiSkills?.[orgId]));
+    return resolveCredentialMatrix(name, env, Boolean(orgId && root.brand?.[orgId]));
   };
 
   if (logger.isJson()) {
@@ -172,7 +172,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     logger.info("  credentials:");
     logger.info(`    deploy:    ${mark(credentials.deploy)}`);
     logger.info(`    cm client: ${mark(credentials.cmClient)}`);
-    logger.info(`    ai skills: ${mark(credentials.aiSkills)}`);
+    logger.info(`    brand:     ${mark(credentials.brand)}`);
     logger.info(`    brief:     ${mark(credentials.brief)}`);
   }
 };

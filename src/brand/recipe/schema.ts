@@ -1,5 +1,5 @@
 /**
- * `BrandKitRecipe` — the declarative definition of a Sitecore AI Skills
+ * `BrandKitRecipe` — the declarative definition of a Sitecore Brand
  * brand kit.
  *
  * This schema is the single source of truth for the `brand-kit` recipe
@@ -37,7 +37,7 @@ export const BrandDocumentSchema = z.object({
     .string()
     .min(1)
     .describe("Publicly reachable URL of a brand document (PDF). Sitecore fetches it server-side."),
-  title: z.string().optional().describe("Document title. Defaults to \"brand guidelines\"."),
+  title: z.string().optional().describe('Document title. Defaults to "brand guidelines".'),
   summary: z.string().optional().describe("Short document summary."),
 });
 
@@ -48,10 +48,7 @@ export const BrandKitRecipeSchema = z.object({
     .min(1)
     .describe("Display name of the brand kit. Identifies the kit when pushing."),
   description: z.string().optional().describe("Human description of the kit."),
-  industry: z
-    .string()
-    .optional()
-    .describe('Industry label, e.g. "retail" or "developer-tools".'),
+  industry: z.string().optional().describe('Industry label, e.g. "retail" or "developer-tools".'),
   documents: z
     .array(BrandDocumentSchema)
     .default([])

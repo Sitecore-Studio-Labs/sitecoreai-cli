@@ -17,7 +17,7 @@ scai is organized into product-area command groups:
   model, content-version state, and item workflow.
 - **`hygiene`** — read-only content **audits** and gated **cleanup**.
 - **`ops`** — Sitecore Content Operations: **briefs** and **campaigns**.
-- **`brand`** — AI Skills **Brand Management** and **Brand Review**.
+- **`brand`** — Sitecore **Brand Management** and **Brand Review**.
 - **`mcp`** — a built-in **Model Context Protocol** server exposing all
   of the above to agents as workflow-shaped tools.
 
@@ -46,8 +46,10 @@ adds capabilities that have no dotnet counterpart:
 - **Local activity log** — `scai cli history` records redacted command
   history at `~/.sitecoreai/cli-history.log`.
 - **Interactive REPL** — `scai cli shell` for chained commands in one session.
-- **Telemetry honoring `DO_NOT_TRACK`** — opt-out via the standard env
-  var, plus `DISABLE_TELEMETRY` and `SITECOREAI_TELEMETRY=false`.
+- **Anonymous telemetry, on by default (opt-out)** — disable with
+  `scai cli telemetry disable`, `SITECOREAI_TELEMETRY=false`, or the
+  standard `DO_NOT_TRACK` env var. See
+  [docs/telemetry-and-privacy.md](./docs/telemetry-and-privacy.md).
 
 See [docs/parity-with-devex.md](./docs/parity-with-devex.md) for the
 full mapping against `Sitecore.DevEx` and a record of what was
@@ -261,7 +263,7 @@ import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/sites";
 // Hygiene — audits + cleanups, output adapters, baselines, history
 import { runAuditOrphans, createHygieneApiClient } from "@sitecoreai-labs/sitecoreai-cli/hygiene";
 
-// Brand (AI Skills) — Brand Review SARIF + JSON pipelines
+// Brand — Brand Review SARIF + JSON pipelines
 import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai-cli/brand";
 
 // Webhooks + Workflow — Sitecore event handlers and item workflow operations

@@ -12,7 +12,7 @@ const parseInt5 = (value: string): number => {
 
 /**
  * `scai brand review <files...>` — evaluate file content against a
- * Sitecore AI Skills brand kit. Streams text rows as files complete,
+ * Sitecore brand kit. Streams text rows as files complete,
  * or aggregates into JSON / SARIF for `--format` consumers. The
  * SARIF + `--threshold` combination is the headline CI gate.
  *

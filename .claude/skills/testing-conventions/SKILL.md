@@ -93,8 +93,6 @@ test:
 
 ```ts
 process.env.SITECOREAI_TELEMETRY = "false";
-// or
-process.env.DISABLE_TELEMETRY = "1";
 ```
 
 The test runner's `setupFiles` is the right place for global suppression.

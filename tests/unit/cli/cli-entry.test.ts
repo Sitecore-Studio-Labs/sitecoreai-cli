@@ -68,7 +68,7 @@ vi.mock("../../../src/shared/history", () => ({
   recordHistory: vi.fn(),
 }));
 vi.mock("../../../src/shared/telemetry", () => ({
-  ensureTelemetryConsent: vi.fn(),
+  ensureTelemetryNotice: vi.fn(),
   formatTelemetryCommand: vi.fn().mockReturnValue("scai setup status"),
   recordTelemetry: vi.fn(),
   resolveConfigPathFromArgs: vi.fn().mockReturnValue(undefined),

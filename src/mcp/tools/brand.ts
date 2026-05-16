@@ -1,7 +1,7 @@
 /**
  * Brand domain — inspect, manage, review.
  *
- * Three workflow-shaped tools cover the entire AI Skills brand surface:
+ * Three workflow-shaped tools cover the entire brand surface:
  *
  *   - `brand_inspect` — discriminated `{ verb }` read tool. Lists kits,
  *     gets one kit, lists sections (with names), lists subsections
@@ -57,7 +57,7 @@ import type { McpRegistry } from "../registry";
 import { allowWriteShape, environmentBindingShape } from "../schemas/common";
 
 /**
- * Resolve the AI Skills client for an environment. Org is DERIVED from
+ * Resolve the Brand client for an environment. Org is DERIVED from
  * the target env's `organizationId` — there is no separate `orgId`
  * input ("derive org" decision of the multi-env redesign). When
  * `environmentName` is omitted the bound env is used.
@@ -75,12 +75,12 @@ const resolveBrandClient = (
       hint: "Set organizationId on the env profile in sitecoreai.cli.json.",
     });
   }
-  const credential = root.aiSkills?.[orgId];
+  const credential = root.brand?.[orgId];
   if (!credential) {
     throw createScaiError(
-      `No AI Skills credential is configured for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
-      { hint: `Run \`scai setup login ai-skills -n ${envName}\` to provision one.` }
+      `No Brand credential is configured for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
     );
   }
   return { orgId, credential };

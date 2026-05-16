@@ -310,7 +310,7 @@ explicit budget — there's no rate-limit visibility in the API.
 
 const BRAND_FILE_FORMATS_TEXT = `# Brand area file formats — what works, what breaks
 
-The Sitecore AI Skills Documents API has documented file-format
+The Sitecore Brand Documents API has documented file-format
 constraints AND empirically-discovered quirks. This reference is what
 scai's brand tools learned to navigate.
 
@@ -383,7 +383,7 @@ field flow (\`action: "update-field"\`).
 
 ## PDF content requirements
 
-The Sitecore AI Skills ingestion pipeline tries to extract
+The Sitecore Brand ingestion pipeline tries to extract
 **brand-shaped knowledge** from the PDF — section names like Brand
 Context, Tone of Voice, etc. PDFs that don't look like brand guidelines
 fail the summarization step:

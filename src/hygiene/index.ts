@@ -209,8 +209,6 @@ export type {
   FieldSetAction,
   FieldSetMode,
 } from "./tasks/cleanup/field-set";
-export { runCleanupPublish } from "./tasks/cleanup/publish";
-export type { CleanupPublishOptions, PublishAction } from "./tasks/cleanup/publish";
 export { runCleanupRename } from "./tasks/cleanup/rename";
 export type { CleanupRenameOptions, RenameAction } from "./tasks/cleanup/rename";
 export { runCleanupLanguageVersionAdd } from "./tasks/cleanup/language-version-add";

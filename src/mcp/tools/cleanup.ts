@@ -27,7 +27,6 @@ import { runCleanupEmptyFolders } from "@/hygiene/tasks/cleanup/empty-folders";
 import { runCleanupFieldSet } from "@/hygiene/tasks/cleanup/field-set";
 import { runCleanupFindReplace } from "@/hygiene/tasks/cleanup/find-replace";
 import { runCleanupLanguageVersionAdd } from "@/hygiene/tasks/cleanup/language-version-add";
-import { runCleanupPublish } from "@/hygiene/tasks/cleanup/publish";
 import { runCleanupRename } from "@/hygiene/tasks/cleanup/rename";
 import { runCleanupRoles } from "@/hygiene/tasks/cleanup/roles";
 import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup/site-residue";
@@ -87,7 +86,6 @@ const CLEANUP_RUNNERS: Record<string, LoosedRunner> = {
   "field-set": loosen(runCleanupFieldSet),
   "find-replace": loosen(runCleanupFindReplace),
   "language-versions-add": loosen(runCleanupLanguageVersionAdd),
-  publish: loosen(runCleanupPublish),
   rename: loosen(runCleanupRename),
   roles: loosen(runCleanupRoles),
   "site-residue": loosen(runCleanupSiteResidue),
@@ -170,11 +168,6 @@ const validateVerbInputs = (verb: string, input: Record<string, unknown>): void 
           `verb='field-set' requires \`value\` (mode='${(input.mode as string) ?? "replace"}').`,
           "INPUT_INVALID"
         );
-      }
-      break;
-    case "publish":
-      if (!input.items && !input.root) {
-        throw createScaiError("verb='publish' requires `items` or `root`.", "INPUT_INVALID");
       }
       break;
     case "rename":
@@ -350,7 +343,6 @@ const cleanupInputSchema = () =>
         "field-set",
         "find-replace",
         "language-versions-add",
-        "publish",
         "rename",
         "roles",
         "site-residue",
@@ -361,7 +353,7 @@ const cleanupInputSchema = () =>
         "workflow-apply",
       ])
       .describe(
-        "Which cleanup operation to run. Each verb maps 1:1 to a `scai hygiene cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); publish (`items` OR `root`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). slug-conflicts honors `keepRule` + `action` (`delete` default, or `rename` with optional `renameSuffix`) — `audit slug-conflicts` first to preview groups. subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
+        "Which cleanup operation to run. Each verb maps 1:1 to a `scai hygiene cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). slug-conflicts honors `keepRule` + `action` (`delete` default, or `rename` with optional `renameSuffix`) — `audit slug-conflicts` first to preview groups. subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
       ),
 
     // versions-prune / versions-archive
@@ -710,48 +702,11 @@ const cleanupInputSchema = () =>
       .optional()
       .describe("field-set: cap on items mutated per run. Default 100."),
 
-    // publish
-    items: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "publish: explicit item IDs or content-tree paths to publish. Mutually exclusive with `root`."
-      ),
+    // language-versions-add
     languages: z
       .array(z.string())
       .optional()
-      .describe(
-        "publish: language codes to publish (default: tenant primary). language-versions-add: language codes to create versions in (required)."
-      ),
-    target: z
-      .string()
-      .optional()
-      .describe("publish: publish target name (e.g. 'web'). Default: all configured."),
-    republish: z
-      .boolean()
-      .optional()
-      .describe("publish: re-publish unchanged items. Default false."),
-    maxPublishes: z
-      .number()
-      .int()
-      .positive()
-      .max(50_000)
-      .optional()
-      .describe("publish: cap on items published per run. Default 1000."),
-    pollTimeoutMs: z
-      .number()
-      .int()
-      .nonnegative()
-      .optional()
-      .describe(
-        "publish: poll publishingStatus until completion or this timeout. Default 0 = fire-and-return."
-      ),
-    pollIntervalMs: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("publish: poll cadence in ms when pollTimeoutMs > 0. Default 2000."),
+      .describe("language-versions-add: language codes to create versions in (required)."),
 
     // rename (pattern / replacement / flags / literal / ignoreCase are declared above under find-replace)
     maxRenames: z

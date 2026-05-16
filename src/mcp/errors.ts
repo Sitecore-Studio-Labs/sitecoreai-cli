@@ -45,8 +45,8 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
     "Confirm the Agentic Studio session is valid (`scai agents login`) and your account holds the Builder role and license.",
   CANCELLED:
     "The tool was cancelled by the client. Any partial application is documented in `why`; re-run the tool with the same arguments to resume.",
-  AUTH_AI_SKILLS_REQUIRED:
-    "Authenticate with the Sitecore AI Skills service for the bound environment, then re-run the tool.",
+  AUTH_BRAND_REQUIRED:
+    "Authenticate with the Sitecore Brand service for the bound environment, then re-run the tool.",
   AUTH_DENIED:
     "The bound environment has denyMcpElevation set; MCP write tools can't mutate this tenant. Run the destructive op via the CLI with --allow-write, or clear denyMcpElevation in sitecoreai.cli.json if MCP-driven writes are acceptable for this env.",
   BRAND_API_FAILED:

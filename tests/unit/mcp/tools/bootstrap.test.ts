@@ -28,7 +28,7 @@ const discoveryMocks = vi.hoisted(() => ({
   resolveCredentialMatrix: vi.fn().mockResolvedValue({
     deploy: false,
     cmClient: false,
-    aiSkills: false,
+    brand: false,
     brief: false,
   }),
 }));
@@ -95,7 +95,7 @@ describe("bootstrap tools", () => {
         beta: { organizationId: "org-1", projectId: "p-b", environmentId: "e-b" },
         gamma: { organizationId: "org-2", projectId: "p-g", environmentId: "e-g" },
       },
-      aiSkills: { "org-1": { clientId: "x" } },
+      brand: { "org-1": { clientId: "x" } },
     });
     const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");
     const registry = buildScaiMcpRegistry();
@@ -103,15 +103,15 @@ describe("bootstrap tools", () => {
     const result = await tool.handler({}, { ...fakeContext, envName: "alpha" });
     const structured = result.structuredContent as {
       environments: Array<{ name: string; bound: boolean; organizationId: string }>;
-      organizations: Array<{ organizationId: string; environments: string[]; aiSkills: boolean }>;
+      organizations: Array<{ organizationId: string; environments: string[]; brand: boolean }>;
     };
     expect(structured.environments.map((e) => e.name)).toEqual(["alpha", "beta", "gamma"]);
     expect(structured.environments.find((e) => e.name === "alpha")?.bound).toBe(true);
     expect(structured.environments.find((e) => e.name === "beta")?.bound).toBe(false);
     // org-1 groups alpha + beta; org-2 groups gamma.
     expect(structured.organizations).toEqual([
-      { organizationId: "org-1", environments: ["alpha", "beta"], aiSkills: true },
-      { organizationId: "org-2", environments: ["gamma"], aiSkills: false },
+      { organizationId: "org-1", environments: ["alpha", "beta"], brand: true },
+      { organizationId: "org-2", environments: ["gamma"], brand: false },
     ]);
   });
 

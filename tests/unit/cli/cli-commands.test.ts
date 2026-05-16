@@ -50,6 +50,8 @@ describe("top-level commands", () => {
 
   it("login options", () => {
     const cmd = createLoginCommand();
+    // No `--non-interactive`: interactive login cannot run headless and
+    // the client-credentials path is non-interactive by construction.
     expectOptions(cmd, [
       "--environment-name",
       "--config",
@@ -58,7 +60,6 @@ describe("top-level commands", () => {
       "--quiet",
       "--json",
       "--log-file",
-      "--non-interactive",
       "--client-id",
       "--client-secret",
       "--use-client-credentials",
@@ -99,8 +100,11 @@ describe("top-level commands", () => {
       "--allow-write",
       "--organization-id",
       "--tenant-id",
-      "--organization",
+      "--deploy-organization",
       "--project",
+      "--deploy-environment",
+      // Back-compat hidden aliases — still registered options.
+      "--organization",
       "--environment",
       "--skip-deploy-lookup",
       "--wizard",

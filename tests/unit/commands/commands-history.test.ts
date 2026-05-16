@@ -119,16 +119,44 @@ describe("history command", () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("warns when history file is missing", async () => {
+  it("reports an empty state when the history file is missing", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
     const historyPath = path.join(tmpDir, "missing.log");
-    const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
 
     const command = createHistoryCommand();
     await command.parseAsync(["node", "scai", "history", "--path", historyPath]);
 
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining("No CLI history recorded yet"));
+    infoSpy.mockRestore();
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reports an empty state when the history file is empty", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
+    const historyPath = path.join(tmpDir, "history.log");
+    await fs.writeFile(historyPath, "", "utf8");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+
+    const command = createHistoryCommand();
+    await command.parseAsync(["node", "scai", "history", "--path", historyPath]);
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining("No CLI history recorded yet"));
+    infoSpy.mockRestore();
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("emits an empty JSON array when the history file is missing", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-history-"));
+    const historyPath = path.join(tmpDir, "missing.log");
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const command = createHistoryCommand();
+    await command.parseAsync(["node", "scai", "history", "--json", "--path", historyPath]);
+
+    const payload = stdoutSpy.mock.calls[0]?.[0];
+    expect(typeof payload === "string" ? JSON.parse(payload) : null).toEqual([]);
+    stdoutSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 });

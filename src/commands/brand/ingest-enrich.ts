@@ -10,6 +10,14 @@ import { inputError, toLogger } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "@/shared/cli-options";
 
+/**
+ * `scai brand ingest` / `scai brand enrich` — the two server-side AI
+ * steps that turn a brand kit's documents into populated sections.
+ * They were briefly grouped under a `brand pipeline` parent; "pipeline"
+ * said nothing about ingest-vs-enrich, so the two verbs are top-level.
+ * `scai brand seed` still orchestrates the whole happy path
+ * (create + upload + publish + ingest + enrich + poll).
+ */
 interface PipelineCommonOptions extends CommonOptions {
   environmentName?: string;
   orgId?: string;
@@ -27,12 +35,12 @@ const resolveClient = (options: PipelineCommonOptions): BrandApiClientOptions =>
       "Pass --org-id <id> or set organizationId on the env profile."
     );
   }
-  const credential = root.aiSkills?.[orgId];
+  const credential = root.brand?.[orgId];
   if (!credential) {
     throw createScaiError(
-      `No AI Skills credential is configured for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
-      { hint: `Run \`scai setup login ai-skills -n ${envName}\` to provision one.` }
+      `No Brand credential is configured for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
     );
   }
   return { orgId, credential };
@@ -42,7 +50,7 @@ const writeJson = (value: unknown): void => {
   process.stdout.write(JSON.stringify(value, null, 2) + "\n");
 };
 
-const createIngestCommand = (): Command => {
+export const createBrandIngestCommand = (): Command => {
   const command = new Command("ingest")
     .description("Trigger BrandIngestionPipeline — chunks the kit's documents.")
     .argument("<kitId>", "Brand kit UUID")
@@ -82,14 +90,14 @@ const createIngestCommand = (): Command => {
       }
       logger.info(`Started BrandIngestionPipeline run ${run.id}`, "green");
       logger.info(
-        "\nNext: run `scai brand pipeline enrich <kitId>` to populate sections from the chunks (the ingestion step alone leaves sections empty)."
+        "\nNext: run `scai brand enrich <kitId>` to populate sections from the chunks (the ingestion step alone leaves sections empty)."
       );
     }
   );
   return command;
 };
 
-const createEnrichCommand = (): Command => {
+export const createBrandEnrichCommand = (): Command => {
   const command = new Command("enrich")
     .description(
       "Trigger EnrichSectionsPipeline — populates kit sections from already-ingested chunks."
@@ -131,23 +139,5 @@ const createEnrichCommand = (): Command => {
       );
     }
   );
-  return command;
-};
-
-/**
- * `scai brand pipeline …` — wraps the two AI Skills pipelines.
- *   - `ingest <kitId>`  : BrandIngestionPipeline (chunks docs)
- *   - `enrich <kitId>`  : EnrichSectionsPipeline (populates sections)
- *
- * Both are paid AI compute. Use `scai brand seed` for the full
- * happy-path flow that orchestrates create + upload + publish +
- * ingest + enrich + poll.
- */
-export const createBrandPipelineCommand = (): Command => {
-  const command = new Command("pipeline").description(
-    "Brand kit ingestion + enrichment pipelines (server-side async AI compute)."
-  );
-  command.addCommand(createIngestCommand());
-  command.addCommand(createEnrichCommand());
   return command;
 };

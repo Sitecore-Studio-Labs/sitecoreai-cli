@@ -66,7 +66,7 @@ vi.mock("../../../../src/config/root-config", () => ({
       "test-env": { organizationId: "org_ABC123", name: "test-env" },
       "prod-env": { organizationId: "org_PROD999", name: "prod-env" },
     },
-    aiSkills: {
+    brand: {
       org_ABC123: { clientId: "client-x" },
       org_PROD999: { clientId: "client-prod" },
     },

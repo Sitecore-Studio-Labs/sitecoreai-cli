@@ -27,7 +27,17 @@ module.exports = [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          // Match `argsIgnorePattern`: a `_`-prefixed name is an explicit
+          // "intentionally unused" marker for variables too — notably the
+          // discarded sibling in a destructure-to-omit (`const { x: _x, ...rest }`).
+          varsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
   {

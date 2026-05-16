@@ -317,12 +317,12 @@ export const runBrandReview = async (
       "Pass --org-id <id>, or set organizationId on the env profile in sitecoreai.cli.json."
     );
   }
-  const credential = root.aiSkills?.[orgId];
+  const credential = root.brand?.[orgId];
   if (!credential) {
     throw createScaiError(
-      `No AI Skills credential is configured for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
-      { hint: `Run \`scai setup login ai-skills -n ${envName}\` to provision the credential.` }
+      `No Brand credential is configured for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: `Run \`scai setup login brand -n ${envName}\` to provision the credential.` }
     );
   }
   if (!options.kit) {

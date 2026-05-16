@@ -18,8 +18,7 @@ import { createHealthCommand } from "./commands/health";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
-import { createSetupEnvCommand } from "./commands/setup-env";
-import { createSetupClientsCommand } from "./commands/setup-clients";
+import { createSetupClientCommand } from "./commands/setup-client";
 import { createMcpCommand } from "./commands/mcp";
 import { createBriefCommand } from "./commands/brief";
 import { createCampaignCommand } from "./commands/campaign";
@@ -27,12 +26,13 @@ import { createAgentsCommand } from "./commands/agents";
 import { createPublishCommand } from "./commands/publish";
 import { createTopicsCommand } from "./commands/topics";
 import { createRecipeCommand } from "./commands/recipe";
+import { createSyncCommand } from "./commands/sync";
 import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
 import { showBanner } from "./shared/style";
 import { Logger } from "./shared/logger";
 import {
-  ensureTelemetryConsent,
+  ensureTelemetryNotice,
   formatTelemetryCommand,
   recordTelemetry,
   resolveConfigPathFromArgs,
@@ -110,7 +110,7 @@ const shouldSkipAutoWizard = (args: string[]): boolean => {
   if (parent === "mcp") {
     return true;
   }
-  if (parent === "setup" && ["init", "login", "logout", "env", "clients"].includes(child)) {
+  if (parent === "setup" && ["init", "login", "logout", "client"].includes(child)) {
     return true;
   }
   if (parent === "cli" && ["telemetry", "config", "history"].includes(child)) {
@@ -277,8 +277,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   );
   setup.addCommand(createInitCommand());
   setup.addCommand(createLoginCommand());
-  setup.addCommand(createSetupEnvCommand());
-  setup.addCommand(createSetupClientsCommand());
+  setup.addCommand(createSetupClientCommand());
   setup.addCommand(createLogoutCommand());
   setup.addCommand(createStatusCommand());
 
@@ -322,6 +321,11 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   provision.addCommand(createDeployCommand());
   provision.addCommand(createSerializationCommand());
   provision.addCommand(createRecipeCommand());
+  provision.addHelpText(
+    "after",
+    "\nRoadmap: `scai provision iar` — package content as Items-as-Resources\n" +
+      "(IAR) — is planned, not yet shipped. See docs/roadmap.md.\n"
+  );
 
   const cli = new Command("cli").description("CLI tooling — config, diagnostics, history, REPL");
   cli.addCommand(createConfigCommand());
@@ -338,6 +342,7 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   program.addCommand(createBrandCommand());
   program.addCommand(createAgentsCommand());
   program.addCommand(provision);
+  program.addCommand(createSyncCommand());
   // `mcp` stays top-level: `scai mcp serve` is wired into external MCP
   // client configs, so its path must not move under a group.
   program.addCommand(createMcpCommand());
@@ -383,7 +388,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   const program = createProgram(runCli, { shellMode: options.shellMode });
   try {
     await runAutoWizardIfNeeded(args, configPath, outputOptions);
-    await ensureTelemetryConsent(telemetryConfigPath);
+    await ensureTelemetryNotice(telemetryConfigPath);
     void Promise.resolve(ensureHistoryFile()).catch(() => {});
     void Promise.resolve(
       recordHistory({

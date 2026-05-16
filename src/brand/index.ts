@@ -1,5 +1,5 @@
 /**
- * Public library surface for the Sitecore AI Skills Brand APIs
+ * Public library surface for the Sitecore Brand APIs
  * (Brand Management + Brand Review).
  *
  * Exported as `@sitecoreai-labs/cli/brand`. Library callers (SDK
@@ -11,17 +11,17 @@
  */
 
 export {
-  AI_SKILLS_REQUIRED_SCOPES,
-  acquireAiSkillsToken,
+  BRAND_REQUIRED_SCOPES,
+  acquireBrandToken,
   extractScopes,
-  hasAiSkillsScopes,
-  type AcquireAiSkillsTokenOptions,
+  hasBrandScopes,
+  type AcquireBrandTokenOptions,
 } from "./api/auth";
 
 export { requestBrandApi, type BrandApiClientOptions, type BrandApiRequest } from "./api/client";
 
 export {
-  AI_SKILLS_API_HOST,
+  BRAND_API_HOST,
   BRAND_MANAGEMENT_BASE_PATH,
   BRAND_REVIEW_BASE_PATH,
   type BrandKitSectionName,
@@ -34,7 +34,7 @@ export {
 
 export { generateBrandReview, type GenerateBrandReviewOptions } from "./review/generate";
 
-export { runAiSkillsLogin, type AiSkillsLoginOptions } from "./tasks/login";
+export { runBrandLogin, type BrandLoginOptions } from "./tasks/login";
 
 export {
   runBrandReview,

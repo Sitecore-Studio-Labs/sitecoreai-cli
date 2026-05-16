@@ -36,11 +36,18 @@
       "description": "Cli settings",
       "oneOf": [{ "$ref": "#/definitions/Settings" }]
     },
+    "brand": {
+      "type": "object",
+      "description": "Brand credentials (Brand Management, Brand Review, Documents, Pipeline) keyed by Sitecore organizationId — the credential `scai brand` uses. Backed by AI APIs keys, which are one-org-per-credential and use scopes separate from the env automation client.",
+      "additionalProperties": {
+        "$ref": "#/definitions/BrandCredential"
+      }
+    },
     "aiSkills": {
       "type": "object",
-      "description": "Sitecore AI Skills credentials (Brand Management, Brand Review, Documents, Pipeline), keyed by Sitecore organizationId. AI APIs keys are one-org-per-credential and use scopes separate from the Pages/Sites automation client.",
+      "description": "Deprecated: legacy name for `brand` (the block was called `aiSkills` before the rename). Accepted for back-compat with older configs; the CLI writes `brand`.",
       "additionalProperties": {
-        "$ref": "#/definitions/AiSkillsCredential"
+        "$ref": "#/definitions/BrandCredential"
       }
     }
   },
@@ -90,7 +97,7 @@
         "description": { "type": "string" }
       }
     },
-    "AiSkillsCredential": {
+    "BrandCredential": {
       "type": "object",
       "additionalProperties": false,
       "required": ["clientId"],
@@ -123,8 +130,8 @@
       "properties": {
         "telemetryEnabled": {
           "type": "boolean",
-          "description": "Determines if telemetry is enabled in cli.",
-          "default": false
+          "description": "Determines if anonymous usage telemetry is sent. Enabled by default; opt out with 'scai cli telemetry disable', SITECOREAI_TELEMETRY=false, or DO_NOT_TRACK=1.",
+          "default": true
         },
         "cacheAuthenticationToken": {
           "type": "boolean",

@@ -1,11 +1,11 @@
 import { createScaiError } from "@/shared/errors";
-import { clearAiSkillsToken } from "@/shared/keychain";
-import { acquireAiSkillsToken } from "../api/auth";
-import { AI_SKILLS_API_HOST } from "../api/types";
+import { clearBrandToken } from "@/shared/keychain";
+import { acquireBrandToken } from "../api/auth";
+import { BRAND_API_HOST } from "../api/types";
 import type { BrandApiClientOptions } from "../api/client";
 
 /**
- * Base path for the AI Skills Documents API. Same edge host as the
+ * Base path for the Brand Documents API. Same edge host as the
  * Brand Management / Brand Review APIs.
  */
 export const DOCUMENTS_BASE_PATH = "/stream/ai-document-api";
@@ -102,7 +102,7 @@ const buildReferencePath = (orgId: string, brandKitId: string): string =>
   `/api/brands/v1/organizations/${orgId}/brandkits/${brandKitId}/references`;
 
 /**
- * Upload a brand document to the Sitecore AI Skills Documents API and
+ * Upload a brand document to the Sitecore Brand Documents API and
  * attach it to a specific brand kit.
  *
  * **URL mode only.** The server fetches the file from `url` and copies
@@ -125,7 +125,7 @@ export const uploadDocument = async (options: UploadDocumentOptions): Promise<Up
     });
   }
 
-  const host = options.client.host ?? AI_SKILLS_API_HOST;
+  const host = options.client.host ?? BRAND_API_HOST;
   const url = new URL(
     `${DOCUMENTS_BASE_PATH}/api/documents/v2/organizations/${options.client.orgId}/documents`,
     host
@@ -163,15 +163,15 @@ export const uploadDocument = async (options: UploadDocumentOptions): Promise<Up
     });
   };
 
-  let token = await acquireAiSkillsToken({
+  let token = await acquireBrandToken({
     orgId: options.client.orgId,
     credential: options.client.credential,
   });
   let response = await fire(token);
 
   if (response.status === 401) {
-    await clearAiSkillsToken(options.client.orgId);
-    token = await acquireAiSkillsToken({
+    await clearBrandToken(options.client.orgId);
+    token = await acquireBrandToken({
       orgId: options.client.orgId,
       credential: options.client.credential,
     });

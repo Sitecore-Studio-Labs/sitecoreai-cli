@@ -1,6 +1,5 @@
 import { consola } from "consola";
 import { randomUUID } from "node:crypto";
-import readline from "node:readline/promises";
 import AjvDraft4 from "ajv-draft-04";
 import { readRootConfigurationFile, writeRootConfigurationFile } from "../config/root-config";
 import telemetrySchema from "../config/telemetry.schema.json";
@@ -59,13 +58,21 @@ const tryReadRootConfigurationFile = (
   }
 };
 
-export const ensureTelemetryConsent = async (configPath?: string): Promise<void> => {
+/**
+ * Telemetry is opt-out: enabled by default, disabled only by an explicit
+ * signal — the persisted `telemetryEnabled` preference (set via
+ * `scai cli telemetry disable`), the `SITECOREAI_TELEMETRY` env override,
+ * or the cross-tool `DO_NOT_TRACK` standard. On the first interactive run
+ * this surfaces a one-time notice instead of a consent prompt, then
+ * persists `telemetryEnabled: true` so the notice shows exactly once.
+ */
+export const ensureTelemetryNotice = async (configPath?: string): Promise<void> => {
   const override = toBoolean(process.env.SITECOREAI_TELEMETRY);
   if (override !== undefined) {
     return;
   }
 
-  if (process.env.DISABLE_TELEMETRY || process.env.DO_NOT_TRACK) {
+  if (process.env.DO_NOT_TRACK) {
     return;
   }
 
@@ -83,39 +90,35 @@ export const ensureTelemetryConsent = async (configPath?: string): Promise<void>
     return;
   }
 
+  // No notice in non-interactive contexts (CI, MCP, piped output).
+  // Telemetry still defaults on via resolveTelemetryStatus; the notice
+  // is shown the first time scai runs in a real terminal.
   if (isCI() || !process.stdin.isTTY || !process.stdout.isTTY) {
     return;
   }
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  consola.info(
+    "scai sends anonymous usage telemetry — command names and timings only, " +
+      "never code, arguments, or credentials — to help improve the CLI. " +
+      "It is enabled by default.\n" +
+      "Opt out anytime with `scai cli telemetry disable`, or set DO_NOT_TRACK=1. " +
+      "Details: docs/telemetry-and-privacy.md"
+  );
 
+  // Persist the default so the notice shows exactly once.
   try {
-    const answer = await rl.question(
-      "Allow anonymous telemetry to improve the SitecoreAI CLI? (y/N) "
-    );
-    const accepted = ["y", "yes"].includes(answer.trim().toLowerCase());
     const nextConfig = {
       ...root.config,
       settings: {
         ...(root.config.settings ?? {}),
-        telemetryEnabled: accepted,
+        telemetryEnabled: true,
       },
     };
     writeRootConfigurationFile(root.rootPath, nextConfig);
-    if (accepted) {
-      consola.info("Telemetry enabled. Thank you!");
-    } else {
-      consola.info("Telemetry disabled. You can re-enable it later.");
-    }
   } catch (error) {
     consola.debug(
-      `Telemetry consent prompt failed: ${error instanceof Error ? error.message : String(error)}`
+      `Telemetry notice persist failed: ${error instanceof Error ? error.message : String(error)}`
     );
-  } finally {
-    rl.close();
   }
 };
 
@@ -125,23 +128,26 @@ const resolveTelemetryStatus = (configPath?: string): { enabled: boolean; source
     return { enabled: override, source: "env SITECOREAI_TELEMETRY" };
   }
 
-  if (process.env.DISABLE_TELEMETRY || process.env.DO_NOT_TRACK) {
-    return { enabled: false, source: "env DISABLE_TELEMETRY/DO_NOT_TRACK" };
+  if (process.env.DO_NOT_TRACK) {
+    return { enabled: false, source: "env DO_NOT_TRACK" };
   }
 
+  // Opt-out model: with no explicit signal, telemetry is on. A missing
+  // root config therefore resolves to enabled, not disabled.
   if (!configPath) {
-    return { enabled: false, source: "config not found" };
+    return { enabled: true, source: "default (opt-out)" };
   }
 
   const root = tryReadRootConfigurationFile(configPath);
   if (!root) {
-    return { enabled: false, source: "config not found" };
+    return { enabled: true, source: "default (opt-out)" };
   }
 
-  return {
-    enabled: root.config.settings?.telemetryEnabled ?? false,
-    source: "config settings.telemetryEnabled",
-  };
+  const configured = root.config.settings?.telemetryEnabled;
+  if (typeof configured === "boolean") {
+    return { enabled: configured, source: "config settings.telemetryEnabled" };
+  }
+  return { enabled: true, source: "default (opt-out)" };
 };
 
 // Hostname under a domain the project controls (cf. the $id schema URL at

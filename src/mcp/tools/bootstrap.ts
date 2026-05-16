@@ -35,7 +35,7 @@ type OverviewEnvironment = {
 type OverviewOrganization = {
   organizationId: string;
   environments: string[];
-  aiSkills: boolean;
+  brand: boolean;
 };
 
 /**
@@ -61,7 +61,7 @@ const buildDiscovery = async (
       const credentials = await resolveCredentialMatrix(
         name,
         env,
-        Boolean(orgId && root.aiSkills?.[orgId])
+        Boolean(orgId && root.brand?.[orgId])
       );
       environments.push({
         name,
@@ -86,7 +86,7 @@ const buildDiscovery = async (
       ([organizationId, envs]) => ({
         organizationId,
         environments: envs,
-        aiSkills: Boolean(root.aiSkills?.[organizationId]),
+        brand: Boolean(root.brand?.[organizationId]),
       })
     );
 

@@ -31,14 +31,16 @@ scai topics — intent-based command index
   automate-with-agents
     Run scai from an MCP-compatible agent host (Claude Code, Cursor, Windsurf, …).
 
-Show one topic's commands: `scai topics <name>`
+Show one topic's commands: `scai cli topics show <name>`
 ```
 
-Expand a topic to see its commands in recommended-run order:
+`scai cli topics list` and bare `scai cli topics` both print the index.
+`scai cli topics show <name>` expands one topic into its commands in
+recommended-run order:
 
 ```
-$ scai topics diagnose-blocked-delete
-scai topics: diagnose-blocked-delete
+$ scai cli topics show diagnose-blocked-delete
+scai cli topics: diagnose-blocked-delete
   Find out why a Sitecore item won't delete — what references hold it.
 
   scai explain why-blocked <itemId>

@@ -20,7 +20,7 @@ export type ScaiErrorCode =
   | "CONFIG_INVALID"
   | "INPUT_INVALID"
   | "AUTH_REQUIRED"
-  | "AUTH_AI_SKILLS_REQUIRED"
+  | "AUTH_BRAND_REQUIRED"
   | "AUTH_DENIED"
   | "NETWORK"
   | "ENV_NOT_FOUND"
@@ -68,7 +68,7 @@ const exitCodeFor = (code: ScaiErrorCode): number => {
     case "INPUT_INVALID":
       return 2;
     case "AUTH_REQUIRED":
-    case "AUTH_AI_SKILLS_REQUIRED":
+    case "AUTH_BRAND_REQUIRED":
     case "AUTH_DENIED":
       return 3;
     case "NETWORK":

@@ -122,7 +122,7 @@ export const createMcpServeCommand = (): Command => {
       new Option(
         "-c, --config <path>",
         "Path to sitecoreai.cli.json or a directory containing one."
-      ).default(process.cwd())
+      ).default(process.cwd(), "current directory")
     )
     .addOption(
       new Option("--transport <kind>", "Transport: 'stdio' (default) or 'http' (Streamable HTTP).")
@@ -142,8 +142,8 @@ export const createMcpServeCommand = (): Command => {
     )
     .addOption(
       new Option(
-        "--telemetry",
-        "Enable telemetry for this MCP session. Default: telemetry is disabled in MCP mode."
+        "--no-telemetry",
+        "Disable telemetry for this MCP session. Telemetry is enabled by default; the DO_NOT_TRACK env var is still honored."
       )
     );
   command.action(async (options: McpServeOptions) => runMcpServe(options));

@@ -62,6 +62,12 @@ export interface AuditSiteResidueOptions extends HygieneCommonOptions {
   baseline?: boolean;
   output?: string;
   format?: "json" | "csv" | "markdown";
+  /**
+   * Suppress this audit's own report — the caller owns the printed
+   * output. Used by `explain` verbs that compose this audit with
+   * others (e.g. `explain orphan-site`).
+   */
+  silent?: boolean;
 }
 
 export type SiteResidueKind = "orphan-tenant" | "orphan-site";
@@ -206,21 +212,23 @@ export const runAuditSiteResidue = async (
     return a.path.localeCompare(b.path);
   });
 
-  printReport({
-    logger,
-    command: "audit.site-residue.list",
-    envName,
-    results: findings,
-    summary: `Scanned ${roots.length} root${roots.length === 1 ? "" : "s"}; ${findings.length} orphan ${findings.length === 1 ? "tree" : "trees"} (${findings.reduce((n, r) => n + r.descendantCount, 0)} descendant items).`,
-    formatLine: (r) =>
-      `${r.kind} ${r.path} (${r.descendantCount} item${r.descendantCount === 1 ? "" : "s"})`,
-    extra: {
-      activeTenantCount: activeTenants.size,
-      activeSiteCount: activeSites.size,
-      scannedRoots: roots,
-    },
-    options,
-  });
+  if (!options.silent) {
+    printReport({
+      logger,
+      command: "audit.site-residue.list",
+      envName,
+      results: findings,
+      summary: `Scanned ${roots.length} root${roots.length === 1 ? "" : "s"}; ${findings.length} orphan ${findings.length === 1 ? "tree" : "trees"} (${findings.reduce((n, r) => n + r.descendantCount, 0)} descendant items).`,
+      formatLine: (r) =>
+        `${r.kind} ${r.path} (${r.descendantCount} item${r.descendantCount === 1 ? "" : "s"})`,
+      extra: {
+        activeTenantCount: activeTenants.size,
+        activeSiteCount: activeSites.size,
+        scannedRoots: roots,
+      },
+      options,
+    });
+  }
 
   return findings;
 };

@@ -1,7 +1,7 @@
 import { requestBrandApi, type BrandApiClientOptions } from "../api/client";
 import type { components as PipelineComponents } from "../api/schema.pipeline";
 
-/** Base path for the AI Skills Pipeline API. */
+/** Base path for the Brand Pipeline API. */
 export const PIPELINE_BASE_PATH = "/stream/ai-pipeline-api";
 
 type CreatePipelineRunResponse = PipelineComponents["schemas"]["CreatePipelineRunResponse"];

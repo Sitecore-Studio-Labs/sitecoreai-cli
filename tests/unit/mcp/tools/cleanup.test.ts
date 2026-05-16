@@ -10,7 +10,6 @@ const hygieneMocks = vi.hoisted(() => ({
   runCleanupFieldSet: vi.fn().mockResolvedValue([]),
   runCleanupFindReplace: vi.fn().mockResolvedValue([]),
   runCleanupLanguageVersionAdd: vi.fn().mockResolvedValue([]),
-  runCleanupPublish: vi.fn().mockResolvedValue([]),
   runCleanupRename: vi.fn().mockResolvedValue([]),
   runCleanupRoles: vi.fn().mockResolvedValue([]),
   runCleanupSiteResidue: vi.fn().mockResolvedValue([]),
@@ -41,9 +40,6 @@ vi.mock("../../../../src/hygiene/tasks/cleanup/find-replace", () => ({
 }));
 vi.mock("../../../../src/hygiene/tasks/cleanup/language-version-add", () => ({
   runCleanupLanguageVersionAdd: hygieneMocks.runCleanupLanguageVersionAdd,
-}));
-vi.mock("../../../../src/hygiene/tasks/cleanup/publish", () => ({
-  runCleanupPublish: hygieneMocks.runCleanupPublish,
 }));
 vi.mock("../../../../src/hygiene/tasks/cleanup/rename", () => ({
   runCleanupRename: hygieneMocks.runCleanupRename,

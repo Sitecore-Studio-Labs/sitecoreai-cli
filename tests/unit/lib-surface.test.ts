@@ -150,18 +150,18 @@ describe("public library surface — /serialization", () => {
 });
 
 describe("public library surface — /brand", () => {
-  it("exports the AI Skills auth primitives, transport seam, and Brand Review op", async () => {
+  it("exports the Brand auth primitives, transport seam, and Brand Review op", async () => {
     const brand = await import("../../src/brand/index");
 
     // Auth surface.
-    expect(typeof brand.acquireAiSkillsToken).toBe("function");
+    expect(typeof brand.acquireBrandToken).toBe("function");
     expect(typeof brand.extractScopes).toBe("function");
-    expect(typeof brand.hasAiSkillsScopes).toBe("function");
-    expect([...brand.AI_SKILLS_REQUIRED_SCOPES]).toEqual(["ai.org.br:gen"]);
+    expect(typeof brand.hasBrandScopes).toBe("function");
+    expect([...brand.BRAND_REQUIRED_SCOPES]).toEqual(["ai.org.br:gen"]);
 
     // Transport seam.
     expect(typeof brand.requestBrandApi).toBe("function");
-    expect(brand.AI_SKILLS_API_HOST).toBe("https://edge-platform.sitecorecloud.io");
+    expect(brand.BRAND_API_HOST).toBe("https://edge-platform.sitecorecloud.io");
     expect(brand.BRAND_MANAGEMENT_BASE_PATH).toBe("/stream/ai-brands-api");
     expect(brand.BRAND_REVIEW_BASE_PATH).toBe("/stream/ai-skills-api");
 
@@ -169,7 +169,7 @@ describe("public library surface — /brand", () => {
     expect(typeof brand.generateBrandReview).toBe("function");
 
     // Login task.
-    expect(typeof brand.runAiSkillsLogin).toBe("function");
+    expect(typeof brand.runBrandLogin).toBe("function");
 
     // Batch review task + formatters + SARIF level mapping.
     expect(typeof brand.runBrandReview).toBe("function");

@@ -1,8 +1,8 @@
 import { createScaiError } from "@/shared/errors";
-import { clearAiSkillsToken } from "@/shared/keychain";
-import { acquireAiSkillsToken } from "./auth";
-import { AI_SKILLS_API_HOST } from "./types";
-import type { AiSkillsCredential } from "@/config/types";
+import { clearBrandToken } from "@/shared/keychain";
+import { acquireBrandToken } from "./auth";
+import { BRAND_API_HOST } from "./types";
+import type { BrandCredential } from "@/config/types";
 
 export interface BrandApiClientOptions {
   /**
@@ -11,8 +11,8 @@ export interface BrandApiClientOptions {
    * use, and shows up in Brand Management URLs (`/organizations/{orgId}/…`).
    */
   orgId: string;
-  /** Credential record from `aiSkills[orgId]` in the root config. */
-  credential: AiSkillsCredential;
+  /** Credential record from `brand[orgId]` in the root config. */
+  credential: BrandCredential;
   /** Override the API host. Defaults to edge-platform.sitecorecloud.io. */
   host?: string;
 }
@@ -71,24 +71,24 @@ const parseErrorBody = async (response: Response): Promise<string> => {
 };
 
 /**
- * Issue a single request to an AI Skills API and parse JSON.
+ * Issue a single request to a Brand API and parse JSON.
  *
  * Auth handling:
- *   - Acquires a token via `acquireAiSkillsToken` (cache → mint).
+ *   - Acquires a token via `acquireBrandToken` (cache → mint).
  *   - On 401, clears the cached token once and retries. This handles
  *     the documented 24h token expiry; if the retry also 401s we
  *     surface the failure rather than loop.
  *
  * Errors surface as `BRAND_API_FAILED` with the server's
  * `error_description` / `detail` / `message` in the message, leaving
- * `AUTH_AI_SKILLS_REQUIRED` for credential-resolution failures inside
- * `acquireAiSkillsToken`.
+ * `AUTH_BRAND_REQUIRED` for credential-resolution failures inside
+ * `acquireBrandToken`.
  */
 export const requestBrandApi = async <TResponse>(
   client: BrandApiClientOptions,
   request: BrandApiRequest
 ): Promise<TResponse> => {
-  const host = client.host ?? AI_SKILLS_API_HOST;
+  const host = client.host ?? BRAND_API_HOST;
   const url = buildUrl(host, request.basePath, request.path, request.query);
 
   const fire = async (token: string): Promise<Response> =>
@@ -103,15 +103,15 @@ export const requestBrandApi = async <TResponse>(
       signal: request.signal,
     });
 
-  let token = await acquireAiSkillsToken({
+  let token = await acquireBrandToken({
     orgId: client.orgId,
     credential: client.credential,
   });
   let response = await fire(token);
 
   if (response.status === 401) {
-    await clearAiSkillsToken(client.orgId);
-    token = await acquireAiSkillsToken({
+    await clearBrandToken(client.orgId);
+    token = await acquireBrandToken({
       orgId: client.orgId,
       credential: client.credential,
     });

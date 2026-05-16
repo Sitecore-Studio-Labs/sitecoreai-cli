@@ -72,4 +72,13 @@ export interface RecipeKind<TRecipe> {
    * gated on write consent before calling this.
    */
   apply(plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult>;
+  /**
+   * Enumerate every instance of this kind on the remote, as `KindRef`s.
+   *
+   * Optional. Kinds backed by a remote collection (brand kits, brief
+   * types) implement it so the cross-domain `scai sync` aggregate can
+   * pull them all. File-authored kinds (the Sitecore-item recipe) have
+   * nothing to enumerate and omit it — the aggregate skips them.
+   */
+  list?(ctx: SyncContext): Promise<KindRef[]>;
 }

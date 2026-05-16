@@ -1,7 +1,7 @@
 /**
  * Resolves a `BrandApiClientOptions` from a `SyncContext` — the
  * `brand-kit` kind's bridge between the generic `sync` engine and the
- * AI Skills Brand Management API.
+ * Brand Management API.
  */
 import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
@@ -19,12 +19,12 @@ export const resolveBrandClient = (ctx: SyncContext): BrandApiClientOptions => {
       { hint: "Set organizationId on the env profile in sitecoreai.cli.json." }
     );
   }
-  const credential = root.aiSkills?.[orgId];
+  const credential = root.brand?.[orgId];
   if (!credential) {
     throw createScaiError(
-      `No AI Skills credential configured for org "${orgId}".`,
-      "AUTH_AI_SKILLS_REQUIRED",
-      { hint: `Run \`scai setup login ai-skills -n ${ctx.environmentName}\` to provision one.` }
+      `No Brand credential configured for org "${orgId}".`,
+      "AUTH_BRAND_REQUIRED",
+      { hint: `Run \`scai setup login brand -n ${ctx.environmentName}\` to provision one.` }
     );
   }
   return { orgId, credential };

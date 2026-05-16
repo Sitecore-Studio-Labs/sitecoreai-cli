@@ -53,7 +53,7 @@ beforeEach(() => {
   mocks.deleteClient.mockResolvedValue(undefined);
   mocks.readRootConfiguration.mockReturnValue({
     environments: { test: { ...CONFIGURED_ENV } },
-    aiSkills: {},
+    brand: {},
   });
   mocks.getDeployToken.mockResolvedValue("deploy-token");
   mocks.getCmClientCredential.mockResolvedValue(undefined);
@@ -75,14 +75,14 @@ describe("runSetupEnv — guards", () => {
   });
 
   it("rejects when the environment is not configured", async () => {
-    mocks.readRootConfiguration.mockReturnValue({ environments: {}, aiSkills: {} });
+    mocks.readRootConfiguration.mockReturnValue({ environments: {}, brand: {} });
     await expect(runSetupEnv(baseOptions)).rejects.toThrow(/not configured/);
   });
 
   it("rejects when org/project/environment ids are missing", async () => {
     mocks.readRootConfiguration.mockReturnValue({
       environments: { test: { organizationId: "org-1" } },
-      aiSkills: {},
+      brand: {},
     });
     await expect(runSetupEnv(baseOptions)).rejects.toThrow(/missing organizationId/);
   });

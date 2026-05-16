@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Unit tests for `resolveCredentialMatrix` — the four-credential
  * presence check shared by `scai setup status` and `scai_overview`.
- * The keychain reads are mocked; `hasAiSkills` is passed in by the
+ * The keychain reads are mocked; `hasBrand` is passed in by the
  * caller, so it is exercised directly.
  */
 const mocks = vi.hoisted(() => ({
@@ -33,12 +33,12 @@ describe("resolveCredentialMatrix", () => {
       { clientId: "bc", clientSecret: "bs", authority: "https://auth" },
       true
     );
-    expect(matrix).toEqual({ deploy: true, cmClient: true, aiSkills: true, brief: true });
+    expect(matrix).toEqual({ deploy: true, cmClient: true, brand: true, brief: true });
   });
 
   it("reports all four absent for a bare environment", async () => {
     const matrix = await resolveCredentialMatrix("empty", {}, false);
-    expect(matrix).toEqual({ deploy: false, cmClient: false, aiSkills: false, brief: false });
+    expect(matrix).toEqual({ deploy: false, cmClient: false, brand: false, brief: false });
   });
 
   it("falls back to env.deployToken when the keychain has none", async () => {
@@ -46,9 +46,9 @@ describe("resolveCredentialMatrix", () => {
     expect(matrix.deploy).toBe(true);
   });
 
-  it("passes hasAiSkills straight through", async () => {
-    expect((await resolveCredentialMatrix("p", {}, true)).aiSkills).toBe(true);
-    expect((await resolveCredentialMatrix("p", {}, false)).aiSkills).toBe(false);
+  it("passes hasBrand straight through", async () => {
+    expect((await resolveCredentialMatrix("p", {}, true)).brand).toBe(true);
+    expect((await resolveCredentialMatrix("p", {}, false)).brand).toBe(false);
   });
 
   it("requires clientId + clientSecret + authority for brief", async () => {

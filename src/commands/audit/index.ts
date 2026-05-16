@@ -72,29 +72,33 @@ export const createAuditCommand = (): Command => {
 
   command.addHelpText(
     "after",
-    "\nDatabase scope:\n" +
-      "  Every audit reads from the master database via the XM Cloud\n" +
-      "  Authoring API. XM Cloud has no `web` database — published content\n" +
-      "  lives on Experience Edge, which is a separate query surface and\n" +
-      '  is not in scope for these audits. "Stale" / "orphaned" / "dead"\n' +
-      "  findings reflect master-side state only; whether a master item is\n" +
-      "  still served by Edge is independent and must be checked via the\n" +
-      "  Edge Delivery / Edge Preview endpoints.\n" +
-      "\nExamples:\n" +
-      "  $ scai hygiene audit broken-links list --root /sitecore/content/MySite\n" +
-      "  $ scai hygiene audit dead-templates list --root /sitecore/templates/Project\n" +
-      "  $ scai hygiene audit template-dependencies list --template-id {ABC123…}\n" +
-      "  $ scai hygiene audit references list --to {ABC123…} --root /sitecore/content\n" +
-      "  $ scai hygiene audit duplicates list --min-group-size 3 --json\n" +
-      "  $ scai hygiene audit datasource-missing list\n" +
-      "  $ scai hygiene audit empty-items list --language en\n" +
-      "  $ scai hygiene audit page-design-orphans list\n" +
-      "  $ scai hygiene audit personalization-broken list\n" +
-      "  $ scai hygiene audit orphans list\n" +
-      "  $ scai hygiene audit stale-workflow list --days 60\n" +
-      "  $ scai hygiene audit site-residue list\n" +
-      "  $ scai hygiene audit unused-media list --json\n" +
-      "  $ scai hygiene audit language-data list --languages en,fr\n"
+    [
+      "",
+      "Audits read master-database state via the Authoring API — findings",
+      "reflect master, not what Experience Edge currently serves.",
+      "",
+      "Audits by theme:",
+      "  Links & references   broken-links, empty-links, references,",
+      "                       datasource-missing, personalization-broken",
+      "  Media & assets       broken-images, alt-text-missing, unused-media,",
+      "                       large-fields",
+      "  Templates & layout   dead-templates, heavy-templates,",
+      "                       template-dependencies, page-design-orphans",
+      "  Content health       duplicates, empty-items, orphans, slug-conflicts,",
+      "                       stale-content, missing-meta",
+      "  Languages            fallback-drift, language-data, translation-coverage",
+      "  Workflow & access    stale-workflow, stale-users, role-bloat, empty-roles",
+      "  Site residue         site-residue",
+      "  Search               find-replace",
+      "  Run & manage         all, suite, baseline, history",
+      "",
+      "Examples (each audit's --help has its full option set):",
+      "  $ scai hygiene audit broken-links list --root /sitecore/content/MySite",
+      "  $ scai hygiene audit dead-templates list --root /sitecore/templates/Project",
+      "  $ scai hygiene audit duplicates list --min-group-size 3 --json",
+      "  $ scai hygiene audit all                       # run every audit",
+      "",
+    ].join("\n")
   );
 
   return command;

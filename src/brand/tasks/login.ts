@@ -3,23 +3,19 @@ import {
   readRootConfigurationFile,
   writeRootConfigurationFile,
 } from "@/config/root-config";
-import type { AiSkillsCredential } from "@/config/types";
+import type { BrandCredential } from "@/config/types";
 import {
   DEFAULT_SITECORE_API_AUDIENCE,
   requestClientCredentialsToken,
 } from "@/serialization/api/auth";
 import { createScaiError } from "@/shared/errors";
-import {
-  getAiSkillsClientSecret,
-  setAiSkillsClientSecret,
-  setAiSkillsToken,
-} from "@/shared/keychain";
+import { getBrandClientSecret, setBrandClientSecret, setBrandToken } from "@/shared/keychain";
 import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import { extractScopes } from "../api/auth";
 
-export interface AiSkillsLoginOptions extends CommonOptions {
+export interface BrandLoginOptions extends CommonOptions {
   environmentName?: string;
   orgId?: string;
   clientId?: string;
@@ -38,7 +34,7 @@ const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
  * mint request does NOT pass an explicit `scope` param — Auth0 grants
  * whatever the client has, and we report it back.
  */
-const KNOWN_AI_SKILLS_SCOPES = [
+const KNOWN_BRAND_SCOPES = [
   "ai.org.brd:r",
   "ai.org.brd:w",
   "ai.org.docs:r",
@@ -51,7 +47,7 @@ const CLOUD_PORTAL_HINT =
   "Create the credential in Cloud Portal → Stream → Admin → AI APIs keys → Create credential.";
 
 /**
- * Resolve the Sitecore `organizationId` to bind the AI Skills
+ * Resolve the Sitecore `organizationId` to bind the Brand
  * credential to. Resolution order:
  *
  *   1. Explicit `orgId` (e.g. from `--org-id`).
@@ -59,13 +55,13 @@ const CLOUD_PORTAL_HINT =
  *      by `--environment-name` / `--env`, or the default env profile).
  *
  * Fails with `INPUT_INVALID` when neither path resolves a value —
- * scai's AI Skills credentials are one-org-per-credential and we
+ * scai's Brand credentials are one-org-per-credential and we
  * can't store one without an org key.
  *
  * Exported for unit testing the resolution branches. The login flow
  * uses it; nothing else should need it.
  */
-export const resolveAiSkillsOrgId = (
+export const resolveBrandOrgId = (
   explicitOrgId: string | undefined,
   envOrgId: string | undefined,
   envName: string | undefined
@@ -78,13 +74,13 @@ export const resolveAiSkillsOrgId = (
   }
   const envClause = envName ? ` (env '${envName}' has no organizationId)` : "";
   throw inputError(
-    `Cannot resolve organizationId for AI Skills credential${envClause}.`,
+    `Cannot resolve organizationId for Brand credential${envClause}.`,
     "Pass --org-id <id>, or set organizationId on the env profile in sitecoreai.cli.json."
   );
 };
 
 /**
- * Provision a Sitecore AI Skills credential for a Sitecore
+ * Provision a Sitecore Brand credential for a Sitecore
  * organization. The flow is:
  *
  *   1. Resolve `orgId` (flag → env profile → error).
@@ -93,12 +89,12 @@ export const resolveAiSkillsOrgId = (
  *      (flag → prompt, masked).
  *   4. Mint a test token against `auth.sitecorecloud.io/oauth/token`
  *      with `audience=https://api.sitecorecloud.io`, requesting the
- *      AI Skills scope set.
+ *      Brand scope set.
  *   5. Refuse to persist the credential if the granted scopes are
  *      missing — operators who paste the Pages/Sites automation
  *      client by mistake get a pointed error explaining the fix
  *      ([[project-scai-ai-skills-credential-model]]).
- *   6. Write `aiSkills[orgId].clientId` to `sitecoreai.cli.json`,
+ *   6. Write `brand[orgId].clientId` to `sitecoreai.cli.json`,
  *      store the secret in the OS keychain, and cache the minted
  *      token (keyed by orgId — multiple env profiles in the same
  *      org share both the credential and the cached token).
@@ -106,9 +102,9 @@ export const resolveAiSkillsOrgId = (
  * `--print` is intentionally not supported here — the minted token
  * is short-lived and printing it would tempt operators to script
  * around the keychain. Use the library surface
- * (`acquireAiSkillsToken`) for non-interactive automation.
+ * (`acquireBrandToken`) for non-interactive automation.
  */
-export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<void> => {
+export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
   const rootConfigFile = readRootConfigurationFile(configPath);
@@ -117,24 +113,24 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   const envName = options.environmentName ?? root.defaultEnvironment;
   const env = root.environments[envName];
 
-  const orgId = resolveAiSkillsOrgId(options.orgId, env?.organizationId, envName);
+  const orgId = resolveBrandOrgId(options.orgId, env?.organizationId, envName);
 
-  const existing = rootConfigFile.config.aiSkills?.[orgId];
+  const existing = rootConfigFile.config.brand?.[orgId];
   const isInteractive =
     process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
 
   if (existing && !options.force) {
     if (!isInteractive) {
       throw createScaiError(
-        `An AI Skills credential is already configured for org '${orgId}'.`,
+        `A Brand credential is already configured for org '${orgId}'.`,
         "INPUT_INVALID",
         {
-          hint: "Re-run with --force to overwrite, or `scai setup logout ai-skills --org-id <id>` first.",
+          hint: "Re-run with --force to overwrite the existing credential.",
         }
       );
     }
     const overwrite = await promptConfirm(
-      `An AI Skills credential is already configured for org '${orgId}'. Overwrite?`,
+      `A Brand credential is already configured for org '${orgId}'. Overwrite?`,
       false
     );
     if (!overwrite) {
@@ -191,8 +187,8 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw createScaiError(
-      `Auth0 rejected the AI Skills credential for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      `Auth0 rejected the Brand credential for org '${orgId}'.`,
+      "AUTH_BRAND_REQUIRED",
       {
         hint: `Auth0 error: ${detail}. Verify Client ID + Client Secret. ${CLOUD_PORTAL_HINT}`,
       }
@@ -201,7 +197,7 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   if (!mintResult.accessToken) {
     throw createScaiError(
       `Sitecore did not return an access token for org '${orgId}'.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      "AUTH_BRAND_REQUIRED",
       { hint: CLOUD_PORTAL_HINT }
     );
   }
@@ -209,9 +205,9 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   const grantedScopes = extractScopes(mintResult.accessToken);
   const hasReviewScope = grantedScopes.includes("ai.org.br:gen");
   const knownGranted = grantedScopes.filter((s) =>
-    (KNOWN_AI_SKILLS_SCOPES as readonly string[]).includes(s)
+    (KNOWN_BRAND_SCOPES as readonly string[]).includes(s)
   );
-  const knownMissing = (KNOWN_AI_SKILLS_SCOPES as readonly string[]).filter(
+  const knownMissing = (KNOWN_BRAND_SCOPES as readonly string[]).filter(
     (s) => !grantedScopes.includes(s)
   );
   const looksLikePagesSitesClient =
@@ -220,25 +216,25 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   if (looksLikePagesSitesClient) {
     // The credential is the wrong client class entirely — refuse to
     // persist. A typed Pages/Sites automation client never carries
-    // any `ai.org*` scope, so it will fail every AI Skills call.
+    // any `ai.org*` scope, so it will fail every Brand call.
     throw createScaiError(
       `Credential for org '${orgId}' looks like the Pages/Sites automation client, not an AI APIs key.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      "AUTH_BRAND_REQUIRED",
       {
         hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. ${CLOUD_PORTAL_HINT}`,
       }
     );
   }
   if (knownGranted.length === 0) {
-    // No recognizable AI Skills scope at all — probably the wrong
+    // No recognizable Brand scope at all — probably the wrong
     // client class even though it doesn't match the Pages/Sites
     // shape. Refuse to persist to avoid storing a credential that's
     // guaranteed to fail every operation.
     throw createScaiError(
-      `Credential minted for org '${orgId}' but carries no recognized AI Skills scopes.`,
-      "AUTH_AI_SKILLS_REQUIRED",
+      `Credential minted for org '${orgId}' but carries no recognized Brand scopes.`,
+      "AUTH_BRAND_REQUIRED",
       {
-        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. Expected at least one of: ${KNOWN_AI_SKILLS_SCOPES.join(", ")}. ${CLOUD_PORTAL_HINT}`,
+        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. Expected at least one of: ${KNOWN_BRAND_SCOPES.join(", ")}. ${CLOUD_PORTAL_HINT}`,
       }
     );
   }
@@ -246,19 +242,19 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
   // Persist: keychain first (secret + token), then config. If keychain
   // fails we don't want a config record pointing at a secret-less
   // entry.
-  const secretStored = await setAiSkillsClientSecret(orgId, clientSecret);
+  const secretStored = await setBrandClientSecret(orgId, clientSecret);
   if (!secretStored) {
     throw createScaiError(
-      "Failed to store the AI Skills client secret in the OS keychain.",
-      "AUTH_AI_SKILLS_REQUIRED",
+      "Failed to store the Brand client secret in the OS keychain.",
+      "AUTH_BRAND_REQUIRED",
       {
         hint: "Check OS keychain availability. On CI runners without a keychain, set SITECOREAI_QUIET=1 to suppress warnings and use the library surface directly.",
       }
     );
   }
-  await setAiSkillsToken(orgId, mintResult.accessToken);
+  await setBrandToken(orgId, mintResult.accessToken);
 
-  const credentialRecord: AiSkillsCredential = {
+  const credentialRecord: BrandCredential = {
     clientId,
     audience,
     authority,
@@ -266,22 +262,22 @@ export const runAiSkillsLogin = async (options: AiSkillsLoginOptions): Promise<v
     tokenLastUpdated: new Date().toISOString(),
   };
 
-  const aiSkills = { ...(rootConfigFile.config.aiSkills ?? {}) };
-  aiSkills[orgId] = credentialRecord;
-  rootConfigFile.config.aiSkills = aiSkills;
+  const brand = { ...(rootConfigFile.config.brand ?? {}) };
+  brand[orgId] = credentialRecord;
+  rootConfigFile.config.brand = brand;
   writeRootConfigurationFile(configPath, rootConfigFile.config);
 
   // Verify the credential we just wrote can be read back, in case the
   // keychain silently dropped it.
-  const readback = await getAiSkillsClientSecret(orgId);
+  const readback = await getBrandClientSecret(orgId);
   if (!readback) {
     logger.warn(
-      "AI Skills client secret was written but could not be read back. Subsequent calls may need a re-login.",
+      "Brand client secret was written but could not be read back. Subsequent calls may need a re-login.",
       "yellow"
     );
   }
 
-  logger.info(`AI Skills credential saved for org '${orgId}'.`, "green");
+  logger.info(`Brand credential saved for org '${orgId}'.`, "green");
   logger.info(`Scopes granted: ${grantedScopes.join(", ") || "(none)"}`);
   if (knownMissing.length > 0) {
     logger.warn(

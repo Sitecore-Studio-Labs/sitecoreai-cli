@@ -1,6 +1,6 @@
 /**
  * The `brand-kit` recipe kind — declarative definition + `sync` support
- * for Sitecore AI Skills brand kits.
+ * for Sitecore brand kits.
  *
  * See docs/recipe-sync-architecture.md.
  */

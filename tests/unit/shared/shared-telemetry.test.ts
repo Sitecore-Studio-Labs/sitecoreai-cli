@@ -26,16 +26,6 @@ vi.mock("ora", () => ({
   })),
 }));
 
-let questionSpy = vi.fn().mockResolvedValue("y");
-vi.mock("node:readline/promises", () => ({
-  default: {
-    createInterface: () => ({
-      question: questionSpy,
-      close: vi.fn(),
-    }),
-  },
-}));
-
 describe("telemetry and shared helpers", () => {
   const originalEnv = { ...process.env };
   const originalStdinTty = process.stdin.isTTY;
@@ -51,7 +41,6 @@ describe("telemetry and shared helpers", () => {
       value: originalStdoutTty,
       configurable: true,
     });
-    questionSpy = vi.fn().mockResolvedValue("y");
     vi.useRealTimers();
   });
 
@@ -133,37 +122,36 @@ describe("telemetry and shared helpers", () => {
     delete process.env.SITECOREAI_TELEMETRY_URL;
   });
 
-  it("skips telemetry consent when overridden", async () => {
+  it("skips the telemetry notice when SITECOREAI_TELEMETRY is set", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     process.env.SITECOREAI_TELEMETRY = "1";
-    questionSpy.mockClear();
-    await telemetry.ensureTelemetryConsent(process.cwd());
-    expect(questionSpy).not.toHaveBeenCalled();
+    await telemetry.ensureTelemetryNotice(process.cwd());
+    expect(infoSpy).not.toHaveBeenCalled();
+    infoSpy.mockRestore();
     delete process.env.SITECOREAI_TELEMETRY;
   });
 
-  it("skips telemetry consent when disabled by env", async () => {
+  it("skips the telemetry notice when DO_NOT_TRACK is set", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
-    process.env.DISABLE_TELEMETRY = "1";
-    questionSpy.mockClear();
-    await telemetry.ensureTelemetryConsent(process.cwd());
-    expect(questionSpy).not.toHaveBeenCalled();
-    delete process.env.DISABLE_TELEMETRY;
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    process.env.DO_NOT_TRACK = "1";
+    await telemetry.ensureTelemetryNotice(process.cwd());
+    expect(infoSpy).not.toHaveBeenCalled();
+    infoSpy.mockRestore();
+    delete process.env.DO_NOT_TRACK;
   });
 
-  it("prompts for telemetry consent and writes config", async () => {
+  it("shows the telemetry notice once and persists the opt-out default", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-"));
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-notice-"));
     await fs.writeFile(
       path.join(dir, "sitecoreai.cli.json"),
-      JSON.stringify(
-        {
-          modules: ["./module.module.json"],
-          settings: {},
-        },
-        null,
-        2
-      ),
+      JSON.stringify({ modules: ["./module.module.json"], settings: {} }, null, 2),
       "utf8"
     );
     await fs.writeFile(path.join(dir, "module.module.json"), "{}", "utf8");
@@ -174,14 +162,21 @@ describe("telemetry and shared helpers", () => {
     const originalGH = process.env.GITHUB_ACTIONS;
     delete process.env.CI;
     delete process.env.GITHUB_ACTIONS;
-    delete process.env.DISABLE_TELEMETRY;
     delete process.env.DO_NOT_TRACK;
+    delete process.env.SITECOREAI_TELEMETRY;
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    questionSpy.mockResolvedValueOnce("y");
-    await telemetry.ensureTelemetryConsent(dir);
+
+    await telemetry.ensureTelemetryNotice(dir);
+    expect(infoSpy).toHaveBeenCalledTimes(1);
     const updated = JSON.parse(await fs.readFile(path.join(dir, "sitecoreai.cli.json"), "utf8"));
     expect(updated.settings.telemetryEnabled).toBe(true);
+
+    // Second run: the default is now recorded, so the notice stays silent.
+    infoSpy.mockClear();
+    await telemetry.ensureTelemetryNotice(dir);
+    expect(infoSpy).not.toHaveBeenCalled();
+
     Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
     if (originalCI !== undefined) {
@@ -190,6 +185,7 @@ describe("telemetry and shared helpers", () => {
     if (originalGH !== undefined) {
       process.env.GITHUB_ACTIONS = originalGH;
     }
+    infoSpy.mockRestore();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -201,26 +197,30 @@ describe("telemetry and shared helpers", () => {
     delete process.env.SITECOREAI_TELEMETRY;
   });
 
-  it("returns config-not-found status when config is missing", async () => {
+  it("defaults telemetry status to enabled when config is missing", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-missing-"));
     const status = telemetry.getTelemetryStatus(dir);
-    expect(status.enabled).toBe(false);
-    expect(status.source).toBe("config not found");
+    expect(status.enabled).toBe(true);
+    expect(status.source).toBe("default (opt-out)");
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it("skips telemetry consent when config is missing", async () => {
+  it("skips the telemetry notice when config is missing", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-missing-"));
-    questionSpy.mockClear();
-    await telemetry.ensureTelemetryConsent(dir);
-    expect(questionSpy).not.toHaveBeenCalled();
+    await telemetry.ensureTelemetryNotice(dir);
+    expect(infoSpy).not.toHaveBeenCalled();
+    infoSpy.mockRestore();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it("skips telemetry consent when config already has a value", async () => {
+  it("skips the telemetry notice when telemetryEnabled is already set", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-existing-"));
     await fs.writeFile(
       path.join(dir, "sitecoreai.cli.json"),
@@ -237,18 +237,22 @@ describe("telemetry and shared helpers", () => {
     const originalOut = process.stdout.isTTY;
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    questionSpy.mockClear();
 
-    await telemetry.ensureTelemetryConsent(dir);
+    await telemetry.ensureTelemetryNotice(dir);
 
-    expect(questionSpy).not.toHaveBeenCalled();
+    expect(infoSpy).not.toHaveBeenCalled();
+    const after = JSON.parse(await fs.readFile(path.join(dir, "sitecoreai.cli.json"), "utf8"));
+    expect(after.settings.telemetryEnabled).toBe(false);
     Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
+    infoSpy.mockRestore();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it("skips telemetry consent in CI", async () => {
+  it("skips the telemetry notice in CI", async () => {
     const telemetry = await import("../../../src/shared/telemetry");
+    const { consola } = await import("consola");
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-ci-"));
     await fs.writeFile(
       path.join(dir, "sitecoreai.cli.json"),
@@ -263,10 +267,9 @@ describe("telemetry and shared helpers", () => {
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
     process.env.CI = "1";
-    questionSpy.mockClear();
 
-    await telemetry.ensureTelemetryConsent(dir);
-    expect(questionSpy).not.toHaveBeenCalled();
+    await telemetry.ensureTelemetryNotice(dir);
+    expect(infoSpy).not.toHaveBeenCalled();
 
     Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
@@ -275,75 +278,7 @@ describe("telemetry and shared helpers", () => {
     } else {
       process.env.CI = originalCI;
     }
-    await fs.rm(dir, { recursive: true, force: true });
-  });
-
-  it("writes telemetry disabled when user declines", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
-    const { consola } = await import("consola");
-    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-decline-"));
-    await fs.writeFile(
-      path.join(dir, "sitecoreai.cli.json"),
-      JSON.stringify({ modules: ["./module.module.json"], settings: {} }, null, 2),
-      "utf8"
-    );
-    await fs.writeFile(path.join(dir, "module.module.json"), "{}", "utf8");
-
-    const originalIn = process.stdin.isTTY;
-    const originalOut = process.stdout.isTTY;
-    delete process.env.CI;
-    delete process.env.GITHUB_ACTIONS;
-    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    questionSpy.mockResolvedValueOnce("n");
-
-    await telemetry.ensureTelemetryConsent(dir);
-
-    const updated = JSON.parse(await fs.readFile(path.join(dir, "sitecoreai.cli.json"), "utf8"));
-    expect(updated.settings.telemetryEnabled).toBe(false);
-    expect(infoSpy).toHaveBeenCalledWith("Telemetry disabled. You can re-enable it later.");
-
-    Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
     infoSpy.mockRestore();
-    await fs.rm(dir, { recursive: true, force: true });
-  });
-
-  it("logs debug when telemetry prompt fails", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
-    const { consola } = await import("consola");
-    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => undefined);
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-fail-"));
-    await fs.writeFile(
-      path.join(dir, "sitecoreai.cli.json"),
-      JSON.stringify({ modules: ["./module.module.json"], settings: {} }, null, 2),
-      "utf8"
-    );
-    await fs.writeFile(path.join(dir, "module.module.json"), "{}", "utf8");
-
-    const originalIn = process.stdin.isTTY;
-    const originalOut = process.stdout.isTTY;
-    const originalCI = process.env.CI;
-    const originalGH = process.env.GITHUB_ACTIONS;
-    delete process.env.CI;
-    delete process.env.GITHUB_ACTIONS;
-    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    questionSpy.mockRejectedValueOnce(new Error("prompt failure"));
-
-    await telemetry.ensureTelemetryConsent(dir);
-
-    expect(debugSpy).toHaveBeenCalled();
-    Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
-    if (originalCI !== undefined) {
-      process.env.CI = originalCI;
-    }
-    if (originalGH !== undefined) {
-      process.env.GITHUB_ACTIONS = originalGH;
-    }
-    debugSpy.mockRestore();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -395,7 +330,7 @@ describe("telemetry and shared helpers", () => {
     process.env.DO_NOT_TRACK = "1";
     const status = telemetry.getTelemetryStatus(process.cwd());
     expect(status.enabled).toBe(false);
-    expect(status.source).toBe("env DISABLE_TELEMETRY/DO_NOT_TRACK");
+    expect(status.source).toBe("env DO_NOT_TRACK");
     delete process.env.DO_NOT_TRACK;
   });
 

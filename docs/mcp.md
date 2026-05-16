@@ -268,15 +268,19 @@ threads the abort through, otherwise the envelope is converted to
 
 ## Telemetry
 
-In MCP mode, telemetry is **opt-out by default** —
-`SITECOREAI_TELEMETRY=false` is set automatically by the
-`mcp serve` action.
+In MCP mode, telemetry is **enabled by default**, the same as the rest
+of the CLI. It honors the standard opt-out signals — `DO_NOT_TRACK=1`,
+`SITECOREAI_TELEMETRY=false`, and an explicit
+`settings.telemetryEnabled: false` in config.
 
-Opt back in with `--telemetry`:
+Disable it for a single MCP session with `--no-telemetry`:
 
 ```bash
-scai mcp serve --environment-name dev --telemetry
+scai mcp serve --environment-name dev --no-telemetry
 ```
+
+See [telemetry-and-privacy.md](./telemetry-and-privacy.md) for what is
+collected.
 
 ## Security + stdout discipline
 

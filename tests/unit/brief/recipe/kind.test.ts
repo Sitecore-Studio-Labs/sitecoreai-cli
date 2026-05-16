@@ -57,15 +57,34 @@ describe("briefTypeKind", () => {
     expect(typeof briefTypeKind.readCurrent).toBe("function");
     expect(typeof briefTypeKind.plan).toBe("function");
     expect(typeof briefTypeKind.apply).toBe("function");
+    expect(typeof briefTypeKind.list).toBe("function");
+  });
+});
+
+describe("list", () => {
+  it("enumerates every brief type as KindRefs", async () => {
+    briefApi.listBriefTypes.mockResolvedValue({
+      totalCount: 2,
+      next: null,
+      data: [
+        { ...liveType, name: "CreativeBrief" },
+        { ...liveType, name: "CampaignBrief" },
+      ],
+    });
+
+    const refs = await briefTypeKind.list?.(ctx);
+
+    expect(refs).toEqual([
+      { kind: "brief-type", id: "CreativeBrief" },
+      { kind: "brief-type", id: "CampaignBrief" },
+    ]);
   });
 });
 
 describe("readCurrent", () => {
   it("returns null when no brief type matches the name", async () => {
     briefApi.listBriefTypes.mockResolvedValue({ totalCount: 0, next: null, data: [] });
-    expect(
-      await briefTypeKind.readCurrent({ kind: "brief-type", id: "Nope" }, ctx)
-    ).toBeNull();
+    expect(await briefTypeKind.readCurrent({ kind: "brief-type", id: "Nope" }, ctx)).toBeNull();
   });
 
   it("builds a recipe from the matched type, dropping server ids", async () => {

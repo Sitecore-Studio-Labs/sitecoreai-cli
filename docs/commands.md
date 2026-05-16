@@ -456,7 +456,7 @@ scai audit large-fields list [options]
 - `--root <path>` — Content-tree root (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--threshold <bytes>` — Field-size threshold in bytes (default 100000 = 100KB)
-- `--include-system-fields` — Include __-prefixed system fields in the size check
+- `--include-system-fields` — Include \_\_-prefixed system fields in the size check
 
 ### scai audit missing-meta
 
@@ -516,11 +516,11 @@ scai audit datasource-missing [options] [command]
 
 **Subcommands**
 
-- [`scai audit datasource-missing list`](#scai-audit-datasource-missing-list) — List items whose __Renderings / __Final Renderings reference missing datasources
+- [`scai audit datasource-missing list`](#scai-audit-datasource-missing-list) — List items whose **Renderings / **Final Renderings reference missing datasources
 
 #### scai audit datasource-missing list
 
-List items whose __Renderings / __Final Renderings reference missing datasources
+List items whose **Renderings / **Final Renderings reference missing datasources
 
 ```
 scai audit datasource-missing list [options]
@@ -643,7 +643,7 @@ scai audit duplicates list [options]
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language (default: include all)
 - `--min-group-size <count>` — Only report groups with at least this many duplicates (default: 2)
-- `--include-system-fields` — Include __-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)
+- `--include-system-fields` — Include \_\_-prefixed system fields when computing the content hash (off by default to ignore per-item metadata)
 
 ### scai audit empty-items
 
@@ -879,7 +879,7 @@ scai audit find-replace list [options]
 - `--ignore-case` — Case-insensitive match (sets the i regex flag)
 - `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
 - `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
-- `--include-system-fields` — Include __-prefixed system fields in the search (off by default)
+- `--include-system-fields` — Include \_\_-prefixed system fields in the search (off by default)
 - `--root <path>` — Content-tree root to scan (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--max-matches-per-item <count>` — Maximum number of sample snippets captured per matching item (default 10)
@@ -974,11 +974,11 @@ scai audit page-design-orphans [options] [command]
 
 **Subcommands**
 
-- [`scai audit page-design-orphans list`](#scai-audit-page-design-orphans-list) — List pages whose __Final Page Design / __Page Design field points to a missing item
+- [`scai audit page-design-orphans list`](#scai-audit-page-design-orphans-list) — List pages whose **Final Page Design / **Page Design field points to a missing item
 
 #### scai audit page-design-orphans list
 
-List pages whose __Final Page Design / __Page Design field points to a missing item
+List pages whose **Final Page Design / **Page Design field points to a missing item
 
 ```
 scai audit page-design-orphans list [options]
@@ -1668,7 +1668,6 @@ scai cleanup [options] [command]
 - [`scai cleanup field-set`](#scai-cleanup-field-set) — Bulk-edit one field across a content scope — replace, add (multilist), remove (multilist), clear
 - [`scai cleanup find-replace`](#scai-cleanup-find-replace) — Apply a find-replace operation across content field values
 - [`scai cleanup language-versions`](#scai-cleanup-language-versions) — Bulk-create language versions across items so translators can pick them up
-- [`scai cleanup publish`](#scai-cleanup-publish) — Bulk-publish a curated list of items, or every item under a root
 - [`scai cleanup rename`](#scai-cleanup-rename) — Bulk-rename items by pattern (modifies item Name and thus the URL slug)
 - [`scai cleanup roles`](#scai-cleanup-roles) — Delete empty roles (the cleanup counterpart to `audit empty-roles`)
 - [`scai cleanup site-residue`](#scai-cleanup-site-residue) — Delete SXA tenant/site folders left behind after a Sites-API delete (templates/Project, layout/Renderings/Project, media library/Project)
@@ -1798,7 +1797,7 @@ scai cleanup duplicates purge [options]
 - `--limit <count>` — Cap on the number of items inspected (default: 5000)
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
-- `--include-system-fields` — Include __-prefixed system fields when computing the content hash
+- `--include-system-fields` — Include \_\_-prefixed system fields when computing the content hash
 - `--keep-rule <rule>` — Which member of each duplicate group survives (default: `"oldest"`)
 - `--concurrency <count>` — Delete concurrency (default: 4)
 - `--batch-size <count>` — Aliased GraphQL batch size for field reads
@@ -1887,7 +1886,7 @@ scai cleanup field-set apply [options]
 - `--max-mutations <count>` — Maximum number of items to mutate per run (default: 100)
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
-- `--include-system-fields` — Allow writing to __-prefixed system fields (off by default)
+- `--include-system-fields` — Allow writing to \_\_-prefixed system fields (off by default)
 - `--cache` — Use the on-disk field cache for the discovery phase
 
 ### scai cleanup find-replace
@@ -1930,7 +1929,7 @@ scai cleanup find-replace apply [options]
 - `--ignore-case` — Case-insensitive match
 - `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
 - `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
-- `--include-system-fields` — Include __-prefixed system fields in the search (off by default; touching __Renderings via regex will mangle XML)
+- `--include-system-fields` — Include **-prefixed system fields in the search (off by default; touching **Renderings via regex will mangle XML)
 - `--root <path>` — Content-tree root (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--limit <count>` — Cap on items inspected (default: 5000)
@@ -1982,49 +1981,6 @@ scai cleanup language-versions add [options]
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
 - `--cache` — Use the on-disk field cache for the discovery phase
-
-### scai cleanup publish
-
-Bulk-publish a curated list of items, or every item under a root
-
-```
-scai cleanup publish [options] [command]
-```
-
-**Subcommands**
-
-- [`scai cleanup publish dispatch`](#scai-cleanup-publish-dispatch) — Dispatch a single publish job covering the supplied scope
-
-#### scai cleanup publish dispatch
-
-Dispatch a single publish job covering the supplied scope
-
-```
-scai cleanup publish dispatch [options]
-```
-
-**Options**
-
-- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
-- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
-- `-w, --what-if` — Lists commands that would be executed, without executing them
-- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
-- `--allow-write` — Allow write operations for this command without updating config
-- `--force` — Perform force sync. In case you have invalid includes
-- `-v, --verbose` — Write some additional diagnostic and performance data
-- `-t, --trace` — Write more additional diagnostic and performance data
-- `-q, --quiet` — Suppress non-error output
-- `--json` — Output machine-readable JSON
-- `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
-- `--items <ids>` — Comma-separated item IDs or content-tree paths to publish (mutually exclusive with --root) (default: `[]`)
-- `--root <path>` — Content-tree root — publish every descendant (mutually exclusive with --items)
-- `--languages <codes>` — Comma-separated language codes (default: tenant primary) (default: `[]`)
-- `--target <name>` — Publish target (e.g. web). Default: all configured
-- `--republish` — Re-publish unchanged items (default: incremental)
-- `--max-publishes <count>` — Maximum number of items to publish per run (default: 1000)
-- `--poll-timeout-ms <ms>` — Poll publishingStatus until completion or this timeout (default: 0 = fire-and-return)
-- `--poll-interval-ms <ms>` — Polling cadence in ms when --poll-timeout-ms > 0 (default: 2000)
 
 ### scai cleanup rename
 
@@ -2364,7 +2320,7 @@ scai cleanup workflow [options] [command]
 **Subcommands**
 
 - [`scai cleanup workflow advance`](#scai-cleanup-workflow-advance) — Execute a workflow command on items stuck past --stale-days
-- [`scai cleanup workflow apply`](#scai-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets __Workflow + __Workflow state directly). Use to backfill content authored before the workflow existed.
+- [`scai cleanup workflow apply`](#scai-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
 
 #### scai cleanup workflow advance
 
@@ -2400,7 +2356,7 @@ scai cleanup workflow advance [options]
 
 #### scai cleanup workflow apply
 
-Bulk-attach a workflow to items under --root (sets __Workflow + __Workflow state directly). Use to backfill content authored before the workflow existed.
+Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
 
 ```
 scai cleanup workflow apply [options]
@@ -2421,7 +2377,7 @@ scai cleanup workflow apply [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 - `--workflow <ref>` — Workflow GUID, content-tree path, or display/item name (case-insensitive)
-- `--state <ref>` — Target state (GUID or name). Defaults to the workflow's __Initial state.
+- `--state <ref>` — Target state (GUID or name). Defaults to the workflow's \_\_Initial state.
 - `--template <ref>` — Only attach to items conforming to this template (GUID or absolute /sitecore/templates path).
 - `--reattach` — Overwrite items already attached to a different workflow. Off by default — already-attached items are skipped so the verb defaults to a safe backfill.
 - `--stale-days <count>` — Only act on items not updated for at least N days. Optional — omit to attach to every match.
@@ -4177,11 +4133,11 @@ scai init [options]
 - `--allow-write` — Allow write operations for this environment
 - `--wizard` — Run the interactive setup wizard
 - `--skip-deploy-lookup` — Skip Deploy API lookups and prompt for the CM host directly
-- `--organization-id <id>` — Sitecore organization ID
-- `--tenant-id <id>` — Sitecore tenant ID
-- `--organization <name>` — Organization name or ID (Deploy API)
-- `--project <value>` — Project name or ID (Deploy API)
-- `--environment <value>` — Environment name or ID (Deploy API)
+- `--organization-id <id>` — Sitecore organization ID (written to the profile)
+- `--tenant-id <id>` — Sitecore tenant ID (written to the profile)
+- `--deploy-organization <value>` — Organization name or ID for the Deploy API environment lookup
+- `--project <value>` — Project name or ID for the Deploy API lookup
+- `--deploy-environment <value>` — Environment name or ID for the Deploy API environment lookup
 - `--deploy-token <token>` — SitecoreAI access token (Deploy + CM/admin scopes)
 - `--client-id <id>` — SitecoreAI client ID
 - `--client-secret <secret>` — SitecoreAI client secret
@@ -4205,7 +4161,6 @@ scai login [options] [command]
 - `-q, --quiet` — Suppress non-error output
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
 - `--client-id <id>` — SitecoreAI client ID
 - `--client-secret <secret>` — SitecoreAI client secret
 - `--use-client-credentials` — Use client credentials instead of interactive login
@@ -4213,16 +4168,16 @@ scai login [options] [command]
 
 **Subcommands**
 
-- [`scai login ai-skills`](#scai-login-ai-skills) — Provision a Sitecore AI Skills credential (Brand Management + Brand Review) for the active environment's organization
+- [`scai login brand`](#scai-login-brand) — Store an AI APIs key (a client credential) for the org behind the active environment — powers `scai brand`. Credential provisioning, not an interactive login.
 
-### scai login ai-skills
+### scai login brand
 
-Provision a Sitecore AI Skills credential (Brand Management + Brand Review) for the active environment's organization
+Store an AI APIs key (a client credential) for the org behind the active environment — powers `scai brand`. Credential provisioning, not an interactive login.
 
-**Aliases:** `ai-skill`, `aiskills`, `aiskill`
+**Aliases:** `ai-skills`, `ai-skill`, `aiskills`, `aiskill`
 
 ```
-scai login ai-skills [options]
+scai login brand [options]
 ```
 
 **Options**
@@ -4234,7 +4189,6 @@ scai login ai-skills [options]
 - `-q, --quiet` — Suppress non-error output
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
 - `--org-id <id>` — Sitecore organizationId to bind the credential to. Defaults to the env profile's organizationId.
 - `--client-id <id>` — AI APIs key Client ID
 - `--client-secret <secret>` — AI APIs key Client Secret
@@ -4536,6 +4490,8 @@ scai telemetry [options] [command]
 **Subcommands**
 
 - [`scai telemetry status`](#scai-telemetry-status) — Show telemetry status
+- [`scai telemetry enable`](#scai-telemetry-enable) — Enable anonymous usage telemetry
+- [`scai telemetry disable`](#scai-telemetry-disable) — Disable anonymous usage telemetry
 
 ### scai telemetry status
 
@@ -4543,6 +4499,42 @@ Show telemetry status
 
 ```
 scai telemetry status [options]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai telemetry enable
+
+Enable anonymous usage telemetry
+
+```
+scai telemetry enable [options]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai telemetry disable
+
+Disable anonymous usage telemetry
+
+```
+scai telemetry disable [options]
 ```
 
 **Options**

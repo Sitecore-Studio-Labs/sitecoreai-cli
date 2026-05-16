@@ -1,6 +1,6 @@
 /**
  * Convenience types layered over the codegen'd OpenAPI schemas for the
- * Sitecore AI Skills APIs (Brand Management + Brand Review). The raw
+ * Sitecore Brand APIs (Brand Management + Brand Review). The raw
  * schemas are at `./schema.brand-management.d.ts` and
  * `./schema.brand-review.d.ts`; these aliases give scai's library
  * surface a stable, callable shape without exposing the underlying
@@ -13,8 +13,8 @@
  */
 import type { components as BrandReviewComponents } from "./schema.brand-review";
 
-/** Hostname for the AI Skills APIs. Same edge host as the Publishing API. */
-export const AI_SKILLS_API_HOST = "https://edge-platform.sitecorecloud.io";
+/** Hostname for the Brand APIs. Same edge host as the Publishing API. */
+export const BRAND_API_HOST = "https://edge-platform.sitecorecloud.io";
 
 /** Base path for the Brand Management API. */
 export const BRAND_MANAGEMENT_BASE_PATH = "/stream/ai-brands-api";

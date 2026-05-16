@@ -75,13 +75,13 @@ Loaded from `.env.local` (override) then `.env` (fallback). See
 
 **Behaviour flags:**
 
-| Var                                                                     | Purpose                                         |
-| ----------------------------------------------------------------------- | ----------------------------------------------- |
-| `SITECOREAI_AUTO_WIZARD=0`                                              | Disable auto-init/login on startup (CI default) |
-| `SITECOREAI_USE_CLIENT_CREDENTIALS=true`                                | Force client-credentials grant                  |
-| `SITECOREAI_ALLOW_WRITE=true`                                           | Override `allowWrite` for the active env        |
-| `SITECOREAI_TELEMETRY=false` / `DISABLE_TELEMETRY=1` / `DO_NOT_TRACK=1` | Disable telemetry                               |
-| `SITECOREAI_HISTORY_PATH`                                               | Override CLI history log path                   |
+| Var                                             | Purpose                                         |
+| ----------------------------------------------- | ----------------------------------------------- |
+| `SITECOREAI_AUTO_WIZARD=0`                      | Disable auto-init/login on startup (CI default) |
+| `SITECOREAI_USE_CLIENT_CREDENTIALS=true`        | Force client-credentials grant                  |
+| `SITECOREAI_ALLOW_WRITE=true`                   | Override `allowWrite` for the active env        |
+| `SITECOREAI_TELEMETRY=false` / `DO_NOT_TRACK=1` | Disable telemetry                               |
+| `SITECOREAI_HISTORY_PATH`                       | Override CLI history log path                   |
 
 ## Sandbox tenant for current work
 

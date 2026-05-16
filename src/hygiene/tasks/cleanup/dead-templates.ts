@@ -69,6 +69,45 @@ const PROTECTED_TEMPLATE_ROOTS = [
 ];
 
 /**
+ * The Authoring API's template-cache can lag ~30-90s after a large
+ * cascade delete: deleting a template whose dependents were JUST
+ * removed may 4xx with "template has dependents" until the cache
+ * settles. The pre-flight `audit template-dependencies` has already
+ * filtered templates with *real* structural dependents, so a dependents
+ * error here is the stale-cache false positive — retry past the settle
+ * window before surfacing it. (With `--force` the pre-flight is skipped,
+ * so a genuine dependents error simply retries then surfaces — a bounded
+ * ~39s cost, not a hang.)
+ */
+const TEMPLATE_CACHE_LAG = /dependent|used by/i;
+const RETRY_DELAYS_MS = [4000, 10000, 25000];
+
+const deleteItemTemplateWithRetry = async (
+  client: HygieneApiClient,
+  templateId: string,
+  logger: ReturnType<typeof toLogger>
+): Promise<void> => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await client.deleteItemTemplate(templateId);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt >= RETRY_DELAYS_MS.length || !TEMPLATE_CACHE_LAG.test(message)) {
+        throw error;
+      }
+      const waitMs = RETRY_DELAYS_MS[attempt];
+      logger.info(
+        `Template-cache lag on ${templateId} — retrying in ${waitMs / 1000}s ` +
+          `(attempt ${attempt + 1}/${RETRY_DELAYS_MS.length}).`,
+        "yellow"
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+};
+
+/**
  * Walk a template root bottom-up and delete folders that are empty after
  * the dead-templates purge.
  *
@@ -222,7 +261,7 @@ export const runCleanupDeadTemplates = async (
         };
       }
       try {
-        await client.deleteItemTemplate(t.templateId);
+        await deleteItemTemplateWithRetry(client, t.templateId, logger);
         return {
           templateId: t.templateId,
           name: t.name,

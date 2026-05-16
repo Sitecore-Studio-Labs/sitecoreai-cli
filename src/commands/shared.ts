@@ -46,7 +46,12 @@ export const addConfigOption = (command: Command): Command =>
     new Option(
       "-c, --config <path>",
       "Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself)."
-    ).default(process.cwd())
+    )
+      // Second arg is the help-text label for the default. Without it
+      // Commander prints the resolved absolute cwd into `--help`, which
+      // is noise (and machine-specific). The runtime value is still
+      // `process.cwd()`.
+      .default(process.cwd(), "current directory")
   );
 
 export const addEnvironmentOption = (command: Command): Command =>
@@ -57,14 +62,32 @@ export const addEnvironmentOption = (command: Command): Command =>
     )
   );
 
-export const addVerbosityOptions = (command: Command): Command =>
+/**
+ * Adds the shared verbosity/output flags to a command.
+ *
+ * `--non-interactive` is included by default, but commands that own
+ * their own interactivity decision (e.g. `setup login`, where the
+ * browser device flow simply cannot run headless) pass
+ * `{ nonInteractive: false }` to omit it — the flag would only ever
+ * produce a confusing error or be redundant there.
+ */
+export const addVerbosityOptions = (
+  command: Command,
+  options: { nonInteractive?: boolean } = {}
+): Command => {
   command
     .addOption(new Option("-v, --verbose", "Write some additional diagnostic and performance data"))
     .addOption(new Option("-t, --trace", "Write more additional diagnostic and performance data"))
     .addOption(new Option("-q, --quiet", "Suppress non-error output"))
     .addOption(new Option("--json", "Output machine-readable JSON"))
-    .addOption(new Option("--log-file <path>", "Write logs to a file"))
-    .addOption(new Option("--non-interactive", "Disable prompts and require explicit input"));
+    .addOption(new Option("--log-file <path>", "Write logs to a file"));
+  if (options.nonInteractive !== false) {
+    command.addOption(
+      new Option("--non-interactive", "Disable prompts and require explicit input")
+    );
+  }
+  return command;
+};
 
 export const addAllowWriteOption = (command: Command): Command =>
   command.option(

@@ -83,7 +83,7 @@ export const updateSite = (
  *
  * Thin convenience over `updateSite` for the single most common
  * brand-kit operation: pass a kit UUID to link, or `null` to detach.
- * `brandKitId` is the id of an AI Skills brand kit (see the brand
+ * `brandKitId` is the id of a brand kit (see the brand
  * area — `brand_inspect verb='list-kits'`).
  */
 export const setSiteBrandKit = (

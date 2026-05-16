@@ -4,7 +4,7 @@
  * discovery output.
  *
  * Lives in `shared/` (a leaf module) and takes an already-resolved env
- * profile plus a precomputed `hasAiSkills` flag, so it never imports
+ * profile plus a precomputed `hasBrand` flag, so it never imports
  * `config/` — the caller does the config read and passes the minimal
  * shape in.
  */
@@ -17,8 +17,8 @@ export type CredentialMatrix = {
   deploy: boolean;
   /** scai-minted, environment-scoped CM automation client (keychain). */
   cmClient: boolean;
-  /** AI Skills credential for the env's organization (brand kits). */
-  aiSkills: boolean;
+  /** Brand credential for the env's organization (brand kits). */
+  brand: boolean;
   /** Brief (Content Operations) client-credentials on the env profile. */
   brief: boolean;
 };
@@ -38,19 +38,19 @@ export type CredentialEnvProfile = {
 /**
  * Resolve the credential matrix for one environment. Reads the keychain
  * for the deploy token and the scai-minted CM client; takes
- * `hasAiSkills` precomputed (the caller checks `root.aiSkills[orgId]`).
+ * `hasBrand` precomputed (the caller checks `root.brand[orgId]`).
  */
 export const resolveCredentialMatrix = async (
   envName: string,
   env: CredentialEnvProfile,
-  hasAiSkills: boolean
+  hasBrand: boolean
 ): Promise<CredentialMatrix> => {
   const deployToken = (await getDeployToken(envName)) ?? env.deployToken;
   const cmClient = await getCmClientCredential(envName);
   return {
     deploy: Boolean(deployToken),
     cmClient: Boolean(cmClient),
-    aiSkills: hasAiSkills,
+    brand: hasBrand,
     brief: Boolean(env.clientId && env.clientSecret && env.authority),
   };
 };

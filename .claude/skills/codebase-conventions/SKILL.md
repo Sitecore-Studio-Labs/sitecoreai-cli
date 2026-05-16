@@ -171,8 +171,7 @@ Anonymous, opt-in. The CLI prompts for consent on first use.
 - Implementation: validates payloads against the schema before sending
 - Fields: command name, duration, version, ci flag, region (CDN-derived)
 - **Never** add user-identifiable fields, full args, or token-shaped values
-- Disable via `SITECOREAI_TELEMETRY=false`, `DISABLE_TELEMETRY=1`, or
-  `DO_NOT_TRACK=1`
+- Disable via `SITECOREAI_TELEMETRY=false` or `DO_NOT_TRACK=1`
 
 ## When adding a command
 

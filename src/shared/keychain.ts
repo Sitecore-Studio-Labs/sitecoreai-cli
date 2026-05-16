@@ -49,8 +49,13 @@ const PUBLISHING_ACCOUNT_PREFIX = "publishing:";
 const BRIEF_ACCOUNT_PREFIX = "brief:";
 const CAMPAIGN_ACCOUNT_PREFIX = "campaign:";
 const AGENTS_ACCOUNT_PREFIX = "agents:";
-const AI_SKILLS_SECRET_ACCOUNT_PREFIX = "ai-skills-secret:";
-const AI_SKILLS_TOKEN_ACCOUNT_PREFIX = "ai-skills-token:";
+// Brand credential keychain accounts. The string values stay
+// `ai-skills-*` on purpose: they are the opaque keychain account keys,
+// and changing them would strand secrets stored by older CLI versions
+// (forcing a re-login). The constant/function names use `brand`; the
+// storage keys are kept stable for back-compat.
+const BRAND_SECRET_ACCOUNT_PREFIX = "ai-skills-secret:";
+const BRAND_TOKEN_ACCOUNT_PREFIX = "ai-skills-token:";
 
 let cachedKeyring: KeyringModule | null | undefined;
 let warnedKeyringUnavailable = false;
@@ -367,7 +372,7 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
  * The scai-minted CM automation client for an environment. Stored under
  * a distinct `cm-client:` prefix — separate from the `cm:` token bundle
  * (which holds short-lived access/refresh tokens). This entry holds the
- * long-lived clientId/clientSecret pair `scai setup env` provisions.
+ * long-lived clientId/clientSecret pair `scai setup client create` provisions.
  */
 export const getCmClientCredential = async (
   envName: string
@@ -415,22 +420,22 @@ export const clearCmClientCredential = async (envName: string): Promise<boolean>
 };
 
 /**
- * AI Skills credentials are keyed by Sitecore `organizationId`, not by
+ * Brand credentials are keyed by Sitecore `organizationId`, not by
  * env profile. The AI APIs key is one-org-per-credential (Cloud Portal
  * → Stream → Admin → AI APIs keys), so every env profile in the same
  * org shares one credential. We store the client secret and the cached
  * access token under separate entries to keep their lifecycles
  * independent (token rotates ~daily; secret is long-lived).
  */
-export const getAiSkillsClientSecret = async (orgId: string): Promise<string | undefined> => {
+export const getBrandClientSecret = async (orgId: string): Promise<string | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
     return undefined;
   }
-  return readPassword(ring, makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId));
+  return readPassword(ring, makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId));
 };
 
-export const setAiSkillsClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
+export const setBrandClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
@@ -438,17 +443,17 @@ export const setAiSkillsClientSecret = async (orgId: string, secret: string): Pr
   try {
     const entry = new ring.AsyncEntry(
       SERVICE_NAME,
-      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+      makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId)
     );
     await entry.setPassword(secret);
     return true;
   } catch {
-    warnOnce("Unable to write AI Skills client secret to the OS keychain.", "error");
+    warnOnce("Unable to write Brand client secret to the OS keychain.", "error");
     return false;
   }
 };
 
-export const clearAiSkillsClientSecret = async (orgId: string): Promise<boolean> => {
+export const clearBrandClientSecret = async (orgId: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
@@ -456,7 +461,7 @@ export const clearAiSkillsClientSecret = async (orgId: string): Promise<boolean>
   try {
     const entry = new ring.AsyncEntry(
       SERVICE_NAME,
-      makeAccount(AI_SKILLS_SECRET_ACCOUNT_PREFIX, orgId)
+      makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId)
     );
     return entry.deleteCredential();
   } catch {
@@ -464,42 +469,36 @@ export const clearAiSkillsClientSecret = async (orgId: string): Promise<boolean>
   }
 };
 
-export const getAiSkillsToken = async (orgId: string): Promise<string | undefined> => {
+export const getBrandToken = async (orgId: string): Promise<string | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
     return undefined;
   }
-  return readPassword(ring, makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId));
+  return readPassword(ring, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
 };
 
-export const setAiSkillsToken = async (orgId: string, token: string): Promise<boolean> => {
+export const setBrandToken = async (orgId: string, token: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
-    );
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
     await entry.setPassword(token);
     return true;
   } catch {
-    warnOnce("Unable to write AI Skills token to the OS keychain.", "error");
+    warnOnce("Unable to write Brand token to the OS keychain.", "error");
     return false;
   }
 };
 
-export const clearAiSkillsToken = async (orgId: string): Promise<boolean> => {
+export const clearBrandToken = async (orgId: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(AI_SKILLS_TOKEN_ACCOUNT_PREFIX, orgId)
-    );
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
     return entry.deleteCredential();
   } catch {
     return false;

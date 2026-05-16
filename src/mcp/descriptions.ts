@@ -14,7 +14,7 @@
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   // Bootstrap
   scai_overview:
-    "Returns the server version, the bound environment, the available tool domains, the registered Resource URIs, and whether writes are permitted — plus the discovery map: every configured environment and organization, each with its four-credential matrix (deploy / cmClient / aiSkills / brief). Call this first from a cold start so subsequent decisions know what surface is reachable and which environments are credentialed.",
+    "Returns the server version, the bound environment, the available tool domains, the registered Resource URIs, and whether writes are permitted — plus the discovery map: every configured environment and organization, each with its four-credential matrix (deploy / cmClient / brand / brief). Call this first from a cold start so subsequent decisions know what surface is reachable and which environments are credentialed.",
   environment_status:
     "Probes the bound environment for live health, deploy-token freshness, and the most recent deployment summary. Use this when you need a quick health pulse before scheduling work against the environment.",
 
@@ -122,7 +122,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   webhook_manage:
     "Mutating webhook handler surface — `create` (item/publish event handler or workflow submit/validation action) or `delete` (any webhook item by id or path). Requires allowWrite: true. Workflow webhooks attach at a workflow state's Actions subfolder; pass the state's content-tree path via `onState`.",
 
-  // Brand (Sitecore AI Skills — Brand Management + Documents + Pipeline + Brand Review)
+  // Brand — Brand Management + Documents + Pipeline + Brand Review
   brand_inspect:
     "Read-side brand kit surface over a discriminated { verb } input — list-kits, get-kit, list-sections (with names + UUIDs), list-fields (subsections with their AI intent + populated value), list-docs, get-doc (useful for polling pipeline progress). Sections only appear after BrandIngestion + EnrichSections pipelines have run; freshly-created kits return an empty section list.",
   brand_manage:

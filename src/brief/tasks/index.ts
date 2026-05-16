@@ -4,7 +4,7 @@ import { resolveRegionalBaseUrl } from "@/shared/region";
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import { acquireBriefToken } from "../auth";
 import { BRIEF_API_HOST_TEMPLATE } from "../api/types";
-import { listBriefs, getBrief, setBriefStatus } from "../api/briefs";
+import { listBriefs, getBrief, setBriefStatus, deleteBrief } from "../api/briefs";
 import {
   createBriefType,
   deleteBriefType,
@@ -14,7 +14,7 @@ import {
   type CreateBriefTypeInput,
 } from "../api/brief-types";
 import { listBriefTasks, type BriefTaskMetadata } from "../api/tasks";
-import { listBriefComments } from "../api/comments";
+import { listBriefComments, createBriefComment } from "../api/comments";
 import type {
   Brief,
   BriefComment,
@@ -38,18 +38,20 @@ import type { BriefApiClientOptions } from "../api/types";
  *   - `runBriefShow`     — read one brief by id
  *   - `runBriefTypes`    — list brief types
  *   - `runBriefTypeGet`  — read one brief type by id
- *   - `runBriefTasksList`— list tasks (optionally filtered to a brief)
+ *   - `runBriefTodosList`— list to-dos (optionally filtered to a brief)
  *   - `runBriefCommentsList` — list comments (optionally filtered)
  *
  * BriefType write verbs (verified 2026-05-15):
  *   - `runBriefTypeCreate` / `runBriefTypeUpdate` / `runBriefTypeDelete`
  *
+ * Brief instance write verbs:
+ *   - `runBriefSetStatus`  — move a brief through its workflow status
+ *   - `runBriefDelete`     — delete a brief (SDK `deleteBrief` verified)
+ *   - `runBriefCommentAdd` — post a comment to a brief (UNVERIFIED body)
+ *
  * Each write runner honours an `options.whatIf` flag — when set, it
  * skips the API call and emits a plan-only summary. The CLI layer wires
  * this via `withApplyGate` so destructive verbs dry-run by default.
- *
- * Brief instance writes (`createBrief` etc.) live in the SDK but aren't
- * yet exposed at the CLI — they're wired but not smoke-tested end-to-end.
  */
 
 export interface RunBriefBaseOptions {
@@ -129,7 +131,7 @@ export const runBriefShow = async (
   logger.info(`  Locale:      ${brief.locale}`);
   logger.info(`  Brief type:  ${brief.briefType.id}`);
   logger.info(`  Is template: ${brief.isTemplate}`);
-  logger.info(`  Tasks:       ${brief.tasks.length}`);
+  logger.info(`  Todos:       ${brief.tasks.length}`);
   logger.info(`  Comments:    ${brief.comments.length}`);
   logger.info(`  References:  ${brief.references.length}`);
   logger.info(`  Created:     ${brief.createdOn}`);
@@ -285,7 +287,7 @@ export const runBriefTypeDelete = async (
   return result;
 };
 
-export const runBriefTasksList = async (
+export const runBriefTodosList = async (
   options: RunBriefBaseOptions & { briefId?: string; assignees?: boolean; limit?: number }
 ): Promise<PagedResult<BriefTask>> => {
   const { logger, client } = await prepareBriefClient(options);
@@ -301,14 +303,14 @@ export const runBriefTasksList = async (
   }
   if (result.data.length === 0) {
     logger.info(
-      options.briefId ? `No tasks on brief ${options.briefId}.` : "No tasks found.",
+      options.briefId ? `No to-dos on brief ${options.briefId}.` : "No to-dos found.",
       "yellow"
     );
     return result;
   }
-  logger.info(`${result.totalCount} task(s):`, "cyan");
-  for (const task of result.data) {
-    logger.info(`  ${task.id}  ${JSON.stringify(task).slice(0, 120)}`);
+  logger.info(`${result.totalCount} to-do(s):`, "cyan");
+  for (const todo of result.data) {
+    logger.info(`  ${todo.id}  ${JSON.stringify(todo).slice(0, 120)}`);
   }
   return result;
 };
@@ -337,4 +339,61 @@ export const runBriefCommentsList = async (
     logger.info(`  ${comment.id}  ${JSON.stringify(comment).slice(0, 120)}`);
   }
   return result;
+};
+
+/**
+ * Delete a brief instance. Mirrors `runBriefTypeDelete` — honours
+ * `whatIf` for a plan-only dry run. SDK `deleteBrief` is verified
+ * against the Agents tenant.
+ */
+export const runBriefDelete = async (
+  options: RunBriefBaseOptions & { briefId: string; whatIf?: boolean }
+): Promise<{ id: string; deleted: boolean }> => {
+  const { logger, client } = await prepareBriefClient(options);
+  if (options.whatIf) {
+    const plan = { id: options.briefId, deleted: false as const };
+    if (logger.isJson()) {
+      writeJson({ plan });
+    } else {
+      logger.info(`Would delete brief ${options.briefId}.`, "yellow");
+    }
+    return plan;
+  }
+  await deleteBrief(client, options.briefId);
+  const result = { id: options.briefId, deleted: true };
+  if (logger.isJson()) {
+    writeJson(result);
+    return result;
+  }
+  logger.info(`Deleted brief ${options.briefId}.`, "green");
+  return result;
+};
+
+/**
+ * Post a comment to a brief. **UNVERIFIED** — the comment write body is
+ * a best guess (see `createBriefComment`). Honours `whatIf`.
+ */
+export const runBriefCommentAdd = async (
+  options: RunBriefBaseOptions & { briefId: string; text: string; whatIf?: boolean }
+): Promise<BriefComment | { plan: { briefId: string; text: string } }> => {
+  const { logger, client } = await prepareBriefClient(options);
+  if (options.whatIf) {
+    const plan = { plan: { briefId: options.briefId, text: options.text } };
+    if (logger.isJson()) {
+      writeJson(plan);
+    } else {
+      logger.info(`Would post a comment to brief ${options.briefId}.`, "yellow");
+    }
+    return plan;
+  }
+  const created = await createBriefComment(client, {
+    briefId: options.briefId,
+    text: options.text,
+  });
+  if (logger.isJson()) {
+    writeJson(created);
+    return created;
+  }
+  logger.info(`Posted comment ${created.id} to brief ${options.briefId}.`, "green");
+  return created;
 };

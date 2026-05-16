@@ -7,11 +7,13 @@ import type { CampaignApiClientOptions } from "./types";
  * campaign.
  *
  * Endpoint surface (HAR-derived 2026-05-15):
- *   POST /api/orchestrate/v1/projects/{projectId}/deliverables — create (201)
+ *   POST   /api/orchestrate/v1/projects/{projectId}/deliverables      — create (201)
+ *   DELETE /api/orchestrate/v1/projects/{projectId}/deliverables/{id} — delete (UNVERIFIED)
  *
  * Deliverables are also returned inline on `getProject`, so a
- * dedicated list endpoint was not needed in the capture. Update/delete
- * are unverified.
+ * dedicated list endpoint was not needed in the capture. `deleteDeliverable`
+ * is wired optimistically per REST conventions; see its doc comment.
+ * Update is unverified.
  */
 
 /** Input for `createDeliverable`. Field set observed on the wire. */
@@ -46,4 +48,25 @@ export const createDeliverable = (
         labels: input.labels ?? [],
       },
     }
+  );
+
+/**
+ * Delete a deliverable
+ * (`DELETE /api/orchestrate/v1/projects/{projectId}/deliverables/{deliverableId}`).
+ * Returns void — a 204 is expected on success.
+ *
+ * UNVERIFIED — DELETE was never captured; inferred from REST conventions
+ * (the item path under the `createDeliverable` collection). Smoke-test
+ * before relying on it.
+ */
+export const deleteDeliverable = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  deliverableId: string
+): Promise<void> =>
+  campaignRequest<void>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}` +
+      `/deliverables/${encodeURIComponent(deliverableId)}`,
+    { method: "DELETE" }
   );

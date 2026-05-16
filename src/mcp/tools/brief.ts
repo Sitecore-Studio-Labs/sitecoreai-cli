@@ -5,20 +5,23 @@
  *
  *   - `brief_inspect` (read) discriminates on `verb` so a single entry
  *     point covers list-briefs, get-brief-by-id, list/get-brief-types,
- *     list-tasks (tenant-wide or per-brief), and list-comments.
- *   - `brief_manage` (write) is scoped to `resource: 'brief-type'` with
- *     create/update/delete verbs. Brief-type writes verified 2026-05-15
- *     against the agents tenant. Brief instance writes are wired in the
- *     SDK but not yet exposed via MCP — pending smoke testing.
+ *     list-todos (tenant-wide or per-brief), and list-comments.
+ *   - `brief_manage` (write) discriminates on `resource` + `verb`:
+ *     `brief-type` create/update/delete, `brief` set-status/delete, and
+ *     `comment` create. Brief-type writes verified 2026-05-15 against the
+ *     agents tenant; brief delete uses the verified SDK `deleteBrief`;
+ *     comment create is wired UNVERIFIED (best-guess body).
  */
 
 import { z } from "zod";
 import {
+  runBriefCommentAdd,
   runBriefCommentsList,
+  runBriefDelete,
   runBriefList,
   runBriefSetStatus,
   runBriefShow,
-  runBriefTasksList,
+  runBriefTodosList,
   runBriefTypeCreate,
   runBriefTypeDelete,
   runBriefTypeGet,
@@ -56,16 +59,16 @@ export const registerBriefTools = (registry: McpRegistry): void => {
     },
     inputSchema: {
       verb: z
-        .enum(["list", "show", "types", "type", "tasks", "comments"])
+        .enum(["list", "show", "types", "type", "todos", "comments"])
         .describe(
-          "Which read operation to run: list (briefs), show (one brief), types (list brief schemas), type (one brief schema by id), tasks, comments."
+          "Which read operation to run: list (briefs), show (one brief), types (list brief schemas), type (one brief schema by id), todos, comments."
         ),
       briefId: z
         .string()
         .uuid()
         .optional()
         .describe(
-          "Brief UUID. Required for verb='show'. Optional filter for verb='tasks' and verb='comments'."
+          "Brief UUID. Required for verb='show'. Optional filter for verb='todos' and verb='comments'."
         ),
       briefTypeId: z
         .string()
@@ -73,7 +76,7 @@ export const registerBriefTools = (registry: McpRegistry): void => {
         .optional()
         .describe("Brief type UUID. Required for verb='type'."),
       locale: z.string().optional().describe("Locale filter for verb='list' — e.g. 'en-us'."),
-      assignees: z.boolean().optional().describe("Expand assignee metadata for verb='tasks'."),
+      assignees: z.boolean().optional().describe("Expand assignee metadata for verb='todos'."),
       limit: z
         .number()
         .int()
@@ -117,7 +120,7 @@ export const registerBriefTools = (registry: McpRegistry): void => {
             content: [
               {
                 type: "text",
-                text: `Brief ${result.id}: '${result.name}' (${result.status}, ${result.tasks.length} task(s), ${result.comments.length} comment(s)).`,
+                text: `Brief ${result.id}: '${result.name}' (${result.status}, ${result.tasks.length} to-do(s), ${result.comments.length} comment(s)).`,
               },
             ],
             structuredContent: { verb: input.verb, result },
@@ -153,8 +156,8 @@ export const registerBriefTools = (registry: McpRegistry): void => {
             structuredContent: { verb: input.verb, result },
           };
         }
-        case "tasks": {
-          const result = await runBriefTasksList({
+        case "todos": {
+          const result = await runBriefTodosList({
             ...taskOpts,
             ...(input.briefId !== undefined && { briefId: input.briefId }),
             ...(input.assignees !== undefined && { assignees: input.assignees }),
@@ -165,8 +168,8 @@ export const registerBriefTools = (registry: McpRegistry): void => {
               {
                 type: "text",
                 text: input.briefId
-                  ? `${result.totalCount} task(s) on brief ${input.briefId}.`
-                  : `${result.totalCount} task(s) tenant-wide.`,
+                  ? `${result.totalCount} to-do(s) on brief ${input.briefId}.`
+                  : `${result.totalCount} to-do(s) tenant-wide.`,
               },
             ],
             structuredContent: { verb: input.verb, result },
@@ -206,14 +209,14 @@ export const registerBriefTools = (registry: McpRegistry): void => {
     },
     inputSchema: {
       resource: z
-        .enum(["brief-type", "brief"])
+        .enum(["brief-type", "brief", "comment"])
         .describe(
-          "Which Brief resource the verb targets. 'brief-type' supports create/update/delete; 'brief' supports set-status."
+          "Which Brief resource the verb targets. 'brief-type' supports create/update/delete; 'brief' supports set-status/delete; 'comment' supports create."
         ),
       verb: z
         .enum(["create", "update", "delete", "set-status"])
         .describe(
-          "Mutation verb. brief-type: create (POST), update (PUT-replace), delete (irreversible). brief: set-status."
+          "Mutation verb. brief-type: create (POST), update (PUT-replace), delete (irreversible). brief: set-status, delete. comment: create."
         ),
       briefTypeId: z
         .string()
@@ -231,6 +234,10 @@ export const registerBriefTools = (registry: McpRegistry): void => {
         .describe(
           "Target brief status for verb='set-status'. Wire form — 'InReview' is the 'In Review' UI label. A brief must leave 'Draft' before it can be linked to a campaign."
         ),
+      commentText: z
+        .string()
+        .optional()
+        .describe("Comment text. Required for resource='comment' verb='create'."),
       body: z
         .object({
           name: z
@@ -267,22 +274,82 @@ export const registerBriefTools = (registry: McpRegistry): void => {
       const whatIf = input.whatIf;
 
       if (input.resource === "brief") {
-        if (input.verb !== "set-status") {
+        if (input.verb === "set-status") {
+          if (!input.briefId) {
+            throw createScaiError("verb='set-status' requires `briefId`.", "INPUT_INVALID");
+          }
+          if (!input.status) {
+            throw createScaiError("verb='set-status' requires `status`.", "INPUT_INVALID");
+          }
+          const result = await runBriefSetStatus({
+            ...taskOpts,
+            briefId: input.briefId,
+            status: input.status,
+            whatIf,
+          } as never);
+          const isPlan = "plan" in (result as Record<string, unknown>);
+          return {
+            content: [
+              {
+                type: "text",
+                text: isPlan
+                  ? `Plan: set brief ${input.briefId} status to '${input.status}'.`
+                  : `Brief ${input.briefId} status set to '${input.status}'.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
+        }
+        if (input.verb === "delete") {
+          if (!input.briefId) {
+            throw createScaiError(
+              "verb='delete' on resource='brief' requires `briefId`.",
+              "INPUT_INVALID"
+            );
+          }
+          const result = await runBriefDelete({
+            ...taskOpts,
+            briefId: input.briefId,
+            whatIf,
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: result.deleted
+                  ? `Deleted brief ${input.briefId}.`
+                  : `Plan: delete brief ${input.briefId}.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
+        }
+        throw createScaiError(
+          "resource='brief' supports verb='set-status' and verb='delete'.",
+          "INPUT_INVALID"
+        );
+      }
+
+      if (input.resource === "comment") {
+        if (input.verb !== "create") {
+          throw createScaiError("resource='comment' supports only verb='create'.", "INPUT_INVALID");
+        }
+        if (!input.briefId) {
           throw createScaiError(
-            "resource='brief' supports only verb='set-status'.",
+            "verb='create' on resource='comment' requires `briefId`.",
             "INPUT_INVALID"
           );
         }
-        if (!input.briefId) {
-          throw createScaiError("verb='set-status' requires `briefId`.", "INPUT_INVALID");
+        if (!input.commentText) {
+          throw createScaiError(
+            "verb='create' on resource='comment' requires `commentText`.",
+            "INPUT_INVALID"
+          );
         }
-        if (!input.status) {
-          throw createScaiError("verb='set-status' requires `status`.", "INPUT_INVALID");
-        }
-        const result = await runBriefSetStatus({
+        const result = await runBriefCommentAdd({
           ...taskOpts,
           briefId: input.briefId,
-          status: input.status,
+          text: input.commentText,
           whatIf,
         } as never);
         const isPlan = "plan" in (result as Record<string, unknown>);
@@ -291,8 +358,8 @@ export const registerBriefTools = (registry: McpRegistry): void => {
             {
               type: "text",
               text: isPlan
-                ? `Plan: set brief ${input.briefId} status to '${input.status}'.`
-                : `Brief ${input.briefId} status set to '${input.status}'.`,
+                ? `Plan: post a comment to brief ${input.briefId}.`
+                : `Posted a comment to brief ${input.briefId}.`,
             },
           ],
           structuredContent: { resource: input.resource, verb: input.verb, result },

@@ -3,10 +3,21 @@ import { resolveEnvironment } from "@/shared/env";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import { acquireCampaignToken } from "../auth";
 import { CAMPAIGN_API_HOST_TEMPLATE } from "../api/types";
-import { createProject, getProject, listProjects, type CreateProjectInput } from "../api/projects";
-import { createDeliverable, type CreateDeliverableInput } from "../api/deliverables";
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  type CreateProjectInput,
+} from "../api/projects";
+import {
+  createDeliverable,
+  deleteDeliverable,
+  type CreateDeliverableInput,
+} from "../api/deliverables";
 import {
   createTask,
+  deleteTask,
   getTask,
   listTasks,
   updateTask,
@@ -24,9 +35,13 @@ import type { CampaignApiClientOptions } from "../api/types";
  * calls the library helper, then prints human or JSON output. Shared
  * scaffolding lives in `prepareCampaignClient()`.
  *
- * Write runners (`create`, `update`) honour an `options.whatIf` flag —
- * when set they skip the API call and emit a plan-only summary. The CLI
- * layer wires this via `withApplyGate`.
+ * Write runners (`create`, `update`, `delete`) honour an `options.whatIf`
+ * flag — when set they skip the API call and emit a plan-only summary.
+ * The CLI layer wires this via `withApplyGate`.
+ *
+ * The `delete` runners call SDK helpers whose DELETE endpoints are
+ * UNVERIFIED (never captured during reverse-engineering) — see the SDK
+ * doc comments and `scripts/_smoke-campaign-delete.ts`.
  */
 
 export interface RunCampaignBaseOptions {
@@ -282,4 +297,103 @@ export const runTaskUpdate = async (
   }
   logger.info(`Updated task ${updated.id}.`, "green");
   return updated;
+};
+
+/**
+ * Delete a campaign (Orchestrate project).
+ *
+ * UNVERIFIED — the underlying `deleteProject` DELETE endpoint was never
+ * captured; it is wired optimistically per REST conventions.
+ */
+export const runCampaignDelete = async (
+  options: RunCampaignBaseOptions & { campaignId: string; whatIf?: boolean }
+): Promise<{ id: string; deleted: boolean }> => {
+  const { logger, client } = await prepareCampaignClient(options);
+  if (options.whatIf) {
+    const plan = { id: options.campaignId, deleted: false as const };
+    if (logger.isJson()) {
+      writeJson({ plan });
+    } else {
+      logger.info(`Would delete campaign ${options.campaignId}.`, "yellow");
+    }
+    return plan;
+  }
+  await deleteProject(client, options.campaignId);
+  const result = { id: options.campaignId, deleted: true };
+  if (logger.isJson()) {
+    writeJson(result);
+    return result;
+  }
+  logger.info(`Deleted campaign ${options.campaignId}.`, "green");
+  return result;
+};
+
+/**
+ * Delete a deliverable under a campaign.
+ *
+ * UNVERIFIED — the underlying `deleteDeliverable` DELETE endpoint was
+ * never captured; it is wired optimistically per REST conventions.
+ */
+export const runDeliverableDelete = async (
+  options: RunCampaignBaseOptions & {
+    campaignId: string;
+    deliverableId: string;
+    whatIf?: boolean;
+  }
+): Promise<{ id: string; deleted: boolean }> => {
+  const { logger, client } = await prepareCampaignClient(options);
+  if (options.whatIf) {
+    const plan = { id: options.deliverableId, deleted: false as const };
+    if (logger.isJson()) {
+      writeJson({ plan });
+    } else {
+      logger.info(
+        `Would delete deliverable ${options.deliverableId} on campaign ${options.campaignId}.`,
+        "yellow"
+      );
+    }
+    return plan;
+  }
+  await deleteDeliverable(client, options.campaignId, options.deliverableId);
+  const result = { id: options.deliverableId, deleted: true };
+  if (logger.isJson()) {
+    writeJson(result);
+    return result;
+  }
+  logger.info(`Deleted deliverable ${options.deliverableId}.`, "green");
+  return result;
+};
+
+/**
+ * Delete a task under a deliverable.
+ *
+ * UNVERIFIED — the underlying `deleteTask` DELETE endpoint was never
+ * captured; it is wired optimistically per REST conventions.
+ */
+export const runTaskDelete = async (
+  options: RunCampaignBaseOptions & {
+    campaignId: string;
+    deliverableId: string;
+    taskId: string;
+    whatIf?: boolean;
+  }
+): Promise<{ id: string; deleted: boolean }> => {
+  const { logger, client } = await prepareCampaignClient(options);
+  if (options.whatIf) {
+    const plan = { id: options.taskId, deleted: false as const };
+    if (logger.isJson()) {
+      writeJson({ plan });
+    } else {
+      logger.info(`Would delete task ${options.taskId}.`, "yellow");
+    }
+    return plan;
+  }
+  await deleteTask(client, options.campaignId, options.deliverableId, options.taskId);
+  const result = { id: options.taskId, deleted: true };
+  if (logger.isJson()) {
+    writeJson(result);
+    return result;
+  }
+  logger.info(`Deleted task ${options.taskId}.`, "green");
+  return result;
 };

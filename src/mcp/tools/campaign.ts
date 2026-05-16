@@ -7,21 +7,27 @@
  *     show one campaign (deliverables/tasks inline), list tasks under a
  *     deliverable, show one task, or list the member directory.
  *   - `campaign_manage` (write) discriminates on `resource` + `verb` —
- *     create a campaign/deliverable/task, or update a task.
+ *     create a campaign/deliverable/task, update a task, or delete a
+ *     campaign/deliverable/task.
  *
  * A campaign is an Orchestrate `project`. Built from a HAR capture
  * 2026-05-15; the OAuth scope is unverified — see
- * `docs/campaigns-followups.md`.
+ * `docs/campaigns-followups.md`. The `delete` verb hits Orchestrate
+ * DELETE endpoints that were never captured: they are wired
+ * optimistically per REST conventions and remain UNVERIFIED.
  */
 
 import { z } from "zod";
 import {
   runCampaignCreate,
+  runCampaignDelete,
   runCampaignList,
   runCampaignShow,
   runCampaignUsers,
   runDeliverableCreate,
+  runDeliverableDelete,
   runTaskCreate,
+  runTaskDelete,
   runTaskList,
   runTaskShow,
   runTaskUpdate,
@@ -71,13 +77,7 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
         .optional()
         .describe("Deliverable UUID. Required for verb='tasks' and verb='task'."),
       taskId: z.string().uuid().optional().describe("Task UUID. Required for verb='task'."),
-      limit: z
-        .number()
-        .int()
-        .positive()
-        .max(200)
-        .optional()
-        .describe("Page size for verb='list'."),
+      limit: z.number().int().positive().max(200).optional().describe("Page size for verb='list'."),
     },
     handler: async (input, context) => {
       const taskOpts = baseTaskOptions(context.configPath, context.envName);
@@ -173,21 +173,29 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
         .enum(["campaign", "deliverable", "task"])
         .describe("Which Orchestrate resource the verb targets."),
       verb: z
-        .enum(["create", "update"])
+        .enum(["create", "update", "delete"])
         .describe(
-          "Mutation verb. create: POST a new resource. update: PUT-replace (task only — full-replacement, no PATCH)."
+          "Mutation verb. create: POST a new resource. update: PUT-replace (task only — full-replacement, no PATCH). delete: DELETE the resource (UNVERIFIED Orchestrate endpoint — irreversible)."
         ),
       campaignId: z
         .string()
         .uuid()
         .optional()
-        .describe("Campaign UUID. Required for deliverable/task writes."),
+        .describe(
+          "Campaign UUID. Required for deliverable/task writes, and for verb='delete' on resource='campaign'."
+        ),
       deliverableId: z
         .string()
         .uuid()
         .optional()
-        .describe("Deliverable UUID. Required for task writes."),
-      taskId: z.string().uuid().optional().describe("Task UUID. Required for verb='update'."),
+        .describe(
+          "Deliverable UUID. Required for task writes, and for verb='delete' on resource='deliverable'."
+        ),
+      taskId: z
+        .string()
+        .uuid()
+        .optional()
+        .describe("Task UUID. Required for verb='update' and verb='delete' on resource='task'."),
       name: z.string().optional().describe("Resource name. Required for verb='create'."),
       description: z.string().optional().describe("Description (campaign, or task — HTML)."),
       startDate: z.string().optional().describe("Start date, ISO-8601 (campaign)."),
@@ -195,10 +203,7 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
       status: z.string().optional().describe("Status enum, e.g. NOT_STARTED."),
       brandkitId: z.string().optional().describe("Associated brand kit UUID (campaign)."),
       funnelStage: z.string().optional().describe("Funnel stage, e.g. TOP (deliverable)."),
-      funnelTactics: z
-        .array(z.string())
-        .optional()
-        .describe("Funnel tactics (deliverable)."),
+      funnelTactics: z.array(z.string()).optional().describe("Funnel tactics (deliverable)."),
       priority: z.string().optional().describe("Task priority (task update)."),
       assignee: z.string().optional().describe("Assignee — an Auth0 subject (task update)."),
       ...allowWriteShape,
@@ -216,8 +221,32 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
       };
 
       if (input.resource === "campaign") {
-        if (input.verb !== "create") {
-          throw createScaiError("resource='campaign' supports only verb='create'.", "INPUT_INVALID");
+        if (input.verb === "update") {
+          throw createScaiError(
+            "resource='campaign' supports verb='create' and verb='delete'.",
+            "INPUT_INVALID"
+          );
+        }
+        if (input.verb === "delete") {
+          if (!input.campaignId) {
+            throw createScaiError("campaign delete requires `campaignId`.", "INPUT_INVALID");
+          }
+          const result = await runCampaignDelete({
+            ...taskOpts,
+            whatIf,
+            campaignId: input.campaignId,
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: result.deleted
+                  ? `Deleted campaign ${input.campaignId}.`
+                  : `Plan: delete campaign ${input.campaignId}.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
         }
         const result = await runCampaignCreate({
           ...taskOpts,
@@ -238,14 +267,36 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
       }
 
       if (input.resource === "deliverable") {
-        if (input.verb !== "create") {
+        if (input.verb === "update") {
           throw createScaiError(
-            "resource='deliverable' supports only verb='create'.",
+            "resource='deliverable' supports verb='create' and verb='delete'.",
             "INPUT_INVALID"
           );
         }
         if (!input.campaignId) {
-          throw createScaiError("deliverable create requires `campaignId`.", "INPUT_INVALID");
+          throw createScaiError("deliverable writes require `campaignId`.", "INPUT_INVALID");
+        }
+        if (input.verb === "delete") {
+          if (!input.deliverableId) {
+            throw createScaiError("deliverable delete requires `deliverableId`.", "INPUT_INVALID");
+          }
+          const result = await runDeliverableDelete({
+            ...taskOpts,
+            whatIf,
+            campaignId: input.campaignId,
+            deliverableId: input.deliverableId,
+          } as never);
+          return {
+            content: [
+              {
+                type: "text",
+                text: result.deleted
+                  ? `Deleted deliverable ${input.deliverableId}.`
+                  : `Plan: delete deliverable ${input.deliverableId}.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
         }
         const result = await runDeliverableCreate({
           ...taskOpts,
@@ -260,9 +311,7 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
           },
         } as never);
         return {
-          content: [
-            { type: "text", text: `${whatIf ? "Plan: create" : "Created"} deliverable.` },
-          ],
+          content: [{ type: "text", text: `${whatIf ? "Plan: create" : "Created"} deliverable.` }],
           structuredContent: { resource: input.resource, verb: input.verb, result },
         };
       }
@@ -284,6 +333,29 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
         } as never);
         return {
           content: [{ type: "text", text: `${whatIf ? "Plan: create" : "Created"} task.` }],
+          structuredContent: { resource: input.resource, verb: input.verb, result },
+        };
+      }
+      if (input.verb === "delete") {
+        if (!input.taskId) {
+          throw createScaiError("task delete requires `taskId`.", "INPUT_INVALID");
+        }
+        const result = await runTaskDelete({
+          ...taskOpts,
+          whatIf,
+          campaignId: input.campaignId,
+          deliverableId: input.deliverableId,
+          taskId: input.taskId,
+        } as never);
+        return {
+          content: [
+            {
+              type: "text",
+              text: result.deleted
+                ? `Deleted task ${input.taskId}.`
+                : `Plan: delete task ${input.taskId}.`,
+            },
+          ],
           structuredContent: { resource: input.resource, verb: input.verb, result },
         };
       }

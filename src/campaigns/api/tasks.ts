@@ -6,12 +6,14 @@ import type { CampaignApiClientOptions } from "./types";
  * Tasks resource — the leaf work items under a deliverable.
  *
  * Endpoint surface (HAR-derived 2026-05-15):
- *   GET  …/projects/{p}/deliverables/{d}/tasks        — list (paged)
- *   GET  …/projects/{p}/deliverables/{d}/tasks/{t}    — read one
- *   POST …/projects/{p}/deliverables/{d}/tasks        — create (201)
- *   PUT  …/projects/{p}/deliverables/{d}/tasks/{t}    — full-replacement update
+ *   GET    …/projects/{p}/deliverables/{d}/tasks       — list (paged)
+ *   GET    …/projects/{p}/deliverables/{d}/tasks/{t}   — read one
+ *   POST   …/projects/{p}/deliverables/{d}/tasks       — create (201)
+ *   PUT    …/projects/{p}/deliverables/{d}/tasks/{t}   — full-replacement update
+ *   DELETE …/projects/{p}/deliverables/{d}/tasks/{t}   — delete (UNVERIFIED)
  *
- * `description` is HTML; `assignee` is an Auth0 subject.
+ * `description` is HTML; `assignee` is an Auth0 subject. `deleteTask` is
+ * wired optimistically per REST conventions; see its doc comment.
  */
 
 const tasksPath = (projectId: string, deliverableId: string): string =>
@@ -109,4 +111,25 @@ export const updateTask = (
         archived: input.archived ?? false,
       },
     }
+  );
+
+/**
+ * Delete a task
+ * (`DELETE …/projects/{p}/deliverables/{d}/tasks/{t}`). Returns void —
+ * a 204 is expected on success.
+ *
+ * UNVERIFIED — DELETE was never captured; inferred from REST conventions
+ * (the same single-task path `getTask`/`updateTask` use). Smoke-test
+ * before relying on it.
+ */
+export const deleteTask = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  deliverableId: string,
+  taskId: string
+): Promise<void> =>
+  campaignRequest<void>(
+    options,
+    `${tasksPath(projectId, deliverableId)}/${encodeURIComponent(taskId)}`,
+    { method: "DELETE" }
   );

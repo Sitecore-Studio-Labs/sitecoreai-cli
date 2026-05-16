@@ -1,15 +1,19 @@
 import { Command, Option } from "commander";
 import {
   runCampaignCreate,
+  runCampaignDelete,
   runCampaignList,
   runCampaignShow,
   runCampaignUsers,
   runDeliverableCreate,
+  runDeliverableDelete,
   runTaskCreate,
+  runTaskDelete,
   runTaskList,
   runTaskShow,
   runTaskUpdate,
 } from "@/campaigns/tasks";
+import { confirmDestructive } from "@/shared/cli-tasks";
 import { createCampaignSyncCommand } from "./sync";
 import {
   addApplyOption,
@@ -25,14 +29,20 @@ import {
  *
  * A campaign is an Orchestrate `project`; projects own deliverables,
  * deliverables own tasks. Read verbs are always available; write verbs
- * (`create`, `update`) dry-run unless `--apply` is passed.
+ * (`create`, `update`, `delete`) dry-run unless `--apply` is passed.
+ *
+ * `delete` verbs hit Orchestrate DELETE endpoints that were never
+ * captured during reverse-engineering — they are wired optimistically
+ * per REST conventions and marked UNVERIFIED. Smoke-test with
+ * `scripts/_smoke-campaign-delete.ts` before relying on them.
  *
  *   scai ops campaign list
  *   scai ops campaign show <campaignId>
  *   scai ops campaign create --name "Spring Launch" --apply
+ *   scai ops campaign delete <campaignId> --apply --force
  *   scai ops campaign users
- *   scai ops campaign deliverable create <campaignId> --name … --apply
- *   scai ops campaign task list|show|create|update …
+ *   scai ops campaign deliverable create|delete <campaignId> …
+ *   scai ops campaign task list|show|create|update|delete …
  */
 
 const createListCommand = (): Command => {
@@ -116,6 +126,40 @@ const createCreateCommand = (): Command => {
   return command;
 };
 
+const createDeleteCommand = (): Command => {
+  const command = new Command("delete")
+    .description(
+      "Delete a campaign. UNVERIFIED — the Orchestrate DELETE endpoint was never " +
+        "captured; inferred from REST conventions. Requires --apply; non-TTY callers " +
+        "must also pass --force."
+    )
+    .argument("<campaignId>", "Campaign (project) UUID")
+    .addOption(
+      new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
+    );
+  addEnvironmentOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+  addApplyOption(command);
+  addWhatIfOption(command);
+  command.action(async (campaignId, options) => {
+    await withApplyGate(async (opts: { force?: boolean; apply?: boolean; whatIf?: boolean }) => {
+      if (!opts.whatIf) {
+        const confirmed = await confirmDestructive(
+          `Delete campaign ${campaignId}? This cannot be undone.`,
+          opts.force
+        );
+        if (!confirmed) {
+          process.stderr.write("Aborted.\n");
+          return;
+        }
+      }
+      await runCampaignDelete({ ...opts, campaignId });
+    })(options);
+  });
+  return command;
+};
+
 const createDeliverableCommand = (): Command => {
   const deliverable = new Command("deliverable").description("Deliverable operations.");
 
@@ -160,7 +204,40 @@ const createDeliverableCommand = (): Command => {
     )(options);
   });
 
+  const remove = new Command("delete")
+    .description(
+      "Delete a deliverable under a campaign. UNVERIFIED — the Orchestrate DELETE " +
+        "endpoint was never captured; inferred from REST conventions. Requires --apply; " +
+        "non-TTY callers must also pass --force."
+    )
+    .argument("<campaignId>", "Campaign (project) UUID")
+    .argument("<deliverableId>", "Deliverable UUID")
+    .addOption(
+      new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
+    );
+  addEnvironmentOption(remove);
+  addConfigOption(remove);
+  addVerbosityOptions(remove);
+  addApplyOption(remove);
+  addWhatIfOption(remove);
+  remove.action(async (campaignId, deliverableId, options) => {
+    await withApplyGate(async (opts: { force?: boolean; apply?: boolean; whatIf?: boolean }) => {
+      if (!opts.whatIf) {
+        const confirmed = await confirmDestructive(
+          `Delete deliverable ${deliverableId}? This cannot be undone.`,
+          opts.force
+        );
+        if (!confirmed) {
+          process.stderr.write("Aborted.\n");
+          return;
+        }
+      }
+      await runDeliverableDelete({ ...opts, campaignId, deliverableId });
+    })(options);
+  });
+
   deliverable.addCommand(create);
+  deliverable.addCommand(remove);
   return deliverable;
 };
 
@@ -267,10 +344,44 @@ const createTaskCommand = (): Command => {
     )(options);
   });
 
+  const remove = new Command("delete")
+    .description(
+      "Delete a task under a deliverable. UNVERIFIED — the Orchestrate DELETE " +
+        "endpoint was never captured; inferred from REST conventions. Requires --apply; " +
+        "non-TTY callers must also pass --force."
+    )
+    .argument("<campaignId>", "Campaign UUID")
+    .argument("<deliverableId>", "Deliverable UUID")
+    .argument("<taskId>", "Task UUID")
+    .addOption(
+      new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
+    );
+  addEnvironmentOption(remove);
+  addConfigOption(remove);
+  addVerbosityOptions(remove);
+  addApplyOption(remove);
+  addWhatIfOption(remove);
+  remove.action(async (campaignId, deliverableId, taskId, options) => {
+    await withApplyGate(async (opts: { force?: boolean; apply?: boolean; whatIf?: boolean }) => {
+      if (!opts.whatIf) {
+        const confirmed = await confirmDestructive(
+          `Delete task ${taskId}? This cannot be undone.`,
+          opts.force
+        );
+        if (!confirmed) {
+          process.stderr.write("Aborted.\n");
+          return;
+        }
+      }
+      await runTaskDelete({ ...opts, campaignId, deliverableId, taskId });
+    })(options);
+  });
+
   task.addCommand(list);
   task.addCommand(show);
   task.addCommand(create);
   task.addCommand(update);
+  task.addCommand(remove);
   return task;
 };
 
@@ -282,6 +393,7 @@ export const createCampaignCommand = (): Command => {
   command.addCommand(createListCommand());
   command.addCommand(createShowCommand());
   command.addCommand(createCreateCommand());
+  command.addCommand(createDeleteCommand());
   command.addCommand(createUsersCommand());
   command.addCommand(createDeliverableCommand());
   command.addCommand(createTaskCommand());
@@ -293,8 +405,11 @@ export const createCampaignCommand = (): Command => {
       "  $ scai ops campaign list -n agents\n" +
       "  $ scai ops campaign show <campaignId> -n agents\n" +
       "  $ scai ops campaign create --name 'Spring Launch' --apply -n agents\n" +
+      "  $ scai ops campaign delete <campaignId> --apply --force   # UNVERIFIED endpoint\n" +
       "  $ scai ops campaign deliverable create <campaignId> --name 'Landing page' --apply\n" +
-      "  $ scai ops campaign task create <campaignId> <deliverableId> --name 'Draft copy' --apply\n"
+      "  $ scai ops campaign deliverable delete <campaignId> <deliverableId> --apply --force\n" +
+      "  $ scai ops campaign task create <campaignId> <deliverableId> --name 'Draft copy' --apply\n" +
+      "  $ scai ops campaign task delete <campaignId> <deliverableId> <taskId> --apply --force\n"
   );
 
   return command;

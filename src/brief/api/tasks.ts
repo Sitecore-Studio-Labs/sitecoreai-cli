@@ -5,6 +5,11 @@ import type { BriefApiClientOptions, BriefQueryRecord } from "./types";
 /**
  * Tasks resource on the Brief API.
  *
+ * Naming note: the Content Operations UI — and scai's CLI/MCP surface —
+ * label these "to-dos". The wire resource is `tasks`; the SDK names below
+ * mirror the wire for fidelity. The user-facing surface is `todos`
+ * (`scai ops brief todos`, `runBriefTodosList`, MCP verb 'todos').
+ *
  * Endpoint surface (reverse-engineered):
  *   GET /api/brief/v1/tasks?BriefId=<uuid>&MetadataToLoad=assignees
  *

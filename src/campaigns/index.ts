@@ -8,10 +8,14 @@
  * `baseUrl` from per-env config.
  *
  * **Status**: built from a HAR capture of the Content Operations UI on
- * 2026-05-15. Request/response shapes are observed-accurate. Two items
- * are unverified and tracked in `docs/campaigns-followups.md`:
+ * 2026-05-15. Request/response shapes are observed-accurate. Unverified
+ * items, tracked in `docs/campaigns-followups.md`:
  *   - the OAuth scope (the HAR stripped Authorization headers)
- *   - project update/delete (only GET/POST were exercised; tasks have PUT)
+ *   - project/deliverable/task update (only GET/POST were exercised; tasks have PUT)
+ *   - `deleteProject` / `deleteDeliverable` / `deleteTask` — DELETE was
+ *     never captured; wired optimistically per REST conventions.
+ *     Smoke-test with `scripts/_smoke-campaign-delete.ts` before relying
+ *     on them.
  */
 
 export type {
@@ -37,17 +41,23 @@ export {
   listProjects,
   getProject,
   createProject,
+  deleteProject,
   type ListProjectsQuery,
   type CreateProjectInput,
 } from "./api/projects";
 
-export { createDeliverable, type CreateDeliverableInput } from "./api/deliverables";
+export {
+  createDeliverable,
+  deleteDeliverable,
+  type CreateDeliverableInput,
+} from "./api/deliverables";
 
 export {
   listTasks,
   getTask,
   createTask,
   updateTask,
+  deleteTask,
   type CreateTaskInput,
   type UpdateTaskInput,
 } from "./api/tasks";

@@ -129,6 +129,7 @@ export type Brief = {
   isTemplate: boolean;
   /** Inline collections returned with the brief. May be empty on list responses. */
   comments: BriefComment[];
+  /** To-dos on the brief. Wire field is `tasks`; the UI/CLI label is "to-do". */
   tasks: BriefTask[];
   references: Reference[];
   contributors: Reference[];
@@ -146,6 +147,10 @@ export type ExternalMapping = Record<string, unknown>;
  * Task on a brief. Shape is **provisional** — no task payload was
  * captured during reverse-engineering (the test brief has zero tasks).
  * Re-probe when a brief with tasks is available and tighten this type.
+ *
+ * Naming note: the Content Operations UI — and scai's CLI/MCP surface —
+ * call these "to-dos". This wire type keeps the API's `task` naming for
+ * fidelity; the user-facing label is "to-do" (`scai ops brief todos`).
  */
 export type BriefTask = {
   id: string;

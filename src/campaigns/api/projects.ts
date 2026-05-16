@@ -6,12 +6,14 @@ import type { CampaignApiClientOptions, CampaignQueryRecord } from "./types";
  * Projects resource — CRUD on campaigns.
  *
  * Endpoint surface (HAR-derived 2026-05-15):
- *   GET  /api/orchestrate/v1/projects        — list (paged)
- *   GET  /api/orchestrate/v1/projects/{id}   — read one (deliverables + tasks inline)
- *   POST /api/orchestrate/v1/projects        — create (201)
+ *   GET    /api/orchestrate/v1/projects        — list (paged)
+ *   GET    /api/orchestrate/v1/projects/{id}   — read one (deliverables + tasks inline)
+ *   POST   /api/orchestrate/v1/projects        — create (201)
+ *   DELETE /api/orchestrate/v1/projects/{id}   — delete (UNVERIFIED)
  *
- * Update/delete were not exercised in the capture — `PUT`/`DELETE` on
- * `/projects/{id}` are likely (the task resource has both) but unverified.
+ * Update was not exercised in the capture — `PUT` on `/projects/{id}` is
+ * likely (the task resource has it) but unverified. `deleteProject` is
+ * wired optimistically per REST conventions; see its doc comment.
  */
 
 export type ListProjectsQuery = {
@@ -76,4 +78,19 @@ export const createProject = (
       labels: input.labels ?? [],
       members: input.members ?? [],
     },
+  });
+
+/**
+ * Delete a campaign (`DELETE /api/orchestrate/v1/projects/{id}`).
+ * Returns void — a 204 is expected on success.
+ *
+ * UNVERIFIED — DELETE was never captured; inferred from REST conventions.
+ * Smoke-test before relying on it.
+ */
+export const deleteProject = (
+  options: CampaignApiClientOptions,
+  projectId: string
+): Promise<void> =>
+  campaignRequest<void>(options, `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
   });

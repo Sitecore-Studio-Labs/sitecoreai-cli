@@ -11,7 +11,8 @@
  * writes (`createBriefType`, `updateBriefType`, `deleteBriefType`) verified
  * end-to-end 2026-05-15 by `scripts/_smoke-brief-types-write.ts`. Brief
  * writes (`createBrief`, `updateBrief`, `deleteBrief`) are wired but
- * not yet smoke-tested.
+ * not yet smoke-tested. `createBriefComment` is wired UNVERIFIED — the
+ * comment write body shape is a best guess (see `./api/comments.ts`).
  *
  * Required Auth0 scope: `co.briefs:r` (read) / `co.briefs:r co.briefs:w`
  * (read+write). The Agents env client carries both by default.
@@ -73,6 +74,11 @@ export {
   type ListBriefTasksQuery,
 } from "./api/tasks";
 
-export { listBriefComments, type ListBriefCommentsQuery } from "./api/comments";
+export {
+  listBriefComments,
+  createBriefComment,
+  type ListBriefCommentsQuery,
+  type CreateBriefCommentInput,
+} from "./api/comments";
 
 export { acquireBriefToken, BRIEF_SCOPES_REQUESTED, type AcquireBriefTokenOptions } from "./auth";

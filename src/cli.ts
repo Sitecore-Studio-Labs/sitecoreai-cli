@@ -5,7 +5,9 @@ import packageJson from "../package.json";
 import { createAuditCommand } from "./commands/audit";
 import { createBrandCommand } from "./commands/brand";
 import { createCleanupCommand } from "./commands/cleanup";
-import { createContentVersionCommand } from "./commands/content/version";
+// `content version` is intentionally not registered — see the content
+// command block below. Import stays commented out to avoid an unused symbol.
+// import { createContentVersionCommand } from "./commands/content/version";
 import { createSerializationCommand } from "./commands/serialization";
 import { normalizeArgs } from "./commands/shared";
 import { createStatusCommand } from "./commands/status";
@@ -292,11 +294,23 @@ const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): C
   const workflow = createWorkflowCommand();
   workflow.addCommand(createWebhookCommand());
   const content = new Command("content").description(
-    "Operate on content items — publish, workflow handlers, and content-state"
+    "Operate on content items — publish and workflow handlers"
   );
   content.addCommand(createPublishCommand());
   content.addCommand(workflow);
-  content.addCommand(createContentVersionCommand());
+  // `content version` (per-version publish-state fields — __Never publish,
+  // __Valid from / __Valid to) is intentionally NOT registered yet. Those
+  // fields only make sense once content items (pages, etc.) can be authored
+  // through the CLI; today they only arrive via recipes, so a lone
+  // version-state verb is more confusing than useful. The SDK
+  // (src/content/api/version-fields.ts) and `hygiene cleanup versions` both
+  // stay — only this CLI command group is hidden until item primitives land.
+  // content.addCommand(createContentVersionCommand());
+  content.addHelpText(
+    "after",
+    "\nRoadmap: `scai content sites` and `scai content pages` — XM Cloud\n" +
+      "site and page management — are planned, not yet shipped. See docs/roadmap.md.\n"
+  );
 
   const ops = new Command("ops").description("Sitecore Content Operations — briefs and campaigns");
   ops.addCommand(createBriefCommand());
@@ -499,9 +513,7 @@ const isMcpServeInvocation = (argv: string[]): boolean => {
   return positionals[0] === "mcp" && positionals[1] === "serve";
 };
 const shouldForceExit =
-  !process.env.VITEST &&
-  !process.env.SITECOREAI_MCP_SERVE &&
-  !isMcpServeInvocation(process.argv);
+  !process.env.VITEST && !process.env.SITECOREAI_MCP_SERVE && !isMcpServeInvocation(process.argv);
 const cliPromise = runCli(process.argv);
 if (shouldForceExit) {
   void cliPromise.finally(() => {

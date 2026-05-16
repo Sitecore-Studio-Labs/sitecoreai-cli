@@ -49,6 +49,13 @@
       "additionalProperties": {
         "$ref": "#/definitions/BrandCredential"
       }
+    },
+    "orgClients": {
+      "type": "object",
+      "description": "Non-secret metadata of the scai-minted org-scoped automation clients, keyed by Sitecore organizationId. One per org, shared by every env profile in it. The matching secret lives in the OS keychain, never on disk.",
+      "additionalProperties": {
+        "$ref": "#/definitions/AutomationClientMetadata"
+      }
     }
   },
   "definitions": {
@@ -124,6 +131,26 @@
         }
       }
     },
+    "AutomationClientMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clientId"],
+      "description": "Non-secret metadata of a scai-minted automation client. The matching client secret lives in the OS keychain, never on disk.",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "OAuth client id of the scai-minted automation client."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the client in the Cloud Portal (the scai-* name)."
+        },
+        "mintedAt": {
+          "type": "string",
+          "description": "ISO timestamp the client was minted."
+        }
+      }
+    },
     "Settings": {
       "type": "object",
       "additionalProperties": false,
@@ -191,7 +218,7 @@
         },
         "useClientCredentials": {
           "type": ["boolean", "null"],
-          "description": "If true, use client credentials (client ID and secret) instead of interactive device login. Recommended for CI."
+          "description": "Bring-your-own-client escape hatch: when true, scai uses the operator-supplied clientId + SITECOREAI_ENV_<ENV>_CLIENT_SECRET client-credentials grant instead of an interactive device login. Use this only when supplying your own automation client; otherwise let `scai setup client create` mint one."
         },
         "accessToken": {
           "type": "string",
@@ -218,16 +245,16 @@
         },
         "deployToken": {
           "type": "string",
-          "description": "SitecoreAI access token (Deploy + CM/admin scopes). Cached in the OS keychain."
+          "description": "Deprecated: token-cache metadata. The deploy token is stored in the OS keychain; this field is read only for back-compat with older configs."
         },
         "deployTokenExpiresIn": {
           "type": ["integer", "null"],
-          "description": "Deploy token lifetime in seconds",
+          "description": "expires_in (seconds) of the cached deploy token. Freshness metadata recorded so the auto-wizard can decide whether a re-login is due. The token string itself lives in the OS keychain.",
           "format": "int32"
         },
         "deployTokenLastUpdated": {
-          "type": ["null", "string"],
-          "description": "Last time the deploy token was updated",
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the last deploy-token mint. Paired with deployTokenExpiresIn.",
           "format": "date-time"
         },
         "editingHostEnvironmentIds": {
@@ -235,10 +262,13 @@
           "description": "Editing host environment IDs associated with this CM environment",
           "items": { "type": "string" }
         },
-        "clientId": { "type": "string", "description": "OAuth client ID for this endpoint" },
-        "clientSecret": {
+        "clientId": {
           "type": "string",
-          "description": "OAuth client secret for this endpoint (when useClientCredentials is true). Prefer environment variables."
+          "description": "Bring-your-own-client escape hatch: the OAuth client ID of an automation client you supply yourself instead of letting `scai setup client create` mint one. Pair with useClientCredentials. The matching secret is supplied via SITECOREAI_ENV_<ENV>_CLIENT_SECRET and is never stored in the config file."
+        },
+        "automationClient": {
+          "description": "Non-secret metadata of the env-scoped automation client scai minted for this environment (`scai setup client create <env>`). The matching secret lives in the OS keychain, never on disk. Distinct from the bring-your-own-client clientId/useClientCredentials hatch.",
+          "oneOf": [{ "$ref": "#/definitions/AutomationClientMetadata" }]
         },
         "variables": {
           "type": "object",

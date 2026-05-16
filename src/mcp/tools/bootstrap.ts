@@ -61,7 +61,8 @@ const buildDiscovery = async (
       const credentials = await resolveCredentialMatrix(
         name,
         env,
-        Boolean(orgId && root.brand?.[orgId])
+        Boolean(orgId && root.brand?.[orgId]),
+        Boolean(orgId && root.orgClients?.[orgId]?.clientId)
       );
       environments.push({
         name,

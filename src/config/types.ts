@@ -48,6 +48,48 @@ export type EnvironmentRecipeRoots = {
   placeholderSettingsCreate?: string;
 };
 
+/**
+ * Non-secret metadata for a scai-minted automation client. Per
+ * `docs/credentials.md` the config file is a readable inventory of every
+ * configured credential: it carries the client's `clientId`, display
+ * `name`, and `mintedAt` timestamp. Only the client **secret** lives in
+ * the OS keychain — never here. Used both for the env-scoped client (the
+ * `automationClient` block on an env profile) and the org-scoped client
+ * (an `orgClients[orgId]` entry).
+ */
+export type AutomationClientMetadata = {
+  /** OAuth client id of the scai-minted automation client. */
+  clientId: string;
+  /** Display name of the client in the Cloud Portal (the `scai-*` name). */
+  name?: string;
+  /** ISO timestamp the client was minted. */
+  mintedAt?: string;
+};
+
+/**
+ * A named environment profile.
+ *
+ * Per `docs/credentials.md` an env profile carries **environment
+ * identity only** — `organizationId` / `projectId` / `environmentId` /
+ * `host` / `authority` / `audience` / `environmentType` — plus the
+ * **non-secret metadata** of the credentials configured for it. It does
+ * **not** carry credential secrets: the automation client is minted by
+ * `scai setup client create` and only its secret is stored in the OS
+ * keychain; its non-secret parts (`clientId` / `name` / `mintedAt`) live
+ * in the `automationClient` block here. The brand key is registered into
+ * the separate `brand[orgId]` block.
+ *
+ * `clientId` + `useClientCredentials` remain **only** as the documented
+ * bring-your-own-client escape hatch (the operator supplies their own
+ * automation client; its secret comes from
+ * `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`, resolved at the auth layer and
+ * never stored here). `accessToken` / `refreshToken` / `deployToken` are
+ * token-cache metadata, not credentials — the CLI writes tokens to the
+ * keychain and only reads these legacy fields for back-compat with
+ * configs written by earlier versions. `deployTokenExpiresIn` /
+ * `deployTokenLastUpdated` record the cached deploy token's freshness so
+ * the auto-wizard can decide whether a re-login is due.
+ */
 export type EnvironmentConfiguration = {
   name?: string;
   host?: string;
@@ -66,22 +108,65 @@ export type EnvironmentConfiguration = {
    * Defaults to `false` (MCP elevation allowed).
    */
   denyMcpElevation?: boolean;
+  /** @deprecated Token-cache metadata. Tokens live in the OS keychain; read for back-compat only. */
   accessToken?: string;
+  /** @deprecated Token-cache metadata. Tokens live in the OS keychain; read for back-compat only. */
   refreshToken?: string;
+  /** @deprecated Token-cache metadata. Tokens live in the OS keychain; read for back-compat only. */
   refreshTokenParameters?: Record<string, string>;
+  /** @deprecated Token-cache metadata. Tokens live in the OS keychain; read for back-compat only. */
   expiresIn?: number | null;
+  /** @deprecated Token-cache metadata. Tokens live in the OS keychain; read for back-compat only. */
   lastUpdated?: string | null;
+  /** @deprecated Token-cache metadata. The deploy token lives in the OS keychain; read for back-compat only. */
   deployToken?: string;
+  /**
+   * `expires_in` (seconds) of the cached deploy token. Freshness
+   * metadata — not a credential — recorded so the auto-wizard's expiry
+   * check can decide whether a re-login is due. Paired with
+   * `deployTokenLastUpdated`. The token string itself lives in the OS
+   * keychain (`deploy:<env>` slot).
+   */
   deployTokenExpiresIn?: number | null;
+  /**
+   * ISO timestamp of the last deploy-token mint. Paired with
+   * `deployTokenExpiresIn`; see that field.
+   */
   deployTokenLastUpdated?: string | null;
   editingHostEnvironmentIds?: string[];
   organizationId?: string;
   tenantId?: string;
   projectId?: string;
   environmentId?: string;
+  /**
+   * Bring-your-own-client escape hatch: the OAuth client id of an
+   * automation client the operator supplies themselves, instead of
+   * letting `scai setup client create` mint one. Pair with
+   * `useClientCredentials: true`; the matching secret comes from the
+   * `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` environment variable, resolved
+   * at the auth layer — it is never stored on the env profile.
+   */
   clientId?: string;
-  clientSecret?: string;
+  /**
+   * Bring-your-own-client escape hatch toggle: when `true`, scai uses
+   * the operator-supplied `clientId` + `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
+   * client-credentials grant instead of an interactive device login.
+   */
   useClientCredentials?: boolean;
+  /**
+   * Non-secret metadata of the **env-scoped** automation client scai
+   * minted for this environment via `scai setup client create <env>`.
+   * Per `docs/credentials.md` the config file is the readable inventory
+   * of configured credentials: this records the minted client's
+   * `clientId`, `name`, and `mintedAt`. The matching **secret** lives in
+   * the OS keychain (`cm-client:<env>` slot) — never here.
+   *
+   * Distinct from the bring-your-own-client `clientId` /
+   * `useClientCredentials` pair above: that hatch is for an operator-
+   * supplied client; `automationClient` is for the one scai itself
+   * mints.
+   */
+  automationClient?: AutomationClientMetadata;
   variables?: Record<string, string>;
   audience?: string;
   ref?: string;
@@ -275,9 +360,12 @@ export type EnvironmentConfiguration = {
  * Backed by a Sitecore "AI APIs key" created in Cloud Portal → Stream
  * → Admin → AI APIs keys: bound to a single org (confirmed
  * one-org-per-credential), carrying its own scope set (`ai.org.brd:r/w`,
- * `ai.org.docs:r/w`, `ai.orgs.br:gen`). It is NOT the env-level
- * automation client `scai setup login` provisions for
- * Pages/Sites/Authoring/Brief/Campaign. The `clientSecret` is never
+ * `ai.org.docs:r/w`, `ai.orgs.br:gen`). It is one of scai's two
+ * credential kinds — distinct from the automation client (the deploy /
+ * cm clients minted by `scai setup client create`); the automation
+ * client cannot do brand work and vice versa. **Not minted by scai** —
+ * the operator creates the AI APIs key in Cloud Portal and registers it
+ * with `scai setup client register-brand`. The `clientSecret` is never
  * stored on disk — it lives only in the OS keychain. Token cache
  * timings here are advisory; the cached access token is also in the
  * keychain.
@@ -297,6 +385,13 @@ export type RootConfiguration = {
   environments: Record<string, EnvironmentConfiguration>;
   /** Brand credentials, keyed by Sitecore `organizationId`. */
   brand: Record<string, BrandCredential>;
+  /**
+   * Non-secret metadata of the scai-minted **org-scoped** automation
+   * clients, keyed by Sitecore `organizationId`. One per org, shared by
+   * every env profile in it. The matching secret lives in the OS
+   * keychain (`org-client:<orgId>` slot) — never here.
+   */
+  orgClients: Record<string, AutomationClientMetadata>;
   physicalPath: string;
   defaultEnvironment: string;
   /**
@@ -328,6 +423,14 @@ export type RootConfigurationFile = {
    * older CLI versions; the CLI always writes `brand` going forward.
    */
   aiSkills?: Record<string, BrandCredential>;
+  /**
+   * Non-secret metadata of the scai-minted **org-scoped** automation
+   * clients, keyed by Sitecore `organizationId`. Stored separately from
+   * `envProfiles` because the org client is org-scoped, not env-scoped —
+   * every env profile in the same org shares one. The matching secret
+   * lives in the OS keychain (`org-client:<orgId>` slot), never here.
+   */
+  orgClients?: Record<string, AutomationClientMetadata>;
   /** Globs locating recipe files. See `RootConfiguration.recipes`. */
   recipes?: string[];
   [key: string]: unknown;

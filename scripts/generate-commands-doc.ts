@@ -1,11 +1,14 @@
 #!/usr/bin/env tsx
 /**
- * Generate docs/commands.md from the Commander program tree.
+ * Generate docs/commands.md from the real Commander program tree.
  *
- * Imports each createXCommand factory directly (rather than booting the CLI),
- * which avoids the import-time side effects in src/cli.ts and keeps this
- * script fast and pure. Add a new factory here when you add a new top-level
- * command in src/cli.ts.
+ * `createProgram` (from `src/program.ts`) assembles the exact nested
+ * command structure the CLI runs — the `setup` / `hygiene` / `content`
+ * / `ops` / `provision` / `cli` parent groups and everything under
+ * them. `src/program.ts` is deliberately side-effect-free, so importing
+ * it here does NOT boot the CLI. The doc walker recurses the whole tree,
+ * so command paths render fully qualified (`scai setup login`, not
+ * `scai login`).
  *
  * Run via `pnpm docs:commands`.
  */
@@ -14,43 +17,16 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command, Option } from "commander";
 
-import { createAuditCommand } from "../src/commands/audit";
-import { createCleanupCommand } from "../src/commands/cleanup";
-import { createConfigCommand } from "../src/commands/config";
-import { createDeployCommand } from "../src/commands/deploy";
-import { createHistoryCommand } from "../src/commands/history";
-import { createInitCommand } from "../src/commands/init";
-import { createLoginCommand } from "../src/commands/login";
-import { createLogoutCommand } from "../src/commands/logout";
-import { createSerializationCommand } from "../src/commands/serialization";
-import { createStatusCommand } from "../src/commands/status";
-import { createTelemetryCommand } from "../src/commands/telemetry";
-
+import { createProgram } from "../src/program";
 import packageJson from "../package.json";
 
-const buildProgram = (): Command => {
-  const program = new Command();
-  program
-    .name("scai")
-    .description("SitecoreAI Deploy & Sync CLI for serialization and deploy workflows")
-    .version(packageJson.version, "-V, --version", "Display the CLI version");
-
-  // `shell` is intentionally excluded — it takes a runCli callback and is
-  // an interactive REPL; documenting it inline doesn't help.
-  program.addCommand(createAuditCommand());
-  program.addCommand(createCleanupCommand());
-  program.addCommand(createConfigCommand());
-  program.addCommand(createDeployCommand());
-  program.addCommand(createHistoryCommand());
-  program.addCommand(createInitCommand());
-  program.addCommand(createLoginCommand());
-  program.addCommand(createLogoutCommand());
-  program.addCommand(createSerializationCommand());
-  program.addCommand(createStatusCommand());
-  program.addCommand(createTelemetryCommand());
-
-  return program;
-};
+/**
+ * Build the documented program tree. `createProgram` needs a `runCli`
+ * callback for the interactive `cli shell` command; doc generation never
+ * runs it, so a no-op stub is supplied. The shell command is filtered
+ * out of the rendered output below regardless.
+ */
+const buildProgram = (): Command => createProgram(async () => undefined);
 
 const escapePipe = (value: string): string => value.replace(/\|/g, "\\|");
 
@@ -144,7 +120,7 @@ const main = (): void => {
   lines.push("# Command reference");
   lines.push("");
   lines.push(
-    `Generated from the Commander tree in \`src/commands/\` at scai v${packageJson.version}.`
+    `Generated from the Commander tree assembled by \`createProgram\` in \`src/program.ts\` at scai v${packageJson.version}.`
   );
   lines.push(
     "The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs."

@@ -9,8 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   readRootConfiguration: vi.fn(),
   readRootConfigurationFile: vi.fn(),
+  writeRootConfigurationFile: vi.fn(),
   getDeployToken: vi.fn(),
-  clearCmClientCredential: vi.fn().mockResolvedValue(true),
+  clearCmClientSecret: vi.fn().mockResolvedValue(true),
+  clearOrgClientSecret: vi.fn().mockResolvedValue(true),
   listEnvironmentClients: vi.fn(),
   listOrganizationClients: vi.fn(),
   deleteClient: vi.fn().mockResolvedValue(undefined),
@@ -20,11 +22,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../../src/config/root-config", () => ({
   readRootConfiguration: mocks.readRootConfiguration,
   readRootConfigurationFile: mocks.readRootConfigurationFile,
+  writeRootConfigurationFile: mocks.writeRootConfigurationFile,
 }));
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: mocks.getDeployToken,
-  clearCmClientCredential: mocks.clearCmClientCredential,
+  clearCmClientSecret: mocks.clearCmClientSecret,
+  clearOrgClientSecret: mocks.clearOrgClientSecret,
 }));
 
 vi.mock("../../../../src/deploy/api", async (importActual) => {
@@ -53,7 +57,8 @@ beforeEach(() => {
     environments: { test: { organizationId: "org-1" } },
   });
   mocks.getDeployToken.mockResolvedValue("deploy-token");
-  mocks.clearCmClientCredential.mockResolvedValue(true);
+  mocks.clearCmClientSecret.mockResolvedValue(true);
+  mocks.clearOrgClientSecret.mockResolvedValue(true);
   mocks.deleteClient.mockResolvedValue(undefined);
   mocks.confirmDestructive.mockResolvedValue(true);
   mocks.listEnvironmentClients.mockResolvedValue({
@@ -143,9 +148,9 @@ describe("runSetupClients — delete", () => {
     expect(mocks.deleteClient).not.toHaveBeenCalled();
   });
 
-  it("clears the keychain CM credential when deleting this env's scai cm client", async () => {
+  it("clears the keychain CM secret when deleting this env's scai cm client", async () => {
     await runSetupClients({ ...baseOptions, delete: "c-1" });
-    expect(mocks.clearCmClientCredential).toHaveBeenCalledWith("test");
+    expect(mocks.clearCmClientSecret).toHaveBeenCalledWith("test");
   });
 
   it("does not clear the keychain when deleting a non-scai client", async () => {
@@ -155,7 +160,8 @@ describe("runSetupClients — delete", () => {
       "c-2",
       "org-1"
     );
-    expect(mocks.clearCmClientCredential).not.toHaveBeenCalled();
+    expect(mocks.clearCmClientSecret).not.toHaveBeenCalled();
+    expect(mocks.clearOrgClientSecret).not.toHaveBeenCalled();
   });
 
   it("forwards --force to confirmDestructive", async () => {

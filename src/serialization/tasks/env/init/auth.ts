@@ -2,6 +2,7 @@ import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
 import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
+import { resolveEnvClientSecret } from "@/shared/client-credential";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import {
   requestClientCredentialsToken,
@@ -21,7 +22,6 @@ type ResolveDeployAuthInput = {
   runWizard: boolean;
   isInteractive: boolean;
   needsDeployToken: boolean;
-  updated: EnvironmentConfiguration;
   logger: Logger;
 };
 
@@ -31,6 +31,13 @@ type ResolveDeployAuthResult = {
   loginClientId?: string;
   wantsClientCredentials: boolean;
   shouldPersistClientId: boolean;
+  /**
+   * Freshness metadata for a freshly minted deploy token. Present only
+   * when this call performed a login; the caller writes it onto the env
+   * profile in the config file (`deployTokenExpiresIn` /
+   * `deployTokenLastUpdated`) — see docs/credentials.md.
+   */
+  deployTokenMeta?: { expiresIn: number | null; lastUpdated: string };
 };
 
 export const resolveDeployAuth = async (
@@ -44,7 +51,6 @@ export const resolveDeployAuth = async (
     runWizard,
     isInteractive,
     needsDeployToken,
-    updated,
     logger,
   } = input;
   let deployToken = options.deployToken ?? existing.deployToken ?? (await getDeployToken(envName));
@@ -56,11 +62,11 @@ export const resolveDeployAuth = async (
   if (loginAuthority) {
     assertValidUrl(loginAuthority, "Authority");
   }
-  let loginClientSecret =
-    options.clientSecret ??
-    baseEnv.clientSecret ??
-    existing.clientSecret ??
-    process.env.SITECOREAI_CLIENT_SECRET;
+  // The secret never lives on the env profile: it comes from the
+  // `--client-secret` flag or the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
+  // env var (resolved by `resolveEnvClientSecret`), else an interactive
+  // prompt below.
+  let loginClientSecret = options.clientSecret ?? resolveEnvClientSecret(envName);
   let wantsClientCredentials = Boolean(
     options.useClientCredentials || baseEnv.useClientCredentials || existing.useClientCredentials
   );
@@ -103,6 +109,7 @@ export const resolveDeployAuth = async (
     loginClientSecret = entered;
   }
   const deployAudience = "https://api.sitecorecloud.io";
+  let deployTokenMeta: ResolveDeployAuthResult["deployTokenMeta"];
 
   if (needsDeployToken && !deployToken && wantsClientCredentials) {
     if (!loginAuthority || !loginClientId || !loginClientSecret) {
@@ -124,8 +131,7 @@ export const resolveDeployAuth = async (
       undefined
     );
     deployToken = token.accessToken;
-    updated.deployTokenExpiresIn = token.expiresIn ?? null;
-    updated.deployTokenLastUpdated = new Date().toISOString();
+    deployTokenMeta = { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() };
   } else if (needsDeployToken && !deployToken) {
     if (!loginAuthority || !loginClientId) {
       throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
@@ -169,8 +175,7 @@ export const resolveDeployAuth = async (
       device
     );
     deployToken = token.accessToken;
-    updated.deployTokenExpiresIn = token.expiresIn ?? null;
-    updated.deployTokenLastUpdated = new Date().toISOString();
+    deployTokenMeta = { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() };
   }
 
   return {
@@ -179,5 +184,6 @@ export const resolveDeployAuth = async (
     loginClientId,
     wantsClientCredentials,
     shouldPersistClientId,
+    deployTokenMeta,
   };
 };

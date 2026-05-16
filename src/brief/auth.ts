@@ -1,5 +1,6 @@
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 import { getBriefToken, setBriefToken } from "@/shared/keychain";
 
@@ -59,13 +60,15 @@ export interface AcquireBriefTokenOptions {
  *
  * Resolution order:
  *   1. Brief-specific keychain entry, if still valid (JWT not expired).
- *   2. M2M client-credentials mint with `co.briefs:r co.briefs:w` —
- *      requires the env profile to carry `clientId` + `clientSecret`
- *      + `authority`. Result is cached for subsequent calls.
+ *   2. M2M client-credentials mint with `co.briefs:r co.briefs:w`. The
+ *      `clientId` + `clientSecret` are resolved by `resolveClientCredential`
+ *      — the shared three-tier chain: the
+ *      `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` env-var override, then the
+ *      env-scoped automation client in the OS keychain, then the
+ *      org-scoped one. Result is cached.
  *
  * Refuses with `AUTH_REQUIRED` if neither path yields a token. There
- * is no interactive login flow — Brief calls are always agent-driven,
- * so the env profile must carry M2M credentials.
+ * is no interactive login flow — Brief calls are always agent-driven.
  */
 export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Promise<string> => {
   const cached = await getBriefToken(options.envName);
@@ -74,9 +77,24 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
   }
 
   const env = options.environment;
-  if (env.clientId && env.clientSecret && env.authority) {
+  // The client secret never lives in the config file — `resolveClientCredential`
+  // walks the three tiers (env-var override → env-scoped keychain client →
+  // org-scoped keychain client) and pairs the secret with the `clientId`
+  // it is handed from the config-resident metadata.
+  const credential = await resolveClientCredential({
+    envName: options.envName,
+    clientId: env.clientId,
+    automationClientId: env.automationClient?.clientId,
+    organizationId: env.organizationId,
+    orgClientId: env.orgClientId,
+  });
+
+  if (credential && env.authority) {
     try {
-      const result = await requestClientCredentialsToken(env, M2M_SCOPE_PARAM);
+      const result = await requestClientCredentialsToken(
+        { ...env, clientId: credential.clientId, clientSecret: credential.clientSecret },
+        M2M_SCOPE_PARAM
+      );
       if (result.accessToken) {
         await setBriefToken(options.envName, result.accessToken);
         return result.accessToken;
@@ -95,6 +113,6 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
   }
 
   throw createScaiError("No brief-scoped token available for this environment.", "AUTH_REQUIRED", {
-    hint: "Confirm the environment profile carries clientId, clientSecret, and authority. The Brief API does not support interactive operator login.",
+    hint: "Provide the environment's automation client — run `scai setup env` to store it in the OS keychain, or set SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.",
   });
 };

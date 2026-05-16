@@ -14,8 +14,12 @@
  * yes/no credential matrix).
  */
 
-import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
-import { clearCmClientCredential, getDeployToken } from "@/shared/keychain";
+import {
+  readRootConfiguration,
+  readRootConfigurationFile,
+  writeRootConfigurationFile,
+} from "@/config/root-config";
+import { clearCmClientSecret, clearOrgClientSecret, getDeployToken } from "@/shared/keychain";
 import {
   buildScaiClientName,
   deleteClient,
@@ -118,10 +122,28 @@ export const runSetupClients = async (options: SetupClientsOptions): Promise<voi
       return;
     }
     await deleteClient(deployClient, targetId, organizationId);
-    // If we just deleted this environment's scai-minted CM client, drop
-    // the now-dead secret from the keychain so `setup status` is honest.
+    // If we just deleted a scai-minted automation client, drop the now-
+    // dead credential — the keychain secret AND the config-resident
+    // non-secret metadata — so `setup status` stays honest.
     if (match.name === buildScaiClientName("cm", envName)) {
-      await clearCmClientCredential(envName);
+      await clearCmClientSecret(envName);
+      const rootConfigFile = readRootConfigurationFile(configPath);
+      const envProfiles = rootConfigFile.config.envProfiles ?? {};
+      if (envProfiles[envName]?.automationClient) {
+        const { automationClient: _removed, ...rest } = envProfiles[envName];
+        envProfiles[envName] = rest;
+        rootConfigFile.config.envProfiles = envProfiles;
+        writeRootConfigurationFile(configPath, rootConfigFile.config);
+      }
+    } else if (match.name === buildScaiClientName("deploy")) {
+      await clearOrgClientSecret(organizationId);
+      const rootConfigFile = readRootConfigurationFile(configPath);
+      const orgClients = rootConfigFile.config.orgClients ?? {};
+      if (orgClients[organizationId]) {
+        delete orgClients[organizationId];
+        rootConfigFile.config.orgClients = orgClients;
+        writeRootConfigurationFile(configPath, rootConfigFile.config);
+      }
     }
     if (logger.isJson()) {
       logger.json({ deleted: targetId, name: match.name ?? null, organizationId });

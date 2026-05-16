@@ -26,10 +26,9 @@ vi.mock("../../../../src/deploy/api", () => ({ ...apiMocks }));
 const discoveryMocks = vi.hoisted(() => ({
   readRootConfiguration: vi.fn(),
   resolveCredentialMatrix: vi.fn().mockResolvedValue({
-    deploy: false,
-    cmClient: false,
+    envClient: false,
+    orgClient: false,
     brand: false,
-    brief: false,
   }),
 }));
 

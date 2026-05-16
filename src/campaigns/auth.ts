@@ -1,5 +1,6 @@
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 import { getCampaignToken, setCampaignToken } from "@/shared/keychain";
 
@@ -49,8 +50,11 @@ export interface AcquireCampaignTokenOptions {
  *
  * Resolution order:
  *   1. Campaign-specific keychain entry, if the cached JWT is unexpired.
- *   2. M2M client-credentials mint — requires the env profile to carry
- *      `clientId` + `clientSecret` + `authority`. Cached for next time.
+ *   2. M2M client-credentials mint. The `clientId` + `clientSecret` are
+ *      resolved by `resolveClientCredential` — the shared three-tier
+ *      chain: the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` env-var override,
+ *      then the env-scoped automation client in the OS keychain, then
+ *      the org-scoped one. The minted token is cached for next time.
  *
  * Refuses with `AUTH_REQUIRED` if neither path yields a token. There is
  * no interactive login flow — campaign calls are agent-driven.
@@ -64,9 +68,25 @@ export const acquireCampaignToken = async (
   }
 
   const env = options.environment;
-  if (env.clientId && env.clientSecret && env.authority) {
+  // The client secret never lives in the config file — `resolveClientCredential`
+  // walks the three tiers (env-var override → env-scoped keychain client →
+  // org-scoped keychain client) and pairs the secret with the `clientId`
+  // it is handed from the config-resident metadata.
+  const credential = await resolveClientCredential({
+    envName: options.envName,
+    clientId: env.clientId,
+    automationClientId: env.automationClient?.clientId,
+    organizationId: env.organizationId,
+    orgClientId: env.orgClientId,
+  });
+
+  if (credential && env.authority) {
     try {
-      const result = await requestClientCredentialsToken(env);
+      const result = await requestClientCredentialsToken({
+        ...env,
+        clientId: credential.clientId,
+        clientSecret: credential.clientSecret,
+      });
       if (result.accessToken) {
         await setCampaignToken(options.envName, result.accessToken);
         return result.accessToken;
@@ -88,7 +108,7 @@ export const acquireCampaignToken = async (
     "No Orchestrate-scoped token available for this environment.",
     "AUTH_REQUIRED",
     {
-      hint: "Confirm the environment profile carries clientId, clientSecret, and authority. The Campaign API does not support interactive operator login.",
+      hint: "Provide the environment's automation client — run `scai setup env` to store it in the OS keychain, or set SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Campaign API does not support interactive operator login.",
     }
   );
 };

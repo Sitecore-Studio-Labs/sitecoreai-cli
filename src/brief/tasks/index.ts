@@ -77,8 +77,17 @@ const prepareBriefClient = async (
   options: RunBriefBaseOptions
 ): Promise<{ logger: Logger; client: BriefApiClientOptions; envName: string }> => {
   const logger = toLogger(options);
-  const { envName, environment } = resolveEnvironment(options);
-  const accessToken = await acquireBriefToken({ envName, environment });
+  const { envName, environment, root } = resolveEnvironment(options);
+  // Carry the org-scoped automation client's non-secret `clientId` from
+  // the root config so `resolveClientCredential` can pair it with the
+  // org-client secret in the keychain (tier 3).
+  const orgClientId = environment.organizationId
+    ? root.orgClients[environment.organizationId]?.clientId
+    : undefined;
+  const accessToken = await acquireBriefToken({
+    envName,
+    environment: { ...environment, orgClientId },
+  });
   // Host is region-resolved from the org id (shared resolver); an env
   // profile may pin `briefBaseUrl` to override it. The brief token is
   // scoped to `co.briefs:*`, so the region lookup mints a separate

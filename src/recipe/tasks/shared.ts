@@ -146,8 +146,14 @@ export const resolveTenant = (
   clientOptions?: { pathItemIdCache?: Map<string, string> }
 ): ResolvedTenant => {
   const { envName, environment, root, timeoutMs } = resolveEnvironment(options);
+  // Carry the org-scoped automation client's non-secret `clientId` from
+  // the root config so the auth layer can pair it with the org-client
+  // secret in the keychain (the tier-3 fallback for org-level profiles).
+  const orgClientId = environment.organizationId
+    ? root.orgClients[environment.organizationId]?.clientId
+    : undefined;
   const client = createAuthoringClient({
-    environment,
+    environment: { ...environment, orgClientId },
     request: { timeoutMs },
     ...(clientOptions?.pathItemIdCache && { pathItemIdCache: clientOptions.pathItemIdCache }),
   });

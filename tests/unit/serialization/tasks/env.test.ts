@@ -17,7 +17,8 @@ const clearCmTokens = vi.fn();
 const clearDeployToken = vi.fn();
 const setDeployToken = vi.fn();
 const setCmTokens = vi.fn().mockResolvedValue(true);
-const getCmClientCredential = vi.fn();
+const getCmClientSecret = vi.fn();
+const getOrgClientSecret = vi.fn();
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getCmTokens,
@@ -26,7 +27,8 @@ vi.mock("../../../../src/shared/keychain", () => ({
   clearDeployToken,
   setDeployToken,
   setCmTokens,
-  getCmClientCredential,
+  getCmClientSecret,
+  getOrgClientSecret,
 }));
 
 const requestClientCredentialsToken = vi.fn();
@@ -107,8 +109,6 @@ describe("serialization env tasks", () => {
           },
           demo: {
             host: "https://demo.example",
-            deployTokenExpiresIn: 60,
-            deployTokenLastUpdated: new Date().toISOString(),
           },
         },
       },
@@ -165,12 +165,14 @@ describe("serialization env tasks", () => {
             environmentType: "cm",
             editingHostEnvironmentIds: ["eh-1"],
             cacheAuthenticationToken: false,
-            deployTokenExpiresIn: 60,
-            deployTokenLastUpdated: new Date().toISOString(),
           },
         },
       },
     };
+    // Deploy-token freshness lives on the env profile in the config —
+    // a soon-to-expire token surfaces the warning.
+    configFile.config.envProfiles!.prod.deployTokenExpiresIn = 60;
+    configFile.config.envProfiles!.prod.deployTokenLastUpdated = new Date().toISOString();
     readRootConfigurationFile.mockReturnValue(configFile);
     readRootConfiguration.mockReturnValue({ environments: {} });
     getCmTokens.mockResolvedValue({ accessToken: "cached" });

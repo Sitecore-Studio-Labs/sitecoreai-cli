@@ -7,6 +7,7 @@ import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
 import { createScaiError } from "@/shared/errors";
 import { setCmTokens, setDeployToken } from "@/shared/keychain";
+import { resolveEnvClientSecret } from "@/shared/client-credential";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import {
   requestClientCredentialsToken,
@@ -61,7 +62,11 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   const authority = baseAuthority;
 
   let clientId = wantsClientCredentials ? clientCredentialsDefaultClientId : deviceDefaultClientId;
-  let clientSecret = options.clientSecret ?? baseEnv.clientSecret;
+  // The secret never lives on the env profile: it comes from the
+  // `--client-secret` flag or the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
+  // env var (resolved by `resolveEnvClientSecret`), else an interactive
+  // prompt below.
+  let clientSecret = options.clientSecret ?? resolveEnvClientSecret(envName);
   if (wantsClientCredentials) {
     if (!clientId && isInteractive) {
       clientId = await promptText("Client ID");
@@ -173,11 +178,17 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
       "yellow"
     );
   }
+  // Deploy-token freshness metadata lives on the env profile in the
+  // config file — the config holds every token's non-secret metadata
+  // (see docs/credentials.md). `deployToken` is cleared as legacy
+  // token-cache metadata; a stale `clientSecret` field from an older
+  // config is scrubbed via the cast.
   const updated = {
     ...existing,
     deployToken: undefined,
     deployTokenExpiresIn: token.expiresIn ?? null,
     deployTokenLastUpdated: new Date().toISOString(),
+    ...({ clientSecret: undefined } as Record<string, undefined>),
   };
   if (wantsClientCredentials && clientId) {
     updated.clientId = clientId;

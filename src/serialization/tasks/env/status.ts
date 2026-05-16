@@ -3,6 +3,20 @@ import { getCmTokens, getDeployToken } from "@/shared/keychain";
 import { resolveCredentialMatrix } from "@/shared/credential-matrix";
 import { toLogger } from "../shared";
 import type { CommonOptions } from "../types";
+import type { EnvironmentConfiguration } from "@/config/types";
+
+/**
+ * Resolve the deploy token's freshness metadata. Per `docs/credentials.md`
+ * the config file holds every token's non-secret metadata: the
+ * `deployTokenExpiresIn` / `deployTokenLastUpdated` fields live on the
+ * env profile.
+ */
+const resolveDeployTokenMeta = (
+  env: EnvironmentConfiguration
+): { expiresIn: number | null; lastUpdated: string | null } => ({
+  expiresIn: env.deployTokenExpiresIn ?? null,
+  lastUpdated: env.deployTokenLastUpdated ?? null,
+});
 
 export const runStatus = async (options: CommonOptions): Promise<void> => {
   const logger = toLogger(options);
@@ -16,13 +30,18 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     .filter((name) => name !== reservedName)
     .sort((a, b) => a.localeCompare(b));
 
-  /** Resolve the four-credential matrix for one environment. */
+  /** Resolve the credential matrix (env client / org client / brand) for one environment. */
   const resolveCredentials = (
     name: string,
     env: (typeof root.environments)[string]
   ): ReturnType<typeof resolveCredentialMatrix> => {
     const orgId = env.organizationId;
-    return resolveCredentialMatrix(name, env, Boolean(orgId && root.brand?.[orgId]));
+    return resolveCredentialMatrix(
+      name,
+      env,
+      Boolean(orgId && root.brand?.[orgId]),
+      Boolean(orgId && root.orgClients?.[orgId]?.clientId)
+    );
   };
 
   if (logger.isJson()) {
@@ -32,6 +51,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
       const cachedCmTokens =
         env.cacheAuthenticationToken === false ? undefined : await getCmTokens(name);
       const deployToken = (await getDeployToken(name)) ?? env.deployToken;
+      const deployTokenMeta = resolveDeployTokenMeta(env);
       const credentials = await resolveCredentials(name, env);
       results.push({
         name,
@@ -48,7 +68,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
         },
         editingHostEnvironmentIds: env.editingHostEnvironmentIds ?? [],
         cmAuth: env.useClientCredentials
-          ? env.clientId && env.clientSecret
+          ? credentials.envClient || credentials.orgClient
             ? "client-credentials"
             : "client-credentials (incomplete)"
           : cachedCmTokens?.accessToken || cachedCmTokens?.refreshToken
@@ -60,8 +80,8 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
                 : "missing",
         deployToken: Boolean(deployToken),
         allowWrite: Boolean(env.allowWrite),
-        deployTokenExpiresIn: env.deployTokenExpiresIn ?? null,
-        deployTokenLastUpdated: env.deployTokenLastUpdated ?? null,
+        deployTokenExpiresIn: deployTokenMeta.expiresIn,
+        deployTokenLastUpdated: deployTokenMeta.lastUpdated,
         credentials,
       });
     }
@@ -97,6 +117,7 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
       env.cacheAuthenticationToken === false ? undefined : await getCmTokens(name);
     const hasCachedCmTokens = Boolean(cachedCmTokens?.accessToken || cachedCmTokens?.refreshToken);
     const deployToken = (await getDeployToken(name)) ?? env.deployToken;
+    const credentials = await resolveCredentials(name, env);
     const hasConfig = Boolean(
       env.host ||
       env.authority ||
@@ -107,14 +128,13 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
       env.environmentId ||
       env.deployToken ||
       env.clientId ||
-      env.clientSecret ||
       env.audience ||
       env.useClientCredentials !== undefined ||
       env.allowWrite !== undefined ||
       (env.variables && Object.keys(env.variables).length > 0)
     );
     const cmAuth = env.useClientCredentials
-      ? env.clientId && env.clientSecret
+      ? credentials.envClient || credentials.orgClient
         ? "client-credentials"
         : "client-credentials (incomplete)"
       : hasCachedCmTokens
@@ -155,10 +175,11 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     }
     logger.info(`  cmAuth: ${cmAuth}`);
     logger.info(`  deployToken: ${hasDeployToken ? "set" : "missing"}`);
-    if (env.deployTokenExpiresIn && env.deployTokenLastUpdated) {
-      const last = Date.parse(env.deployTokenLastUpdated);
+    const deployTokenMeta = resolveDeployTokenMeta(env);
+    if (deployTokenMeta.expiresIn && deployTokenMeta.lastUpdated) {
+      const last = Date.parse(deployTokenMeta.lastUpdated);
       if (!Number.isNaN(last)) {
-        const expiresAt = last + env.deployTokenExpiresIn * 1000;
+        const expiresAt = last + deployTokenMeta.expiresIn * 1000;
         const msRemaining = expiresAt - Date.now();
         if (msRemaining <= 10 * 60 * 1000) {
           logger.warn("  deployToken: expiring soon", "yellow");
@@ -167,12 +188,10 @@ export const runStatus = async (options: CommonOptions): Promise<void> => {
     }
     logger.info(`  allowWrite: ${env.allowWrite ? "true" : "false"}`);
 
-    const credentials = await resolveCredentials(name, env);
     const mark = (present: boolean): string => (present ? "ok" : "missing");
     logger.info("  credentials:");
-    logger.info(`    deploy:    ${mark(credentials.deploy)}`);
-    logger.info(`    cm client: ${mark(credentials.cmClient)}`);
-    logger.info(`    brand:     ${mark(credentials.brand)}`);
-    logger.info(`    brief:     ${mark(credentials.brief)}`);
+    logger.info(`    env client: ${mark(credentials.envClient)}`);
+    logger.info(`    org client: ${mark(credentials.orgClient)}`);
+    logger.info(`    brand:      ${mark(credentials.brand)}`);
   }
 };

@@ -22,11 +22,20 @@ type BriefBaseUrlCarrier = { briefBaseUrl?: string };
 
 /** Build the Brief API client for the context's environment. */
 export const resolveBriefClient = async (ctx: SyncContext): Promise<BriefApiClientOptions> => {
-  const { envName, environment } = resolveEnvironment({
+  const { envName, environment, root } = resolveEnvironment({
     config: ctx.configPath,
     environmentName: ctx.environmentName,
   });
-  const accessToken = await acquireBriefToken({ envName, environment });
+  // Carry the org-scoped automation client's non-secret `clientId` from
+  // the root config so `resolveClientCredential` can pair it with the
+  // org-client secret in the keychain (tier 3).
+  const orgClientId = environment.organizationId
+    ? root.orgClients[environment.organizationId]?.clientId
+    : undefined;
+  const accessToken = await acquireBriefToken({
+    envName,
+    environment: { ...environment, orgClientId },
+  });
   // Host is region-resolved from the org id; an env profile may pin
   // `briefBaseUrl` to override it. The brief token is scoped to
   // `co.briefs:*`, so the lookup mints a separate no-scope M2M token.

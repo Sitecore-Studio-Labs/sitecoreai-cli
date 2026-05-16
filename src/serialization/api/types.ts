@@ -16,15 +16,34 @@
  * — which has it optional because the config wizard may not have set
  * it yet at construction time.
  */
+import type { AutomationClientMetadata } from "@/config/types";
+
 export interface SitecoreApiClientOptions {
   /** CM hostname (e.g. `https://xmc-org-env.sitecorecloud.io`). */
   host?: string;
+  /** Sitecore organization id — used to resolve org-scoped credentials. */
+  organizationId?: string;
   /** OAuth identity authority (e.g. `https://auth.sitecorecloud.io`). */
   authority?: string;
   /** OAuth client id. */
   clientId?: string;
   /** OAuth client secret (required for client-credentials flow). */
   clientSecret?: string;
+  /**
+   * Non-secret metadata of the scai-minted env-scoped automation client.
+   * Carried through from `EnvironmentConfiguration.automationClient` so
+   * the auth layer can pair `automationClient.clientId` with the secret
+   * it reads from the OS keychain. Only `clientId` is used here.
+   */
+  automationClient?: AutomationClientMetadata;
+  /**
+   * `clientId` of the scai-minted org-scoped automation client — read
+   * from the root config's `orgClients[organizationId]` block. The org
+   * client lives at the root of the config, not on the env profile, so
+   * a caller that wants tier-3 (org-client) resolution must populate
+   * this from the resolved `RootConfiguration`.
+   */
+  orgClientId?: string;
   /** OAuth audience. Defaults to `https://api.sitecorecloud.io`. */
   audience?: string;
   /** Pre-obtained access token. Bypasses OAuth flow entirely. */

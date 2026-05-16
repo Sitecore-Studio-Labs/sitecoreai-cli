@@ -1,5 +1,6 @@
 import type { SitecoreApiClientOptions } from "./types";
 import { getCmTokens, setCmTokens } from "@/shared/keychain";
+import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 
 const DISCOVERY_TIMEOUT_MS = Math.max(
@@ -401,10 +402,57 @@ const requestRefreshToken = async (
 };
 
 /**
+ * Resolve the automation-client secret for a client-credentials mint.
+ *
+ * Per `docs/credentials.md` the env profile carries no secret. When the
+ * caller already supplied a `clientSecret` (a bring-your-own-client pair
+ * built by hand), it is used as-is. Otherwise the secret is resolved
+ * through the shared three-tier chain (`SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
+ * env var → env-scoped keychain client → org-scoped keychain client),
+ * keyed by `environment.name`. The matching `clientId` is taken from the
+ * same tier that supplies the secret.
+ *
+ * Returns the environment unchanged when no secret can be resolved — the
+ * downstream OAuth call then surfaces the missing-credential error.
+ */
+const withResolvedClientCredential = async (
+  environment: SitecoreApiClientOptions
+): Promise<SitecoreApiClientOptions> => {
+  if (environment.clientSecret) {
+    return environment;
+  }
+  if (!environment.name) {
+    return environment;
+  }
+  const credential = await resolveClientCredential({
+    envName: environment.name,
+    clientId: environment.clientId,
+    automationClientId: environment.automationClient?.clientId,
+    organizationId: environment.organizationId,
+    orgClientId: environment.orgClientId,
+  });
+  if (!credential) {
+    return environment;
+  }
+  return {
+    ...environment,
+    clientId: credential.clientId,
+    clientSecret: credential.clientSecret,
+  };
+};
+
+/**
  * Pure OAuth acquisition: refresh-token-on-env, then client-credentials.
  * Does NOT read or write the keychain, and does NOT return the env's
  * embedded `accessToken` literal — callers wanting the literal-or-acquired
  * union should check `environment.accessToken` themselves first.
+ *
+ * For the client-credentials path the automation-client secret is
+ * resolved through the shared three-tier chain (env var → env-scoped
+ * keychain client → org-scoped keychain client) — the env profile never
+ * carries it. This read of the OS keychain is the one exception to the
+ * "does NOT read the keychain" note above; it reads the long-lived
+ * client credential, never the short-lived token cache.
  *
  * Library callers (orchestrators, MCP servers, tests) that bring their
  * own token cache should call this directly. The CLI uses `getAccessToken`
@@ -418,7 +466,7 @@ export const acquireAccessToken = async (
     return refreshed;
   }
   if (environment.useClientCredentials) {
-    return requestClientCredentialsToken(environment);
+    return requestClientCredentialsToken(await withResolvedClientCredential(environment));
   }
   return undefined;
 };

@@ -26,25 +26,11 @@ type CmTokenBundle = {
   lastUpdated?: string | null;
 };
 
-/**
- * A scai-minted CM (Content Management) automation client, as returned
- * once by the Deploy clients API. The `clientSecret` is unrecoverable
- * after the mint response, so this bundle is the only copy — it lives
- * in the keychain, never in `sitecoreai.cli.json`.
- */
-export type CmClientCredential = {
-  clientId: string;
-  clientSecret: string;
-  /** Display name of the client in the Cloud Portal (the scai-* name). */
-  name?: string;
-  /** ISO timestamp the client was minted. */
-  mintedAt?: string;
-};
-
 const SERVICE_NAME = "SitecoreAI CLI";
 const DEPLOY_ACCOUNT_PREFIX = "deploy:";
 const CM_ACCOUNT_PREFIX = "cm:";
 const CM_CLIENT_ACCOUNT_PREFIX = "cm-client:";
+const ORG_CLIENT_ACCOUNT_PREFIX = "org-client:";
 const PUBLISHING_ACCOUNT_PREFIX = "publishing:";
 const BRIEF_ACCOUNT_PREFIX = "brief:";
 const CAMPAIGN_ACCOUNT_PREFIX = "campaign:";
@@ -369,50 +355,94 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
 };
 
 /**
- * The scai-minted CM automation client for an environment. Stored under
- * a distinct `cm-client:` prefix — separate from the `cm:` token bundle
- * (which holds short-lived access/refresh tokens). This entry holds the
- * long-lived clientId/clientSecret pair `scai setup client create` provisions.
+ * The **secret** of the scai-minted env-scoped automation client for an
+ * environment. Stored under a distinct `cm-client:` prefix — separate
+ * from the `cm:` token bundle (which holds short-lived access/refresh
+ * tokens).
+ *
+ * Per `docs/credentials.md` the keychain holds only secrets: the
+ * client's non-secret metadata (`clientId`, `name`, `mintedAt`) lives in
+ * the env profile's `automationClient` block in `sitecoreai.cli.json`.
+ * `scai setup client create` writes the metadata to the config and the
+ * secret here.
  */
-export const getCmClientCredential = async (
-  envName: string
-): Promise<CmClientCredential | undefined> => {
+export const getCmClientSecret = async (envName: string): Promise<string | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
     return undefined;
   }
-  const raw = await readPassword(ring, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-  if (!raw) {
-    return undefined;
-  }
-  return safeParse<CmClientCredential>(raw);
+  return readPassword(ring, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
 };
 
-export const setCmClientCredential = async (
-  envName: string,
-  credential: CmClientCredential
-): Promise<boolean> => {
+export const setCmClientSecret = async (envName: string, secret: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(JSON.stringify(credential));
+    await entry.setPassword(secret);
     return true;
   } catch {
-    warnOnce("Unable to write the CM client credential to the OS keychain.", "error");
+    warnOnce("Unable to write the CM client secret to the OS keychain.", "error");
     return false;
   }
 };
 
-export const clearCmClientCredential = async (envName: string): Promise<boolean> => {
+export const clearCmClientSecret = async (envName: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
+    return entry.deleteCredential();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The **secret** of the scai-minted **org-level** automation client,
+ * keyed by Sitecore `organizationId`. This is the organization-scoped
+ * client `scai setup client create --org` provisions (the Deploy clients
+ * API `deploy` client type); one per org, shared by every env profile in
+ * that org.
+ *
+ * Per `docs/credentials.md` the keychain holds only secrets: the
+ * client's non-secret metadata (`clientId`, `name`, `mintedAt`) lives in
+ * the `orgClients[orgId]` block in `sitecoreai.cli.json`.
+ */
+export const getOrgClientSecret = async (orgId: string): Promise<string | undefined> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return undefined;
+  }
+  return readPassword(ring, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
+};
+
+export const setOrgClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
+    await entry.setPassword(secret);
+    return true;
+  } catch {
+    warnOnce("Unable to write the org automation client secret to the OS keychain.", "error");
+    return false;
+  }
+};
+
+export const clearOrgClientSecret = async (orgId: string): Promise<boolean> => {
+  const ring = await loadKeyring();
+  if (!ring) {
+    return false;
+  }
+  try {
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
     return entry.deleteCredential();
   } catch {
     return false;

@@ -322,6 +322,8 @@ describe("cli entrypoint", () => {
   it("runs login when deploy token is expired", async () => {
     process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
+    // Deploy-token freshness lives on the env profile in the config —
+    // an already-expired token there triggers the re-login.
     configMocks.readRootConfiguration.mockReturnValue({
       environments: {
         demo: {

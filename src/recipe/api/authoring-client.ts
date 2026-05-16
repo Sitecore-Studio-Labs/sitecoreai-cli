@@ -1,4 +1,4 @@
-import type { EnvironmentConfiguration } from "@/config/types";
+import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
@@ -261,7 +261,14 @@ const toAuthoringFieldsInput = (fields: FieldValue[]): Array<{ name: string; val
   }));
 
 export interface AuthoringClientOptions {
-  environment: EnvironmentConfiguration;
+  /**
+   * Auth + host options for the Authoring API. The CLI passes its full
+   * resolved `EnvironmentConfiguration` (which structurally satisfies
+   * `SitecoreApiClientOptions`) — typically augmented with `orgClientId`
+   * from the root config's `orgClients` block so the auth layer can
+   * resolve the org-scoped automation client.
+   */
+  environment: SitecoreApiClientOptions;
   request?: AuthoringRequestOptions;
   /**
    * Optional shared path → itemId cache. When provided, the client uses

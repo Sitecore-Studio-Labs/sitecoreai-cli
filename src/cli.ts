@@ -1,33 +1,8 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
 import packageJson from "../package.json";
-import { createAuditCommand } from "./commands/audit";
-import { createBrandCommand } from "./commands/brand";
-import { createCleanupCommand } from "./commands/cleanup";
-// `content version` is intentionally not registered — see the content
-// command block below. Import stays commented out to avoid an unused symbol.
-// import { createContentVersionCommand } from "./commands/content/version";
-import { createSerializationCommand } from "./commands/serialization";
+import { createProgram, type RunCli } from "./program";
 import { normalizeArgs } from "./commands/shared";
-import { createStatusCommand } from "./commands/status";
-import { createLoginCommand } from "./commands/login";
-import { createDeployCommand } from "./commands/deploy";
-import { createExplainCommand } from "./commands/explain";
-import { createHealthCommand } from "./commands/health";
-import { createHistoryCommand } from "./commands/history";
-import { createInitCommand } from "./commands/init";
-import { createLogoutCommand } from "./commands/logout";
-import { createSetupClientCommand } from "./commands/setup-client";
-import { createMcpCommand } from "./commands/mcp";
-import { createBriefCommand } from "./commands/brief";
-import { createCampaignCommand } from "./commands/campaign";
-import { createAgentsCommand } from "./commands/agents";
-import { createPublishCommand } from "./commands/publish";
-import { createTopicsCommand } from "./commands/topics";
-import { createRecipeCommand } from "./commands/recipe";
-import { createSyncCommand } from "./commands/sync";
-import { createShellCommand } from "./commands/shell";
 import { ensureHistoryFile, recordHistory } from "./shared/history";
 import { showBanner } from "./shared/style";
 import { Logger } from "./shared/logger";
@@ -41,10 +16,6 @@ import {
 import { resolveOutputOptionsFromArgs } from "./shared/output";
 import { redactSecrets } from "./shared/redact";
 import { toScaiError } from "./shared/errors";
-import { createConfigCommand } from "./commands/config";
-import { createTelemetryCommand } from "./commands/telemetry";
-import { createWebhookCommand } from "./commands/webhook";
-import { createWorkflowCommand } from "./commands/workflow";
 import { readRootConfiguration, readRootConfigurationFile } from "./config/root-config";
 import { runDeployToken } from "./serialization/tasks/env/deploy-token";
 import { runInit } from "./serialization/tasks/env/init";
@@ -68,20 +39,26 @@ const toBoolean = (value?: string): boolean | undefined => {
   return undefined;
 };
 
-type DeployTokenTiming = {
-  deployTokenExpiresIn?: number | null;
-  deployTokenLastUpdated?: string | null;
-};
-
-const isDeployTokenExpired = (env?: DeployTokenTiming): boolean => {
-  if (!env?.deployTokenExpiresIn || !env.deployTokenLastUpdated) {
+/**
+ * Decide whether the cached deploy token has expired, for the
+ * auto-wizard's re-login prompt. Per `docs/credentials.md` the token's
+ * freshness metadata (`deployTokenExpiresIn` / `deployTokenLastUpdated`)
+ * lives on the env profile in the config file — the config holds every
+ * credential's and token's non-secret metadata. Reads only those fields.
+ */
+const isDeployTokenExpired = (
+  env: { deployTokenExpiresIn?: number | null; deployTokenLastUpdated?: string | null } | undefined
+): boolean => {
+  const expiresIn = env?.deployTokenExpiresIn;
+  const lastUpdatedRaw = env?.deployTokenLastUpdated;
+  if (!expiresIn || !lastUpdatedRaw) {
     return false;
   }
-  const lastUpdated = Date.parse(env.deployTokenLastUpdated);
+  const lastUpdated = Date.parse(lastUpdatedRaw);
   if (Number.isNaN(lastUpdated)) {
     return false;
   }
-  return Date.now() >= lastUpdated + env.deployTokenExpiresIn * 1000;
+  return Date.now() >= lastUpdated + expiresIn * 1000;
 };
 
 const resolveEnvironmentNameFromArgs = (args: string[]): string | undefined => {
@@ -168,10 +145,13 @@ const resolveAutoWizardNeed = async (
     };
   }
 
-  let resolvedEnv: DeployTokenTiming | undefined;
+  // Resolve the full config once so a CONFIG_INVALID profile routes to
+  // the init-repair path, and so the env profile's deploy-token
+  // freshness metadata is available below.
+  let resolvedEnv: ReturnType<typeof readRootConfiguration>["environments"][string] | undefined;
   try {
-    const root = readRootConfiguration(configBasePath, envName);
-    resolvedEnv = root.environments[envName] ?? envProfiles[envName];
+    const resolvedRoot = readRootConfiguration(configBasePath, envName);
+    resolvedEnv = resolvedRoot.environments[envName];
   } catch (error) {
     const cliError = toScaiError(error);
     if (cliError.code === "CONFIG_INVALID") {
@@ -199,14 +179,6 @@ const resolveAutoWizardNeed = async (
 
   return null;
 };
-
-type RunCliOptions = {
-  baseEnv?: Record<string, string | undefined>;
-  skipBanner?: boolean;
-  shellMode?: boolean;
-};
-
-type RunCli = (argv: string[], options?: RunCliOptions) => Promise<void>;
 
 const applyBaseEnv = (snapshot?: Record<string, string | undefined>): void => {
   if (!snapshot) {
@@ -258,102 +230,6 @@ const runAutoWizardIfNeeded = async (
   }
   logger.info(`Authenticating environment '${need.envName}'.`, "cyan");
   await runDeployToken({ config: configBasePath, environmentName: need.envName });
-};
-
-const createProgram = (runCli: RunCli, options: { shellMode?: boolean } = {}): Command => {
-  const program = new Command();
-  program
-    .name("scai")
-    .description(
-      "SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and MCP"
-    )
-    .version(packageJson.version, "-V, --version", "Display the CLI version");
-
-  // Top-level command groups. The CLI surface is organized by product
-  // area, not flat — each parent below is a namespace, and the leaf
-  // command builders are unchanged (only where they attach moved).
-  const setup = new Command("setup").description(
-    "Configure environments and authenticate — init, login, env, logout, status"
-  );
-  setup.addCommand(createInitCommand());
-  setup.addCommand(createLoginCommand());
-  setup.addCommand(createSetupClientCommand());
-  setup.addCommand(createLogoutCommand());
-  setup.addCommand(createStatusCommand());
-
-  const hygiene = new Command("hygiene").description(
-    "Content quality — read-only audits, mutating cleanup, and composed diagnostics"
-  );
-  hygiene.addCommand(createAuditCommand());
-  hygiene.addCommand(createCleanupCommand());
-  hygiene.addCommand(createExplainCommand());
-
-  // `webhook` nests under `workflow`; the old standalone `content`
-  // wrapper is dropped — its only child (`version`) attaches directly.
-  const workflow = createWorkflowCommand();
-  workflow.addCommand(createWebhookCommand());
-  const content = new Command("content").description(
-    "Operate on content items — publish and workflow handlers"
-  );
-  content.addCommand(createPublishCommand());
-  content.addCommand(workflow);
-  // `content version` (per-version publish-state fields — __Never publish,
-  // __Valid from / __Valid to) is intentionally NOT registered yet. Those
-  // fields only make sense once content items (pages, etc.) can be authored
-  // through the CLI; today they only arrive via recipes, so a lone
-  // version-state verb is more confusing than useful. The SDK
-  // (src/content/api/version-fields.ts) and `hygiene cleanup versions` both
-  // stay — only this CLI command group is hidden until item primitives land.
-  // content.addCommand(createContentVersionCommand());
-  content.addHelpText(
-    "after",
-    "\nRoadmap: `scai content sites` and `scai content pages` — XM Cloud\n" +
-      "site and page management — are planned, not yet shipped. See docs/roadmap.md.\n"
-  );
-
-  const ops = new Command("ops").description("Sitecore Content Operations — briefs and campaigns");
-  ops.addCommand(createBriefCommand());
-  ops.addCommand(createCampaignCommand());
-
-  const provision = new Command("provision").description(
-    "Provision environments and content-as-code — deploy, serialization, recipes"
-  );
-  provision.addCommand(createDeployCommand());
-  provision.addCommand(createSerializationCommand());
-  provision.addCommand(createRecipeCommand());
-  provision.addHelpText(
-    "after",
-    "\nRoadmap: `scai provision iar` — package content as Items-as-Resources\n" +
-      "(IAR) — is planned, not yet shipped. See docs/roadmap.md.\n"
-  );
-
-  const cli = new Command("cli").description("CLI tooling — config, diagnostics, history, REPL");
-  cli.addCommand(createConfigCommand());
-  cli.addCommand(createHealthCommand());
-  cli.addCommand(createHistoryCommand());
-  cli.addCommand(createShellCommand(runCli));
-  cli.addCommand(createTelemetryCommand());
-  cli.addCommand(createTopicsCommand());
-
-  program.addCommand(setup);
-  program.addCommand(hygiene);
-  program.addCommand(content);
-  program.addCommand(ops);
-  program.addCommand(createBrandCommand());
-  program.addCommand(createAgentsCommand());
-  program.addCommand(provision);
-  program.addCommand(createSyncCommand());
-  // `mcp` stays top-level: `scai mcp serve` is wired into external MCP
-  // client configs, so its path must not move under a group.
-  program.addCommand(createMcpCommand());
-  program.addCommand(cli);
-
-  program.showHelpAfterError(true);
-  program.showSuggestionAfterError(true);
-  if (options.shellMode) {
-    program.exitOverride();
-  }
-  return program;
 };
 
 const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {

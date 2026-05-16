@@ -3,15 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Covers the list-or-mint reconciliation in `runSetupEnv`: fresh mint,
  * idempotent no-op, orphan re-mint, --rotate, --what-if, and the
- * input/auth guards. The config reader, keychain, and the clients-API
- * network calls are mocked; `buildScaiClientName` /
+ * input/auth guards. The config reader/writer, keychain, and the
+ * clients-API network calls are mocked; `buildScaiClientName` /
  * `buildScaiClientDescription` run for real.
+ *
+ * Per `docs/credentials.md` a provisioned env client means both halves
+ * agree: the `automationClient` metadata in the config AND the secret in
+ * the keychain. A mint writes the metadata to the config (via
+ * `writeRootConfigurationFile`) and only the secret to the keychain.
  */
 const mocks = vi.hoisted(() => ({
   readRootConfiguration: vi.fn(),
+  readRootConfigurationFile: vi.fn(),
+  writeRootConfigurationFile: vi.fn(),
   getDeployToken: vi.fn(),
-  getCmClientCredential: vi.fn(),
-  setCmClientCredential: vi.fn().mockResolvedValue(true),
+  getCmClientSecret: vi.fn(),
+  setCmClientSecret: vi.fn().mockResolvedValue(true),
   listEnvironmentClients: vi.fn(),
   mintCmClient: vi.fn(),
   deleteClient: vi.fn().mockResolvedValue(undefined),
@@ -19,12 +26,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../../../src/config/root-config", () => ({
   readRootConfiguration: mocks.readRootConfiguration,
+  readRootConfigurationFile: mocks.readRootConfigurationFile,
+  writeRootConfigurationFile: mocks.writeRootConfigurationFile,
 }));
 
 vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: mocks.getDeployToken,
-  getCmClientCredential: mocks.getCmClientCredential,
-  setCmClientCredential: mocks.setCmClientCredential,
+  getCmClientSecret: mocks.getCmClientSecret,
+  setCmClientSecret: mocks.setCmClientSecret,
 }));
 
 vi.mock("../../../../src/deploy/api", async (importActual) => {
@@ -47,16 +56,26 @@ const CONFIGURED_ENV = {
 
 const baseOptions = { environmentName: "test", quiet: true };
 
+/** Build a fresh root-config-file mock value with the `test` env profile. */
+const configFile = (
+  envOverrides: Record<string, unknown> = {}
+): { config: { envProfiles: Record<string, Record<string, unknown>> } } => ({
+  config: {
+    envProfiles: { test: { ...CONFIGURED_ENV, ...envOverrides } },
+  },
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.setCmClientCredential.mockResolvedValue(true);
+  mocks.setCmClientSecret.mockResolvedValue(true);
   mocks.deleteClient.mockResolvedValue(undefined);
   mocks.readRootConfiguration.mockReturnValue({
     environments: { test: { ...CONFIGURED_ENV } },
     brand: {},
   });
+  mocks.readRootConfigurationFile.mockReturnValue(configFile());
   mocks.getDeployToken.mockResolvedValue("deploy-token");
-  mocks.getCmClientCredential.mockResolvedValue(undefined);
+  mocks.getCmClientSecret.mockResolvedValue(undefined);
   mocks.listEnvironmentClients.mockResolvedValue({ items: [] });
   mocks.mintCmClient.mockResolvedValue({
     clientId: "minted-client-id",
@@ -107,14 +126,26 @@ describe("runSetupEnv — list-or-mint", () => {
       "org-1"
     );
     expect(mocks.deleteClient).not.toHaveBeenCalled();
-    expect(mocks.setCmClientCredential).toHaveBeenCalledWith(
-      "test",
-      expect.objectContaining({ clientId: "minted-client-id", clientSecret: "minted-secret" })
+    // Only the secret goes to the keychain.
+    expect(mocks.setCmClientSecret).toHaveBeenCalledWith("test", "minted-secret");
+    // The non-secret metadata is written into the env profile's
+    // `automationClient` block in the config file.
+    expect(mocks.writeRootConfigurationFile).toHaveBeenCalledTimes(1);
+    const written = mocks.writeRootConfigurationFile.mock.calls[0][1] as {
+      envProfiles: Record<string, { automationClient?: Record<string, unknown> }>;
+    };
+    expect(written.envProfiles.test.automationClient).toEqual(
+      expect.objectContaining({ clientId: "minted-client-id", name: "scai-cm-test" })
     );
   });
 
   it("is a no-op when the client is already provisioned", async () => {
-    mocks.getCmClientCredential.mockResolvedValue({ clientId: "x", clientSecret: "y" });
+    // Both halves present: config metadata + keychain secret.
+    mocks.readRootConfiguration.mockReturnValue({
+      environments: { test: { ...CONFIGURED_ENV, automationClient: { clientId: "x" } } },
+      brand: {},
+    });
+    mocks.getCmClientSecret.mockResolvedValue("y");
     mocks.listEnvironmentClients.mockResolvedValue({
       items: [{ id: "client-1", name: "scai-cm-test" }],
     });
@@ -124,7 +155,7 @@ describe("runSetupEnv — list-or-mint", () => {
   });
 
   it("deletes and re-mints an orphan (server client, no stored secret)", async () => {
-    mocks.getCmClientCredential.mockResolvedValue(undefined);
+    mocks.getCmClientSecret.mockResolvedValue(undefined);
     mocks.listEnvironmentClients.mockResolvedValue({
       items: [{ id: "orphan-1", name: "scai-cm-test" }],
     });
@@ -138,7 +169,11 @@ describe("runSetupEnv — list-or-mint", () => {
   });
 
   it("--rotate deletes and re-mints even when already provisioned", async () => {
-    mocks.getCmClientCredential.mockResolvedValue({ clientId: "x", clientSecret: "y" });
+    mocks.readRootConfiguration.mockReturnValue({
+      environments: { test: { ...CONFIGURED_ENV, automationClient: { clientId: "x" } } },
+      brand: {},
+    });
+    mocks.getCmClientSecret.mockResolvedValue("y");
     mocks.listEnvironmentClients.mockResolvedValue({
       items: [{ id: "client-1", name: "scai-cm-test" }],
     });
@@ -157,7 +192,8 @@ describe("runSetupEnv — what-if", () => {
     await runSetupEnv({ ...baseOptions, whatIf: true });
     expect(mocks.mintCmClient).not.toHaveBeenCalled();
     expect(mocks.deleteClient).not.toHaveBeenCalled();
-    expect(mocks.setCmClientCredential).not.toHaveBeenCalled();
+    expect(mocks.setCmClientSecret).not.toHaveBeenCalled();
+    expect(mocks.writeRootConfigurationFile).not.toHaveBeenCalled();
   });
 
   it("still reads the existing client list under --what-if", async () => {

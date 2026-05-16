@@ -1,67 +1,50 @@
 {
   "$schema": "https://schemas.sitecoreai.dev/v1/sitecoreai.cli.json",
-  "modules": ["./example/items/**/*.module.json"],
-  "serialization": {
-    "defaultMaxRelativeItemPathLength": 100,
-    "defaultModuleRelativeSerializationPath": "items",
-    "removeOrphansForRoles": true,
-    "removeOrphansForUsers": true,
-    "continueOnItemFailure": false,
-    "excludedFields": []
-  },
-  "settings": {
-    "telemetryEnabled": true,
-    "cacheAuthenticationToken": true,
-    "versionComparisonEnabled": true,
-    "apiClientTimeoutInMinutes": 5
-  },
-  "defaultEnvProfile": "client-credentials",
+  "defaultEnvProfile": "production",
   "envProfiles": {
-    "client-credentials": {
-      "host": "{your-sitecore-instance}.sitecorecloud.io",
+    "production": {
+      "organizationId": "org_EXAMPLExxxxxxxx",
+      "projectId": "EXAMPLEprojectId",
+      "environmentId": "EXAMPLEenvironmentId",
       "environmentType": "cm",
-      "allowWrite": false,
-      "organizationId": "",
-      "tenantId": "",
-      "projectId": "",
-      "environmentId": "",
-      "editingHostEnvironmentIds": [],
+      "host": "xmc-example-prod.sitecorecloud.io",
       "authority": "https://auth.sitecorecloud.io",
       "audience": "https://api.sitecorecloud.io",
-      "clientId": "{client-id}",
-      "clientSecret": "{client-secret}",
-      "useClientCredentials": true,
-      "cacheAuthenticationToken": true,
-      "variables": {
-        "EXAMPLE_VARIABLE": "value"
-      }
-    },
-    "deploy-login": {
-      "host": "{your-sitecore-instance}.sitecorecloud.io",
-      "environmentType": "cm",
-      "allowWrite": false,
-      "organizationId": "",
-      "tenantId": "",
-      "projectId": "",
-      "environmentId": "",
-      "editingHostEnvironmentIds": [],
-      "authority": "https://auth.sitecorecloud.io",
-      "audience": "https://api.sitecorecloud.io",
-      "accessToken": "{cached-in-keychain}",
-      "refreshToken": "{cached-in-keychain}",
-      "refreshTokenParameters": {
-        "grant_type": "refresh_token",
-        "scope": "openid profile email"
+      "allowWrite": true,
+      "automationClient": {
+        "clientId": "EXAMPLEmintedEnvClientId",
+        "name": "scai-cm-production",
+        "mintedAt": "2026-05-16T12:00:00.000Z"
       },
-      "expiresIn": null,
-      "lastUpdated": null,
-      "deployToken": "{cached-in-keychain}",
-      "deployTokenExpiresIn": null,
-      "deployTokenLastUpdated": null,
-      "cacheAuthenticationToken": true,
-      "variables": {
-        "EXAMPLE_VARIABLE": "value"
-      }
+      "deployTokenExpiresIn": 86400,
+      "deployTokenLastUpdated": "2026-05-16T12:00:00.000Z"
+    },
+    "byo-client": {
+      "organizationId": "org_EXAMPLExxxxxxxx",
+      "projectId": "EXAMPLEprojectId",
+      "environmentId": "EXAMPLEenvironmentId",
+      "environmentType": "cm",
+      "host": "xmc-example-byo.sitecorecloud.io",
+      "authority": "https://auth.sitecorecloud.io",
+      "audience": "https://api.sitecorecloud.io",
+      "clientId": "EXAMPLEyourOwnClientId",
+      "useClientCredentials": true
+    }
+  },
+  "orgClients": {
+    "org_EXAMPLExxxxxxxx": {
+      "clientId": "EXAMPLEmintedOrgClientId",
+      "name": "scai-deploy",
+      "mintedAt": "2026-05-16T12:00:00.000Z"
+    }
+  },
+  "brand": {
+    "org_EXAMPLExxxxxxxx": {
+      "clientId": "EXAMPLEbrandClientId",
+      "authority": "https://auth.sitecorecloud.io",
+      "audience": "https://api.sitecorecloud.io",
+      "tokenExpiresIn": 86400,
+      "tokenLastUpdated": "2026-05-16T12:00:00.000Z"
     }
   }
 }

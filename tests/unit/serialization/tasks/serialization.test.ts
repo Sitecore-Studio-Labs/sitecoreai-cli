@@ -108,7 +108,8 @@ vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: vi.fn().mockResolvedValue("token"),
   setDeployToken: vi.fn().mockResolvedValue(true),
   clearDeployToken: vi.fn().mockResolvedValue(true),
-  getCmClientCredential: vi.fn().mockResolvedValue(undefined),
+  getCmClientSecret: vi.fn().mockResolvedValue(undefined),
+  getOrgClientSecret: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("serialization task runners", () => {

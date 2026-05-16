@@ -75,10 +75,10 @@ export const applyEnvOverrides = (
   if (clientId !== undefined) {
     overrides.clientId = clientId;
   }
-  const clientSecret = getEnvOverride(envName, "CLIENT_SECRET", includeGlobal);
-  if (clientSecret !== undefined) {
-    overrides.clientSecret = clientSecret;
-  }
+  // SITECOREAI_ENV_<ENV>_CLIENT_SECRET is NOT merged into a config field:
+  // secrets never live on the env profile. The auth layer reads that env
+  // var directly as tier 1 of secret resolution — see
+  // `resolveEnvClientSecret` in `shared/client-credential.ts`.
   const deployToken = getEnvOverride(envName, "DEPLOY_TOKEN", includeGlobal);
   if (deployToken !== undefined) {
     overrides.deployToken = deployToken;
@@ -244,7 +244,10 @@ const stripAuthenticationTokens = (env: EnvironmentConfiguration): EnvironmentCo
   delete sanitized.expiresIn;
   delete sanitized.lastUpdated;
   delete sanitized.deployToken;
-  delete sanitized.clientSecret;
+  // `clientSecret` is intentionally not handled — it is no longer a
+  // field on `EnvironmentConfiguration`. Legacy configs that still carry
+  // it are scrubbed below.
+  delete (sanitized as Record<string, unknown>).clientSecret;
   return sanitized;
 };
 

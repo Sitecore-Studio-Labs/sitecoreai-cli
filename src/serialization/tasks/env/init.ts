@@ -207,7 +207,6 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     runWizard,
     isInteractive,
     needsDeployToken,
-    updated,
     logger,
   });
   let deployToken = auth.deployToken;
@@ -238,6 +237,13 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
       logger.warn(
         "Unable to store the Deploy token in the OS keychain. Use SITECOREAI_DEPLOY_TOKEN if needed."
       );
+    }
+    // Deploy-token freshness metadata lives on the env profile in the
+    // config file (see docs/credentials.md). Only present when this run
+    // actually performed a login.
+    if (auth.deployTokenMeta) {
+      updated.deployTokenExpiresIn = auth.deployTokenMeta.expiresIn;
+      updated.deployTokenLastUpdated = auth.deployTokenMeta.lastUpdated;
     }
   }
 

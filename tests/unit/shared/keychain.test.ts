@@ -48,15 +48,12 @@ describe("keychain helpers", () => {
     expect(await keychain.clearCmTokens("demo")).toBe(true);
   });
 
-  it("round-trips the CM client credential bundle via AsyncEntry", async () => {
+  it("round-trips the CM client secret via AsyncEntry", async () => {
     vi.resetModules();
-    const credential = {
-      clientId: "client-abc",
-      clientSecret: "secret-xyz",
-      name: "scai-cm-demo",
-      mintedAt: "2026-05-15T12:00:00.000Z",
-    };
-    const getPassword = vi.fn().mockResolvedValue(JSON.stringify(credential));
+    // The keychain holds only the secret string — the non-secret
+    // metadata lives in the config file (see docs/credentials.md).
+    const secret = "secret-xyz";
+    const getPassword = vi.fn().mockResolvedValue(secret);
     const setPassword = vi.fn().mockResolvedValue(undefined);
     const deleteCredential = vi.fn().mockResolvedValue(true);
     vi.doMock("@napi-rs/keyring", () => ({
@@ -73,22 +70,20 @@ describe("keychain helpers", () => {
       },
     }));
     const keychain = await import("../../../src/shared/keychain");
-    expect(await keychain.getCmClientCredential("demo")).toEqual(credential);
-    expect(await keychain.setCmClientCredential("demo", credential)).toBe(true);
-    expect(setPassword).toHaveBeenCalledWith(JSON.stringify(credential));
-    expect(await keychain.clearCmClientCredential("demo")).toBe(true);
+    expect(await keychain.getCmClientSecret("demo")).toBe(secret);
+    expect(await keychain.setCmClientSecret("demo", secret)).toBe(true);
+    expect(setPassword).toHaveBeenCalledWith(secret);
+    expect(await keychain.clearCmClientSecret("demo")).toBe(true);
   });
 
-  it("returns undefined for the CM client credential when the keyring is unavailable", async () => {
+  it("returns undefined for the CM client secret when the keyring is unavailable", async () => {
     vi.resetModules();
     vi.doMock("@napi-rs/keyring", () => {
       throw new Error("missing");
     });
     const keychain = await import("../../../src/shared/keychain");
-    expect(await keychain.getCmClientCredential("demo")).toBeUndefined();
-    expect(await keychain.setCmClientCredential("demo", { clientId: "c", clientSecret: "s" })).toBe(
-      false
-    );
-    expect(await keychain.clearCmClientCredential("demo")).toBe(false);
+    expect(await keychain.getCmClientSecret("demo")).toBeUndefined();
+    expect(await keychain.setCmClientSecret("demo", "s")).toBe(false);
+    expect(await keychain.clearCmClientSecret("demo")).toBe(false);
   });
 });

@@ -48,7 +48,9 @@ describe("scai mcp serve — stdio integration", () => {
               authority: "https://auth.test",
               audience: "https://api.test",
               clientId: "stub",
-              clientSecret: "stub",
+              // No `clientSecret` field — secrets never live in the
+              // config file (see docs/credentials.md). The MCP smoke
+              // run never mints a token, so a stub id alone suffices.
               deployToken: "stub-deploy-token",
               organizationId: "org-stub",
               projectId: "proj-stub",

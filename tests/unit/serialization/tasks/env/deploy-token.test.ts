@@ -19,7 +19,12 @@ vi.mock("../../../../../src/shared/validate", () => ({ assertValidUrl }));
 
 const setDeployToken = vi.fn();
 const setCmTokens = vi.fn();
-vi.mock("../../../../../src/shared/keychain", () => ({ setDeployToken, setCmTokens }));
+const setDeployTokenMeta = vi.fn().mockResolvedValue(true);
+vi.mock("../../../../../src/shared/keychain", () => ({
+  setDeployToken,
+  setCmTokens,
+  setDeployTokenMeta,
+}));
 
 const assertInteractive = vi.fn();
 const promptConfirm = vi.fn();
@@ -125,8 +130,11 @@ describe("runDeployToken", () => {
       config: { envProfiles: { demo: {}, other: { clientId: "wrong" } } },
     } as RootConfigurationFile);
     readRootConfiguration.mockReturnValue({
-      environments: { demo: { clientId: "right", clientSecret: "secret" } },
+      environments: { demo: { clientId: "right" } },
     });
+    // The secret never lives on the env profile — it is supplied via
+    // `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` and resolved at the auth layer.
+    process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET = "secret";
     requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
 
     const { runDeployToken } =
@@ -140,6 +148,7 @@ describe("runDeployToken", () => {
       expect.stringContaining("xmcloud.cm:admin")
     );
     expect(promptSecret).not.toHaveBeenCalled();
+    delete process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET;
   });
 
   it("persists the client id for client credentials", async () => {
@@ -147,8 +156,10 @@ describe("runDeployToken", () => {
       config: { envProfiles: { demo: {} } },
     } as RootConfigurationFile);
     readRootConfiguration.mockReturnValue({
-      environments: { demo: { clientId: "client-123", clientSecret: "secret" } },
+      environments: { demo: { clientId: "client-123" } },
     });
+    // Secret supplied via the env var, not the config profile.
+    process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET = "secret";
     requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
 
     const { runDeployToken } =
@@ -163,6 +174,7 @@ describe("runDeployToken", () => {
         },
       })
     );
+    delete process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET;
   });
 
   it("runs device login when requested and logs user instructions", async () => {

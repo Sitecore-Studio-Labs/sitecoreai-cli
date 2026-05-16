@@ -14,6 +14,11 @@ export const runLogout = async (options: LogoutOptions): Promise<void> => {
   if (options.all) {
     for (const name of names) {
       const env = envProfiles[name];
+      // Token-cache metadata is cleared: `deployToken` itself plus the
+      // `deployToken*` freshness fields. `clientId` and the
+      // `automationClient` block are left in place — they are non-secret
+      // identifiers, not tokens. A stale `clientSecret` from a legacy
+      // config is scrubbed via the cast below.
       envProfiles[name] = {
         ...env,
         accessToken: undefined,
@@ -24,10 +29,7 @@ export const runLogout = async (options: LogoutOptions): Promise<void> => {
         deployToken: undefined,
         deployTokenExpiresIn: undefined,
         deployTokenLastUpdated: undefined,
-        // clientSecret is a token-minting credential — clearing it on
-        // logout matches the "no creds left on disk" mental model.
-        // clientId is left in place (identifier, not secret).
-        clientSecret: undefined,
+        ...({ clientSecret: undefined } as Record<string, undefined>),
       };
       await clearCmTokens(name);
       await clearDeployToken(name);
@@ -59,6 +61,7 @@ export const runLogout = async (options: LogoutOptions): Promise<void> => {
     deployToken: undefined,
     deployTokenExpiresIn: undefined,
     deployTokenLastUpdated: undefined,
+    ...({ clientSecret: undefined } as Record<string, undefined>),
   };
   await clearCmTokens(envName);
   await clearDeployToken(envName);

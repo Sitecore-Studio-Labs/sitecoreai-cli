@@ -1,0 +1,2155 @@
+openapi: 3.1.0
+info:
+  title: Brand Management API
+  version: v1.0
+  description: >
+    Use the Brand Management REST API to create a [brand
+    kit](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-kits.html),
+    retrieve all brand kits or a specific one including sections and
+    subsections, and create or update the content of individual subsections.
+
+     This REST API lets you interect with:
+
+     - The brand kit object. A [brand kit](https://doc.sitecore.com/stream/en/users/sitecore-stream/brand-kits.html) is a structured resource that enables organizations to manage their brand across various channels, teams, and content types. It defines the brand's identity through guidelines, tone, messaging rules, and other defining traits.
+
+     After creating a brand kit using the Brand Management REST API, you can use the [Documents REST API](https://api-docs.sitecore.com/ai-skills/ai-document-management-rest-api) to upload brand documents and the [Pipeline REST API](https://api-docs.sitecore.com/ai-skills/ai-pipeline-rest-api) to initiate the brand ingestion process. 
+
+    Note the following:
+
+     - To use this REST API, you must authenticate your API requests.
+
+     - All API requests are made in your production environment.
+
+    For more information, see the [official Sitecore
+    documentation](https://doc.sitecore.com/).
+
+
+    # Authorization
+
+    The Brand Management REST API uses the OAuth 2.0 standard with [JSON web
+    tokens](https://doc.sitecore.com/stream/en/users/sitecore-stream/generate-a-json-web-token--jwt-.html)
+    to authorize REST API requests.
+
+    ### Create Client ID and Client Secret
+      1. In the Sitecore Cloud Portal, open Stream.
+      2. Click **Admin** > **AI APIs keys** > **Create credential**.
+      3. In the **​Create New Client​​** dialog, enter a name and description for the client. Then click **Create**. The ​Client ID and Client Secret​​ display.
+      4. Copy the Client ID and Client Secret because you won't be able to view them again in Stream. You'll use them to request an access token.
+
+    ### Request an access token
+
+    Run the following cURL command to request an access token. Replace the
+    placeholder values with your Client ID and Client Secret.
+
+    ```curl
+      curl -X POST 'https://auth.sitecorecloud.io/oauth/token' \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'client_id={YOUR_API_KEY}' \
+      --data-urlencode 'client_secret={YOUR_API_SECRET}' \
+      --data-urlencode 'grant_type=client_credentials' \
+      --data-urlencode 'audience=https://api.sitecorecloud.io'
+    ```
+
+    In the response, the `access_token` key contains the access token:
+
+    ```json
+      {
+        "access_token": "{YOUR_ACCESS_TOKEN}",
+        "scope": "ai.org.brd:w ai.org.brd:r ai.org.docs:w ai.org.docs:r ai.org:admin",
+        "expires_in": 86400,
+        "token_type": "Bearer"
+      }
+    ```
+
+    Access tokens expire in 24 hours. If your requests unexpectedly return a
+    response with status `401 Unauthorized`, request a new access token by
+    repeating this `POST` request.
+
+
+    We recommend that you cache the access token for 24 hours to avoid repeating
+    this `POST` request while the access token is still valid.
+
+    ### Include the access token in the request header
+
+    You can now start making REST API requests. You must include the access
+    token in the request header of every request. For example:
+
+      ```curl
+      curl -X GET '{YOUR_BASE_URL}/v2/...' \
+      -H 'Authorization: Bearer {YOUR_ACCESS_TOKEN}' \
+      -H 'Accept: application/json'
+      ```
+  contact:
+    name: Sitecore Corporation A/S
+  license:
+    name: Closed source
+    identifier: Closed source
+  x-metadata:
+    product: AI skills
+servers:
+  - url: https://edge-platform.sitecorecloud.io/stream/ai-brands-api
+    description: Production server
+  - url: https://edge-platform.sitecorecloud.io/ai/ai-brands-api
+    description: Production server
+paths:
+  /api/brands/v1/organizations/{organizationId}/brandkits:
+    post:
+      tags:
+        - Brand kit
+      summary: Create a brand kit
+      description: >-
+        Creates a new brand kit for an organization. The created brand kit
+        includes predefined sections like *Brand Context*, *Global Goals*, *Tone
+        of Voice*, and more, which are empty by default.
+         
+         In the response, the `id` key contains the created brand kit's unique identifier.
+      operationId: create_brand_kit
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=`.
+          schema:
+            type: string
+            title: Organizationid
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=`.
+            example: org_ABCDef123456
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBrandKitModelRequest"
+      responses:
+        "201":
+          description: Brand kit created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBrandKitModelResponse"
+        "400":
+          description: Duplicate brand kit name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateHTTPError"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
+          description: Brand kit operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+    get:
+      tags:
+        - Brand kit
+      summary: List brand kits
+      description: >+
+        Retrieves a list of brand kits in an organization. The response includes
+        basic information about each brand kit, such as its name, description,
+        industry, and status. The response does not include the actual content
+        of the brand kit sections or subsections.
+
+      operationId: list_brand_kits
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Organizationid
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+            example: org_ABCDef123456
+        - name: pageNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+            title: Pagenumber
+            description: The page number of the brand kits list to retrieve.
+            example: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            default: 50
+            title: Pagesize
+            description: The number of brand kits to retrieve per page.
+            example: 50
+        - name: parentId
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Parentid
+            description: >-
+              The parent brand kit ID. Used when AI creates a new version of the
+              brand kit during brand ingestion to indicate the original brand
+              kit it's based on.
+            example: a1234bcd-efg5-678h-910i-abcdefghijklmn
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Status
+            description: >-
+              The current status of the brand kit, such as `draft`, `inprocess`,
+              `published`, or `failed`.
+            example: draft
+        - name: search
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Search
+            description: A search term to filter brand kits by name or description.
+            example: Powerful
+        - name: referenceType
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            description: The type of reference to filter brand kits by.
+            example: document
+        - name: referenceId
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: Referenceid
+            description: >-
+              The unique identifier of the brand kit reference to filter brand
+              kits by.
+            example: rdd1ea98d-92c1-41e3-8179-9417f255e673
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: boolean
+              - type: "null"
+            default: false
+            example: false
+            title: Includedeleted
+            description: Whether to include deleted brand kits in the response.
+        - name: brandkitIds
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: array
+                items:
+                  type: string
+              - type: "null"
+            maxItems: 10
+            default: []
+            title: Brandkitids
+            description: A list of brand kit IDs to filter the results by.
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SortByEnum"
+            default: createdOn
+            description: The field to sort the brand kits by.
+            example: createdOn
+        - name: sortType
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SortTypeEnum"
+            default: desc
+            description: The sort order to sort the brand kits by.
+            example: desc
+      responses:
+        "200":
+          description: Brand kits retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBrandKitsModelResponse"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+  /api/brands/v1/organizations/{organizationId}/brandkits/{brandkitId}:
+    get:
+      tags:
+        - Brand kit
+      summary: Retrieve a brand kit
+      description: >+
+        Retrieves a specific brand kit by its ID. The response includes basic
+        information about the brand kit, such as its name, description,
+        industry, and status. The response does not include the actual content
+        of the brand kit sections or subsections.
+
+         If you don't know the brand kit ID, you can use the [List brand kits](#operation/list_brand_kits) endpoint to retrieve the list of brand kits in your organization.
+
+      operationId: get_brand_kit
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: |-
+              The unique identifier of your organization.
+
+               To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+            example: org_ABCDef123456
+        - name: brandkitId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: |-
+              The unique identifier of your brand kit.
+
+               To get this value, use the [List brand kits](#operation/list_brand_kits) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit) endpoint.
+
+               Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  `brandkitId` comes after `brandkits/`.
+            example: a1234bcdefghijklmnopqrstu
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: boolean
+              - type: "null"
+            description: Whether to include deleted brand kits in the response.
+            default: false
+            example: false
+      responses:
+        "200":
+          description: Brand kit retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetBrandKitModelResponse"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+  /api/brands/v1/organizations/{organizationId}/brandkits/{brandkitId}/sections:
+    get:
+      tags:
+        - Brand kit
+      summary: List brand kit sections
+      description: >+
+        Retrieves a list of sections in a brand kit. Each section contains
+        information that define the brand's identity and guidelines, such as
+        *Brand Context*, *Global Goals*, and *Tone of Voice*.
+
+         To return actual content in the sections, the [Documents REST API](https://api-docs.sitecore.com/ai-skills/ai-document-management-rest-api) and [Pipeline REST API](https://api-docs.sitecore.com/ai-skills/ai-pipeline-rest-api) must have already been used to upload and process brand documents for the brand kit.
+
+      operationId: list_brand_kit_sections
+      parameters:
+        - name: organizationId
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Organizationid
+            example: org_ABCDef123456
+        - name: brandkitId
+          description: |-
+            The unique identifier of your brand kit.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  `brandkitId` comes after `brandkits/`.
+          in: path
+          required: true
+          schema:
+            type: string
+            example: a1234bcdefghijklmnopqrstu
+        - name: sectionIds
+          description: >-
+            An array of section IDs to filter the results. If not provided, all
+            sections in the brand kit are returned.
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: array
+                items:
+                  type: string
+              - type: "null"
+            title: Sectionids
+            example:
+              - sectionId1
+              - sectionId2
+        - name: includeDeleted
+          description: Whether to include deleted sections in the response.
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: boolean
+              - type: "null"
+            default: false
+            example: false
+            title: Includedeleted
+      responses:
+        "200":
+          description: Brand kit sections retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListBrandKitSectionsModelResponse"
+                title: Response List Brand Kit Sections
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+        "500":
+          description: Brand kit operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+  /api/brands/v2/organizations/{organizationId}/brandkits/{brandkitId}/sections/{sectionId}/fields:
+    post:
+      tags:
+        - Brand kit
+      summary: Create a brand kit subsection
+      description: >-
+        Creates a custom brand kit subsection (field). Each brand kit section
+        contains predefined subsections. If a relevant guideline isn’t included
+        by default, you can create a custom subsection to define it. For
+        example, the *Brand Context* section has default subsections to define
+        the brand's purpose, history, and more. To add a new subsection for
+        *Brand Values*, you can use this endpoint to create it.
+
+         You can also use this endpoint to manage the terms in the **Glossary and Localization** section as follows: 
+
+         To add new terms, add a value array. In the following example, *product* will be translated into French and Spanish. {% code-snippet file="../../ai-skills/code-examples/translate-a-term.json" language="json" /%}
+
+        **NOTE**: To delete a term, use the [**PATCH**
+        endpoint](#operation/update_brand_kit_section_field).
+
+
+        To mark a term as not to be translated, use an empty value [ ]. In the
+        following example, *CompanyName* will not be translated. {% code-snippet
+        file="../../ai-skills/code-examples/do-not-translate.json"
+        language="json" /%}
+
+         **NOTE**: These examples apply only to the **Glossary and Localization** section.
+      operationId: create_brand_kit_section_field
+      parameters:
+        - name: organizationId
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Organizationid
+            example: org_ABCDef123456
+        - name: brandkitId
+          description: |-
+            The unique identifier of your brand kit.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  `brandkitId` comes after `brandkits/`.
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Brandkitid
+            example: a1234bcdefghijklmnopqrstu
+        - name: sectionId
+          description: |-
+            The unique identifier of your brand kit section.
+
+             To get this value, use the [List brand kit sections](#operation/list_brand_kit_sections) endpoint. The `id` in the response is the section ID.
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 37a49437-e1c8-4697-b1c2-914e2382ea75
+            title: Sectionid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBrandKitSectionFieldModelRequest_v2"
+      responses:
+        "201":
+          description: Brand kit subsection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: >-
+                  #/components/schemas/CreateBrandKitSectionFieldModelResponse_v2
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+    get:
+      tags:
+        - Brand kit
+      summary: List brand kit subsections
+      description: >-
+        Retrieves a list of subsections (fields) in a specific brand kit
+        section. Each subsection contains guidelines that define that section's
+        content. For example, the *Brand Context* section has subsections to
+        define the brand's purpose, history, and more. 
+
+         To return actual content in the subsections, the [Documents REST API](https://api-docs.sitecore.com/ai-skills/ai-document-management-rest-api) and [Pipeline REST API](https://api-docs.sitecore.com/ai-skills/ai-pipeline-rest-api) must have already been used to upload and process brand documents for the brand kit.
+      operationId: list_brand_kit_section_fields
+      parameters:
+        - name: organizationId
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Organizationid
+            example: org_ABCDef123456
+        - name: brandkitId
+          description: |-
+            The unique identifier of your brand kit.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  `brandkitId` comes after `brandkits/`.
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Brandkitid
+            example: a1234bcdefghijklmnopqrstu
+        - name: sectionId
+          description: |-
+            The unique identifier of your brand kit section.
+
+             To get this value, use the [List brand kit sections](#operation/list_brand_kit_sections) endpoint. The `id` in the response is the section ID.
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Sectionid
+            example: 37a49437-e1c8-4697-b1c2-914e2382ea75
+      responses:
+        "200":
+          description: Brand kit subsections retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: >-
+                    #/components/schemas/ListBrandKitSectionFieldsModelResponse_v2
+                title: Response List Brand Kit Section Fields
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      security:
+        - HTTPBearer: []
+  /api/brands/v2/organizations/{organizationId}/brandkits/{brandkitId}/sections/{sectionId}/fields/{fieldId}:
+    patch:
+      tags:
+        - Brand kit
+      summary: Partially update a brand kit subsection
+      description: |-
+        Partially updates a specific subsection (field) in a brand kit.
+
+         A brand kit includes default sections such as *Brand Context*, *Global Goals*, and *Tone of Voice*. Each section contains predefined subsections that reflect your brand guidelines.
+
+         Use this endpoint to update the properties of a subsection, such as intent, content, and AI editability. You can also use this endpoint to delete locale term values from the **Glossary and Localization** section.
+      operationId: update_brand_kit_section_field
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your organization.
+
+             To get this value, in the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL, the `organizationId` comes after `organization=` .
+          schema:
+            type: string
+            title: Organizationid
+            example: org_ABCDef123456
+        - name: brandkitId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your brand kit.
+
+             To get this value, use the [List brand kits](#operation/list_brand_kits) endpoint  to return the `id` of each brand kit in your organization. This is the same `id` returned when you create a brand kit using the [Create a brand kit](#operation/create_brand_kit) endpoint.
+
+             Alternatively, you can open your brand kit in Stream. In the [Sitecore Cloud Portal](https://portal.sitecorecloud.io/) URL,  `brandkitId` comes after `brandkits/`.
+          schema:
+            type: string
+            title: Brandkitid
+            example: a1234bcdefghijklmnopqrstu
+        - name: sectionId
+          in: path
+          required: true
+          description: |-
+            The unique identifier of your brand kit section.
+
+             To get this value, use the [List brand kit sections](#operation/list_brand_kit_sections) endpoint. The `id` in the response is the section ID.
+          schema:
+            type: string
+            example: 37a49437-e1c8-4697-b1c2-914e2382ea75
+        - name: fieldId
+          in: path
+          required: true
+          description: >-
+            The unique identifier of the brand kit subsection you want to
+            update. 
+
+             To get this value, use the [List brand kit subsections](#operation/list_brand_kit_section_fields) endpoint. The `id` in the response is the subsection ID.
+          schema:
+            type: string
+            title: Fieldid
+            example: b2f2e1a1-295d-4d40-88f2-93bf545bb878
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBrandKitSectionFieldModelRequest_v2"
+      responses:
+        "200":
+          description: Brand kit subsection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: >-
+                  #/components/schemas/UpdateBrandKitSectionFieldModelResponse_v2
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+        "409":
+          description: Brand Kit is locked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
+          description: Brand kit operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPError"
+      security:
+        - HTTPBearer: []
+components:
+  schemas:
+    BrandKitSectionFieldReferenceType:
+      type: string
+      enum:
+        - documentChunk
+        - webpage
+      title: BrandKitSectionFieldReferenceType
+      description: The type of reference associated with a brand kit subsection (field).
+      example: documentChunk
+    BrandKitSectionFieldType:
+      type: string
+      enum:
+        - text
+        - array
+        - richArray
+      title: BrandKitSectionFieldType
+      description: The type of brand kit subsection.
+      example: text
+    BrandKitStatus:
+      type: string
+      enum:
+        - draft
+        - inprocess
+        - published
+        - failed
+      title: BrandKitStatus
+      example: draft
+      description: The current status of the brand kit.
+    CreateBrandKitModelRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the brand kit.
+          example: Powerful EU brand kit
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Description
+          description: A brief description of the brand kit.
+          example: Brand kit for the Powerful energy bars EU market.
+        industry:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Industry
+          description: The industry this brand kit is associated with.
+          example: retail
+        brandName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Brandname
+          description: The name of the brand associated with this brand kit.
+          example: Powerful
+        companyName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Companyname
+          description: The name of the company if different from the brand name.
+          example: Powerful Europe Ltd.
+        logo:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Logo
+          description: The URL of the PNG image used as the brand kit logo.
+          example: https://example.com/logo.png
+      type: object
+      required:
+        - name
+      title: CreateBrandKitModelRequest
+    CreateBrandKitModelResponse:
+      properties:
+        organizationId:
+          type: string
+          title: Organizationid
+          description: The unique identifier of your organization.
+          example: org_ABCDef123456
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the brand kit.
+          example: a1234bcd-efg5-678h-910i-jklmnopqrstu
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Description
+          description: A brief description of the brand kit.
+          example: Brand kit for the Powerful energy bars EU market.
+        name:
+          type: string
+          title: Name
+          description: The name of the brand kit.
+          example: Powerful EU brand kit
+        brandName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Brandname
+          description: The name of the brand associated with this brand kit.
+          example: Powerful
+        companyName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Companyname
+          description: The name of the company if different from the brand name.
+          example: Powerful Europe Ltd.
+        logo:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Logo
+          description: The URL of the PNG image used as the brand kit logo.
+          example: https://example.com/logo.png
+        status:
+          anyOf:
+            - $ref: "#/components/schemas/BrandKitStatus"
+            - type: "null"
+          default: draft
+        parentId:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Parentid
+          description: >-
+            The parent brand kit ID. Used when AI creates a new version of the
+            brand kit during brand ingestion to indicate the original brand kit
+            it's based on.
+          example: a1234bcd-efg5-678h-910i-abcdefghijklmn
+        parentType:
+          anyOf:
+            - $ref: "#/components/schemas/ParentTypeEnum"
+            - type: "null"
+          default: ""
+          description: The type of parent this brand kit belongs to.
+          example: brandkit
+        industry:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Industry
+          description: The industry this brand kit is associated with.
+          example: retail
+        tags:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/TagList"
+              type: array
+            - type: "null"
+          title: Tags
+          description: >-
+            An array of tags associated with the brand kit to categorize its
+            documents.
+          example: []
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/CreateReferenceModelResponse"
+              type: array
+            - type: "null"
+          title: References
+          description: An array of references associated with the brand kit.
+          example: []
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the brand kit was created, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the brand kit.
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the brand kit was last updated, formatted in
+            ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the brand kit, formatted in ISO 8601.
+          example: mman
+      type: object
+      required:
+        - organizationId
+        - id
+        - name
+      title: CreateBrandKitModelResponse
+    CreateBrandKitSectionFieldModelRequest_v2:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the subsection to be created.
+          example: Localization and cultural sensitivity
+        type:
+          $ref: "#/components/schemas/BrandKitSectionFieldType"
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The position of the subsection within the brand kit section. For
+            example, in the *Global Goals* section, the `order` is `1` for the
+            *Digital mandatories* subsection.
+          example: 1
+        value:
+          anyOf:
+            - type: string
+            - additionalProperties: true
+              type: object
+            - items: {}
+              type: array
+            - type: "null"
+          title: Value
+          description: The value or content of the created subsection.
+          example: >-
+            Essential requirements for adapting digital content to diverse
+            linguistic, cultural, and regional contexts.
+        intent:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Intent
+          description: >-
+            The intent or prompt that instructs the AI in populating this
+            subsection and retrieving information from existing brand knowledge
+            based on uploaded brand documents.
+          example: The core reason for the brand existence.
+        references:
+          anyOf:
+            - items:
+                $ref: >-
+                  #/components/schemas/CreateBrandKitSectionFieldReferenceModelRequest
+              type: array
+            - type: "null"
+          title: References
+          description: An array of references associated with the brand kit subsection.
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          description: Whether the subsection can be deleted.
+          example: true
+          default: false
+        verified:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Verified
+          description: Whether the subsection's content has been verified by the user.
+          example: true
+        aiEditable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Aieditable
+          description: >-
+            Whether the subsection can be edited by AI. If set to `true`, the AI
+            will overwrite the subsection's content value when brand documents
+            are reprocessed.
+          example: true
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the subsection.
+          example: mman
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the subsection.
+      type: object
+      required:
+        - name
+        - type
+      title: CreateBrandKitSectionFieldModelRequest_v2
+    CreateBrandKitSectionFieldModelResponse_v2:
+      properties:
+        id:
+          type: string
+          description: " The unique identifier for the created brand kit subsection."
+          example: b2f2e1a1-295d-4d40-88f2-93bf545bb879
+        name:
+          type: string
+          title: Name
+          description: The name of the subsection.
+          example: Localization and cultural sensitivity
+        type:
+          $ref: "#/components/schemas/BrandKitSectionFieldType"
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The order the subsection appears in the brand kit section. For
+            example, if it is the first subsection,  `order` is `1`.
+          example: 1
+        value:
+          anyOf:
+            - type: string
+            - additionalProperties: true
+              type: object
+            - items: {}
+              type: array
+            - type: "null"
+          title: Value
+          description: The value or content of the created subsection.
+          example: >-
+            Essential requirements for adapting digital content to diverse
+            linguistic, cultural, and regional contexts.
+        intent:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Intent
+          description: >-
+            The intent or prompt that instructs the AI in populating this
+            subsection and retrieving information from existing brand knowledge
+            based on uploaded brand documents.
+          example: The core reason for the brand existence.
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/CreateReferenceModelResponse"
+              type: array
+            - type: "null"
+          title: References
+          description: >-
+            The brand documents the AI referenced to generate content for this
+            subsection.
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          default: false
+          description: Whether the subsection can be deleted.
+          example: true
+        verified:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Verified
+          description: Whether the subsection's content has been verified by the user.
+          example: true
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the subsection was created, formatted in ISO
+            8601.
+          format: date-time
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the subsection
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the subsection was updated, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the subsection.
+          example: mman
+        aiEditable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Aieditable
+          description: >-
+            Whether the subsection can be edited by AI. If set to `true`, the AI
+            will overwrite the subsection's content value when brand documents
+            are reprocessed.
+          example: true
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the subsection.
+      type: object
+      required:
+        - id
+        - name
+        - type
+      title: CreateBrandKitSectionFieldModelResponse_v2
+    CreateBrandKitSectionFieldReferenceModelRequest:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: >-
+            The unique identifier of the document used in the brand kit
+            subsection.
+          example: 2ad5c154-6404-49ed-9ffc-0603c360a5af
+        path:
+          type: string
+          description: The location of the reference used in the brand kit subsection.
+          pattern: >-
+            ^\/?(?:[A-Za-z0-9\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})*(?:\/(?:[A-Za-z0-9\-._~!$&'()*+,;=:@|]|%[0-9A-Fa-f]{2})*)*$
+          title: Path
+          example: /path
+        type:
+          $ref: "#/components/schemas/BrandKitSectionFieldReferenceType"
+      type: object
+      required:
+        - id
+        - path
+        - type
+      title: CreateBrandKitSectionFieldReferenceModelRequest
+    CreateReferenceModelResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the document used in the brand kit.
+          example: 2ad5c154-6404-49ed-9ffc-0603c360a5af
+        path:
+          type: string
+          title: Path
+          description: The location of the reference used in the brand kit.
+          example: /path
+        type:
+          type: string
+          title: Type
+          description: The type of reference used in the brand kit.
+          example: document
+      type: object
+      required:
+        - id
+        - path
+        - type
+      title: CreateReferenceModelResponse
+    DataList:
+      properties:
+        organizationId:
+          type: string
+          title: Organizationid
+          description: "The unique identifier of your organization. "
+          example: org_ABCDef123456
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the brand kit.
+          example: a1234bcd-efg5-678h-910i-jklmnopqrstu
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: A brief description of the brand kit.
+          example: Brand kit for the Powerful energy bars EU market.
+        name:
+          type: string
+          description: The name of the brand kit.
+          example: Powerful EU brand kit
+        brandName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Brandname
+          description: The name of the brand associated with this brand kit.
+          example: Powerful
+        companyName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Companyname
+          description: The name of the company if different from the brand name.
+          example: Powerful Europe Ltd.
+        logo:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Logo
+          description: The URL of the PNG image used as the brand kit logo.
+          example: https://example.com/logo.png
+        status:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Status
+          description: The current status of the brand kit.
+          example: Draft
+        parentId:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Parentid
+          description: >-
+            The parent brand kit ID. Used when AI creates a new version of the
+            brand kit during brand ingestion to indicate the original brand kit
+            it's based on.
+          example: a1234bcd-efg5-678h-910i-abcdefghijklmn
+        parentType:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Parenttype
+          description: The type of parent this brand kit belongs to.
+          example: brandkit
+        industry:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Industry
+          description: The industry this brand kit is associated with.
+          example: retail
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the brand kit was created, formatted in ISO
+            8601.
+          format: date-time
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the brand kit.
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the brand kit was last updated, formatted in
+            ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the brand kit, formatted in ISO 8601.
+          example: mman
+        tags:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/TagList"
+              type: array
+            - type: "null"
+          title: Tags
+          default: []
+          description: >-
+            An array of tags associated with the brand kit to categorize its
+            documents.
+          example: []
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/ListReferencesModelResponseData"
+              type: array
+            - type: "null"
+          title: References
+          default: []
+          description: An array of references associated with the brand kit.
+          example: []
+        deletedAt:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Deletedat
+          description: >-
+            The date and time when the brand kit was deleted, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+      type: object
+      required:
+        - organizationId
+        - id
+        - name
+      title: DataList
+    DuplicateError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+        loc:
+          items:
+            type: string
+          type: array
+          title: Loc
+          default:
+            - body
+            - name
+        msg:
+          type: string
+          title: Msg
+          default: Brand name already exists.
+        type:
+          type: string
+          title: Type
+          default: value_error.duplicate
+      additionalProperties: false
+      type: object
+      required:
+        - detail
+      title: DuplicateError
+    DuplicateHTTPError:
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/DuplicateError"
+          type: array
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+        - detail
+      title: DuplicateHTTPError
+    GetBrandKitModelResponse:
+      properties:
+        organizationId:
+          type: string
+          title: Organizationid
+          description: The unique identifier of your organization.
+          example: org_ABCDef123456
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the brand kit.
+          example: a1234bcd-efg5-678h-910i-jklmnopqrstu
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Description
+          description: A brief description of the brand kit.
+          example: Brand kit for the Powerful energy bars EU market.
+        name:
+          type: string
+          title: Name
+          description: The name of the brand kit.
+          example: Powerful EU brand kit
+        brandName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Brandname
+          description: The name of the brand associated with this brand kit.
+          example: Powerful
+        companyName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Companyname
+          description: The name of the company if different from the brand name.
+        logo:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Logo
+          description: The URL of the PNG image used as the brand kit logo.
+          example: https://example.com/logo.png
+        status:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Status
+          description: The current status of the brand kit.
+          example: Draft
+        parentId:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Parentid
+          description: >-
+            The parent brand kit ID. Used when AI creates a new version of the
+            brand kit during brand ingestion to indicate the original brand kit
+            it's based on.
+          example: a1234bcd-efg5-678h-910i-abcdefghijklmn
+        parentType:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Parenttype
+          description: The type of parent this brand kit belongs to.
+          example: brandkit
+        industry:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Industry
+          description: The industry this brand kit is associated with.
+          example: retail
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the brand kit was created, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the brand kit.
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the brand kit was last updated, formatted in
+            ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the brand kit, formatted in ISO 8601.
+          example: mman
+        tags:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/TagList"
+              type: array
+            - type: "null"
+          title: Tags
+          description: >-
+            An array of tags associated with the brand kit to categorize its
+            documents.
+          example: []
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/GetReferenceModelResponse"
+              type: array
+            - type: "null"
+          title: References
+          description: An array of references associated with the brand kit.
+          example: []
+        deletedAt:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Deletedat
+          description: >-
+            The date and time when the brand kit was deleted, if applicable,
+            formatted in ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        locked:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Locked
+          description: >-
+            Whether the brand kit is locked. A locked brand kit cannot be
+            modified or deleted.
+          example: false
+          default: false
+      type: object
+      required:
+        - organizationId
+        - id
+        - name
+        - tags
+        - references
+      title: GetBrandKitModelResponse
+    GetReferenceModelResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the reference document.
+          example: 2ad5c154-6404-49ed-9ffc-0603c360a5af
+        path:
+          type: string
+          title: Path
+          description: The location of the reference.
+          example: /path
+        type:
+          type: string
+          title: Type
+          example: document
+          description: The type of reference used.
+      type: object
+      required:
+        - id
+        - path
+        - type
+    HTTPError:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      additionalProperties: false
+      type: object
+      required:
+        - detail
+      title: HTTPError
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ListBrandKitSectionFieldsModelResponse_v2:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the brand kit subsection.
+          example: b2f2e1a1-295d-4d40-88f2-93bf545bb878
+        name:
+          type: string
+          title: Name
+          description: The name of the subsection in the brand kit.
+          example: Brand purpose
+        type:
+          $ref: "#/components/schemas/BrandKitSectionFieldType"
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The position of the subsection within the brand kit section. For
+            example, in the *Global Goals* section, the `order` is `1` for the
+            *Digital mandatories* subsection.
+          example: 1
+        value:
+          anyOf:
+            - type: string
+            - additionalProperties: true
+              type: object
+            - items: {}
+              type: array
+            - type: "null"
+          title: Value
+          description: >-
+            The content of the subsection in the brand kit section. This can be
+            a string, an array, or a rich text object.
+          example: >-
+            The core reason for the brand existence is to fuel the potential of
+            active individuals with clean, nutrient-dense energy solutions.
+        intent:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Intent
+          description: >-
+            The intent or prompt that instructs the AI in populating this
+            subsection and retrieving information from existing brand knowledge
+            based on uploaded brand documents.
+          example: The core reason for the brand existence.
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/ListReferencesModelResponseData"
+              type: array
+            - type: "null"
+          title: References
+          description: >-
+            An array of references used in this subsection. Each reference
+            points to a brand document that provides context or content for the
+            subsection.
+          example: []
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          description: Whether the subsection can be deleted.
+          example: true
+        verified:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Verified
+          description: Whether the subsection's content has been verified by the user.
+          example: true
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the subsection was created, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the subsection.
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the subsection was last updated, formatted in
+            ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the subsection.
+          example: mman
+        aiEditable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Aieditable
+          description: >-
+            Whether the subsection can be edited by AI. If set to `true`, the AI
+            will overwrite the subsection's content when brand documents are
+            reprocessed.
+          example: true
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the subsection.
+      type: object
+      required:
+        - id
+        - name
+        - type
+      title: ListBrandKitSectionFieldsModelResponse_v2
+    ListBrandKitSectionsModelResponse:
+      properties:
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          description: Whether the section can be deleted.
+          example: true
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the brand kit section.
+          example: 37a49437-e1c8-4697-b1c2-914e2382ea75
+        name:
+          type: string
+          title: Name
+          description: The name of the brand kit section.
+          example: Brand Context
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The position of the section within the brand kit. For example, if
+            *Global Goals* is the first section, its `order` is `1`. If *Brand
+            Context* is second, `order` is `2`, and so on.
+          example: 2
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the section was created, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the section.
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the section was last updated, formatted in
+            ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the section.
+          example: mman
+        deletedAt:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Deletedat
+          description: >-
+            The date and time when the section was deleted, if applicable,
+            formatted in ISO 8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the section.
+      type: object
+      required:
+        - id
+        - name
+      title: ListBrandKitSectionsModelResponse
+    ListBrandKitsModelResponse:
+      properties:
+        totalCount:
+          type: integer
+          title: Totalcount
+          description: The total number of brand kits available in the organization.
+          example: 10
+        pageSize:
+          type: integer
+          title: Pagesize
+          description: The number of brand kits returned per page.
+          example: 5
+        pageNumber:
+          type: integer
+          title: Pagenumber
+          description: The current page number of the brand kits list.
+          example: 1
+        data:
+          description: An array of brand kits available in the organization.
+          items:
+            $ref: "#/components/schemas/DataList"
+          type: array
+          title: Data
+      type: object
+      required:
+        - totalCount
+        - pageSize
+        - pageNumber
+        - data
+      title: ListBrandKitsModelResponse
+    ListReferencesModelResponseData:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the reference document.
+          example: 2ad5c154-6404-49ed-9ffc-0603c360a5af
+        path:
+          type: string
+          title: Path
+          description: The location of the reference.
+          example: /path
+        type:
+          type: string
+          title: Type
+          example: document
+          description: The type of reference used.
+      type: object
+      required:
+        - id
+        - path
+        - type
+    ParentTypeEnum:
+      type: string
+      enum:
+        - brandkit
+        - ""
+      title: ParentTypeEnum
+      description: >-
+        The type of the parent entity that the tags are associated with. This
+        can be used to categorize tags based on the specific entity they are
+        linked to, such as a brand kit, section, or subsection.
+    SortByEnum:
+      type: string
+      enum:
+        - createdOn
+        - updatedOn
+      title: SortByEnum
+      description: >-
+        The field by which to sort the brand kits. This can be based on the
+        creation date (`createdOn`) or the last updated date (`updatedOn`).
+      example: createdOn
+    SortTypeEnum:
+      type: string
+      enum:
+        - asc
+        - desc
+      title: SortTypeEnum
+      description: >-
+        The order in which to sort the brand kits. This can be either ascending
+        (`asc`) or descending (`desc`).
+      example: asc
+    TagList:
+      properties:
+        category:
+          type: string
+          description: The main grouping or classification applied to the brand kit.
+          example: audience
+        values:
+          items:
+            type: string
+            description: The individual tags used to organize the brand kit.
+            example: EU
+          type: array
+      type: object
+      required:
+        - category
+        - values
+      title: TagList
+    UpdateBrandKitSectionFieldModelRequest_v2:
+      properties:
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          default: false
+          description: Whether the subsection can be deleted.
+          example: false
+        name:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Name
+          description: The name of the subsection to be updated.
+          example: Brand purpose
+        verified:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Verified
+          description: Whether the subsection's content has been verified by the user.
+          example: true
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The position of the subsection within the brand kit section. For
+            example, in the *Global Goals* section, the `order` is `1` for the
+            *Digital mandatories* subsection.
+          example: 1
+        value:
+          anyOf:
+            - type: string
+            - additionalProperties: true
+              type: object
+            - items: {}
+              type: array
+            - type: "null"
+          title: Value
+          description: The new content of the subsection in the brand kit section.
+          example: >-
+            The core purpose is to fuel the potential of active individuals with
+            clean, nutrient-dense energy solutions.
+        intent:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Intent
+          description: >-
+            The intent or prompt that instructs the AI in populating this
+            subsection and retrieving information from existing brand knowledge
+            based on uploaded brand documents.
+          example: The core reason for the brand existence.
+        sources:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+          title: Sources
+          description: >-
+            The brand documents the AI referenced to generate content for this
+            subsection.
+        aiEditable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Aieditable
+          description: >-
+            Whether the subsection can be edited by AI. If set to `true`, the AI
+            will overwrite the subsection's content value when brand documents
+            are reprocessed.
+          example: true
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the subsection.
+          example: mman
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the subsection.
+      type: object
+      title: UpdateBrandKitSectionFieldModelRequest_v2
+    UpdateBrandKitSectionFieldModelResponse_v2:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: The unique identifier of the updated brand kit subsection.
+          example: b2f2e1a1-295d-4d40-88f2-93bf545bb878
+        name:
+          type: string
+          title: Name
+          description: The name of the subsection.
+          example: Brand purpose
+        type:
+          $ref: "#/components/schemas/BrandKitSectionFieldType"
+        order:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Order
+          description: >-
+            The order the subsection appears in the brand kit section. For
+            example, if it is the first subsection,  `order` is `1`.
+          example: 1
+        value:
+          anyOf:
+            - type: string
+            - additionalProperties: true
+              type: object
+            - items: {}
+              type: array
+            - type: "null"
+          title: Value
+          description: The new value or content of the updated subsection.
+          example: Example brand guideline update.
+        intent:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Intent
+          description: >-
+            The intent or prompt that instructs the AI in populating this
+            subsection and retrieving information from existing brand knowledge
+            based on uploaded brand documents.
+          example: The core reason for the brand existence.
+        deletable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Deletable
+          default: false
+          description: Whether the subsection can be deleted.
+          example: false
+        verified:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Verified
+          description: Whether the subsection's content has been verified by the user.
+          example: true
+        createdOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Createdon
+          description: >-
+            The date and time when the subsection was created, formatted in ISO
+            8601.
+          example: "2025-06-18T12:46:12.718310Z"
+        createdBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Createdby
+          description: The user who created the subsection
+          example: mman
+        updatedOn:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          title: Updatedon
+          description: >-
+            The date and time when the subsection was updated, formatted in ISO
+            8601.
+          example: "2025-06-06T09:33:13.486417Z"
+        updatedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Updatedby
+          description: The user who last updated the subsection.
+          example: mman
+        aiEditable:
+          anyOf:
+            - type: boolean
+            - type: "null"
+          title: Aieditable
+          description: >-
+            Whether the subsection can be edited by AI. If set to `true`, the AI
+            will overwrite the subsection's content value when brand documents
+            are reprocessed.
+          example: true
+        references:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/GetReferenceModelResponse"
+              type: array
+            - type: "null"
+          title: References
+          description: >-
+            The brand documents the AI referenced to generate content for this
+            subsection.
+        properties:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: "null"
+          title: Properties
+          description: Additional properties for the subsection.
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - references
+      title: UpdateBrandKitSectionFieldModelResponse_v2
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: Brand kit
+    description: >-
+      The Brand kit API lets you create and retrieve brand kits within your
+      organization. You can also retrieve or update sections—such as *Brand
+      Context*, *Global Goals*, *Tone of Voice*, and *Glossary and
+      Localization*—and retrieve or create subsections within those sections.
+security:
+  - HTTPBearer: []

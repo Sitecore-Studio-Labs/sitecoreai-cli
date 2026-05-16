@@ -1,0 +1,832 @@
+openapi: 3.1.0
+info:
+  title: Brand Review API
+  version: v1
+  description: >
+    Use the Brand Review REST API to evaluate input content and assets against
+    brand guidelines using AI-powered analysis.
+
+
+    The API analyzes content provided in the request, such as text, images, and
+    files, by comparing it against brand kit sections for a specific tenant and
+    organization. The analysis can evaluate content against all brand kit
+    sections or selected sections, such as *Brand Context*, *Global Goals*, and
+    *Tone of Voice*. SitecoreAI generates compliance scores, explanations, and
+    improvement suggestions based on this analysis.
+
+
+    Use this REST API to:
+
+    - Provide content in the request body for brand evaluation against brand kit
+    guidelines.
+
+    - Assess how the input content aligns with specific brand kit sections and
+    subsections (fields), including *Brand Context*, *Do’s and Don’ts*, *Tone of
+    Voice*, *Grammar Checklists*, and *Visual Guidelines*.
+
+    - Receive a brand compliance score for the input content on a scale from 1
+    to 5, where 5 indicates the highest level of alignment with the brand
+    guidelines.
+
+    - Evaluate multiple input formats, including text, images, PDFs, metadata,
+    Markdown, and JSON.
+
+
+    After a review is generated, teams can use the results to enforce brand
+    consistency at scale, validate content in real time using AI-suggested
+    improvements, and reduce compliance risk by identifying brand, legal, and
+    accessibility issues. Compliance scores and explanations help pinpoint
+    problem areas at the section or field level and reveal recurring trends
+    across content.
+
+
+    Note the following:
+
+    - Requests typically complete within 5 seconds. Batching is not supported.
+
+    - Multiple input formats are supported, including content from SitecoreAI or
+    XP pages.
+
+    - To use this REST API, you must authenticate all API requests.
+
+    - All API requests are made in your production environment.
+
+
+    For more information, see the [official Sitecore
+    documentation](https://doc.sitecore.com/).
+
+
+    # Authorization
+
+    The Brand Review REST API uses the OAuth 2.0 standard with [JSON web
+    tokens](https://doc.sitecore.com/stream/en/users/sitecore-stream/generate-a-json-web-token--jwt-.html)
+    to authorize REST API requests.
+
+    ### Create Client ID and Client Secret
+      1. In the Sitecore Cloud Portal, open Stream.
+      2. Click **Admin** > **AI APIs keys** > **Create credential**.
+      3. In the **​Create New Client​​** dialog, enter a name and description for the client. Then click **Create**. The ​Client ID and Client Secret​​ display.
+      4. Copy the Client ID and Client Secret because you won't be able to view them again in Stream. You'll use them to request an access token.
+
+    ### Request an access token
+
+    Run the following cURL command to request an access token. Replace the
+    placeholder values with your Client ID and Client Secret.
+
+    ```curl
+      curl -X POST 'https://auth.sitecorecloud.io/oauth/token' \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'client_id={YOUR_API_KEY}' \
+      --data-urlencode 'client_secret={YOUR_API_SECRET}' \
+      --data-urlencode 'grant_type=client_credentials' \
+      --data-urlencode 'audience=https://api.sitecorecloud.io'
+    ```
+
+    In the response, the `access_token` key contains the access token:
+
+    ```json
+      {
+        "access_token": "{YOUR_ACCESS_TOKEN}",
+        "scope": "ai.orgs.br:gen ai.org.brd:w ai.org.brd:r ai.org.docs:w ai.org.docs:r ai.org:admin",
+        "expires_in": 86400,
+        "token_type": "Bearer"
+      }
+    ```
+
+    Access tokens expire in 24 hours. If your requests unexpectedly return a
+    response with status `401 Unauthorized`, request a new access token by
+    repeating this `POST` request.
+
+
+    We recommend that you cache the access token for 24 hours to avoid repeating
+    this `POST` request while the access token is still valid.
+
+    ### Include the access token in the request header
+
+    You can now start making REST API requests. You must include the access
+    token in the request header of every request. For example:
+
+      ```curl
+      curl -X GET '{YOUR_BASE_URL}/v2/...' \
+      -H 'Authorization: Bearer {YOUR_ACCESS_TOKEN}' \
+      -H 'Accept: application/json'
+      ```
+  contact:
+    name: Sitecore Corporation A/S
+  license:
+    name: Closed source
+  x-metadata:
+    product: AI skills
+servers:
+  - url: https://edge-platform.sitecorecloud.io/stream/ai-skills-api
+    description: Production server
+tags:
+  - name: Brand review
+    description: >-
+      The Brand Review API lets you evaluate input content and assets against
+      the guidelines defined in a brand kit using AI-powered analysis. The API
+      analyzes the provided content against the rules in selected brand kit
+      sections and subsections (fields) and returns compliance results with 1 to
+      5 scores, explanations, and improvement suggestions at the section and
+      field level.
+paths:
+  /api/skills/v1/brandreview/generate:
+    post:
+      tags:
+        - Brand review
+      summary: Generate a brand review
+      description: >-
+        Generates a brand review using AI by evaluating the provided input
+        against the specified brand kit, including its sections and
+        subsections(fields). The review returns compliance scores, explanations,
+        and improvement suggestions.
+      operationId: generate_brand_review_api_skills_v1_brandreview_generate_post
+      parameters:
+        - name: x-sc-feature
+          description: The feature within a Sitecore product that initiates the request.
+          in: header
+          required: false
+          schema:
+            type: string
+            title: X-Sc-Feature
+            example: brand-review
+        - name: x-sc-interaction-type
+          description: >-
+            The type of AI interaction triggered by the feature. This value
+            categorizes AI operations for usage reporting and entitlement
+            tracking.
+          in: header
+          required: false
+          schema:
+            type: string
+            title: X-Sc-Interaction-Type
+            example: generate
+        - name: x-sc-sellable-product
+          description: >-
+            The Sitecore product that provides the feature used in the request.
+            This value is used to track entitlement consumption for the related
+            AI interaction.
+          in: header
+          required: false
+          schema:
+            type: string
+            title: X-Sc-Sellable-Product
+            example: stream
+        - name: x-sc-params
+          description: >-
+            A comma‑separated list of key-value pairs that reports usage to the
+            consumption and usage services.
+          in: header
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: X-Sc-Params
+            example: >-
+              feature=extraction-skills, interaction-type=extraction,
+              sellable-product-code=ai
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateBrandReviewModelRequest"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateBrandReviewModelResponse"
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+      x-sc-sdk:
+        generate: true
+        operationName: generateBrandReview
+      security:
+        - HTTPBearer: []
+components:
+  schemas:
+    AddedContextModel:
+      properties:
+        data:
+          type: string
+          title: Data
+        mimeType:
+          anyOf:
+            - $ref: "#/components/schemas/MimeType"
+            - type: "null"
+      type: object
+      required:
+        - data
+      title: AddedContextModel
+    AuthenticationType:
+      properties:
+        authType:
+          type: string
+          enum:
+            - bearer
+            - basic
+            - custom
+          title: Authtype
+          description: Authentication information required to access a protected file URL.
+          example: bearer
+        value:
+          type: string
+          title: Value
+          description: >-
+            The authentication value associated with the specified
+            authentication type.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+        customHeaderName:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Customheadername
+          description: >-
+            The name of the custom HTTP header used for authentication. Required
+            only when `authType` is set to *custom*.
+          example: X-Custom-Auth
+      type: object
+      required:
+        - authType
+        - value
+      title: AuthenticationType
+    ContentType:
+      type: string
+      enum:
+        - GenericImage
+        - ImageWithTextOverlay
+        - TextEmbeddingForImageSearch
+        - ShortText
+        - LongText
+        - RichDocument
+      title: ContentType
+      description: >-
+        Content type that determines the method for processing the data and
+        creating embedding(s)
+    DeepResearchRequest:
+      properties:
+        prompt:
+          type: string
+          title: Prompt
+          description: >-
+            TThe research question or topic to analyze. This drives what content
+            is embedded and explored.
+        brandkitId:
+          type: string
+          title: Brandkitid
+          description: >-
+            The unique identifier of the brand kit that defines the guidelines
+            to evaluate against.
+             To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
+        searchType:
+          $ref: "#/components/schemas/SearchType"
+          description: >-
+            The type of search to perform, influencing how the research prompt
+            is processed and matched against brand content.
+        additionalContext:
+          items:
+            $ref: "#/components/schemas/AddedContextModel"
+          type: array
+          title: Additionalcontext
+          description: >-
+            Supplementary context to guide the research, such as background
+            information, constraints, or reference material.
+      type: object
+      required:
+        - prompt
+        - brandkitId
+      title: DeepResearchRequest
+    DocumentMimeType:
+      type: string
+      enum:
+        - application/pdf
+        - text/plain
+      title: DocumentMimeType
+      description: Document MIME types supported for brand review.
+    ExtractableFile:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the file to be reviewed.
+          example: myarticle.pdf
+        type:
+          type: string
+          enum:
+            - document
+            - image
+          title: Type
+          description: The type of file to be reviewed.
+          example: document
+        url:
+          type: string
+          title: Url
+          description: >-
+            The URL from which the file can be downloaded, or a base64-encoded
+            representation of the file content.
+          example: https://example.com/myarticle.pdf
+        mimeType:
+          anyOf:
+            - $ref: "#/components/schemas/DocumentMimeType"
+            - $ref: "#/components/schemas/ImageMimeType"
+          title: Mimetype
+          description: The MIME type of the file content.
+          example: application/pdf
+        detail:
+          anyOf:
+            - type: string
+              enum:
+                - low
+                - auto
+                - high
+            - type: "null"
+          title: Detail
+          description: Specifies the level of detail to use when reviewing the content.
+          default: auto
+          example: high
+        auth:
+          anyOf:
+            - $ref: "#/components/schemas/AuthenticationType"
+            - type: "null"
+          description: >-
+            Authentication details for accessing the file URL. Not required when
+            the file content is provided as base64.
+      type: object
+      required:
+        - name
+        - type
+        - url
+        - mimeType
+      title: ExtractableFile
+      description: >-
+        Model representing a file (document or image) that can be downloaded and
+        processed for brand review analysis.
+    FieldReview:
+      properties:
+        fieldId:
+          type: string
+          title: Fieldid
+          description: >-
+            The unique identifier of the brand kit field (subsection) whose
+            guidelines were used as the basis for evaluating the input content.
+          example: 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+        score:
+          type: integer
+          maximum: 5
+          minimum: 1
+          title: Score
+          description: >-
+            A compliance score indicating how well the input content aligns with
+            the guidelines defined in this brand kit field, where 5 indicates
+            the highest level of alignment.
+          example: 4
+        reason:
+          type: string
+          title: Reason
+          description: >-
+            A detailed explanation of the score, describing how the input
+            content aligns with or deviates from the guidelines defined in this
+            brand kit field.
+          example: >-
+            The content effectively captures the brand's tone of voice and
+            messaging, but there are minor inconsistencies in terminology that
+            could be improved.
+        suggestion:
+          type: string
+          title: Suggestion
+          description: >-
+            Practical recommendations for improving the input content to better
+            align with the guidelines defined in this brand kit field.
+          example: >-
+            Consider using more consistent terminology that aligns with the
+            brand guidelines, and ensure that the tone remains professional
+            throughout.
+      type: object
+      title: FieldReview
+    GenerateBrandReviewModelRequest:
+      properties:
+        brandkitId:
+          type: string
+          format: uuid
+          title: Brandkitid
+          description: >-
+            The unique identifier of the brand kit that defines the guidelines
+            to evaluate against.
+             To get this value, use the [List brand kits](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kits_api_brands_v1_organizations__organizationid__brandkits_get) endpoint to return the `id` of each brand kit in your organization.
+          example: d2c2df7a-1137-43dd-bba3-73ec313526b1
+        input:
+          additionalProperties:
+            anyOf:
+              - type: string
+              - type: integer
+              - type: number
+              - type: boolean
+              - items: {}
+                type: array
+              - additionalProperties: true
+                type: object
+              - $ref: "#/components/schemas/ExtractableFile"
+              - items:
+                  $ref: "#/components/schemas/ExtractableFile"
+                type: array
+              - type: "null"
+          type: object
+          title: Input
+          description: >-
+            The content, asset, or file to evaluate in the brand review. This
+            object is a flexible map of input types, such as text, documents,
+            images, or other extractable files. Values can be provided as raw
+            content or as files from which content can be extracted.
+          example:
+            document:
+              name: sample.pdf
+              type: document
+              url: https://www.eolss.net/sample-chapters/C01/E6-15-01-03.pdf
+              mimeType: application/pdf
+        sections:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/Section"
+              type: array
+            - type: "null"
+          title: Sections
+          description: >-
+            A list of brand kit section and subsection(field) IDs that define
+            which brand rules are applied when evaluating the input content.
+
+             - If not provided, the input content is evaluated against all sections and subsections in the brand kit.
+             - If only a `sectionId` is provided, the input content is evaluated against all subsections (fields) within that section.
+
+             To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
+
+             To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
+          example:
+            - fields:
+                - 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+              sectionId: 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+      type: object
+      required:
+        - brandkitId
+        - input
+      title: GenerateBrandReviewModelRequest
+      examples:
+        - brandkitId: f6c0ae91-674a-479f-9c4f-05bdb401bb4b
+          input:
+            document:
+              auth:
+                authType: bearer
+                value: token123
+              detail: high
+              mimeType: application/pdf
+              name: example.pdf
+              type: document
+              url: https://example.com/document.pdf
+          sections:
+            - fields:
+                - 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+              sectionId: 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+        - brandkitId: bc25f498-a65e-445e-9f77-c2db9f3465af
+          input:
+            content: >-
+              Unleash your potential with Powerful! At Powerful, we believe in
+              fueling your active lifestyle with clean, nutrient-dense energy
+              solutions. Our premium, all-natural power bars and granolas are
+              crafted to nourish your body, support your performance, and
+              inspire healthier living. Whether you're a seasoned athlete or
+              just starting your fitness journey, our products are designed to
+              empower you to push your limits and pursue your passions. With
+              real, natural ingredients and a commitment to transparency,
+              Powerful is your trusted partner in wellness and adventure. Join
+              us in embracing a high-energy, active lifestyle and let Powerful
+              be your source of motivation and strength!
+          sections:
+            - fields:
+                - 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+              sectionId: 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+        - brandkitId: f6c0ae91-674a-479f-9c4f-05bdb401bb4b
+          input:
+            image:
+              detail: high
+              mimeType: image/png
+              name: logo.png
+              type: image
+              url: >-
+                data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+        - brandkitId: f6c0ae91-674a-479f-9c4f-05bdb401bb4b
+          input:
+            files:
+              - detail: auto
+                mimeType: application/pdf
+                name: document.pdf
+                type: document
+                url: JVBERi0xLjQKJcOkw7zDtsO8w6...
+    GenerateBrandReviewModelResponse:
+      properties:
+        reviews:
+          items:
+            $ref: "#/components/schemas/SectionReview"
+          type: array
+          title: Reviews
+          description: >-
+            A list of section-level evaluation results generated from the brand
+            review, including subsection (field)-level compliance details.
+      type: object
+      title: GenerateBrandReviewModelResponse
+    GenerateEmbeddingsModelRequest:
+      properties:
+        input:
+          items:
+            $ref: "#/components/schemas/InputItem"
+          type: array
+          maxItems: 3
+          title: Input
+          description: List of content items for vectorization
+        models:
+          anyOf:
+            - $ref: "#/components/schemas/LLMModel"
+            - type: "null"
+          description: >-
+            The global models field overrides the default Large Language Models
+            (LLMs) defined for creating embeddings for specific content types
+      type: object
+      required:
+        - input
+      title: GenerateEmbeddingsModelRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ImageMimeType:
+      type: string
+      enum:
+        - image/jpeg
+        - image/png
+        - image/webp
+      title: ImageMimeType
+      description: Image MIME types supported for brand review.
+      example: image/png
+    InputItem:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: The name of the content item to create embedding for
+          example: Sample Text
+        data:
+          type: string
+          title: Data
+          description: The content data - URL | base64 | raw text
+        contentType:
+          $ref: "#/components/schemas/ContentType"
+          description: >-
+            The type of the content to vectorize, which determines how the data
+            is processed.
+        mimeType:
+          anyOf:
+            - $ref: "#/components/schemas/DocumentMimeType"
+            - $ref: "#/components/schemas/ImageMimeType"
+          title: Mimetype
+          description: MIME type of the file
+          example: text/plain
+        models:
+          anyOf:
+            - $ref: "#/components/schemas/LLMModel"
+            - type: "null"
+          description: >-
+            The models field overrides the default models for the particular
+            content item
+          example:
+            text_embedding: custom-text-embedding-model-v1
+            image_embedding: custom-image-embedding-model-v1
+            dimensions: 512
+        embedImg:
+          type: boolean
+          title: Embedimg
+          description: >-
+            Whether to generate embeddings for all content types. If false,
+            image embeddings (and their mean‑pooled vector) are skipped
+          default: true
+          example: true
+        embedText:
+          type: boolean
+          title: Embedtext
+          description: >-
+            Whether to generate embeddings for all content types. If false, text
+            embeddings (and their mean‑pooled vector) are skipped
+          default: true
+          example: true
+        chunkSize:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Chunksize
+          description: >-
+            The size of the text chunks to create embeddings for. If not
+            provided, the default chunk size is used
+          default: 256
+          example: 256
+      type: object
+      required:
+        - name
+        - data
+        - contentType
+        - mimeType
+      title: InputItem
+    LLMModel:
+      properties:
+        verbalization:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Verbalization
+          description: >-
+            The verbalization model to use for generating explanations or text
+            outputs.
+          example: custom-verbalization-model-v1
+        text_embedding:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Text Embedding
+          description: >-
+            The text embedding model to use for generating vector embeddings
+            from text content.
+          example: custom-text-embedding-model-v1
+        image_embedding:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Image Embedding
+          description: >-
+            The image embedding model to use for generating vector embeddings
+            from image content.
+          example: custom-image-embedding-model-v1
+        dimensions:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Dimensions
+          description: >-
+            The dimensionality of the embedding vectors produced by the
+            specified models.
+          example: 512
+      type: object
+      title: LLMModel
+      description: Custom LLM models in the requests that override the default LLM models.
+      example:
+        verbalization: custom-verbalization-model-v1
+        text_embedding: custom-text-embedding-model-v1
+        image_embedding: custom-image-embedding-model-v1
+        dimensions: 512
+    MimeType:
+      type: string
+      enum:
+        - image/jpeg
+        - image/png
+        - application/pdf
+      title: MimeType
+      description: MIME types supported for brand review.
+      example: image/png
+    SearchType:
+      type: string
+      enum:
+        - web
+        - knowledge
+      title: SearchType
+      description: >-
+        The type of search to perform, influencing how the research prompt is
+        processed and matched against brand content. Web search focuses on
+        general web content, while knowledge search targets brand-related
+        information from your brand kit.
+      example: web
+    Section:
+      properties:
+        sectionId:
+          type: string
+          format: uuid
+          title: Sectionid
+          description: >-
+            The unique identifier of a brand kit section whose rules are used to
+            evaluate the input content.
+
+             To get the section IDs, use the [List brand kit sections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_sections_api_brands_v1_organizations__organizationid__brandkits__brandkitid__sections_get) endpoint.
+          example: 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+        fieldIds:
+          anyOf:
+            - items:
+                type: string
+                format: uuid
+              type: array
+            - type: "null"
+          title: Fieldids
+          description: >-
+            The unique identifiers of brand kit fields (subsections) whose rules
+            are used to evaluate the input content.
+
+             To get the field IDs, use the [List brand kit subsections](https://api-docs.sitecore.com/ai-skills/ai-brand-management-rest-api/brand-kit/list_brand_kit_section_fields_api_brands_v2_organizations__organizationid__brandkits__brandkitid__sections__sectionid__fields_get) endpoint.
+          example: 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+      type: object
+      required:
+        - sectionId
+      title: Section
+    SectionReview:
+      properties:
+        sectionId:
+          type: string
+          title: Sectionid
+          description: >-
+            The unique identifier of the brand kit section whose rules were
+            applied when evaluating the input content.
+          example: 0b3197be-f0b7-462a-a2e5-3388a132ee3f
+        score:
+          type: integer
+          maximum: 5
+          minimum: 1
+          title: Score
+          description: >-
+            The overall compliance score that reflects how well the input
+            content aligns with the rules defined in this brand kit section,
+            where 5 indicates the highest level of alignment.
+          example: 4
+        reason:
+          type: string
+          title: Reason
+          description: >-
+            A detailed explanation of the compliance score, describing how the
+            input content aligns with or deviates from the rules defined in this
+            section, including strengths and areas for improvement.
+          example: >-
+            The content demonstrates a strong adherence to brand guidelines,
+            effectively capturing the brand's tone of voice and messaging.
+            However, there are minor inconsistencies in terminology that could
+            be improved.
+        suggestion:
+          type: string
+          title: Suggestion
+          description: >-
+            A set of practical recommendations for improving how the input
+            content aligns with the brand guidelines defined in this section.
+          example: >-
+            Consider using more consistent terminology that aligns with the
+            brand guidelines, and ensure that the tone remains professional
+            throughout.
+        fields:
+          items:
+            $ref: "#/components/schemas/FieldReview"
+          type: array
+          title: Fields
+          description: >-
+            A list of subsection (field)-level evaluation results within the
+            section. Each entry describes how the input content aligns with the
+            rules defined in a specific field, including a score, explanation,
+            and suggestions.
+          example:
+            - fieldId: 8cf1b172-0277-4aa3-9bb4-252f09f148fd
+              score: 4
+              reason: >-
+                The content effectively captures the brand's tone of voice and
+                messaging, but there are minor inconsistencies in terminology
+                that could be improved.
+              suggestion: >-
+                Consider using more consistent terminology that aligns with the
+                brand guidelines, and ensure that the tone remains professional
+                throughout.
+      type: object
+      title: SectionReview
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

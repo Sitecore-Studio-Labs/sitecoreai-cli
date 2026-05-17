@@ -41,12 +41,12 @@ This file is informational — it does not gate releases. CI does.
 
 ## Reliability & networking
 
-| Gate                              | Enforced by                                                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| GraphQL timeout + status handling | `src/shared/graphql.ts` (shared transport) — unit + integration tests                                         |
-| Telemetry retries + schema        | `src/shared/telemetry.ts`                                                                                     |
-| Retry/backoff strategy            | Deploy API retries idempotent GETs; GraphQL POSTs not retried (intentional, to avoid silent duplicate writes) |
-| CliError contract                 | `src/shared/errors.ts` — every code maps to a stable exit code; covered in `tests/unit/shared/errors.test.ts` |
+| Gate                              | Enforced by                                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GraphQL timeout + status handling | `src/shared/graphql.ts` (shared transport) — unit + integration tests                                                                                   |
+| Telemetry retries + schema        | `src/shared/telemetry.ts`                                                                                                                               |
+| Retry/backoff strategy            | Deploy GETs + GraphQL read queries retry on throttle/5xx; GraphQL write mutations are never retried (`maxAttempts: 1`) to avoid silent duplicate writes |
+| CliError contract                 | `src/shared/errors.ts` — every code maps to a stable exit code; covered in `tests/unit/shared/errors.test.ts`                                           |
 
 ## Compatibility & runtime
 

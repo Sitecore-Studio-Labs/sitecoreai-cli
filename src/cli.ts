@@ -263,6 +263,11 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   if (args.includes("--trace") || args.includes("-t")) {
     process.env.SITECOREAI_TRACE_HTTP = "1";
   }
+  // Bridge `--verbose` to an env flag so layers without a Logger (e.g. the
+  // config loader) can surface diagnostics — see announceResolvedConfigPath.
+  if (args.includes("--verbose") || args.includes("-v")) {
+    process.env.SITECOREAI_VERBOSE = "1";
+  }
   // The Deploy transport (`deployRequest`) stays silent for SDK
   // consumers; this is the CLI opting in to a spinner + HTTP trace.
   installDeployTransportSpinner();

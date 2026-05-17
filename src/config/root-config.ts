@@ -14,10 +14,32 @@ import { applyEnvOverrides, stripAuthenticationTokensFromConfig } from "./env-ov
 import { formatValidationErrors, readJsonFile, validateRootConfig } from "./validation";
 import { resolveRootConfigurationPath } from "./paths";
 
+/**
+ * Surface the resolved config path under `--verbose` so an operator can spot
+ * a `sitecoreai.cli.json` picked up from an unexpected ancestor directory.
+ * The upward walk is already bounded at the nearest `.git`/`package.json`
+ * (see `resolveRootConfigurationPath`) — this is the observability half of
+ * that defense. Deduped per process: config is re-read by many tasks within
+ * a single command. Stays silent unless `--verbose` is passed (CLI sets the
+ * env flag); SDK consumers never see it.
+ */
+const announcedConfigPaths = new Set<string>();
+const announceResolvedConfigPath = (rootPath: string): void => {
+  if (process.env.SITECOREAI_VERBOSE !== "1" || process.env.SITECOREAI_QUIET === "1") {
+    return;
+  }
+  if (announcedConfigPaths.has(rootPath)) {
+    return;
+  }
+  announcedConfigPaths.add(rootPath);
+  process.stderr.write(`Resolved configuration: ${rootPath}\n`);
+};
+
 export const readRootConfigurationFile = (
   configPath: string
 ): { rootPath: string; rootDir: string; config: RootConfigurationFile } => {
   const rootPath = resolveRootConfigurationPath(configPath);
+  announceResolvedConfigPath(rootPath);
   const rootDir = path.dirname(rootPath);
   let rootJson: RootConfigurationFile;
   try {

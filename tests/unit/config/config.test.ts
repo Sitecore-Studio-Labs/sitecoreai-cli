@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -38,6 +38,51 @@ describe("resolveRootConfigurationPath", () => {
       const resolved = resolveRootConfigurationPath(customName);
       expect(resolved).toBe(path.resolve(customName));
     } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("resolved config path announcement", () => {
+  it("writes the resolved path to stderr under --verbose, deduped per path", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "scai-config-"));
+    await writeConfig(root, { ...baseConfig, envProfiles: {} });
+    const spy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const prev = process.env.SITECOREAI_VERBOSE;
+    process.env.SITECOREAI_VERBOSE = "1";
+
+    try {
+      readRootConfiguration(root);
+      readRootConfiguration(root);
+      const announcements = spy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => line.startsWith("Resolved configuration:"));
+      expect(announcements).toHaveLength(1);
+      expect(announcements[0]).toContain(path.join(root, "sitecoreai.cli.json"));
+    } finally {
+      spy.mockRestore();
+      if (prev === undefined) delete process.env.SITECOREAI_VERBOSE;
+      else process.env.SITECOREAI_VERBOSE = prev;
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("stays silent without --verbose", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "scai-config-"));
+    await writeConfig(root, { ...baseConfig, envProfiles: {} });
+    const spy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const prev = process.env.SITECOREAI_VERBOSE;
+    delete process.env.SITECOREAI_VERBOSE;
+
+    try {
+      readRootConfiguration(root);
+      const announced = spy.mock.calls
+        .map((call) => String(call[0]))
+        .some((line) => line.startsWith("Resolved configuration:"));
+      expect(announced).toBe(false);
+    } finally {
+      spy.mockRestore();
+      if (prev !== undefined) process.env.SITECOREAI_VERBOSE = prev;
       await fs.rm(root, { recursive: true, force: true });
     }
   });

@@ -3,7 +3,7 @@
  * management. `login` drives a headed-browser Playwright capture;
  * `logout` clears the keychain entry; `status` probes `/api/token-refresh`.
  */
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionCode } from "@/shared/region";
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import { loginAgents, logoutAgents } from "../session";

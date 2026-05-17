@@ -3,7 +3,7 @@ import type { EnvironmentConfiguration, RootConfiguration } from "../../../../sr
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runCleanupSlugConflicts } from "../../../../src/hygiene/tasks/cleanup/slug-conflicts";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(),
 }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
@@ -28,7 +28,7 @@ vi.mock("../../../../src/hygiene/tasks/audit/references", () => ({
   }),
 }));
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 // Build a sibling-pair under the same parent with the same name (case-insensitive).

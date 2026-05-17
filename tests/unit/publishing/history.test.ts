@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runPublishHistory } from "../../../src/publishing/tasks/history";
-import type { PublishAuditEntry } from "../../../src/publishing/audit";
+import type { PublishAuditEntry } from "../../../src/shared/publish-audit";
 
 const mkTempAuditFile = (entries: PublishAuditEntry[]): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scai-history-test-"));

@@ -6,7 +6,7 @@ const gateMocks = vi.hoisted(() => ({
   ensureMcpElevationAllowed: vi.fn(),
 }));
 
-vi.mock("../../../src/shared/allow-write", () => ({
+vi.mock("../../../src/policy/allow-write", () => ({
   ensureMcpElevationAllowed: gateMocks.ensureMcpElevationAllowed,
 }));
 // Partial-mock auth so the retargeting gate's `resolveEnvBinding` is

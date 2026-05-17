@@ -19,7 +19,7 @@
 
 import { createAuthoringClient } from "@/recipe/api/authoring-client";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { printDeployResultWithContext, toLogger } from "./shared";
 import type { DeploySiteBindOptions } from "./types";
 

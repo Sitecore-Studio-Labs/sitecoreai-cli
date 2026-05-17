@@ -5,12 +5,12 @@ import { runAuditFallbackDrift } from "../../../../src/hygiene/tasks/audit/fallb
 import { runAuditSlugConflicts } from "../../../../src/hygiene/tasks/audit/slug-conflicts";
 import { runAuditTranslationCoverage } from "../../../../src/hygiene/tasks/audit/translation-coverage";
 
-vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const env = { name: "sandbox", host: "h" } as EnvironmentConfiguration;

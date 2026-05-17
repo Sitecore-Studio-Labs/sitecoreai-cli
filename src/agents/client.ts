@@ -11,7 +11,7 @@
  *
  * Presentation-free: no logger, no stdout, no `process.exit`.
  */
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { acquireAgentsSession } from "./session";
 import type { AgentsSession } from "./session/types";
 

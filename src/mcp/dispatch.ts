@@ -32,7 +32,7 @@
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createScaiError } from "@/shared/errors";
-import { ensureMcpElevationAllowed } from "@/shared/allow-write";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { RwLock } from "@/shared/rwlock";
 import type { McpContext } from "./auth";
 import { resolveEnvBinding } from "./auth";

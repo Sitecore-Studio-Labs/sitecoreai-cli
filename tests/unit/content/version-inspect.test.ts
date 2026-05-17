@@ -4,11 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
-vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 
 import { runContentVersionInspect } from "../../../src/content/tasks/version-inspect";
-import { resolveEnvironment } from "../../../src/shared/env";
+import { resolveEnvironment } from "../../../src/policy/environment";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 
 const mockRun = runAuthoringGraphQL as unknown as ReturnType<typeof vi.fn>;

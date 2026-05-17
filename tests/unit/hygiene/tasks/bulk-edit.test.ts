@@ -6,7 +6,7 @@ import { runCleanupFieldSet } from "../../../../src/hygiene/tasks/cleanup/field-
 import { runCleanupRename } from "../../../../src/hygiene/tasks/cleanup/rename";
 import { runCleanupLanguageVersionAdd } from "../../../../src/hygiene/tasks/cleanup/language-version-add";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(),
 }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
@@ -14,7 +14,7 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const setup = (

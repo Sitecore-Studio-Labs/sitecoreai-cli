@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as recipe from "../../../src/recipe";
+import * as recipeUnstable from "../../../src/recipe/unstable";
 
 /**
  * Pin the public-API surface exposed at `<scai>/recipe`. If a symbol
@@ -12,27 +13,19 @@ import * as recipe from "../../../src/recipe";
  */
 describe("public recipe API surface", () => {
   const REQUIRED_EXPORTS = [
-    // Recipe author surface
+    // Recipe author surface (composition kinds live on ./recipe/unstable)
     "ComponentPlacementSchema",
     "ComponentTemplateRecipeSchema",
     "ContentFieldValueSchema",
-    "ContentItemRecipeSchema",
     "ContentTemplateRecipeSchema",
     "FieldDefinitionSchema",
     "LayoutSchema",
-    "PageDesignRecipeSchema",
     "DesignParameterSchema",
-    "PartialDesignRecipeSchema",
     "PlaceholderDefinitionSchema",
     "RecipeSchema",
     "RecipeDatasourceSchema",
     "RenderingDatasourceLocationSchema",
     "RenderingVariantDefinitionSchema",
-    "SiteGroupingSchema",
-    "SiteRecipeSchema",
-    "SiteTemplateDictionaryEntrySchema",
-    "SiteTemplateRecipeSchema",
-    "SiteTemplateTaxonomyEntrySchema",
     "SitecoreFieldAugmentSchema",
     // Field types / shapes
     "FIELD_SHAPES",
@@ -41,16 +34,11 @@ describe("public recipe API surface", () => {
     "SitecoreFieldTypeSchema",
     "defaultSitecoreFieldType",
     "sitecoreFieldTypeLabel",
-    // Compiler
+    // Compiler (composition-kind compilers live on ./recipe/unstable)
     "compileComponentTemplateRecipe",
-    "compileContentItemRecipe",
     "compileContentTemplateRecipe",
-    "compilePartialDesignRecipe",
-    "compilePageDesignRecipe",
     "compileRecipe",
     "compileRecipeSet",
-    "compileSiteRecipe",
-    "compileSiteTemplateRecipe",
     "TEMPLATES_MAPPING_AGGREGATE_HANDLE",
     // Layout primitives
     "emitLayoutXml",
@@ -152,5 +140,38 @@ describe("public recipe API surface", () => {
     expect(ir.schemaVersion).toBe("1");
     expect(ir.recipeHandle).toBe("smoke@1");
     expect(ir.operations.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The recipe composition kinds are deliberately NOT on the stable `./recipe`
+ * entry — they ship on `./recipe/unstable` without a 0.1.0 stability promise
+ * (see `.changeset/recipes-graduation.md`). This pins that split: the
+ * composition symbols must be reachable from `./recipe/unstable` and absent
+ * from `./recipe`.
+ */
+describe("unstable recipe composition surface", () => {
+  const COMPOSITION_EXPORTS = [
+    "ContentItemRecipeSchema",
+    "PageDesignRecipeSchema",
+    "PartialDesignRecipeSchema",
+    "SiteGroupingSchema",
+    "SiteRecipeSchema",
+    "SiteTemplateDictionaryEntrySchema",
+    "SiteTemplateRecipeSchema",
+    "SiteTemplateTaxonomyEntrySchema",
+    "compileContentItemRecipe",
+    "compilePageDesignRecipe",
+    "compilePartialDesignRecipe",
+    "compileSiteRecipe",
+    "compileSiteTemplateRecipe",
+  ] as const;
+
+  it.each(COMPOSITION_EXPORTS)("./recipe/unstable exports %s", (name) => {
+    expect((recipeUnstable as Record<string, unknown>)[name]).toBeDefined();
+  });
+
+  it.each(COMPOSITION_EXPORTS)("./recipe does NOT export %s", (name) => {
+    expect((recipe as Record<string, unknown>)[name]).toBeUndefined();
   });
 });

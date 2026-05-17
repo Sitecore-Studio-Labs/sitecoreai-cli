@@ -11,14 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 
-vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-vi.mock("../../../../src/shared/allow-write", () => ({ ensureAllowWrite: vi.fn() }));
+vi.mock("../../../../src/policy/allow-write", () => ({ ensureAllowWrite: vi.fn() }));
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runCleanupEmptyFolders } from "../../../../src/hygiene/tasks/cleanup/empty-folders";
 

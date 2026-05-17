@@ -1,5 +1,5 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/scripting`.
+ * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/scripting`.
  *
  * Ergonomic surface for ad-hoc TypeScript scripts against a scai-
  * configured Sitecore environment. Distinct from `scai/hygiene`,
@@ -9,8 +9,10 @@
  * don't fit any CLI command (reverse-dependency scans, multilist GUID
  * surgery, composite cleanup flows).
  *
- * Stability contract: every symbol below is intentional. Internal
- * helpers stay in sibling files and are not re-exported.
+ * UNSTABLE entry: this ships under `./unstable/scripting` and carries
+ * no SemVer stability promise. `connect()` currently wires only the
+ * `hygiene` area; its return shape will grow and the helper pattern is
+ * still settling. It graduates to a stable entry in a later release.
  *
  * See `docs/scripting.md` for examples.
  */

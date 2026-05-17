@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWorkflowAdvance } from "../../../../src/workflow/tasks/advance";
 import * as sharedModule from "../../../../src/workflow/tasks/shared";
-import * as allowWriteModule from "../../../../src/shared/allow-write";
+import * as allowWriteModule from "../../../../src/policy/allow-write";
 import type { WorkflowApiClient } from "../../../../src/workflow/api/client";
 
 vi.mock("../../../../src/workflow/tasks/shared", async () => {
@@ -11,9 +11,9 @@ vi.mock("../../../../src/workflow/tasks/shared", async () => {
   return { ...actual, resolveWorkflowTenant: vi.fn() };
 });
 
-vi.mock("../../../../src/shared/allow-write", async () => {
+vi.mock("../../../../src/policy/allow-write", async () => {
   const actual = await vi.importActual<typeof allowWriteModule>(
-    "../../../../src/shared/allow-write"
+    "../../../../src/policy/allow-write"
   );
   return { ...actual, ensureAllowWrite: vi.fn() };
 });

@@ -11,7 +11,7 @@
  */
 
 import { discoverSites } from "@/recipe/api/site-discovery";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { printDeployResultWithContext, toLogger } from "./shared";
 import type { DeploySiteListOptions } from "./types";
 

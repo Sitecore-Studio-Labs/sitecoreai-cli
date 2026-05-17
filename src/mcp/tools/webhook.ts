@@ -15,7 +15,7 @@ import { runWebhookDelete } from "@/webhooks/tasks/delete";
 import { runWebhookEventTypes } from "@/webhooks/tasks/event-types";
 import { runWebhookInspect } from "@/webhooks/tasks/inspect";
 import { runWebhookList } from "@/webhooks/tasks/list";
-import { ensureMcpElevationAllowed } from "@/shared/allow-write";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

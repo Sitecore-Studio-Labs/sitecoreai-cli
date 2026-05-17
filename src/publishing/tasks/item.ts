@@ -1,6 +1,6 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { promptConfirm } from "@/shared/prompt";
 import { acquirePublishingToken } from "../api/auth";
 import { submitPublishJob } from "../api/client";
@@ -12,9 +12,18 @@ import type {
   PublishItemsMode,
   PublishingApiClientOptions,
 } from "../api/types";
-import { isProductionTier } from "../env-tier";
-import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
-import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } from "../audit";
+import { isProductionTier } from "@/shared/env-tier";
+import {
+  computeScopeHash,
+  mintScopeToken,
+  SCOPE_TOKEN_TTL_MS,
+  verifyScopeToken,
+} from "@/shared/publish-consent";
+import {
+  recordPublishAudit,
+  type PublishAuditCaller,
+  type PublishAuditScope,
+} from "@/shared/publish-audit";
 
 export interface RunPublishItemOptions {
   config?: string;

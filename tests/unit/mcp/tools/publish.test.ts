@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpContext } from "../../../../src/mcp/auth";
-import type { PublishAuditEntry } from "../../../../src/publishing/audit";
+import type { PublishAuditEntry } from "../../../../src/shared/publish-audit";
 import type { PublishJob } from "../../../../src/publishing/api/types";
 
 const fakeJob: PublishJob = {
@@ -36,10 +36,10 @@ const taskMocks = vi.hoisted(() => ({
   ensureMcpElevationAllowed: vi.fn(),
 }));
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: taskMocks.resolveEnvironment,
 }));
-vi.mock("../../../../src/shared/allow-write", () => ({
+vi.mock("../../../../src/policy/allow-write", () => ({
   ensureMcpElevationAllowed: taskMocks.ensureMcpElevationAllowed,
 }));
 vi.mock("../../../../src/publishing/api/auth", () => ({
@@ -50,7 +50,7 @@ vi.mock("../../../../src/publishing/api/client", () => ({
   listPublishJobs: taskMocks.listPublishJobs,
   cancelPublishJob: taskMocks.cancelPublishJob,
 }));
-vi.mock("../../../../src/publishing/audit", () => ({
+vi.mock("../../../../src/shared/publish-audit", () => ({
   readRecentPublishAudit: taskMocks.readRecentPublishAudit,
 }));
 

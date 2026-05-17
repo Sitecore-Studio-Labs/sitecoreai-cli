@@ -1,5 +1,5 @@
 import { Logger } from "@/shared/logger";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { createScaiError } from "@/shared/errors";
 import { acquirePublishingToken } from "../api/auth";
 import { getPublishJob, listPublishJobs } from "../api/client";

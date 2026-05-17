@@ -4,7 +4,7 @@
  * keychain access runs.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResolvedEnvironment } from "../../../src/shared/env";
+import type { ResolvedEnvironment } from "../../../src/policy/environment";
 
 vi.mock("../../../src/shared/keychain", () => ({
   getDeployToken: vi.fn(),

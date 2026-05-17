@@ -1,8 +1,9 @@
 import path from "node:path";
 import type { RootConfiguration } from "@/config/types";
-import { createScaiError } from "./errors";
-import { authorizeOperation, riskTierForOperation } from "@/policy";
-import type { OperationId } from "@/policy";
+import { createScaiError } from "@/shared/errors";
+import { authorizeOperation } from "./authorize";
+import { riskTierForOperation } from "./operations";
+import type { OperationId } from "./operations";
 
 /**
  * Per-environment write gate. Throws `INPUT_INVALID` unless the

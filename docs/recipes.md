@@ -8,16 +8,27 @@ diffs against the live tenant, and applies what's missing.
 
 ## Security model — `.recipe.ts` files are executed code, not data
 
-When you run any `scai provision recipe` command (including `recipe diff` and
-`recipe push --what-if`), every matched `.recipe.ts` file is imported and
-its top-level code runs with the full privileges of your shell —
-filesystem access, network, and environment variables. Treat recipe files
-like any other build script (`webpack.config.js`, `vite.config.ts`):
-only run `scai provision recipe` against repos and recipe files you trust. To
-inspect an untrusted recipe set, compile it to `.recipe.json` in a
-sandboxed environment first and operate on the JSON form.
+A `.recipe.ts` file is code, not data — `scai` must execute it to read
+the recipe. The commands that load `.recipe.ts` source are `recipe
+compile`, `recipe push`, and `recipe diff` (`recipe plan` operates only
+on a compiled `.ir.json` and never executes recipe code).
 
-Defenses already in place:
+Every `.recipe.ts` file is loaded inside a **forked child-process
+sandbox** by default. The child runs with a clean, deny-by-default
+environment — no `SITECOREAI_*` credentials or tokens are passed in —
+and is killed if it exceeds its time budget. A crashing or hanging
+recipe cannot take down the CLI, and recipe code cannot read your
+secrets out of `process.env`. Set `SITECOREAI_RECIPE_SANDBOX=0` to
+disable the sandbox (dev-only escape hatch; prints a stderr warning).
+See [docs/recipe-sandbox.md](./recipe-sandbox.md) for the full design.
+
+What the sandbox does **not** do: it does not block filesystem writes
+or network requests made by the recipe — those run as the same OS user.
+So treat recipe files like any other build script (`webpack.config.js`,
+`vite.config.ts`): only run `scai provision recipe` against repos and
+recipe files you trust.
+
+Other defenses already in place:
 
 - Recipe glob does not follow symlinks (a planted symlink can't pull
   in `/etc/` or `~/.aws/` files for execution)

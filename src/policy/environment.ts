@@ -15,8 +15,8 @@
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
-import { enforceEnvironmentPolicy } from "@/policy";
-import { resolveApiTimeoutMs } from "./cli-tasks";
+import { resolveApiTimeoutMs } from "@/shared/cli-tasks";
+import { enforceEnvironmentPolicy } from "./enforce";
 
 export interface ResolvedEnvironment {
   envName: string;

@@ -1,4 +1,4 @@
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { auditSuiteToRunnerInput, expandOutputPath, loadAuditSuite } from "../../audit-suite";
 import { runAuditAll } from "./all";
 import { type HygieneCommonOptions, toLogger } from "../shared";

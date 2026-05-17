@@ -22,6 +22,10 @@
       "types": "./dist/recipe/index.d.ts",
       "default": "./dist/recipe/index.js"
     },
+    "./recipe/unstable": {
+      "types": "./dist/recipe/unstable.d.ts",
+      "default": "./dist/recipe/unstable.js"
+    },
     "./deploy": {
       "types": "./dist/deploy/index.d.ts",
       "default": "./dist/deploy/index.js"
@@ -34,6 +38,14 @@
       "types": "./dist/shared/errors.d.ts",
       "default": "./dist/shared/errors.js"
     },
+    "./envelope": {
+      "types": "./dist/shared/envelope.d.ts",
+      "default": "./dist/shared/envelope.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
+    },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "default": "./dist/brand/index.js"
@@ -41,10 +53,6 @@
     "./brief": {
       "types": "./dist/brief/index.d.ts",
       "default": "./dist/brief/index.js"
-    },
-    "./campaigns": {
-      "types": "./dist/campaigns/index.d.ts",
-      "default": "./dist/campaigns/index.js"
     },
     "./sites": {
       "types": "./dist/sites/index.d.ts",
@@ -70,21 +78,21 @@
       "types": "./dist/workflow/index.d.ts",
       "default": "./dist/workflow/index.js"
     },
-    "./scripting": {
-      "types": "./dist/scripting/index.d.ts",
-      "default": "./dist/scripting/index.js"
-    },
     "./sync": {
       "types": "./dist/sync/index.d.ts",
       "default": "./dist/sync/index.js"
     },
-    "./agents": {
+    "./unstable/agents": {
       "types": "./dist/agents/index.d.ts",
       "default": "./dist/agents/index.js"
     },
-    "./config": {
-      "types": "./dist/config/index.d.ts",
-      "default": "./dist/config/index.js"
+    "./unstable/campaigns": {
+      "types": "./dist/campaigns/index.d.ts",
+      "default": "./dist/campaigns/index.js"
+    },
+    "./unstable/scripting": {
+      "types": "./dist/scripting/index.d.ts",
+      "default": "./dist/scripting/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -158,8 +166,13 @@
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
+  "overrides": {
+    "fast-uri": "^3.1.2",
+    "picomatch": "^2.3.2"
+  },
   "pnpm": {
     "overrides": {
+      "fast-uri": "^3.1.2",
       "picomatch": "^2.3.2"
     }
   },

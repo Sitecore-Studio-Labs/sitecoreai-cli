@@ -25,8 +25,8 @@ import {
   fetchProjectEnvironments,
   createProjectEnvironment,
 } from "@/deploy/api/projects";
-import { resolveEnvironment } from "@/shared/env";
-import { ensureAllowWrite } from "@/shared/allow-write";
+import { resolveEnvironment } from "@/policy/environment";
+import { ensureAllowWrite } from "@/policy/allow-write";
 import { ScaiError } from "@/shared/errors";
 import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {

@@ -1,5 +1,5 @@
 import { Logger } from "@/shared/logger";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createWebhookApiClient, type WebhookApiClient } from "../api/client";
 

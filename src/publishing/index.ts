@@ -52,7 +52,7 @@ export {
   type PublishConsent,
   type ScopeTokenVerification,
   type ScopeTokenVerificationFailure,
-} from "./consent";
+} from "@/shared/publish-consent";
 
 // --- Audit log ----------------------------------------------------------
 export {
@@ -61,10 +61,10 @@ export {
   type PublishAuditCaller,
   type PublishAuditEntry,
   type PublishAuditScope,
-} from "./audit";
+} from "@/shared/publish-audit";
 
 // --- Environment-tier heuristic ----------------------------------------
-export { isProductionTier } from "./env-tier";
+export { isProductionTier } from "@/shared/env-tier";
 
 // --- Task runners -------------------------------------------------------
 export { runPublishStatus, type RunPublishStatusOptions } from "./tasks/status";

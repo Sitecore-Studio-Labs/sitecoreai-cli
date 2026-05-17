@@ -11,8 +11,8 @@ import {
   unlinkProjectRepository,
 } from "@/deploy/api/projects";
 import { ScaiError, createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
-import { ensureAllowWrite } from "@/shared/allow-write";
+import { resolveEnvironment } from "@/policy/environment";
+import { ensureAllowWrite } from "@/policy/allow-write";
 import {
   confirmDestructive,
   getDeployContext,

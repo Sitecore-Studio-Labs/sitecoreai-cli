@@ -17,11 +17,11 @@ This file is informational — it does not gate releases. CI does.
 
 ## Dependency & supply chain
 
-| Gate                   | Enforced by                                                          |
-| ---------------------- | -------------------------------------------------------------------- |
-| No known runtime vulns | Run `pnpm audit --omit=dev` ad-hoc; not currently CI-gated           |
-| License policy         | Run `pnpm dlx license-checker --summary` ad-hoc; org-policy decision |
-| Lockfile hygiene       | `pnpm-lock.yaml` committed, `.pnpm-store/` gitignored                |
+| Gate                   | Enforced by                                                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No known runtime vulns | Run `pnpm audit --omit=dev` ad-hoc; not currently CI-gated                                                                                                              |
+| License policy         | Run `pnpm dlx license-checker --summary` ad-hoc; org-policy decision                                                                                                    |
+| Lockfile hygiene       | `package-lock.json` is the committed, canonical lockfile — CI installs with `npm`. `pnpm-lock.yaml` and `.pnpm-store/` are gitignored (pnpm is a dev-only convenience). |
 
 ## Packaging & artifacts
 
@@ -33,11 +33,11 @@ This file is informational — it does not gate releases. CI does.
 
 ## Security & secrets
 
-| Gate                     | Enforced by                                                            |
-| ------------------------ | ---------------------------------------------------------------------- |
-| History redacts CLI args | `src/shared/redact.ts`; covered in `tests/unit/shared/redact.test.ts`  |
-| No hardcoded credentials | `.github/workflows/secret-scan.yml` (gitleaks) — fails CI on detection |
-| Auth/credential storage  | `src/shared/keychain.ts` (system keychain) — covered in unit tests     |
+| Gate                     | Enforced by                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| History redacts CLI args | `src/shared/redact.ts`; covered in `tests/unit/shared/redact.test.ts`                                                      |
+| No hardcoded credentials | _Planned, not yet wired_ — a `secret-scan` CI job (gitleaks) is on the roadmap; today this is review-time discipline only. |
+| Auth/credential storage  | `src/shared/keychain.ts` (system keychain) — covered in unit tests                                                         |
 
 ## Reliability & networking
 
@@ -67,12 +67,12 @@ This file is informational — it does not gate releases. CI does.
 
 ## Release process
 
-| Gate               | Enforced by                                                             |
-| ------------------ | ----------------------------------------------------------------------- |
-| Changesets         | `pnpm changeset` — required for any user-facing change                  |
-| Publish provenance | `.github/workflows/release.yml` (currently disabled while repo private) |
-| Trusted publishing | OIDC via npm Trusted Publishing — no long-lived `NPM_TOKEN`             |
-| Branch protection  | `.github/workflows/branch-protection.yml` enforces protection on `main` |
+| Gate               | Enforced by                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Changesets         | `pnpm changeset` — required for any user-facing change                                                                                                           |
+| Publish provenance | `.github/workflows/release.yml` (currently disabled while repo private)                                                                                          |
+| Trusted publishing | OIDC via npm Trusted Publishing — no long-lived `NPM_TOKEN`                                                                                                      |
+| Branch protection  | _Planned, not yet wired_ — `main` branch-protection rules are configured in the GitHub repo settings, not in a workflow file. No `branch-protection.yml` exists. |
 
 ## What this file is not
 

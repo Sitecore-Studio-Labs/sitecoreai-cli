@@ -9,7 +9,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn().mockReturnValue({
     envName: "sandbox",
     environment: {},

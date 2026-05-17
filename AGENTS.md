@@ -53,29 +53,36 @@ The Deploy token covers both Deploy API and CM/admin scopes — one token
 for the whole agent contract. See [docs/configuration.md](./docs/configuration.md#authentication)
 for token storage details (OS keychain).
 
-## Recipes (preview — graduates in 0.1.0)
+## Recipes — trust model
 
-The `recipe` command group is present in the source tree but **un-advertised**
-in 0.0.x — neither `package.json` `exports` nor `scai --help` surface it. It
-graduates in the 0.1.0 release; the parked changeset under
-`.changeset-parked/` describes the surface coming online.
+The `recipe` command group (`scai provision recipe compile|plan|diff|push`)
+loads `.recipe.ts` files — TypeScript modules that **execute code when
+loaded**, not inert data. An agent driving `scai recipe` against
+attacker-controlled recipe sources is running attacker code.
 
-When `scai provision recipe` runs (today via internal code paths, in 0.1.0 via the
-`scai provision recipe compile|plan|diff|push` commands), it loads `.recipe.ts` files
-through the `tsx` runtime. **These files are executed code, not data.**
+Which commands load `.recipe.ts`:
 
-> **`.recipe.ts` files are executed code, not data.** When you run any
-> `scai provision recipe` command (including `recipe diff` and `recipe push --what-if`),
-> every matched `.recipe.ts` file is imported and its top-level code runs
-> with the full privileges of your shell — including filesystem access,
-> network, and environment variables. Treat recipe files like any other
-> build script (e.g. `webpack.config.js`, `vite.config.ts`): only run
-> `scai provision recipe` against repos and recipe files you trust. If you need to
-> inspect an untrusted recipe set, compile it to `.recipe.json` in a
-> sandboxed environment first and operate on the JSON form.
+- `recipe compile`, `recipe push`, and `recipe diff` load `.recipe.ts`
+  source (unless given a pre-compiled `.ir.json` as `--input`).
+- `recipe plan` operates strictly on a pre-compiled `.ir.json` and
+  never executes recipe code.
 
-This trust model also belongs in the user-facing README's Recipes section
-when 0.1.0 ships; track that integration in the release PR.
+> **`.recipe.ts` files are executed code — they run in a sandbox by
+> default.** scai loads each `.recipe.ts` in a **forked child-process
+> sandbox**: the child gets a clean, deny-by-default environment (no
+> `SITECOREAI_*` secrets, no deploy token, no OAuth credentials reach
+> recipe code) and a kill-timeout. Only validated JSON-serialisable
+> `Recipe` data crosses back. `SITECOREAI_RECIPE_SANDBOX=0` forces the
+> legacy in-process load and logs a warning — do not set it in CI or
+> when loading untrusted recipes.
+>
+> The sandbox does **not** block filesystem writes or network egress:
+> the child runs as the same OS user as scai. It prevents secret
+> exfiltration and crash propagation, not arbitrary side effects. Treat
+> recipe files like any build script (`webpack.config.js`,
+> `vite.config.ts`) — only run `scai provision recipe` against repos
+> and recipe files you trust. See
+> [docs/recipe-sandbox.md](./docs/recipe-sandbox.md).
 
 ## Examples
 

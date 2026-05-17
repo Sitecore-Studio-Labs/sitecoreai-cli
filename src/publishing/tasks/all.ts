@@ -1,6 +1,6 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { promptText } from "@/shared/prompt";
 import { acquirePublishingToken } from "../api/auth";
 import { listPublishJobs, submitPublishJob } from "../api/client";
@@ -11,8 +11,17 @@ import type {
   PublishSiteMode,
   PublishingApiClientOptions,
 } from "../api/types";
-import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
-import { recordPublishAudit, type PublishAuditCaller, type PublishAuditScope } from "../audit";
+import {
+  computeScopeHash,
+  mintScopeToken,
+  SCOPE_TOKEN_TTL_MS,
+  verifyScopeToken,
+} from "@/shared/publish-consent";
+import {
+  recordPublishAudit,
+  type PublishAuditCaller,
+  type PublishAuditScope,
+} from "@/shared/publish-audit";
 import {
   DEFAULT_WATCH_TIMEOUT_S,
   clampPollInterval,

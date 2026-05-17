@@ -3,7 +3,7 @@ import type { EnvironmentConfiguration, RootConfiguration } from "../../../../sr
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runCleanupDuplicates } from "../../../../src/hygiene/tasks/cleanup/duplicates";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(),
 }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
@@ -11,7 +11,7 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const mkItems = (specs: Array<{ id: string; path: string; created?: string }>) =>

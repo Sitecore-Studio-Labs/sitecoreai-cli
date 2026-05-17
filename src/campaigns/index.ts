@@ -1,5 +1,5 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/campaigns`.
+ * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/campaigns`.
  *
  * Sitecore **Orchestrate API** client. A "campaign" in the product UI
  * is an Orchestrate `project`; a project owns deliverables, a

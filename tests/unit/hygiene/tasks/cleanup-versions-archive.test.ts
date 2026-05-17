@@ -3,13 +3,13 @@ import type { EnvironmentConfiguration, RootConfiguration } from "../../../../sr
 import type { HygieneApiClient, ItemVersion, SearchPage } from "../../../../src/hygiene/api/client";
 import { runCleanupVersionsArchive } from "../../../../src/hygiene/tasks/cleanup/versions-archive";
 
-vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const setup = (allowWrite = true) => {

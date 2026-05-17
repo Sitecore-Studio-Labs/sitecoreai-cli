@@ -28,12 +28,12 @@
  */
 
 import { z } from "zod";
-import { resolveEnvironment } from "@/shared/env";
-import { ensureMcpElevationAllowed } from "@/shared/allow-write";
+import { resolveEnvironment } from "@/policy/environment";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { acquirePublishingToken } from "@/publishing/api/auth";
 import { cancelPublishJob, getPublishJob, listPublishJobs } from "@/publishing/api/client";
-import { readRecentPublishAudit } from "@/publishing/audit";
+import { readRecentPublishAudit } from "@/shared/publish-audit";
 import type { PublishingApiClientOptions } from "@/publishing/api/types";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

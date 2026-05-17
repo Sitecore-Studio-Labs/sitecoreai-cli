@@ -5,12 +5,12 @@ import { runAuditRoleBloat } from "../../../../src/hygiene/tasks/audit/role-bloa
 import { runAuditEmptyRoles } from "../../../../src/hygiene/tasks/audit/empty-roles";
 import { runAuditStaleUsers } from "../../../../src/hygiene/tasks/audit/stale-users";
 
-vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const setupEnv = () => {

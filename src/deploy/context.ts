@@ -13,7 +13,7 @@
 import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { inputError, selectMatch } from "@/shared/cli-tasks";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { fetchOrganization } from "./api/organizations";
 import { fetchAllProjects, fetchAllProjectEnvironments } from "./api/projects";
 import { fetchAllEnvironments } from "./api/environments";

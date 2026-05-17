@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(),
 }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
@@ -20,7 +20,7 @@ vi.mock("../../../../src/recipe/api/site-discovery", () => ({
   discoverSites: vi.fn(),
 }));
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 import { discoverSites } from "../../../../src/recipe/api/site-discovery";
 import { runAuditSiteResidue } from "../../../../src/hygiene/tasks/audit/site-residue";

@@ -1,11 +1,11 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { promptText } from "@/shared/prompt";
 import { acquirePublishingToken } from "../api/auth";
 import { cancelPublishJob, getPublishJob, listPublishJobs } from "../api/client";
 import type { PublishJob, PublishingApiClientOptions } from "../api/types";
-import { recordPublishAudit, type PublishAuditCaller } from "../audit";
+import { recordPublishAudit, type PublishAuditCaller } from "@/shared/publish-audit";
 
 export interface RunPublishCancelOptions {
   config?: string;

@@ -28,7 +28,7 @@
 
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { promptConfirm, promptText } from "@/shared/prompt";
 import { createHygieneApiClient } from "@/hygiene/api/client";
 import {
@@ -45,15 +45,20 @@ import { resolveItemPathsToIds } from "../api/path-resolver";
 import { resolvePublishingLocales } from "../api/languages";
 import { resolveSiteRoot } from "../api/sites";
 import type { CreatePublishJobRequest, PublishingApiClientOptions } from "../api/types";
-import { isProductionTier } from "../env-tier";
-import { computeScopeHash, mintScopeToken, SCOPE_TOKEN_TTL_MS, verifyScopeToken } from "../consent";
+import { isProductionTier } from "@/shared/env-tier";
+import {
+  computeScopeHash,
+  mintScopeToken,
+  SCOPE_TOKEN_TTL_MS,
+  verifyScopeToken,
+} from "@/shared/publish-consent";
 import {
   recordPublishAudit,
   type PublishAuditCaller,
   type PublishAuditFieldChange,
   type PublishAuditScope,
   type UnpublishStrategy,
-} from "../audit";
+} from "@/shared/publish-audit";
 
 export interface RunPublishUnpublishOptions {
   config?: string;

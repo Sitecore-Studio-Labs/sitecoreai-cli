@@ -4,22 +4,41 @@ A native TypeScript CLI **and** typed SDK for SitecoreAI — no .NET
 dependency, built for humans and agents alike (`--non-interactive`,
 `--json`, stable exit codes, OS-keychain credential storage).
 
-scai is organized into product-area command groups:
+scai is organized into product-area command groups. The eleven
+top-level groups:
 
-- **`provision`** — the SitecoreAI **Deploy API** (organizations,
-  projects, environments, deployments, source control, editing hosts,
-  logs), Content **Serialization** (pull / push / diff / validate /
-  watch SCS YAML against the Authoring + Management GraphQL APIs), and
-  **Recipes** — declarative template + rendering definitions authored as
-  TypeScript and pushed via the Authoring GraphQL API, with
-  deterministic GUIDs, idempotent re-push, and LIFO rollback.
-- **`content`** — Experience Edge **publishing** behind a tiered consent
-  model, content-version state, and item workflow.
+- **`setup`** — configure environments and authenticate (`init`,
+  `login`, `client`, `logout`, `status`).
+- **`policy`** — workspace guardrails: the deny-by-default env
+  allowlist and write-elevation policy.
+- **`provision`** — provision environments and content-as-code. Nests
+  the **Deploy API** (organizations, projects, environments,
+  deployments, source control, editing hosts, logs), Content
+  **Serialization** (pull / push / diff / validate / watch SCS YAML
+  against the Authoring + Management GraphQL APIs), and **Recipes** —
+  declarative template + rendering definitions authored as TypeScript
+  and pushed via the Authoring GraphQL API, with deterministic GUIDs,
+  idempotent re-push, and LIFO rollback.
+- **`content`** — Experience Edge **publishing** behind a tiered
+  consent model, content-version state, and item workflow.
 - **`hygiene`** — read-only content **audits** and gated **cleanup**.
-- **`ops`** — Sitecore Content Operations: **briefs** and **campaigns**.
+- **`ops`** — Sitecore Content Operations. Nests **briefs** and
+  **campaigns**.
 - **`brand`** — Sitecore **Brand Management** and **Brand Review**.
+- **`agents`** — SitecoreAI agent authoring and runs.
+- **`sync`** — composed recipe + serialization sync workflows.
 - **`mcp`** — a built-in **Model Context Protocol** server exposing all
   of the above to agents as workflow-shaped tools.
+- **`cli`** — CLI tooling: config, diagnostics, history, REPL,
+  telemetry.
+
+**Taxonomy.** Some surfaces are nested under a parent group
+(`provision` holds deploy / serialization / recipe; `ops` holds brief /
+campaign) while others — `brand`, `agents`, `sync` — sit at the top
+level. This is intentional and **not** being renamed for 0.1.0: the
+command paths are part of the agent contract documented in
+[AGENTS.md](./AGENTS.md), and external MCP-client configs depend on
+`scai mcp serve`, so the paths are stable.
 
 Conceptually modeled after the dotnet `Sitecore.DevEx` CLI but runs
 natively. CLI command: `scai` (alias: `sitecoreai-cli`).
@@ -104,12 +123,13 @@ environment:
 scai mcp serve --environment-name dev
 ```
 
-It exposes scai's developer surfaces as **24+ workflow-shaped tools** —
-deploy, serialization, recipes, bootstrap, and inspection — designed
-around real tasks rather than 1:1 wrappers of library calls. Every write
-tool requires an explicit per-call `allowWrite: true`; there is no
-session-wide override. Compatible with Claude Code, Claude Desktop,
-Cursor, Cline, and any other MCP-speaking client.
+It exposes scai's developer surfaces as **54 workflow-shaped tools** —
+deploy, serialization, recipes, hygiene, publishing, brand, brief,
+campaign, workflow, webhook, agent automation, and inspection —
+designed around real tasks rather than 1:1 wrappers of library calls.
+Every write tool requires an explicit per-call `allowWrite: true`;
+there is no session-wide override. Compatible with Claude Code, Claude
+Desktop, Cursor, Cline, and any other MCP-speaking client.
 
 Need a URL instead of a spawned process — e.g. to point a browser-hosted
 client at it? Run the Streamable HTTP transport:
@@ -129,27 +149,47 @@ Authoring GraphQL API. Five recipe kinds are stable in 0.1.0:
 `ComponentTemplate`, `ContentTemplate`, `ComponentSection`,
 `DesignParametersTemplate`, `Enumeration`.
 
-> **`.recipe.ts` files are executed code, not data.** When you run any
-> `scai provision recipe` command (including `recipe diff` and
-> `recipe push --what-if`), every matched `.recipe.ts` file is imported
-> and its top-level code runs with the full privileges of your shell —
-> filesystem access, network, environment variables. Treat recipe files
-> like any other build script (`webpack.config.js`, `vite.config.ts`):
-> only run `scai provision recipe` against repos and recipe files you trust. To
-> inspect an untrusted recipe set, compile it to `.recipe.json` in a
-> sandboxed environment first and operate on the JSON form.
+> **`.recipe.ts` files are executed code, not data — run them in a
+> sandbox.** A `.recipe.ts` is TypeScript that, when loaded, runs its
+> top-level code. Only `recipe compile`, `recipe push`, and `recipe diff`
+> load `.recipe.ts` source; `recipe plan` operates strictly on a
+> pre-compiled `.ir.json` and never executes recipe code.
+>
+> By default scai loads every `.recipe.ts` in a **forked child-process
+> sandbox**: the child runs the recipe with a clean, deny-by-default
+> environment — none of scai's `SITECOREAI_*` secrets, deploy tokens, or
+> OAuth credentials reach recipe code — and a kill-timeout that fires if a
+> recipe hangs. Only validated, JSON-serialisable `Recipe` data crosses
+> back over the IPC channel. Set `SITECOREAI_RECIPE_SANDBOX=0` to fall
+> back to the legacy in-process load (for debugging, or a runtime where
+> forking fails); doing so logs a warning.
+>
+> What the sandbox does **not** do: the child still runs as the same OS
+> user as scai, so it can read and write the filesystem and make network
+> requests. The sandbox stops a hostile recipe from stealing scai's
+> secrets or crashing scai — it is not a general filesystem/network jail.
+> Treat recipe files like any other build script (`webpack.config.js`,
+> `vite.config.ts`): only run `scai provision recipe` against repos and
+> recipe files you trust. See [docs/recipe-sandbox.md](./docs/recipe-sandbox.md).
 
 Locate recipes via the `recipes` glob in `sitecoreai.cli.json` (default
 `recipes/**/*.recipe.ts`). The lifecycle:
 
 ```sh
+# compile — loads .recipe.ts (in the sandbox) → emits compiled .ir.json
 scai provision recipe compile --input recipes/cta-button.recipe.ts --output cta-button.ir.json \
   --templates-root /sitecore/templates/Project/<site>/Components \
   --renderings-root /sitecore/layout/Renderings/Project/<site>
 
-scai provision recipe plan -n sandbox                       # read-then-diff (read-only)
-scai provision recipe push -n sandbox --what-if             # dry-run, no writes
-scai provision recipe push -n sandbox --allow-write         # apply for real
+# plan — read-only diff against a tenant; operates on a compiled .ir.json,
+# never executes recipe code
+scai provision recipe plan -n sandbox --input cta-button.ir.json
+
+# push --what-if — dry-run; loads .recipe.ts (sandbox) or an .ir.json, no writes
+scai provision recipe push -n sandbox --what-if
+
+# push --allow-write — apply for real
+scai provision recipe push -n sandbox --allow-write
 ```
 
 A second push is idempotent (zero mutations). Partial failure rolls back
@@ -274,15 +314,42 @@ import { createWorkflowApiClient } from "@sitecoreai-labs/sitecoreai-cli/workflo
 import { ScaiError, type ScaiErrorCode } from "@sitecoreai-labs/sitecoreai-cli/errors";
 ```
 
+### Subpath exports
+
+The SDK is split into a **stable core** and an **`unstable/` namespace**.
+
+**Stable core** — these subpaths carry the SemVer stability contract
+below:
+
+```
+./recipe   ./deploy   ./serialization   ./errors    ./envelope
+./config   ./brand    ./brief           ./sites     ./publishing
+./content  ./hygiene  ./webhooks        ./workflow  ./sync
+```
+
+**Unstable** — these subpaths carry **no stability promise**. Their
+shape may change in any minor (or patch) release without a major bump
+or a changeset. Pin an exact scai version if you depend on them:
+
+```
+./unstable/agents      ./unstable/campaigns      ./unstable/scripting
+./recipe/unstable      — recipe composition kinds (PageDesignRecipeSchema,
+                         SiteRecipeSchema, PartialDesign, …)
+```
+
 ### Stability contract (0.1.0)
 
-The symbols re-exported from each subpath's `index.ts` are the public
-SDK contract. Anything reachable only via the `@/...` path alias
-(reaching into `src/` internals) is not part of the contract and may
+The symbols re-exported from a **stable-core** subpath's `index.ts` are
+the public SDK contract. Anything reachable only via the `@/...` path
+alias (reaching into `src/` internals), or via any `unstable/` subpath
+(including `./recipe/unstable`), is **not** part of the contract and may
 change between scai versions without notice.
 
-Breaking changes to any exported symbol require a major version bump
-(per Changesets). New symbols are additive and ship in minor versions.
+Breaking changes to a stable-core exported symbol require a major
+version bump (per Changesets). New symbols are additive and ship in
+minor versions. `unstable/*` subpaths are exempt from all of this — by
+design, so in-progress surfaces can ship and iterate without churning
+the major version.
 
 ## Going deeper
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { PublishAuditScope } from "../../../src/publishing/audit";
+import type { PublishAuditScope } from "../../../src/shared/publish-audit";
 import {
   computeScopeHash,
   mintScopeToken,
   SCOPE_TOKEN_TTL_MS,
   verifyScopeToken,
-} from "../../../src/publishing/consent";
+} from "../../../src/shared/publish-consent";
 
 const baseScope: PublishAuditScope = {
   envName: "sandbox",

@@ -37,7 +37,7 @@ import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup/versions-arch
 import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup/versions-prune";
 import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup/workflow-advance";
 import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup/workflow-apply";
-import { ensureMcpElevationAllowed } from "@/shared/allow-write";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

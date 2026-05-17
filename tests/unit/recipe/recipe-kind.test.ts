@@ -19,7 +19,7 @@ import type { PlannedAction } from "../../../src/recipe/plan";
 
 // Stub the env → tenant bridge so the kind never touches real config.
 const resolveEnvironment = vi.hoisted(() => vi.fn());
-vi.mock("../../../src/shared/env", () => ({ resolveEnvironment }));
+vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment }));
 
 // Stub the authoring client factory — the kind only forwards it to executeIr.
 const createAuthoringClient = vi.hoisted(() => vi.fn(() => ({ __client: true })));

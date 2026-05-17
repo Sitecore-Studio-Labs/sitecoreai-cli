@@ -10,7 +10,7 @@
  *
  * Presentation-free: no logger, no stdout, no `process.exit`.
  */
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import { acquireCampaignToken } from "./auth";
 import { CAMPAIGN_API_HOST_TEMPLATE, type CampaignApiClientOptions } from "./api/types";

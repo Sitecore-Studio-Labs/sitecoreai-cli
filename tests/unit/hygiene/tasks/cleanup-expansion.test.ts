@@ -5,12 +5,12 @@ import { runCleanupEmptyFolders } from "../../../../src/hygiene/tasks/cleanup/em
 import { runCleanupRoles } from "../../../../src/hygiene/tasks/cleanup/roles";
 import { runCleanupUsers } from "../../../../src/hygiene/tasks/cleanup/users";
 
-vi.mock("../../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const setup = (allowWrite = true): EnvironmentConfiguration => {

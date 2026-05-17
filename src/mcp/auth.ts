@@ -33,7 +33,7 @@
  * the authoring credentials may differ from the deploy credentials.
  */
 
-import { resolveEnvironment, type ResolvedEnvironment } from "@/shared/env";
+import { resolveEnvironment, type ResolvedEnvironment } from "@/policy/environment";
 import { getDeployToken } from "@/shared/keychain";
 import { createScaiError } from "@/shared/errors";
 

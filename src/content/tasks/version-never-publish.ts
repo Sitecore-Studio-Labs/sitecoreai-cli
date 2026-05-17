@@ -10,13 +10,13 @@
  */
 
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import {
   recordPublishAudit,
   type PublishAuditCaller,
   type PublishAuditFieldChange,
   type PublishAuditScope,
-} from "@/publishing/audit";
+} from "@/shared/publish-audit";
 import {
   FIELD_NEVER_PUBLISH,
   findField,

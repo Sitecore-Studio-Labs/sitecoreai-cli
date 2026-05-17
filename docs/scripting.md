@@ -13,9 +13,13 @@ something the CLI doesn't expose, this is for you.
 
 ## Stability
 
-`scai/scripting` follows the same contract as every other public
-entry: the symbols exported from `src/scripting/index.ts` are stable
-across scai versions. Anything not exported there is internal.
+`scai/scripting` is an **unstable** SDK entry — it ships under the
+`@sitecoreai-labs/sitecoreai-cli/unstable/scripting` subpath and carries
+no SemVer stability promise. `connect()` currently wires only the
+`hygiene` area; its return shape will grow as more areas are wired, and
+the helper pattern is still settling. The entry graduates to a stable
+contract in a later release. Pin an exact scai version if you depend on
+it today.
 
 The composable helpers under `scai/scripting/helpers/*` are the
 **extension point**. New helpers land here when a script pattern shows
@@ -25,7 +29,7 @@ becomes friction.
 ## Connect
 
 ```ts
-import { connect } from "@sitecoreai-labs/sitecoreai-cli/scripting";
+import { connect } from "@sitecoreai-labs/sitecoreai-cli/unstable/scripting";
 
 const scai = connect({ envName: "sandbox" });
 //          ^^^^^^^ uses defaultEnvProfile from sitecoreai.cli.json if omitted
@@ -44,7 +48,7 @@ trips on the surrounding pipes. This is the canonical script-shaped
 case.
 
 ```ts
-import { connect, multilist } from "@sitecoreai-labs/sitecoreai-cli/scripting";
+import { connect, multilist } from "@sitecoreai-labs/sitecoreai-cli/unstable/scripting";
 
 const scai = connect();
 

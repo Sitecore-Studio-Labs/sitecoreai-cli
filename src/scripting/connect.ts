@@ -1,4 +1,4 @@
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { createHygieneApiClient, type HygieneApiClient } from "@/hygiene/api/client";
 
 /**

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { PublishAuditCaller, PublishAuditScope, PublishAuditScopeKind } from "./audit";
+import type { PublishAuditCaller, PublishAuditScope, PublishAuditScopeKind } from "./publish-audit";
 
 /**
  * Consent + scope-token primitives for `scai content publish`.

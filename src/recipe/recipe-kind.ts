@@ -24,7 +24,7 @@
  */
 import { z } from "zod";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import type {
   ApplyResult,
   KindRef,

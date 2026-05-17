@@ -9,7 +9,7 @@
  *
  * Presentation-free: no logger, no stdout, no `process.exit`.
  */
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import { acquireBriefToken } from "./auth";

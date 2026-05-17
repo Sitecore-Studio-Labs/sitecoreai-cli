@@ -1,6 +1,6 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { buildScaiEnvelope } from "@/shared/envelope";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
@@ -756,4 +756,4 @@ export const scanItemsAndFields = async ({
   return { scanned, fieldsByItemId, cache, knobs };
 };
 
-export { ensureAllowWrite as ensureAllowWriteForCleanup } from "@/shared/allow-write";
+export { ensureAllowWrite as ensureAllowWriteForCleanup } from "@/policy/allow-write";

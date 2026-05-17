@@ -5,7 +5,7 @@ import { runAuditAltTextMissing } from "../../../../src/hygiene/tasks/audit/alt-
 import { runAuditLargeFields } from "../../../../src/hygiene/tasks/audit/large-fields";
 import { runAuditMissingMeta } from "../../../../src/hygiene/tasks/audit/missing-meta";
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(),
 }));
 vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
@@ -13,7 +13,7 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
 
-import { resolveEnvironment } from "../../../../src/shared/env";
+import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
 const setup = (

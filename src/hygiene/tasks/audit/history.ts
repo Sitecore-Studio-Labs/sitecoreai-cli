@@ -1,5 +1,5 @@
 import path from "node:path";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { createScaiError } from "@/shared/errors";
 import { runAuditAll, type AuditAllOptions } from "./all";
 import { captureHistory, diffSnapshots, listHistory, loadSnapshot } from "../../history";

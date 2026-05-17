@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
-vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 vi.mock("../../../src/shared/prompt", () => ({
   promptConfirm: vi.fn().mockResolvedValue(true),
@@ -12,7 +12,7 @@ vi.mock("../../../src/shared/prompt", () => ({
 }));
 
 import { runContentVersionSetNeverPublish } from "../../../src/content/tasks/version-never-publish";
-import { resolveEnvironment } from "../../../src/shared/env";
+import { resolveEnvironment } from "../../../src/policy/environment";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 
 const mockRun = runAuthoringGraphQL as unknown as ReturnType<typeof vi.fn>;
@@ -213,7 +213,7 @@ describe("runContentVersionSetNeverPublish", () => {
     // exercise the dry-run and capture the token from stdout. But the
     // test framework already captures process.stdout; easier to mint
     // it directly via the consent helper.
-    const { mintScopeToken } = await import("../../../src/publishing/consent");
+    const { mintScopeToken } = await import("../../../src/shared/publish-consent");
     const token = mintScopeToken({
       envName: "sandbox",
       resolvedTenantId: "tenant-x",
@@ -242,7 +242,7 @@ describe("runContentVersionSetNeverPublish", () => {
 
   it("production-tier with stale --confirm-token (scope drift) rejects", async () => {
     setupEnv(true);
-    const { mintScopeToken } = await import("../../../src/publishing/consent");
+    const { mintScopeToken } = await import("../../../src/shared/publish-consent");
     // Mint a token for a different item — scope hash will mismatch.
     const wrongToken = mintScopeToken({
       envName: "sandbox",

@@ -18,9 +18,9 @@ import {
   mintScopeToken,
   SCOPE_TOKEN_TTL_MS,
   verifyScopeToken,
-} from "@/publishing/consent";
-import { isProductionTier } from "@/publishing/env-tier";
-import type { PublishAuditScope } from "@/publishing/audit";
+} from "@/shared/publish-consent";
+import { isProductionTier } from "@/shared/env-tier";
+import type { PublishAuditScope } from "@/shared/publish-audit";
 import {
   readVersionFields,
   resolveSinglePathToId,

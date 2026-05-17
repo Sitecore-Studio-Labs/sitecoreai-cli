@@ -295,7 +295,7 @@ const pickAuditsToRun = (options: AuditAllOptions): AuditDef[] => {
 const resolveEnvForBaseline = async (
   options: AuditAllOptions
 ): Promise<{ envName: string; configDir: string }> => {
-  const { resolveEnvironment } = await import("@/shared/env");
+  const { resolveEnvironment } = await import("@/policy/environment");
   const { envName } = resolveEnvironment(options);
   const path = await import("node:path");
   const configDir = path.dirname(

@@ -17,6 +17,7 @@
 import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "./errors";
 import { redactSecrets } from "./redact";
+import { assertValidUrl } from "./validate";
 
 type GetAccessToken = (environment: EnvironmentConfiguration) => Promise<string | undefined>;
 
@@ -158,6 +159,12 @@ const parseJsonIfPossible = async (response: Response): Promise<unknown> => {
 const normalizeHostUrl = (host: string): string => {
   const withScheme =
     host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`;
+  // Reject http:// (and every other non-https scheme) before a Bearer token
+  // rides this URL — every Sitecore GraphQL POST inherits this scheme. A bare
+  // host got the https:// prefix above, so this only bites when an operator
+  // explicitly persisted or passed an http:// host. assertValidUrl honours the
+  // SITECOREAI_ALLOW_HTTP=1 dev-only escape hatch.
+  assertValidUrl(withScheme, "Environment host");
   return withScheme.endsWith("/") ? withScheme.slice(0, -1) : withScheme;
 };
 

@@ -5,14 +5,14 @@
  * failure contract.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResolvedEnvironment } from "../../../src/shared/env";
+import type { ResolvedEnvironment } from "../../../src/policy/environment";
 
 const mocks = vi.hoisted(() => ({
   resolveEnvironment: vi.fn(),
   getDeployToken: vi.fn(),
 }));
 
-vi.mock("../../../src/shared/env", () => ({
+vi.mock("../../../src/policy/environment", () => ({
   resolveEnvironment: mocks.resolveEnvironment,
 }));
 vi.mock("../../../src/shared/keychain", () => ({

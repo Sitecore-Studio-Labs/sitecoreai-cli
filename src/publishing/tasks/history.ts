@@ -1,6 +1,6 @@
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { readRecentPublishAudit, type PublishAuditEntry } from "../audit";
+import { readRecentPublishAudit, type PublishAuditEntry } from "@/shared/publish-audit";
 
 export interface RunPublishHistoryOptions {
   /** Filter to entries from this env name. */

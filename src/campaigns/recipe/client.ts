@@ -13,7 +13,7 @@
  */
 import { acquireCampaignToken, CAMPAIGN_API_HOST_TEMPLATE } from "@/campaigns";
 import type { CampaignApiClientOptions } from "@/campaigns";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import type { SyncContext } from "@/sync";
 

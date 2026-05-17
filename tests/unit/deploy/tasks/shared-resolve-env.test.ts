@@ -24,7 +24,7 @@ vi.mock("../../../../src/shared/keychain", () => ({
   getDeployToken: vi.fn().mockResolvedValue("token"),
 }));
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn().mockReturnValue({
     envName: "test",
     environment: { deployToken: "token", environmentId: "config-env" },

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
-vi.mock("../../../src/shared/env", () => ({ resolveEnvironment: vi.fn() }));
+vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 vi.mock("../../../src/publishing/api/auth", () => ({
   acquirePublishingToken: vi.fn().mockResolvedValue("test-token"),
@@ -21,7 +21,7 @@ vi.mock("../../../src/publishing/api/languages", () => ({
 }));
 
 import { runPublishUnpublish } from "../../../src/publishing/tasks/unpublish";
-import { resolveEnvironment } from "../../../src/shared/env";
+import { resolveEnvironment } from "../../../src/policy/environment";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 import { submitPublishJob } from "../../../src/publishing/api/client";
 

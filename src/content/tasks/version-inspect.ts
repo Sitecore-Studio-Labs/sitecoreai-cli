@@ -10,7 +10,7 @@
  */
 
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import {
   FIELD_NEVER_PUBLISH,
   FIELD_VALID_FROM,

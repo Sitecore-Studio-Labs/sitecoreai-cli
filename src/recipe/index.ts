@@ -10,6 +10,10 @@
  * Stability contract: the surface in this file is the public contract.
  * Anything not exported here is internal and may move between scai
  * versions without notice.
+ *
+ * The recipe composition kinds (`ContentItem`, `PageDesign`, `PartialDesign`,
+ * `SiteRecipe`, `SiteTemplate`) are NOT part of the 0.1.0 stability promise
+ * and live on the separate `./recipe/unstable` entry (`src/recipe/unstable.ts`).
  */
 
 // Recipe author surface ---------------------------------------------------
@@ -17,16 +21,13 @@ export {
   ComponentPlacementSchema,
   ComponentTemplateRecipeSchema,
   ContentFieldValueSchema,
-  ContentItemRecipeSchema,
   ContentTemplateRecipeSchema,
   FieldDefinitionSchema,
   LayoutSchema,
-  PageDesignRecipeSchema,
   PageRecipeSchema,
   PageTemplateRecipeSchema,
   DesignParameterSchema,
   DesignParametersTemplateRecipeSchema,
-  PartialDesignRecipeSchema,
   PlaceholderDefinitionSchema,
   PlaceholderRecipeSchema,
   RecipeMetaSchema,
@@ -35,25 +36,17 @@ export {
   RenderingDatasourceLocationSchema,
   RenderingVariantDefinitionSchema,
   SectionDefinitionRecipeSchema,
-  SiteGroupingSchema,
-  SiteRecipeSchema,
-  SiteTemplateDictionaryEntrySchema,
-  SiteTemplateRecipeSchema,
-  SiteTemplateTaxonomyEntrySchema,
   SitecoreFieldAugmentSchema,
   type ComponentPlacement,
   type ComponentTemplateRecipe,
   type ContentFieldValue,
-  type ContentItemRecipe,
   type ContentTemplateRecipe,
   type FieldDefinition,
   type Layout,
-  type PageDesignRecipe,
   type PageRecipe,
   type PageTemplateRecipe,
   type DesignParameter,
   type DesignParametersTemplateRecipe,
-  type PartialDesignRecipe,
   type PlaceholderDefinition,
   type PlaceholderRecipe,
   type Recipe,
@@ -62,11 +55,6 @@ export {
   type RenderingDatasourceLocation,
   type RenderingVariantDefinition,
   type SectionDefinitionRecipe,
-  type SiteGrouping,
-  type SiteRecipe,
-  type SiteTemplateDictionaryEntry,
-  type SiteTemplateRecipe,
-  type SiteTemplateTaxonomyEntry,
   type SitecoreFieldAugment,
 } from "./schema/recipe";
 
@@ -82,21 +70,19 @@ export {
 } from "./schema/field-types";
 
 // Compiler ----------------------------------------------------------------
+// `compileRecipe` / `compileRecipeSet` dispatch across every kind including
+// the composition kinds; the kind-specific composition compilers
+// (`compilePageDesignRecipe`, …) live on `./recipe/unstable`.
 export {
   compileComponentTemplateRecipe,
-  compileContentItemRecipe,
   compileContentTemplateRecipe,
-  compilePageDesignRecipe,
   compilePageTemplateRecipe,
   compilePageRecipe,
   compilePlaceholderRecipe,
   compileDesignParametersTemplateRecipe,
-  compilePartialDesignRecipe,
   compileRecipe,
   compileRecipeSet,
   compileSectionDefinitionRecipe,
-  compileSiteRecipe,
-  compileSiteTemplateRecipe,
   PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   type CompileContext,

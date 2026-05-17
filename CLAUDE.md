@@ -8,33 +8,61 @@ worktrees (or separate clones), each with its own branch.
 
 ## What scai is
 
-A native TypeScript CLI for working with SitecoreAI: serialization
-(Sitecore Content Serialization YAML pull/push/diff/validate/watch via the
-Authoring + Management GraphQL APIs) and the Deploy API (organizations,
-projects, environments, deployments, source control, editing hosts, logs).
+A native TypeScript CLI **and** typed SDK for working with SitecoreAI —
+the developer's toolkit across the SitecoreAI product surface: Deploy API,
+Content Serialization, Recipes, publishing, content hygiene, brand,
+briefs, campaigns, sites, workflow, webhooks, and agent automation.
 
 Models the dotnet `Sitecore.DevEx` CLI conceptually but runs natively
 (no .NET dependency). Built with first-class agent integration —
-`--non-interactive`, `--json`, `--quiet`, `SITECOREAI_AUTO_WIZARD=0`.
+`--non-interactive`, `--json`, `--quiet`, `SITECOREAI_AUTO_WIZARD=0`, a
+built-in MCP server.
 
 CLI command: `scai` (alias: `sitecoreai-cli`).
 
-## Layers
+## Layers and module boundaries
+
+`src/` is organized into ~17 **domain areas** plus three cross-cutting
+layers. The domain areas:
 
 ```
-src/cli.ts                       ← entrypoint
-src/commands/                    ← commander definitions, thin parsers
-src/config/                      ← sitecoreai.cli.json + module schemas
-src/serialization/
-  ├── tasks/                     ← runners for push/pull/diff/validate/watch
-  ├── sitecore-api/              ← Authoring + Management GraphQL clients
-  └── filesystem-store/          ← SCS YAML store (items/roles/users)
-src/deploy/api/                  ← Deploy API HTTP client
-src/shared/                      ← logger, errors, telemetry, spinner
+deploy   serialization  recipe   brand    brief    campaigns
+sites    publishing     content  hygiene  webhooks workflow
+agents   policy         mcp      scripting sync
 ```
 
-Imports flow inward. `commands/` reaches anywhere; `serialization/`
-internals don't reach back into `commands/`.
+Each domain area is a directory under `src/` that owns one product
+surface (its API client, task runners, and — where it has one — an
+`index.ts` SDK barrel). The cross-cutting layers:
+
+```
+src/cli.ts        ← entrypoint; src/program.ts builds the Commander tree
+src/commands/     ← Commander command definitions, thin parsers
+src/config/       ← sitecoreai.cli.json + module schemas, config resolution
+src/shared/       ← logger, errors, telemetry, spinner, HTTP/GraphQL transport
+```
+
+**Import rules:**
+
+- `commands/` may import any domain area, `config/`, and `shared/`.
+- A domain area may import **peer domain areas**, `config/`, and
+  `shared/` — but never `commands/`.
+- `config/` may import `shared/` only.
+- **`src/shared/` is a leaf.** It must not import any domain area or
+  `commands/`. Type-only imports of `@/config` declarations are
+  allowed (`config/types` is itself a leaf). The former `shared↔policy`
+  cycle was removed by moving `allow-write` and `env` out of `shared/`
+  into `policy/` (now `policy/allow-write.ts` and `policy/environment.ts`).
+- **`content/` must not import `publishing/`.** `publishing` is the
+  higher layer and may depend on `content`; the reverse edge — the old
+  `content↔publishing` cycle — was removed by relocating the shared
+  `audit` / `consent` / `env-tier` modules into `shared/`.
+- A targeted import-graph test
+  (`tests/unit/architecture/module-boundaries.test.ts`) enforces the
+  two invariants above. It is **not** a full cycle detector — peer
+  domain areas may still cross-import (e.g. `sync` aggregates
+  `brand`/`brief`); the hard, enforced invariant is that `shared/`
+  stays a leaf.
 
 ## Skills (system of record)
 

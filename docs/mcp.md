@@ -4,8 +4,9 @@
 to a single Sitecore XM Cloud environment for the lifetime of the
 process. Agents that speak the MCP protocol (Claude Code, Claude
 Desktop, Cursor, Cline, and others) can connect via stdio and drive
-scai's developer-side surfaces — deploy, serialization, and recipes
-— as agent tools.
+scai's developer-side surfaces — deploy, serialization, recipes,
+hygiene (audit + cleanup), publishing, brand, brief, campaign,
+workflow, webhook, and agent automation — as agent tools.
 
 ## What MCP is
 
@@ -112,54 +113,84 @@ agent intends to perform.
 
 ## Tool surface
 
-The library exports ~60 fetch/mutate primitives. The tool surface
-re-shapes those into **24 workflow-shaped tools** that match how an
-agent actually reasons about an XM Cloud tenant:
+The library exports ~60+ fetch/mutate primitives across its domain
+areas. The MCP tool surface re-shapes those into **54 workflow-shaped
+tools** — one per task an agent actually reasons about, not a 1:1
+wrapper of every library call.
+
+The surface is that size because scai covers a broad product surface
+(deploy, serialization, recipes, hygiene, publishing, brand, brief,
+campaign, workflow, webhook, agents) and each domain contributes a
+small, fixed set of tools following a **discriminator pattern**:
 
 - `*_inspect` tools fan out reads and return a consolidated snapshot.
 - `*_manage` / `*_lifecycle` tools take a discriminated `action`
-  input and route to the appropriate write primitive.
+  input and route to the appropriate write primitive — so one tool
+  covers create/update/delete/restart rather than four.
+- `*_recipe_inspect` / `*_recipe_push` pairs expose the
+  recipe-as-code authoring path for the domains that have one.
+
+Without the discriminator pattern the raw primitive count would put
+the surface well past 100 tools; collapsing each domain's writes
+behind an `action` keeps it at 54. Deploy is the largest single
+domain (12 tools) because the XM Cloud Deploy API itself has the most
+distinct lifecycle objects.
 
 Full inventory: `scai mcp tools list` (TSV) or
 `scai mcp tools list --json`. Per-tool input schemas:
-`scai mcp tools schema [--name <name>]`.
+`scai mcp tools schema [--name <name>]`. The count and names are not
+a frozen contract — treat `scai mcp tools list` as the source of
+truth after any scai upgrade.
 
 ### Tool inventory at a glance
 
 | Domain        | Tools                                                                                                                                                                                                                                                                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Bootstrap     | `scai_overview`, `environment_status`                                                                                                                                                                                                                                                                                                      |
-| Inspector     | `tools_list`, `tools_schema`                                                                                                                                                                                                                                                                                                               |
+| Inspector     | `tools_list`, `tools_schema`, `explain`                                                                                                                                                                                                                                                                                                    |
 | Deploy        | `deploy_organization_inspect`, `deploy_project_inspect`, `deploy_project_manage`, `deploy_environment_inspect`, `deploy_environment_lifecycle`, `deploy_environment_variables`, `deploy_repository_manage`, `deploy_run_inspect`, `deploy_run_start`, `deploy_run_cancel`, `deploy_source_control_inspect`, `deploy_source_control_manage` |
 | Serialization | `serialization_inspect`, `serialization_sync`, `serialization_validate`, `serialization_publish`                                                                                                                                                                                                                                           |
-| Recipe        | `recipe_compile`, `recipe_diff`, `recipe_plan`, `recipe_push`                                                                                                                                                                                                                                                                              |
+| Recipe        | `recipe_compile`, `recipe_diff`, `recipe_plan`, `recipe_push`, `recipe_sync`                                                                                                                                                                                                                                                               |
+| Hygiene       | `audit_inspect`, `audit_baseline`, `audit_suite_run`, `cleanup_preview`, `cleanup_execute`                                                                                                                                                                                                                                                 |
+| Publishing    | `publish_inspect`, `publish_lifecycle`                                                                                                                                                                                                                                                                                                     |
+| Workflow      | `workflow_inspect`, `workflow_lifecycle`, `webhook_inspect`, `webhook_manage`                                                                                                                                                                                                                                                              |
+| Brand         | `brand_inspect`, `brand_manage`, `brand_review`, `brand_recipe_inspect`, `brand_recipe_push`                                                                                                                                                                                                                                               |
+| Brief         | `brief_inspect`, `brief_manage`, `brief_recipe_inspect`, `brief_recipe_push`                                                                                                                                                                                                                                                               |
+| Campaign      | `campaign_inspect`, `campaign_manage`, `campaign_recipe_inspect`, `campaign_recipe_push`                                                                                                                                                                                                                                                   |
+| Agents        | `agents_inspect`, `agents_run`, `agents_recipe_inspect`, `agents_recipe_push`                                                                                                                                                                                                                                                              |
 
 ## Resources
 
-7 resources for agent self-orientation. Six use the `scai://` scheme
+11 resources for agent self-orientation. Ten use the `scai://` scheme
 (handled in-process); one is the direct `https://` URI for the
 Sitecore API docs site, which compatible MCP clients can fetch
-externally:
+externally. Use `scai mcp` resource listing as the source of truth —
+the set grows as new domains land.
 
-| URI                              | Content                                                                                        |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `scai://help/overview`           | Markdown overview, binding model, write gate                                                   |
-| `scai://help/recipes-grammar`    | Recipe DSL grammar synopsis                                                                    |
-| `scai://help/deploy-lifecycle`   | XM Cloud deploy state machine                                                                  |
-| `scai://help/sitecore-apis`      | Curated index of Sitecore APIs with deep links into api-docs.sitecore.com and tool mappings    |
-| `scai://env/current/manifest`    | Static metadata for the bound environment                                                      |
-| `scai://env/current/last-deploy` | Most recent deployment (fetched lazily on read)                                                |
-| `https://api-docs.sitecore.com/` | External pointer to the full Sitecore API docs site (companion to `scai://help/sitecore-apis`) |
+| URI                                | Content                                                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `scai://help/overview`             | Markdown overview, binding model, write gate                                                   |
+| `scai://help/topics`               | Index of help topics the server exposes                                                        |
+| `scai://help/recipes-grammar`      | Recipe DSL grammar synopsis                                                                    |
+| `scai://help/recipes-workflow`     | Guided recipe authoring workflow (schema, dry-run/apply, failure modes)                        |
+| `scai://help/deploy-lifecycle`     | XM Cloud deploy state machine                                                                  |
+| `scai://help/sitecore-apis`        | Curated index of Sitecore APIs with deep links into api-docs.sitecore.com and tool mappings    |
+| `scai://help/brand-kit-generation` | Brand kit generation workflow reference                                                        |
+| `scai://help/brand-file-formats`   | Accepted brand source file formats                                                             |
+| `scai://env/current/manifest`      | Static metadata for the bound environment                                                      |
+| `scai://env/current/last-deploy`   | Most recent deployment (fetched lazily on read)                                                |
+| `https://api-docs.sitecore.com/`   | External pointer to the full Sitecore API docs site (companion to `scai://help/sitecore-apis`) |
 
 ## Prompts
 
-3 slash-command-style prompts surfaced by compatible clients:
+4 slash-command-style prompts surfaced by compatible clients:
 
-| Name                         | Args                      | Purpose                                                        |
-| ---------------------------- | ------------------------- | -------------------------------------------------------------- |
-| `scai.deploy_recipe`         | `recipeName`, `targetEnv` | Guided: compile → diff → confirm → push.                       |
-| `scai.diff_envs`             | `sourceEnv`, `targetEnv`  | Guided: diff serialized state between two environments.        |
-| `scai.recover_failed_deploy` | `deploymentId?`           | Guided: inspect failed deploy, pull logs, propose remediation. |
+| Name                         | Args                              | Purpose                                                                         |
+| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
+| `scai.deploy_recipe`         | `recipeName`, `targetEnv`         | Guided: compile → diff → confirm → push.                                        |
+| `scai.diff_envs`             | `sourceEnv`, `targetEnv`          | Guided: diff serialized state between two environments.                         |
+| `scai.compose_workflow`      | `intent`, `handle?`, `targetEnv?` | Guided: design a Sitecore workflow from intent, emit a recipe, dry-run + apply. |
+| `scai.recover_failed_deploy` | `deploymentId?`                   | Guided: inspect failed deploy, pull logs, propose remediation.                  |
 
 ## Transport
 

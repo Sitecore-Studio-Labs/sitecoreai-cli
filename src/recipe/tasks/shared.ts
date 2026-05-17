@@ -3,7 +3,7 @@ import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient } from "../api/client";
 
@@ -260,4 +260,4 @@ export const resolveRecipeInputs = async (
 // same workspace-policy enforcement (ceiling, caller context, the
 // `recipe-push` destructive tier) as every other write path. The
 // recipe-local copy that used to live here predated the policy layer.
-export { ensureAllowWrite } from "@/shared/allow-write";
+export { ensureAllowWrite } from "@/policy/allow-write";

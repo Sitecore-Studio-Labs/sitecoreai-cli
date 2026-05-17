@@ -108,7 +108,7 @@ vi.mock("../../../../src/hygiene/tasks/audit/unused-media", () => ({
   runAuditUnusedMedia: subAuditMocks.runAuditUnusedMedia,
 }));
 
-vi.mock("../../../../src/shared/env", () => ({
+vi.mock("../../../../src/policy/environment", () => ({
   resolveEnvironment: vi.fn(() => ({
     envName: "sandbox",
     environment: { name: "sandbox", host: "h" },

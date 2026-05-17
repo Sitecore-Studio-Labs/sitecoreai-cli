@@ -5,7 +5,7 @@ import { runWebhookCreate } from "../../../../src/webhooks/tasks/create";
 import { runWebhookDelete } from "../../../../src/webhooks/tasks/delete";
 import { runWebhookEventTypes } from "../../../../src/webhooks/tasks/event-types";
 import * as sharedModule from "../../../../src/webhooks/tasks/shared";
-import * as allowWriteModule from "../../../../src/shared/allow-write";
+import * as allowWriteModule from "../../../../src/policy/allow-write";
 import type { WebhookApiClient } from "../../../../src/webhooks/api/client";
 
 vi.mock("../../../../src/webhooks/tasks/shared", async () => {
@@ -15,9 +15,9 @@ vi.mock("../../../../src/webhooks/tasks/shared", async () => {
   return { ...actual, resolveWebhookTenant: vi.fn() };
 });
 
-vi.mock("../../../../src/shared/allow-write", async () => {
+vi.mock("../../../../src/policy/allow-write", async () => {
   const actual = await vi.importActual<typeof allowWriteModule>(
-    "../../../../src/shared/allow-write"
+    "../../../../src/policy/allow-write"
   );
   return { ...actual, ensureAllowWrite: vi.fn() };
 });

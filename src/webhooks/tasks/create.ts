@@ -1,4 +1,4 @@
-import { ensureAllowWrite } from "@/shared/allow-write";
+import { ensureAllowWrite } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
 import type {
   CreateEventHandlerInput,

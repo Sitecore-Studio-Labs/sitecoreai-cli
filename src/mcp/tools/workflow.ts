@@ -29,7 +29,7 @@ import { runWorkflowReset } from "@/workflow/tasks/reset";
 import { runWorkflowStatus } from "@/workflow/tasks/status";
 import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup/workflow-advance";
 import { runCleanupWorkflowApply } from "@/hygiene/tasks/cleanup/workflow-apply";
-import { ensureMcpElevationAllowed } from "@/shared/allow-write";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

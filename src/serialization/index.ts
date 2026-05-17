@@ -1,12 +1,19 @@
 /**
  * Public entry for `@sitecoreai-labs/sitecoreai-cli/serialization`.
  *
- * Re-exports the curated Sitecore Management + Authoring GraphQL client
- * surface from `./api`. The `./api` barrel stays the source of truth for
- * which symbols are public; this file exists so the `serialization`
- * subpath follows the same `<area>/index.ts` convention as every other
- * exported area.
+ * `./api/index.ts` is itself a curated, explicit barrel (zero `export *`)
+ * and stays the source of truth for the Sitecore Management + Authoring
+ * GraphQL client surface — it is re-exported wholesale. `./context` is a
+ * plain module, so its public symbols are enumerated explicitly below: a
+ * new intra-area `export` in `context.ts` must be added here deliberately
+ * to widen the SDK surface.
  */
 
 export * from "./api";
-export * from "./context";
+
+export {
+  loadConfigAndModules,
+  groupSubtreesByDatabase,
+  ensureAllowWrite,
+  type LoadSerializationModulesOptions,
+} from "./context";

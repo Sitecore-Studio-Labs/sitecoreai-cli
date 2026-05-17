@@ -21,37 +21,47 @@ For one-off binaries, use `pnpm exec <bin>`.
 
 ## Module structure
 
+`src/` is ~17 **domain areas** plus three cross-cutting layers. A domain
+area owns one product surface — its API client, task runners, and (where
+it has one) an `index.ts` SDK barrel.
+
 ```
 src/
-├── cli.ts                      ← entrypoint; commander root program
-├── commands/                   ← commander command definitions; thin wrappers
-│   ├── deploy/                 ← deploy subcommands
-│   ├── serialization/          ← ser subcommands
-│   ├── init.ts, login.ts, etc. ← top-level commands
-│   └── shared.ts               ← shared option helpers
-├── config/                     ← sitecoreai.cli.json + module schemas, parsing
-├── deploy/                     ← Deploy API HTTP client
-│   └── api/
-├── serialization/              ← serialization commands and runtime
-│   ├── tasks/                  ← task runners (push/pull/diff/validate/watch)
-│   │   ├── deploy/             ← deploy task helpers
-│   │   ├── env/                ← init/login/logout/status
-│   │   └── serialization/      ← serialization task helpers
-│   ├── sitecore-api/           ← Authoring + Management GraphQL clients
-│   └── filesystem-store/       ← SCS YAML store (items/roles/users)
-└── shared/                     ← cross-cutting: errors, spinner, logger, etc.
+├── cli.ts             ← entrypoint; src/program.ts builds the Commander tree
+├── commands/          ← Commander command definitions; thin parsers
+│   ├── deploy/, serialization/, recipe/, brand/, ...  ← per-area subcommands
+│   └── shared.ts      ← shared option helpers
+├── config/            ← sitecoreai.cli.json + module schemas, config resolution
+├── shared/            ← cross-cutting: errors, logger, spinner, HTTP/GraphQL
+│                        transport, telemetry, redaction
+└── <domain areas>/    ← deploy, serialization, recipe, brand, brief,
+                          campaigns, sites, publishing, content, hygiene,
+                          webhooks, workflow, agents, policy, mcp,
+                          scripting, sync
 ```
+
+A typical domain area (e.g. `serialization/`) holds `tasks/` (task
+runners), an API-client subdir, and an `index.ts` barrel exporting the
+SDK surface for that subpath.
 
 **Direction of imports:**
 
-- `commands/` may import from any of `config/`, `deploy/`, `serialization/`, `shared/`
-- `serialization/tasks/` may import from `serialization/sitecore-api/`, `serialization/filesystem-store/`, `shared/`, `config/`
-- `serialization/sitecore-api/` and `serialization/filesystem-store/` are leaves; they don't reach back up
-- `shared/` is a leaf
+- `commands/` may import any domain area, `config/`, and `shared/`.
+- A domain area may import **peer domain areas**, `config/`, and
+  `shared/` — never `commands/`.
+- `config/` may import `shared/` only.
+- **`src/shared/` is a leaf** — it imports no domain area and no
+  `commands/` (type-only `@/config` imports are allowed). `allow-write`
+  and `env` were moved into `policy/`; `content/` must not import
+  `publishing/`. Those two boundaries killed the former `shared↔policy`
+  and `content↔publishing` cycles.
+- `tests/unit/architecture/module-boundaries.test.ts` enforces those
+  two invariants. It is not a full cycle detector — peer domain areas
+  may still cross-import; the hard rule is that `shared/` stays a leaf.
 
-When adding a new command group (like `recipe`), follow the
-`serialization/` pattern: `commands/recipe/`, `serialization/...` peer
-modules in `src/recipe/` if they own runtime logic.
+When adding a new command group (like `recipe`), follow the existing
+pattern: a parser dir under `commands/<group>/`, and a peer domain area
+`src/<group>/` if it owns runtime logic.
 
 ## Error handling: createCliError
 

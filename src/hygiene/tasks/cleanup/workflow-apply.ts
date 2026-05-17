@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { resolveEnvironment } from "@/shared/env";
+import { resolveEnvironment } from "@/policy/environment";
 import { createScaiError } from "@/shared/errors";
 import type { HygieneApiClient } from "../../api/client";
 import {

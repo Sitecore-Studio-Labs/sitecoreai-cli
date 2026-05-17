@@ -6,7 +6,7 @@ import {
   readRecentPublishAudit,
   recordPublishAudit,
   type PublishAuditEntry,
-} from "../../../src/publishing/audit";
+} from "../../../src/shared/publish-audit";
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "scai-audit-"));
 const auditPath = path.join(tmpRoot, "audit.log");

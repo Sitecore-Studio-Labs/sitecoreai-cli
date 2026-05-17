@@ -1,6 +1,5 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
-import { readRootConfiguration } from "@/config/root-config";
 import {
   deleteDocument,
   getDocument,
@@ -8,10 +7,9 @@ import {
   uploadDocument,
   LOCAL_UPLOAD_UNSUPPORTED_MESSAGE,
   LOCAL_UPLOAD_UNSUPPORTED_HINT,
-  type BrandApiClientOptions,
 } from "@/brand";
+import { resolveBrandClient } from "@/brand/credential";
 import { confirmDestructive, inputError, toLogger } from "@/shared/cli-tasks";
-import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "@/shared/cli-options";
 
 interface DocsCommonOptions extends CommonOptions {
@@ -19,28 +17,6 @@ interface DocsCommonOptions extends CommonOptions {
   orgId?: string;
   format?: "text" | "json";
 }
-
-const resolveClient = (options: DocsCommonOptions): BrandApiClientOptions => {
-  const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
-  const orgId = options.orgId ?? env?.organizationId;
-  if (!orgId) {
-    throw inputError(
-      `Cannot resolve organizationId for env '${envName}'.`,
-      "Pass --org-id <id> or set organizationId on the env profile."
-    );
-  }
-  const credential = root.brand?.[orgId];
-  if (!credential) {
-    throw createScaiError(
-      `No Brand credential is configured for org '${orgId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
-    );
-  }
-  return { orgId, credential };
-};
 
 const writeJson = (value: unknown): void => {
   process.stdout.write(JSON.stringify(value, null, 2) + "\n");
@@ -78,7 +54,7 @@ const createUploadCommand = (): Command => {
       }
     ) => {
       const logger = toLogger(options);
-      const client = resolveClient(options);
+      const client = resolveBrandClient(options);
       if (file) {
         throw inputError(LOCAL_UPLOAD_UNSUPPORTED_MESSAGE, LOCAL_UPLOAD_UNSUPPORTED_HINT);
       }
@@ -141,7 +117,7 @@ const createListDocsCommand = (): Command => {
       }
     ) => {
       const logger = toLogger(options);
-      const client = resolveClient(options);
+      const client = resolveBrandClient(options);
       const response = await listDocuments({
         client,
         brandKitId: options.kit,
@@ -179,7 +155,7 @@ const createGetDocCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (docId: string, options: DocsCommonOptions) => {
     const logger = toLogger(options);
-    const client = resolveClient(options);
+    const client = resolveBrandClient(options);
     const doc = await getDocument({ client, documentId: docId });
     if (options.format === "json") {
       writeJson(doc);
@@ -210,7 +186,7 @@ const createDeleteDocCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (docId: string, options: DocsCommonOptions & { force?: boolean }) => {
     const logger = toLogger(options);
-    const client = resolveClient(options);
+    const client = resolveBrandClient(options);
     const doc = await getDocument({ client, documentId: docId });
     logger.info(`About to delete: ${doc.title ?? "(untitled)"} (${doc.id}) [${doc.status}]`);
     const proceed = await confirmDestructive(

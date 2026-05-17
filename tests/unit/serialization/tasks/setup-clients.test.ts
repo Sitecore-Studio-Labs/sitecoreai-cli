@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ScaiError } from "../../../../src/shared/errors";
 
 /**
- * Covers `runSetupClients`: env resolution (explicit name + default
- * fallback), the input/auth guards, and that it lists both the
- * environment-scoped and organization-scoped clients for the resolved
- * organization. Config, keychain, and the clients-API calls are mocked.
+ * Covers `runSetupClients`: the input/auth guards and that it lists both
+ * the environment-scoped and organization-scoped clients for the
+ * resolved organization. Config, keychain, and the clients-API calls are
+ * mocked.
+ *
+ * Env resolution lives in `resolveActiveEnvironment` (covered in
+ * tests/unit/config/resolve-active-environment.test.ts); here it is
+ * mocked.
  */
 const mocks = vi.hoisted(() => ({
-  readRootConfiguration: vi.fn(),
+  resolveActiveEnvironment: vi.fn(),
   readRootConfigurationFile: vi.fn(),
   writeRootConfigurationFile: vi.fn(),
   getDeployToken: vi.fn(),
@@ -20,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/config/root-config", () => ({
-  readRootConfiguration: mocks.readRootConfiguration,
+  resolveActiveEnvironment: mocks.resolveActiveEnvironment,
   readRootConfigurationFile: mocks.readRootConfigurationFile,
   writeRootConfigurationFile: mocks.writeRootConfigurationFile,
 }));
@@ -50,12 +55,19 @@ const { runSetupClients } = await import("../../../../src/serialization/tasks/en
 
 const baseOptions = { environmentName: "test", quiet: true };
 
+/** A resolved-environment result as `resolveActiveEnvironment` returns it. */
+const resolved = (
+  env: Record<string, unknown> = { organizationId: "org-1" }
+): { envName: string; env: Record<string, unknown>; root: Record<string, unknown> } => ({
+  envName: "test",
+  env,
+  root: {},
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.readRootConfigurationFile.mockReturnValue({ config: { defaultEnvProfile: "test" } });
-  mocks.readRootConfiguration.mockReturnValue({
-    environments: { test: { organizationId: "org-1" } },
-  });
+  mocks.resolveActiveEnvironment.mockReturnValue(resolved());
+  mocks.readRootConfigurationFile.mockReturnValue({ config: {} });
   mocks.getDeployToken.mockResolvedValue("deploy-token");
   mocks.clearCmClientSecret.mockResolvedValue(true);
   mocks.clearOrgClientSecret.mockResolvedValue(true);
@@ -75,18 +87,17 @@ afterEach(() => {
 });
 
 describe("runSetupClients — guards", () => {
-  it("rejects when no env is given and there is no defaultEnvProfile", async () => {
-    mocks.readRootConfigurationFile.mockReturnValue({ config: {} });
+  it("propagates env-resolution failures from resolveActiveEnvironment", async () => {
+    mocks.resolveActiveEnvironment.mockImplementation(() => {
+      throw new ScaiError("No environment specified and no defaultEnvProfile is set.", {
+        code: "INPUT_INVALID",
+      });
+    });
     await expect(runSetupClients({ quiet: true })).rejects.toThrow(/No environment specified/);
   });
 
-  it("rejects when the environment is not configured", async () => {
-    mocks.readRootConfiguration.mockReturnValue({ environments: {} });
-    await expect(runSetupClients(baseOptions)).rejects.toThrow(/not configured/);
-  });
-
   it("rejects when the environment has no organizationId", async () => {
-    mocks.readRootConfiguration.mockReturnValue({ environments: { test: {} } });
+    mocks.resolveActiveEnvironment.mockReturnValue(resolved({}));
     await expect(runSetupClients(baseOptions)).rejects.toThrow(/no organizationId/);
   });
 
@@ -109,9 +120,9 @@ describe("runSetupClients — listing", () => {
     );
   });
 
-  it("falls back to defaultEnvProfile when no env name is passed", async () => {
+  it("resolves the environment via resolveActiveEnvironment when no name is passed", async () => {
     await runSetupClients({ quiet: true });
-    expect(mocks.readRootConfiguration).toHaveBeenCalledWith(expect.anything(), "test");
+    expect(mocks.resolveActiveEnvironment).toHaveBeenCalledWith(expect.anything(), undefined);
     expect(mocks.listEnvironmentClients).toHaveBeenCalledTimes(1);
   });
 

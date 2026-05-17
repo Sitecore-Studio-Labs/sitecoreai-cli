@@ -393,7 +393,15 @@ export type RootConfiguration = {
    */
   orgClients: Record<string, AutomationClientMetadata>;
   physicalPath: string;
+  /**
+   * Active environment name: the configured `defaultEnvProfile`, or the
+   * literal `"default"` when none is set. Use `defaultEnvProfile` (raw,
+   * `undefined` when unset) to tell a real default apart from the
+   * fallback — the `"default"` placeholder is not a real env profile.
+   */
   defaultEnvironment: string;
+  /** The raw `defaultEnvProfile` from the config file; `undefined` when unset. */
+  defaultEnvProfile?: string;
   /**
    * Globs (relative to the project root) that locate `.recipe.ts` /
    * `.recipe.json` files for `scai provision recipe compile|plan|push`. When the

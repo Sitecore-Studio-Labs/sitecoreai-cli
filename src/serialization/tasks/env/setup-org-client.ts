@@ -13,8 +13,8 @@
 
 import path from "node:path";
 import {
-  readRootConfiguration,
   readRootConfigurationFile,
+  resolveActiveEnvironment,
   writeRootConfigurationFile,
 } from "@/config/root-config";
 import { getDeployToken, getOrgClientSecret, setOrgClientSecret } from "@/shared/keychain";
@@ -42,23 +42,7 @@ export type SetupOrgClientOptions = CommonOptions & {
 export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise<void> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
-  const envName =
-    options.environmentName ?? readRootConfigurationFile(configPath).config.defaultEnvProfile;
-  if (!envName) {
-    throw inputError(
-      "No environment specified and no defaultEnvProfile is set.",
-      "Pass an environment name to resolve the organization, or set a default env first."
-    );
-  }
-
-  const root = readRootConfiguration(configPath, envName);
-  const env = root.environments[envName];
-  if (!env) {
-    throw inputError(
-      `Environment '${envName}' is not configured.`,
-      "Run `scai setup init` to add it."
-    );
-  }
+  const { envName, env, root } = resolveActiveEnvironment(configPath, options.environmentName);
 
   // Phase 2 mint gate — minting an automation client requires an
   // interactive human operator on a mint-eligible environment. A no-op

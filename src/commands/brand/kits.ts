@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
-import { readRootConfiguration } from "@/config/root-config";
 import {
   createBrandKit,
   deleteBrandKit,
@@ -11,11 +10,10 @@ import {
   listBrandKitSections,
   publishBrandKit,
   updateBrandKitField,
-  type BrandApiClientOptions,
   type BrandKitFieldValue,
 } from "@/brand";
+import { resolveBrandClient } from "@/brand/credential";
 import { confirmDestructive, inputError, toLogger } from "@/shared/cli-tasks";
-import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "@/shared/cli-options";
 
 interface KitsCommonOptions extends CommonOptions {
@@ -23,30 +21,6 @@ interface KitsCommonOptions extends CommonOptions {
   orgId?: string;
   format?: "text" | "json";
 }
-
-const resolveClient = (
-  options: KitsCommonOptions
-): { client: BrandApiClientOptions; orgId: string } => {
-  const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
-  const orgId = options.orgId ?? env?.organizationId;
-  if (!orgId) {
-    throw inputError(
-      `Cannot resolve organizationId for env '${envName}'.`,
-      "Pass --org-id <id> or set organizationId on the env profile."
-    );
-  }
-  const credential = root.brand?.[orgId];
-  if (!credential) {
-    throw createScaiError(
-      `No Brand credential is configured for org '${orgId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
-    );
-  }
-  return { client: { orgId, credential }, orgId };
-};
 
 const writeJson = (value: unknown): void => {
   process.stdout.write(JSON.stringify(value, null, 2) + "\n");
@@ -67,7 +41,7 @@ const createListKitsCommand = (): Command => {
   command.action(
     async (options: KitsCommonOptions & { pageNumber?: string; pageSize?: string }) => {
       const logger = toLogger(options);
-      const { client } = resolveClient(options);
+      const client = resolveBrandClient(options);
       const response = await listBrandKits({
         client,
         pageNumber: options.pageNumber ? Number(options.pageNumber) : undefined,
@@ -103,7 +77,7 @@ const createGetKitCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (kitId: string, options: KitsCommonOptions) => {
     const logger = toLogger(options);
-    const { client } = resolveClient(options);
+    const client = resolveBrandClient(options);
     const kit = await getBrandKit({ client, brandKitId: kitId });
     if (options.format === "json") {
       writeJson(kit);
@@ -133,7 +107,7 @@ const createSectionsCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (kitId: string, options: KitsCommonOptions) => {
     const logger = toLogger(options);
-    const { client } = resolveClient(options);
+    const client = resolveBrandClient(options);
     const sections = await listBrandKitSections({ client, brandKitId: kitId });
     if (options.format === "json") {
       writeJson(sections);
@@ -169,7 +143,7 @@ const createFieldsCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (kitId: string, sectionId: string, options: KitsCommonOptions) => {
     const logger = toLogger(options);
-    const { client } = resolveClient(options);
+    const client = resolveBrandClient(options);
     const fields = await listBrandKitFields({
       client,
       brandKitId: kitId,
@@ -240,7 +214,7 @@ const createCreateKitCommand = (): Command => {
       }
     ) => {
       const logger = toLogger(options);
-      const { client } = resolveClient(options);
+      const client = resolveBrandClient(options);
       const kit = await createBrandKit({
         client,
         name,
@@ -279,7 +253,7 @@ const createPublishKitCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (kitId: string, options: KitsCommonOptions) => {
     const logger = toLogger(options);
-    const { client } = resolveClient(options);
+    const client = resolveBrandClient(options);
     const kit = await publishBrandKit({ client, brandKitId: kitId });
     if (options.format === "json") {
       writeJson(kit);
@@ -301,7 +275,7 @@ const createDeleteKitCommand = (): Command => {
   command.addOption(new Option("--org-id <id>", "Override orgId from env profile"));
   command.action(async (kitId: string, options: KitsCommonOptions & { force?: boolean }) => {
     const logger = toLogger(options);
-    const { client } = resolveClient(options);
+    const client = resolveBrandClient(options);
     // Show what we're about to delete.
     const kit = await getBrandKit({ client, brandKitId: kitId });
     logger.info(`About to delete: ${kit.name} (${kit.id}) [${kit.status}]`);
@@ -411,7 +385,7 @@ const createSetFieldCommand = (): Command => {
       }
     ) => {
       const logger = toLogger(options);
-      const { client } = resolveClient(options);
+      const client = resolveBrandClient(options);
       const value = parseFieldValueArg(options);
       const updated = await updateBrandKitField({
         client,

@@ -1,13 +1,8 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions, collectList } from "../shared";
-import { readRootConfiguration } from "@/config/root-config";
-import {
-  runBrandIngestionPipeline,
-  runEnrichSectionsPipeline,
-  type BrandApiClientOptions,
-} from "@/brand";
-import { inputError, toLogger } from "@/shared/cli-tasks";
-import { createScaiError } from "@/shared/errors";
+import { runBrandIngestionPipeline, runEnrichSectionsPipeline } from "@/brand";
+import { resolveBrandClient } from "@/brand/credential";
+import { toLogger } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 
 /**
@@ -23,28 +18,6 @@ interface PipelineCommonOptions extends CommonOptions {
   orgId?: string;
   format?: "text" | "json";
 }
-
-const resolveClient = (options: PipelineCommonOptions): BrandApiClientOptions => {
-  const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
-  const orgId = options.orgId ?? env?.organizationId;
-  if (!orgId) {
-    throw inputError(
-      `Cannot resolve organizationId for env '${envName}'.`,
-      "Pass --org-id <id> or set organizationId on the env profile."
-    );
-  }
-  const credential = root.brand?.[orgId];
-  if (!credential) {
-    throw createScaiError(
-      `No Brand credential is configured for org '${orgId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
-    );
-  }
-  return { orgId, credential };
-};
 
 const writeJson = (value: unknown): void => {
   process.stdout.write(JSON.stringify(value, null, 2) + "\n");
@@ -77,7 +50,7 @@ export const createBrandIngestCommand = (): Command => {
       }
     ) => {
       const logger = toLogger(options);
-      const client = resolveClient(options);
+      const client = resolveBrandClient(options);
       const run = await runBrandIngestionPipeline({
         client,
         brandKitId: kitId,
@@ -122,7 +95,7 @@ export const createBrandEnrichCommand = (): Command => {
       options: PipelineCommonOptions & { sectionIds?: string[]; fieldIds?: string[] }
     ) => {
       const logger = toLogger(options);
-      const client = resolveClient(options);
+      const client = resolveBrandClient(options);
       const run = await runEnrichSectionsPipeline({
         client,
         brandKitId: kitId,

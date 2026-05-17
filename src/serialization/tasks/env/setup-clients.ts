@@ -15,8 +15,8 @@
  */
 
 import {
-  readRootConfiguration,
   readRootConfigurationFile,
+  resolveActiveEnvironment,
   writeRootConfigurationFile,
 } from "@/config/root-config";
 import { clearCmClientSecret, clearOrgClientSecret, getDeployToken } from "@/shared/keychain";
@@ -57,23 +57,7 @@ const renderRow = (
 export const runSetupClients = async (options: SetupClientsOptions): Promise<void> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
-  const rootFile = readRootConfigurationFile(configPath);
-  const envName = options.environmentName ?? rootFile.config.defaultEnvProfile;
-  if (!envName) {
-    throw inputError(
-      "No environment specified and no defaultEnvProfile is set.",
-      "Pass an environment name: `scai setup clients <name>`."
-    );
-  }
-
-  const root = readRootConfiguration(configPath, envName);
-  const env = root.environments[envName];
-  if (!env) {
-    throw inputError(
-      `Environment '${envName}' is not configured.`,
-      "Run `scai setup init` to add it."
-    );
-  }
+  const { envName, env } = resolveActiveEnvironment(configPath, options.environmentName);
 
   const organizationId = env.organizationId;
   if (!organizationId) {

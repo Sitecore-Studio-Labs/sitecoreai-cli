@@ -119,8 +119,65 @@ export const readRootConfiguration = (
     orgClients: rootJson.orgClients ?? {},
     physicalPath: rootPath,
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
+    defaultEnvProfile: rootJson.defaultEnvProfile,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,
   };
+};
+
+/**
+ * Resolve the environment profile a command should act on.
+ *
+ * Resolution order:
+ *   1. An explicitly named env (`--environment-name` / `-n`).
+ *   2. The configured `defaultEnvProfile`.
+ *   3. The sole env profile, when exactly one is configured — a
+ *      single-environment config then works without anyone having to
+ *      designate a default. Declining "set as default" during
+ *      `setup init` must not strand the only environment.
+ *
+ * Throws `INPUT_INVALID` when none applies — no profiles configured, or
+ * several with no default to disambiguate them — and `ENV_NOT_FOUND`
+ * when the resolved name has no matching profile (a stale
+ * `--environment-name` or `defaultEnvProfile`).
+ *
+ * `root` is returned read with the resolved name as the active env, so
+ * callers see correct env-override layering without re-reading.
+ */
+export const resolveActiveEnvironment = (
+  configPath: string,
+  explicitEnvName: string | undefined
+): { envName: string; env: EnvironmentConfiguration; root: RootConfiguration } => {
+  const { config } = readRootConfigurationFile(configPath);
+  const profileNames = Object.keys(config.envProfiles ?? {});
+
+  let envName = explicitEnvName ?? config.defaultEnvProfile;
+  if (!envName) {
+    if (profileNames.length === 1) {
+      envName = profileNames[0];
+    } else if (profileNames.length === 0) {
+      throw createScaiError("No environment is configured.", "INPUT_INVALID", {
+        hint: "Run `scai setup init` to create one.",
+      });
+    } else {
+      throw createScaiError(
+        "No environment specified and no defaultEnvProfile is set.",
+        "INPUT_INVALID",
+        {
+          hint: `Pass an environment name (one of: ${profileNames.join(", ")}), or set a default with \`scai setup init -n <name> --set-default\`.`,
+        }
+      );
+    }
+  }
+
+  const root = readRootConfiguration(configPath, envName);
+  const env = root.environments[envName];
+  if (!env) {
+    throw createScaiError(`Environment '${envName}' is not configured.`, "ENV_NOT_FOUND", {
+      hint: `Configured environments: ${profileNames.join(", ") || "(none)"}. Run \`scai setup init\` to add it.`,
+    });
+  }
+
+  return { envName, env, root };
 };
 
 /**

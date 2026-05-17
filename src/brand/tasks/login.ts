@@ -14,6 +14,7 @@ import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { promptConfirm, promptSecret, promptText } from "@/shared/prompt";
 import { extractScopes } from "../api/auth";
+import { resolveBrandOrgId } from "../credential";
 
 export interface BrandLoginOptions extends CommonOptions {
   environmentName?: string;
@@ -47,39 +48,6 @@ const CLOUD_PORTAL_HINT =
   "Create the credential in Cloud Portal → Stream → Admin → AI APIs keys → Create credential.";
 
 /**
- * Resolve the Sitecore `organizationId` to bind the Brand
- * credential to. Resolution order:
- *
- *   1. Explicit `orgId` (e.g. from `--org-id`).
- *   2. `organizationId` field on the active env profile (the env named
- *      by `--environment-name` / `--env`, or the default env profile).
- *
- * Fails with `INPUT_INVALID` when neither path resolves a value —
- * scai's Brand credentials are one-org-per-credential and we
- * can't store one without an org key.
- *
- * Exported for unit testing the resolution branches. The login flow
- * uses it; nothing else should need it.
- */
-export const resolveBrandOrgId = (
-  explicitOrgId: string | undefined,
-  envOrgId: string | undefined,
-  envName: string | undefined
-): string => {
-  if (explicitOrgId) {
-    return explicitOrgId;
-  }
-  if (envOrgId) {
-    return envOrgId;
-  }
-  const envClause = envName ? ` (env '${envName}' has no organizationId)` : "";
-  throw inputError(
-    `Cannot resolve organizationId for Brand credential${envClause}.`,
-    "Pass --org-id <id>, or set organizationId on the env profile in sitecoreai.cli.json."
-  );
-};
-
-/**
  * Provision a Sitecore Brand credential for a Sitecore
  * organization. The flow is:
  *
@@ -110,10 +78,24 @@ export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> =
   const rootConfigFile = readRootConfigurationFile(configPath);
   const root = readRootConfiguration(configPath, options.environmentName);
 
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
+  // Env name comes only from an explicit signal — `--environment-name`
+  // or a configured `defaultEnvProfile`. We deliberately do NOT fall
+  // back to `root.defaultEnvironment`, which substitutes the literal
+  // "default" when no default is configured: that masks an unset
+  // default as a missing env profile. When neither signal is present we
+  // leave `envName` undefined and let resolveBrandOrgId scan the
+  // profiles, so a single-environment config resolves with no flag.
+  const envName = options.environmentName ?? rootConfigFile.config.defaultEnvProfile;
 
-  const orgId = resolveBrandOrgId(options.orgId, env?.organizationId, envName);
+  const orgId = resolveBrandOrgId(options.orgId, root.environments, envName);
+
+  // The env profile behind the resolved org — the named one when an env
+  // was selected, else whichever profile carries this org. Used only for
+  // the `authority` fallback below; `--authority` and the default still
+  // win/cover the no-profile case.
+  const selectedEnv =
+    (envName ? root.environments[envName] : undefined) ??
+    Object.values(root.environments).find((e) => e.organizationId === orgId);
 
   const existing = rootConfigFile.config.brand?.[orgId];
   const isInteractive =
@@ -165,7 +147,7 @@ export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> =
     clientSecret = await promptSecret("Client Secret: ");
   }
 
-  const authority = options.authority ?? env?.authority ?? DEFAULT_AUTHORITY;
+  const authority = options.authority ?? selectedEnv?.authority ?? DEFAULT_AUTHORITY;
   const audience = options.audience ?? DEFAULT_SITECORE_API_AUDIENCE;
 
   logger.info("Validating credential by minting a test token...");

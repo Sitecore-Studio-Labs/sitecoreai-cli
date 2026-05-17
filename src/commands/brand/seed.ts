@@ -1,16 +1,11 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
-import { readRootConfiguration } from "@/config/root-config";
-import {
-  seedBrandKit,
-  type BrandApiClientOptions,
-  type SeedBrandKitOptions,
-  type SeedProgressEvent,
-} from "@/brand";
+import { resolveActiveEnvironment } from "@/config/root-config";
+import { seedBrandKit, type SeedBrandKitOptions, type SeedProgressEvent } from "@/brand";
+import { resolveBrandClient } from "@/brand/credential";
 import { brandKitKind } from "@/brand/recipe";
 import { loadRecipe, syncPush, type SyncContext } from "@/sync";
 import { inputError, toLogger } from "@/shared/cli-tasks";
-import { createScaiError } from "@/shared/errors";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
 
@@ -27,28 +22,6 @@ interface SeedOptions extends CommonOptions {
   format?: "text" | "json";
 }
 
-const resolveClient = (options: SeedOptions): BrandApiClientOptions => {
-  const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
-  const orgId = options.orgId ?? env?.organizationId;
-  if (!orgId) {
-    throw inputError(
-      `Cannot resolve organizationId for env '${envName}'.`,
-      "Pass --org-id <id> or set organizationId on the env profile."
-    );
-  }
-  const credential = root.brand?.[orgId];
-  if (!credential) {
-    throw createScaiError(
-      `No Brand credential is configured for org '${orgId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: `Run \`scai setup login brand -n ${envName}\` to provision one.` }
-    );
-  }
-  return { orgId, credential };
-};
-
 /**
  * `--url` path: drive a brand kit from "doesn't exist" to "has
  * populated sections" by running the full ingest + enrich pipeline on
@@ -58,7 +31,7 @@ const seedFromUrl = async (options: SeedOptions, logger: Logger): Promise<void> 
   if (!options.name) {
     throw inputError("--name is required when seeding from --url.");
   }
-  const client = resolveClient(options);
+  const client = resolveBrandClient(options);
   const source: SeedBrandKitOptions["source"] = { url: options.url ?? "" };
 
   const onProgress = (event: SeedProgressEvent): void => {
@@ -107,9 +80,13 @@ const seedFromUrl = async (options: SeedOptions, logger: Logger): Promise<void> 
  */
 const seedFromFile = async (options: SeedOptions, logger: Logger): Promise<void> => {
   const configPath = options.config ?? process.cwd();
-  const root = readRootConfiguration(configPath, options.environmentName);
+  // Resolve a concrete env name for the sync context — explicit flag,
+  // configured default, or the sole env profile. The sync engine's
+  // brand-client resolver needs a real environment, not the phantom
+  // "default" that an unset defaultEnvProfile would otherwise yield.
+  const { envName } = resolveActiveEnvironment(configPath, options.environmentName);
   const ctx: SyncContext = {
-    environmentName: options.environmentName ?? root.defaultEnvironment,
+    environmentName: envName,
     configPath,
     logger,
   };

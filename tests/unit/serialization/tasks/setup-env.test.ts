@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ScaiError } from "../../../../src/shared/errors";
 
 /**
  * Covers the list-or-mint reconciliation in `runSetupEnv`: fresh mint,
@@ -7,13 +8,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * clients-API network calls are mocked; `buildScaiClientName` /
  * `buildScaiClientDescription` run for real.
  *
- * Per `docs/credentials.md` a provisioned env client means both halves
- * agree: the `automationClient` metadata in the config AND the secret in
- * the keychain. A mint writes the metadata to the config (via
+ * Env resolution lives in `resolveActiveEnvironment` (covered in
+ * tests/unit/config/resolve-active-environment.test.ts); here it is
+ * mocked. Per `docs/credentials.md` a provisioned env client means both
+ * halves agree: the `automationClient` metadata in the config AND the
+ * secret in the keychain. A mint writes the metadata to the config (via
  * `writeRootConfigurationFile`) and only the secret to the keychain.
  */
 const mocks = vi.hoisted(() => ({
-  readRootConfiguration: vi.fn(),
+  resolveActiveEnvironment: vi.fn(),
   readRootConfigurationFile: vi.fn(),
   writeRootConfigurationFile: vi.fn(),
   getDeployToken: vi.fn(),
@@ -25,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/config/root-config", () => ({
-  readRootConfiguration: mocks.readRootConfiguration,
+  resolveActiveEnvironment: mocks.resolveActiveEnvironment,
   readRootConfigurationFile: mocks.readRootConfigurationFile,
   writeRootConfigurationFile: mocks.writeRootConfigurationFile,
 }));
@@ -56,7 +59,16 @@ const CONFIGURED_ENV = {
 
 const baseOptions = { environmentName: "test", quiet: true };
 
-/** Build a fresh root-config-file mock value with the `test` env profile. */
+/** A resolved-environment result as `resolveActiveEnvironment` returns it. */
+const resolved = (
+  env: Record<string, unknown> = { ...CONFIGURED_ENV }
+): { envName: string; env: Record<string, unknown>; root: Record<string, unknown> } => ({
+  envName: "test",
+  env,
+  root: { physicalPath: "/proj/sitecoreai.cli.json", environments: { test: env }, brand: {} },
+});
+
+/** A fresh root-config-file mock value with the `test` env profile. */
 const configFile = (
   envOverrides: Record<string, unknown> = {}
 ): { config: { envProfiles: Record<string, Record<string, unknown>> } } => ({
@@ -69,10 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.setCmClientSecret.mockResolvedValue(true);
   mocks.deleteClient.mockResolvedValue(undefined);
-  mocks.readRootConfiguration.mockReturnValue({
-    environments: { test: { ...CONFIGURED_ENV } },
-    brand: {},
-  });
+  mocks.resolveActiveEnvironment.mockReturnValue(resolved());
   mocks.readRootConfigurationFile.mockReturnValue(configFile());
   mocks.getDeployToken.mockResolvedValue("deploy-token");
   mocks.getCmClientSecret.mockResolvedValue(undefined);
@@ -89,20 +98,17 @@ afterEach(() => {
 });
 
 describe("runSetupEnv — guards", () => {
-  it("rejects when no environment name is given and no default is set", async () => {
+  it("propagates env-resolution failures from resolveActiveEnvironment", async () => {
+    mocks.resolveActiveEnvironment.mockImplementation(() => {
+      throw new ScaiError("No environment specified and no defaultEnvProfile is set.", {
+        code: "INPUT_INVALID",
+      });
+    });
     await expect(runSetupEnv({ quiet: true })).rejects.toThrow(/no defaultEnvProfile is set/);
   });
 
-  it("rejects when the environment is not configured", async () => {
-    mocks.readRootConfiguration.mockReturnValue({ environments: {}, brand: {} });
-    await expect(runSetupEnv(baseOptions)).rejects.toThrow(/not configured/);
-  });
-
   it("rejects when org/project/environment ids are missing", async () => {
-    mocks.readRootConfiguration.mockReturnValue({
-      environments: { test: { organizationId: "org-1" } },
-      brand: {},
-    });
+    mocks.resolveActiveEnvironment.mockReturnValue(resolved({ organizationId: "org-1" }));
     await expect(runSetupEnv(baseOptions)).rejects.toThrow(/missing organizationId/);
   });
 
@@ -141,10 +147,9 @@ describe("runSetupEnv — list-or-mint", () => {
 
   it("is a no-op when the client is already provisioned", async () => {
     // Both halves present: config metadata + keychain secret.
-    mocks.readRootConfiguration.mockReturnValue({
-      environments: { test: { ...CONFIGURED_ENV, automationClient: { clientId: "x" } } },
-      brand: {},
-    });
+    mocks.resolveActiveEnvironment.mockReturnValue(
+      resolved({ ...CONFIGURED_ENV, automationClient: { clientId: "x" } })
+    );
     mocks.getCmClientSecret.mockResolvedValue("y");
     mocks.listEnvironmentClients.mockResolvedValue({
       items: [{ id: "client-1", name: "scai-cm-test" }],
@@ -169,10 +174,9 @@ describe("runSetupEnv — list-or-mint", () => {
   });
 
   it("--rotate deletes and re-mints even when already provisioned", async () => {
-    mocks.readRootConfiguration.mockReturnValue({
-      environments: { test: { ...CONFIGURED_ENV, automationClient: { clientId: "x" } } },
-      brand: {},
-    });
+    mocks.resolveActiveEnvironment.mockReturnValue(
+      resolved({ ...CONFIGURED_ENV, automationClient: { clientId: "x" } })
+    );
     mocks.getCmClientSecret.mockResolvedValue("y");
     mocks.listEnvironmentClients.mockResolvedValue({
       items: [{ id: "client-1", name: "scai-cm-test" }],

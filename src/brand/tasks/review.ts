@@ -1,12 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
-import { readRootConfiguration } from "@/config/root-config";
 import packageJson from "../../../package.json";
-import { createScaiError } from "@/shared/errors";
 import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { generateBrandReview } from "../review/generate";
+import { resolveBrandClient } from "../credential";
 import type { BrandApiClientOptions } from "../api/client";
 import type { BrandReviewInput, BrandReviewScore, BrandReviewSectionSelector } from "../api/types";
 import { summarizeOutcomes, type ReviewOutcome } from "../review/outcomes";
@@ -305,26 +304,8 @@ export const runBrandReview = async (
 ): Promise<BrandReviewRunResult> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
-  const root = readRootConfiguration(configPath, options.environmentName);
+  const { orgId, credential } = resolveBrandClient(options);
 
-  const envName = options.environmentName ?? root.defaultEnvironment;
-  const env = root.environments[envName];
-
-  const orgId = options.orgId ?? env?.organizationId;
-  if (!orgId) {
-    throw inputError(
-      `Cannot resolve organizationId for the active environment '${envName}'.`,
-      "Pass --org-id <id>, or set organizationId on the env profile in sitecoreai.cli.json."
-    );
-  }
-  const credential = root.brand?.[orgId];
-  if (!credential) {
-    throw createScaiError(
-      `No Brand credential is configured for org '${orgId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: `Run \`scai setup login brand -n ${envName}\` to provision the credential.` }
-    );
-  }
   if (!options.kit) {
     throw inputError(
       "Brand kit ID is required.",

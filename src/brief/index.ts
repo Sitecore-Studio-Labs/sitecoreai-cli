@@ -1,11 +1,13 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/brief`.
+ * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/brief`.
  *
  * Sitecore Content Operations Brief API client. Hosts follow
  * `co-brief-api-<region>.sitecorecloud.io`; the default is EU-West but
  * callers normally pass `baseUrl` from per-env config.
  *
- * **Status**: reverse-engineered against the Agents env. Read helpers
+ * **Status**: UNSTABLE — ships under `./unstable/brief` and carries no
+ * SemVer stability promise; schemas and behavior may change in any
+ * release. Reverse-engineered against the Agents env. Read helpers
  * (`listBriefs`, `getBrief`, `listBriefTypes`, `getBriefType`,
  * `listBriefTasks`, `listBriefComments`) verified 2026-05-14. BriefType
  * writes (`createBriefType`, `updateBriefType`, `deleteBriefType`) verified

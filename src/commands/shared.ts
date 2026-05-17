@@ -156,6 +156,49 @@ export const withApplyGate = <T extends { apply?: boolean; whatIf?: boolean }>(
   };
 };
 
+/**
+ * Mark a command group as an **unstable surface**.
+ *
+ * Three things happen: `[unstable]` is stamped onto the `--help`
+ * summary (so it shows both in the parent's command list and atop the
+ * group's own help), a stability note is appended to `--help`, and a
+ * one-line stderr warning is printed before any action in the group
+ * runs.
+ *
+ * Unstable areas (`brand`, `ops brief`, `ops campaign`, `agents`) are
+ * reverse-engineered from observed traffic and carry no SemVer
+ * stability promise — their commands, flags, and output may change in
+ * any release. The matching SDK subpaths live under `./unstable/*`;
+ * see the SDK stability section in the README.
+ *
+ * The `preAction` hook is inherited by every subcommand, so the warning
+ * fires once for `scai <area> <verb>` regardless of nesting depth. It
+ * writes to stderr — leaving `--json` stdout clean — and honors
+ * `--quiet`.
+ *
+ * `surface` is the user-facing command path (e.g. `"scai ops brief"`),
+ * used verbatim in both the help note and the runtime warning.
+ */
+export const markUnstable = (command: Command, surface: string): Command => {
+  command.description(`[unstable] ${command.description()}`);
+  command.addHelpText(
+    "after",
+    `\nStability: unstable. ${surface} is reverse-engineered and carries no\n` +
+      "SemVer stability promise — its commands, flags, and output may change in\n" +
+      "any release without notice. See the SDK stability section in the README.\n"
+  );
+  command.hook("preAction", (_thisCommand, actionCommand) => {
+    if (actionCommand.opts().quiet) {
+      return;
+    }
+    process.stderr.write(
+      `⚠ ${surface} is an unstable surface — reverse-engineered, no SemVer ` +
+        "stability promise; behavior may change without notice.\n"
+    );
+  });
+  return command;
+};
+
 export const addSkipValidationOption = (command: Command): Command =>
   command.option("-s, --skip-validation", "Skips filesystem integrity validation prior to syncing");
 

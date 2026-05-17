@@ -297,14 +297,14 @@ import {
   type PublishConsent,
 } from "@sitecoreai-labs/sitecoreai-cli/publishing";
 
-// Sites API — CRUD over sites, collections, languages, jobs
-import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/sites";
+// Sites API — CRUD over sites, collections, languages, jobs (unstable)
+import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/unstable/sites";
 
 // Hygiene — audits + cleanups, output adapters, baselines, history
 import { runAuditOrphans, createHygieneApiClient } from "@sitecoreai-labs/sitecoreai-cli/hygiene";
 
-// Brand — Brand Review SARIF + JSON pipelines
-import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai-cli/brand";
+// Brand — Brand Review SARIF + JSON pipelines (unstable)
+import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai-cli/unstable/brand";
 
 // Webhooks + Workflow — Sitecore event handlers and item workflow operations
 import { createWebhookApiClient } from "@sitecoreai-labs/sitecoreai-cli/webhooks";
@@ -322,17 +322,20 @@ The SDK is split into a **stable core** and an **`unstable/` namespace**.
 below:
 
 ```
-./recipe   ./deploy   ./serialization   ./errors    ./envelope
-./config   ./brand    ./brief           ./sites     ./publishing
-./content  ./hygiene  ./webhooks        ./workflow  ./sync
+./recipe    ./deploy     ./serialization   ./errors
+./envelope  ./config     ./publishing      ./content
+./hygiene   ./webhooks   ./workflow        ./sync
 ```
 
 **Unstable** — these subpaths carry **no stability promise**. Their
 shape may change in any minor (or patch) release without a major bump
-or a changeset. Pin an exact scai version if you depend on them:
+or a changeset. The `brand`, `brief`, `sites`, `campaigns`, and `agents`
+APIs are reverse-engineered from observed traffic. Pin an exact scai
+version if you depend on them:
 
 ```
-./unstable/agents      ./unstable/campaigns      ./unstable/scripting
+./unstable/agents      ./unstable/brand        ./unstable/brief
+./unstable/campaigns   ./unstable/scripting    ./unstable/sites
 ./recipe/unstable      — recipe composition kinds (PageDesignRecipeSchema,
                          SiteRecipeSchema, PartialDesign, …)
 ```

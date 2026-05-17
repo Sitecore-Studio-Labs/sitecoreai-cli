@@ -46,18 +46,6 @@
       "types": "./dist/config/index.d.ts",
       "default": "./dist/config/index.js"
     },
-    "./brand": {
-      "types": "./dist/brand/index.d.ts",
-      "default": "./dist/brand/index.js"
-    },
-    "./brief": {
-      "types": "./dist/brief/index.d.ts",
-      "default": "./dist/brief/index.js"
-    },
-    "./sites": {
-      "types": "./dist/sites/index.d.ts",
-      "default": "./dist/sites/index.js"
-    },
     "./publishing": {
       "types": "./dist/publishing/index.d.ts",
       "default": "./dist/publishing/index.js"
@@ -86,6 +74,14 @@
       "types": "./dist/agents/index.d.ts",
       "default": "./dist/agents/index.js"
     },
+    "./unstable/brand": {
+      "types": "./dist/brand/index.d.ts",
+      "default": "./dist/brand/index.js"
+    },
+    "./unstable/brief": {
+      "types": "./dist/brief/index.d.ts",
+      "default": "./dist/brief/index.js"
+    },
     "./unstable/campaigns": {
       "types": "./dist/campaigns/index.d.ts",
       "default": "./dist/campaigns/index.js"
@@ -93,6 +89,10 @@
     "./unstable/scripting": {
       "types": "./dist/scripting/index.d.ts",
       "default": "./dist/scripting/index.js"
+    },
+    "./unstable/sites": {
+      "types": "./dist/sites/index.d.ts",
+      "default": "./dist/sites/index.js"
     },
     "./package.json": "./package.json"
   },

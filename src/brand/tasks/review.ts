@@ -298,7 +298,7 @@ export const computeExitCode = (
  * The CLI verb is a thin wrapper around this — pass the same options
  * and inspect the returned `BrandReviewRunResult` to drive exit
  * codes, stdout writes, or downstream tooling. SDK consumers should
- * use this directly (it's exported through `@sitecoreai-labs/cli/brand`).
+ * use this directly (exported through `@sitecoreai-labs/sitecoreai-cli/unstable/brand`).
  */
 export const runBrandReview = async (
   options: BrandReviewCommandOptions

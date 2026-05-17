@@ -2,12 +2,17 @@
  * Public library surface for the Sitecore Brand APIs
  * (Brand Management + Brand Review).
  *
- * Exported as `@sitecoreai-labs/cli/brand`. Library callers (SDK
- * consumers, MCP server, tests) construct a `BrandApiClientOptions`
- * with their org's credential and call the per-operation primitives
- * directly. The CLI commands and MCP tools sit on top of these
- * primitives — see [[scai-direct-graphql-own-mcp]] for the
- * "primitives over compositions" principle this module follows.
+ * Exported as `@sitecoreai-labs/sitecoreai-cli/unstable/brand`. Library
+ * callers (SDK consumers, MCP server, tests) construct a
+ * `BrandApiClientOptions` with their org's credential and call the
+ * per-operation primitives directly. The CLI commands and MCP tools sit
+ * on top of these primitives — see [[scai-direct-graphql-own-mcp]] for
+ * the "primitives over compositions" principle this module follows.
+ *
+ * **Status**: UNSTABLE. The Brand APIs are reverse-engineered from
+ * observed traffic; this surface ships under `./unstable/brand` and
+ * carries no SemVer stability promise. Schemas, types, and behavior may
+ * change in any release without a major bump or a changeset.
  */
 
 export {

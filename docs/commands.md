@@ -16,8 +16,8 @@ SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and
 - [`hygiene`](#scai-hygiene) — Content quality — read-only audits, mutating cleanup, and composed diagnostics
 - [`content`](#scai-content) — Operate on content items — publish and workflow handlers
 - [`ops`](#scai-ops) — Sitecore Content Operations — briefs and campaigns
-- [`brand`](#scai-brand) — Sitecore brand surface (Brand Management + Brand Review). Provision the credential with `scai setup login brand`.
-- [`agents`](#scai-agents) — Sitecore Agentic Studio — agents, skills, tools, widgets, schemas, custom MCPs.
+- [`brand`](#scai-brand) — [unstable] Sitecore brand surface (Brand Management + Brand Review). Provision the credential with `scai setup login brand`.
+- [`agents`](#scai-agents) — [unstable] Sitecore Agentic Studio — agents, skills, tools, widgets, schemas, custom MCPs.
 - [`provision`](#scai-provision) — Provision environments and content-as-code — deploy, serialization, recipes
 - [`sync`](#scai-sync) — Pull, diff, and push every brand kit and brief type at once — the cross-domain recipe aggregate.
 - [`mcp`](#scai-mcp) — Model Context Protocol — run an MCP server exposing scai's developer-side surface to agents.
@@ -3359,12 +3359,12 @@ scai ops [options] [command]
 
 **Subcommands**
 
-- [`scai ops brief`](#scai-ops-brief) — Briefs, brief types, to-dos, and comments on the Sitecore Content Operations Brief API.
-- [`scai ops campaign`](#scai-ops-campaign) — Sitecore Orchestrate campaigns — projects, deliverables, and tasks.
+- [`scai ops brief`](#scai-ops-brief) — [unstable] Briefs, brief types, to-dos, and comments on the Sitecore Content Operations Brief API.
+- [`scai ops campaign`](#scai-ops-campaign) — [unstable] Sitecore Orchestrate campaigns — projects, deliverables, and tasks.
 
 ### scai ops brief
 
-Briefs, brief types, to-dos, and comments on the Sitecore Content Operations Brief API.
+[unstable] Briefs, brief types, to-dos, and comments on the Sitecore Content Operations Brief API.
 
 ```
 scai ops brief [options] [command]
@@ -3739,7 +3739,7 @@ scai ops brief comments add [options] <briefId>
 
 ### scai ops campaign
 
-Sitecore Orchestrate campaigns — projects, deliverables, and tasks.
+[unstable] Sitecore Orchestrate campaigns — projects, deliverables, and tasks.
 
 ```
 scai ops campaign [options] [command]
@@ -4130,7 +4130,7 @@ scai ops campaign sync push [options]
 
 ## scai brand
 
-Sitecore brand surface (Brand Management + Brand Review). Provision the credential with `scai setup login brand`.
+[unstable] Sitecore brand surface (Brand Management + Brand Review). Provision the credential with `scai setup login brand`.
 
 ```
 scai brand [options] [command]
@@ -4640,7 +4640,7 @@ scai brand sync push [options]
 
 ## scai agents
 
-Sitecore Agentic Studio — agents, skills, tools, widgets, schemas, custom MCPs.
+[unstable] Sitecore Agentic Studio — agents, skills, tools, widgets, schemas, custom MCPs.
 
 ```
 scai agents [options] [command]

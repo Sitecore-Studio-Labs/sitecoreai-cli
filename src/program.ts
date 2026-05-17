@@ -39,6 +39,7 @@ import { createConfigCommand } from "./commands/config";
 import { createTelemetryCommand } from "./commands/telemetry";
 import { createWebhookCommand } from "./commands/webhook";
 import { createWorkflowCommand } from "./commands/workflow";
+import { markUnstable } from "./commands/shared";
 
 /** Env snapshot the shell REPL restores between sub-invocations. */
 export type RunCliOptions = {
@@ -113,9 +114,13 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
       "site and page management — are planned, not yet shipped. See docs/roadmap.md.\n"
   );
 
+  // `brief`, `campaign`, `brand`, and `agents` are unstable surfaces —
+  // reverse-engineered, no SemVer stability promise. `markUnstable`
+  // stamps the `[unstable]` help marker, the stability note, and the
+  // per-invocation stderr warning onto each group.
   const ops = new Command("ops").description("Sitecore Content Operations — briefs and campaigns");
-  ops.addCommand(createBriefCommand());
-  ops.addCommand(createCampaignCommand());
+  ops.addCommand(markUnstable(createBriefCommand(), "scai ops brief"));
+  ops.addCommand(markUnstable(createCampaignCommand(), "scai ops campaign"));
 
   const provision = new Command("provision").description(
     "Provision environments and content-as-code — deploy, serialization, recipes"
@@ -142,8 +147,8 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
   program.addCommand(hygiene);
   program.addCommand(content);
   program.addCommand(ops);
-  program.addCommand(createBrandCommand());
-  program.addCommand(createAgentsCommand());
+  program.addCommand(markUnstable(createBrandCommand(), "scai brand"));
+  program.addCommand(markUnstable(createAgentsCommand(), "scai agents"));
   program.addCommand(provision);
   program.addCommand(createSyncCommand());
   // `mcp` stays top-level: `scai mcp serve` is wired into external MCP

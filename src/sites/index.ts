@@ -1,5 +1,5 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/sites`.
+ * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/sites`.
  *
  * Sites API client surface. The Sites API is XM Cloud's CRUD proxy for
  * sites, collections, languages, hosts, and related resources at
@@ -10,6 +10,11 @@
  * via `createSitesApiClient` — that pair is the higher-level interface
  * the recipe planner depends on. This entry exposes the per-resource
  * primitives directly for callers that don't need the recipe seam.
+ *
+ * **Status**: UNSTABLE. Ships under `./unstable/sites` and carries no
+ * SemVer stability promise — the per-resource primitives may change in
+ * any release. The recipe planner's pinned subset (reached via
+ * `createSitesApiClient` on the stable `./recipe` entry) is unaffected.
  */
 
 export type {

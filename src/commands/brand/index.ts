@@ -9,9 +9,13 @@ import { createBrandSyncCommand } from "./sync";
 /**
  * `scai brand` — Sitecore brand surface (Brand Management
  * + Brand Review). The CLI verbs here drive the same library
- * primitives exposed at `@sitecoreai-labs/cli/brand`. See
- * [[project-scai-ai-skills-credential-model]] for the org-scoped
+ * primitives exposed at `@sitecoreai-labs/sitecoreai-cli/unstable/brand`.
+ * See [[project-scai-ai-skills-credential-model]] for the org-scoped
  * credential model.
+ *
+ * Unstable surface — `markUnstable` (in `src/program.ts`) stamps the
+ * `[unstable]` help marker and the runtime stderr warning onto this
+ * command group.
  */
 export const createBrandCommand = (): Command => {
   const command = new Command("brand").description(

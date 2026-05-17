@@ -33,6 +33,7 @@ pnpm-lock.yaml
 
 #generated files
 sitecoreai.cli.json
+sitecoreai.cli.json.invalid-*
 sitecoreai-cli-*.tgz
 
 # Finder (MacOS) folder config

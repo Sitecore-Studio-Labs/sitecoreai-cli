@@ -398,10 +398,10 @@ it; `scai policy show` displays it.
   needs a small dedicated design and is a tracked follow-up.
 - Recipe execution still runs `.recipe.ts` as in-process code — see Phase 4.
 
-## Phase 4 — deferred: recipe execution sandboxing
+## Phase 4 — recipe execution sandboxing
 
-`.recipe.ts` files are compiled and `require()`d inside scai's own process —
-arbitrary code execution from a file a weaponized config could point at.
-Isolating this (child-process execution with an IPC bridge is the realistic
-option) is a self-contained, ~week-long workstream distinct from the
-authorization model, and is tracked separately as Phase 4.
+`.recipe.ts` files are compiled and `require()`d to load them. Phase 4 moves
+that out of scai's process into a confined child, so a hostile recipe a
+weaponized config could point at can no longer run with scai's privileges.
+This is a workstream distinct from the authorization model — see
+[recipe-sandbox.md](recipe-sandbox.md).

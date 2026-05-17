@@ -4,6 +4,7 @@ import { ScaiError, createScaiError } from "@/shared/errors";
 import { type Recipe, RecipeSchema } from "./schema/recipe";
 import { OperationIrSchema, type OperationIr } from "./ir/operations";
 import type { Plan } from "./plan";
+import { isRecipeSandboxEnabled, loadRecipeInSandbox } from "./sandbox/load";
 
 /**
  * Recipe + IR + Plan I/O.
@@ -98,7 +99,33 @@ const ensureTsxRegistered = (): void => {
   tsxRegistered = true;
 };
 
+let sandboxOptOutWarned = false;
+const warnSandboxDisabled = (): void => {
+  if (sandboxOptOutWarned) {
+    return;
+  }
+  sandboxOptOutWarned = true;
+  process.stderr.write(
+    "scai: SITECOREAI_RECIPE_SANDBOX=0 — loading .recipe.ts in-process; " +
+      "a hostile recipe runs with scai's full privileges.\n"
+  );
+};
+
+/**
+ * Load a `.recipe.ts` and return its exported recipe object. By default the
+ * file is loaded in a confined child process (see docs/recipe-sandbox.md) so
+ * a hostile recipe a weaponized config could point at cannot run with scai's
+ * privileges. `SITECOREAI_RECIPE_SANDBOX=0` forces the legacy in-process load.
+ */
 const loadRecipeFromTypeScript = async (filePath: string): Promise<unknown> => {
+  if (isRecipeSandboxEnabled()) {
+    return loadRecipeInSandbox(filePath);
+  }
+  warnSandboxDisabled();
+  return loadRecipeInProcess(filePath);
+};
+
+const loadRecipeInProcess = async (filePath: string): Promise<unknown> => {
   const absolute = path.resolve(filePath);
   try {
     ensureTsxRegistered();

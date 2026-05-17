@@ -28,7 +28,24 @@ import packageJson from "../package.json";
  */
 const buildProgram = (): Command => createProgram(async () => undefined);
 
-const escapePipe = (value: string): string => value.replace(/\|/g, "\\|");
+/**
+ * Escape a command/option description for safe inline Markdown.
+ *
+ * `|` is escaped everywhere — it breaks table cells and option lists.
+ * `_` and `*` are escaped only outside backtick code spans: descriptions
+ * are prose that embeds Sitecore field names like `__Workflow` or
+ * `__Renderings`, and a pair of `__` / `**` on one line would otherwise
+ * render as bold. Inside a backtick span they are already literal, so a
+ * backslash there would render verbatim.
+ */
+const escapeInline = (value: string): string =>
+  value
+    // Split on backtick spans, keeping them: odd indices are `code`
+    // spans (left untouched), even indices are the surrounding prose.
+    .split(/(`[^`]*`)/g)
+    .map((part, index) => (index % 2 === 1 ? part : part.replace(/[_*]/g, "\\$&")))
+    .join("")
+    .replace(/\|/g, "\\|");
 
 const isMachineSpecific = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
@@ -40,7 +57,7 @@ const renderOption = (option: Option): string => {
   const description = option.description || "";
   const showDefault = option.defaultValue !== undefined && !isMachineSpecific(option.defaultValue);
   const defaultValue = showDefault ? ` (default: \`${JSON.stringify(option.defaultValue)}\`)` : "";
-  return `${flags} — ${escapePipe(description)}${defaultValue}`;
+  return `${flags} — ${escapeInline(description)}${defaultValue}`;
 };
 
 const commandPath = (command: Command): string => {
@@ -67,7 +84,7 @@ const renderCommand = (command: Command, depth: number, lines: string[]): void =
 
   const description = command.description();
   if (description) {
-    lines.push(description);
+    lines.push(escapeInline(description));
     lines.push("");
   }
 
@@ -101,7 +118,7 @@ const renderCommand = (command: Command, depth: number, lines: string[]): void =
     for (const sub of subcommands) {
       const subPath = commandPath(sub);
       const subDescription = sub.description() || "";
-      lines.push(`- [\`${subPath}\`](#${anchor(sub)}) — ${escapePipe(subDescription)}`);
+      lines.push(`- [\`${subPath}\`](#${anchor(sub)}) — ${escapeInline(subDescription)}`);
     }
     lines.push("");
   }
@@ -134,7 +151,7 @@ const main = (): void => {
   lines.push("");
   const tops = program.commands.filter((c) => !c.hidden && c.name() !== "help");
   for (const top of tops) {
-    lines.push(`- [\`${top.name()}\`](#${anchor(top)}) — ${escapePipe(top.description() || "")}`);
+    lines.push(`- [\`${top.name()}\`](#${anchor(top)}) — ${escapeInline(top.description() || "")}`);
   }
   lines.push("");
 

@@ -469,12 +469,12 @@ scai hygiene audit all [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -517,12 +517,12 @@ scai hygiene audit alt-text-missing list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -685,12 +685,12 @@ scai hygiene audit broken-images list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -734,12 +734,12 @@ scai hygiene audit broken-links list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -779,12 +779,12 @@ scai hygiene audit heavy-templates list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -825,12 +825,12 @@ scai hygiene audit large-fields list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -873,12 +873,12 @@ scai hygiene audit missing-meta list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -901,11 +901,11 @@ scai hygiene audit datasource-missing [options] [command]
 
 **Subcommands**
 
-- [`scai hygiene audit datasource-missing list`](#scai-hygiene-audit-datasource-missing-list) — List items whose **Renderings / **Final Renderings reference missing datasources
+- [`scai hygiene audit datasource-missing list`](#scai-hygiene-audit-datasource-missing-list) — List items whose \_\_Renderings / \_\_Final Renderings reference missing datasources
 
 ##### scai hygiene audit datasource-missing list
 
-List items whose **Renderings / **Final Renderings reference missing datasources
+List items whose \_\_Renderings / \_\_Final Renderings reference missing datasources
 
 ```
 scai hygiene audit datasource-missing list [options]
@@ -921,12 +921,12 @@ scai hygiene audit datasource-missing list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -967,12 +967,12 @@ scai hygiene audit dead-templates list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1012,12 +1012,12 @@ scai hygiene audit duplicates list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1060,12 +1060,12 @@ scai hygiene audit empty-items list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1106,12 +1106,12 @@ scai hygiene audit empty-links list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1153,12 +1153,12 @@ scai hygiene audit empty-roles list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1198,12 +1198,12 @@ scai hygiene audit fallback-drift list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1246,12 +1246,12 @@ scai hygiene audit find-replace list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1299,12 +1299,12 @@ scai hygiene audit language-data list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1359,11 +1359,11 @@ scai hygiene audit page-design-orphans [options] [command]
 
 **Subcommands**
 
-- [`scai hygiene audit page-design-orphans list`](#scai-hygiene-audit-page-design-orphans-list) — List pages whose **Final Page Design / **Page Design field points to a missing item
+- [`scai hygiene audit page-design-orphans list`](#scai-hygiene-audit-page-design-orphans-list) — List pages whose \_\_Final Page Design / \_\_Page Design field points to a missing item
 
 ##### scai hygiene audit page-design-orphans list
 
-List pages whose **Final Page Design / **Page Design field points to a missing item
+List pages whose \_\_Final Page Design / \_\_Page Design field points to a missing item
 
 ```
 scai hygiene audit page-design-orphans list [options]
@@ -1379,12 +1379,12 @@ scai hygiene audit page-design-orphans list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1424,12 +1424,12 @@ scai hygiene audit personalization-broken list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1469,12 +1469,12 @@ scai hygiene audit references list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1517,12 +1517,12 @@ scai hygiene audit role-bloat list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1563,12 +1563,12 @@ scai hygiene audit site-residue list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1609,12 +1609,12 @@ scai hygiene audit slug-conflicts list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1656,12 +1656,12 @@ scai hygiene audit stale-content list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1704,12 +1704,12 @@ scai hygiene audit stale-users list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1752,12 +1752,12 @@ scai hygiene audit stale-workflow list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1798,12 +1798,12 @@ scai hygiene audit template-dependencies list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1924,12 +1924,12 @@ scai hygiene audit suite run [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -1970,12 +1970,12 @@ scai hygiene audit translation-coverage list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -2018,12 +2018,12 @@ scai hygiene audit unused-media list [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--include-system` — Include /sitecore/system and platform items in the scan
 - `--limit <count>` — Maximum number of items to inspect
-- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI_HYGIENE_CONCURRENCY)
-- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI_HYGIENE_BATCH_SIZE)
-- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI_HYGIENE_PAGE_PARALLELISM)
+- `--concurrency <count>` — Parallel batch fan-out for field reads + ref resolution (default 8, env SITECOREAI\_HYGIENE\_CONCURRENCY)
+- `--batch-size <count>` — Aliased GraphQL batch size per field-read query (default 50, env SITECOREAI\_HYGIENE\_BATCH\_SIZE)
+- `--page-parallelism <count>` — Parallel page-windows during search enumeration (default 4, env SITECOREAI\_HYGIENE\_PAGE\_PARALLELISM)
 - `--cache` — Use the on-disk field cache (keyed by itemId+updatedDate) at ~/.sitecoreai/audit-cache/
 - `--exclude <path>` — Exclude items under this path prefix. Repeat or comma-separate. (default: `[]`)
 - `--since <date>` — Only items updated on/after this date (ISO 8601 or YYYY-MM-DD)
@@ -2140,7 +2140,7 @@ scai hygiene cleanup dead-templates purge [options]
 - `--limit <count>` — Cap on templates inspected (default: 5000)
 - `--concurrency <count>` — Delete concurrency (default: 4)
 - `--no-cleanup-empty-folders` — Skip the recursive empty-folder cleanup after templates are deleted (default: clean up)
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 
 #### scai hygiene cleanup duplicates
 
@@ -2314,7 +2314,7 @@ scai hygiene cleanup find-replace apply [options]
 - `--ignore-case` — Case-insensitive match
 - `--flags <flags>` — Custom regex flags (g is always added). Default 'g'
 - `--fields <names>` — Comma-separated field names to search (default: all author-facing fields) (default: `[]`)
-- `--include-system-fields` — Include **-prefixed system fields in the search (off by default; touching **Renderings via regex will mangle XML)
+- `--include-system-fields` — Include \_\_-prefixed system fields in the search (off by default; touching \_\_Renderings via regex will mangle XML)
 - `--root <path>` — Content-tree root (default: /sitecore/content)
 - `--language <code>` — Restrict to one language
 - `--limit <count>` — Cap on items inspected (default: 5000)
@@ -2488,7 +2488,7 @@ scai hygiene cleanup site-residue purge [options]
 - `--root <path>` — Additional root to scan on top of the SXA defaults. Repeat or comma-separate. (default: `[]`)
 - `--content-root <path>` — Override the content root walked when discovering active sites (default /sitecore/content)
 - `--skip-ref-check` — Skip the inbound-ref pre-flight scan. Faster but loses the safety net — pair with `audit broken-links` if you use this.
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--concurrency <count>` — Concurrent deletes / pre-flight scans (default: 4)
 
 #### scai hygiene cleanup slug-conflicts
@@ -2577,7 +2577,7 @@ scai hygiene cleanup subtree delete [options]
 - `--scan-root <path>` — Content root to scan for inbound references (default: /sitecore — the entire CMS)
 - `--orphan-external-refs <mode>` — How to handle external items whose fields reference the subtree. Default: refuse with blocker list. 'clear' empties the entire referring field. 'prune' surgically removes only the entries pointing at the subtree (preserves sibling values in multi-list / treelist fields and `<r>` elements in `__Renderings` layout XML). 'leave' skips the ref scan entirely — fastest, accepts dangling refs, expects `audit broken-links` follow-up.
 - `--max-deletions <count>` — Hard cap on items deleted in one run (default: 1000)
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--fields <name>` — Restrict inbound-ref scan to these field names. Repeat or comma-separate. (default: `[]`)
 
 #### scai hygiene cleanup users
@@ -2659,7 +2659,7 @@ scai hygiene cleanup versions prune [options]
 - `--root <path>` — Content-tree root to scope the prune (e.g. /sitecore/content/MySite)
 - `--language <code>` — Restrict pruning to one language (default: all languages found per item)
 - `--limit <count>` — Cap on the number of items inspected
-- `--index <name>` — Override the search index name (default: sitecore_master_index)
+- `--index <name>` — Override the search index name (default: sitecore\_master\_index)
 - `--concurrency <count>` — Concurrency for version reads and deletes
 - `--include-system` — Include /sitecore/system and platform items in the prune
 
@@ -2705,7 +2705,7 @@ scai hygiene cleanup workflow [options] [command]
 **Subcommands**
 
 - [`scai hygiene cleanup workflow advance`](#scai-hygiene-cleanup-workflow-advance) — Execute a workflow command on items stuck past --stale-days
-- [`scai hygiene cleanup workflow apply`](#scai-hygiene-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
+- [`scai hygiene cleanup workflow apply`](#scai-hygiene-cleanup-workflow-apply) — Bulk-attach a workflow to items under --root (sets \_\_Workflow + \_\_Workflow state directly). Use to backfill content authored before the workflow existed.
 
 ##### scai hygiene cleanup workflow advance
 
@@ -2741,7 +2741,7 @@ scai hygiene cleanup workflow advance [options]
 
 ##### scai hygiene cleanup workflow apply
 
-Bulk-attach a workflow to items under --root (sets **Workflow + **Workflow state directly). Use to backfill content authored before the workflow existed.
+Bulk-attach a workflow to items under --root (sets \_\_Workflow + \_\_Workflow state directly). Use to backfill content authored before the workflow existed.
 
 ```
 scai hygiene cleanup workflow apply [options]
@@ -2859,7 +2859,7 @@ scai content publish [options] [command]
 - [`scai content publish status`](#scai-content-publish-status) — Show the state of a publish job, or list queued/running jobs when no jobId is given. Pass --watch to poll until the job reaches a terminal state (completed/failed/cancelled).
 - [`scai content publish cancel`](#scai-content-publish-cancel) — Cancel a queued or running publish job. Pass <jobId> for one, or --all-queued to sweep every queued/running job in the env (gated behind a typed env-name confirmation). The API only honours cancellation for Queued / Running jobs; Completed / Failed / already-Cancelled jobs cannot be cancelled.
 - [`scai content publish unpublish`](#scai-content-publish-unpublish) — Unpublish one or more items. Writes a publish-state field via the Authoring API (or calls deleteItem for --strategy delete), then submits a publish job so Edge picks up the removal. Defaults to the reversible `never-publish` strategy; pass --strategy expire-now to set `__Valid to: now`, or --strategy delete for permanent removal (typed-item-path confirmation required).
-- [`scai content publish history`](#scai-content-publish-history) — Read the local publishing audit log at ~/.sitecoreai/audit.log (overridable via SITECOREAI_AUDIT_LOG). Filter by env / time / command / outcome. Use --json for newline-delimited JSON suitable for piping into jq.
+- [`scai content publish history`](#scai-content-publish-history) — Read the local publishing audit log at ~/.sitecoreai/audit.log (overridable via SITECOREAI\_AUDIT\_LOG). Filter by env / time / command / outcome. Use --json for newline-delimited JSON suitable for piping into jq.
 
 #### scai content publish item
 
@@ -3008,7 +3008,7 @@ scai content publish unpublish [options]
 
 #### scai content publish history
 
-Read the local publishing audit log at ~/.sitecoreai/audit.log (overridable via SITECOREAI_AUDIT_LOG). Filter by env / time / command / outcome. Use --json for newline-delimited JSON suitable for piping into jq.
+Read the local publishing audit log at ~/.sitecoreai/audit.log (overridable via SITECOREAI\_AUDIT\_LOG). Filter by env / time / command / outcome. Use --json for newline-delimited JSON suitable for piping into jq.
 
 ```
 scai content publish history [options]
@@ -3046,7 +3046,7 @@ scai content workflow [options] [command]
 - [`scai content workflow assigned`](#scai-content-workflow-assigned) — Find items currently in a given workflow state (workbox-style query)
 - [`scai content workflow advance`](#scai-content-workflow-advance) — Advance a single item through one workflow transition (counterpart to the cleanup batch sweep)
 - [`scai content workflow reset`](#scai-content-workflow-reset) — Force an item back to its workflow's initial state via direct \_\_Workflow state field write. Bypasses validation + submit actions — use as an admin escape hatch, not a routine transition.
-- [`scai content workflow apply`](#scai-content-workflow-apply) — Attach a workflow to an item (sets **Workflow + **Workflow state directly). Bypasses the workflow engine — use for content authored before the workflow existed or to recover orphaned items.
+- [`scai content workflow apply`](#scai-content-workflow-apply) — Attach a workflow to an item (sets \_\_Workflow + \_\_Workflow state directly). Bypasses the workflow engine — use for content authored before the workflow existed or to recover orphaned items.
 - [`scai content workflow webhook`](#scai-content-workflow-webhook) — Manage Sitecore webhook handlers — item/publish event handlers and workflow submit/validation actions
 
 #### scai content workflow inspect
@@ -3139,8 +3139,8 @@ scai content workflow assigned [options]
 **Options**
 
 - `--state <stateId>` — Workflow state GUID
-- `--field <name>` — Override the search field (default: '**workflow state'; some tenants use '**workflow_state')
-- `--index <name>` — Override the search index (default: sitecore_master_index)
+- `--field <name>` — Override the search field (default: '\_\_workflow state'; some tenants use '\_\_workflow\_state')
+- `--index <name>` — Override the search index (default: sitecore\_master\_index)
 - `--limit <count>` — Cap on items returned (default: 500)
 - `--page-size <count>` — Search backend page size (default: 100)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
@@ -3198,7 +3198,7 @@ scai content workflow reset [options] <item>
 
 #### scai content workflow apply
 
-Attach a workflow to an item (sets **Workflow + **Workflow state directly). Bypasses the workflow engine — use for content authored before the workflow existed or to recover orphaned items.
+Attach a workflow to an item (sets \_\_Workflow + \_\_Workflow state directly). Bypasses the workflow engine — use for content authored before the workflow existed or to recover orphaned items.
 
 ```
 scai content workflow apply [options] <item>
@@ -7852,7 +7852,7 @@ scai mcp serve [options]
 - `--transport <kind>` — Transport: 'stdio' (default) or 'http' (Streamable HTTP). (default: `"stdio"`)
 - `--port <number>` — HTTP transport port (only used with --transport http). (default: `3399`)
 - `--host <address>` — HTTP transport bind address (only used with --transport http). (default: `"127.0.0.1"`)
-- `--no-telemetry` — Disable telemetry for this MCP session. Telemetry is enabled by default; the DO_NOT_TRACK env var is still honored.
+- `--no-telemetry` — Disable telemetry for this MCP session. Telemetry is enabled by default; the DO\_NOT\_TRACK env var is still honored.
 
 ### scai mcp tools
 

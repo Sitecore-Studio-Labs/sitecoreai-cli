@@ -51,8 +51,18 @@ const taskMocks = vi.hoisted(() => ({
     commandUsed: "Submit",
     status: "advanced",
   }),
-  runWorkflowReset: vi.fn(),
-  runWorkflowApply: vi.fn(),
+  runWorkflowReset: vi.fn().mockResolvedValue({
+    itemId: "x",
+    path: "/sitecore/content/x",
+    status: "reset",
+    message: "Reset /sitecore/content/x to initial state.",
+  }),
+  runWorkflowApply: vi.fn().mockResolvedValue({
+    itemId: "x",
+    path: "/sitecore/content/x",
+    status: "applied",
+    message: "Attached Article Workflow to /sitecore/content/x.",
+  }),
 }));
 
 const hygieneTaskMocks = vi.hoisted(() => ({
@@ -295,6 +305,257 @@ describe("workflow_lifecycle tool", () => {
       fakeExtra
     );
     expect(result.content[0]!.text).toContain("would attach");
+  });
+});
+
+describe("workflow_inspect — remaining verbs + validation", () => {
+  it("verb='list-commands' requires `item`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_inspect")!
+        .handler({ verb: "list-commands" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='list-commands' routes to runWorkflowListCommands", async () => {
+    taskMocks.runWorkflowListCommands.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "list-commands", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowListCommands).toHaveBeenCalledWith(
+      expect.objectContaining({ item: "/x" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "list-commands" });
+  });
+
+  it("verb='list-commands' reports 'not under workflow' when the runner returns null", async () => {
+    taskMocks.runWorkflowListCommands.mockResolvedValueOnce(null);
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "list-commands", item: "/x" }, fakeContext, fakeExtra);
+    expect(result.content[0]!.text).toContain("not under workflow");
+  });
+
+  it("verb='status' routes to runWorkflowStatus with site + contentEnvironmentId", async () => {
+    taskMocks.runWorkflowStatus.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler(
+        { verb: "status", site: "site-1", contentEnvironmentId: "main" },
+        fakeContext,
+        fakeExtra
+      );
+    expect(taskMocks.runWorkflowStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ site: "site-1", contentEnvironmentId: "main" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "status" });
+  });
+
+  it("verb='assigned' requires `state`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_inspect")!
+        .handler({ verb: "assigned" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='inspect' renders the definition branch when runner returns kind='definition'", async () => {
+    taskMocks.runWorkflowInspect.mockResolvedValueOnce({
+      kind: "definition",
+      definition: {
+        name: "Editorial",
+        displayName: "Editorial Workflow",
+        path: "/sitecore/system/Workflows/Editorial",
+        states: [{ stateId: "s1" }, { stateId: "s2" }],
+      },
+    });
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "inspect", item: "Editorial" }, fakeContext, fakeExtra);
+    expect(result.content[0]!.text).toContain("Workflow definition");
+    expect(result.content[0]!.text).toContain("2 state(s)");
+  });
+
+  it("verb='inspect' renders the 'not under workflow' branch when runner returns null", async () => {
+    taskMocks.runWorkflowInspect.mockResolvedValueOnce(null);
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_inspect")!
+      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
+    expect(result.content[0]!.text).toContain("is not under workflow");
+  });
+});
+
+describe("workflow_lifecycle — verb routing + validation", () => {
+  it("verb='advance' requires `item` and `command`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler({ verb: "advance", item: "/x", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='advance' with whatIf renders the would-execute summary", async () => {
+    taskMocks.runWorkflowAdvance.mockResolvedValueOnce({
+      itemId: "x",
+      path: "/sitecore/content/x",
+      commandUsed: "Submit",
+      status: "what-if",
+    });
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_lifecycle")!
+      .handler(
+        { verb: "advance", item: "/x", command: "Submit", whatIf: true },
+        fakeContext,
+        fakeExtra
+      );
+    expect(result.content[0]!.text).toContain("Would execute");
+  });
+
+  it("verb='reset' requires `item`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler({ verb: "reset", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='reset' routes to runWorkflowReset", async () => {
+    taskMocks.runWorkflowReset.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_lifecycle")!
+      .handler({ verb: "reset", item: "/x", allowWrite: true }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowReset).toHaveBeenCalledWith(
+      expect.objectContaining({ item: "/x" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "reset" });
+  });
+
+  it("verb='apply-workflow' requires `item` and `workflow`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler(
+          { verb: "apply-workflow", item: "/x", allowWrite: true } as never,
+          fakeContext,
+          fakeExtra
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='apply-workflow' routes to runWorkflowApply with workflow + state", async () => {
+    taskMocks.runWorkflowApply.mockClear();
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "apply-workflow",
+        item: "/x",
+        workflow: "Article Workflow",
+        state: "Draft",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(taskMocks.runWorkflowApply).toHaveBeenCalledWith(
+      expect.objectContaining({ item: "/x", workflow: "Article Workflow", state: "Draft" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "apply-workflow" });
+  });
+
+  it("verb='bulk-advance' requires `commandName`", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler({ verb: "bulk-advance", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("verb='bulk-advance' routes to runCleanupWorkflowAdvance and reports the apply summary", async () => {
+    hygieneTaskMocks.runCleanupWorkflowAdvance.mockResolvedValueOnce([
+      { itemId: "a", status: "advanced" },
+      { itemId: "b", status: "failed" },
+      { itemId: "c", status: "skipped-no-command" },
+    ]);
+    const reg = await setup();
+    const result = await reg.getTool("workflow_lifecycle")!.handler(
+      {
+        verb: "bulk-advance",
+        commandName: "Approve",
+        root: "/sitecore/content",
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(hygieneTaskMocks.runCleanupWorkflowAdvance).toHaveBeenCalledWith(
+      expect.objectContaining({ commandName: "Approve", root: "/sitecore/content" })
+    );
+    expect(result.content[0]!.text).toContain("advanced 1");
+    expect(result.content[0]!.text).toContain("failed 1");
+  });
+
+  it("verb='bulk-advance' with whatIf=true reports the plan count", async () => {
+    hygieneTaskMocks.runCleanupWorkflowAdvance.mockResolvedValueOnce([
+      { itemId: "a", status: "what-if" },
+      { itemId: "b", status: "what-if" },
+    ]);
+    const reg = await setup();
+    const result = await reg
+      .getTool("workflow_lifecycle")!
+      .handler(
+        { verb: "bulk-advance", commandName: "Approve", whatIf: true },
+        fakeContext,
+        fakeExtra
+      );
+    expect(result.content[0]!.text).toContain("2 item(s) would advance");
+  });
+});
+
+describe("workflow_lifecycle — denyMcpElevation gate", () => {
+  // The bound context's resolved.root carries an env flagged
+  // denyMcpElevation; resolveToolBinding (mocked) echoes that context,
+  // so `ensureMcpElevationAllowed` fires before the task runner.
+  const denyContext: McpContext = {
+    envName: "prod",
+    configPath: "/tmp",
+    resolved: {
+      envName: "prod",
+      environment: {} as never,
+      root: {
+        environments: { prod: { name: "prod", denyMcpElevation: true } },
+      } as never,
+      timeoutMs: undefined,
+    },
+    allowWriteEnabled: false,
+    deployToken: "tok",
+  };
+
+  it("rejects an advance when the target env denies MCP elevation", async () => {
+    taskMocks.runWorkflowAdvance.mockClear();
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("workflow_lifecycle")!
+        .handler(
+          { verb: "advance", item: "/x", command: "Submit", allowWrite: true },
+          denyContext,
+          fakeExtra
+        )
+    ).rejects.toMatchObject({ code: "AUTH_DENIED" });
+    expect(taskMocks.runWorkflowAdvance).not.toHaveBeenCalled();
   });
 });
 

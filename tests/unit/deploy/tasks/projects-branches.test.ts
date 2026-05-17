@@ -29,6 +29,20 @@ const sharedMocks = vi.hoisted(() => ({
 
 vi.mock("../../../../src/deploy/tasks/shared", () => sharedMocks);
 
+// runDeployProjectsDelete resolves the environment for the
+// destructive-tier gate; mock that policy seam so the delete tests
+// don't depend on an on-disk config.
+const policyMocks = vi.hoisted(() => ({
+  resolveEnvironment: vi.fn(),
+  ensureAllowWrite: vi.fn(),
+}));
+vi.mock("../../../../src/policy/environment", () => ({
+  resolveEnvironment: policyMocks.resolveEnvironment,
+}));
+vi.mock("../../../../src/policy/allow-write", () => ({
+  ensureAllowWrite: policyMocks.ensureAllowWrite,
+}));
+
 describe("deploy projects branches", () => {
   const logger = {
     info: vi.fn(),
@@ -43,6 +57,12 @@ describe("deploy projects branches", () => {
       baseUrl: "https://api.example",
       envName: "demo",
       projectId: "proj-1",
+    });
+    policyMocks.resolveEnvironment.mockReturnValue({
+      root: { environments: {} },
+      envName: "test",
+      environment: {},
+      timeoutMs: undefined,
     });
   });
 

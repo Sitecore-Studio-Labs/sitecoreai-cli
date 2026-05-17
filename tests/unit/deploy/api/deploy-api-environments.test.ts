@@ -206,13 +206,181 @@ describe("environments api", () => {
     );
   });
 
+  it("createEnvironmentDeployment omits the redeploy query when the flag is undefined", async () => {
+    await api.createEnvironmentDeployment({ accessToken: "token" }, "env-1");
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/environments/v2/env-1/deployments",
+      undefined,
+      { method: "POST" }
+    );
+  });
+
+  it("deleteEnvironment omits the force query when force is falsy", async () => {
+    await api.deleteEnvironment({ accessToken: "token" }, "env-1");
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/environments/v1/env-1",
+      undefined,
+      { method: "DELETE" }
+    );
+  });
+
+  it("fetchEnvironments forwards no query when none is supplied", async () => {
+    await api.fetchEnvironments({ accessToken: "token" });
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/environments/v2",
+      undefined
+    );
+  });
+
+  // fetchAllEnvironments must stop the moment a page comes back shorter
+  // than the requested page size — a single under-full page means the
+  // last page was reached even if totalCount was never reported.
+  it("fetchAllEnvironments stops after a single short page", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({ data: [{ id: "e-1" }, { id: "e-2" }] });
+    const result = await api.fetchAllEnvironments({ accessToken: "token" });
+    expect(result.items).toHaveLength(2);
+    expect(result.totalCount).toBeUndefined();
+    expect(common.deployRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetchAllEnvironments treats a non-array data field as an empty page", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({ data: null });
+    const result = await api.fetchAllEnvironments({ accessToken: "token" });
+    expect(result.items).toEqual([]);
+    expect(common.deployRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetchAllEnvironments honors a custom page size in the PageSize query", async () => {
+    (common.deployRequest as unknown as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValueOnce({ data: [{ id: "e-1" }] });
+    await api.fetchAllEnvironments({ accessToken: "token" }, { Status: "ok" }, 10);
+    expect(common.deployRequest).toHaveBeenCalledWith(
+      { accessToken: "token" },
+      "/api/environments/v2",
+      { Status: "ok", PageNumber: 1, PageSize: 10 }
+    );
+  });
+
+  it("getProvisioningStatus maps every known numeric code", () => {
+    expect(api.getProvisioningStatus({ provisioningStatus: 0 })).toBe("unprovisioned");
+    expect(api.getProvisioningStatus({ provisioningStatus: 1 })).toBe("provisioning");
+    expect(api.getProvisioningStatus({ provisioningStatus: 2 })).toBe("provisioned");
+    expect(api.getProvisioningStatus({ provisioningStatus: 3 })).toBe("failed");
+    expect(api.getProvisioningStatus({ provisioningStatus: 4 })).toBe("deleting");
+  });
+
+  it("getProvisioningStatus maps an unrecognized code to unknown", () => {
+    expect(api.getProvisioningStatus({ provisioningStatus: 99 })).toBe("unknown");
+    expect(api.getProvisioningStatus({ provisioningStatus: undefined })).toBe("unknown");
+  });
+
   it("resolveHostFromEnvironment chooses direct host", () => {
     expect(api.resolveHostFromEnvironment({ host: "example.com" })).toBe("example.com");
+  });
+
+  it("resolveHostFromEnvironment prefers cmUrl over the other direct fields", () => {
+    expect(
+      api.resolveHostFromEnvironment({
+        cmUrl: "https://cm.example.com",
+        cmHost: "cm.example.com",
+        host: "example.com",
+        url: "https://example.com",
+      })
+    ).toBe("https://cm.example.com");
+  });
+
+  it("resolveHostFromEnvironment falls back through cmHost and url", () => {
+    expect(api.resolveHostFromEnvironment({ cmHost: "cm.example.com" })).toBe("cm.example.com");
+    expect(api.resolveHostFromEnvironment({ url: "https://example.com" })).toBe(
+      "https://example.com"
+    );
   });
 
   it("resolveHostFromEnvironment falls back to hosts array", () => {
     expect(api.resolveHostFromEnvironment({ hosts: [{ url: "https://example.com" }] })).toBe(
       "https://example.com"
     );
+  });
+
+  it("resolveHostFromEnvironment falls through hostName then hostname in the hosts array", () => {
+    expect(api.resolveHostFromEnvironment({ hosts: [{ hostName: "host-a.example" }] })).toBe(
+      "host-a.example"
+    );
+    expect(api.resolveHostFromEnvironment({ hosts: [{ hostname: "host-b.example" }] })).toBe(
+      "host-b.example"
+    );
+  });
+
+  it("resolveHostFromEnvironment returns undefined when nothing resolves", () => {
+    expect(api.resolveHostFromEnvironment({})).toBeUndefined();
+    expect(api.resolveHostFromEnvironment({ hosts: [] })).toBeUndefined();
+  });
+});
+
+describe("probeEnvironmentHealth", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("probes /healthz/ready and returns the parsed health result", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("  Healthy  ", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await api.probeEnvironmentHealth("https://cm.example.com");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("https://cm.example.com/healthz/ready");
+    expect(result).toEqual({
+      host: "https://cm.example.com",
+      url: "https://cm.example.com/healthz/ready",
+      status: 200,
+      ok: true,
+      body: "Healthy",
+    });
+  });
+
+  it("prefixes a bare hostname with https:// and trims a trailing slash from the probe URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await api.probeEnvironmentHealth("cm.example.com/");
+
+    expect(result.host).toBe("https://cm.example.com/");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://cm.example.com/healthz/ready");
+  });
+
+  it("reports ok=false and the status for a non-2xx health response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Unhealthy", { status: 503 })));
+
+    const result = await api.probeEnvironmentHealth("https://cm.example.com");
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(503);
+  });
+
+  it("does not attach an abort signal when the timeout is disabled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.probeEnvironmentHealth("https://cm.example.com", 0);
+
+    const init = fetchMock.mock.calls[0][1] as { signal?: AbortSignal };
+    expect(init.signal).toBeUndefined();
+  });
+
+  it("attaches an abort signal when a positive timeout is supplied", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.probeEnvironmentHealth("https://cm.example.com", 5000);
+
+    const init = fetchMock.mock.calls[0][1] as { signal?: AbortSignal };
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 });

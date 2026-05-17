@@ -993,3 +993,345 @@ describe("runAuthoringGraphQL — retry / backoff", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+/**
+ * Branch top-up for `createAuthoringClient` — the selector forks
+ * (path vs itemId vs neither), `getItemsByPaths` empty/dedup paths,
+ * `getItemVersions` all three selector branches plus the version
+ * filter, `addItemVersion` malformed-response guard, `ensurePathExists`
+ * root / no-leaf throws, `resolveParentItemId` invalid input, and the
+ * `deleteItem` path-selector / no-selector branches.
+ */
+const remoteNode = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  itemId: "11111111-1111-1111-1111-111111111111",
+  name: "Item",
+  path: "/sitecore/templates/Item",
+  parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+  template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+  fields: { nodes: [] },
+  ...overrides,
+});
+
+describe("createAuthoringClient — selector branch coverage", () => {
+  it("getItem resolves by path (not itemId) and posts the by-path query", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { item: remoteNode({ path: "/sitecore/x" }) } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItem({ path: "/sitecore/x" });
+    expect(result).toMatchObject({ path: "/sitecore/x" });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables).toEqual({ path: "/sitecore/x" });
+  });
+
+  it("getItem throws INPUT_INVALID when the selector has neither path nor itemId", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(client.getItem({})).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("getChildren resolves by path and returns [] when the parent is null", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(client.getChildren({ path: "/sitecore/missing" })).resolves.toEqual([]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables).toEqual({ path: "/sitecore/missing" });
+  });
+
+  it("getChildren throws INPUT_INVALID when the selector is empty", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(client.getChildren({})).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deleteItem sends a path selector when no itemId is given", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { deleteItem: { successful: true } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await client.deleteItem({ path: "/sitecore/templates/Doomed" });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables.input).toEqual({
+      path: "/sitecore/templates/Doomed",
+      permanently: true,
+    });
+  });
+
+  it("deleteItem throws INPUT_INVALID with neither path nor itemId", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(client.deleteItem({})).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("deleteItem throws UNKNOWN when the deleteItem field itself is null", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { deleteItem: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.deleteItem({ itemId: "11111111-1111-1111-1111-111111111111" })
+    ).rejects.toMatchObject({ code: "UNKNOWN" });
+  });
+});
+
+describe("createAuthoringClient — getItemsByPaths edge cases", () => {
+  it("returns an empty map for an empty paths array (no wire call)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemsByPaths([]);
+    expect(result.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("de-duplicates repeated input paths into one batch entry but re-emits every caller key", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as { body: string }).body) as {
+        variables: Record<string, string>;
+      };
+      // Exactly one unique path expected after de-dupe.
+      expect(Object.keys(body.variables)).toHaveLength(1);
+      return okResponse({
+        data: { i0: remoteNode({ path: body.variables.p0 }) },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemsByPaths(["/dup", "/dup", "/dup"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.size).toBe(1);
+    expect(result.get("/dup")).toMatchObject({ path: "/dup" });
+  });
+});
+
+describe("createAuthoringClient — getItemVersions", () => {
+  it("queries by itemId and returns a sorted version list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: { item: { versions: [{ version: 3 }, { version: 1 }, { version: 2 }] } },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const versions = await client.getItemVersions(
+      { itemId: "11111111-1111-1111-1111-111111111111" },
+      "en"
+    );
+    expect(versions).toEqual([1, 2, 3]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables).toEqual({
+      itemId: "11111111-1111-1111-1111-111111111111",
+      language: "en",
+    });
+  });
+
+  it("queries by path when the selector has no itemId", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { item: { versions: [{ version: 1 }] } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const versions = await client.getItemVersions({ path: "/sitecore/x" }, "da");
+    expect(versions).toEqual([1]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables).toEqual({ path: "/sitecore/x", language: "da" });
+  });
+
+  it("returns [] when the item (or its versions) is null", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.getItemVersions({ itemId: "11111111-1111-1111-1111-111111111111" }, "en")
+    ).resolves.toEqual([]);
+  });
+
+  it("throws INPUT_INVALID when the selector is empty", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(client.getItemVersions({}, "en")).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("createAuthoringClient — addItemVersion", () => {
+  it("returns the new version number from a well-formed response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { addItemVersion: { item: { version: 4 } } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.addItemVersion({
+      itemId: "11111111-1111-1111-1111-111111111111",
+      language: "en",
+    });
+    expect(result).toEqual({ version: 4 });
+  });
+
+  it("throws UNKNOWN when the response carries no numeric version", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { addItemVersion: { item: null } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.addItemVersion({ itemId: "11111111-1111-1111-1111-111111111111", language: "en" })
+    ).rejects.toMatchObject({ code: "UNKNOWN" });
+  });
+});
+
+describe("createAuthoringClient — createItem input + parent resolution branches", () => {
+  it("forwards explicit database and language values to the mutation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: { createItem: { item: { itemId: "22222222-2222-2222-2222-222222222222" } } },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await client.createItem({
+      templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+      parent: "0de95ae4-41ab-4d01-9eb0-67441b7c2450",
+      name: "X",
+      database: "web",
+      language: "fr",
+      fields: [],
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables.input).toMatchObject({ database: "web", language: "fr" });
+  });
+
+  it("strips braces from a braced-GUID parent before sending the mutation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: { createItem: { item: { itemId: "22222222-2222-2222-2222-222222222222" } } },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await client.createItem({
+      templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+      parent: "{0de95ae4-41ab-4d01-9eb0-67441b7c2450}",
+      name: "X",
+      fields: [],
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.variables.input.parent).toBe("0de95ae4-41ab-4d01-9eb0-67441b7c2450");
+  });
+
+  it("throws INPUT_INVALID when the parent is neither an itemId nor a path", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.createItem({
+        templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+        parent: "not-a-guid-or-path",
+        name: "X",
+        fields: [],
+      })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("throws INPUT_INVALID when ensurePathExists bottoms out at a one-segment root", async () => {
+    // /sitecore does not exist (item null) and has no creatable parent
+    // segment → the auto-provisioner refuses to invent the root.
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { item: null } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.createItem({
+        templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+        parent: "/sitecore",
+        name: "X",
+        fields: [],
+      })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("throws UNKNOWN when an auto-provisioned folder create returns no itemId", async () => {
+    // The parent path is missing; the auto-create mutation responds with
+    // a null item → auto-provisioning fails with UNKNOWN.
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as { body: string }).body);
+      if (body.query.includes("query") && body.variables?.path) {
+        // Only the deep root exists; the leaf folder does not.
+        if (body.variables.path === "/sitecore/templates") {
+          return okResponse({
+            data: { item: remoteNode({ path: "/sitecore/templates" }) },
+          });
+        }
+        return okResponse({ data: { item: null } });
+      }
+      // Auto-create mutation → malformed (no itemId).
+      return okResponse({ data: { createItem: { item: null } } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await expect(
+      client.createItem({
+        templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db",
+        parent: "/sitecore/templates/NewFolder",
+        name: "X",
+        fields: [],
+      })
+    ).rejects.toMatchObject({ code: "UNKNOWN" });
+  });
+
+  it("recognizes the 'is not unique' name-conflict phrasing in the idempotent fallback", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okResponse({ data: { item: remoteNode({ path: "/sitecore/templates/parent" }) } })
+      )
+      .mockResolvedValueOnce(
+        okResponse({ errors: [{ message: "The item name is not unique here." }] })
+      )
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [remoteNode({ name: "Twin", itemId: "twin-id-aaaaaaaaaaaaaaaaaaaa" })],
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parent: "/sitecore/templates/parent",
+      name: "Twin",
+      fields: [],
+    });
+    expect(result.itemId).toBe("twin-id-aaaaaaaaaaaaaaaaaaaa");
+  });
+});

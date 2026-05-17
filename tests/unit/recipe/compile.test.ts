@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type CompileContext, compileComponentTemplateRecipe } from "../../../src/recipe/compile";
+import {
+  AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
+  type CompileContext,
+  compileComponentTemplateRecipe,
+  compileRecipe,
+  compileRecipeSet,
+} from "../../../src/recipe/compile";
+import type { Recipe } from "../../../src/recipe/schema/recipe";
 import {
   fieldId,
   designParameterFieldId,
@@ -24,6 +31,7 @@ import type {
   CreateItemOp,
   Operation,
   SetBaseTemplatesOp,
+  SetFieldOp,
   SetStandardValuesOp,
 } from "../../../src/recipe/ir/operations";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
@@ -384,5 +392,408 @@ describe("compileComponentTemplateRecipe — recipes without optional buckets", 
     expect(
       renderingOp?.fields.find((f) => f.fieldId === RENDERING_FIELDS.PARAMETERS_TEMPLATE)
     ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage top-up: compileRecipeSet's Available Renderings aggregate and the
+// compileRecipe front-door dispatcher.
+// ---------------------------------------------------------------------------
+
+const uiSection: Recipe = {
+  kind: "component-section",
+  schemaVersion: "1",
+  handle: "ui-section@1",
+  name: "UI",
+  displayName: "UI Components",
+  sortOrder: 10,
+};
+
+const componentInSection = (handle: string, name: string): Recipe => ({
+  kind: "component-template",
+  schemaVersion: "1",
+  handle,
+  name,
+  displayName: name,
+  section: { handle: "ui-section@1" },
+  fields: [{ name: "Title", shape: "text" }],
+});
+
+describe("compileRecipeSet — Available Renderings aggregate", () => {
+  const CTX_WITH_RENDERINGS: CompileContext = {
+    ...CONTEXT,
+    availableRenderingsRoot:
+      "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings",
+  };
+
+  it("emits no Available Renderings IR when availableRenderingsRoot is unset", () => {
+    const irs = compileRecipeSet([uiSection, componentInSection("card@1", "Card")], CONTEXT);
+    expect(
+      irs.find((ir) => ir.recipeHandle === AVAILABLE_RENDERINGS_AGGREGATE_HANDLE)
+    ).toBeUndefined();
+  });
+
+  it("emits no Available Renderings IR when no component carries a section", () => {
+    const sectionlessComponent: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "loose@1",
+      name: "Loose",
+      displayName: "Loose",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const irs = compileRecipeSet([sectionlessComponent], CTX_WITH_RENDERINGS);
+    expect(
+      irs.find((ir) => ir.recipeHandle === AVAILABLE_RENDERINGS_AGGREGATE_HANDLE)
+    ).toBeUndefined();
+  });
+
+  it("emits a CreateItem + Renderings SetField per section, carrying the section displayName and sortOrder", () => {
+    const irs = compileRecipeSet(
+      [uiSection, componentInSection("card@1", "Card"), componentInSection("badge@1", "Badge")],
+      CTX_WITH_RENDERINGS
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === AVAILABLE_RENDERINGS_AGGREGATE_HANDLE);
+    expect(aggregate).toBeDefined();
+
+    const sectionCreate = aggregate!.operations.find(
+      (op): op is CreateItemOp => op.op === "CreateItem"
+    );
+    expect(sectionCreate?.name).toBe("UI");
+    expect(
+      sectionCreate?.fields.find((f) => f.fieldId === SYSTEM_FIELDS.DISPLAY_NAME)?.value
+    ).toEqual({ kind: "string", value: "UI Components" });
+    expect(
+      sectionCreate?.fields.find((f) => f.fieldId === SYSTEM_FIELDS.SORT_ORDER)?.value
+    ).toEqual({ kind: "number", value: 10 });
+
+    const renderingsField = aggregate!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    // Two components in the section → the rendering list has two refKeys,
+    // sorted by handle (badge@1 before card@1).
+    expect(renderingsField?.value).toMatchObject({ kind: "ref-recipe-list" });
+    expect((renderingsField?.value as { refKeys: string[] }).refKeys).toHaveLength(2);
+  });
+});
+
+describe("compileRecipe — front-door dispatcher", () => {
+  it("dispatches a section-definition recipe", () => {
+    const sectionDef: Recipe = {
+      kind: "section-definition",
+      schemaVersion: "1",
+      handle: "hero-section@1",
+      name: "HeroSection",
+      displayName: "Hero Section",
+      sitePath: "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings/Hero",
+    };
+    // A standalone section-definition is a resolution target — it emits
+    // no ops itself (AppendToMultiList ops only fire when referenced),
+    // but the dispatcher must still route it to the right compiler.
+    const ir = compileRecipe(sectionDef, CONTEXT);
+    expect(ir.recipeHandle).toBe("hero-section@1");
+    expect(ir.schemaVersion).toBe("1");
+  });
+
+  it("dispatches a placeholder recipe", () => {
+    const placeholder: Recipe = {
+      kind: "placeholder",
+      schemaVersion: "1",
+      handle: "header-slot@1",
+      key: "/header",
+      name: "Header",
+      displayName: "Header",
+    };
+    const ir = compileRecipe(placeholder, {
+      ...CONTEXT,
+      placeholderSettingsRoot:
+        "/sitecore/content/test-tenant/test-site/Presentation/Placeholder Settings",
+    });
+    expect(ir.recipeHandle).toBe("header-slot@1");
+  });
+
+  it("dispatches a component-section recipe", () => {
+    const ir = compileRecipe(uiSection, CONTEXT);
+    expect(ir.recipeHandle).toBe("ui-section@1");
+  });
+
+  it("is idempotent — re-running compileRecipe yields identical IR", () => {
+    const first = compileRecipe(uiSection, CONTEXT);
+    const second = compileRecipe(uiSection, CONTEXT);
+    expect(second).toEqual(first);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — compileRecipeSet's cross-recipe aggregate IRs.
+// ---------------------------------------------------------------------------
+
+const componentWithSiteSubfolder = (handle: string, name: string, subfolder: string): Recipe => ({
+  kind: "component-template",
+  schemaVersion: "1",
+  handle,
+  name,
+  displayName: name,
+  fields: [{ name: "Title", shape: "text" }],
+  datasource: {
+    locations: [{ scope: "site", subfolder }],
+  },
+});
+
+describe("compileRecipeSet — Shared Data Folders aggregate", () => {
+  const CTX: CompileContext = {
+    ...CONTEXT,
+    componentsRoot: "/sitecore/templates/Project/test-site/Components",
+    contentItemsRoot: "/sitecore/content/test-tenant/test-site/Data",
+  };
+
+  it("emits no Shared Data Folders IR when no site subfolder is shared by ≥2 recipes", () => {
+    // Single component touching the subfolder → singleton, not shared.
+    const irs = compileRecipeSet([componentWithSiteSubfolder("badge@1", "Badge", "ui")], CTX);
+    expect(irs.find((ir) => ir.recipeHandle === "__shared-data-folders__")).toBeUndefined();
+  });
+
+  it("emits a shared template + SV + base-templates + Insert Options for a subfolder shared by 2 recipes", () => {
+    const irs = compileRecipeSet(
+      [
+        componentWithSiteSubfolder("badge@1", "Badge", "ui/badges"),
+        componentWithSiteSubfolder("tag@1", "Tag", "ui/badges"),
+      ],
+      CTX
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__shared-data-folders__");
+    expect(aggregate).toBeDefined();
+    // Per shared (site, subfolder): CreateItem template, SetBaseTemplates,
+    // CreateItem __Standard Values, SetStandardValues, SetField insert-options.
+    const opKinds = aggregate!.operations.map((op) => op.op);
+    expect(opKinds).toEqual([
+      "CreateItem",
+      "SetBaseTemplates",
+      "CreateItem",
+      "SetStandardValues",
+      "SetField",
+    ]);
+    // Multi-segment subfolder `ui/badges`: leaf becomes `badges Data Folder`.
+    const tpl = aggregate!.operations.find(
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.name.endsWith("Data Folder")
+    );
+    expect(tpl!.name).toBe("badges Data Folder");
+    // Insert Options aggregates both contributing recipes' datasource
+    // templates, sorted by handle (badge@1 before tag@1).
+    const insertOptions = aggregate!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    expect((insertOptions!.value as { refKeys: string[] }).refKeys).toHaveLength(2);
+  });
+});
+
+describe("compileRecipeSet — Site Data Root aggregate", () => {
+  const CTX: CompileContext = {
+    ...CONTEXT,
+    componentsRoot: "/sitecore/templates/Project/test-site/Components",
+    contentItemsRoot: "/sitecore/content/test-tenant/test-site/Data",
+  };
+
+  it("emits no Site Data Root IR when no recipe has a site-scoped subfolder", () => {
+    const irs = compileRecipeSet([componentInSection("card@1", "Card"), uiSection], CTX);
+    expect(irs.find((ir) => ir.recipeHandle === "__site-data-root__")).toBeUndefined();
+  });
+
+  it("aggregates singleton + shared Data Folder templates into the root SV Insert Options", () => {
+    const irs = compileRecipeSet(
+      [
+        // Singleton site subfolder → one per-recipe Data Folder template.
+        componentWithSiteSubfolder("hero@1", "Hero", "heroes"),
+        // Shared site subfolder → coalesced shared Data Folder template.
+        componentWithSiteSubfolder("badge@1", "Badge", "badges"),
+        componentWithSiteSubfolder("tag@1", "Tag", "badges"),
+      ],
+      CTX
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__site-data-root__");
+    expect(aggregate).toBeDefined();
+    expect(aggregate!.operations.map((op) => op.op)).toEqual(["CreateItem", "SetField"]);
+    const insertOptions = aggregate!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    const refKeys = (insertOptions!.value as { refKeys: string[] }).refKeys;
+    // Folder template + 1 singleton (hero) + 1 shared subfolder (badges).
+    expect(refKeys).toHaveLength(3);
+  });
+});
+
+describe("compileRecipeSet — Enumerations Root aggregate", () => {
+  const enumRecipe = (handle: string, name: string): Recipe => ({
+    kind: "enumeration",
+    schemaVersion: "1",
+    handle,
+    name,
+    values: [{ name: "alpha" }, { name: "beta" }],
+  });
+
+  it("emits no Enumerations Root IR when there are no enumeration recipes", () => {
+    const irs = compileRecipeSet([componentInSection("card@1", "Card"), uiSection], CONTEXT);
+    expect(irs.find((ir) => ir.recipeHandle === "__enumerations-root__")).toBeUndefined();
+  });
+
+  it("emits the root item + SV + Insert Options aggregating every enumeration handle", () => {
+    const irs = compileRecipeSet(
+      [enumRecipe("tone@1", "Tone"), enumRecipe("size@1", "Size")],
+      CONTEXT
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__enumerations-root__");
+    expect(aggregate).toBeDefined();
+    // root CreateItem + SV CreateItem + Insert Options SetField.
+    expect(aggregate!.operations.map((op) => op.op)).toEqual([
+      "CreateItem",
+      "CreateItem",
+      "SetField",
+    ]);
+    const insertOptions = aggregate!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    // Folder template + one folder per enumeration handle.
+    expect((insertOptions!.value as { refKeys: string[] }).refKeys).toHaveLength(3);
+  });
+});
+
+describe("compileRecipeSet — Placeholder Settings aggregate", () => {
+  const CTX_WITH_PH: CompileContext = {
+    ...CONTEXT,
+    placeholderSettingsRoot:
+      "/sitecore/content/test-tenant/test-site/Presentation/Placeholder Settings",
+  };
+
+  const placeholderRecipe = (handle: string, key: string, folder?: string): Recipe => ({
+    kind: "placeholder",
+    schemaVersion: "1",
+    handle,
+    key,
+    name: key.replace(/[^a-zA-Z0-9]/g, "") || "ph",
+    displayName: key,
+    ...(folder ? { folder } : {}),
+  });
+
+  it("emits no Placeholder Settings IR when the set declares no placeholders", () => {
+    const irs = compileRecipeSet([componentInSection("card@1", "Card"), uiSection], CTX_WITH_PH);
+    expect(irs.find((ir) => ir.recipeHandle === "__placeholder-settings__")).toBeUndefined();
+  });
+
+  it("throws INPUT_INVALID when placeholders are declared but placeholderSettingsRoot is unset", () => {
+    expect(() => compileRecipeSet([placeholderRecipe("hdr@1", "/header")], CONTEXT)).toThrow(
+      /placeholderSettingsRoot/
+    );
+  });
+
+  it("emits a CreateItem + Allowed Controls SetField per standalone placeholder recipe", () => {
+    const irs = compileRecipeSet(
+      [placeholderRecipe("hdr@1", "/header"), placeholderRecipe("ftr@1", "/footer")],
+      CTX_WITH_PH
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__placeholder-settings__");
+    expect(aggregate).toBeDefined();
+    // Two placeholders × (CreateItem + SetField).
+    const creates = aggregate!.operations.filter((op) => op.op === "CreateItem");
+    const sets = aggregate!.operations.filter((op) => op.op === "SetField");
+    expect(creates).toHaveLength(2);
+    expect(sets).toHaveLength(2);
+  });
+
+  it("materialises grouping folders for a placeholder declared with a multi-segment folder", () => {
+    const irs = compileRecipeSet(
+      [placeholderRecipe("hdr@1", "/header", "Partial Design/Header")],
+      CTX_WITH_PH
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__placeholder-settings__")!;
+    const folderCreates = aggregate.operations.filter(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" && op.label.startsWith("placeholder-settings-folder:")
+    );
+    // One CreateOnly folder per path segment: "Partial Design", "Header".
+    expect(folderCreates.map((op) => op.name)).toEqual(["Partial Design", "Header"]);
+    for (const op of folderCreates) {
+      expect(op.policy).toBe("CreateOnly");
+    }
+  });
+
+  it("unions a component's placedIn into the placeholder Allowed Controls whitelist", () => {
+    const componentPlacedIn: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "hero@1",
+      name: "Hero",
+      displayName: "Hero",
+      fields: [{ name: "Title", shape: "text" }],
+      placedIn: ["/header"],
+    };
+    const irs = compileRecipeSet([placeholderRecipe("hdr@1", "/header"), componentPlacedIn], {
+      ...CTX_WITH_PH,
+      headlessVariantsRoot: CONTEXT.headlessVariantsRoot,
+    });
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__placeholder-settings__")!;
+    const allowControls = aggregate.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label.startsWith("placeholder-allowed-controls:")
+    );
+    // hero@1 named /header in placedIn → it joins the whitelist.
+    expect((allowControls!.value as { refKeys: string[] }).refKeys).toHaveLength(1);
+  });
+
+  it("collects an inline component placeholder slot into the aggregate", () => {
+    const componentWithInlineSlot: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "grid@1",
+      name: "Grid",
+      displayName: "Grid",
+      fields: [{ name: "Title", shape: "text" }],
+      placeholders: [{ key: "grid-content", displayName: "Grid Content" }],
+    };
+    const irs = compileRecipeSet([componentWithInlineSlot], {
+      ...CTX_WITH_PH,
+      headlessVariantsRoot: CONTEXT.headlessVariantsRoot,
+    });
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__placeholder-settings__")!;
+    const create = aggregate.operations.find(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" && op.label.startsWith("placeholder-settings:")
+    );
+    expect(create).toBeDefined();
+    expect(create!.label).toContain("grid-content");
+  });
+});
+
+describe("compileRecipe — front-door dispatcher remaining kinds", () => {
+  it("dispatches an enumeration recipe", () => {
+    const ir = compileRecipe(
+      {
+        kind: "enumeration",
+        schemaVersion: "1",
+        handle: "tone@1",
+        name: "Tone",
+        values: [{ name: "calm" }, { name: "bold" }],
+      },
+      CONTEXT
+    );
+    expect(ir.recipeHandle).toBe("tone@1");
+  });
+
+  it("dispatches a workflow recipe", () => {
+    const ir = compileRecipe(
+      {
+        kind: "workflow",
+        schemaVersion: "1",
+        handle: "editorial@1",
+        name: "Editorial",
+        displayName: "Editorial Workflow",
+        initialState: "draft",
+        states: [
+          { key: "draft", name: "Draft", displayName: "Draft", final: false },
+          { key: "published", name: "Published", displayName: "Published", final: true },
+        ],
+      },
+      CONTEXT
+    );
+    expect(ir.recipeHandle).toBe("editorial@1");
   });
 });

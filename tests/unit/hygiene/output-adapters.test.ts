@@ -162,4 +162,198 @@ describe("writeAuditOutput", () => {
     const body = writeAuditOutput(envelope, { format: "csv" });
     expect(body).toContain("itemId,path,brokenRefs");
   });
+
+  it("defaults to json format when no format option is given", () => {
+    const body = writeAuditOutput(envelope, {});
+    expect(body).toContain('"command": "audit.broken-links.list"');
+  });
+});
+
+describe("formatAuditOutput — default / unknown format", () => {
+  it("falls back to pretty JSON for an unrecognised format token", () => {
+    const out = formatAuditOutput(envelope, "yaml" as never);
+    expect(out).toContain('"command": "audit.broken-links.list"');
+  });
+});
+
+describe("formatAuditOutput — csv edge cases", () => {
+  it("joins array cell values with a semicolon", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ tags: ["a", "b", "c"] }] }, "csv");
+    expect(out.split("\n")[1]).toBe("a; b; c");
+  });
+
+  it("JSON-stringifies an array of objects inside a cell", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ refs: [{ id: 1 }, { id: 2 }] }] }, "csv");
+    expect(out).toContain('{""id"":1}');
+  });
+
+  it("JSON-stringifies a nested object cell", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ meta: { deep: "value" } }] }, "csv");
+    expect(out).toContain('{""deep"":""value""}');
+  });
+
+  it("emits an empty cell for a null or undefined value", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ itemId: "a", note: null }] }, "csv");
+    // header itemId,note → row "a," (note column blank)
+    expect(out.split("\n")[1]).toBe("a,");
+  });
+
+  it("stringifies boolean and number values without quoting", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ flag: true, n: 7 }] }, "csv");
+    expect(out.split("\n")[1]).toBe("true,7");
+  });
+
+  it("skips non-object rows when deriving columns and rows", () => {
+    const out = formatAuditOutput({ ...envelope, data: ["scalar", { itemId: "a" }] }, "csv");
+    // The scalar row is skipped; only the object row is emitted.
+    expect(out.split("\n")).toEqual(["itemId", "a"]);
+  });
+});
+
+describe("formatAuditOutput — markdown single-audit extras", () => {
+  it("renders extra scalar envelope fields as bullet metadata", () => {
+    const out = formatAuditOutput(
+      { ...envelope, ignoredCount: 3, durationMs: 1200, audits: { x: {} } },
+      "markdown"
+    );
+    expect(out).toContain("**Ignored by baseline**: 3");
+    expect(out).toContain("**durationMs**: 1200");
+    // `audits` is an excluded key and never surfaces as a bullet.
+    expect(out).not.toContain("**audits**");
+  });
+
+  it("omits the count bullet when count is not a number", () => {
+    const out = formatAuditOutput({ ...envelope, count: undefined as never }, "markdown");
+    expect(out).not.toContain("**Count**");
+  });
+
+  it("omits the ignored-by-baseline bullet when ignoredCount is zero", () => {
+    const out = formatAuditOutput({ ...envelope, ignoredCount: 0 }, "markdown");
+    expect(out).not.toContain("**Ignored by baseline**");
+  });
+
+  it("skips null / object-valued envelope fields in the bullet loop", () => {
+    const out = formatAuditOutput({ ...envelope, nothing: null, nested: { a: 1 } }, "markdown");
+    expect(out).not.toContain("**nothing**");
+    expect(out).not.toContain("**nested**");
+  });
+
+  it("titles a command with no `audit.` prefix verbatim", () => {
+    const out = formatAuditOutput({ ...envelope, command: "custom_report" }, "markdown");
+    expect(out).toContain("# custom report");
+  });
+});
+
+describe("formatAuditOutput — markdown tableability heuristics", () => {
+  it("renders a table when arrays in rows are short (≤3 scalars)", () => {
+    const out = formatAuditOutput(
+      { ...envelope, data: [{ itemId: "a", tags: ["x", "y"] }] },
+      "markdown"
+    );
+    expect(out).toMatch(/\| itemId \| tags \|/);
+    expect(out).toContain("x; y");
+  });
+
+  it("falls back to fenced JSON when a row array exceeds 3 entries", () => {
+    const out = formatAuditOutput(
+      { ...envelope, data: [{ itemId: "a", tags: ["1", "2", "3", "4"] }] },
+      "markdown"
+    );
+    expect(out).toContain("```json");
+  });
+
+  it("escapes pipe characters and newlines in a markdown table cell", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ note: "a|b\nc" }] }, "markdown");
+    expect(out).toContain("a\\|b c");
+  });
+
+  it("renders an array-of-objects cell as JSON joined by semicolons", () => {
+    const out = formatAuditOutput({ ...envelope, data: [{ refs: [{ id: 1 }] }] }, "markdown");
+    expect(out).toContain('{"id":1}');
+  });
+});
+
+describe("formatAuditOutput — markdown audit.all variants", () => {
+  const baseAll = {
+    command: "audit.all",
+    environment: "sandbox",
+    data: [],
+    audits: {},
+  };
+
+  it("renders the plural failed-audits line for >1 failure", () => {
+    const out = formatAuditOutput(
+      {
+        ...baseAll,
+        counts: { auditsRun: 3, auditsFailed: 2, totalFindings: 0 },
+        audits: {
+          a: { findings: [], error: "boom" },
+          b: { findings: [], error: "bang" },
+        },
+      },
+      "markdown"
+    );
+    expect(out).toContain("**2 audits failed**");
+  });
+
+  it("renders the singular failed-audit line for exactly 1 failure", () => {
+    const out = formatAuditOutput(
+      {
+        ...baseAll,
+        counts: { auditsRun: 1, auditsFailed: 1, totalFindings: 0 },
+        audits: { a: { findings: [], error: "boom" } },
+      },
+      "markdown"
+    );
+    expect(out).toContain("**1 audit failed**");
+  });
+
+  it("omits the breakdown table when there are no audits at all", () => {
+    const out = formatAuditOutput(
+      { ...baseAll, counts: { auditsRun: 0, totalFindings: 0 } },
+      "markdown"
+    );
+    expect(out).not.toContain("## Breakdown");
+  });
+
+  it("includes an envelope summary line in the callout when present", () => {
+    const out = formatAuditOutput({ ...baseAll, summary: "all clear", counts: {} }, "markdown");
+    expect(out).toContain("> - all clear");
+  });
+
+  it("sorts the per-audit sections by descending finding count", () => {
+    const out = formatAuditOutput(
+      {
+        ...baseAll,
+        counts: { auditsRun: 2, totalFindings: 3 },
+        audits: {
+          small: { findings: [{ itemId: "s1" }] },
+          big: { findings: [{ itemId: "b1" }, { itemId: "b2" }] },
+        },
+      },
+      "markdown"
+    );
+    expect(out.indexOf("## big")).toBeLessThan(out.indexOf("## small"));
+  });
+
+  it("renders nested-row audit findings as fenced JSON inside a section", () => {
+    const out = formatAuditOutput(
+      {
+        ...baseAll,
+        counts: { auditsRun: 1, totalFindings: 1 },
+        audits: { x: { findings: [{ itemId: "a", nested: { deep: 1 } }] } },
+      },
+      "markdown"
+    );
+    expect(out).toContain("## x");
+    expect(out).toContain("```json");
+  });
+
+  it("omits the totalIgnored callout line when it is zero", () => {
+    const out = formatAuditOutput(
+      { ...baseAll, counts: { auditsRun: 1, totalFindings: 0, totalIgnored: 0 } },
+      "markdown"
+    );
+    expect(out).not.toContain("Ignored by baseline");
+  });
 });

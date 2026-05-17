@@ -10,6 +10,7 @@
  * on the cleanup-specific behaviour. The hygiene client is stubbed.
  */
 
+import { consola } from "consola";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 import type { HygieneApiClient } from "../../../../src/hygiene/api/client";
@@ -259,5 +260,185 @@ describe("cleanup site-residue", () => {
     } as never);
     expect(actions).toEqual([]);
     expect(client.deleteItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("cleanup site-residue — failure + multi-finding + text mode", () => {
+  it("captures a deleteItem failure as a failed status without aborting", async () => {
+    const client = setup({});
+    (client.deleteItem as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("server delete lock")
+    );
+    const actions = await runCleanupSiteResidue({
+      allowWrite: true,
+      skipRefCheck: true,
+      json: true,
+    } as never);
+    expect(actions[0].status).toBe("failed");
+    expect(actions[0].error).toContain("server delete lock");
+  });
+
+  it("sums descendantCount across multiple what-if findings", async () => {
+    vi.mocked(runAuditSiteResidue).mockResolvedValueOnce([
+      { ...ORPHAN_FINDING, itemId: "orphan1", descendantCount: 10 },
+      {
+        ...ORPHAN_FINDING,
+        itemId: "orphan2",
+        path: "/sitecore/templates/Project/other",
+        descendantCount: 25,
+      },
+    ]);
+    const client = setup({});
+    const actions = await runCleanupSiteResidue({
+      whatIf: true,
+      skipRefCheck: true,
+      json: true,
+    } as never);
+    expect(actions).toHaveLength(2);
+    expect(actions.every((a) => a.status === "what-if")).toBe(true);
+    expect(client.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it("emits the what-if banner and plan summary in text mode", async () => {
+    setup({});
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined as never);
+    await runCleanupSiteResidue({
+      whatIf: true,
+      skipRefCheck: true,
+    } as never);
+    const text = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    infoSpy.mockRestore();
+    expect(text).toContain("What-if mode active");
+    expect(text).toContain("Plan: would delete");
+  });
+
+  it("falls back to the content root when no active sites are discovered", async () => {
+    const { discoverSites } = await import("../../../../src/recipe/api/site-discovery");
+    vi.mocked(discoverSites).mockResolvedValueOnce([]);
+    const client = setup({
+      scannedItems: [
+        {
+          id: "activepage",
+          fields: [{ name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" }],
+        },
+      ],
+      descendantsByOrphan: {
+        deletedtenantid: ["abcdef12345678901234567890abcdef"],
+      },
+    });
+    // No discovered sites → tenantRoots falls back to the content root,
+    // so the ref scan still runs and finds the inbound reference.
+    const actions = await runCleanupSiteResidue({
+      whatIf: true,
+      json: true,
+    } as never);
+    expect(actions[0].status).toBe("skipped");
+    expect(actions[0].inboundRefs).toHaveLength(1);
+    expect(client.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it("reports 'no orphan trees' in text mode when the audit is clean", async () => {
+    vi.mocked(runAuditSiteResidue).mockResolvedValueOnce([]);
+    setup({});
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined as never);
+    const actions = await runCleanupSiteResidue({
+      whatIf: true,
+      skipRefCheck: true,
+    } as never);
+    const text = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    infoSpy.mockRestore();
+    expect(actions).toEqual([]);
+    expect(text).toContain("No orphan site-residue trees found.");
+  });
+
+  it("renders the per-action formatLine in text mode (deleted + would-delete + skipped)", async () => {
+    vi.mocked(runAuditSiteResidue).mockResolvedValueOnce([
+      { ...ORPHAN_FINDING, itemId: "orphanA", path: "/x/A", descendantCount: 3 },
+    ]);
+    setup({});
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined as never);
+    await runCleanupSiteResidue({
+      allowWrite: true,
+      skipRefCheck: true,
+    } as never);
+    const text = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    infoSpy.mockRestore();
+    // `printReport` formatLine renders the [deleted] prefix + descendant count.
+    expect(text).toContain("[deleted] /x/A (3 items)");
+  });
+
+  it("renders the skipped formatLine with an inbound-ref tag in text mode", async () => {
+    setup({
+      scannedItems: [
+        {
+          id: "activepage",
+          fields: [{ name: "FooterRef", value: "{ABCDEF12-3456-7890-1234-567890abcdef}" }],
+        },
+      ],
+      descendantsByOrphan: {
+        deletedtenantid: ["abcdef12345678901234567890abcdef"],
+      },
+    });
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined as never);
+    await runCleanupSiteResidue({ whatIf: true } as never);
+    const text = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    infoSpy.mockRestore();
+    expect(text).toContain("[skipped]");
+    expect(text).toContain("inbound ref");
+  });
+
+  it("paginates the descendant search across multiple full pages", async () => {
+    const client = setup({});
+    // First _path search page returns a full 500-id page, the second a
+    // short page — exercising the `results.length < pageSize` break.
+    const fullPage = Array.from({ length: 500 }, (_, i) => `desc${i}`);
+    let pathSearchCalls = 0;
+    (client.search as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: { searchStatement?: unknown }) => {
+        const stmt = input.searchStatement as
+          | { criteria?: { field?: string; value?: string } }
+          | undefined;
+        const fieldName = stmt?.criteria?.field;
+        const value = stmt?.criteria?.value;
+        if (fieldName === "_fullpath") {
+          return { totalCount: 1, results: [{ itemId: "rootid", path: value }] };
+        }
+        if (fieldName === "_path") {
+          pathSearchCalls += 1;
+          if (pathSearchCalls === 1) {
+            return {
+              totalCount: 500,
+              results: fullPage.map((id) => ({ itemId: id, path: `/x/${id}` })),
+            };
+          }
+          return { totalCount: 501, results: [{ itemId: "descLast", path: "/x/last" }] };
+        }
+        return { totalCount: 0, results: [] };
+      }
+    );
+    const actions = await runCleanupSiteResidue({
+      whatIf: true,
+      json: true,
+    } as never);
+    // Two _path search pages were walked for the single orphan.
+    expect(pathSearchCalls).toBeGreaterThanOrEqual(2);
+    expect(actions[0].status).toBe("what-if");
+  });
+
+  it("captures a deleteItem failure and renders the [failed] line in text mode", async () => {
+    const client = setup({});
+    (client.deleteItem as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("delete denied")
+    );
+    const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined as never);
+    const actions = await runCleanupSiteResidue({
+      allowWrite: true,
+      skipRefCheck: true,
+    } as never);
+    const text = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    infoSpy.mockRestore();
+    expect(actions[0].status).toBe("failed");
+    expect(text).toContain("[failed]");
+    expect(text).toContain("delete denied");
   });
 });

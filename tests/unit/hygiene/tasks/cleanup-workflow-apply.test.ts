@@ -401,4 +401,301 @@ describe("cleanup workflow-apply — apply logic", () => {
     expect(result[0]!.status).toBe("failed");
     expect(result[0]!.error).toContain("network blip");
   });
+
+  it("rejects a --state name that the workflow has no match for", async () => {
+    setup();
+    stubHygieneClient();
+    stubWorkflowClient();
+
+    await expect(
+      runCleanupWorkflowApply({
+        workflow: "Article Workflow",
+        state: "NonexistentState",
+        root: "/sitecore/content/MySite",
+        json: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("throws UNKNOWN when the workflow has no __Initial state and --state is omitted", async () => {
+    setup();
+    stubHygieneClient();
+    stubWorkflowClient({
+      getWorkflowInitialStateId: vi.fn().mockResolvedValue(null),
+    });
+
+    await expect(
+      runCleanupWorkflowApply({
+        workflow: "Article Workflow",
+        root: "/sitecore/content/MySite",
+        json: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "UNKNOWN" });
+  });
+});
+
+describe("cleanup workflow-apply — template filter", () => {
+  it("resolves a --template GUID directly without a search call", async () => {
+    setup();
+    const client = stubHygieneClient();
+    stubWorkflowClient();
+
+    await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      template: "{deadbeef-1111-1111-1111-111111111111}",
+      root: "/sitecore/content/MySite",
+      json: true,
+    } as never);
+
+    // search is called once for the root lookup only — the template GUID
+    // is resolved inline (no path → GUID search).
+    expect(client.search).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a non-/sitecore --template path that cannot resolve", async () => {
+    setup();
+    stubHygieneClient();
+    stubWorkflowClient();
+
+    await expect(
+      runCleanupWorkflowApply({
+        workflow: "Article Workflow",
+        template: "not-a-path",
+        root: "/sitecore/content/MySite",
+        json: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("resolves a --template content-tree path via search", async () => {
+    setup();
+    const client = stubHygieneClient({
+      // First search resolves the template path; second resolves the root.
+      search: vi
+        .fn()
+        .mockResolvedValueOnce({
+          totalCount: 1,
+          results: [{ itemId: "{deadbeef-1111-1111-1111-111111111111}", path: "/tpl" }],
+        })
+        .mockResolvedValueOnce({
+          totalCount: 1,
+          results: [{ itemId: "rootid", path: "/sitecore/content/MySite" }],
+        }),
+    });
+    stubWorkflowClient();
+
+    await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      template: "/sitecore/templates/Foundation/Article",
+      root: "/sitecore/content/MySite",
+      json: true,
+    } as never);
+
+    // Two searches: template-path lookup + root lookup.
+    expect(client.search).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cleanup workflow-apply — filters", () => {
+  it("skips /sitecore/system items by default", async () => {
+    setup();
+    stubHygieneClient({
+      search: vi.fn().mockResolvedValue({ totalCount: 0, results: [] }),
+      searchAll: vi.fn().mockImplementation(async function* () {
+        yield {
+          itemId: "{deadbeef-0000-0000-0000-000000000099}",
+          path: "/sitecore/system/Settings/Item",
+          name: "SysItem",
+          templateId: null,
+          language: { name: "en" },
+          version: 1,
+          updatedDate: new Date().toISOString(),
+        };
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      json: true,
+    } as never);
+
+    expect(result).toEqual([]);
+    expect(wfClient.setItemWorkflowState).not.toHaveBeenCalled();
+  });
+
+  it("includes /sitecore/system items when --include-system is set", async () => {
+    setup();
+    stubHygieneClient({
+      search: vi.fn().mockResolvedValue({ totalCount: 0, results: [] }),
+      searchAll: vi.fn().mockImplementation(async function* () {
+        yield {
+          itemId: "{deadbeef-0000-0000-0000-000000000099}",
+          path: "/sitecore/system/Settings/Item",
+          name: "SysItem",
+          templateId: null,
+          language: { name: "en" },
+          version: 1,
+          updatedDate: new Date().toISOString(),
+        };
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      includeSystem: true,
+      json: true,
+    } as never);
+
+    expect(result).toHaveLength(1);
+    expect(wfClient.setItemWorkflowState).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes items updated more recently than --stale-days", async () => {
+    setup();
+    stubHygieneClient({
+      searchAll: vi.fn().mockImplementation(async function* () {
+        yield {
+          itemId: "{deadbeef-0000-0000-0000-000000000001}",
+          path: "/sitecore/content/MySite/Fresh",
+          name: "Fresh",
+          templateId: null,
+          language: { name: "en" },
+          version: 1,
+          // Updated today — newer than a 30-day cutoff.
+          updatedDate: new Date().toISOString(),
+        };
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      staleDays: 30,
+      json: true,
+    } as never);
+
+    expect(result).toEqual([]);
+    expect(wfClient.setItemWorkflowState).not.toHaveBeenCalled();
+  });
+
+  it("includes items older than --stale-days", async () => {
+    setup();
+    const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    stubHygieneClient({
+      searchAll: vi.fn().mockImplementation(async function* () {
+        yield {
+          itemId: "{deadbeef-0000-0000-0000-000000000001}",
+          path: "/sitecore/content/MySite/Stale",
+          name: "Stale",
+          templateId: null,
+          language: { name: "en" },
+          version: 1,
+          updatedDate: oldDate,
+        };
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      staleDays: 30,
+      json: true,
+    } as never);
+
+    expect(result).toHaveLength(1);
+    expect(wfClient.setItemWorkflowState).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes items with no updatedDate under a --stale-days cutoff", async () => {
+    setup();
+    stubHygieneClient({
+      searchAll: vi.fn().mockImplementation(async function* () {
+        yield {
+          itemId: "{deadbeef-0000-0000-0000-000000000001}",
+          path: "/sitecore/content/MySite/NoDate",
+          name: "NoDate",
+          templateId: null,
+          language: { name: "en" },
+          version: 1,
+          updatedDate: null,
+        };
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      staleDays: 30,
+      json: true,
+    } as never);
+
+    expect(result).toEqual([]);
+    expect(wfClient.setItemWorkflowState).not.toHaveBeenCalled();
+  });
+
+  it("respects --limit on candidate enumeration", async () => {
+    setup();
+    stubHygieneClient({
+      searchAll: vi.fn().mockImplementation(async function* () {
+        for (let i = 0; i < 5; i++) {
+          yield {
+            itemId: `{deadbeef-0000-0000-0000-00000000000${i}}`,
+            path: `/sitecore/content/MySite/Page${i}`,
+            name: `Page${i}`,
+            templateId: null,
+            language: { name: "en" },
+            version: 1,
+            updatedDate: new Date().toISOString(),
+          };
+        }
+      }),
+    });
+    const wfClient = stubWorkflowClient();
+
+    const result = await runCleanupWorkflowApply({
+      workflow: "Article Workflow",
+      root: "/sitecore/content/MySite",
+      limit: 2,
+      json: true,
+    } as never);
+
+    // Only 2 candidates enumerated → at most 2 attach calls.
+    expect(result).toHaveLength(2);
+    expect(wfClient.setItemWorkflowState).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cleanup workflow-apply — JSON envelope", () => {
+  it("surfaces applied / skipped counts in the envelope meta", async () => {
+    setup();
+    stubHygieneClient();
+    stubWorkflowClient();
+
+    const captured: string[] = [];
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      captured.push(String(chunk));
+      return true;
+    });
+    try {
+      await runCleanupWorkflowApply({
+        workflow: "Article Workflow",
+        root: "/sitecore/content/MySite",
+        json: true,
+      } as never);
+    } finally {
+      writeSpy.mockRestore();
+    }
+    const payload = JSON.parse(captured.join(""));
+    expect(payload.command).toBe("cleanup.workflow.apply");
+    expect(payload.meta.appliedCount).toBe(1);
+    expect(payload.meta.failedCount).toBe(0);
+    expect(payload.meta.skippedAlreadyAttachedCount).toBe(0);
+  });
 });

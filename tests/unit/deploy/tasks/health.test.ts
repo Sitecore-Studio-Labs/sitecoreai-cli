@@ -216,4 +216,165 @@ describe("deploy health task", () => {
     expect(bad.error).toBe("timeout");
     expect(good.probe).toMatchObject({ kind: "healthz", status: 200 });
   });
+
+  it("skips the CM probe when no host resolves", async () => {
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "cm-1", name: "CM One", type: "cm", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("cm");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+    apiMocks.resolveHostFromEnvironment.mockReturnValue(undefined);
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    expect(apiMocks.probeEnvironmentHealth).not.toHaveBeenCalled();
+    const payload = sharedMocks.printDeployResultWithContext.mock.calls[0][3] as {
+      environments: Array<{ probe: { kind: string; reason: string } }>;
+    };
+    expect(payload.environments[0].probe).toEqual({
+      kind: "skipped",
+      reason: "No resolvable CM host.",
+    });
+  });
+
+  it("skips the EH probe when the environment has no id", async () => {
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ name: "EH NoId", type: "eh", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("eh");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    expect(apiMocks.fetchEnvironmentDeployments).not.toHaveBeenCalled();
+    const payload = sharedMocks.printDeployResultWithContext.mock.calls[0][3] as {
+      environments: Array<{ probe: { kind: string; reason: string } }>;
+    };
+    expect(payload.environments[0].probe).toEqual({
+      kind: "skipped",
+      reason: "Missing environment ID.",
+    });
+  });
+
+  it("reports a skipped EH probe when no deployments exist", async () => {
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "eh-1", name: "EH One", type: "eh", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("eh");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+    apiMocks.fetchEnvironmentDeployments.mockResolvedValue({ data: [] });
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    const payload = sharedMocks.printDeployResultWithContext.mock.calls[0][3] as {
+      environments: Array<{ probe: { kind: string; reason: string } }>;
+    };
+    expect(payload.environments[0].probe).toEqual({
+      kind: "skipped",
+      reason: "No deployments found.",
+    });
+  });
+
+  it("handles a bare-array deployment response", async () => {
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "eh-1", name: "EH One", type: "eh", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("eh");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+    apiMocks.fetchEnvironmentDeployments.mockResolvedValue([
+      { id: "dep-1", createdAt: "2026-05-10T00:00:00Z", status: "Failed" },
+    ]);
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    const payload = sharedMocks.printDeployResultWithContext.mock.calls[0][3] as {
+      environments: Array<{ probe: { kind: string; status: string; deploymentId: string } }>;
+    };
+    expect(payload.environments[0].probe).toMatchObject({
+      kind: "deployment",
+      deploymentId: "dep-1",
+      status: "Failed",
+    });
+  });
+
+  it("collects environments via the project scope when a project resolves", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue("proj-9");
+    apiMocks.fetchAllProjectEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "cm-1", name: "CM One", type: "cm", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("cm");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+    apiMocks.resolveHostFromEnvironment.mockReturnValue("cm.example");
+    apiMocks.probeEnvironmentHealth.mockResolvedValue({
+      host: "https://cm.example",
+      url: "https://cm.example/healthz/ready",
+      status: 200,
+      ok: true,
+      body: "OK",
+    });
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({ project: "MySite" });
+
+    expect(apiMocks.fetchAllProjectEnvironments).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "proj-9",
+      50
+    );
+    expect(apiMocks.fetchAllEnvironments).not.toHaveBeenCalled();
+  });
+
+  it("renders a human table and per-type summary when --json is off", async () => {
+    logger.isJson.mockReturnValue(false);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 1,
+      pageSize: 50,
+      items: [{ id: "cm-1", name: "CM One", type: "cm", provisioningStatus: 2 }],
+    });
+    sharedMocks.getEnvironmentType.mockReturnValue("cm");
+    apiMocks.getProvisioningStatus.mockReturnValue("provisioned");
+    apiMocks.resolveHostFromEnvironment.mockReturnValue("cm.example");
+    apiMocks.probeEnvironmentHealth.mockResolvedValue({
+      host: "https://cm.example",
+      url: "https://cm.example/healthz/ready",
+      status: 200,
+      ok: true,
+      body: "OK",
+    });
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    expect(sharedMocks.printDeployResultWithContext).not.toHaveBeenCalled();
+    const lines = logger.info.mock.calls.map((c) => String(c[0]));
+    // Header row + the CM One data row + per-type summary line.
+    expect(lines.some((l) => l.includes("NAME") && l.includes("SIGNAL"))).toBe(true);
+    expect(lines.some((l) => l.includes("CM One"))).toBe(true);
+    expect(lines.some((l) => l.startsWith("cm: 1"))).toBe(true);
+  });
+
+  it("reports an empty table when no environments match", async () => {
+    logger.isJson.mockReturnValue(false);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({ totalCount: 0, pageSize: 50, items: [] });
+
+    const { runDeployHealth } = await import("../../../../src/deploy/tasks/health");
+    await runDeployHealth({});
+
+    const lines = logger.info.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes("No environments to report."))).toBe(true);
+  });
 });

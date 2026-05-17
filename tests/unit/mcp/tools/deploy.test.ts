@@ -252,6 +252,412 @@ describe("deploy write tools — allowWrite gating", () => {
   });
 });
 
+describe("deploy write tools — required-input validation", () => {
+  it("deploy_project_manage create without name throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_project_manage")!
+        .handler({ action: "create", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_project_manage update without projectId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_project_manage")!
+        .handler({ action: "update", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_project_manage delete forwards projectId to deleteProject", async () => {
+    apiMocks.deleteProject.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_project_manage")!
+      .handler({ action: "delete", projectId: "p-1", allowWrite: true }, fakeContext);
+    expect(apiMocks.deleteProject).toHaveBeenCalledWith({ accessToken: "tok" }, "p-1");
+    expect((result.structuredContent as { action: string }).action).toBe("delete");
+  });
+
+  it("deploy_environment_lifecycle create without projectId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler({ action: "create", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_lifecycle promote without deploymentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler(
+          { action: "promote", environmentId: "e-1", allowWrite: true } as never,
+          fakeContext
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_lifecycle delete forwards force flag", async () => {
+    apiMocks.deleteEnvironment.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("deploy_environment_lifecycle")!
+      .handler(
+        { action: "delete", environmentId: "e-1", force: true, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.deleteEnvironment).toHaveBeenCalledWith({ accessToken: "tok" }, "e-1", true);
+  });
+
+  it("deploy_environment_variables upsert without value throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_variables")!
+        .handler(
+          { action: "upsert", environmentId: "e-1", name: "VAR", allowWrite: true } as never,
+          fakeContext
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_variables delete routes to deleteEnvironmentVariable", async () => {
+    apiMocks.deleteEnvironmentVariable.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_variables")!
+      .handler(
+        { action: "delete", environmentId: "e-1", name: "VAR", allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.deleteEnvironmentVariable).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      "e-1",
+      "VAR"
+    );
+    expect((result.structuredContent as { action: string }).action).toBe("delete");
+  });
+
+  it("deploy_repository_manage link without body throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_repository_manage")!
+        .handler(
+          { scope: "environment", action: "link", environmentId: "e-1", allowWrite: true } as never,
+          fakeContext
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_repository_manage scope=project unlink routes to unlinkProjectRepository", async () => {
+    apiMocks.unlinkProjectRepository.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_repository_manage")!
+      .handler(
+        { scope: "project", action: "unlink", projectId: "p-1", allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.unlinkProjectRepository).toHaveBeenCalledWith({ accessToken: "tok" }, "p-1");
+    expect((result.structuredContent as { scope: string }).scope).toBe("project");
+  });
+
+  it("deploy_source_control_manage create-repository without body throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_source_control_manage")!
+        .handler({ action: "create-repository", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_source_control_manage validate-repository routes correctly", async () => {
+    apiMocks.validateSourceControlRepository.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_manage")!
+      .handler(
+        { action: "validate-repository", body: { repo: "x" }, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.validateSourceControlRepository).toHaveBeenCalled();
+    expect((result.structuredContent as { action: string }).action).toBe("validate-repository");
+  });
+
+  it("deploy_source_control_manage create-repository routes to createSourceControlRepository", async () => {
+    apiMocks.createSourceControlRepository.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_manage")!
+      .handler({ action: "create-repository", body: { name: "r" }, allowWrite: true }, fakeContext);
+    expect(apiMocks.createSourceControlRepository).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      { name: "r" },
+      "org-1"
+    );
+    expect((result.structuredContent as { action: string }).action).toBe("create-repository");
+  });
+
+  it("deploy_source_control_manage create-repository-github routes to its GitHub variant", async () => {
+    apiMocks.createSourceControlRepositoryGithub.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_manage")!
+      .handler(
+        { action: "create-repository-github", body: { name: "r" }, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.createSourceControlRepositoryGithub).toHaveBeenCalled();
+    expect((result.structuredContent as { action: string }).action).toBe(
+      "create-repository-github"
+    );
+  });
+
+  it("deploy_environment_lifecycle regenerate-context routes to regenerateEnvironmentContext", async () => {
+    apiMocks.regenerateEnvironmentContext.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_lifecycle")!
+      .handler(
+        { action: "regenerate-context", environmentId: "e-1", allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.regenerateEnvironmentContext).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      "e-1"
+    );
+    expect((result.structuredContent as { action: string }).action).toBe("regenerate-context");
+  });
+
+  it("deploy_environment_lifecycle promote routes to promoteEnvironmentDeployment", async () => {
+    apiMocks.promoteEnvironmentDeployment.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_lifecycle")!
+      .handler(
+        { action: "promote", environmentId: "e-1", deploymentId: "d-1", allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.promoteEnvironmentDeployment).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      "e-1",
+      "d-1"
+    );
+    expect((result.structuredContent as { action: string }).action).toBe("promote");
+  });
+
+  it("deploy_repository_manage scope=project requires projectId", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_repository_manage")!
+        .handler({ scope: "project", action: "link", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+});
+
+describe("deploy read tools — detail + scope branches", () => {
+  it("deploy_run_inspect returns detail + logs when deploymentId + includeLogs are set", async () => {
+    apiMocks.fetchDeploymentLogs.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_run_inspect")!
+      .handler({ deploymentId: "d-1", includeLogs: true, limit: 25 }, fakeContext);
+    const structured = result.structuredContent as { deployment: { id: string }; logs: unknown };
+    expect(structured.deployment.id).toBe("d-1");
+    expect(structured.logs).toBeTruthy();
+    expect(apiMocks.fetchDeploymentLogs).toHaveBeenCalledWith("d-1", "tok");
+  });
+
+  it("deploy_run_inspect swallows a logs failure and returns logs=null", async () => {
+    apiMocks.fetchDeploymentLogs.mockRejectedValueOnce(new Error("403"));
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_run_inspect")!
+      .handler({ deploymentId: "d-1", includeLogs: true, limit: 25 }, fakeContext);
+    expect((result.structuredContent as { logs: unknown }).logs).toBeNull();
+  });
+
+  it("deploy_source_control_inspect routes scope=providers", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_inspect")!
+      .handler({ scope: "providers" }, fakeContext);
+    expect((result.structuredContent as { scope: string }).scope).toBe("providers");
+  });
+
+  it("deploy_source_control_inspect returns integration detail when integrationId is given", async () => {
+    apiMocks.fetchSourceControlIntegration.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_inspect")!
+      .handler({ scope: "integrations", integrationId: "i-1" }, fakeContext);
+    expect(apiMocks.fetchSourceControlIntegration).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      "i-1"
+    );
+    expect((result.structuredContent as { integration: unknown }).integration).toBeTruthy();
+  });
+
+  it("deploy_run_start with deploymentId redeploys an existing deployment", async () => {
+    apiMocks.deployDeployment.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_run_start")!
+      .handler({ environmentId: "e-1", deploymentId: "d-1", allowWrite: true }, fakeContext);
+    expect(apiMocks.deployDeployment).toHaveBeenCalledWith({ accessToken: "tok" }, "d-1", "org-1");
+    expect((result.structuredContent as { mode: string }).mode).toBe("deploy-existing");
+  });
+});
+
+describe("deploy write tools — additional action branches", () => {
+  it("deploy_environment_lifecycle update routes to updateEnvironment", async () => {
+    apiMocks.updateEnvironment.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_lifecycle")!
+      .handler(
+        { action: "update", environmentId: "e-1", body: { name: "renamed" }, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.updateEnvironment).toHaveBeenCalledWith({ accessToken: "tok" }, "e-1", {
+      name: "renamed",
+    });
+    expect((result.structuredContent as { action: string }).action).toBe("update");
+  });
+
+  it("deploy_environment_lifecycle update without environmentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler({ action: "update", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_lifecycle restart without environmentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler({ action: "restart", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_lifecycle regenerate-context without environmentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler({ action: "regenerate-context", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_environment_variables upsert threads target + secret into the API call", async () => {
+    apiMocks.upsertEnvironmentVariable.mockClear();
+    const reg = await setup();
+    await reg.getTool("deploy_environment_variables")!.handler(
+      {
+        action: "upsert",
+        environmentId: "e-1",
+        name: "API_KEY",
+        value: "v",
+        target: "EditingHost",
+        secret: true,
+        allowWrite: true,
+      },
+      fakeContext
+    );
+    expect(apiMocks.upsertEnvironmentVariable).toHaveBeenCalledOnce();
+  });
+
+  it("deploy_project_manage update routes to updateProject", async () => {
+    apiMocks.updateProject.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_project_manage")!
+      .handler(
+        { action: "update", projectId: "p-1", body: { name: "x" }, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.updateProject).toHaveBeenCalledWith({ accessToken: "tok" }, "p-1", {
+      name: "x",
+    });
+    expect((result.structuredContent as { action: string }).action).toBe("update");
+  });
+});
+
+describe("deploy read tools — scope branches", () => {
+  it("deploy_source_control_inspect routes scope=repository", async () => {
+    apiMocks.fetchSourceControlRepository.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_inspect")!
+      .handler({ scope: "repository" }, fakeContext);
+    expect((result.structuredContent as { scope: string }).scope).toBe("repository");
+  });
+
+  it("deploy_source_control_inspect routes scope=templates", async () => {
+    apiMocks.fetchSourceControlTemplates.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_source_control_inspect")!
+      .handler({ scope: "templates" }, fakeContext);
+    expect((result.structuredContent as { scope: string }).scope).toBe("templates");
+  });
+
+  it("deploy_environment_inspect with no environmentId derives projectId from the bound env", async () => {
+    apiMocks.fetchProjectEnvironments.mockClear();
+    apiMocks.fetchEnvironments.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_inspect")!
+      .handler({ projectId: "p-1", limit: 25 }, fakeContext);
+    expect((result.structuredContent as { environments: unknown[] }).environments).toHaveLength(1);
+  });
+
+  it("deploy_run_inspect lists org-wide deployments when the bound env has no environmentId", async () => {
+    authMocks.resolveToolBinding.mockResolvedValueOnce({
+      envName: "test-env",
+      resolved: {
+        envName: "test-env",
+        // No environmentId → the org-wide fetchDeployments branch.
+        environment: { organizationId: "org-1", projectId: "p-1" },
+        root: {},
+        timeoutMs: undefined,
+      },
+      allowWriteEnabled: false,
+      deployToken: "tok",
+    });
+    apiMocks.fetchDeployments.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("deploy_run_inspect")!
+      .handler({ limit: 25, includeLogs: false }, fakeContext);
+    expect(apiMocks.fetchDeployments).toHaveBeenCalledWith({ accessToken: "tok" });
+  });
+
+  it("deploy_run_start with redeploy=true creates a redeploy deployment", async () => {
+    apiMocks.createEnvironmentDeployment.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_run_start")!
+      .handler({ environmentId: "e-1", redeploy: true, allowWrite: true }, fakeContext);
+    expect(apiMocks.createEnvironmentDeployment).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      "e-1",
+      true
+    );
+    expect(result.content[0]!.text).toContain("redeploy");
+  });
+});
+
 describe("deploy tools — per-call environment retargeting", () => {
   const prodBinding = {
     envName: "prod",
@@ -306,5 +712,108 @@ describe("deploy tools — per-call environment retargeting", () => {
     for (const tool of deployTools) {
       expect(Object.keys(tool.inputSchema)).toContain("environmentName");
     }
+  });
+});
+
+describe("deploy read tools — fallback (.catch) branches", () => {
+  it("deploy_organization_inspect skips the license fetch when no organizationId resolves", async () => {
+    apiMocks.fetchOrganization.mockResolvedValueOnce({ name: "Acme Org" });
+    apiMocks.fetchOrganizationLicense.mockClear();
+    const reg = await setup();
+    const result = await reg.getTool("deploy_organization_inspect")!.handler({}, fakeContext);
+    expect(apiMocks.fetchOrganizationLicense).not.toHaveBeenCalled();
+    expect((result.structuredContent as { license: unknown }).license).toBeNull();
+  });
+
+  it("deploy_organization_inspect returns health=null when the health probe rejects", async () => {
+    apiMocks.fetchOrganizationHealth.mockRejectedValueOnce(new Error("health down"));
+    const reg = await setup();
+    const result = await reg.getTool("deploy_organization_inspect")!.handler({}, fakeContext);
+    expect((result.structuredContent as { health: unknown }).health).toBeNull();
+  });
+
+  it("deploy_project_inspect returns environments=[] when the environments fetch rejects", async () => {
+    apiMocks.fetchProjectEnvironments.mockRejectedValueOnce(new Error("no envs"));
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_project_inspect")!
+      .handler({ projectId: "p-1" }, fakeContext);
+    expect((result.structuredContent as { environments: unknown[] }).environments).toEqual([]);
+  });
+
+  it("deploy_environment_inspect tolerates rejected variable/deployment/restart fetches", async () => {
+    apiMocks.fetchEnvironmentVariables.mockRejectedValueOnce(new Error("vars down"));
+    apiMocks.fetchEnvironmentDeployments.mockRejectedValueOnce(new Error("deps down"));
+    apiMocks.fetchEnvironmentRestartStatus.mockRejectedValueOnce(new Error("restart down"));
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_inspect")!
+      .handler({ environmentId: "e-1" }, fakeContext);
+    const sc = result.structuredContent as {
+      variables: unknown[];
+      deployments: unknown[];
+      restartStatus: unknown;
+    };
+    expect(sc.variables).toEqual([]);
+    expect(sc.deployments).toEqual([]);
+    expect(sc.restartStatus).toBeNull();
+  });
+
+  it("deploy_environment_inspect returns health=null when the env exposes no host", async () => {
+    apiMocks.resolveHostFromEnvironment.mockReturnValueOnce(undefined);
+    apiMocks.probeEnvironmentHealth.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_inspect")!
+      .handler({ environmentId: "e-1" }, fakeContext);
+    expect(apiMocks.probeEnvironmentHealth).not.toHaveBeenCalled();
+    expect((result.structuredContent as { health: unknown }).health).toBeNull();
+  });
+
+  it("deploy_environment_inspect returns health=null when the probe rejects", async () => {
+    apiMocks.probeEnvironmentHealth.mockRejectedValueOnce(new Error("probe failed"));
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_inspect")!
+      .handler({ environmentId: "e-1" }, fakeContext);
+    expect((result.structuredContent as { health: unknown }).health).toBeNull();
+  });
+});
+
+describe("deploy write tools — remaining action + validation branches", () => {
+  it("deploy_environment_lifecycle create routes to createProjectEnvironment", async () => {
+    apiMocks.createProjectEnvironment.mockClear();
+    const reg = await setup();
+    const result = await reg
+      .getTool("deploy_environment_lifecycle")!
+      .handler(
+        { action: "create", projectId: "p-1", body: { name: "dev" }, allowWrite: true },
+        fakeContext
+      );
+    expect(apiMocks.createProjectEnvironment).toHaveBeenCalledWith({ accessToken: "tok" }, "p-1", {
+      name: "dev",
+    });
+    expect((result.structuredContent as { action: string }).action).toBe("create");
+  });
+
+  it("deploy_environment_lifecycle delete without environmentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_environment_lifecycle")!
+        .handler({ action: "delete", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("deploy_repository_manage scope=environment requires environmentId", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("deploy_repository_manage")!
+        .handler(
+          { scope: "environment", action: "link", body: {}, allowWrite: true } as never,
+          fakeContext
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 });

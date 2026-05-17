@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
-import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
-import type { CreateItemOp } from "../../../src/recipe/ir/operations";
-import type { RemoteItem } from "../../../src/recipe/api/client";
+import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
+import type { CreateItemOp, OperationIr } from "../../../src/recipe/ir/operations";
+import type { AuthoringApiClient, RemoteItem } from "../../../src/recipe/api/client";
+import type { SitesApiClient } from "../../../src/recipe/api/sites-client";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 const CONTEXT = {
@@ -380,5 +381,473 @@ describe("executeIr — pathSnapshotCache short-circuit", () => {
     // No getItem call against the primed parent path.
     const fetchedParent = getItemSpy.mock.calls.some((call) => call[0].path === parentPath);
     expect(fetchedParent).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// AddItemVersion dispatch — the executor's addItemVersion mutation branch.
+// ─────────────────────────────────────────────────────────────────────────
+
+const ITEM_REF = "aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa";
+const ITEM_ID = "bbbbbbbb-2222-2222-2222-bbbbbbbbbbbb";
+
+/** An IR whose single op adds version 3 of `en` to a preloaded item. */
+const addVersionIr = (version: number): OperationIr => ({
+  schemaVersion: "1",
+  recipeHandle: "story@1",
+  operations: [
+    {
+      op: "AddItemVersion",
+      policy: "CreateAndUpdate",
+      label: `add-version:en:${version}`,
+      itemRefKey: ITEM_REF,
+      language: "en",
+      version,
+    },
+  ],
+});
+
+describe("executeIr — AddItemVersion dispatch", () => {
+  it("dispatches addItemVersion N times to reconcile a multi-version gap", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: ITEM_ID,
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "00000000-0000-0000-0000-000000000aaa",
+      name: "Story",
+      path: "/sitecore/content/Story",
+      fields: [],
+    });
+    // Preloaded item has en v1 → target v3 means addCount 2.
+    const result = await executeIr(addVersionIr(3), client, {
+      mode: "apply",
+      pathItemIdCache: new Map([[ITEM_REF, ITEM_ID]]),
+    });
+
+    expect(result.aborted).toBe(false);
+    expect(result.summary.create).toBe(1);
+    // dispatchMutation loops addCount times: one addItemVersion call per
+    // missing version.
+    expect(client.versionAdds).toHaveLength(2);
+    expect(client.versionAdds.every((v) => v.itemId === ITEM_ID && v.language === "en")).toBe(true);
+  });
+
+  it("dispatches nothing when the target version already exists (idempotent)", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: ITEM_ID,
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "00000000-0000-0000-0000-000000000aaa",
+      name: "Story",
+      path: "/sitecore/content/Story",
+      fields: [],
+    });
+    // Preloaded item is at en v1; target v1 → skip, no mutation.
+    const result = await executeIr(addVersionIr(1), client, {
+      mode: "apply",
+      pathItemIdCache: new Map([[ITEM_REF, ITEM_ID]]),
+    });
+
+    expect(result.summary.skip).toBe(1);
+    expect(client.versionAdds).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// CreateSiteFromTemplate dispatch — the executor's Sites API branch.
+// ─────────────────────────────────────────────────────────────────────────
+
+const SITE_REF = "cccccccc-3333-3333-3333-cccccccccccc";
+const TEMPLATE_REF = "dddddddd-4444-4444-4444-dddddddddddd";
+
+const createSiteIr = (): OperationIr => ({
+  schemaVersion: "1",
+  recipeHandle: "marketing-site@1",
+  operations: [
+    {
+      op: "CreateSiteFromTemplate",
+      policy: "CreateOnly",
+      label: "create-site:marketing-site@1",
+      siteRefKey: SITE_REF,
+      siteName: "MarketingSite",
+      language: "en",
+      templateRefKey: TEMPLATE_REF,
+      collectionName: "Marketing",
+    },
+  ],
+});
+
+/** A SitesApiClient whose createSite job runs through one poll then Done. */
+const makeSitesClient = (
+  overrides: Partial<SitesApiClient> = {}
+): SitesApiClient & { createCalls: unknown[] } => {
+  const createCalls: unknown[] = [];
+  return {
+    createCalls,
+    createSite: async (input) => {
+      createCalls.push(input);
+      return { handle: "job-1" } as never;
+    },
+    getJobStatus: async () => ({ state: "Done" }) as never,
+    listSites: async () => [{ id: "site-id-1", name: "MarketingSite" }] as never,
+    listSiteTemplates: async () => [],
+    listCollections: async () => [],
+    listLanguages: async () => [],
+    addLanguage: async () => ({}) as never,
+    ...overrides,
+  };
+};
+
+describe("executeIr — CreateSiteFromTemplate dispatch", () => {
+  it("dispatches createSite, awaits the job, and captures the site itemId", async () => {
+    const client = new MockAuthoringClient();
+    // Preload the template path so seedCrossRecipeRefs captures TEMPLATE_REF.
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    // listSites returns no match during planning, then the materialised
+    // site after createSite runs — so the executor can capture its itemId.
+    let siteCreated = false;
+    const sitesClient = makeSitesClient({
+      createSite: async () => {
+        siteCreated = true;
+        return { handle: "job-1" } as never;
+      },
+      listSites: async () =>
+        (siteCreated ? [{ id: "site-id-1", name: "MarketingSite" }] : []) as never,
+    });
+    const events: ExecutionEvent[] = [];
+
+    const result = await executeIr(createSiteIr(), client, {
+      mode: "apply",
+      sitesClient,
+      // Seed the templateRefKey so the planner produces a create (not skip).
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+      emit: (e) => events.push(e),
+    });
+
+    expect(result.aborted).toBe(false);
+    expect(result.summary.create).toBe(1);
+    // The job poll emitted a site-job-poll event.
+    expect(events.some((e) => e.kind === "site-job-poll")).toBe(true);
+    expect(siteCreated).toBe(true);
+  });
+
+  it("plans createSite as skip when the site already exists in the tenant", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    const sitesClient = makeSitesClient();
+    const result = await executeIr(createSiteIr(), client, {
+      mode: "apply",
+      sitesClient,
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+    });
+
+    // listSites already returns a site named MarketingSite → skip.
+    expect(result.summary.skip).toBe(1);
+    expect(sitesClient.createCalls).toHaveLength(0);
+  });
+
+  it("aborts when the createSite job reports a terminal Failed state", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    const sitesClient = makeSitesClient({
+      listSites: async () => [],
+      getJobStatus: async () => ({ state: "Failed" }) as never,
+    });
+
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(createSiteIr(), client, {
+      mode: "apply",
+      sitesClient,
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+      emit: (e) => events.push(e),
+    });
+
+    // awaitSitesJob throws on a terminal Failed state → apply-error → abort.
+    expect(result.aborted).toBe(true);
+    const failed = events.find((e) => e.kind === "failed");
+    expect(failed).toBeDefined();
+    if (failed?.kind === "failed") {
+      expect(failed.error).toMatch(/terminal state 'Failed'/);
+    }
+  });
+
+  it("aborts when createSite returns a JobResponse with no handle", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    const sitesClient = makeSitesClient({
+      listSites: async () => [],
+      createSite: async () => ({}) as never,
+    });
+
+    const result = await executeIr(createSiteIr(), client, {
+      mode: "apply",
+      sitesClient,
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+    });
+
+    expect(result.aborted).toBe(true);
+  });
+
+  it("errors a createSite op when no SitesApiClient is threaded into the executor", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    const result = await executeIr(createSiteIr(), client, {
+      mode: "apply",
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+    });
+
+    // planCreateSite returns an `error` action (no mutation) when the
+    // SitesApiClient is absent — it counts as a plan-time error but the
+    // executor continues rather than rolling back (nothing was applied).
+    expect(result.summary.error).toBe(1);
+    expect(result.plan.actions[0].status).toBe("error");
+    expect(result.plan.actions[0].reason).toMatch(/requires a SitesApiClient/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Cooperative cancellation — abort signal between operations.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("executeIr — cancellation by AbortSignal", () => {
+  it("aborts before the first op when the signal is already aborted", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    const controller = new AbortController();
+    controller.abort();
+    const events: ExecutionEvent[] = [];
+
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      signal: controller.signal,
+      emit: (e) => events.push(e),
+    });
+
+    expect(result.aborted).toBe(true);
+    // No mutations dispatched — the cancel check fires before op 0.
+    expect(client.creates).toHaveLength(0);
+    const failed = events.find((e) => e.kind === "failed");
+    expect(failed).toBeDefined();
+    if (failed?.kind === "failed") {
+      expect(failed.error).toMatch(/Cancelled by client before op 0/);
+    }
+  });
+
+  it("stops mid-stream when the signal fires after the first op applies", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    const controller = new AbortController();
+
+    let applied = 0;
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      signal: controller.signal,
+      emit: (e) => {
+        if (e.kind === "apply-success") {
+          applied += 1;
+          // Fire the cancel after the first successful apply.
+          if (applied === 1) controller.abort();
+        }
+      },
+    });
+
+    expect(result.aborted).toBe(true);
+    // At least one op applied before the cancel; not the whole IR.
+    expect(applied).toBeGreaterThan(0);
+    expect(client.creates.length).toBeLessThan(
+      ir.operations.filter((o) => o.op === "CreateItem").length
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Plan-time error — buildAction throws → rollback path.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("executeIr — plan-time error triggers rollback", () => {
+  it("aborts and rolls back applied ops when buildAction throws on a later op", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    // Let the first few getItem reads succeed, then throw on a path-keyed
+    // read partway through — this surfaces inside buildAction as a thrown
+    // error rather than a planned skip/error action.
+    let reads = 0;
+    const realGetItem = client.getItem.bind(client);
+    client.getItem = async (selector) => {
+      reads += 1;
+      if (reads > 1) {
+        throw new Error("Authoring GraphQL errors: transient read failure");
+      }
+      return realGetItem(selector);
+    };
+
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      emit: (e) => events.push(e),
+    });
+
+    expect(result.aborted).toBe(true);
+    const failed = events.find((e) => e.kind === "failed");
+    expect(failed).toBeDefined();
+    if (failed?.kind === "failed") {
+      expect(failed.error).toMatch(/transient read failure/);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Rollback audit log — recordSummary on a failed apply.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("executeIr — rollback audit log", () => {
+  it("records a rollback summary entry when an apply fails with a logger threaded in", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    // Fail the second createItem so at least one op is applied (and thus
+    // rolled back) when the failure hits.
+    let creates = 0;
+    const realCreate = client.createItem.bind(client);
+    client.createItem = async (input) => {
+      creates += 1;
+      if (creates === 2) throw new Error("Authoring GraphQL errors: create rejected");
+      return realCreate(input);
+    };
+
+    const summaries: Array<{ recipe: string; trigger: string }> = [];
+    const rollbackLog = {
+      runId: "rb-1",
+      logPath: "/tmp/rb-1.jsonl",
+      wasUsed: false,
+      recordStep: vi.fn(async () => {}),
+      recordSummary: vi.fn(async (recipe: string, entry: { trigger: string }) => {
+        summaries.push({ recipe, trigger: entry.trigger });
+      }),
+    };
+
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      rollbackLog: rollbackLog as never,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(rollbackLog.recordSummary).toHaveBeenCalledTimes(1);
+    expect(summaries[0]).toMatchObject({ recipe: "cta-button@1", trigger: "apply-error" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Plan-mode cross-recipe ref seeding — snapshot-cache short-circuit.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("executeIr — plan-mode crossRecipeRefs", () => {
+  it("resolves a cross-recipe ref from the pathSnapshotCache without a wire call", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    const getItemsByPathsSpy = vi.spyOn(client, "getItemsByPaths");
+
+    const externalRefKey = "99999999-9999-9999-9999-999999999999";
+    const externalPath = "/sitecore/templates/Project/External";
+    // Pre-seed the snapshot cache with the cross-recipe ref's path — the
+    // seeder must short-circuit and never call getItemsByPaths for it.
+    const pathSnapshotCache = new Map<string, RemoteItem | null>([
+      [
+        externalPath,
+        {
+          itemId: "ext-id",
+          templateId: SITECORE_TEMPLATES.TEMPLATE,
+          parentId: "p",
+          name: "External",
+          path: externalPath,
+          fields: [],
+        },
+      ],
+    ]);
+
+    await executeIr(ir, client, {
+      mode: "plan",
+      crossRecipeRefs: new Map([[externalRefKey, externalPath]]),
+      pathSnapshotCache,
+    });
+
+    // The cached path was never re-fetched.
+    const fetchedExternal = getItemsByPathsSpy.mock.calls.some((call) =>
+      call[0].includes(externalPath)
+    );
+    expect(fetchedExternal).toBe(false);
+  });
+
+  it("treats a pathSnapshotCache null entry as 'checked and missing' (no wire call, no capture)", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    const getItemsByPathsSpy = vi.spyOn(client, "getItemsByPaths");
+
+    const externalRefKey = "88888888-8888-8888-8888-888888888888";
+    const externalPath = "/sitecore/templates/Project/Absent";
+    const pathSnapshotCache = new Map<string, RemoteItem | null>([[externalPath, null]]);
+
+    const result = await executeIr(ir, client, {
+      mode: "plan",
+      crossRecipeRefs: new Map([[externalRefKey, externalPath]]),
+      pathSnapshotCache,
+    });
+
+    expect(result.aborted).toBe(false);
+    const fetchedAbsent = getItemsByPathsSpy.mock.calls.some((call) =>
+      call[0].includes(externalPath)
+    );
+    expect(fetchedAbsent).toBe(false);
+  });
+
+  it("batches an uncached cross-recipe ref through a single getItemsByPaths call", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient() as AuthoringApiClient & {
+      getItemsByPaths: ReturnType<typeof vi.fn>;
+    };
+    const externalRefKey = "77777777-7777-7777-7777-777777777777";
+    const externalPath = "/sitecore/templates/Project/Uncached";
+
+    const result = await executeIr(ir, client, {
+      mode: "plan",
+      crossRecipeRefs: new Map([[externalRefKey, externalPath]]),
+      // No pathSnapshotCache → the ref falls through to a wire fetch.
+    });
+
+    expect(result.aborted).toBe(false);
   });
 });

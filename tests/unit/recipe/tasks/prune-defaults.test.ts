@@ -1,8 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../../src/recipe/tasks/shared", async () => {
+  const actual = await vi.importActual<typeof import("../../../../src/recipe/tasks/shared")>(
+    "../../../../src/recipe/tasks/shared"
+  );
+  return {
+    ...actual,
+    toLogger: vi.fn(),
+    resolveTenant: vi.fn(),
+    ensureAllowWrite: vi.fn(),
+  };
+});
+
 import {
   pruneDefaultsAgainstClient,
+  runRecipePruneDefaults,
   type PruneAction,
 } from "../../../../src/recipe/tasks/prune-defaults";
+import * as shared from "../../../../src/recipe/tasks/shared";
 import type {
   AuthoringApiClient,
   ItemSelector,
@@ -245,5 +260,168 @@ describe("pruneDefaultsAgainstClient", () => {
     const firstAr = actions.find((a) => a.group === "availableRenderings")!;
     expect(firstAr.path).toBe(`${ROOTS.availableRenderingsRoot}/Media`);
     expect(actions.find((a) => a.path.includes("//"))).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// runRecipePruneDefaults — the task runner (tenant resolution, root
+// resolution, allow-write gate, JSON envelope, human summary).
+// ─────────────────────────────────────────────────────────────────────────
+
+interface FakeLogger {
+  isJson: () => boolean;
+  info: ReturnType<typeof vi.fn>;
+  json: ReturnType<typeof vi.fn>;
+}
+
+let logger: FakeLogger;
+let jsonMode: boolean;
+
+const makeTenant = (overrides: Record<string, unknown> = {}) => ({
+  envName: "sandbox",
+  root: { physicalPath: "/tmp/proj/sitecoreai.cli.json" },
+  environment: {
+    headlessVariantsRoot: ROOTS.headlessVariantsRoot,
+    availableRenderingsRoot: ROOTS.availableRenderingsRoot,
+    contentItemsRoot: ROOTS.contentItemsRoot,
+  },
+  client: makeClient([]),
+  ...overrides,
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  jsonMode = false;
+  logger = {
+    isJson: () => jsonMode,
+    info: vi.fn(),
+    json: vi.fn(),
+  };
+  vi.mocked(shared.toLogger).mockReturnValue(logger as never);
+  vi.mocked(shared.resolveTenant).mockReturnValue(makeTenant() as never);
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("runRecipePruneDefaults", () => {
+  it("enforces the allow-write gate in apply mode and returns a deleted summary", async () => {
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        client: makeClient([`${ROOTS.availableRenderingsRoot}/Media`]),
+      }) as never
+    );
+
+    const result = await runRecipePruneDefaults({ allowWrite: true } as never);
+
+    expect(shared.ensureAllowWrite).toHaveBeenCalledWith(expect.anything(), "sandbox", true);
+    expect(result.environment).toBe("sandbox");
+    expect(result.whatIf).toBe(false);
+    expect(result.summary.deleted).toBe(1);
+    expect(result.summary.missing).toBe(15);
+    expect(result.summary.wouldDelete).toBe(0);
+  });
+
+  it("skips the allow-write gate in --what-if mode and reports would-delete", async () => {
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        client: makeClient([`${ROOTS.headlessVariantsRoot}/Image`]),
+      }) as never
+    );
+
+    const result = await runRecipePruneDefaults({ whatIf: true } as never);
+
+    expect(shared.ensureAllowWrite).not.toHaveBeenCalled();
+    expect(result.whatIf).toBe(true);
+    expect(result.summary.wouldDelete).toBe(1);
+    expect(result.summary.deleted).toBe(0);
+  });
+
+  it("throws INPUT_INVALID when a required root path is not configured", async () => {
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        environment: {
+          headlessVariantsRoot: ROOTS.headlessVariantsRoot,
+          // availableRenderingsRoot + contentItemsRoot missing.
+        },
+      }) as never
+    );
+
+    await expect(runRecipePruneDefaults({ whatIf: true } as never)).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+    });
+  });
+
+  it("names every missing root in the INPUT_INVALID message", async () => {
+    vi.mocked(shared.resolveTenant).mockReturnValue(makeTenant({ environment: {} }) as never);
+
+    await expect(runRecipePruneDefaults({ whatIf: true } as never)).rejects.toThrow(
+      /headlessVariantsRoot, availableRenderingsRoot, contentItemsRoot/
+    );
+  });
+
+  it("honors per-call root overrides over the env-profile values", async () => {
+    const overrideAr = "/sitecore/content/x/Presentation/Available Renderings";
+    const overrideHv = "/sitecore/content/x/Presentation/Headless Variants";
+    const overrideCi = "/sitecore/content/x/Data";
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        environment: {}, // no roots in the profile — overrides must fill them
+        client: makeClient([`${overrideAr}/Media`]),
+      }) as never
+    );
+
+    const result = await runRecipePruneDefaults({
+      whatIf: true,
+      availableRenderingsRoot: overrideAr,
+      headlessVariantsRoot: overrideHv,
+      contentItemsRoot: overrideCi,
+    } as never);
+
+    expect(result.actions.some((a) => a.path === `${overrideAr}/Media`)).toBe(true);
+    expect(result.summary.wouldDelete).toBe(1);
+  });
+
+  it("emits a recipe.prune-defaults JSON envelope in --json mode", async () => {
+    jsonMode = true;
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        client: makeClient([`${ROOTS.contentItemsRoot}/Promos`]),
+      }) as never
+    );
+
+    await runRecipePruneDefaults({ allowWrite: true } as never);
+
+    expect(logger.json).toHaveBeenCalledTimes(1);
+    const envelope = logger.json.mock.calls[0][0] as Record<string, unknown>;
+    expect(envelope).toMatchObject({
+      command: "recipe.prune-defaults",
+      environment: "sandbox",
+      whatIf: false,
+    });
+    expect((envelope.actions as unknown[]).length).toBe(16);
+  });
+
+  it("writes a human summary line in non-JSON mode", async () => {
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        client: makeClient([`${ROOTS.contentItemsRoot}/Texts`]),
+      }) as never
+    );
+
+    await runRecipePruneDefaults({ allowWrite: true } as never);
+
+    expect(logger.json).not.toHaveBeenCalled();
+    const lines = logger.info.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes("Summary: 1 deleted"))).toBe(true);
+    expect(lines.some((l) => l.includes("Pruning SXA defaults"))).toBe(true);
+  });
+
+  it("labels the human header as a dry-run in --what-if mode", async () => {
+    await runRecipePruneDefaults({ whatIf: true } as never);
+
+    const lines = logger.info.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes("Dry-run prune-defaults"))).toBe(true);
   });
 });

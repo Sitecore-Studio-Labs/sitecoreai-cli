@@ -121,6 +121,125 @@ describe("shell command", () => {
     await parsePromise;
 
     expect(runCli).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Already in shell. Type 'exit' to leave.");
     logSpy.mockRestore();
+  });
+
+  it("strips a leading `scai` token before dispatching", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitLine("scai setup status");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    current?.emitLine("exit");
+    await parsePromise;
+
+    expect(runCli.mock.calls[0][0]).toEqual(["node", "scai", "setup", "status"]);
+    logSpy.mockRestore();
+  });
+
+  it("strips a leading `sitecoreai-cli` token before dispatching", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitLine("sitecoreai-cli deploy projects list");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    current?.emitLine("exit");
+    await parsePromise;
+
+    expect(runCli.mock.calls[0][0]).toEqual(["node", "scai", "deploy", "projects", "list"]);
+    logSpy.mockRestore();
+  });
+
+  it("honors single- and double-quoted arguments when splitting input", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitLine("init --environment-name \"demo env\" --note 'a b'");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    current?.emitLine("exit");
+    await parsePromise;
+
+    expect(runCli.mock.calls[0][0]).toEqual([
+      "node",
+      "scai",
+      "init",
+      "--environment-name",
+      "demo env",
+      "--note",
+      "a b",
+    ]);
+    logSpy.mockRestore();
+  });
+
+  it("ignores a blank line without invoking the CLI", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitLine("   ");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    current?.emitLine("exit");
+    await parsePromise;
+
+    expect(runCli).not.toHaveBeenCalled();
+    expect(current?.rl.prompt).toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("prints help on `help` and `?` without invoking the CLI", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitLine("help");
+    current?.emitLine("?");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    current?.emitLine("exit");
+    await parsePromise;
+
+    expect(runCli).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Interactive shell commands:");
+    logSpy.mockRestore();
+  });
+
+  it("closes the shell on SIGINT and prints the close notice", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+
+    const current = readlineMocks.getCurrent();
+    current?.emitSigint();
+    await parsePromise;
+
+    expect(current?.rl.write).toHaveBeenCalledWith("\n");
+    expect(current?.rl.close).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Shell closed.");
+    logSpy.mockRestore();
+  });
+
+  it("requires a TTY to start the shell", async () => {
+    setTty(false);
+    process.env.SITECOREAI_NON_INTERACTIVE = "1";
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const command = createShellCommand(runCli);
+
+    await expect(command.parseAsync(["node", "scai", "shell"])).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+    });
   });
 });

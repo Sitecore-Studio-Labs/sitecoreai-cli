@@ -202,6 +202,193 @@ describe("cleanup slug-conflicts — what-if + safety", () => {
   });
 });
 
+describe("cleanup slug-conflicts — keep-rule shortest-path", () => {
+  it("keeps a deterministic survivor via the path tie-breaker", async () => {
+    // Real conflict-group siblings share their parent path, so
+    // shortest-path falls through to the localeCompare tie-breaker on
+    // equal-length paths — deterministic, the point of the rule.
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["bbb", "aaa", "ccc"]);
+    const client = setup({ items });
+    const result = await runCleanupSlugConflicts({
+      keepRule: "shortest-path",
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+    expect(result).toHaveLength(1);
+    // Paths are identical → localeCompare keeps the input order's first
+    // survivor and resolves the remaining two.
+    expect(result[0].resolved).toHaveLength(2);
+    expect(client.deleteItem).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cleanup slug-conflicts — write gate + failure paths", () => {
+  it("throws INPUT_INVALID in apply mode when the environment disallows writes", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["aaa", "bbb"]);
+    setup({ items, allowWrite: false });
+    await expect(
+      runCleanupSlugConflicts({
+        keepRule: "oldest",
+        root: "/sitecore/content/Root",
+        json: true,
+        quiet: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("records a per-loser failed status (with error) when deleteItem rejects", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["aaa", "bbb"]);
+    const client = setup({ items });
+    vi.mocked(client.deleteItem).mockRejectedValueOnce(new Error("server 500"));
+    const result = await runCleanupSlugConflicts({
+      keepRule: "oldest",
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+    expect(result[0].resolved[0].status).toBe("failed");
+    expect(result[0].resolved[0].error).toBe("server 500");
+  });
+
+  it("records a failed status when renameItem rejects", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ]);
+    const client = setup({ items });
+    vi.mocked(client.renameItem).mockRejectedValueOnce("rename blew up");
+    const result = await runCleanupSlugConflicts({
+      keepRule: "oldest",
+      action: "rename",
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+    expect(result[0].resolved[0].status).toBe("failed");
+    // Non-Error rejection is stringified.
+    expect(result[0].resolved[0].error).toBe("rename blew up");
+  });
+
+  it("fails the loser when the rename suffix produces an unchanged name", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ]);
+    const client = setup({ items });
+    // A suffix template with no placeholders and an empty literal yields
+    // newName === name → the loser is marked failed, no wire call.
+    const result = await runCleanupSlugConflicts({
+      keepRule: "oldest",
+      action: "rename",
+      renameSuffix: "",
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+    expect(result[0].resolved[0].status).toBe("failed");
+    expect(result[0].resolved[0].error).toContain("unchanged name");
+    expect(client.renameItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("cleanup slug-conflicts — interactive keep-rule", () => {
+  it("prompts per group and resolves the non-kept siblings", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["aaa", "bbb", "ccc"]);
+    const client = setup({ items });
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    // readline.question answers "2" → keep the second member.
+    const readline = await import("node:readline");
+    const rlSpy = vi.spyOn(readline.default, "createInterface").mockReturnValue({
+      question: (_q: string, cb: (a: string) => void) => cb("2"),
+      close: vi.fn(),
+    } as never);
+    try {
+      const result = await runCleanupSlugConflicts({
+        keepRule: "interactive",
+        root: "/sitecore/content/Root",
+        json: true,
+        quiet: true,
+      } as never);
+      expect(result).toHaveLength(1);
+      // members are yielded in input order aaa,bbb,ccc → index 1 = bbb.
+      expect(result[0].kept.itemId).toBe("bbb");
+      expect(result[0].resolved.map((r) => r.itemId).sort()).toEqual(["aaa", "ccc"]);
+      expect(client.deleteItem).toHaveBeenCalledTimes(2);
+    } finally {
+      rlSpy.mockRestore();
+      writeSpy.mockRestore();
+      Object.defineProperty(process.stdin, "isTTY", {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+
+  it("skips a group untouched when the operator answers 's'", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["aaa", "bbb"]);
+    const client = setup({ items });
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const readline = await import("node:readline");
+    const rlSpy = vi.spyOn(readline.default, "createInterface").mockReturnValue({
+      question: (_q: string, cb: (a: string) => void) => cb("s"),
+      close: vi.fn(),
+    } as never);
+    try {
+      const result = await runCleanupSlugConflicts({
+        keepRule: "interactive",
+        root: "/sitecore/content/Root",
+        json: true,
+        quiet: true,
+      } as never);
+      // Skip = keep first, resolve none.
+      expect(result[0].resolved).toHaveLength(0);
+      expect(client.deleteItem).not.toHaveBeenCalled();
+    } finally {
+      rlSpy.mockRestore();
+      writeSpy.mockRestore();
+      Object.defineProperty(process.stdin, "isTTY", {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+
+  it("throws INPUT_INVALID for an out-of-range interactive selection", async () => {
+    const items = mkSiblings("/sitecore/content/Root", "Page", ["aaa", "bbb"]);
+    setup({ items });
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const readline = await import("node:readline");
+    const rlSpy = vi.spyOn(readline.default, "createInterface").mockReturnValue({
+      question: (_q: string, cb: (a: string) => void) => cb("99"),
+      close: vi.fn(),
+    } as never);
+    try {
+      await expect(
+        runCleanupSlugConflicts({
+          keepRule: "interactive",
+          root: "/sitecore/content/Root",
+          json: true,
+          quiet: true,
+        } as never)
+      ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    } finally {
+      rlSpy.mockRestore();
+      writeSpy.mockRestore();
+      Object.defineProperty(process.stdin, "isTTY", {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+});
+
 describe("cleanup slug-conflicts — --check-refs", () => {
   // Reset the per-test mock map so values don't leak between tests.
   const reset = () => refCountsByItemId.clear();
@@ -268,5 +455,51 @@ describe("cleanup slug-conflicts — --check-refs", () => {
     expect(result[0].resolved[0].status).toBe("applied");
     expect(result[0].resolved[0].inboundRefs).toBe(0);
     expect(client.deleteItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("apply: aborts with a truncated '...and N more' summary when >5 losers have refs", async () => {
+    reset();
+    // One parent, 7 siblings → 6 losers, all with inbound refs.
+    const ids = ["aa", "bb", "cc", "dd", "ee", "ff", "gg"];
+    const items = mkSiblings("/sitecore/content/Root", "Page", ids);
+    // Survivor is "aa" (oldest by itemId sort); the other six are blockers.
+    for (const id of ids.slice(1)) refCountsByItemId.set(id, 2);
+    setup({ items });
+    await expect(
+      runCleanupSlugConflicts({
+        keepRule: "oldest",
+        checkRefs: true,
+        root: "/sitecore/content/Root",
+        json: true,
+        quiet: true,
+      } as never)
+    ).rejects.toMatchObject({
+      code: "INPUT_INVALID",
+      // 6 blockers, summary slices to 5 → "...and 1 more".
+      message: expect.stringContaining("...and 1 more"),
+    });
+  });
+
+  it("preview + rename + check-refs attaches inboundRefs to renamed rows", async () => {
+    reset();
+    const items = mkSiblings("/sitecore/content/Root", "Page", [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ]);
+    refCountsByItemId.set("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 4);
+    const client = setup({ items });
+    const result = await runCleanupSlugConflicts({
+      keepRule: "oldest",
+      action: "rename",
+      checkRefs: true,
+      whatIf: true,
+      root: "/sitecore/content/Root",
+      json: true,
+      quiet: true,
+    } as never);
+    expect(result[0].resolved[0].status).toBe("what-if");
+    expect(result[0].resolved[0].action).toBe("rename");
+    expect(result[0].resolved[0].inboundRefs).toBe(4);
+    expect(client.renameItem).not.toHaveBeenCalled();
   });
 });

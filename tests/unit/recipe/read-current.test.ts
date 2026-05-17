@@ -1478,3 +1478,1329 @@ describe("readCurrentRecipes — layout round-trip through the compiler", () => 
     expect(irs.length).toBeGreaterThan(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Field-type inverse mapping — shapeFromSitecoreType across every type
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — field type inverse mapping", () => {
+  /**
+   * Build a content template carrying one field per Sitecore type and
+   * assert each reverse-projects to the expected abstract `shape` and
+   * carries the verbatim `sitecore.type`. This walks every arm of
+   * `shapeFromSitecoreType`.
+   */
+  it("maps every Sitecore field type back to its abstract shape", async () => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "AllTypes",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/AllTypes`,
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/AllTypes/Content`,
+    });
+
+    // type label → expected abstract shape.
+    const typeToShape: Array<[string, string]> = [
+      ["single-line-text", "text"],
+      ["multi-line-text", "text"],
+      ["rich-text", "richText"],
+      ["image", "image"],
+      ["file", "image"],
+      ["general-link", "link"],
+      ["checkbox", "boolean"],
+      ["number", "number"],
+      ["integer", "integer"],
+      ["date", "date"],
+      ["datetime", "datetime"],
+      ["droplist", "enum"],
+      ["droplink", "reference"],
+      ["treelist", "reference"],
+      ["treelist-with-search", "reference"],
+      ["lookup", "reference"],
+      ["tags", "reference"],
+    ];
+
+    const fieldItems = typeToShape.map(([type], idx) =>
+      item({
+        name: `Field_${type}`,
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+        parentId: section.itemId,
+        path: `${contentModelsRoot}/AllTypes/Content/Field_${type}`,
+        fields: [
+          f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel(type as never), "Type"),
+          f(SYSTEM_FIELDS.SORT_ORDER, String((idx + 1) * 10), "__Sortorder"),
+        ],
+      })
+    );
+
+    const client = makeClient([cmRoot, template, section, ...fieldItems]);
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: "/sitecore/templates/Project/demo",
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot,
+      },
+      client
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    expect(content).toBeDefined();
+
+    for (const [type, expectedShape] of typeToShape) {
+      const fd = content!.fields.find((x) => x.name === `Field_${type}`)!;
+      expect(fd.shape).toBe(expectedShape);
+      // The exact Sitecore type round-trips verbatim on sitecore.type.
+      expect(fd.sitecore?.type).toBe(type);
+    }
+  });
+
+  it("falls back to shape 'text' for a field with an unrecognised Type label", async () => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "Weird",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Weird`,
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/Weird/Content`,
+    });
+    const oddField = item({
+      name: "Mystery",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${contentModelsRoot}/Weird/Content/Mystery`,
+      // A type Sitecore would never emit — sitecoreTypeFromLabel returns
+      // undefined, shapeFromSitecoreType is never reached, shape stays "text".
+      fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, "Quantum Field", "Type")],
+    });
+    const noTypeField = item({
+      name: "Untyped",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${contentModelsRoot}/Weird/Content/Untyped`,
+      // No Type field at all.
+      fields: [],
+    });
+
+    const client = makeClient([cmRoot, template, section, oddField, noTypeField]);
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: "/sitecore/templates/Project/demo",
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot,
+      },
+      client
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    const mystery = content!.fields.find((x) => x.name === "Mystery")!;
+    expect(mystery.shape).toBe("text");
+    // No recognised type → sitecore.type is omitted.
+    expect(mystery.sitecore?.type).toBeUndefined();
+    const untyped = content!.fields.find((x) => x.name === "Untyped")!;
+    expect(untyped.shape).toBe("text");
+  });
+});
+
+describe("readCurrentRecipes — subordinate template buckets", () => {
+  it("skips nested Component Folders / Presentation Parameters folders", async () => {
+    idSeq = 0;
+    const componentsRoot = "/sitecore/templates/Project/demo/Components";
+    const renderingsRoot = "/sitecore/layout/Renderings/Project/demo";
+
+    const compRoot = item({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: componentsRoot,
+    });
+    // A real section folder — its component template SHOULD project.
+    const uiSection = item({
+      name: "ui",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: compRoot.itemId,
+      path: `${componentsRoot}/ui`,
+    });
+    const realComponent = item({
+      name: "Hero",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: uiSection.itemId,
+      path: `${componentsRoot}/ui/Hero`,
+      fields: [
+        f(SYSTEM_FIELDS.BASE_TEMPLATE, SXA_COMPONENT_BASE_TEMPLATES.join("|"), "__Base template"),
+      ],
+    });
+    // Subordinate buckets nested *under* the section folder (depth > 0):
+    // walkTemplatesTree skips these by name. Their contents must NOT
+    // reverse-project.
+    const componentFolders = item({
+      name: "Component Folders",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: uiSection.itemId,
+      path: `${componentsRoot}/ui/Component Folders`,
+    });
+    const supportTemplate = item({
+      name: "SupportTemplate",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: componentFolders.itemId,
+      path: `${componentsRoot}/ui/Component Folders/SupportTemplate`,
+    });
+    const presentationParams = item({
+      name: "Presentation Parameters",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: uiSection.itemId,
+      path: `${componentsRoot}/ui/Presentation Parameters`,
+    });
+    const paramsTemplate = item({
+      name: "ParamsTemplate",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: presentationParams.itemId,
+      path: `${componentsRoot}/ui/Presentation Parameters/ParamsTemplate`,
+    });
+
+    const client = makeClient([
+      compRoot,
+      uiSection,
+      realComponent,
+      componentFolders,
+      supportTemplate,
+      presentationParams,
+      paramsTemplate,
+    ]);
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: componentsRoot, renderingsRoot, componentsRoot },
+      client
+    );
+    const names = recipes!.map((r) => r.name);
+    expect(names).toContain("Hero");
+    // Templates under the subordinate buckets are not visited.
+    expect(names).not.toContain("SupportTemplate");
+    expect(names).not.toContain("ParamsTemplate");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — field-level projection arms
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — field projection branches", () => {
+  /** Build a content-template fixture with one section + supplied fields. */
+  const contentTemplateWith = (fieldItems: (parent: string, root: string) => RemoteItem[]) => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "Doc",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Doc`,
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/Doc/Content`,
+    });
+    const fields = fieldItems(section.itemId, `${contentModelsRoot}/Doc/Content`);
+    return {
+      contentModelsRoot,
+      items: [cmRoot, template, section, ...fields],
+    };
+  };
+
+  it("omits sitecore.sortOrder when __Sortorder is non-numeric", async () => {
+    const { contentModelsRoot, items } = contentTemplateWith((parent, root) => [
+      item({
+        name: "Title",
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+        parentId: parent,
+        path: `${root}/Title`,
+        fields: [
+          f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("single-line-text"), "Type"),
+          // Garbage sort order → Number.parseInt is NaN → augment.sortOrder omitted.
+          f(SYSTEM_FIELDS.SORT_ORDER, "not-a-number", "__Sortorder"),
+        ],
+      }),
+    ]);
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", contentModelsRoot },
+      makeClient(items)
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    const title = content!.fields.find((x) => x.name === "Title")!;
+    expect(title.sitecore?.sortOrder).toBeUndefined();
+  });
+
+  it("carries sitecore.sourceRaw verbatim when a Source field is set", async () => {
+    const sourceWire = "query:./*[@@templatename='Page']";
+    const { contentModelsRoot, items } = contentTemplateWith((parent, root) => [
+      item({
+        name: "Picker",
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+        parentId: parent,
+        path: `${root}/Picker`,
+        fields: [
+          f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("droplink"), "Type"),
+          f(TEMPLATE_FIELD_FIELDS.SOURCE, sourceWire, "Source"),
+        ],
+      }),
+    ]);
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", contentModelsRoot },
+      makeClient(items)
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    const picker = content!.fields.find((x) => x.name === "Picker")!;
+    expect(picker.sitecore?.sourceRaw).toBe(sourceWire);
+  });
+
+  it("does not set sourceRaw when the Source field is the empty string", async () => {
+    const { contentModelsRoot, items } = contentTemplateWith((parent, root) => [
+      item({
+        name: "Plain",
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+        parentId: parent,
+        path: `${root}/Plain`,
+        fields: [
+          f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("single-line-text"), "Type"),
+          f(TEMPLATE_FIELD_FIELDS.SOURCE, "", "Source"),
+        ],
+      }),
+    ]);
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", contentModelsRoot },
+      makeClient(items)
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    const plain = content!.fields.find((x) => x.name === "Plain")!;
+    expect(plain.sitecore?.sourceRaw).toBeUndefined();
+  });
+
+  it("records a non-Content section name onto sitecore.section", async () => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "Doc",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Doc`,
+    });
+    const metaSection = item({
+      name: "Metadata",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/Doc/Metadata`,
+    });
+    const seoField = item({
+      name: "SeoTitle",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: metaSection.itemId,
+      path: `${contentModelsRoot}/Doc/Metadata/SeoTitle`,
+      fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("single-line-text"), "Type")],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", contentModelsRoot },
+      makeClient([cmRoot, template, metaSection, seoField])
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    const seo = content!.fields.find((x) => x.name === "SeoTitle")!;
+    // A non-default section name is carried; "Content" would be omitted.
+    expect(seo.sitecore?.section).toBe("Metadata");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — component-section + enumeration omission arms
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — component-section omission arms", () => {
+  it("omits displayName when __Display name equals the folder name", async () => {
+    idSeq = 0;
+    const componentsRoot = "/sitecore/templates/Project/demo/Components";
+    const compRoot = item({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: componentsRoot,
+    });
+    const section = item({
+      name: "ui",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: compRoot.itemId,
+      path: `${componentsRoot}/ui`,
+      fields: [
+        // Display name identical to the item name → omitted (no fabrication).
+        f(SYSTEM_FIELDS.DISPLAY_NAME, "ui", "__Display name"),
+        // Non-numeric sort order → recipe.sortOrder omitted.
+        f(SYSTEM_FIELDS.SORT_ORDER, "xyz", "__Sortorder"),
+      ],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: componentsRoot, renderingsRoot: "/r", componentsRoot },
+      makeClient([compRoot, section])
+    );
+    const sectionRecipe = recipes!.find(
+      (r): r is ComponentSectionRecipe => r.kind === "component-section"
+    );
+    expect(sectionRecipe!.displayName).toBeUndefined();
+    expect(sectionRecipe!.sortOrder).toBeUndefined();
+  });
+});
+
+describe("readCurrentRecipes — enumeration default arms", () => {
+  it("drops the container default when it names no declared value", async () => {
+    idSeq = 0;
+    const enumerationsRoot = "/sitecore/content/demo/Presentation/Enumerations";
+    const enumRoot = item({
+      name: "Enumerations",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: enumerationsRoot,
+    });
+    const container = item({
+      name: "Mood",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: enumRoot.itemId,
+      path: `${enumerationsRoot}/Mood`,
+      // The Value field points at a value that is not one of the children.
+      fields: [f("be351a73-0000-0000-0000-000000000000", "ghost", "Value")],
+    });
+    const calm = item({
+      name: "calm",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: container.itemId,
+      path: `${enumerationsRoot}/Mood/calm`,
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", enumerationsRoot },
+      makeClient([enumRoot, container, calm])
+    );
+    const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
+    // Stale container `Value` is not intent — `default` is omitted.
+    expect(enumeration!.default).toBeUndefined();
+  });
+
+  it("skips a childless item directly under the enumerations root", async () => {
+    idSeq = 0;
+    const enumerationsRoot = "/sitecore/content/demo/Presentation/Enumerations";
+    const enumRoot = item({
+      name: "Enumerations",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: enumerationsRoot,
+    });
+    const lonely = item({
+      name: "Lonely",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: enumRoot.itemId,
+      path: `${enumerationsRoot}/Lonely`,
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", enumerationsRoot },
+      makeClient([enumRoot, lonely])
+    );
+    expect(recipes!.filter((r) => r.kind === "enumeration")).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — placeholder + page layout-omission arms
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — placeholder arms", () => {
+  const placeholderSettingsRoot = "/sitecore/content/demo/Presentation/Placeholder Settings";
+
+  it("skips a Placeholder Settings item that carries no Placeholder Key", async () => {
+    idSeq = 0;
+    const psRoot = item({
+      name: "Placeholder Settings",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: placeholderSettingsRoot,
+    });
+    const keyless = item({
+      name: "Keyless",
+      templateId: PLACEHOLDER_TEMPLATE_ID,
+      parentId: psRoot.itemId,
+      path: `${placeholderSettingsRoot}/Keyless`,
+      // No `Placeholder Key` field → placeholderFromItem returns null.
+      fields: [],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", placeholderSettingsRoot },
+      makeClient([psRoot, keyless])
+    );
+    expect(recipes!.filter((r) => r.kind === "placeholder")).toHaveLength(0);
+  });
+
+  it("recovers the folder path for a placeholder nested under grouping folders", async () => {
+    idSeq = 0;
+    const psRoot = item({
+      name: "Placeholder Settings",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: placeholderSettingsRoot,
+    });
+    const groupFolder = item({
+      name: "Headers",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: psRoot.itemId,
+      path: `${placeholderSettingsRoot}/Headers`,
+    });
+    const ph = item({
+      name: "MainPlaceholder",
+      templateId: PLACEHOLDER_TEMPLATE_ID,
+      parentId: groupFolder.itemId,
+      path: `${placeholderSettingsRoot}/Headers/MainPlaceholder`,
+      fields: [f(PLACEHOLDER_FIELDS.PLACEHOLDER_KEY, "headless-main", "Placeholder Key")],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", placeholderSettingsRoot },
+      makeClient([psRoot, groupFolder, ph])
+    );
+    const placeholder = recipes!.find((r): r is PlaceholderRecipe => r.kind === "placeholder");
+    expect(placeholder!.key).toBe("headless-main");
+    expect(placeholder!.folder).toBe("Headers");
+    // No Allowed Controls field → allowedComponents stays empty (default).
+    expect(placeholder!.allowedComponents).toEqual([]);
+  });
+});
+
+describe("readCurrentRecipes — page-design / page layout omission", () => {
+  it("leaves a page-design layout unset when its __Renderings is empty", async () => {
+    idSeq = 0;
+    const pageDesignsRoot = "/sitecore/content/demo/Presentation/Page Designs";
+    const pdgRoot = item({
+      name: "Page Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageDesignsRoot,
+    });
+    const design = item({
+      name: "HomeDesign",
+      templateId: SITECORE_TEMPLATES.PAGE_DESIGN,
+      parentId: pdgRoot.itemId,
+      path: `${pageDesignsRoot}/HomeDesign`,
+      fields: [marker("home-design@1")],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageDesignsRoot },
+      makeClient([pdgRoot, design])
+    );
+    const pageDesign = recipes!.find((r): r is PageDesignRecipe => r.kind === "page-design");
+    expect(pageDesign).toBeDefined();
+    // Empty layout → the optional `layout` is omitted entirely.
+    expect(pageDesign!.layout).toBeUndefined();
+    // No PartialDesigns field, no mapping → both default to [].
+    expect(pageDesign!.partials).toEqual([]);
+    expect(pageDesign!.appliesTo).toEqual([]);
+  });
+
+  it("drops an unresolved partial GUID from a page-design's partials list", async () => {
+    idSeq = 0;
+    const renderingsRoot = "/sitecore/layout/Renderings/Project/demo";
+    const partialDesignsRoot = "/sitecore/content/demo/Presentation/Partial Designs";
+    const pageDesignsRoot = "/sitecore/content/demo/Presentation/Page Designs";
+
+    const pdRoot = item({
+      name: "Partial Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: partialDesignsRoot,
+    });
+    // Marked partial — resolvable.
+    const headerPartial = item({
+      name: "Header",
+      templateId: SITECORE_TEMPLATES.PARTIAL_DESIGN,
+      parentId: pdRoot.itemId,
+      path: `${partialDesignsRoot}/Header`,
+      fields: [marker("header@1")],
+    });
+    // Unmarked partial — its GUID won't be in the marker index.
+    const ghostPartial = item({
+      name: "Ghost",
+      templateId: SITECORE_TEMPLATES.PARTIAL_DESIGN,
+      parentId: pdRoot.itemId,
+      path: `${partialDesignsRoot}/Ghost`,
+    });
+
+    const pdgRoot = item({
+      name: "Page Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageDesignsRoot,
+    });
+    const design = item({
+      name: "ArticleDesign",
+      templateId: SITECORE_TEMPLATES.PAGE_DESIGN,
+      parentId: pdgRoot.itemId,
+      path: `${pageDesignsRoot}/ArticleDesign`,
+      fields: [
+        marker("article-design@1"),
+        // PartialDesigns lists both GUIDs; only the marked one resolves.
+        f(
+          COMPOSITION_FIELDS.PARTIAL_DESIGNS,
+          `${headerPartial.itemId}|${ghostPartial.itemId}`,
+          "PartialDesigns"
+        ),
+      ],
+    });
+
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot, partialDesignsRoot, pageDesignsRoot },
+      makeClient([pdRoot, headerPartial, ghostPartial, pdgRoot, design])
+    );
+    const pageDesign = recipes!.find(
+      (r): r is PageDesignRecipe => r.kind === "page-design" && r.name === "ArticleDesign"
+    );
+    // Only the marked partial survives — the ghost GUID is dropped.
+    expect(pageDesign!.partials).toEqual(["header@1"]);
+  });
+
+  it("skips a page whose template GUID carries no marker but projects its marked sibling", async () => {
+    idSeq = 0;
+    const pageTemplatesRoot = "/sitecore/templates/Project/demo";
+    const pagesRoot = "/sitecore/content/demo/Home";
+
+    const ptRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageTemplatesRoot,
+    });
+    const articleTpl = item({
+      name: "ArticlePage",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: ptRoot.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage`,
+      fields: [
+        marker("article-page@1"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
+      ],
+    });
+
+    const homeRoot = item({
+      name: "Home",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pagesRoot,
+    });
+    // Conforms to the marked template → reverse-projects.
+    const goodPage = item({
+      name: "Welcome",
+      templateId: articleTpl.itemId,
+      parentId: homeRoot.itemId,
+      path: `${pagesRoot}/Welcome`,
+    });
+    // Conforms to an UNMARKED template GUID → skipped.
+    const orphanPage = item({
+      name: "Orphan",
+      templateId: nextId(),
+      parentId: homeRoot.itemId,
+      path: `${pagesRoot}/Orphan`,
+    });
+
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageTemplatesRoot, pagesRoot },
+      makeClient([ptRoot, articleTpl, homeRoot, goodPage, orphanPage])
+    );
+    const pages = recipes!.filter((r): r is PageRecipe => r.kind === "page");
+    expect(pages.map((p) => p.name)).toEqual(["Welcome"]);
+    expect(pages[0].template).toBe("article-page@1");
+    // No __Final Renderings → layout omitted.
+    expect(pages[0].layout).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — empty-root short-circuits across every walker
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — absent-root short-circuits", () => {
+  it("returns an empty array when every layout-bearing root resolves to no item", async () => {
+    // All four layout-bearing walkers (`walkPartialDesignsTree`,
+    // `walkPageDesignsTree`, `walkPagesTree`, `walkPlaceholderSettingsTree`)
+    // plus `collectRenderingComponentNames` hit their `root === null` arm.
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: "",
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        partialDesignsRoot: "/sitecore/content/demo/Presentation/Partial Designs",
+        pageDesignsRoot: "/sitecore/content/demo/Presentation/Page Designs",
+        pagesRoot: "/sitecore/content/demo/Home",
+        placeholderSettingsRoot: "/sitecore/content/demo/Presentation/Placeholder Settings",
+        enumerationsRoot: "/sitecore/content/demo/Presentation/Enumerations",
+      },
+      makeClient([]) // no items → every getItem(root) resolves null
+    );
+    expect(recipes).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — fieldValue byName fallback + handle synthesis guard
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — fieldValue byName fallback", () => {
+  it("resolves a field by name when no GUID-keyed field matches", async () => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    // __Display name carried ONLY by field name (no fieldId) — exercises
+    // `fieldValue`'s byName fallback arm.
+    const template = item({
+      name: "Doc",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Doc`,
+      fields: [{ value: "Document Model", name: "__Display name" } as never],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", contentModelsRoot },
+      makeClient([cmRoot, template])
+    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
+    expect(content!.displayName).toBe("Document Model");
+  });
+
+  it("prefixes a synthesised handle with x- when the item name starts with a digit", async () => {
+    idSeq = 0;
+    const componentsRoot = "/sitecore/templates/Project/demo/Components";
+    const compRoot = item({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: componentsRoot,
+    });
+    // Folder name starts with a digit → kebab is "3-col-grid", which fails
+    // /^[a-z]/, so `handleFromName` prepends "x-".
+    const section = item({
+      name: "3 Col Grid",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: compRoot.itemId,
+      path: `${componentsRoot}/3 Col Grid`,
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: componentsRoot, renderingsRoot: "/r", componentsRoot },
+      makeClient([compRoot, section])
+    );
+    const sectionRecipe = recipes!.find(
+      (r): r is ComponentSectionRecipe => r.kind === "component-section"
+    );
+    expect(sectionRecipe!.handle).toBe("x-3-col-grid@1");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — description / icon omission arms across layout kinds
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — description / icon arms", () => {
+  it("carries description and icon onto a partial design when both fields are set", async () => {
+    idSeq = 0;
+    const partialDesignsRoot = "/sitecore/content/demo/Presentation/Partial Designs";
+    const pdRoot = item({
+      name: "Partial Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: partialDesignsRoot,
+    });
+    const partial = item({
+      name: "Footer",
+      templateId: SITECORE_TEMPLATES.PARTIAL_DESIGN,
+      parentId: pdRoot.itemId,
+      path: `${partialDesignsRoot}/Footer`,
+      fields: [
+        marker("footer@1"),
+        f(SYSTEM_FIELDS.ICON, "office/16x16/document.png", "__Icon"),
+        { value: "Site footer partial", name: "__Long description" } as never,
+      ],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", partialDesignsRoot },
+      makeClient([pdRoot, partial])
+    );
+    const pd = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
+    expect(pd!.description).toBe("Site footer partial");
+    expect(pd!.icon).toBe("office/16x16/document.png");
+  });
+
+  it("carries description and icon onto a page design when both fields are set", async () => {
+    idSeq = 0;
+    const pageDesignsRoot = "/sitecore/content/demo/Presentation/Page Designs";
+    const pdgRoot = item({
+      name: "Page Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageDesignsRoot,
+    });
+    const design = item({
+      name: "LandingDesign",
+      templateId: SITECORE_TEMPLATES.PAGE_DESIGN,
+      parentId: pdgRoot.itemId,
+      path: `${pageDesignsRoot}/LandingDesign`,
+      fields: [
+        marker("landing-design@1"),
+        f(SYSTEM_FIELDS.ICON, "office/16x16/page.png", "__Icon"),
+        { value: "Marketing landing layout", name: "__Long description" } as never,
+      ],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageDesignsRoot },
+      makeClient([pdgRoot, design])
+    );
+    const pd = recipes!.find((r): r is PageDesignRecipe => r.kind === "page-design");
+    expect(pd!.description).toBe("Marketing landing layout");
+    expect(pd!.icon).toBe("office/16x16/page.png");
+  });
+
+  it("carries description onto a page when __Long description is set", async () => {
+    idSeq = 0;
+    const pageTemplatesRoot = "/sitecore/templates/Project/demo";
+    const pagesRoot = "/sitecore/content/demo/Home";
+    const ptRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageTemplatesRoot,
+    });
+    const tpl = item({
+      name: "ArticlePage",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: ptRoot.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage`,
+      fields: [
+        marker("article-page@1"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
+      ],
+    });
+    const homeRoot = item({
+      name: "Home",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pagesRoot,
+    });
+    const page = item({
+      name: "Story",
+      templateId: tpl.itemId,
+      parentId: homeRoot.itemId,
+      path: `${pagesRoot}/Story`,
+      fields: [marker("story@1"), { value: "A story page", name: "__Long description" } as never],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageTemplatesRoot, pagesRoot },
+      makeClient([ptRoot, tpl, homeRoot, page])
+    );
+    const pageRecipe = recipes!.find(
+      (r): r is PageRecipe => r.kind === "page" && r.name === "Story"
+    );
+    expect(pageRecipe!.description).toBe("A story page");
+  });
+
+  it("carries description and icon onto a placeholder when both fields are set", async () => {
+    idSeq = 0;
+    const placeholderSettingsRoot = "/sitecore/content/demo/Presentation/Placeholder Settings";
+    const psRoot = item({
+      name: "Placeholder Settings",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: placeholderSettingsRoot,
+    });
+    const ph = item({
+      name: "MainSlot",
+      templateId: PLACEHOLDER_TEMPLATE_ID,
+      parentId: psRoot.itemId,
+      path: `${placeholderSettingsRoot}/MainSlot`,
+      fields: [
+        f(PLACEHOLDER_FIELDS.PLACEHOLDER_KEY, "headless-main", "Placeholder Key"),
+        f(SYSTEM_FIELDS.ICON, "office/16x16/window.png", "__Icon"),
+        { value: "The main content slot", name: "__Long description" } as never,
+      ],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", placeholderSettingsRoot },
+      makeClient([psRoot, ph])
+    );
+    const placeholder = recipes!.find((r): r is PlaceholderRecipe => r.kind === "placeholder");
+    expect(placeholder!.description).toBe("The main content slot");
+    expect(placeholder!.icon).toBe("office/16x16/window.png");
+  });
+
+  it("carries description onto component, content, page-template and section recipes", async () => {
+    idSeq = 0;
+    const componentsRoot = "/sitecore/templates/Project/demo/Components";
+    const compRoot = item({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: componentsRoot,
+    });
+    const section = item({
+      name: "ui",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: compRoot.itemId,
+      path: `${componentsRoot}/ui`,
+      fields: [{ value: "UI building blocks", name: "__Long description" } as never],
+    });
+    const component = item({
+      name: "Badge",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: section.itemId,
+      path: `${componentsRoot}/ui/Badge`,
+      fields: [
+        f(SYSTEM_FIELDS.BASE_TEMPLATE, SXA_COMPONENT_BASE_TEMPLATES.join("|"), "__Base template"),
+        { value: "A small badge", name: "__Long description" } as never,
+      ],
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: componentsRoot, renderingsRoot: "/r", componentsRoot },
+      makeClient([compRoot, section, component])
+    );
+    const sectionRecipe = recipes!.find(
+      (r): r is ComponentSectionRecipe => r.kind === "component-section"
+    );
+    const componentRecipe = recipes!.find(
+      (r): r is ComponentTemplateRecipe => r.kind === "component-template"
+    );
+    expect(sectionRecipe!.description).toBe("UI building blocks");
+    expect(componentRecipe!.description).toBe("A small badge");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — decodeTemplatesMapping malformed-pair arms + page-design
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — TemplatesMapping decode arms", () => {
+  it("skips empty and malformed mapping pairs while keeping the well-formed one", async () => {
+    idSeq = 0;
+    const pageTemplatesRoot = "/sitecore/templates/Project/demo";
+    const pageDesignsRoot = "/sitecore/content/demo/Presentation/Page Designs";
+
+    const ptRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageTemplatesRoot,
+    });
+    const tpl = item({
+      name: "ArticlePage",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: ptRoot.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage`,
+      fields: [
+        marker("article-page@1"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
+      ],
+    });
+
+    const pdgRoot = item({
+      name: "Page Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageDesignsRoot,
+      // Three "&"-joined pairs: an empty segment, a no-`=` segment, and a
+      // well-formed `{tpl}={design}` segment. Only the last survives decode.
+      fields: [],
+    });
+    const design = item({
+      name: "ArticleDesign",
+      templateId: SITECORE_TEMPLATES.PAGE_DESIGN,
+      parentId: pdgRoot.itemId,
+      path: `${pageDesignsRoot}/ArticleDesign`,
+      fields: [marker("article-design@1")],
+    });
+    pdgRoot.fields.push(
+      f(
+        COMPOSITION_FIELDS.TEMPLATES_MAPPING,
+        encodeTemplatesMapping([{ templateGuid: tpl.itemId, designGuid: design.itemId }]) +
+          "&&malformed-no-equals",
+        "TemplatesMapping"
+      )
+    );
+
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageTemplatesRoot, pageDesignsRoot },
+      makeClient([ptRoot, tpl, pdgRoot, design])
+    );
+    const pageDesign = recipes!.find((r): r is PageDesignRecipe => r.kind === "page-design");
+    // Only the well-formed pair resolves; the empty + no-`=` segments drop.
+    expect(pageDesign!.appliesTo).toEqual(["article-page@1"]);
+  });
+
+  it("drops a TemplatesMapping entry whose template GUID carries no marker", async () => {
+    idSeq = 0;
+    const pageDesignsRoot = "/sitecore/content/demo/Presentation/Page Designs";
+    const pdgRoot = item({
+      name: "Page Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageDesignsRoot,
+    });
+    const design = item({
+      name: "OrphanDesign",
+      templateId: SITECORE_TEMPLATES.PAGE_DESIGN,
+      parentId: pdgRoot.itemId,
+      path: `${pageDesignsRoot}/OrphanDesign`,
+      fields: [marker("orphan-design@1")],
+    });
+    // Mapping references an unmarked template GUID → unrecoverable handle.
+    pdgRoot.fields.push(
+      f(
+        COMPOSITION_FIELDS.TEMPLATES_MAPPING,
+        encodeTemplatesMapping([
+          { templateGuid: "11111111-2222-3333-4444-555555555555", designGuid: design.itemId },
+        ]),
+        "TemplatesMapping"
+      )
+    );
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageDesignsRoot },
+      makeClient([pdgRoot, design])
+    );
+    const pageDesign = recipes!.find((r): r is PageDesignRecipe => r.kind === "page-design");
+    // The only mapping entry pointed at an unmarked template → appliesTo []
+    expect(pageDesign!.appliesTo).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — placement datasource arms (scoped / shared / unresolved)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — placement datasource arms", () => {
+  it("recovers a scoped datasource from a local: sentinel and a shared one by GUID", async () => {
+    idSeq = 0;
+    const renderingsRoot = "/sitecore/layout/Renderings/Project/demo";
+    const partialDesignsRoot = "/sitecore/content/demo/Presentation/Partial Designs";
+
+    const rRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.RENDERING_FOLDER,
+      parentId: ROOT_PARENT,
+      path: renderingsRoot,
+    });
+    const hero = item({
+      name: "Hero",
+      templateId: SITECORE_TEMPLATES.RENDERING,
+      parentId: rRoot.itemId,
+      path: `${renderingsRoot}/Hero`,
+      fields: [marker("hero@1")],
+    });
+    const card = item({
+      name: "Card",
+      templateId: SITECORE_TEMPLATES.RENDERING,
+      parentId: rRoot.itemId,
+      path: `${renderingsRoot}/Card`,
+      fields: [marker("card@1")],
+    });
+    // A marked content item used as a shared datasource target.
+    const sharedDs = item({
+      name: "SharedHero",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: rRoot.itemId,
+      path: `${renderingsRoot}/SharedHero`,
+      fields: [marker("shared-hero@1")],
+    });
+
+    const pdRoot = item({
+      name: "Partial Designs",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: partialDesignsRoot,
+    });
+    const header = item({
+      name: "DsHeader",
+      templateId: SITECORE_TEMPLATES.PARTIAL_DESIGN,
+      parentId: pdRoot.itemId,
+      path: `${partialDesignsRoot}/DsHeader`,
+      fields: [marker("ds-header@1")],
+    });
+    // Three placements: scoped (local: sentinel), shared (resolvable GUID),
+    // shared-but-unresolvable (GUID with no marker → datasourceRef omitted).
+    const layoutXml = emitLayoutXml(
+      {
+        placeholders: {
+          "/main": [
+            { componentHandle: "hero@1", datasourceRef: { kind: "scoped", slot: "Hero" } },
+            {
+              componentHandle: "card@1",
+              datasourceRef: { kind: "shared", handle: "shared-hero@1" },
+            },
+            {
+              componentHandle: "card@1",
+              datasourceRef: { kind: "shared", handle: "missing-ds@1" },
+            },
+          ],
+        },
+      },
+      {
+        parentItemId: header.itemId,
+        deviceId: DEFAULT_DEVICE_ID,
+        renderingIdFor: (handle) =>
+          ({ "hero@1": hero.itemId, "card@1": card.itemId })[handle] ??
+          (() => {
+            throw new Error(`test: unknown rendering ${handle}`);
+          })(),
+        // Resolve shared-hero@1 to a real marked GUID; missing-ds@1 to an
+        // unmarked GUID so its datasourceRef is dropped on reverse-projection.
+        contentItemIdFor: (handle) =>
+          ({
+            "shared-hero@1": sharedDs.itemId,
+            "missing-ds@1": "99999999-8888-7777-6666-555555555555",
+          })[handle] ??
+          (() => {
+            throw new Error(`test: unknown content item ${handle}`);
+          })(),
+        allowScoped: true,
+        mode: "delta",
+      }
+    );
+    header.fields.push(f(LAYOUT_FIELDS.RENDERINGS, layoutXml, "__Renderings"));
+
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot, partialDesignsRoot },
+      makeClient([rRoot, hero, card, sharedDs, pdRoot, header])
+    );
+    const partial = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
+    const placements = partial!.layout.placeholders["/main"];
+    expect(placements).toHaveLength(3);
+    // Placement 1: local: sentinel → scoped datasourceRef.
+    expect(placements[0].datasourceRef).toEqual({ kind: "scoped", slot: "Hero" });
+    // Placement 2: GUID resolved via the marker index → shared datasourceRef.
+    expect(placements[1].datasourceRef).toEqual({ kind: "shared", handle: "shared-hero@1" });
+    // Placement 3: GUID has no marker → datasourceRef omitted entirely.
+    expect(placements[2].datasourceRef).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — walkPagesTree Data-folder skip + nested pages
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — pages tree Data folder + nesting", () => {
+  it("skips the Data folder and recurses into nested child pages", async () => {
+    idSeq = 0;
+    const pageTemplatesRoot = "/sitecore/templates/Project/demo";
+    const pagesRoot = "/sitecore/content/demo/Home";
+
+    const ptRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageTemplatesRoot,
+    });
+    const tpl = item({
+      name: "ArticlePage",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: ptRoot.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage`,
+      fields: [
+        marker("article-page@1"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
+      ],
+    });
+
+    const homeRoot = item({
+      name: "Home",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pagesRoot,
+    });
+    const parentPage = item({
+      name: "Section",
+      templateId: tpl.itemId,
+      parentId: homeRoot.itemId,
+      path: `${pagesRoot}/Section`,
+      fields: [marker("section@1")],
+    });
+    // Data folder under the parent page — must be skipped, not projected.
+    const dataFolder = item({
+      name: "Data",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: parentPage.itemId,
+      path: `${pagesRoot}/Section/Data`,
+    });
+    // Nested child page — must be recursed into and projected.
+    const childPage = item({
+      name: "Detail",
+      templateId: tpl.itemId,
+      parentId: parentPage.itemId,
+      path: `${pagesRoot}/Section/Detail`,
+      fields: [marker("detail@1")],
+    });
+
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "/r", pageTemplatesRoot, pagesRoot },
+      makeClient([ptRoot, tpl, homeRoot, parentPage, dataFolder, childPage])
+    );
+    const pages = recipes!.filter((r): r is PageRecipe => r.kind === "page");
+    expect(pages.map((p) => p.name).sort()).toEqual(["Detail", "Section"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — enumeration grouping-folder recursion
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — enumeration grouping folder", () => {
+  it("recurses through a grouping folder that parents enumeration containers", async () => {
+    idSeq = 0;
+    const enumerationsRoot = "/sitecore/content/demo/Presentation/Enumerations";
+    const enumRoot = item({
+      name: "Enumerations",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: enumerationsRoot,
+    });
+    // A grouping folder: its grandchildren (value items of the container)
+    // themselves have children → `groupsContainers` flips true.
+    const groupFolder = item({
+      name: "Branding",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: enumRoot.itemId,
+      path: `${enumerationsRoot}/Branding`,
+    });
+    const container = item({
+      name: "Tone",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: groupFolder.itemId,
+      path: `${enumerationsRoot}/Branding/Tone`,
+    });
+    const calm = item({
+      name: "calm",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: container.itemId,
+      path: `${enumerationsRoot}/Branding/Tone/calm`,
+    });
+    const bold = item({
+      name: "bold",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: container.itemId,
+      path: `${enumerationsRoot}/Branding/Tone/bold`,
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: "/t", renderingsRoot: "/r", enumerationsRoot },
+      makeClient([enumRoot, groupFolder, container, calm, bold])
+    );
+    const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
+    expect(enumeration!.name).toBe("Tone");
+    // Recursed through the grouping folder → location.folder threaded in.
+    expect(enumeration!.location).toEqual({ scope: "site", folder: "Branding" });
+    expect(enumeration!.values.map((v) => v.name).sort()).toEqual(["bold", "calm"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch coverage — collectRenderingComponentNames nested-folder recursion
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — rendering folder recursion", () => {
+  it("recurses through a plain Folder under the renderings root to find renderings", async () => {
+    idSeq = 0;
+    const renderingsRoot = "/sitecore/layout/Renderings/Project/demo";
+    const componentsRoot = "/sitecore/templates/Project/demo/Components";
+
+    const rRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.RENDERING_FOLDER,
+      parentId: ROOT_PARENT,
+      path: renderingsRoot,
+    });
+    // A plain Folder (not a Rendering Folder) nested under the renderings
+    // root — `collectRenderingComponentNames` recurses into it too.
+    const plainFolder = item({
+      name: "legacy",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: rRoot.itemId,
+      path: `${renderingsRoot}/legacy`,
+    });
+    const rendering = item({
+      name: "WidgetBox",
+      templateId: SITECORE_TEMPLATES.RENDERING,
+      parentId: plainFolder.itemId,
+      path: `${renderingsRoot}/legacy/WidgetBox`,
+      // No ComponentName field → falls back to the item name.
+      fields: [],
+    });
+
+    const compRoot = item({
+      name: "Components",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: componentsRoot,
+    });
+    // A plain content-shaped template named WidgetBox — classified as a
+    // component ONLY because the nested rendering's name matches.
+    const widgetTpl = item({
+      name: "WidgetBox",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: compRoot.itemId,
+      path: `${componentsRoot}/WidgetBox`,
+    });
+    const recipes = await readCurrentRecipes(
+      { templatesRoot: componentsRoot, renderingsRoot, componentsRoot },
+      makeClient([rRoot, plainFolder, rendering, compRoot, widgetTpl])
+    );
+    // The template was classified as a component because a rendering with
+    // its name was discovered through the nested plain Folder.
+    expect(recipes!.some((r) => r.kind === "component-template" && r.name === "WidgetBox")).toBe(
+      true
+    );
+  });
+});

@@ -122,7 +122,16 @@ vi.mock("../../../../src/hygiene/output-adapters", () => ({
   writeAuditOutput: writeAuditOutputMock,
 }));
 
-import { runAuditAll } from "../../../../src/hygiene/tasks/audit/all";
+const baselineMocks = vi.hoisted(() => ({
+  openBaseline: vi.fn(),
+  splitByBaseline: vi.fn(),
+}));
+vi.mock("../../../../src/hygiene/baseline", () => ({
+  openBaseline: baselineMocks.openBaseline,
+  splitByBaseline: baselineMocks.splitByBaseline,
+}));
+
+import { runAuditAll, auditNames } from "../../../../src/hygiene/tasks/audit/all";
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -170,5 +179,205 @@ describe("runAuditAll", () => {
     ];
     expect(envelope.command).toBe("audit.all");
     expect(opts.output).toBe("/tmp/consolidated.json");
+  });
+});
+
+describe("auditNames", () => {
+  it("lists every registered audit name", () => {
+    const names = auditNames();
+    expect(names).toContain("broken-links");
+    expect(names).toContain("find-replace");
+    expect(names).toContain("empty-items");
+    expect(names.length).toBeGreaterThan(20);
+  });
+});
+
+describe("runAuditAll — audit selection (pickAuditsToRun)", () => {
+  it("runs the default set, skipping requiresExtraConfig audits", async () => {
+    await runAuditAll({ json: true, quiet: true } as never);
+    // broken-links is a default audit; broken-images / find-replace need extra config.
+    expect(subAuditMocks.runAuditBrokenLinks).toHaveBeenCalledTimes(1);
+    expect(subAuditMocks.runAuditBrokenImages).not.toHaveBeenCalled();
+    expect(subAuditMocks.runAuditFindReplace).not.toHaveBeenCalled();
+  });
+
+  it("excludeAudit drops a named audit from the default set", async () => {
+    await runAuditAll({ excludeAudit: ["broken-links"], json: true, quiet: true } as never);
+    expect(subAuditMocks.runAuditBrokenLinks).not.toHaveBeenCalled();
+    expect(subAuditMocks.runAuditSlugConflicts).toHaveBeenCalledTimes(1);
+  });
+
+  it("an explicit include list can request a requiresExtraConfig audit", async () => {
+    await runAuditAll({ include: ["find-replace"], json: true, quiet: true } as never);
+    expect(subAuditMocks.runAuditFindReplace).toHaveBeenCalledTimes(1);
+    expect(subAuditMocks.runAuditBrokenLinks).not.toHaveBeenCalled();
+  });
+
+  it("matches include names case-insensitively", async () => {
+    await runAuditAll({ include: ["SLUG-Conflicts"], json: true, quiet: true } as never);
+    expect(subAuditMocks.runAuditSlugConflicts).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runAuditAll — envelope counts + summary", () => {
+  it("counts findings across audits and reflects them in the envelope", async () => {
+    subAuditMocks.runAuditSlugConflicts.mockResolvedValueOnce([{ a: 1 }, { a: 2 }]);
+    subAuditMocks.runAuditMissingMeta.mockResolvedValueOnce([{ b: 1 }]);
+
+    await runAuditAll({
+      include: ["slug-conflicts", "missing-meta"],
+      output: "/tmp/c.json",
+      quiet: true,
+    } as never);
+
+    const [envelope] = writeAuditOutputMock.mock.calls[0] as [
+      {
+        count: number;
+        counts: { auditsRun: number; totalFindings: number; auditsFailed: number };
+        summary: string;
+        data: unknown[];
+      },
+    ];
+    expect(envelope.count).toBe(3);
+    expect(envelope.counts.auditsRun).toBe(2);
+    expect(envelope.counts.totalFindings).toBe(3);
+    expect(envelope.counts.auditsFailed).toBe(0);
+    expect(envelope.summary).toBe("2 audits run, 3 findings.");
+    expect(envelope.data).toEqual([
+      { audit: "slug-conflicts", a: 1 },
+      { audit: "slug-conflicts", a: 2 },
+      { audit: "missing-meta", b: 1 },
+    ]);
+  });
+
+  it("records a failed sub-audit's error and counts it as failed", async () => {
+    subAuditMocks.runAuditSlugConflicts.mockRejectedValueOnce(new Error("audit blew up"));
+
+    await runAuditAll({
+      include: ["slug-conflicts"],
+      output: "/tmp/c.json",
+      quiet: true,
+    } as never);
+
+    const [envelope] = writeAuditOutputMock.mock.calls[0] as [
+      {
+        counts: { auditsFailed: number };
+        summary: string;
+        audits: Record<string, { error?: string }>;
+      },
+    ];
+    expect(envelope.counts.auditsFailed).toBe(1);
+    expect(envelope.summary).toBe("1 audit run, 0 findings, 1 audit failed.");
+    expect(envelope.audits["slug-conflicts"].error).toBe("audit blew up");
+  });
+
+  it("coerces a non-array sub-audit return into an empty finding list", async () => {
+    subAuditMocks.runAuditSlugConflicts.mockResolvedValueOnce(undefined as never);
+
+    await runAuditAll({
+      include: ["slug-conflicts"],
+      output: "/tmp/c.json",
+      quiet: true,
+    } as never);
+
+    const [envelope] = writeAuditOutputMock.mock.calls[0] as [{ count: number }];
+    expect(envelope.count).toBe(0);
+  });
+});
+
+describe("runAuditAll — baseline integration", () => {
+  it("splits findings through the baseline file when --baseline is set", async () => {
+    subAuditMocks.runAuditSlugConflicts.mockResolvedValueOnce([{ a: 1 }, { a: 2 }]);
+    baselineMocks.openBaseline.mockReturnValue({
+      filePath: "/tmp/baseline.json",
+      add: vi.fn(),
+      flush: vi.fn(),
+      snapshot: vi.fn(),
+    });
+    baselineMocks.splitByBaseline.mockReturnValue({ kept: [{ a: 1 }], ignored: [{ a: 2 }] });
+
+    await runAuditAll({
+      include: ["slug-conflicts"],
+      baseline: true,
+      output: "/tmp/c.json",
+      quiet: true,
+    } as never);
+
+    const [envelope] = writeAuditOutputMock.mock.calls[0] as [
+      { count: number; counts: { totalIgnored: number }; baseline: string | null },
+    ];
+    expect(envelope.count).toBe(1);
+    expect(envelope.counts.totalIgnored).toBe(1);
+    expect(envelope.baseline).toBe("/tmp/baseline.json");
+  });
+
+  it("adds every finding to the baseline and flushes when --update-baseline is set", async () => {
+    subAuditMocks.runAuditSlugConflicts.mockResolvedValueOnce([{ a: 1 }, { a: 2 }]);
+    const add = vi.fn();
+    const flush = vi.fn();
+    baselineMocks.openBaseline.mockReturnValue({
+      filePath: "/tmp/baseline.json",
+      add,
+      flush,
+      snapshot: vi.fn(),
+    });
+
+    await runAuditAll({
+      include: ["slug-conflicts"],
+      updateBaseline: true,
+      output: "/tmp/c.json",
+      quiet: true,
+    } as never);
+
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenCalledWith("slug-conflicts", { a: 1 }, undefined);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runAuditAll — output sinks", () => {
+  it("echoes the consolidated envelope to logger.json when no --output and not quiet", async () => {
+    const jsonSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    await runAuditAll({ include: ["slug-conflicts"], json: true } as never);
+    // No file write, but writeAuditOutput is still called to serialise the body.
+    expect(writeAuditOutputMock).toHaveBeenCalledTimes(1);
+    jsonSpy.mockRestore();
+  });
+
+  it("writes the body to stdout when quiet and no --output", async () => {
+    writeAuditOutputMock.mockReturnValueOnce('{"command":"audit.all"}');
+    const writes: string[] = [];
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    await runAuditAll({ include: ["slug-conflicts"], json: true, quiet: true } as never);
+
+    expect(writes.join("")).toContain("audit.all");
+    writeSpy.mockRestore();
+  });
+
+  it("infers a csv format from a .csv --output extension", async () => {
+    await runAuditAll({ include: ["slug-conflicts"], output: "/tmp/r.csv", quiet: true } as never);
+    const [, opts] = writeAuditOutputMock.mock.calls[0] as [unknown, { format: string }];
+    expect(opts.format).toBe("csv");
+  });
+
+  it("infers a markdown format from a .md --output extension", async () => {
+    await runAuditAll({ include: ["slug-conflicts"], output: "/tmp/r.md", quiet: true } as never);
+    const [, opts] = writeAuditOutputMock.mock.calls[0] as [unknown, { format: string }];
+    expect(opts.format).toBe("markdown");
+  });
+
+  it("honours an explicit --format over the --output extension", async () => {
+    await runAuditAll({
+      include: ["slug-conflicts"],
+      output: "/tmp/r.csv",
+      format: "markdown",
+      quiet: true,
+    } as never);
+    const [, opts] = writeAuditOutputMock.mock.calls[0] as [unknown, { format: string }];
+    expect(opts.format).toBe("markdown");
   });
 });

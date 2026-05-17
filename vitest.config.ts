@@ -22,13 +22,17 @@ export default defineConfig({
         "src/deploy/api/index.ts",
         "src/serialization/tasks.ts",
       ],
+      // Ratchet floor, enforced by CI via `pnpm test:coverage`. Raise as
+      // coverage improves, never lower. The 90/80/90/90 long-term target
+      // is now met on every metric; these floors sit just under current
+      // and hold it. NOTE: vitest 4 reads these keys directly under
+      // `thresholds`; a `global:` wrapper is silently treated as an
+      // unmatched glob and enforces nothing.
       thresholds: {
-        global: {
-          statements: 90,
-          branches: 80,
-          functions: 90,
-          lines: 90,
-        },
+        statements: 92,
+        branches: 81,
+        functions: 90,
+        lines: 93,
       },
     },
   },

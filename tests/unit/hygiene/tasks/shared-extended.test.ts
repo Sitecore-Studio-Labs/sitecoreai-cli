@@ -1,10 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const outputAdapterMocks = vi.hoisted(() => ({
+  writeAuditOutput: vi.fn(() => "{}"),
+  inferFormatFromExtension: vi.fn((p: string) => {
+    if (p.endsWith(".csv")) return "csv";
+    if (p.endsWith(".md")) return "markdown";
+    return undefined;
+  }),
+}));
+vi.mock("../../../../src/hygiene/output-adapters", () => outputAdapterMocks);
+
+const baselineMocks = vi.hoisted(() => ({
+  openBaseline: vi.fn(),
+  splitByBaseline: vi.fn(),
+}));
+vi.mock("../../../../src/hygiene/baseline", () => baselineMocks);
+
 import {
   computeContentHash,
   extractPersonalizationRefs,
   extractRenderingDatasources,
+  finishAudit,
   isPageDesignField,
   isRenderingField,
+  matchesScanFilters,
+  printReport,
+  resolveHygieneKnobs,
+  resolveScanFilters,
+  toLogger,
 } from "../../../../src/hygiene/tasks/shared";
 
 describe("isRenderingField", () => {
@@ -173,5 +196,437 @@ describe("computeContentHash", () => {
     expect(empty).toBe("");
     expect(whitespace).toBe("");
     expect(systemOnly).toBe("");
+  });
+});
+
+describe("resolveScanFilters", () => {
+  it("returns undefined excludePaths when no excludes are passed", () => {
+    expect(resolveScanFilters({})).toEqual({
+      excludePaths: undefined,
+      sinceMs: undefined,
+      owner: undefined,
+    });
+  });
+
+  it("lowercases excludes and drops empty strings", () => {
+    const filters = resolveScanFilters({ exclude: ["/Sitecore/System", "", "/MEDIA"] });
+    expect(filters.excludePaths).toEqual(["/sitecore/system", "/media"]);
+  });
+
+  it("treats an all-empty exclude list as undefined excludePaths", () => {
+    expect(resolveScanFilters({ exclude: ["", "  "] }).excludePaths).toEqual(["  "]);
+  });
+
+  it("parses a valid --since into sinceMs", () => {
+    const filters = resolveScanFilters({ since: "2026-01-01" });
+    expect(filters.sinceMs).toBe(Date.parse("2026-01-01"));
+  });
+
+  it("throws INPUT_INVALID for an unparseable --since", () => {
+    expect(() => resolveScanFilters({ since: "not-a-date" })).toThrowError(
+      expect.objectContaining({ code: "INPUT_INVALID" })
+    );
+  });
+
+  it("passes the owner filter through verbatim", () => {
+    expect(resolveScanFilters({ owner: "alice" }).owner).toBe("alice");
+  });
+});
+
+describe("matchesScanFilters", () => {
+  it("returns true with no filters set", () => {
+    expect(matchesScanFilters({ path: "/sitecore/content/A" }, {})).toBe(true);
+  });
+
+  it("excludes a result whose path starts with an excluded prefix", () => {
+    expect(
+      matchesScanFilters(
+        { path: "/sitecore/system/Settings" },
+        { excludePaths: ["/sitecore/system"] }
+      )
+    ).toBe(false);
+  });
+
+  it("keeps a result outside every excluded prefix", () => {
+    expect(
+      matchesScanFilters({ path: "/sitecore/content/Home" }, { excludePaths: ["/sitecore/system"] })
+    ).toBe(true);
+  });
+
+  it("treats a missing path as an empty string for exclude matching", () => {
+    expect(matchesScanFilters({}, { excludePaths: ["/sitecore"] })).toBe(true);
+  });
+
+  it("excludes a result updated before sinceMs", () => {
+    const since = Date.parse("2026-06-01");
+    expect(matchesScanFilters({ path: "/x", updatedDate: "2026-01-01" }, { sinceMs: since })).toBe(
+      false
+    );
+  });
+
+  it("keeps a result updated on/after sinceMs", () => {
+    const since = Date.parse("2026-01-01");
+    expect(matchesScanFilters({ path: "/x", updatedDate: "2026-12-01" }, { sinceMs: since })).toBe(
+      true
+    );
+  });
+
+  it("excludes a result with an unparseable updatedDate when sinceMs is set", () => {
+    expect(
+      matchesScanFilters({ path: "/x", updatedDate: "garbage" }, { sinceMs: Date.now() })
+    ).toBe(false);
+  });
+});
+
+describe("resolveHygieneKnobs", () => {
+  const ENV_KEYS = [
+    "SITECOREAI_HYGIENE_CONCURRENCY",
+    "SITECOREAI_HYGIENE_BATCH_SIZE",
+    "SITECOREAI_HYGIENE_PAGE_PARALLELISM",
+  ];
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) delete process.env[k];
+  });
+
+  it("uses built-in defaults when nothing is supplied", () => {
+    expect(resolveHygieneKnobs({})).toEqual({
+      concurrency: 8,
+      batchSize: 50,
+      pageParallelism: 4,
+    });
+  });
+
+  it("explicit options take precedence over env vars", () => {
+    process.env.SITECOREAI_HYGIENE_CONCURRENCY = "16";
+    expect(resolveHygieneKnobs({ concurrency: 3 }).concurrency).toBe(3);
+  });
+
+  it("reads env vars when no explicit option is given", () => {
+    process.env.SITECOREAI_HYGIENE_BATCH_SIZE = "100";
+    process.env.SITECOREAI_HYGIENE_PAGE_PARALLELISM = "2";
+    const knobs = resolveHygieneKnobs({});
+    expect(knobs.batchSize).toBe(100);
+    expect(knobs.pageParallelism).toBe(2);
+  });
+
+  it("falls back to the default when an env var is not a positive integer", () => {
+    process.env.SITECOREAI_HYGIENE_CONCURRENCY = "0";
+    process.env.SITECOREAI_HYGIENE_BATCH_SIZE = "not-a-number";
+    const knobs = resolveHygieneKnobs({});
+    expect(knobs.concurrency).toBe(8);
+    expect(knobs.batchSize).toBe(50);
+  });
+});
+
+describe("toLogger", () => {
+  it("builds a JSON logger when options.json is set", () => {
+    expect(toLogger({ json: true }).isJson()).toBe(true);
+  });
+
+  it("builds a non-JSON logger by default", () => {
+    expect(toLogger({}).isJson()).toBe(false);
+  });
+});
+
+describe("printReport / finishAudit — output forks", () => {
+  beforeEach(() => {
+    baselineMocks.openBaseline.mockReturnValue({ snapshot: () => ({ ignored: {} }) });
+    baselineMocks.splitByBaseline.mockReturnValue({ kept: [], ignored: [] });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    baselineMocks.openBaseline.mockReset();
+    baselineMocks.splitByBaseline.mockReset();
+  });
+
+  it("emits a JSON envelope through logger.json when --json is set", () => {
+    const json = vi.fn();
+    const logger = {
+      isJson: () => true,
+      json,
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    printReport({
+      logger: logger as never,
+      command: "audit.demo.list",
+      envName: "sandbox",
+      results: [{ id: "x" }],
+      formatLine: (r: { id: string }) => r.id,
+    });
+    expect(json).toHaveBeenCalledTimes(1);
+    const envelope = json.mock.calls[0][0] as { count: number; data: unknown[] };
+    expect(envelope.count).toBe(1);
+    expect(envelope.data).toEqual([{ id: "x" }]);
+  });
+
+  it("prints a human summary + one line per result when --json is unset", () => {
+    const info = vi.fn();
+    const logger = {
+      isJson: () => false,
+      json: vi.fn(),
+      info,
+      warn: vi.fn(),
+    };
+    printReport({
+      logger: logger as never,
+      command: "audit.demo.list",
+      envName: "sandbox",
+      results: [{ id: "a" }, { id: "b" }],
+      summary: "2 findings.",
+      formatLine: (r: { id: string }) => r.id,
+    });
+    // headline + one line per result.
+    expect(info).toHaveBeenCalledWith("2 findings.", "yellow");
+    expect(info).toHaveBeenCalledWith("  - a");
+    expect(info).toHaveBeenCalledWith("  - b");
+  });
+
+  it("uses the green default headline when there are zero results and no summary", () => {
+    const info = vi.fn();
+    const logger = { isJson: () => false, json: vi.fn(), info, warn: vi.fn() };
+    printReport({
+      logger: logger as never,
+      command: "audit.demo.list",
+      envName: "sandbox",
+      results: [],
+      formatLine: () => "",
+    });
+    expect(info).toHaveBeenCalledWith("0 items found.", "green");
+  });
+
+  it("warns when --baseline is requested but the command name has no baseline key", () => {
+    const warn = vi.fn();
+    const logger = { isJson: () => true, json: vi.fn(), info: vi.fn(), warn };
+    finishAudit({
+      logger: logger as never,
+      command: "cleanup.demo.purge",
+      envName: "sandbox",
+      results: [],
+      formatLine: () => "",
+      options: { baseline: true },
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("doesn't map to a baseline key"));
+  });
+});
+
+describe("finishAudit — baseline + output branches", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    baselineMocks.openBaseline.mockReset();
+    baselineMocks.splitByBaseline.mockReset();
+    outputAdapterMocks.writeAuditOutput.mockClear();
+    outputAdapterMocks.inferFormatFromExtension.mockClear();
+  });
+
+  const jsonLogger = () => ({
+    isJson: () => true,
+    json: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  });
+  const textLogger = () => ({
+    isJson: () => false,
+    json: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  });
+
+  it("derives the audit name from an audit.<name>.<verb> command and opens the baseline", () => {
+    baselineMocks.openBaseline.mockReturnValue({
+      snapshot: () => ({ ignored: {} }),
+    });
+    const logger = jsonLogger();
+    // printReport derives auditName via deriveAuditName(command).
+    printReport({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      results: [],
+      formatLine: () => "",
+    });
+    expect(baselineMocks.openBaseline).toHaveBeenCalledWith(
+      expect.objectContaining({ envName: "sandbox" })
+    );
+  });
+
+  it("does NOT open a baseline for a command that has no audit.<name> shape", () => {
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "cleanup.versions.prune",
+      envName: "sandbox",
+      results: [],
+      formatLine: () => "",
+    });
+    expect(baselineMocks.openBaseline).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the baseline-accepted total in the envelope when accepted findings exist", () => {
+    baselineMocks.openBaseline.mockReturnValue({
+      snapshot: () => ({
+        ignored: { "broken-links": [{ fingerprint: "x" }, { fingerprint: "y" }] },
+      }),
+    });
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }],
+      formatLine: () => "",
+    });
+    const envelope = logger.json.mock.calls[0][0] as {
+      meta?: { baselineAcceptedTotal?: number };
+    };
+    expect(envelope.meta?.baselineAcceptedTotal).toBe(2);
+  });
+
+  it("splits findings through the baseline and reports ignoredCount when --baseline is set", () => {
+    baselineMocks.openBaseline.mockReturnValue({
+      snapshot: () => ({ ignored: {} }),
+    });
+    baselineMocks.splitByBaseline.mockReturnValue({
+      kept: [{ id: 1 }],
+      ignored: [{ id: 2 }, { id: 3 }],
+    });
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      formatLine: () => "",
+      options: { baseline: true },
+    });
+    expect(baselineMocks.splitByBaseline).toHaveBeenCalled();
+    // `ignoredCount` is a canonical envelope key (hoisted to top level);
+    // `baselineAcceptedTotal` is not, so it lands under `meta`.
+    const envelope = logger.json.mock.calls[0][0] as { count: number; ignoredCount?: number };
+    expect(envelope.count).toBe(1);
+    expect(envelope.ignoredCount).toBe(2);
+  });
+
+  it("warns and continues when the baseline file fails to open", () => {
+    baselineMocks.openBaseline.mockImplementation(() => {
+      throw new Error("baseline corrupt");
+    });
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }],
+      formatLine: () => "",
+      options: { baseline: true },
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to apply baseline filter for 'broken-links'")
+    );
+    // The audit still emits its envelope despite the baseline failure.
+    expect(logger.json).toHaveBeenCalled();
+  });
+
+  it("writes a serialized report to --output and infers csv format from the extension", () => {
+    baselineMocks.openBaseline.mockReturnValue({ snapshot: () => ({ ignored: {} }) });
+    const logger = textLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }],
+      formatLine: () => "",
+      options: { output: "/tmp/report.csv" },
+    });
+    expect(outputAdapterMocks.writeAuditOutput).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 1 }),
+      { format: "csv", output: "/tmp/report.csv" }
+    );
+    // Non-json logger announces the write.
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("Wrote /tmp/report.csv (1 finding)"),
+      "green"
+    );
+  });
+
+  it("an explicit --format overrides the inferred output format", () => {
+    baselineMocks.openBaseline.mockReturnValue({ snapshot: () => ({ ignored: {} }) });
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [],
+      formatLine: () => "",
+      options: { output: "/tmp/report.csv", format: "markdown" },
+    });
+    expect(outputAdapterMocks.writeAuditOutput).toHaveBeenCalledWith(expect.anything(), {
+      format: "markdown",
+      output: "/tmp/report.csv",
+    });
+    // json logger does NOT echo the write line.
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("defaults the output format to json when neither --format nor an extension applies", () => {
+    baselineMocks.openBaseline.mockReturnValue({ snapshot: () => ({ ignored: {} }) });
+    const logger = jsonLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }, { id: 2 }],
+      formatLine: () => "",
+      options: { output: "/tmp/report.txt" },
+    });
+    expect(outputAdapterMocks.writeAuditOutput).toHaveBeenCalledWith(expect.anything(), {
+      format: "json",
+      output: "/tmp/report.txt",
+    });
+  });
+
+  it("prints the baseline-discovery nudge on the text path when accepted findings exist", () => {
+    baselineMocks.openBaseline.mockReturnValue({
+      snapshot: () => ({ ignored: { "broken-links": [{ fingerprint: "x" }] } }),
+    });
+    const logger = textLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }],
+      formatLine: (r: { id: number }) => `item-${r.id}`,
+    });
+    const lines = logger.info.mock.calls.map((c) => c[0] as string);
+    expect(lines.some((l) => l.includes("1 finding in baseline; pass --baseline to filter"))).toBe(
+      true
+    );
+    expect(lines).toContain("  - item-1");
+  });
+
+  it("prints the ignored-by-baseline line on the text path when --baseline filters findings", () => {
+    baselineMocks.openBaseline.mockReturnValue({ snapshot: () => ({ ignored: {} }) });
+    baselineMocks.splitByBaseline.mockReturnValue({ kept: [{ id: 1 }], ignored: [{ id: 2 }] });
+    const logger = textLogger();
+    finishAudit({
+      logger: logger as never,
+      command: "audit.broken-links.list",
+      envName: "sandbox",
+      auditName: "broken-links",
+      results: [{ id: 1 }, { id: 2 }],
+      formatLine: () => "",
+      options: { baseline: true },
+    });
+    const lines = logger.info.mock.calls.map((c) => c[0] as string);
+    expect(lines.some((l) => l.includes("(1 ignored by baseline)"))).toBe(true);
   });
 });

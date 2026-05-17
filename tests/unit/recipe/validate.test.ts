@@ -700,3 +700,903 @@ describe("validateRecipeSet — SiteRecipe references", () => {
     expect(formatted).toContain("mutually exclusive");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coverage top-up: placement legality, duplicate placeholder keys, the
+// remaining per-kind reference checks (page / page-template / content-item
+// content-template / design-parameters-template / component-template extras).
+// ---------------------------------------------------------------------------
+
+describe("validateRecipeSet — placement legality (PlacementViolation)", () => {
+  const buttonComponent: Recipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "button@1",
+    name: "Button",
+    displayName: "Button",
+    fields: [],
+    variants: [],
+    params: [],
+  };
+
+  const restrictedSlot: Recipe = {
+    kind: "placeholder",
+    schemaVersion: "1",
+    handle: "main-slot@1",
+    key: "/main",
+    name: "Main",
+    displayName: "Main",
+    allowedComponents: ["button@1"], // only Button allowed
+  };
+
+  const partialWithRogue: Recipe = {
+    kind: "partial-design",
+    schemaVersion: "1",
+    handle: "rogue-partial@1",
+    name: "RoguePartial",
+    displayName: "Rogue Partial",
+    layout: {
+      placeholders: {
+        "/main": [{ componentHandle: "button@1" }, { componentHandle: "rogue@1" }],
+      },
+    },
+  };
+
+  const rogueComponent: Recipe = {
+    ...buttonComponent,
+    handle: "rogue@1",
+    name: "Rogue",
+    displayName: "Rogue",
+  };
+
+  it("flags a component dropped into a placeholder whose whitelist excludes it", () => {
+    const result = validateRecipeSet([
+      buttonComponent,
+      rogueComponent,
+      restrictedSlot,
+      partialWithRogue,
+    ]);
+    expect(result.placementViolations).toContainEqual({
+      fromRecipe: "rogue-partial@1",
+      fromField: "layout.placeholders./main.1",
+      componentHandle: "rogue@1",
+      placeholderKey: "/main",
+      allowedComponents: ["button@1"],
+    });
+    expect(isValid(result)).toBe(false);
+  });
+
+  it("does not flag a placement into a non-recipe-defined placeholder", () => {
+    // No PlaceholderRecipe for `/unknown` → not checkable, passes.
+    const partial: Recipe = {
+      ...partialWithRogue,
+      handle: "open-partial@1",
+      name: "OpenPartial",
+      layout: { placeholders: { "/unknown": [{ componentHandle: "rogue@1" }] } },
+    };
+    const result = validateRecipeSet([buttonComponent, rogueComponent, partial]);
+    expect(result.placementViolations).toEqual([]);
+  });
+
+  it("formatValidationErrors renders a placement violation line", () => {
+    const result = validateRecipeSet([
+      buttonComponent,
+      rogueComponent,
+      restrictedSlot,
+      partialWithRogue,
+    ]);
+    const formatted = formatValidationErrors(result);
+    expect(formatted).toContain("not allowed in placeholder '/main'");
+  });
+});
+
+describe("validateRecipeSet — duplicate placeholder key", () => {
+  it("flags a placeholder key declared by two recipes as a field-shape error", () => {
+    const slotA: Recipe = {
+      kind: "placeholder",
+      schemaVersion: "1",
+      handle: "slot-a@1",
+      key: "/shared",
+      name: "SlotA",
+      displayName: "Slot A",
+    };
+    const slotB: Recipe = { ...slotA, handle: "slot-b@1", name: "SlotB" };
+    const result = validateRecipeSet([slotA, slotB]);
+    expect(
+      result.fieldShapeErrors.some(
+        (e) => e.fromField === "placeholder key" && e.message.includes("'/shared'")
+      )
+    ).toBe(true);
+    expect(isValid(result)).toBe(false);
+  });
+});
+
+describe("validateRecipeSet — component-template extra references", () => {
+  it("flags an unresolved datasource.template handle", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "card@1",
+      name: "Card",
+      displayName: "Card",
+      fields: [],
+      variants: [],
+      params: [],
+      datasource: { template: { handle: "missing-template@1" } },
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "card@1",
+      fromField: "datasource.template.handle",
+      handle: "missing-template@1",
+      expectedKinds: ["content-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved availableIn section-definition handle", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "card@1",
+      name: "Card",
+      displayName: "Card",
+      fields: [],
+      variants: [],
+      params: [],
+      availableIn: ["missing-section@1"],
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "card@1",
+      fromField: "availableIn.0",
+      handle: "missing-section@1",
+      expectedKinds: ["section-definition"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved inline placeholder slot allowedComponents handle", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "container@1",
+      name: "Container",
+      displayName: "Container",
+      fields: [],
+      variants: [],
+      params: [],
+      placeholders: [{ key: "/inner", allowedComponents: ["ghost-component@1"] }],
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "container@1",
+      fromField: "placeholders.0.allowedComponents.0",
+      handle: "ghost-component@1",
+      expectedKinds: ["component-template"],
+      actualKind: undefined,
+    });
+  });
+});
+
+describe("validateRecipeSet — content-template + design-parameters-template", () => {
+  it("flags an unresolved content-template insertOptions handle", () => {
+    const template: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "list-template@1",
+      name: "ListTemplate",
+      displayName: "List Template",
+      fields: [],
+      insertOptions: ["missing-child@1"],
+    };
+    const result = validateRecipeSet([template]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "list-template@1",
+      fromField: "insertOptions.0",
+      handle: "missing-child@1",
+      expectedKinds: ["component-template", "content-template", "page-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved design-parameters-template param sourceTypes handle", () => {
+    const template: Recipe = {
+      kind: "design-parameters-template",
+      schemaVersion: "1",
+      handle: "shared-params@1",
+      name: "SharedParams",
+      displayName: "Shared Params",
+      params: [
+        {
+          name: "Theme",
+          shape: "reference",
+          sitecore: { type: "droplink", sourceTypes: ["ghost@1"] },
+        },
+      ],
+    };
+    const result = validateRecipeSet([template]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "shared-params@1",
+      fromField: "params.0.sitecore.sourceTypes.0",
+      handle: "ghost@1",
+      expectedKinds: ["component-template", "content-template", "page-template"],
+      actualKind: undefined,
+    });
+  });
+});
+
+describe("validateRecipeSet — page-template + page layout references", () => {
+  const pageTemplate: Recipe = {
+    kind: "page-template",
+    schemaVersion: "1",
+    handle: "landing-page@1",
+    name: "LandingPage",
+    displayName: "Landing Page",
+    fields: [],
+  };
+
+  it("flags an unresolved page-template insertOptions handle (must be a page-template)", () => {
+    const result = validateRecipeSet([{ ...pageTemplate, insertOptions: ["not-a-page@1"] }]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "landing-page@1",
+      fromField: "insertOptions.0",
+      handle: "not-a-page@1",
+      expectedKinds: ["page-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved componentHandle in a page-template layout placement", () => {
+    const result = validateRecipeSet([
+      {
+        ...pageTemplate,
+        layout: { placeholders: { "/main": [{ componentHandle: "ghost-comp@1" }] } },
+      },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "landing-page@1",
+      fromField: "layout.placeholders./main.0.componentHandle",
+      handle: "ghost-comp@1",
+      expectedKinds: ["component-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved template on a PageRecipe and a missing initialHome target", () => {
+    const page: Recipe = {
+      kind: "page",
+      schemaVersion: "1",
+      handle: "home@1",
+      name: "Home",
+      displayName: "Home",
+      template: "ghost-template@1",
+      fields: {},
+      layout: { placeholders: { "/main": [{ componentHandle: "ghost-comp@1" }] } },
+    };
+    const result = validateRecipeSet([page]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "home@1",
+      fromField: "template",
+      handle: "ghost-template@1",
+      expectedKinds: ["page-template"],
+      actualKind: undefined,
+    });
+    // The page's layout placement is also walked.
+    expect(
+      result.unresolvedHandles.some(
+        (u) => u.fromField === "layout.placeholders./main.0.componentHandle"
+      )
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage top-up #2 — branches the suites above don't reach: placedIn
+// allow-set push, empty-whitelist placeholders, content-item reference-shape
+// refs, component-template parameters/children, page-design layout
+// datasourceRef, and page initialHome.
+// ---------------------------------------------------------------------------
+
+describe("validateRecipeSet — placedIn extends a placeholder allow-set", () => {
+  it("a component listing a placeholder in placedIn is treated as allowed there", () => {
+    // `card@1` declares it belongs in `/main` via `placedIn`; that pushes
+    // `card@1` into the `/main` allow-set, so its placement is legal even
+    // though the PlaceholderRecipe's own allowedComponents omits it.
+    const slot: Recipe = {
+      kind: "placeholder",
+      schemaVersion: "1",
+      handle: "main-ph@1",
+      key: "/main",
+      name: "Main",
+      displayName: "Main",
+      allowedComponents: ["button@1"],
+    };
+    const button: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "button@1",
+      name: "Button",
+      displayName: "Button",
+      fields: [],
+      variants: [],
+      params: [],
+    };
+    const card: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "card@1",
+      name: "Card",
+      displayName: "Card",
+      fields: [],
+      variants: [],
+      params: [],
+      placedIn: ["/main"],
+    };
+    const partial: Recipe = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "p@1",
+      name: "P",
+      displayName: "P",
+      layout: { placeholders: { "/main": [{ componentHandle: "card@1" }] } },
+    };
+    const result = validateRecipeSet([slot, button, card, partial]);
+    // `card@1` is allowed in `/main` thanks to its `placedIn` entry.
+    expect(result.placementViolations).toEqual([]);
+    expect(isValid(result)).toBe(true);
+  });
+});
+
+describe("validateRecipeSet — empty-whitelist placeholder is unrestricted", () => {
+  it("does not flag placements into a recipe-defined placeholder with an empty whitelist", () => {
+    // The placeholder is recipe-defined but carries no allowedComponents —
+    // an unrestricted slot. checkLayoutPlacements skips it (allow.size === 0).
+    const openSlot: Recipe = {
+      kind: "placeholder",
+      schemaVersion: "1",
+      handle: "open-ph@1",
+      key: "/open",
+      name: "Open",
+      displayName: "Open",
+    };
+    const rogue: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "rogue@1",
+      name: "Rogue",
+      displayName: "Rogue",
+      fields: [],
+      variants: [],
+      params: [],
+    };
+    const partial: Recipe = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "p2@1",
+      name: "P2",
+      displayName: "P2",
+      layout: { placeholders: { "/open": [{ componentHandle: "rogue@1" }] } },
+    };
+    const result = validateRecipeSet([openSlot, rogue, partial]);
+    expect(result.placementViolations).toEqual([]);
+  });
+});
+
+describe("validateRecipeSet — content-item reference-shape field refs", () => {
+  it("walks a content-item link-internal ref and a reference refs[] list", () => {
+    const contentItem: Recipe = {
+      kind: "content-item",
+      schemaVersion: "1",
+      handle: "promo@1",
+      name: "Promo",
+      displayName: "Promo",
+      templateType: "missing-template@1",
+      fields: {
+        Link: { shape: "link-internal", ref: "ghost-link@1" },
+        Related: { shape: "reference", refs: ["ghost-a@1", "ghost-b@1"] },
+      },
+    };
+    const result = validateRecipeSet([contentItem]);
+    const fields = result.unresolvedHandles.map((u) => u.fromField);
+    expect(fields).toContain("templateType");
+    expect(fields).toContain("fields.Link.ref");
+    expect(fields).toContain("fields.Related.refs.0");
+    expect(fields).toContain("fields.Related.refs.1");
+  });
+});
+
+describe("validateRecipeSet — component-template parameters + children", () => {
+  it("flags an unresolved parameters handle (must be a design-parameters-template)", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "hero@1",
+      name: "Hero",
+      displayName: "Hero",
+      fields: [],
+      variants: [],
+      params: [],
+      parameters: { handle: "ghost-params@1" },
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "hero@1",
+      fromField: "parameters.handle",
+      handle: "ghost-params@1",
+      expectedKinds: ["design-parameters-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved children.allowedHandles entry", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "list@1",
+      name: "List",
+      displayName: "List",
+      fields: [],
+      variants: [],
+      params: [],
+      children: { allowedHandles: ["ghost-child@1"] },
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "list@1",
+      fromField: "children.allowedHandles.0",
+      handle: "ghost-child@1",
+      expectedKinds: ["component-template", "content-template", "page-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags an unresolved component-template field sourceTypes handle", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "picker@1",
+      name: "Picker",
+      displayName: "Picker",
+      variants: [],
+      params: [],
+      fields: [
+        {
+          name: "Target",
+          shape: "reference",
+          sitecore: { type: "droplink", sourceTypes: ["ghost-source@1"] },
+        },
+      ],
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "picker@1",
+      fromField: "fields.0.sitecore.sourceTypes.0",
+      handle: "ghost-source@1",
+      expectedKinds: ["component-template", "content-template", "page-template"],
+      actualKind: undefined,
+    });
+  });
+});
+
+describe("validateRecipeSet — partial-design + page-design datasource refs", () => {
+  it("flags an unresolved shared datasourceRef handle in a partial-design layout", () => {
+    const partial: Recipe = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "header@1",
+      name: "Header",
+      displayName: "Header",
+      layout: {
+        placeholders: {
+          "/header": [
+            {
+              componentHandle: "ghost-comp@1",
+              datasourceRef: { kind: "shared", handle: "ghost-ds@1" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([partial]);
+    const fields = result.unresolvedHandles.map((u) => u.fromField);
+    expect(fields).toContain("layout.placeholders./header.0.componentHandle");
+    expect(fields).toContain("layout.placeholders./header.0.datasourceRef.handle");
+  });
+
+  it("walks a page-design's own layout placeholders for unresolved refs", () => {
+    const design: Recipe = {
+      kind: "page-design",
+      schemaVersion: "1",
+      handle: "default@1",
+      name: "Default",
+      displayName: "Default",
+      appliesTo: [],
+      partials: [],
+      layout: {
+        placeholders: {
+          "/body": [
+            {
+              componentHandle: "ghost-body-comp@1",
+              datasourceRef: { kind: "shared", handle: "ghost-body-ds@1" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([design]);
+    const fields = result.unresolvedHandles.map((u) => u.fromField);
+    expect(fields).toContain("layout.placeholders./body.0.componentHandle");
+    expect(fields).toContain("layout.placeholders./body.0.datasourceRef.handle");
+  });
+});
+
+describe("validateRecipeSet — site initialHome reference", () => {
+  it("flags a SiteRecipe initialHome that resolves to the wrong kind", () => {
+    const siteTemplate: Recipe = {
+      kind: "site-template",
+      schemaVersion: "1",
+      handle: "brand@1",
+      name: "Brand",
+      displayName: "Brand",
+      pageTemplates: [],
+      pageDesigns: [],
+    };
+    const site = {
+      kind: "site",
+      schemaVersion: "1",
+      handle: "acme@1",
+      name: "Acme",
+      displayName: "Acme",
+      siteTemplate: "brand@1",
+      language: "en",
+      collectionName: "Brands",
+      // initialHome must be a `page` — pointing it at the site-template
+      // resolves to the wrong kind.
+      initialHome: "brand@1",
+    } as const satisfies Recipe;
+    const result = validateRecipeSet([siteTemplate, site]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "acme@1",
+      fromField: "initialHome",
+      handle: "brand@1",
+      expectedKinds: ["page"],
+      actualKind: "site-template",
+    });
+  });
+
+  it("walks page link-internal and reference field refs", () => {
+    const page: Recipe = {
+      kind: "page",
+      schemaVersion: "1",
+      handle: "home@1",
+      name: "Home",
+      displayName: "Home",
+      template: "ghost-tpl@1",
+      fields: {
+        Hero: { shape: "link-internal", ref: "ghost-hero@1" },
+        Cards: { shape: "reference", refs: ["ghost-card@1"] },
+      },
+    };
+    const result = validateRecipeSet([page]);
+    const fields = result.unresolvedHandles.map((u) => u.fromField);
+    expect(fields).toContain("fields.Hero.ref");
+    expect(fields).toContain("fields.Cards.refs.0");
+  });
+});
+
+describe("formatValidationErrors — cyclic + actualKind-known rendering", () => {
+  it("renders a cyclic insertOptions chain line", () => {
+    const a: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "a@1",
+      name: "A",
+      displayName: "A",
+      fields: [],
+      insertOptions: ["b@1"],
+    };
+    const b: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "b@1",
+      name: "B",
+      displayName: "B",
+      fields: [],
+      insertOptions: ["a@1"],
+    };
+    const formatted = formatValidationErrors(validateRecipeSet([a, b]));
+    expect(formatted).toContain("Cyclic insertOptions chain:");
+  });
+
+  it("renders the 'found a X recipe' branch when a ref resolves to the wrong kind", () => {
+    const wrongKind: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "thing@1",
+      name: "Thing",
+      displayName: "Thing",
+      fields: [],
+    };
+    const page: Recipe = {
+      kind: "page",
+      schemaVersion: "1",
+      handle: "p@1",
+      name: "P",
+      displayName: "P",
+      template: "thing@1", // a content-template, not a page-template
+      fields: {},
+    };
+    const formatted = formatValidationErrors(validateRecipeSet([wrongKind, page]));
+    expect(formatted).toContain("found a content-template recipe");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Branch top-up — layout datasourceRef arms + sourceTypes loops + cycles
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("validateRecipeSet — sourceTypes loops on every template kind", () => {
+  it("flags an unresolved component-template param sourceTypes handle", () => {
+    const comp: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "card@1",
+      name: "Card",
+      displayName: "Card",
+      fields: [],
+      variants: [],
+      params: [
+        {
+          name: "Theme",
+          shape: "enum",
+          sitecore: { sourceTypes: ["ghost-template@1"] },
+        },
+      ] as never,
+    };
+    const result = validateRecipeSet([comp]);
+    expect(result.unresolvedHandles[0]).toMatchObject({
+      handle: "ghost-template@1",
+      fromField: "params.0.sitecore.sourceTypes.0",
+    });
+  });
+
+  it("flags an unresolved content-template field sourceTypes handle", () => {
+    const content: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "doc@1",
+      name: "Doc",
+      displayName: "Doc",
+      fields: [
+        {
+          name: "Related",
+          shape: "reference",
+          sitecore: { sourceTypes: ["ghost@1"] },
+        },
+      ] as never,
+    };
+    const result = validateRecipeSet([content]);
+    expect(result.unresolvedHandles[0]).toMatchObject({
+      handle: "ghost@1",
+      fromField: "fields.0.sitecore.sourceTypes.0",
+    });
+  });
+});
+
+describe("validateRecipeSet — layout datasourceRef.handle on page-design / page-template / page", () => {
+  const comp: Recipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "hero@1",
+    name: "Hero",
+    displayName: "Hero",
+    fields: [],
+    variants: [],
+    params: [],
+  };
+
+  it("flags an unresolved shared datasourceRef in a page-design's own layout", () => {
+    const design: Recipe = {
+      kind: "page-design",
+      schemaVersion: "1",
+      handle: "design@1",
+      name: "Design",
+      displayName: "Design",
+      appliesTo: [],
+      partials: [],
+      layout: {
+        placeholders: {
+          "/main": [
+            {
+              componentHandle: "hero@1",
+              datasourceRef: { kind: "shared", handle: "ghost-content@1" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([comp, design]);
+    expect(
+      result.unresolvedHandles.some(
+        (u) => u.handle === "ghost-content@1" && u.fromField.includes("datasourceRef.handle")
+      )
+    ).toBe(true);
+  });
+
+  it("flags an unresolved shared datasourceRef in a page-template layout", () => {
+    const tpl: Recipe = {
+      kind: "page-template",
+      schemaVersion: "1",
+      handle: "page-tpl@1",
+      name: "PageTpl",
+      displayName: "Page Tpl",
+      fields: [],
+      layout: {
+        placeholders: {
+          "/main": [
+            {
+              componentHandle: "hero@1",
+              datasourceRef: { kind: "shared", handle: "ghost-content@1" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([comp, tpl]);
+    expect(
+      result.unresolvedHandles.some(
+        (u) => u.handle === "ghost-content@1" && u.fromField.includes("datasourceRef.handle")
+      )
+    ).toBe(true);
+  });
+
+  it("flags an unresolved shared datasourceRef in a page layout", () => {
+    const pageTpl: Recipe = {
+      kind: "page-template",
+      schemaVersion: "1",
+      handle: "pt@1",
+      name: "PT",
+      displayName: "PT",
+      fields: [],
+    };
+    const page: Recipe = {
+      kind: "page",
+      schemaVersion: "1",
+      handle: "page@1",
+      name: "Page",
+      displayName: "Page",
+      template: "pt@1",
+      fields: {},
+      layout: {
+        placeholders: {
+          "/main": [
+            {
+              componentHandle: "hero@1",
+              datasourceRef: { kind: "shared", handle: "ghost-content@1" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([comp, pageTpl, page]);
+    expect(
+      result.unresolvedHandles.some(
+        (u) => u.handle === "ghost-content@1" && u.fromField.includes("datasourceRef.handle")
+      )
+    ).toBe(true);
+  });
+
+  it("does not flag a scoped datasourceRef (only shared refs are checked)", () => {
+    const tpl: Recipe = {
+      kind: "page-template",
+      schemaVersion: "1",
+      handle: "page-tpl@1",
+      name: "PageTpl",
+      displayName: "Page Tpl",
+      fields: [],
+      layout: {
+        placeholders: {
+          "/main": [
+            {
+              componentHandle: "hero@1",
+              datasourceRef: { kind: "scoped", slot: "data" },
+            },
+          ],
+        },
+      },
+    };
+    const result = validateRecipeSet([comp, tpl]);
+    // A scoped ref has no handle to resolve — no unresolved entry from it.
+    expect(result.unresolvedHandles).toEqual([]);
+  });
+});
+
+describe("validateRecipeSet — placement-violation 'allowed: none' rendering", () => {
+  it("renders 'none' when an empty-but-extended whitelist still excludes the component", () => {
+    // Placeholder with one explicit allowed component; a different
+    // component placed into it is a violation listing the allow-set.
+    const allowed: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "allowed@1",
+      name: "Allowed",
+      displayName: "Allowed",
+      fields: [],
+      variants: [],
+      params: [],
+    };
+    const intruder: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "intruder@1",
+      name: "Intruder",
+      displayName: "Intruder",
+      fields: [],
+      variants: [],
+      params: [],
+    };
+    const ph: Recipe = {
+      kind: "placeholder",
+      schemaVersion: "1",
+      handle: "ph@1",
+      name: "Ph",
+      displayName: "Ph",
+      key: "main",
+      allowedComponents: ["allowed@1"],
+    };
+    const partial: Recipe = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "partial@1",
+      name: "Partial",
+      displayName: "Partial",
+      layout: {
+        placeholders: { main: [{ componentHandle: "intruder@1" }] },
+      },
+    };
+    const result = validateRecipeSet([allowed, intruder, ph, partial]);
+    expect(result.placementViolations).toHaveLength(1);
+    const formatted = formatValidationErrors(result);
+    // allowed-set is non-empty here → the join renders the allowed handle.
+    expect(formatted).toContain("allowed: allowed@1");
+  });
+});
+
+describe("detectInsertOptionsCycles — normalization", () => {
+  it("normalizes a B→C→A→B cycle to start at the smallest handle", () => {
+    const mk = (handle: string, next: string): Recipe => ({
+      kind: "content-template",
+      schemaVersion: "1",
+      handle,
+      name: handle,
+      displayName: handle,
+      fields: [],
+      insertOptions: [next],
+    });
+    // Declare in non-alphabetical order so DFS hits the cycle mid-ring.
+    const recipes = [mk("c@1", "a@1"), mk("b@1", "c@1"), mk("a@1", "b@1")];
+    const result = validateRecipeSet(recipes);
+    expect(result.cycles).toHaveLength(1);
+    // Normalized to start at the alphabetically-smallest handle.
+    expect(result.cycles[0].startHandle).toBe("a@1");
+    expect(result.cycles[0].cycle[0]).toBe("a@1");
+    expect(result.cycles[0].cycle[result.cycles[0].cycle.length - 1]).toBe("a@1");
+  });
+
+  it("reports a single cycle once even when reachable from multiple roots", () => {
+    const mk = (handle: string, next?: string): Recipe => ({
+      kind: "content-template",
+      schemaVersion: "1",
+      handle,
+      name: handle,
+      displayName: handle,
+      fields: [],
+      ...(next ? { insertOptions: [next] } : {}),
+    });
+    // root@1 → a@1 → b@1 → a@1 ; the cycle (a,b) is found once.
+    const recipes = [mk("root@1", "a@1"), mk("a@1", "b@1"), mk("b@1", "a@1")];
+    const result = validateRecipeSet(recipes);
+    expect(result.cycles).toHaveLength(1);
+  });
+});

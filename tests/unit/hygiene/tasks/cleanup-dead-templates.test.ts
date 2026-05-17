@@ -245,3 +245,409 @@ describe("cleanup dead-templates — pre-flight blocker check", () => {
     expect(searchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("cleanup dead-templates — empty-folder cleanup walk", () => {
+  it("deletes a folder that ends up empty after the purge", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: "/sitecore/templates/Project/T1" },
+    ] as never);
+    // The folder walk: root has one child folder which itself has no children.
+    const client = stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+    });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    expect(result.folders).toHaveLength(1);
+    expect(result.folders[0].status).toBe("deleted");
+    expect(result.folders[0].path).toBe("/sitecore/templates/Project/EmptyFolder");
+    // deleteItem with permanently:true is called on the empty folder.
+    expect(client.deleteItem).toHaveBeenCalledWith({
+      itemId: "empty-folder",
+      permanently: true,
+    });
+  });
+
+  it("keeps a parent folder when a child folder's delete fails", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    // Root → OuterFolder → InnerFolder (empty). InnerFolder's delete
+    // fails, so the walk reports OuterFolder as still-non-empty and
+    // never attempts to delete it.
+    const client = stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "outer-folder",
+              name: "OuterFolder",
+              path: "/sitecore/templates/Project/OuterFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        if (path === "/sitecore/templates/Project/OuterFolder") {
+          return Promise.resolve([
+            {
+              itemId: "inner-folder",
+              name: "InnerFolder",
+              path: "/sitecore/templates/Project/OuterFolder/InnerFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+      deleteItem: vi.fn().mockImplementation(({ itemId }: { itemId: string }) => {
+        if (itemId === "inner-folder") return Promise.reject(new Error("inner is locked"));
+        return Promise.resolve(undefined);
+      }),
+    });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    // Only the failed inner-folder action is recorded; OuterFolder is
+    // never deleted because its child did not end up empty.
+    expect(result.folders).toHaveLength(1);
+    expect(result.folders[0].itemId).toBe("inner-folder");
+    expect(result.folders[0].status).toBe("failed");
+    expect(client.deleteItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports folder deletions as what-if without calling deleteItem", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    const client = stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+    });
+
+    const result = await runCleanupDeadTemplates({ whatIf: true, json: true } as never);
+
+    expect(result.folders).toHaveLength(1);
+    expect(result.folders[0].status).toBe("what-if");
+    expect(client.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it("captures a folder-delete failure without aborting", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    const client = stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+      deleteItem: vi.fn().mockRejectedValue(new Error("folder is locked")),
+    });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    expect(result.folders).toHaveLength(1);
+    expect(result.folders[0].status).toBe("failed");
+    expect(result.folders[0].error).toContain("folder is locked");
+    expect(client.deleteItemTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes nested empty folders bottom-up", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    const client = stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "outer",
+              name: "Outer",
+              path: "/sitecore/templates/Project/Outer",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        if (path === "/sitecore/templates/Project/Outer") {
+          return Promise.resolve([
+            {
+              itemId: "inner",
+              name: "Inner",
+              path: "/sitecore/templates/Project/Outer/Inner",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        // Inner folder is empty.
+        return Promise.resolve([]);
+      }) as never,
+    });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    // Inner deleted first, then Outer becomes empty and is deleted too.
+    expect(result.folders.map((f) => f.path).sort()).toEqual([
+      "/sitecore/templates/Project/Outer",
+      "/sitecore/templates/Project/Outer/Inner",
+    ]);
+    expect(client.deleteItem).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cleanup dead-templates — template-cache lag retry", () => {
+  it("retries a delete that 4xxes with a 'dependent' message and then succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      setup();
+      vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+        { templateId: "t1", name: "T1", fullName: null },
+      ] as never);
+      const deleteSpy = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("template still has dependent items"))
+        .mockResolvedValueOnce(undefined);
+      stub({ deleteItemTemplate: deleteSpy });
+
+      const promise = runCleanupDeadTemplates({ json: true } as never);
+      // Advance past the first retry delay (4000ms) so the retry fires.
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await promise;
+
+      expect(result.templates[0].status).toBe("purged");
+      expect(deleteSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces a non-lag delete error immediately without retrying", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    const deleteSpy = vi.fn().mockRejectedValue(new Error("permission denied"));
+    stub({ deleteItemTemplate: deleteSpy });
+
+    const result = await runCleanupDeadTemplates({ json: true } as never);
+
+    expect(result.templates[0].status).toBe("failed");
+    expect(result.templates[0].error).toContain("permission denied");
+    // A non-transient error is surfaced on the first attempt — no retry.
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after exhausting all retry attempts on a persistent lag error", async () => {
+    vi.useFakeTimers();
+    try {
+      setup();
+      vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+        { templateId: "t1", name: "T1", fullName: null },
+      ] as never);
+      const deleteSpy = vi.fn().mockRejectedValue(new Error("template is used by other items"));
+      stub({ deleteItemTemplate: deleteSpy });
+
+      const promise = runCleanupDeadTemplates({ json: true } as never);
+      // 3 retry delays: 4s + 10s + 25s = 39s.
+      await vi.advanceTimersByTimeAsync(40_000);
+      const result = await promise;
+
+      expect(result.templates[0].status).toBe("failed");
+      // 1 initial attempt + 3 retries.
+      expect(deleteSpy).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("cleanup dead-templates — non-JSON report formatting", () => {
+  const suppressStdout = () => vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+  it("prints the what-if banner and plan summary in non-JSON mode", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: "/sitecore/templates/Project/T1" },
+    ] as never);
+    stub({});
+    const writeSpy = suppressStdout();
+    try {
+      const result = await runCleanupDeadTemplates({ whatIf: true } as never);
+      expect(result.templates[0].status).toBe("what-if");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("formats purged, failed, and folder lines in non-JSON mode", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: "/sitecore/templates/Project/T1" },
+      { templateId: "t2", name: "T2", fullName: null },
+    ] as never);
+    const client = stub({
+      deleteItemTemplate: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("base template in use")),
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+    });
+    const writeSpy = suppressStdout();
+    try {
+      const result = await runCleanupDeadTemplates({});
+      expect(result.templates[0].status).toBe("purged");
+      expect(result.templates[1].status).toBe("failed");
+      expect(result.folders[0].status).toBe("deleted");
+      expect(client.deleteItemTemplate).toHaveBeenCalledTimes(2);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("formats blocked template lines with blocker detail in non-JSON mode", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t-blocked", name: "Blocked", fullName: "/sitecore/templates/Project/Blocked" },
+    ] as never);
+    const client = stub({
+      search: vi
+        .fn()
+        .mockResolvedValueOnce({
+          results: [
+            {
+              itemId: "inheritor-1",
+              path: "/sitecore/templates/Project/Inheritor",
+              name: "Inheritor",
+              templateId: null,
+              templateName: null,
+            },
+          ],
+        })
+        .mockResolvedValue({ results: [] }),
+    });
+    const writeSpy = suppressStdout();
+    try {
+      const result = await runCleanupDeadTemplates({});
+      expect(result.templates[0].status).toBe("blocked");
+      expect(client.deleteItemTemplate).not.toHaveBeenCalled();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("formats what-if folder lines in non-JSON mode", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+    });
+    const writeSpy = suppressStdout();
+    try {
+      const result = await runCleanupDeadTemplates({ whatIf: true });
+      expect(result.folders[0].status).toBe("what-if");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("formats failed folder lines in non-JSON mode", async () => {
+    setup();
+    vi.mocked(runAuditDeadTemplates).mockResolvedValueOnce([
+      { templateId: "t1", name: "T1", fullName: null },
+    ] as never);
+    stub({
+      getChildren: vi.fn().mockImplementation(({ path }: { path?: string }) => {
+        if (path === "/sitecore/templates/Project") {
+          return Promise.resolve([
+            {
+              itemId: "empty-folder",
+              name: "EmptyFolder",
+              path: "/sitecore/templates/Project/EmptyFolder",
+              templateId: null,
+              templateName: "Template folder",
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }) as never,
+      deleteItem: vi.fn().mockRejectedValue(new Error("folder locked")),
+    });
+    const writeSpy = suppressStdout();
+    try {
+      const result = await runCleanupDeadTemplates({});
+      expect(result.folders[0].status).toBe("failed");
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+});

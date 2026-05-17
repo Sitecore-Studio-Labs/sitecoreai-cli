@@ -22,6 +22,8 @@ const apiMocks = vi.hoisted(() => ({
   fetchEnvironmentRestartStatus: vi.fn(),
   restartEnvironment: vi.fn(),
   promoteEnvironmentDeployment: vi.fn(),
+  probeEnvironmentHealth: vi.fn(),
+  resolveHostFromEnvironment: vi.fn(),
 }));
 
 vi.mock("../../../../src/deploy/api/environments", () => ({
@@ -46,6 +48,20 @@ const sharedMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../../src/deploy/tasks/shared", () => sharedMocks);
+
+// runDeployEnvironmentsDelete resolves the environment for the
+// destructive-tier gate; mock that policy seam so the delete tests
+// don't depend on an on-disk config.
+const policyMocks = vi.hoisted(() => ({
+  resolveEnvironment: vi.fn(),
+  ensureAllowWrite: vi.fn(),
+}));
+vi.mock("../../../../src/policy/environment", () => ({
+  resolveEnvironment: policyMocks.resolveEnvironment,
+}));
+vi.mock("../../../../src/policy/allow-write", () => ({
+  ensureAllowWrite: policyMocks.ensureAllowWrite,
+}));
 
 const deploymentResultMock = vi.hoisted(() => ({
   printDeploymentResult: vi.fn(),
@@ -75,6 +91,12 @@ describe("deploy environments branches", () => {
     sharedMocks.resolveDeployEnvironmentId.mockResolvedValue("env-1");
     sharedMocks.resolveDeployProjectId.mockResolvedValue("proj-1");
     logger.isJson.mockReturnValue(false);
+    policyMocks.resolveEnvironment.mockReturnValue({
+      root: { environments: {} },
+      envName: "test",
+      environment: {},
+      timeoutMs: undefined,
+    });
   });
 
   it("filters project environments by type (walker default)", async () => {
@@ -446,5 +468,194 @@ describe("deploy environments branches", () => {
       "deploy.environments.restart",
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("prints the org-wide single-page result directly when a type filter matches rows", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchEnvironments.mockResolvedValue({ items: [{ id: "env-1", type: "cm" }] });
+    sharedMocks.extractDeployEnvironmentList.mockReturnValue([{ id: "env-1", type: "cm" }]);
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ type: "cm", page: 1 });
+
+    // list.length > 0 → no fallback re-fetch.
+    expect(apiMocks.fetchEnvironments).toHaveBeenCalledTimes(1);
+    expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.list",
+      { items: [{ id: "env-1", type: "cm" }] }
+    );
+  });
+
+  it("does not re-walk when the walker type filter finds rows or totalCount is positive", async () => {
+    sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 3,
+      pageSize: 50,
+      items: [{ id: "env-1", type: "cm" }],
+    });
+    sharedMocks.filterEnvironmentsByType.mockReturnValue([]);
+
+    const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsList({ type: "cm" });
+
+    // filteredData empty but totalCount > 0 → fallback condition is false.
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledTimes(1);
+  });
+
+  it("upserts an environment variable when --what-if is unset", async () => {
+    apiMocks.upsertEnvironmentVariable.mockResolvedValue({ name: "KEY" });
+    const { runDeployEnvironmentsVariablesCreate } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsVariablesCreate({ variable: "KEY", value: "VALUE" });
+
+    expect(apiMocks.upsertEnvironmentVariable).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "env-1",
+      "KEY",
+      { value: "VALUE", target: undefined, secret: undefined }
+    );
+  });
+
+  it("deletes an environment variable when --what-if is unset", async () => {
+    apiMocks.deleteEnvironmentVariable.mockResolvedValue({ deleted: true });
+    const { runDeployEnvironmentsVariablesDelete } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsVariablesDelete({ variable: "KEY" });
+
+    expect(apiMocks.deleteEnvironmentVariable).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "env-1",
+      "KEY"
+    );
+  });
+
+  it("prints what-if for regenerate-context and runs the API call otherwise", async () => {
+    apiMocks.regenerateEnvironmentContext.mockResolvedValue({ ok: true });
+    const { runDeployEnvironmentsRegenerateContext } =
+      await import("../../../../src/deploy/tasks/environments");
+
+    await runDeployEnvironmentsRegenerateContext({ whatIf: true });
+    expect(sharedMocks.printDeployWhatIf).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.regenerate-context",
+      expect.objectContaining({ method: "POST" })
+    );
+
+    await runDeployEnvironmentsRegenerateContext({});
+    expect(apiMocks.regenerateEnvironmentContext).toHaveBeenCalled();
+  });
+
+  it("links a repository when all fields are present and --what-if is unset", async () => {
+    apiMocks.linkEnvironmentRepository.mockResolvedValue({ linked: true });
+    const { runDeployEnvironmentsLinkRepository } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsLinkRepository({
+      repositoryName: "repo",
+      repositoryId: "rid",
+      integrationId: "iid",
+      repositoryRelativePath: "/",
+      repositoryBranch: "main",
+    });
+
+    expect(apiMocks.linkEnvironmentRepository).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "env-1",
+      expect.objectContaining({
+        repository: "repo",
+        repositoryId: "rid",
+        integrationId: "iid",
+        repositoryRelativePath: "/",
+        repositoryBranch: "main",
+      })
+    );
+  });
+
+  it("prints what-if for repository link without calling the API", async () => {
+    const { runDeployEnvironmentsLinkRepository } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsLinkRepository({
+      repositoryName: "repo",
+      repositoryId: "rid",
+      integrationId: "iid",
+      repositoryRelativePath: "/",
+      repositoryBranch: "main",
+      whatIf: true,
+    });
+    expect(sharedMocks.printDeployWhatIf).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.repository.link",
+      expect.objectContaining({ method: "PUT" })
+    );
+    expect(apiMocks.linkEnvironmentRepository).not.toHaveBeenCalled();
+  });
+
+  it("restarts the environment when destructive confirmation is granted", async () => {
+    sharedMocks.confirmDestructive.mockResolvedValue(true);
+    apiMocks.restartEnvironment.mockResolvedValue({ restarted: true });
+    const { runDeployEnvironmentsRestart } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsRestart({});
+
+    expect(apiMocks.restartEnvironment).toHaveBeenCalledWith(
+      { accessToken: "token", baseUrl: "https://api.example" },
+      "env-1"
+    );
+  });
+
+  it("probes environment health against the resolved host", async () => {
+    apiMocks.fetchEnvironment.mockResolvedValue({ cmHost: "https://cm.example" });
+    apiMocks.resolveHostFromEnvironment.mockReturnValue("https://cm.example");
+    apiMocks.probeEnvironmentHealth.mockResolvedValue({ ready: true });
+    const { runDeployEnvironmentsHealth } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsHealth({});
+
+    expect(apiMocks.probeEnvironmentHealth).toHaveBeenCalledWith("https://cm.example");
+    expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
+      logger,
+      expect.objectContaining({ envName: "demo" }),
+      "deploy.environments.health",
+      { ready: true }
+    );
+  });
+
+  it("throws when the environment has no resolvable host for a health probe", async () => {
+    apiMocks.fetchEnvironment.mockResolvedValue({});
+    apiMocks.resolveHostFromEnvironment.mockReturnValue(undefined);
+    const { runDeployEnvironmentsHealth } =
+      await import("../../../../src/deploy/tasks/environments");
+    await expect(runDeployEnvironmentsHealth({})).rejects.toThrow(/no resolvable host/);
+    expect(apiMocks.probeEnvironmentHealth).not.toHaveBeenCalled();
+  });
+
+  it("swallows CONFIG_NOT_FOUND from the delete policy gate (mocked-context tests)", async () => {
+    const { createScaiError } = await import("../../../../src/shared/errors");
+    policyMocks.resolveEnvironment.mockImplementation(() => {
+      throw createScaiError("no config", "CONFIG_NOT_FOUND");
+    });
+    sharedMocks.confirmDestructive.mockResolvedValue(true);
+    apiMocks.deleteEnvironment.mockResolvedValue({ deleted: true });
+    const { runDeployEnvironmentsDelete } =
+      await import("../../../../src/deploy/tasks/environments");
+    await runDeployEnvironmentsDelete({ force: true });
+    // The CONFIG_NOT_FOUND is swallowed; delete still proceeds.
+    expect(apiMocks.deleteEnvironment).toHaveBeenCalled();
+  });
+
+  it("re-throws a non-CONFIG_NOT_FOUND error from the delete policy gate", async () => {
+    const { createScaiError } = await import("../../../../src/shared/errors");
+    policyMocks.resolveEnvironment.mockImplementation(() => {
+      throw createScaiError("policy says no", "POLICY_DENIED");
+    });
+    const { runDeployEnvironmentsDelete } =
+      await import("../../../../src/deploy/tasks/environments");
+    await expect(runDeployEnvironmentsDelete({})).rejects.toMatchObject({
+      code: "POLICY_DENIED",
+    });
+    expect(apiMocks.deleteEnvironment).not.toHaveBeenCalled();
   });
 });

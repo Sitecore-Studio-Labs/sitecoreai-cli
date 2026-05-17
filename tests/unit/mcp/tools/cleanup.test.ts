@@ -307,6 +307,185 @@ describe("cleanup_execute — denyMcpElevation gate", () => {
   });
 });
 
+describe("cleanup_execute — per-verb required-input validation", () => {
+  const expectInvalid = async (input: Record<string, unknown>): Promise<void> => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("cleanup_execute")!
+        .handler({ allowWrite: true, ...input } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  };
+
+  it("versions-prune without `keep` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "versions-prune", root: "/sitecore/content" }));
+
+  it("versions-prune without `root` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "versions-prune", keep: 5 }));
+
+  it("versions-archive without `keep` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "versions-archive", root: "/sitecore/content" }));
+
+  it("empty-folders without `root` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "empty-folders" }));
+
+  it("find-replace without `pattern` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "find-replace", replacement: "x" }));
+
+  it("find-replace without `replacement` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "find-replace", pattern: "foo" }));
+
+  it("field-set without `field` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "field-set", value: "x" }));
+
+  it("field-set in a non-clear mode without `value` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "field-set", field: "Title" }));
+
+  it("rename without `pattern` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "rename", replacement: "x" }));
+
+  it("language-versions-add without `languages` throws INPUT_INVALID", () =>
+    expectInvalid({ verb: "language-versions-add" }));
+});
+
+describe("cleanup_execute — valid required-input paths", () => {
+  it("versions-prune with keep + root dispatches to the runner", async () => {
+    hygieneMocks.runCleanupVersionsPrune.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("cleanup_execute")!
+      .handler(
+        { verb: "versions-prune", keep: 3, root: "/sitecore/content", allowWrite: true },
+        fakeContext,
+        fakeExtra
+      );
+    const call = hygieneMocks.runCleanupVersionsPrune.mock.calls.at(-1)?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(call.keep).toBe(3);
+    expect(call.root).toBe("/sitecore/content");
+    expect(call.allowWrite).toBe(true);
+  });
+
+  it("field-set mode='clear' is permitted without a `value`", async () => {
+    hygieneMocks.runCleanupFieldSet.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("cleanup_execute")!
+      .handler(
+        { verb: "field-set", field: "Description", mode: "clear", allowWrite: true },
+        fakeContext,
+        fakeExtra
+      );
+    const call = hygieneMocks.runCleanupFieldSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(call.field).toBe("Description");
+    expect(call.mode).toBe("clear");
+  });
+
+  it("find-replace forwards pattern + replacement + literal", async () => {
+    hygieneMocks.runCleanupFindReplace.mockClear();
+    const reg = await setup();
+    await reg.getTool("cleanup_execute")!.handler(
+      {
+        verb: "find-replace",
+        pattern: "old",
+        replacement: "new",
+        literal: true,
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    const call = hygieneMocks.runCleanupFindReplace.mock.calls.at(-1)?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(call.pattern).toBe("old");
+    expect(call.replacement).toBe("new");
+    expect(call.literal).toBe(true);
+  });
+
+  it("language-versions-add forwards the languages array", async () => {
+    hygieneMocks.runCleanupLanguageVersionAdd.mockClear();
+    const reg = await setup();
+    await reg
+      .getTool("cleanup_execute")!
+      .handler(
+        { verb: "language-versions-add", languages: ["fr", "de"], allowWrite: true },
+        fakeContext,
+        fakeExtra
+      );
+    const call = hygieneMocks.runCleanupLanguageVersionAdd.mock.calls.at(-1)?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(call.languages).toEqual(["fr", "de"]);
+  });
+});
+
+describe("cleanup — result envelope", () => {
+  it("reports count=0 + a '0 actions' summary on an empty result", async () => {
+    hygieneMocks.runCleanupRoles.mockResolvedValueOnce([]);
+    const reg = await setup();
+    const result = await reg
+      .getTool("cleanup_execute")!
+      .handler({ verb: "roles", allowWrite: true }, fakeContext, fakeExtra);
+    expect((result.structuredContent as { count: number }).count).toBe(0);
+    expect(result.content[0]!.text).toContain("0 action");
+  });
+
+  it("summarizes a non-empty result by per-action status", async () => {
+    hygieneMocks.runCleanupRoles.mockResolvedValueOnce([
+      { status: "deleted" },
+      { status: "deleted" },
+      { status: "skipped" },
+    ] as never);
+    const reg = await setup();
+    const result = await reg
+      .getTool("cleanup_execute")!
+      .handler({ verb: "roles", allowWrite: true }, fakeContext, fakeExtra);
+    const structured = result.structuredContent as { count: number; actions: unknown[] };
+    expect(structured.count).toBe(3);
+    expect(structured.actions).toHaveLength(3);
+    // summary string aggregates the status tally.
+    expect(result.content[0]!.text).toMatch(/deleted=2/);
+    expect(result.content[0]!.text).toMatch(/skipped=1/);
+  });
+
+  it("dead-templates flattens the {templates, folders} envelope into a flat action list", async () => {
+    hygieneMocks.runCleanupDeadTemplates.mockResolvedValueOnce({
+      templates: [{ status: "deleted" }],
+      folders: [{ status: "deleted" }, { status: "deleted" }],
+    } as never);
+    const reg = await setup();
+    const result = await reg
+      .getTool("cleanup_execute")!
+      .handler({ verb: "dead-templates", allowWrite: true }, fakeContext, fakeExtra);
+    // 1 template + 2 folders flattened to 3 actions.
+    expect((result.structuredContent as { count: number }).count).toBe(3);
+  });
+});
+
+describe("cleanup_preview — validation runs before the runner", () => {
+  it("cleanup_preview also enforces per-verb required inputs", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("cleanup_preview")!
+        .handler({ verb: "versions-prune" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("cleanup_preview structuredContent always reports whatIf=true", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("cleanup_preview")!
+      .handler({ verb: "roles" }, fakeContext, fakeExtra);
+    expect((result.structuredContent as { whatIf: boolean }).whatIf).toBe(true);
+  });
+});
+
 describe("cleanup_execute — CLI/MCP parity", () => {
   it("every CLI cleanup group has at least one corresponding MCP verb", async () => {
     // Authoritative CLI surface: the commander tree built by

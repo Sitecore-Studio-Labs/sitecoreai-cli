@@ -282,7 +282,17 @@ describe("sitecore api", () => {
         data: { ping: true },
       })
     );
-    const env = makeEnv({ host: "example.local/", accessToken: undefined, authority: undefined });
+    // No token AND no acquisition path: `accessToken` is cleared, and so
+    // are `clientId`/`clientSecret` — a resolvable credential pair is now
+    // itself an acquisition path, so leaving the `makeEnv` defaults would
+    // make `getAccessToken` attempt a client-credentials mint.
+    const env = makeEnv({
+      host: "example.local/",
+      accessToken: undefined,
+      authority: undefined,
+      clientId: undefined,
+      clientSecret: undefined,
+    });
     const result = await runGraphQL<{ ping: boolean }>(env, "query { ping }");
     expect(result.ping).toBe(true);
     const [url, init] = fetchMock.mock.calls[0] as [string, { headers?: Record<string, string> }];

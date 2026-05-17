@@ -147,7 +147,7 @@ export const clearDeployToken = async (envName: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     // NoEntry on delete is idempotent success; other errors warn.
     return false;
@@ -190,27 +190,33 @@ export const clearPublishingToken = async (envName: string): Promise<boolean> =>
       SERVICE_NAME,
       makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
     );
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
 };
 
-export const getBriefToken = async (envName: string): Promise<string | undefined> => {
+/**
+ * The cached Content Operations Brief API token, keyed by Sitecore
+ * `organizationId`. The Brief API is org-scoped — one minted token
+ * covers every env profile in the organization — so the cache key is
+ * the org id, not an env-profile name.
+ */
+export const getBriefToken = async (orgId: string): Promise<string | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
     return undefined;
   }
-  return readPassword(ring, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
+  return readPassword(ring, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
 };
 
-export const setBriefToken = async (envName: string, token: string): Promise<boolean> => {
+export const setBriefToken = async (orgId: string, token: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
     await entry.setPassword(token);
     return true;
   } catch {
@@ -219,14 +225,14 @@ export const setBriefToken = async (envName: string, token: string): Promise<boo
   }
 };
 
-export const clearBriefToken = async (envName: string): Promise<boolean> => {
+export const clearBriefToken = async (orgId: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -262,7 +268,7 @@ export const clearCampaignToken = async (envName: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -308,7 +314,7 @@ export const clearAgentsCredential = async (envName: string): Promise<boolean> =
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -348,7 +354,7 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -396,7 +402,7 @@ export const clearCmClientSecret = async (envName: string): Promise<boolean> => 
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -443,7 +449,7 @@ export const clearOrgClientSecret = async (orgId: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -493,7 +499,7 @@ export const clearBrandClientSecret = async (orgId: string): Promise<boolean> =>
       SERVICE_NAME,
       makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId)
     );
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }
@@ -529,7 +535,7 @@ export const clearBrandToken = async (orgId: string): Promise<boolean> => {
   }
   try {
     const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
-    return entry.deleteCredential();
+    return await entry.deleteCredential();
   } catch {
     return false;
   }

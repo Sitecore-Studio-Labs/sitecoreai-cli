@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpContext } from "../../../../src/mcp/auth";
 
 /**
@@ -57,20 +57,27 @@ const brandMocks = vi.hoisted(() => ({
 
 vi.mock("../../../../src/brand/index", () => brandMocks);
 
+// `readRootConfiguration` is overridable per-test so the
+// resolveBrandClient error branches (no org, no credential) can be
+// exercised. The default echoes a two-env / two-org workspace.
+const defaultRootConfig = {
+  defaultEnvironment: "test-env",
+  environments: {
+    "test-env": { organizationId: "org_ABC123", name: "test-env" },
+    "prod-env": { organizationId: "org_PROD999", name: "prod-env" },
+  },
+  brand: {
+    org_ABC123: { clientId: "client-x" },
+    org_PROD999: { clientId: "client-prod" },
+  },
+};
+
+const configMocks = vi.hoisted(() => ({
+  readRootConfiguration: vi.fn(),
+}));
+
 vi.mock("../../../../src/config/root-config", () => ({
-  // Two environments in two orgs — `prod-env` exists so retargeting
-  // tests can exercise the "derive org from the target env" path.
-  readRootConfiguration: () => ({
-    defaultEnvironment: "test-env",
-    environments: {
-      "test-env": { organizationId: "org_ABC123", name: "test-env" },
-      "prod-env": { organizationId: "org_PROD999", name: "prod-env" },
-    },
-    brand: {
-      org_ABC123: { clientId: "client-x" },
-      org_PROD999: { clientId: "client-prod" },
-    },
-  }),
+  readRootConfiguration: configMocks.readRootConfiguration,
 }));
 
 const fakeContext: McpContext = {
@@ -97,6 +104,11 @@ const setup = async () => {
   const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");
   return buildScaiMcpRegistry();
 };
+
+beforeEach(() => {
+  configMocks.readRootConfiguration.mockReset();
+  configMocks.readRootConfiguration.mockReturnValue(defaultRootConfig);
+});
 
 describe("brand_inspect tool", () => {
   it("registers with read auth + readOnlyHint=true", async () => {
@@ -159,6 +171,61 @@ describe("brand_inspect tool", () => {
     expect(brandMocks.listDocuments).toHaveBeenCalledWith(
       expect.objectContaining({ brandKitId: "kit-1", status: "failed" })
     );
+  });
+});
+
+describe("brand_inspect — remaining verbs", () => {
+  it("routes verb='get-kit' to getBrandKit and returns the kit", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("brand_inspect")!
+      .handler({ verb: "get-kit", brandKitId: "kit-1" }, fakeContext, fakeExtra);
+    expect(brandMocks.getBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-1" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "get-kit", kit: { id: "kit-1" } });
+  });
+
+  it("routes verb='list-fields' with brandKitId + sectionId", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("brand_inspect")!
+      .handler(
+        { verb: "list-fields", brandKitId: "kit-1", sectionId: "sec-1" },
+        fakeContext,
+        fakeExtra
+      );
+    expect(brandMocks.listBrandKitFields).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-1", sectionId: "sec-1" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "list-fields", count: 1 });
+  });
+
+  it("requires documentId for verb='get-doc'", async () => {
+    const reg = await setup();
+    await expect(
+      reg.getTool("brand_inspect")!.handler({ verb: "get-doc" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("routes verb='get-doc' to getDocument", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("brand_inspect")!
+      .handler({ verb: "get-doc", documentId: "doc-1" }, fakeContext, fakeExtra);
+    expect(brandMocks.getDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: "doc-1" })
+    );
+    expect(result.structuredContent).toMatchObject({ verb: "get-doc" });
+  });
+
+  it("requires brandKitId for verb='list-sections'", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_inspect")!
+        .handler({ verb: "list-sections" } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 });
 
@@ -423,6 +490,180 @@ describe("brand_manage tool", () => {
     );
     // Two onProgress calls = two sendProgress invocations.
     expect(fakeExtra.sendProgress).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("brand_manage — remaining actions + validation", () => {
+  it("publish-kit without brandKitId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler({ action: "publish-kit", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("delete-kit without brandKitId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler({ action: "delete-kit", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("delete-kit routes to deleteBrandKit and reports deleted", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("brand_manage")!
+      .handler(
+        { action: "delete-kit", brandKitId: "kit-9", allowWrite: true },
+        fakeContext,
+        fakeExtra
+      );
+    expect(brandMocks.deleteBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-9" })
+    );
+    expect(result.structuredContent).toMatchObject({
+      action: "delete-kit",
+      brandKitId: "kit-9",
+      deleted: true,
+    });
+  });
+
+  it("delete-doc without documentId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler({ action: "delete-doc", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("delete-doc routes to deleteDocument", async () => {
+    const reg = await setup();
+    const result = await reg
+      .getTool("brand_manage")!
+      .handler(
+        { action: "delete-doc", documentId: "doc-7", allowWrite: true },
+        fakeContext,
+        fakeExtra
+      );
+    expect(brandMocks.deleteDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: "doc-7" })
+    );
+    expect(result.structuredContent).toMatchObject({ action: "delete-doc", deleted: true });
+  });
+
+  it("run-ingestion without brandKitId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler({ action: "run-ingestion", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("run-ingestion forwards documentIds + populateSections", async () => {
+    const reg = await setup();
+    await reg.getTool("brand_manage")!.handler(
+      {
+        action: "run-ingestion",
+        brandKitId: "kit-1",
+        documentIds: ["d-1"],
+        populateSections: false,
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(brandMocks.runBrandIngestionPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brandKitId: "kit-1",
+        documentIds: ["d-1"],
+        populateSections: false,
+      })
+    );
+  });
+
+  it("run-enrichment without brandKitId throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler({ action: "run-enrichment", allowWrite: true } as never, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("run-enrichment forwards sectionIds + fieldIds", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("brand_manage")!.handler(
+      {
+        action: "run-enrichment",
+        brandKitId: "kit-1",
+        sectionIds: ["sec-1"],
+        fieldIds: ["f-1"],
+        allowWrite: true,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(brandMocks.runEnrichSectionsPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ sectionIds: ["sec-1"], fieldIds: ["f-1"] })
+    );
+    expect(result.structuredContent).toMatchObject({ action: "run-enrichment" });
+  });
+
+  it("seed without name throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler(
+          { action: "seed", url: "https://x.com/a.pdf", allowWrite: true } as never,
+          fakeContext,
+          fakeExtra
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("seed without url throws INPUT_INVALID", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brand_manage")!
+        .handler(
+          { action: "seed", name: "Acme", allowWrite: true } as never,
+          fakeContext,
+          fakeExtra
+        )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+});
+
+describe("brand tools — resolveBrandClient error branches", () => {
+  it("throws INPUT_INVALID when the target env has no organizationId", async () => {
+    configMocks.readRootConfiguration.mockReturnValue({
+      defaultEnvironment: "test-env",
+      environments: { "test-env": { name: "test-env" } },
+      brand: {},
+    });
+    const reg = await setup();
+    await expect(
+      reg.getTool("brand_inspect")!.handler({ verb: "list-kits" }, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("throws AUTH_BRAND_REQUIRED when no Brand credential is configured for the org", async () => {
+    configMocks.readRootConfiguration.mockReturnValue({
+      defaultEnvironment: "test-env",
+      environments: { "test-env": { organizationId: "org_NOCRED", name: "test-env" } },
+      brand: {},
+    });
+    const reg = await setup();
+    await expect(
+      reg.getTool("brand_inspect")!.handler({ verb: "list-kits" }, fakeContext, fakeExtra)
+    ).rejects.toMatchObject({ code: "AUTH_BRAND_REQUIRED" });
   });
 });
 

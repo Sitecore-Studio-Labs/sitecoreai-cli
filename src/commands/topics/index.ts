@@ -65,16 +65,22 @@ export const createTopicsCommand = (): Command => {
 
   const list = new Command("list").description("List every topic with its one-line summary.");
   addVerbosityOptions(list);
-  list.action((options) => {
-    printTopicList(toLogger(options));
+  list.action(() => {
+    // `--json` (and the other verbosity flags) are registered on `topics`
+    // as well as here, so Commander parses a post-subcommand `--json` onto
+    // the `topics` ancestor — `list.opts()` would miss it. Read the merged
+    // ancestor-inclusive view instead.
+    printTopicList(toLogger(list.optsWithGlobals()));
   });
 
   const show = new Command("show")
     .description("Expand one topic into its recommended-run command sequence.")
     .argument("<name>", "Topic slug to expand — see `scai cli topics list`.");
   addVerbosityOptions(show);
-  show.action((name: string, options) => {
-    const logger = toLogger(options);
+  show.action((name: string) => {
+    // See the note in `list.action` — verbosity flags can land on the
+    // `topics` ancestor, so read the merged view.
+    const logger = toLogger(show.optsWithGlobals());
     const topic = TOPICS.find((t) => t.name === name);
     if (!topic) {
       logger.warn(
@@ -91,8 +97,8 @@ export const createTopicsCommand = (): Command => {
 
   // Bare `scai cli topics` defaults to the index — the most common need.
   addVerbosityOptions(command);
-  command.action((options) => {
-    printTopicList(toLogger(options));
+  command.action(() => {
+    printTopicList(toLogger(command.optsWithGlobals()));
   });
 
   command.addHelpText(

@@ -443,16 +443,25 @@ const withResolvedClientCredential = async (
 
 /**
  * Pure OAuth acquisition: refresh-token-on-env, then client-credentials.
- * Does NOT read or write the keychain, and does NOT return the env's
+ * Does NOT touch the keychain token cache, and does NOT return the env's
  * embedded `accessToken` literal — callers wanting the literal-or-acquired
  * union should check `environment.accessToken` themselves first.
  *
- * For the client-credentials path the automation-client secret is
- * resolved through the shared three-tier chain (env var → env-scoped
- * keychain client → org-scoped keychain client) — the env profile never
- * carries it. This read of the OS keychain is the one exception to the
- * "does NOT read the keychain" note above; it reads the long-lived
- * client credential, never the short-lived token cache.
+ * The client-credentials mint fires whenever a `{ clientId, clientSecret }`
+ * pair resolves through the shared three-tier chain — the
+ * `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` env var (bring-your-own-client),
+ * the env-scoped automation client (`automationClient` block + the
+ * `cm-client:<env>` keychain secret), or the org-scoped automation
+ * client. A resolvable automation client IS the acquisition path: there
+ * is no separate opt-in flag. `useClientCredentials` survives only as a
+ * config-file marker for the bring-your-own-client hatch — `setup env`
+ * mints an automation client without it, and that client must still
+ * work. (This was the bug: the mint was gated on `useClientCredentials`,
+ * so a scai-minted automation client could never produce a CM token.)
+ *
+ * Resolving that pair reads the OS keychain for the long-lived client
+ * secret — the one keychain touch here; the short-lived token cache is
+ * never read or written by this function (that is `getAccessToken`'s job).
  *
  * Library callers (orchestrators, MCP servers, tests) that bring their
  * own token cache should call this directly. The CLI uses `getAccessToken`
@@ -465,10 +474,42 @@ export const acquireAccessToken = async (
   if (refreshed?.accessToken) {
     return refreshed;
   }
-  if (environment.useClientCredentials) {
-    return requestClientCredentialsToken(await withResolvedClientCredential(environment));
+  const resolved = await withResolvedClientCredential(environment);
+  if (resolved.clientId && resolved.clientSecret) {
+    return requestClientCredentialsToken(resolved);
   }
   return undefined;
+};
+
+/**
+ * Skew applied to a cached CM token's expiry: a token within this window
+ * of expiring is treated as already stale, so it re-mints *before* the
+ * request rather than racing the clock and 401-ing mid-flight.
+ */
+const CM_TOKEN_EXPIRY_SKEW_MS = 60_000;
+
+/**
+ * Whether a cached CM token bundle is still safe to use. Freshness is
+ * computed from `lastUpdated + expiresIn`. A bundle missing either field
+ * (legacy cache entries) is treated as usable — worst case is one 401
+ * that the next call recovers from, matching the prior behavior.
+ *
+ * The expiry check is what makes an empty / stale `cm:` slot self-heal:
+ * once the cached token lapses, `getAccessToken` falls through to
+ * `acquireAccessToken`, which re-mints from the automation client.
+ */
+const isCmTokenFresh = (bundle: {
+  expiresIn?: number | null;
+  lastUpdated?: string | null;
+}): boolean => {
+  if (!bundle.expiresIn || !bundle.lastUpdated) {
+    return true;
+  }
+  const expiresAt = Date.parse(bundle.lastUpdated) + bundle.expiresIn * 1000;
+  if (Number.isNaN(expiresAt)) {
+    return true;
+  }
+  return Date.now() < expiresAt - CM_TOKEN_EXPIRY_SKEW_MS;
 };
 
 export const getAccessToken = async (
@@ -477,7 +518,7 @@ export const getAccessToken = async (
   const envName = environment.name;
   const shouldCache = environment.cacheAuthenticationToken !== false && Boolean(envName);
   const cached = shouldCache && envName ? await getCmTokens(envName) : undefined;
-  if (cached?.accessToken) {
+  if (cached?.accessToken && isCmTokenFresh(cached)) {
     return cached.accessToken;
   }
 

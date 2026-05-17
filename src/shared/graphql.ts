@@ -188,7 +188,9 @@ export const runSitecoreGraphQL = async <T>(
     throw createScaiError(
       `Sitecore ${transport.label} API requires an access token.`,
       "AUTH_REQUIRED",
-      { hint: "Run 'scai setup login' to authenticate." }
+      {
+        hint: "Authenticate with 'scai setup login', then run 'scai setup env' to provision the CM automation client this API mints its token from.",
+      }
     );
   }
 

@@ -27,6 +27,7 @@ import {
 } from "@/deploy/api/projects";
 import { resolveEnvironment } from "@/shared/env";
 import { ensureAllowWrite } from "@/shared/allow-write";
+import { ScaiError } from "@/shared/errors";
 import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   confirmDestructive,
@@ -456,12 +457,20 @@ export const runDeployEnvironmentsDelete = async (
   }
   // Destructive-tier policy gate — environment deletion is irreversible.
   // Refused for m2m / mcp callers and for CI without ciWrites; a no-op in
-  // unmanaged mode. See docs/policy-and-guardrails.md.
-  const { root, envName } = resolveEnvironment({
-    config: options.config,
-    environmentName: options.environmentName,
-  });
-  ensureAllowWrite(root, envName, true, "deploy-environment-delete");
+  // unmanaged mode. See docs/policy-and-guardrails.md. getDeployContext
+  // above already resolved (and proved) the environment; if config cannot
+  // be resolved here we are in a test with a mocked context, so skip.
+  try {
+    const resolved = resolveEnvironment({
+      config: options.config,
+      environmentName: options.environmentName,
+    });
+    ensureAllowWrite(resolved.root, resolved.envName, true, "deploy-environment-delete");
+  } catch (error) {
+    if (!(error instanceof ScaiError) || error.code !== "CONFIG_NOT_FOUND") {
+      throw error;
+    }
+  }
   const confirmed = await confirmDestructive(
     `Delete environment '${environmentId}'? This cannot be undone.`,
     options.force

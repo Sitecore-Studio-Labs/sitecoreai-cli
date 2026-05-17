@@ -68,6 +68,18 @@ describe("recipe sandbox", () => {
     }
   });
 
+  it("refuses a filesystem write attempted from inside the sandbox", async () => {
+    const target = path.join(dir, "recipe-must-not-write-this.txt");
+    const file = writeRecipe(
+      "writer.recipe.ts",
+      `import fs from "node:fs";\n` +
+        `fs.writeFileSync(${JSON.stringify(target)}, "x");\n` +
+        `export default {};`
+    );
+    await expect(loadRecipeInSandbox(file)).rejects.toBeInstanceOf(ScaiError);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
   it("isRecipeSandboxEnabled honours the SITECOREAI_RECIPE_SANDBOX opt-out", () => {
     const prior = process.env.SITECOREAI_RECIPE_SANDBOX;
     try {

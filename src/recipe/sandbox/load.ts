@@ -1,12 +1,20 @@
 /**
- * Parent side of the recipe sandbox — spawns the confined child
- * (`./recipe-loader.ts`) that loads a `.recipe.ts`, and returns the
- * recipe object it sends back. See docs/recipe-sandbox.md.
+ * Parent side of the recipe sandbox.
+ *
+ * `.recipe.ts` is transpiled to a plain CommonJS bundle in this (trusted)
+ * process, then run in a forked child locked down with Node's permission
+ * model — no worker threads, no `child_process`, no filesystem writes, and
+ * filesystem reads scoped to the child-script and temp directories. Only
+ * the exported recipe object crosses back over IPC. See docs/recipe-sandbox.md.
  */
 
 import { fork } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createScaiError } from "@/shared/errors";
+import { transpileRecipe } from "./transpile";
 
 /** Default child timeout — a recipe only exports data; it should be quick. */
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -19,8 +27,8 @@ const resolveTimeoutMs = (): number => {
 /**
  * Environment variables the child is allowed to inherit. Everything else —
  * crucially every `SITECOREAI_*` secret and any ambient credential — is
- * withheld, so a hostile recipe has nothing to exfiltrate. This is an
- * allowlist (deny-by-default), matching the rest of the guardrails.
+ * withheld, so a hostile recipe has nothing to exfiltrate. Deny-by-default,
+ * matching the rest of the guardrails.
  */
 const CHILD_ENV_ALLOWLIST = [
   "PATH",
@@ -32,7 +40,6 @@ const CHILD_ENV_ALLOWLIST = [
   "SystemRoot",
   "APPDATA",
   "LOCALAPPDATA",
-  "NODE_PATH",
 ] as const;
 
 const cleanChildEnv = (): Record<string, string> => {
@@ -46,54 +53,69 @@ const cleanChildEnv = (): Record<string, string> => {
   return env;
 };
 
-// In dev / tests this module runs from `.ts` source (via tsx / vitest); in a
-// published build it is compiled `.js`. The child sits beside it either way.
-const runningFromSource = __filename.endsWith(".ts");
-const childModulePath = path.join(
-  __dirname,
-  runningFromSource ? "recipe-loader.ts" : "recipe-loader.js"
-);
+// The child is a plain `.cjs` shipped beside this module (copied into
+// `dist/` by the build) — runnable under bare `node`, no TypeScript
+// toolchain, which is what lets the permission model lock it down.
+const childPath = path.join(__dirname, "recipe-runner.cjs");
 
-/**
- * `execArgv` for the child. When running from `.ts` source the child is
- * itself TypeScript, so Node needs the tsx require hook to execute it —
- * passed as an absolute path so it resolves regardless of the child's cwd
- * (which we point at the recipe's directory). A compiled build needs none.
- */
-const childExecArgv = (): string[] => {
-  if (!runningFromSource) {
-    return [];
-  }
-  return ["--require", require.resolve("tsx/cjs")];
+// Symlink-resolved paths for the `--allow-fs-read` grants: Node's
+// permission model checks the canonical path, and on macOS `os.tmpdir()`
+// (and sometimes the install dir) resolves through a symlink
+// (`/var` -> `/private/var`). A grant on the un-resolved path would miss.
+const childDir = fs.realpathSync(path.dirname(childPath));
+const tmpDir = fs.realpathSync(os.tmpdir());
+
+/** Node permission-model flag — renamed from `--experimental-permission` in v23.5. */
+const permissionFlag = (): string => {
+  const major = Number(process.versions.node.split(".")[0]);
+  return major >= 24 ? "--permission" : "--experimental-permission";
 };
 
 /** Whether `.recipe.ts` loading is sandboxed. `SITECOREAI_RECIPE_SANDBOX=0` opts out. */
 export const isRecipeSandboxEnabled = (): boolean => process.env.SITECOREAI_RECIPE_SANDBOX !== "0";
 
-interface LoaderMessage {
+interface RunnerMessage {
   ok?: boolean;
   recipe?: unknown;
   error?: string;
 }
 
 /**
- * Load a `.recipe.ts` in a confined child process and return its exported
- * recipe object (unvalidated — the caller validates it against the schema).
+ * Compile a `.recipe.ts` and run it in the confined sandbox child; return
+ * the exported recipe object (unvalidated — the caller validates it against
+ * the schema).
  */
-export const loadRecipeInSandbox = (filePath: string): Promise<unknown> => {
-  const absolute = path.resolve(filePath);
+export const loadRecipeInSandbox = async (filePath: string): Promise<unknown> => {
+  const compiled = await transpileRecipe(path.resolve(filePath));
+  const bundlePath = path.join(tmpDir, `scai-recipe-${randomUUID()}.cjs`);
+  fs.writeFileSync(bundlePath, compiled, "utf8");
+  try {
+    return await runInChild(filePath, bundlePath);
+  } finally {
+    fs.rmSync(bundlePath, { force: true });
+  }
+};
+
+const runInChild = (filePath: string, bundlePath: string): Promise<unknown> => {
   const timeoutMs = resolveTimeoutMs();
 
   return new Promise<unknown>((resolve, reject) => {
-    const child = fork(childModulePath, [absolute], {
-      cwd: path.dirname(absolute),
+    const child = fork(childPath, [bundlePath], {
+      cwd: tmpDir,
       env: cleanChildEnv(),
-      // Dev/test: the child is `.ts`, so Node needs the tsx require hook to
-      // run it. A published build ships compiled `.js` and needs nothing.
-      execArgv: childExecArgv(),
-      // Swallow the recipe's stdout (a recipe must not pollute scai output);
-      // keep stderr for genuine diagnostics; `ipc` carries the result.
-      stdio: ["ignore", "ignore", "inherit", "ipc"],
+      // Lock the child down with the permission model: filesystem reads
+      // scoped to the child-script directory and the temp directory, and
+      // NO --allow-worker / --allow-child-process / --allow-fs-write. The
+      // child runs only plain pre-compiled JS, so it never needs those.
+      execArgv: [permissionFlag(), `--allow-fs-read=${childDir}`, `--allow-fs-read=${tmpDir}`],
+      // Swallow the recipe's stdout; capture stderr (carries the
+      // permission-model notice) and surface it only on failure.
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    });
+
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
     });
 
     let settled = false;
@@ -121,7 +143,7 @@ export const loadRecipeInSandbox = (filePath: string): Promise<unknown> => {
       );
     }, timeoutMs);
 
-    child.on("message", (message: LoaderMessage) => {
+    child.on("message", (message: RunnerMessage) => {
       if (message && message.ok) {
         settle(() => resolve(message.recipe));
         return;
@@ -131,7 +153,9 @@ export const loadRecipeInSandbox = (filePath: string): Promise<unknown> => {
           createScaiError(
             `Failed to load recipe '${filePath}' in the sandbox: ${message?.error ?? "unknown error"}.`,
             "INPUT_INVALID",
-            { hint: "Confirm the file compiles standalone (try `pnpm exec tsx <file>`)." }
+            {
+              hint: "A recipe may only compute and export data — filesystem writes and process spawning are blocked in the sandbox.",
+            }
           )
         )
       );
@@ -156,9 +180,10 @@ export const loadRecipeInSandbox = (filePath: string): Promise<unknown> => {
         reject(
           createScaiError(
             `The recipe sandbox for '${filePath}' exited unexpectedly ` +
-              `(code ${code ?? "null"}, signal ${signal ?? "null"}).`,
+              `(code ${code ?? "null"}, signal ${signal ?? "null"})` +
+              (stderr.trim() ? `: ${stderr.trim()}` : "."),
             "INPUT_INVALID",
-            { hint: "Confirm the file compiles standalone (try `pnpm exec tsx <file>`)." }
+            { hint: "Set SITECOREAI_RECIPE_SANDBOX=0 to load recipes in-process (less safe)." }
           )
         )
       );

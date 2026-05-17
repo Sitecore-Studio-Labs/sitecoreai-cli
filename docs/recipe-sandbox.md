@@ -1,103 +1,94 @@
-# Recipe execution sandbox (Phase 4)
+# Recipe execution sandbox
 
-`.recipe.ts` files are TypeScript that scai compiles and `require()`s. Until
-Phase 4 that happened **in scai's own process** — so loading a recipe ran
-arbitrary code with scai's full privileges: the filesystem, `process.env`
-(which can hold deploy tokens and client secrets), the OS keychain, the
-network, `child_process`. A weaponized `sitecoreai.cli.json` can redirect
-the `recipes` glob at a hostile `.recipe.ts`; merely _listing_ or _compiling_
-recipes would then execute it.
+`.recipe.ts` files are TypeScript that scai loads to read the recipe they
+export. Loading one used to mean `require()`-ing it **in scai's own
+process** — arbitrary code execution with scai's full privileges (the
+filesystem, `process.env`, the OS keychain, the network, `child_process`)
+from a file a weaponized config could point the `recipes` glob at; merely
+listing or compiling recipes would run it.
 
-Phase 4 moves `.recipe.ts` loading **out of process**.
+Recipe loading is now a two-process design that both isolates that code and
+confines it at the OS level.
 
 ## The contract that makes this clean
 
 A `.recipe.ts` is not a program — it is a TypeScript file that **exports a
-declarative `Recipe` object**. The recipe's effect comes later, when
+declarative `Recipe` object**. The recipe's effect happens later, when
 `executeIr` interprets the compiled IR against a tenant; the `.recipe.ts`
-itself only computes and exports data. That data is **pure and fully
-JSON-serialisable** — no functions, no class instances (verified across
-every recipe kind in `src/recipe/schema/recipe.ts`).
+itself only computes and exports data, and that data is pure and fully
+JSON-serialisable (no functions — verified across every recipe kind in
+`src/recipe/schema/recipe.ts`).
 
-So the loading contract is narrow: **file path in → `Recipe` JSON out.** The
-untrusted code can run in an isolated child; only validated _data_ crosses
-back.
+So loading splits into two steps with a narrow contract between them:
+**compile** (`.recipe.ts` → JS — pure, no execution) and **run** (the JS
+executes and produces the `Recipe` object).
 
-## Design — child process
-
-`loadRecipeFromTypeScript` (`src/recipe/io.ts`) no longer `require()`s the
-recipe. It forks a child:
+## Design — transpile in the parent, run in a confined child
 
 ```
-parent ── fork(recipe-loader, [<recipe-path>], clean env) ──▶ child
-                                                               │
-        child: register tsx · require(<recipe-path>)           │
-                                                               │
-parent ◀──────── recipe object over the IPC channel ───────────┘
+parent: esbuild compiles + bundles .recipe.ts -> one self-contained .cjs
+              |  (transpiling is not executing)
+              v  write the bundle to a temp file
+parent -- fork(recipe-runner.cjs, [bundle], clean env, permission flags) --> child
+                                                                             |
+                child: require(bundle) - read the exported recipe            |
+                                                                             |
+parent <--------------- recipe object over the IPC channel ------------------+
    parent: validate against RecipeSchema (unchanged)
 ```
 
-The child — `src/recipe/sandbox/recipe-loader.ts` — registers the tsx require
-hook, `require()`s the one recipe path passed as `argv[2]`, and sends the
-exported recipe object back over the fork IPC channel. IPC uses structured
-clone, so only plain data crosses — a recipe that exported a function would
-be rejected at the boundary. The parent (`src/recipe/sandbox/load.ts`)
-re-validates whatever arrives against the Zod schema.
+The compile step (`src/recipe/sandbox/transpile.ts`) runs in the **trusted
+parent** — esbuild reads and rewrites the source, it never runs the recipe.
+The run step (`src/recipe/sandbox/recipe-runner.cjs`) runs in a **forked
+child** that only `require()`s the pre-compiled bundle. Because the child
+needs no TypeScript toolchain, it can be locked down — see below. Only the
+exported recipe (plain data) crosses back, re-validated against the Zod
+schema.
 
-### Confinement of the child
+`.recipe.json` needs none of this — it is parsed with `JSON.parse`, no code
+runs. That path is unchanged.
 
-- **Clean environment** — the child receives a small allowlisted `env`
-  (`PATH`, `HOME`/`USERPROFILE`, the temp-dir vars, Windows `SystemRoot`),
-  **never scai's `process.env`**. A hostile recipe finds no tokens or
-  secrets to read or exfiltrate. This is the highest-value control.
-- **No keychain** — the child only loads the recipe; scai's keychain code is
-  never imported into it.
-- **Timeout** — a recipe that hangs is killed (`SIGKILL`) after a bounded
-  wait; the parent surfaces a clear error instead of hanging.
-- **Crash isolation** — a recipe that throws, or calls `process.exit`, or
-  segfaults a native addon, takes down only the child. Before Phase 4 it
-  took down scai.
+## Confinement of the child
 
-The child still runs as the same OS user as scai, so it _can_ touch the
-filesystem and spawn processes. What it cannot do is read scai's secrets or
-take scai down — and its only output is data re-validated against the schema.
+- **Node permission model** — the child is spawned with `--permission`
+  (`--experimental-permission` before Node 23.5): **no filesystem writes, no
+  `child_process`, no worker threads**, and filesystem reads scoped to the
+  child script and the one bundle file. A hostile recipe cannot delete or
+  corrupt files, spawn a process, or escape through a worker.
 
-### Out of scope / follow-up
+  This works only because the child runs plain pre-compiled JS. Running tsx
+  in the child — the earlier design — needs `--allow-worker` (tsx's esbuild
+  transform uses a worker thread), and Node itself warns that grant "could
+  invalidate the permission model". Moving the compile into the trusted
+  parent is what removes that need.
 
-- **OS-level confinement** — running the child under Node's permission model
-  does not work while the child loads `.recipe.ts` with tsx. tsx's transform
-  (esbuild) needs a worker thread, and `--allow-worker` is flagged by Node
-  itself as a grant that "could invalidate the permission model" — so the one
-  capability tsx requires is the one that defeats the sandbox. (Verified on
-  Node 22: without `--allow-worker` the transform throws `ERR_ACCESS_DENIED`;
-  with it, Node prints a security warning.) Real OS-level confinement needs a
-  redesign: the **parent** transpiles `.recipe.ts` to JS (trusted —
-  transpiling is not executing) and the child runs only the resulting plain
-  JS under a strict permission model (no worker, no child-process, no
-  fs-write). Tracked as a follow-up.
+- **Clean environment** — the child gets a small allowlisted `env`, never
+  scai's `process.env`. No tokens or secrets to read or exfiltrate.
+- **Timeout** — a recipe that hangs is `SIGKILL`ed; the parent surfaces a
+  clear error instead of hanging.
+- **Crash isolation** — a recipe that throws or calls `process.exit` takes
+  down only the child.
+
+### Out of scope
 
 - **Network egress** is not blocked — Node's permission model has no network
-  switch. This is acceptable: the child holds no secrets (clean env) and its
-  only output is `Recipe` data re-validated against the Zod schema, so a
-  hostile recipe has nothing to steal and cannot inject behaviour. Blocking
-  egress would need OS-level controls (a sandboxed user, a container).
-- **The `recipes` glob redirection** itself (a weaponised config pointing
-  the glob elsewhere) is unchanged — the sandbox confines what a loaded
-  recipe can _do_, not which files match. A recipe-file trust pin was
-  considered and deferred.
-- **`.recipe.json`** needs no sandbox — it is parsed with `JSON.parse`, no
-  code runs. That path is unchanged.
+  switch. Acceptable: the child holds no secrets, cannot read outside the
+  bundle, and its only output is `Recipe` data re-validated against the
+  schema — there is nothing to steal and no way to inject behaviour.
+- **The `recipes` glob redirection** itself is unchanged — the sandbox
+  confines what a loaded recipe can _do_, not which files match the glob. A
+  recipe-file trust pin was considered and deferred.
 
 ## Escape hatch
 
 `SITECOREAI_RECIPE_SANDBOX=0` forces the legacy in-process load — for
-debugging a recipe, or a constrained runtime where spawning fails. The
-sandbox is **on by default**; disabling it logs a one-line warning.
+debugging a recipe, or a runtime where spawning fails. The sandbox is on by
+default.
 
 ## Testing
 
 `tests/unit/recipe/sandbox.test.ts` — a benign recipe round-trips through the
 child; a recipe that throws surfaces a clean error; a recipe that hangs is
 killed by the timeout; a recipe that reads a stripped secret env var sees
-`undefined`. The child script is exercised against fixture `.recipe.ts`
-files under `tests/unit/recipe/_fixtures/`.
+`undefined`; and a recipe that attempts a filesystem write is refused by the
+permission model (and the file is never created).

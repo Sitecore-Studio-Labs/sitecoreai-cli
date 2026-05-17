@@ -104,7 +104,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\"",
     "changeset": "changeset",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx -r tsconfig-paths/register src/cli.ts",
@@ -117,7 +117,7 @@
     "lint:fix": "eslint . --fix",
     "prepack": "npm run build",
     "prepare": "husky",
-    "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && changeset publish",
+    "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
     "brand:codegen": "openapi-typescript src/brand/api/openapi.brand-management.yaml --output src/brand/api/schema.brand-management.d.ts && openapi-typescript src/brand/api/openapi.brand-review.yaml --output src/brand/api/schema.brand-review.d.ts && openapi-typescript src/brand/api/openapi.documents.yaml --output src/brand/api/schema.documents.d.ts && openapi-typescript src/brand/api/openapi.pipeline.yaml --output src/brand/api/schema.pipeline.d.ts",
     "smoke": "npm run build && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-mcp.cjs",
@@ -150,6 +150,7 @@
     "commander": "^12.1.0",
     "consola": "^3.4.2",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.28.0",
     "fast-glob": "^3.3.3",
     "ora": "^9.1.0",
     "tsx": "^4.21.0",

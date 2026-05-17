@@ -54,6 +54,10 @@ export interface EffectivePolicy {
   ceiling: RiskTier;
   /** Pinned identity, or `null` when the environment is not enrolled. */
   identity: EnvIdentity | null;
+  /** Phase 2 — whether `scai setup client create` may mint here (post repo-narrowing). */
+  mintCredentials: boolean;
+  /** Phase 2 — whether a CI caller may write/destructive here (post repo-narrowing). */
+  ciWrites: boolean;
 }
 
 /** Rank of a tier (`read` = 0, `mint` = 3). */

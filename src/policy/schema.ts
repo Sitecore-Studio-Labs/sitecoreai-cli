@@ -41,6 +41,10 @@ export const policyEnvironmentSchema = z.object({
   ceiling: riskTierSchema,
   enrolledAt: z.string().min(1),
   enrolledVia: enrollSourceSchema,
+  /** Phase 2 — may `scai setup client create` mint a client here. */
+  mintCredentials: z.boolean().optional(),
+  /** Phase 2 — may a CI caller perform write/destructive ops here. */
+  ciWrites: z.boolean().optional(),
 });
 
 /** The user-global workspace policy — the hard ceiling. */
@@ -56,7 +60,16 @@ export const workspacePolicySchema = z.object({
 export const repoPolicySchema = z.object({
   version: z.literal(1),
   allowEnvironments: z.array(z.string().min(1)).optional(),
-  environments: z.record(z.string(), z.object({ ceiling: riskTierSchema.optional() })).optional(),
+  environments: z
+    .record(
+      z.string(),
+      z.object({
+        ceiling: riskTierSchema.optional(),
+        mintCredentials: z.boolean().optional(),
+        ciWrites: z.boolean().optional(),
+      })
+    )
+    .optional(),
 });
 
 const formatIssues = (error: z.ZodError): string[] =>

@@ -1,5 +1,7 @@
+import path from "node:path";
 import type { RootConfiguration } from "@/config/types";
 import { createScaiError } from "./errors";
+import { authorizeOperation } from "@/policy";
 
 /**
  * Per-environment write gate. Throws `INPUT_INVALID` unless the
@@ -27,6 +29,15 @@ export const ensureAllowWrite = (
   envName: string,
   override?: boolean
 ): void => {
+  // Phase 2 workspace-policy gate — environment ceiling + caller context.
+  // Runs unconditionally: `--allow-write` (override) bypasses the config
+  // `allowWrite` requirement below but never the policy. A no-op in
+  // unmanaged mode. See docs/policy-and-guardrails.md.
+  authorizeOperation({
+    envName,
+    configRootDir: root.physicalPath ? path.dirname(root.physicalPath) : undefined,
+    tier: "write",
+  });
   const env = root.environments[envName];
   if (override || env?.allowWrite) return;
   const envKey = envName

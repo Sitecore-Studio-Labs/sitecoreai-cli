@@ -275,6 +275,7 @@ scai policy [options] [command]
 - [`scai policy show`](#scai-policy-show) — Show the effective workspace policy and the enrolled environments.
 - [`scai policy init`](#scai-policy-init) — Create the workspace policy, enrolling the default environment.
 - [`scai policy allow`](#scai-policy-allow) — Enroll an environment into the workspace-policy allowlist.
+- [`scai policy set`](#scai-policy-set) — Tune an enrolled environment — ceiling, CI-write permission, mint eligibility.
 - [`scai policy remove`](#scai-policy-remove) — Remove an environment from the workspace-policy allowlist.
 - [`scai policy trust`](#scai-policy-trust) — Re-pin an enrolled environment's tenant identity to the current config, after a legitimate change.
 
@@ -325,6 +326,27 @@ scai policy allow [options] [env]
 
 **Options**
 
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai policy set
+
+Tune an enrolled environment — ceiling, CI-write permission, mint eligibility.
+
+```
+scai policy set [options] [env]
+```
+
+**Options**
+
+- `--ceiling <tier>` — Cap the environment at this risk tier.
+- `--ci-writes <state>` — Allow or deny write/destructive operations from a CI caller.
+- `--mint <state>` — Allow or deny `scai setup client create` minting on this environment.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data

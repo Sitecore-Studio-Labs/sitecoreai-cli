@@ -13,7 +13,7 @@
  * must not trip the very gate they manage.
  */
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
 import type { CommonOptions } from "@/shared/cli-options";
 import { toLogger } from "@/shared/cli-tasks";
@@ -26,8 +26,10 @@ import {
   readWorkspacePolicy,
   repinEnvironment,
   resolveUserPolicyPath,
+  setEnvironmentFlags,
   unenrollEnvironment,
 } from "@/policy";
+import type { EnvironmentFlags, RiskTier } from "@/policy";
 
 interface PolicyOptions extends CommonOptions {
   environmentName?: string;
@@ -110,6 +112,8 @@ const runPolicyShow = async (options: PolicyOptions): Promise<void> => {
     ].filter(Boolean);
     logger.info(`\n  ${name}`, "green");
     logger.info(`    ceiling:  ${entry.ceiling}`);
+    logger.info(`    mint:     ${entry.mintCredentials ? "allowed" : "denied"}`);
+    logger.info(`    ciWrites: ${entry.ciWrites ? "allowed" : "denied"}`);
     logger.info(`    enrolled: ${entry.enrolledAt} (via ${entry.enrolledVia})`);
     logger.info(`    identity: ${idParts.length > 0 ? idParts.join(", ") : "(none pinned)"}`);
   }
@@ -218,6 +222,59 @@ const runPolicyTrust = async (
   );
 };
 
+interface PolicySetOptions extends PolicyOptions {
+  ceiling?: string;
+  ciWrites?: string;
+  mint?: string;
+}
+
+const runPolicySet = async (
+  envNameArg: string | undefined,
+  options: PolicySetOptions
+): Promise<void> => {
+  const logger = toLogger(options);
+  const configPath = options.config ?? process.cwd();
+  const envName =
+    envNameArg ??
+    options.environmentName ??
+    readRootConfigurationFile(configPath).config.defaultEnvProfile;
+  if (!envName) {
+    throw createScaiError("An environment name is required.", "INPUT_INVALID", {
+      hint: "Pass the environment name to tune.",
+    });
+  }
+
+  const flags: EnvironmentFlags = {};
+  if (options.ceiling) {
+    flags.ceiling = options.ceiling as RiskTier;
+  }
+  if (options.ciWrites) {
+    flags.ciWrites = options.ciWrites === "on";
+  }
+  if (options.mint) {
+    flags.mintCredentials = options.mint === "on";
+  }
+  if (Object.keys(flags).length === 0) {
+    throw createScaiError("Nothing to change.", "INPUT_INVALID", {
+      hint: "Pass at least one of --ceiling, --ci-writes, or --mint.",
+    });
+  }
+
+  const updated = setEnvironmentFlags(envName, flags);
+  if (!updated) {
+    throw createScaiError(
+      `Environment '${envName}' is not enrolled in the workspace policy.`,
+      "POLICY_DENIED",
+      { hint: `Run 'scai policy allow ${envName}' to enroll it first.` }
+    );
+  }
+  if (logger.isJson()) {
+    logger.json({ envName, ...flags });
+    return;
+  }
+  logger.info(`Updated the workspace policy for '${envName}'.`, "green");
+};
+
 export const createPolicyCommand = (): Command => {
   const command = new Command("policy").description(
     "Inspect and manage the workspace environment-policy guardrails — the allowlist of Sitecore environments scai may operate against."
@@ -268,9 +325,39 @@ export const createPolicyCommand = (): Command => {
     runPolicyTrust(env, options)
   );
 
+  const set = new Command("set")
+    .description("Tune an enrolled environment — ceiling, CI-write permission, mint eligibility.")
+    .argument("[env]", "Environment profile name (defaults to the configured default).")
+    .addOption(
+      new Option("--ceiling <tier>", "Cap the environment at this risk tier.").choices([
+        "read",
+        "write",
+        "destructive",
+        "mint",
+      ])
+    )
+    .addOption(
+      new Option(
+        "--ci-writes <state>",
+        "Allow or deny write/destructive operations from a CI caller."
+      ).choices(["on", "off"])
+    )
+    .addOption(
+      new Option(
+        "--mint <state>",
+        "Allow or deny `scai setup client create` minting on this environment."
+      ).choices(["on", "off"])
+    );
+  addConfigOption(set);
+  addVerbosityOptions(set);
+  set.action(async (env: string | undefined, options: PolicySetOptions) =>
+    runPolicySet(env, options)
+  );
+
   command.addCommand(show);
   command.addCommand(init);
   command.addCommand(allow);
+  command.addCommand(set);
   command.addCommand(remove);
   command.addCommand(trust);
 
@@ -286,6 +373,7 @@ export const createPolicyCommand = (): Command => {
       "Examples:",
       "  $ scai policy show                  # what is allowed right now",
       "  $ scai policy allow staging         # enroll a second environment",
+      "  $ scai policy set staging --ci-writes on   # let a CI caller write here",
       "  $ scai policy trust staging         # re-pin after a legitimate tenant change",
       "  $ scai policy remove staging        # revoke an environment",
       "",

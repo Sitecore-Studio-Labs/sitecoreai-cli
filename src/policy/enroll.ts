@@ -47,6 +47,12 @@ export const enrollEnvironment = (params: EnrollEnvironmentParams): EnrollResult
     ceiling: prior?.ceiling ?? params.ceiling ?? "write",
     enrolledAt: new Date().toISOString(),
     enrolledVia: prior?.enrolledVia ?? params.via,
+    // `setup login` is the operator interactively choosing this env, so a
+    // new login enrollment is mint-eligible; every other path is not. A
+    // prior value always wins — re-login never re-widens what an operator
+    // narrowed via `scai policy set`.
+    mintCredentials: prior?.mintCredentials ?? params.via === "setup-login",
+    ciWrites: prior?.ciWrites ?? false,
   };
   policy.environments[params.envName] = entry;
 
@@ -84,5 +90,32 @@ export const unenrollEnvironment = (envName: string): boolean => {
     return false;
   }
   delete policy.environments[envName];
+  return writeWorkspacePolicy(policy) !== null;
+};
+
+/** Phase 2 policy flags an operator may tune on an enrolled environment. */
+export interface EnvironmentFlags {
+  ceiling?: RiskTier;
+  mintCredentials?: boolean;
+  ciWrites?: boolean;
+}
+
+/**
+ * Explicitly update an enrolled environment's Phase 2 policy flags — the
+ * `scai policy set` path. Only the fields provided are changed. Returns
+ * `false` if the environment is not enrolled or nothing could be written.
+ */
+export const setEnvironmentFlags = (envName: string, flags: EnvironmentFlags): boolean => {
+  const policy = readWorkspacePolicy();
+  const prior = policy?.environments[envName];
+  if (!policy || !prior) {
+    return false;
+  }
+  policy.environments[envName] = {
+    ...prior,
+    ceiling: flags.ceiling ?? prior.ceiling,
+    mintCredentials: flags.mintCredentials ?? prior.mintCredentials,
+    ciWrites: flags.ciWrites ?? prior.ciWrites,
+  };
   return writeWorkspacePolicy(policy) !== null;
 };

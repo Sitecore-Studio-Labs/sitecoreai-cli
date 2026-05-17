@@ -11,6 +11,7 @@
  * name so re-runs are idempotent.
  */
 
+import path from "node:path";
 import {
   readRootConfiguration,
   readRootConfigurationFile,
@@ -26,6 +27,7 @@ import {
 } from "@/deploy/api";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import { createScaiError, toScaiError } from "@/shared/errors";
+import { authorizeOperation } from "@/policy";
 import type { CommonOptions } from "@/shared/cli-options";
 import packageJson from "../../../../package.json";
 
@@ -57,6 +59,15 @@ export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise
       "Run `scai setup init` to add it."
     );
   }
+
+  // Phase 2 mint gate — minting an automation client requires an
+  // interactive human operator on a mint-eligible environment. A no-op
+  // in unmanaged mode. See docs/policy-and-guardrails.md.
+  authorizeOperation({
+    envName,
+    configRootDir: root.physicalPath ? path.dirname(root.physicalPath) : undefined,
+    tier: "mint",
+  });
 
   const { organizationId } = env;
   if (!organizationId) {

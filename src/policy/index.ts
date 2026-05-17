@@ -7,8 +7,17 @@
 
 export { enforceEnvironmentPolicy } from "./enforce";
 export type { EnforceEnvironmentPolicyParams } from "./enforce";
-export { enrollEnvironment, repinEnvironment, unenrollEnvironment } from "./enroll";
-export type { EnrollEnvironmentParams, EnrollResult } from "./enroll";
+export { authorizeOperation } from "./authorize";
+export type { AuthorizeOperationParams } from "./authorize";
+export { resolveCallerContext } from "./caller";
+export type { CallerContext, CallerKind } from "./caller";
+export {
+  enrollEnvironment,
+  repinEnvironment,
+  setEnvironmentFlags,
+  unenrollEnvironment,
+} from "./enroll";
+export type { EnrollEnvironmentParams, EnrollResult, EnvironmentFlags } from "./enroll";
 export { resolveEffectivePolicy } from "./resolve";
 export { isManaged, readRepoPolicy, readWorkspacePolicy, writeWorkspacePolicy } from "./store";
 export { describeIdentityDrift, extractIdentity, identityMatchesPin } from "./identity";

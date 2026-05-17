@@ -230,11 +230,99 @@ stable exit code.
 Policy paths honour `SITECOREAI_POLICY_HOME` so tests run against a temp
 directory and never touch the real `~/.sitecoreai/`.
 
-## Deferred to later phases
+## Phase 2 — caller context and tier gating
 
-- **Phase 2** — credential provenance (`interactive-human` / `m2m` / `ci`)
-  tagged on tokens; step-up auth for `destructive`; per-environment `ciWrites`
-  rule; ceiling enforcement; `mint` gating on `scai setup client create` with
-  a scope ceiling; a minted-client ledger.
-- **Phase 3** — a single operation risk registry and one `authorize()`
-  chokepoint across CLI/SDK/MCP; recipe execution sandboxing.
+Phase 1 answered _which environments_. Phase 2 answers _who is calling, and
+what may they do there_ — it makes the stored `ceiling` enforce, gates
+credential minting, and governs CI writes per environment.
+
+### The reframe: caller context, not token provenance
+
+The Phase 1 plan said "tag tokens with provenance (`interactive-human` /
+`m2m` / `ci`)". Mapping the code showed that to be the wrong primitive. A
+token is acquired once and reused for weeks; a token minted by a human at a
+laptop is later replayed by an unattended cron. The token's _birth_ says
+`interactive-human` while the _caller_ is a machine. Stored token provenance
+answers "how was this token born", not "who is invoking right now" — and the
+latter is what a guardrail needs.
+
+So Phase 2 computes **caller context per invocation**, from the process
+environment — no token metadata, no keychain changes, and no chokepoint
+problem (token acquisition is scattered across many call sites; the process
+environment is one thing, readable anywhere).
+
+| Caller context      | Detected from                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `mcp`               | `SITECOREAI_MCP_SERVE` is set — the process is a `scai mcp serve`                           |
+| `ci`                | a CI env var is set (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, …); a pipeline id where available |
+| `interactive-human` | stdin+stdout are TTYs and `SITECOREAI_NON_INTERACTIVE` is not set                           |
+| `m2m`               | none of the above — a script, daemon, or SDK embed                                          |
+
+First match wins, in that order.
+
+### Policy additions
+
+`PolicyEnvironment` gains two booleans (both default `false`, both
+narrowable — never widenable — by a repo policy):
+
+- `mintCredentials` — may `scai setup client create` mint an automation
+  client for this environment. `scai setup login` enrolls a _new_
+  environment with this `true` (the operator is present and minting is the
+  expected next step); `mcp serve` and `policy allow` enroll with it `false`.
+- `ciWrites` — may a `ci` caller perform `write` / `destructive` operations
+  here. Always defaults `false`; enabling it is a deliberate operator act.
+
+### Risk tiers and the gate
+
+`authorizeOperation({ envName, configRootDir, tier })` — `tier` is one of
+`read | write | destructive | mint`. A no-op in unmanaged mode. Otherwise:
+
+| tier          | rule                                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read`        | allowed                                                                                                                                             |
+| `write`       | env ceiling ≥ `write`; a `ci` caller needs `ciWrites`; `interactive-human` / `m2m` / `mcp` allowed (MCP writes stay governed by `denyMcpElevation`) |
+| `destructive` | env ceiling ≥ `destructive`; `interactive-human` allowed; `ci` needs `ciWrites`; `m2m` / `mcp` denied                                               |
+| `mint`        | env `mintCredentials` is `true` **and** caller is `interactive-human` — `ci` / `m2m` / `mcp` can never mint                                         |
+
+`mint` is gated by the `mintCredentials` flag, not by the ceiling ordering —
+minting a standing credential is categorically different from an in-tenant
+write.
+
+### What Phase 2 wires
+
+- **`write`** — folded into `ensureAllowWrite` (`src/shared/allow-write.ts`),
+  which every write runner already calls. The policy check runs
+  unconditionally; `--allow-write` still bypasses the _config_ `allowWrite`
+  requirement but **not** the policy ceiling / caller check.
+- **`mint`** — `scai setup client create` (env- and org-scoped) calls the
+  `mint` gate before minting. This closes the original "credential creation
+  is too powerful" concern: an agent or CI run can never mint a client —
+  only a human at a terminal, on an environment the policy marks
+  mint-eligible.
+- **`destructive`** — the tier and its rule exist in `authorizeOperation`,
+  but wiring each destructive operation to call it is **Phase 3** (it belongs
+  with the operation risk registry). Phase 2 does not change the behaviour of
+  publish / unpublish / recipe push / env delete.
+
+### Command surface
+
+`scai policy set <env> [--ceiling <tier>] [--ci-writes | --no-ci-writes]
+[--allow-mint | --no-mint]` — the deliberate-act surface for tuning an
+enrolled environment. `scai policy show` displays `ceiling`,
+`mintCredentials`, and `ciWrites` per environment.
+
+### Not in Phase 2
+
+- True step-up (re-proving identity with a _fresh_ token within N minutes) —
+  caller context already proves a human is present _now_ via the TTY; a
+  freshness requirement is a Phase 3 refinement.
+- Replacing every scattered ad-hoc TTY check with `resolveCallerContext` —
+  Phase 2 adds the helper and uses it in the new gates only.
+- A minted-client scope ceiling — the Deploy clients API assigns scopes
+  server-side by client type; clamping them needs API support.
+
+## Phase 3 — deferred
+
+A single operation risk registry classifying every mutating command, one
+`authorize()` chokepoint wiring `destructive` everywhere, fresh-token
+step-up, and recipe-execution sandboxing.

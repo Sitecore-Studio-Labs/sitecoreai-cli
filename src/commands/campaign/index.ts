@@ -18,7 +18,7 @@ import { createCampaignSyncCommand } from "./sync";
 import {
   addApplyOption,
   addConfigOption,
-  addEnvironmentOption,
+  addOrgScopeOptions,
   addVerbosityOptions,
   addWhatIfOption,
   withApplyGate,
@@ -47,7 +47,7 @@ import {
 
 const createListCommand = (): Command => {
   const command = new Command("list").description("List campaigns in the tenant.");
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.addOption(new Option("--limit <n>", "Page size").argParser(Number));
@@ -61,7 +61,7 @@ const createShowCommand = (): Command => {
   const command = new Command("show")
     .description("Show a campaign with its deliverables and tasks.")
     .argument("<campaignId>", "Campaign (project) UUID");
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.action(async (campaignId, options) => {
@@ -74,7 +74,7 @@ const createUsersCommand = (): Command => {
   const command = new Command("users").description(
     "List users available as campaign members / task assignees."
   );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.action(async (options) => {
@@ -92,7 +92,7 @@ const createCreateCommand = (): Command => {
     .option("--due-date <iso>", "Due date (ISO-8601)")
     .option("--brandkit-id <id>", "Associated brand kit UUID")
     .option("--status <status>", "Initial status", "NOT_STARTED");
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
@@ -137,7 +137,7 @@ const createDeleteCommand = (): Command => {
     .addOption(
       new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
     );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
@@ -171,7 +171,7 @@ const createDeliverableCommand = (): Command => {
     .option("--funnel-stage <stage>", "Funnel stage, e.g. TOP")
     .option("--funnel-tactics <csv>", "Comma-separated funnel tactics")
     .option("--status <status>", "Initial status", "NOT_STARTED");
-  addEnvironmentOption(create);
+  addOrgScopeOptions(create);
   addConfigOption(create);
   addVerbosityOptions(create);
   addApplyOption(create);
@@ -215,7 +215,7 @@ const createDeliverableCommand = (): Command => {
     .addOption(
       new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
     );
-  addEnvironmentOption(remove);
+  addOrgScopeOptions(remove);
   addConfigOption(remove);
   addVerbosityOptions(remove);
   addApplyOption(remove);
@@ -248,7 +248,7 @@ const createTaskCommand = (): Command => {
     .description("List tasks under a deliverable.")
     .argument("<campaignId>", "Campaign UUID")
     .argument("<deliverableId>", "Deliverable UUID");
-  addEnvironmentOption(list);
+  addOrgScopeOptions(list);
   addConfigOption(list);
   addVerbosityOptions(list);
   list.action(async (campaignId, deliverableId, options) => {
@@ -260,7 +260,7 @@ const createTaskCommand = (): Command => {
     .argument("<campaignId>", "Campaign UUID")
     .argument("<deliverableId>", "Deliverable UUID")
     .argument("<taskId>", "Task UUID");
-  addEnvironmentOption(show);
+  addOrgScopeOptions(show);
   addConfigOption(show);
   addVerbosityOptions(show);
   show.action(async (campaignId, deliverableId, taskId, options) => {
@@ -274,7 +274,7 @@ const createTaskCommand = (): Command => {
     .requiredOption("--name <name>", "Task name")
     .option("--due-date <iso>", "Due date (ISO-8601)")
     .option("--status <status>", "Initial status", "NOT_STARTED");
-  addEnvironmentOption(create);
+  addOrgScopeOptions(create);
   addConfigOption(create);
   addVerbosityOptions(create);
   addApplyOption(create);
@@ -309,7 +309,7 @@ const createTaskCommand = (): Command => {
     .option("--priority <priority>", "Priority")
     .option("--description <html>", "Description (HTML)")
     .option("--assignee <userId>", "Assignee — an Auth0 subject");
-  addEnvironmentOption(update);
+  addOrgScopeOptions(update);
   addConfigOption(update);
   addVerbosityOptions(update);
   addApplyOption(update);
@@ -356,7 +356,7 @@ const createTaskCommand = (): Command => {
     .addOption(
       new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
     );
-  addEnvironmentOption(remove);
+  addOrgScopeOptions(remove);
   addConfigOption(remove);
   addVerbosityOptions(remove);
   addApplyOption(remove);

@@ -3,7 +3,7 @@ import { runBriefCommentAdd, runBriefCommentsList } from "@/brief/tasks";
 import {
   addApplyOption,
   addConfigOption,
-  addEnvironmentOption,
+  addOrgScopeOptions,
   addVerbosityOptions,
   addWhatIfOption,
   withApplyGate,
@@ -13,7 +13,7 @@ const createCommentsListCommand = (): Command => {
   const command = new Command("list")
     .description("List comments across briefs, or filter to one brief with [briefId].")
     .argument("[briefId]", "Brief UUID to filter comments to. Omit for tenant-wide listing.");
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.addOption(new Option("--limit <n>", "Page size").argParser((v) => Number(v)));
@@ -30,7 +30,7 @@ const createCommentsAddCommand = (): Command => {
     )
     .argument("<briefId>", "Brief UUID")
     .addOption(new Option("--text <text>", "Comment text").makeOptionMandatory(true));
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);

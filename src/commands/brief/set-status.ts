@@ -4,7 +4,7 @@ import type { BriefStatus } from "@/brief/api/schema";
 import {
   addApplyOption,
   addConfigOption,
-  addEnvironmentOption,
+  addOrgScopeOptions,
   addVerbosityOptions,
   addWhatIfOption,
   withApplyGate,
@@ -25,7 +25,7 @@ export const createBriefSetStatusCommand = (): Command => {
     .description("Set a brief's workflow status (Draft, InReview, Approved, Canceled, Archived).")
     .argument("<briefId>", "Brief UUID")
     .addArgument(new Argument("<status>", "New status — API wire form").choices(BRIEF_STATUSES));
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);

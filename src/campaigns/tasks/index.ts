@@ -45,6 +45,9 @@ import type { CampaignApiClientOptions } from "../api/types";
 
 export interface RunCampaignBaseOptions {
   config?: string;
+  /** Explicit organization id (`--org-id`). The Orchestrate API is org-scoped. */
+  orgId?: string;
+  /** Env profile name — used only to derive its `organizationId`. */
   environmentName?: string;
   verbose?: boolean;
   trace?: boolean;
@@ -64,10 +67,10 @@ const toLogger = (options: RunCampaignBaseOptions): Logger =>
 
 const prepareCampaignClient = async (
   options: RunCampaignBaseOptions
-): Promise<{ logger: Logger; client: CampaignApiClientOptions; envName: string }> => {
+): Promise<{ logger: Logger; client: CampaignApiClientOptions; orgId: string }> => {
   const logger = toLogger(options);
-  const { client, envName } = await resolveCampaignClient(options);
-  return { logger, envName, client };
+  const { client, orgId } = await resolveCampaignClient(options);
+  return { logger, orgId, client };
 };
 
 const writeJson = (value: unknown): void => {

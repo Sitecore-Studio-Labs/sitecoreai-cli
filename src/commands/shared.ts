@@ -63,6 +63,24 @@ export const addEnvironmentOption = (command: Command): Command =>
   );
 
 /**
+ * Options for an **org-scoped** command (`ops brief`, `ops campaign`,
+ * `brand`): the command acts on a Sitecore organization, not an XM Cloud
+ * environment. `--org-id` names the org directly; `-n/--environment-name`
+ * names it indirectly via an env profile's `organizationId`. Both are
+ * optional — `resolveOrganization` falls back to the sole/first env
+ * profile, so a single-environment config needs neither flag.
+ */
+export const addOrgScopeOptions = (command: Command): Command => {
+  addEnvironmentOption(command);
+  return command.addOption(
+    new Option(
+      "--org-id <id>",
+      "Sitecore organization id to act on. Overrides the env profile's organizationId."
+    )
+  );
+};
+
+/**
  * Adds the shared verbosity/output flags to a command.
  *
  * `--non-interactive` is included by default, but commands that own

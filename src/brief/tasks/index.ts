@@ -54,6 +54,9 @@ import type { BriefApiClientOptions } from "../api/types";
 
 export interface RunBriefBaseOptions {
   config?: string;
+  /** Explicit organization id (`--org-id`). The Brief API is org-scoped. */
+  orgId?: string;
+  /** Env profile name — used only to derive its `organizationId`. */
   environmentName?: string;
   verbose?: boolean;
   trace?: boolean;
@@ -73,10 +76,10 @@ const toLogger = (options: RunBriefBaseOptions): Logger =>
 
 const prepareBriefClient = async (
   options: RunBriefBaseOptions
-): Promise<{ logger: Logger; client: BriefApiClientOptions; envName: string }> => {
+): Promise<{ logger: Logger; client: BriefApiClientOptions; orgId: string }> => {
   const logger = toLogger(options);
-  const { client, envName } = await resolveBriefClient(options);
-  return { logger, envName, client };
+  const { client, orgId } = await resolveBriefClient(options);
+  return { logger, orgId, client };
 };
 
 const writeJson = (value: unknown): void => {

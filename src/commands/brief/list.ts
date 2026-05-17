@@ -1,11 +1,11 @@
 import { Command, Option } from "commander";
 import { runBriefList } from "@/brief/tasks";
-import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
+import { addConfigOption, addOrgScopeOptions, addVerbosityOptions } from "../shared";
 
 export const createBriefListCommand = (): Command => {
   const command = new Command("list").description("List briefs in the tenant.");
 
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.addOption(new Option("--limit <n>", "Page size").argParser((v) => Number(v)));

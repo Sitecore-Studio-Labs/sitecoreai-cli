@@ -4,7 +4,7 @@ import { confirmDestructive } from "@/shared/cli-tasks";
 import {
   addApplyOption,
   addConfigOption,
-  addEnvironmentOption,
+  addOrgScopeOptions,
   addVerbosityOptions,
   addWhatIfOption,
   withApplyGate,
@@ -25,7 +25,7 @@ export const createBriefDeleteCommand = (): Command => {
     .addOption(
       new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
     );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);

@@ -12,7 +12,7 @@ import { confirmDestructive, inputError } from "@/shared/cli-tasks";
 import {
   addApplyOption,
   addConfigOption,
-  addEnvironmentOption,
+  addOrgScopeOptions,
   addVerbosityOptions,
   addWhatIfOption,
   withApplyGate,
@@ -33,7 +33,7 @@ const createListCommand = (): Command => {
   const command = new Command("list").description(
     "List brief types — the schema templates that briefs are built against."
   );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.action(async (options) => {
@@ -46,7 +46,7 @@ const createGetCommand = (): Command => {
   const command = new Command("get")
     .description("Read a single brief type by id.")
     .argument("<briefTypeId>", "Brief type UUID");
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.action(async (briefTypeId, options) => {
@@ -64,7 +64,7 @@ const createCreateCommand = (): Command => {
         "Path to a JSON file matching CreateBriefTypeInput"
       ).makeOptionMandatory(true)
     );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
@@ -90,7 +90,7 @@ const createUpdateCommand = (): Command => {
         "Path to a JSON file matching CreateBriefTypeInput"
       ).makeOptionMandatory(true)
     );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
@@ -111,7 +111,7 @@ const createDeleteCommand = (): Command => {
     .addOption(
       new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
     );
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);

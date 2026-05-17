@@ -79,8 +79,14 @@ export interface ResolvedClientCredential {
 }
 
 export interface ResolveClientCredentialOptions {
-  /** Env-profile name — keys the env var and the `cm-client:<env>` slot. */
-  envName: string;
+  /**
+   * Env-profile name — keys tier 1's `SITECOREAI_ENV_<ENV>_*` env vars
+   * and tier 2's `cm-client:<env>` keychain slot. Optional: an org-scoped
+   * caller (brief, campaign) may have no env profile, in which case
+   * tiers 1 and 2 are skipped and only tier 3 (the org-scoped client)
+   * can resolve.
+   */
+  envName?: string;
   /**
    * `clientId` from the env profile (the bring-your-own-client escape
    * hatch). Pairs with the tier-1 env-var secret when set.
@@ -116,8 +122,9 @@ export const resolveClientCredential = async (
 ): Promise<ResolvedClientCredential | undefined> => {
   // Tier 1: bring-your-own-client — secret from the environment, id from
   // the env profile or the matching `SITECOREAI_*_CLIENT_ID` env var.
-  const envSecret = resolveEnvClientSecret(options.envName);
-  if (envSecret) {
+  // Skipped entirely when there is no env profile to key the env vars by.
+  const envSecret = options.envName ? resolveEnvClientSecret(options.envName) : undefined;
+  if (envSecret && options.envName) {
     const clientId = options.clientId ?? resolveEnvClientId(options.envName);
     if (clientId) {
       return { clientId, clientSecret: envSecret, source: "env-var" };
@@ -127,7 +134,7 @@ export const resolveClientCredential = async (
   // Tier 2: env-scoped automation client minted by `scai setup client
   // create`. The `clientId` comes from the env profile's
   // `automationClient` block; the secret from the keychain.
-  if (options.automationClientId) {
+  if (options.automationClientId && options.envName) {
     const cmSecret = await getCmClientSecret(options.envName);
     if (cmSecret) {
       return {

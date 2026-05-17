@@ -51,7 +51,17 @@ const isFresh = (jwt: string, skewSeconds = 60): boolean => {
 };
 
 export interface AcquireBriefTokenOptions {
-  envName: string;
+  /**
+   * Sitecore organization id — the Brief API is org-scoped, so the
+   * minted token is cached under `brief:<orgId>` in the OS keychain.
+   */
+  orgId: string;
+  /**
+   * Credential-bearing options used to mint the token: the matched env
+   * profile's client metadata (when one exists — `name`, `clientId`,
+   * `automationClient`, `authority`) plus `organizationId` / `orgClientId`,
+   * so the three-tier credential chain can resolve a usable client.
+   */
   environment: SitecoreApiClientOptions;
 }
 
@@ -71,7 +81,7 @@ export interface AcquireBriefTokenOptions {
  * is no interactive login flow — Brief calls are always agent-driven.
  */
 export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Promise<string> => {
-  const cached = await getBriefToken(options.envName);
+  const cached = await getBriefToken(options.orgId);
   if (cached && isFresh(cached)) {
     return cached;
   }
@@ -80,9 +90,11 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
   // The client secret never lives in the config file — `resolveClientCredential`
   // walks the three tiers (env-var override → env-scoped keychain client →
   // org-scoped keychain client) and pairs the secret with the `clientId`
-  // it is handed from the config-resident metadata.
+  // it is handed from the config-resident metadata. `env.name` is the
+  // matched env profile's name (tiers 1–2); it is `undefined` when the
+  // org was resolved with no env profile, leaving only tier 3.
   const credential = await resolveClientCredential({
-    envName: options.envName,
+    envName: env.name,
     clientId: env.clientId,
     automationClientId: env.automationClient?.clientId,
     organizationId: env.organizationId,
@@ -96,7 +108,7 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
         M2M_SCOPE_PARAM
       );
       if (result.accessToken) {
-        await setBriefToken(options.envName, result.accessToken);
+        await setBriefToken(options.orgId, result.accessToken);
         return result.accessToken;
       }
     } catch (error) {
@@ -112,7 +124,11 @@ export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Prom
     }
   }
 
-  throw createScaiError("No brief-scoped token available for this environment.", "AUTH_REQUIRED", {
-    hint: `Provide the environment's automation client — run \`scai setup client create ${options.envName}\` to mint one (its secret is stored in the OS keychain), or bring your own by setting SITECOREAI_ENV_<ENV>_CLIENT_ID and SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.`,
-  });
+  throw createScaiError(
+    `No brief-scoped token available for organization '${options.orgId}'.`,
+    "AUTH_REQUIRED",
+    {
+      hint: "Provide an automation client for the org — run `scai setup env <name>` (env-scoped) or `scai setup client create --org` (org-scoped) to mint one (its secret is stored in the OS keychain), or bring your own by setting SITECOREAI_ENV_<ENV>_CLIENT_ID and SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.",
+    }
+  );
 };

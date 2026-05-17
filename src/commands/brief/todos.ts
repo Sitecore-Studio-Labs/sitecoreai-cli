@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { runBriefTodosList } from "@/brief/tasks";
-import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
+import { addConfigOption, addOrgScopeOptions, addVerbosityOptions } from "../shared";
 
 /**
  * `scai ops brief todos [briefId]` — list the to-dos on a brief.
@@ -14,7 +14,7 @@ export const createBriefTodosCommand = (): Command => {
     .description("List to-dos across briefs, or filter to one brief with [briefId].")
     .argument("[briefId]", "Brief UUID to filter to-dos to. Omit for tenant-wide listing.");
 
-  addEnvironmentOption(command);
+  addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.addOption(new Option("--assignees", "Expand assignee metadata"));

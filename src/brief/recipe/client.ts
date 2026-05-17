@@ -15,6 +15,7 @@ import type { BriefApiClientOptions } from "@/brief";
 import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
+import { createScaiError } from "@/shared/errors";
 import type { SyncContext } from "@/sync";
 
 /** Environment profiles may carry a per-env Brief API host override. */
@@ -22,18 +23,26 @@ type BriefBaseUrlCarrier = { briefBaseUrl?: string };
 
 /** Build the Brief API client for the context's environment. */
 export const resolveBriefClient = async (ctx: SyncContext): Promise<BriefApiClientOptions> => {
-  const { envName, environment, root } = resolveEnvironment({
+  const { environment, root } = resolveEnvironment({
     config: ctx.configPath,
     environmentName: ctx.environmentName,
   });
+  // The Brief API is org-scoped; the sync context always carries an
+  // explicit environment, so the org id comes off that env profile.
+  const orgId = environment.organizationId;
+  if (!orgId) {
+    throw createScaiError(
+      `Environment '${ctx.environmentName ?? "(default)"}' has no organizationId; the Brief API is org-scoped.`,
+      "INPUT_INVALID",
+      { hint: "Set organizationId on the env profile in sitecoreai.cli.json." }
+    );
+  }
   // Carry the org-scoped automation client's non-secret `clientId` from
   // the root config so `resolveClientCredential` can pair it with the
   // org-client secret in the keychain (tier 3).
-  const orgClientId = environment.organizationId
-    ? root.orgClients[environment.organizationId]?.clientId
-    : undefined;
+  const orgClientId = root.orgClients[orgId]?.clientId;
   const accessToken = await acquireBriefToken({
-    envName,
+    orgId,
     environment: { ...environment, orgClientId },
   });
   // Host is region-resolved from the org id; an env profile may pin

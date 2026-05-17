@@ -114,6 +114,7 @@ const runPolicyShow = async (options: PolicyOptions): Promise<void> => {
     logger.info(`    ceiling:  ${entry.ceiling}`);
     logger.info(`    mint:     ${entry.mintCredentials ? "allowed" : "denied"}`);
     logger.info(`    ciWrites: ${entry.ciWrites ? "allowed" : "denied"}`);
+    logger.info(`    step-up:  ${entry.stepUpMinutes ? `${entry.stepUpMinutes} min` : "off"}`);
     logger.info(`    enrolled: ${entry.enrolledAt} (via ${entry.enrolledVia})`);
     logger.info(`    identity: ${idParts.length > 0 ? idParts.join(", ") : "(none pinned)"}`);
   }
@@ -226,6 +227,7 @@ interface PolicySetOptions extends PolicyOptions {
   ceiling?: string;
   ciWrites?: string;
   mint?: string;
+  stepUp?: string;
 }
 
 const runPolicySet = async (
@@ -253,6 +255,21 @@ const runPolicySet = async (
   }
   if (options.mint) {
     flags.mintCredentials = options.mint === "on";
+  }
+  if (options.stepUp) {
+    if (options.stepUp.toLowerCase() === "off") {
+      flags.stepUpMinutes = null;
+    } else {
+      const minutes = Number(options.stepUp);
+      if (!Number.isInteger(minutes) || minutes <= 0) {
+        throw createScaiError(
+          "--step-up must be a positive whole number of minutes, or 'off'.",
+          "INPUT_INVALID",
+          { hint: "Example: scai policy set prod --step-up 60" }
+        );
+      }
+      flags.stepUpMinutes = minutes;
+    }
   }
   if (Object.keys(flags).length === 0) {
     throw createScaiError("Nothing to change.", "INPUT_INVALID", {
@@ -347,6 +364,12 @@ export const createPolicyCommand = (): Command => {
         "--mint <state>",
         "Allow or deny `scai setup client create` minting on this environment."
       ).choices(["on", "off"])
+    )
+    .addOption(
+      new Option(
+        "--step-up <minutes>",
+        "Require a deploy token authenticated within N minutes for destructive/mint ops; 'off' to clear."
+      )
     );
   addConfigOption(set);
   addVerbosityOptions(set);

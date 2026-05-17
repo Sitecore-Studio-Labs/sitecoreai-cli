@@ -53,6 +53,8 @@ export const enrollEnvironment = (params: EnrollEnvironmentParams): EnrollResult
     // narrowed via `scai policy set`.
     mintCredentials: prior?.mintCredentials ?? params.via === "setup-login",
     ciWrites: prior?.ciWrites ?? false,
+    // Step-up is off unless an operator opts in via `scai policy set`.
+    stepUpMinutes: prior?.stepUpMinutes,
   };
   policy.environments[params.envName] = entry;
 
@@ -93,11 +95,13 @@ export const unenrollEnvironment = (envName: string): boolean => {
   return writeWorkspacePolicy(policy) !== null;
 };
 
-/** Phase 2 policy flags an operator may tune on an enrolled environment. */
+/** Policy flags an operator may tune on an enrolled environment. */
 export interface EnvironmentFlags {
   ceiling?: RiskTier;
   mintCredentials?: boolean;
   ciWrites?: boolean;
+  /** Step-up window in minutes; `null` clears it (no requirement). */
+  stepUpMinutes?: number | null;
 }
 
 /**
@@ -111,11 +115,17 @@ export const setEnvironmentFlags = (envName: string, flags: EnvironmentFlags): b
   if (!policy || !prior) {
     return false;
   }
-  policy.environments[envName] = {
+  const next: PolicyEnvironment = {
     ...prior,
     ceiling: flags.ceiling ?? prior.ceiling,
     mintCredentials: flags.mintCredentials ?? prior.mintCredentials,
     ciWrites: flags.ciWrites ?? prior.ciWrites,
   };
+  if (flags.stepUpMinutes === null) {
+    delete next.stepUpMinutes;
+  } else if (flags.stepUpMinutes !== undefined) {
+    next.stepUpMinutes = flags.stepUpMinutes;
+  }
+  policy.environments[envName] = next;
   return writeWorkspacePolicy(policy) !== null;
 };

@@ -63,7 +63,7 @@ export const runCleanupUsers = async (
   const logger = toLogger(options);
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-users");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no users will be deleted.", "yellow");
   }

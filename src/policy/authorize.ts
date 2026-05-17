@@ -24,7 +24,40 @@ export interface AuthorizeOperationParams {
   tier: RiskTier;
   /** Override the detected caller context — for tests. */
   caller?: CallerContext;
+  /**
+   * ISO timestamp the deploy token was last minted (`deployTokenLastUpdated`
+   * on the env profile). Drives the Phase 3 step-up freshness check on
+   * `destructive` / `mint` operations; ignored when the policy sets no
+   * step-up window.
+   */
+  tokenLastUpdated?: string;
 }
+
+/**
+ * Phase 3 step-up: when the environment policy sets a `stepUpMinutes`
+ * window, a `destructive` / `mint` operation requires the deploy token to
+ * have been minted within it. Pre-flight only — scai commands are
+ * one-shot, so this cannot pause and resume; it refuses and tells the
+ * operator to re-login.
+ */
+const assertFreshAuth = (
+  envName: string,
+  stepUpMinutes: number | undefined,
+  tokenLastUpdated: string | undefined
+): void => {
+  if (stepUpMinutes === undefined) {
+    return;
+  }
+  const mintedAtMs = tokenLastUpdated ? Date.parse(tokenLastUpdated) : Number.NaN;
+  const fresh = Number.isFinite(mintedAtMs) && Date.now() - mintedAtMs <= stepUpMinutes * 60_000;
+  if (!fresh) {
+    throw createScaiError(
+      `Environment '${envName}' requires a deploy token authenticated within the last ${stepUpMinutes} minutes for this operation.`,
+      "POLICY_DENIED",
+      { hint: `Re-run 'scai setup login -n ${envName}' and retry.` }
+    );
+  }
+};
 
 /**
  * Throws `POLICY_DENIED` when the workspace policy does not permit the
@@ -70,6 +103,7 @@ export const authorizeOperation = (params: AuthorizeOperationParams): void => {
         }
       );
     }
+    assertFreshAuth(envName, effective.stepUpMinutes, params.tokenLastUpdated);
     return;
   }
 
@@ -100,5 +134,9 @@ export const authorizeOperation = (params: AuthorizeOperationParams): void => {
         hint: "Destructive operations require an interactive human operator, or a CI pipeline with ci-writes enabled.",
       }
     );
+  }
+
+  if (tier === "destructive") {
+    assertFreshAuth(envName, effective.stepUpMinutes, params.tokenLastUpdated);
   }
 };

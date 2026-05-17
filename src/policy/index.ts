@@ -19,6 +19,8 @@ export {
 } from "./enroll";
 export type { EnrollEnvironmentParams, EnrollResult, EnvironmentFlags } from "./enroll";
 export { resolveEffectivePolicy } from "./resolve";
+export { OPERATION_RISK, riskTierForOperation } from "./operations";
+export type { OperationId } from "./operations";
 export { isManaged, readRepoPolicy, readWorkspacePolicy, writeWorkspacePolicy } from "./store";
 export { describeIdentityDrift, extractIdentity, identityMatchesPin } from "./identity";
 export { resolvePolicyDir, resolveRepoPolicyPath, resolveUserPolicyPath } from "./paths";

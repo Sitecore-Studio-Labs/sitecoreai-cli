@@ -119,7 +119,7 @@ export const runCleanupVersionsPrune = async (
 
   const { envName, root, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(root, envName, options.allowWrite);
+    ensureAllowWriteForCleanup(root, envName, options.allowWrite, "cleanup-versions-prune");
   }
 
   const concurrency = options.concurrency ?? 4;

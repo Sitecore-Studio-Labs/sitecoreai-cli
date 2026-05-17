@@ -256,25 +256,8 @@ export const resolveRecipeInputs = async (
   return { files: matched.sort(), source: "config-glob" };
 };
 
-export const ensureAllowWrite = (
-  root: RootConfiguration,
-  envName: string,
-  override?: boolean
-): void => {
-  const environment = root.environments[envName];
-  if (override || environment?.allowWrite) {
-    return;
-  }
-  const envKey = envName
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  throw createScaiError(
-    `Environment ${envName} is not configured to allow writing data.`,
-    "INPUT_INVALID",
-    {
-      hint: `Set allowWrite in sitecoreai.cli.json, set SITECOREAI_ENV_${envKey}_ALLOW_WRITE=true, or pass --allow-write.`,
-    }
-  );
-};
+// Re-exported from the shared gate so `recipe push` goes through the
+// same workspace-policy enforcement (ceiling, caller context, the
+// `recipe-push` destructive tier) as every other write path. The
+// recipe-local copy that used to live here predated the policy layer.
+export { ensureAllowWrite } from "@/shared/allow-write";

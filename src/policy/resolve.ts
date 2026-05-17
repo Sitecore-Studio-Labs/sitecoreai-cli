@@ -29,6 +29,7 @@ export const resolveEffectivePolicy = (
       identity: null,
       mintCredentials: false,
       ciWrites: false,
+      stepUpMinutes: undefined,
     };
   }
 
@@ -41,6 +42,7 @@ export const resolveEffectivePolicy = (
       identity: null,
       mintCredentials: false,
       ciWrites: false,
+      stepUpMinutes: undefined,
     };
   }
 
@@ -55,6 +57,12 @@ export const resolveEffectivePolicy = (
     ceiling = minTier(ceiling, repoEnv.ceiling);
   }
 
+  // Step-up window — a repo policy may only shorten it, never lengthen.
+  const stepUpCandidates = [wsEnv.stepUpMinutes, repoEnv?.stepUpMinutes].filter(
+    (value): value is number => typeof value === "number"
+  );
+  const stepUpMinutes = stepUpCandidates.length > 0 ? Math.min(...stepUpCandidates) : undefined;
+
   return {
     managed: true,
     enrolled: allowedByRepo,
@@ -62,5 +70,6 @@ export const resolveEffectivePolicy = (
     identity: wsEnv.identity,
     mintCredentials: wsEnv.mintCredentials === true && repoEnv?.mintCredentials !== false,
     ciWrites: wsEnv.ciWrites === true && repoEnv?.ciWrites !== false,
+    stepUpMinutes,
   };
 };

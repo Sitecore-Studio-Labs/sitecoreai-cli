@@ -321,8 +321,87 @@ enrolled environment. `scai policy show` displays `ceiling`,
 - A minted-client scope ceiling — the Deploy clients API assigns scopes
   server-side by client type; clamping them needs API support.
 
-## Phase 3 — deferred
+## Phase 3 — operation risk registry, destructive-tier wiring, step-up
 
-A single operation risk registry classifying every mutating command, one
-`authorize()` chokepoint wiring `destructive` everywhere, fresh-token
-step-up, and recipe-execution sandboxing.
+Phase 2 built the `destructive` tier rule into `authorizeOperation` but left
+it unwired — no operation declared itself destructive. Phase 3 classifies the
+mutating operations, wires the irreversible ones to the `destructive` tier,
+and adds a per-environment freshness ("step-up") requirement.
+
+### Operation risk registry
+
+`src/policy/operations.ts` is the single, auditable classification of
+mutating operations. It maps a stable `OperationId` to a `RiskTier`:
+
+```ts
+export const OPERATION_RISK: Record<OperationId, RiskTier> = {
+  "cleanup-versions-prune": "destructive",
+  "cleanup-archive-purge": "destructive",
+  "cleanup-dead-templates": "destructive",
+  "cleanup-duplicates": "destructive",
+  "cleanup-subtree": "destructive",
+  "cleanup-roles": "destructive",
+  "cleanup-users": "destructive",
+  "cleanup-site-residue": "destructive",
+  "recipe-push": "destructive",
+};
+```
+
+Anything not listed is `write`. A security reviewer reads this one file to
+see everything scai treats as irreversible — the registry, not a literal
+scattered across runners, is the source of truth.
+
+### Wiring: one parameter, no new chokepoint
+
+`ensureAllowWrite` — which every write runner already calls, and which Phase
+2 made consult the policy — gains an optional `operation` argument. When
+given, the gate looks the operation up in the registry and authorizes at that
+tier instead of the default `write`:
+
+```ts
+ensureAllowWrite(root, envName, override, "cleanup-versions-prune");
+```
+
+A destructive runner passes its operation id; everything else is unchanged.
+Operations that already had a gate keep it — Phase 3 layers the policy tier
+on top, it does not remove `--apply` or `confirmDestructive`. The gate stays
+a no-op in unmanaged mode.
+
+The net effect: an irreversible operation is refused for a `m2m` or `mcp`
+caller, and for a `ci` caller without `ciWrites`, on a managed environment —
+exactly the `destructive` rule from Phase 2.
+
+### Step-up — a freshness requirement
+
+`PolicyEnvironment` gains an optional `stepUpMinutes`. When set, a
+`destructive` or `mint` operation on that environment requires the deploy
+token to have been minted within that many minutes — otherwise the gate
+refuses with `POLICY_DENIED` and an instruction to re-run `scai setup login`.
+
+This is a _pre-flight_ check, not a mid-command browser pop: scai commands
+are one-shot, so step-up cannot pause and resume. The check reads
+`deployTokenLastUpdated` (the freshness metadata already on the env profile).
+It is **off by default** — `stepUpMinutes` unset means no freshness
+requirement; an operator opts a sensitive environment in. A repo policy may
+only _shorten_ the window, never lengthen it.
+
+`scai policy set <env> --step-up <minutes>` (and `--step-up off`) configures
+it; `scai policy show` displays it.
+
+### What Phase 3 does not change
+
+- Operations not in the registry stay `write`-tier — their existing
+  `--apply` / `confirmDestructive` gates are untouched.
+- Deploy environment / project deletion is not policy-tiered: those runners
+  operate on a Deploy `environmentId` and carry no config-env in the policy
+  sense. They keep their `confirmDestructive` + `--force` gate; wiring them
+  needs a small dedicated design and is a tracked follow-up.
+- Recipe execution still runs `.recipe.ts` as in-process code — see Phase 4.
+
+## Phase 4 — deferred: recipe execution sandboxing
+
+`.recipe.ts` files are compiled and `require()`d inside scai's own process —
+arbitrary code execution from a file a weaponized config could point at.
+Isolating this (child-process execution with an IPC bridge is the realistic
+option) is a self-contained, ~week-long workstream distinct from the
+authorization model, and is tracked separately as Phase 4.

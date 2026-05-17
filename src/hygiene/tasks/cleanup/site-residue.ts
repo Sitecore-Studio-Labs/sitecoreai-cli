@@ -182,7 +182,7 @@ export const runCleanupSiteResidue = async (
   const logger = toLogger(options);
   const { envName, environment, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-site-residue");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no orphan trees will be deleted.", "yellow");
   }

@@ -104,4 +104,58 @@ describe("authorizeOperation", () => {
     );
     expect(codeOf(() => authorize("write", "staging", ci))).toBe("POLICY_DENIED");
   });
+
+  it("step-up: a destructive op needs a token minted within the policy window", () => {
+    enrollEnvironment({ envName: "staging", environment: env, via: "policy-allow" });
+    setEnvironmentFlags("staging", { ceiling: "destructive", stepUpMinutes: 60 });
+    const fresh = new Date().toISOString();
+    const stale = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    expect(() =>
+      authorizeOperation({
+        envName: "staging",
+        configRootDir: configRoot,
+        tier: "destructive",
+        caller: human,
+        tokenLastUpdated: fresh,
+      })
+    ).not.toThrow();
+    expect(
+      codeOf(() =>
+        authorizeOperation({
+          envName: "staging",
+          configRootDir: configRoot,
+          tier: "destructive",
+          caller: human,
+          tokenLastUpdated: stale,
+        })
+      )
+    ).toBe("POLICY_DENIED");
+  });
+
+  it("step-up: missing token-freshness data fails closed when a window is set", () => {
+    enrollEnvironment({ envName: "staging", environment: env, via: "setup-login" });
+    setEnvironmentFlags("staging", { stepUpMinutes: 30 });
+    expect(
+      codeOf(() =>
+        authorizeOperation({
+          envName: "staging",
+          configRootDir: configRoot,
+          tier: "mint",
+          caller: human,
+        })
+      )
+    ).toBe("POLICY_DENIED");
+  });
+
+  it("step-up: no window set means no freshness requirement", () => {
+    enrollEnvironment({ envName: "staging", environment: env, via: "setup-login" });
+    expect(() =>
+      authorizeOperation({
+        envName: "staging",
+        configRootDir: configRoot,
+        tier: "mint",
+        caller: human,
+      })
+    ).not.toThrow();
+  });
 });

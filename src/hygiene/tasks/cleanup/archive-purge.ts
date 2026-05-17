@@ -76,7 +76,7 @@ export const runCleanupArchivePurge = async (
   const pageSize = options.pageSize ?? 100;
 
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(root, envName, options.allowWrite);
+    ensureAllowWriteForCleanup(root, envName, options.allowWrite, "cleanup-archive-purge");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no archived items will be deleted.", "yellow");
   }

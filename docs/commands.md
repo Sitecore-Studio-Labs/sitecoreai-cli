@@ -347,6 +347,7 @@ scai policy set [options] [env]
 - `--ceiling <tier>` — Cap the environment at this risk tier.
 - `--ci-writes <state>` — Allow or deny write/destructive operations from a CI caller.
 - `--mint <state>` — Allow or deny `scai setup client create` minting on this environment.
+- `--step-up <minutes>` — Require a deploy token authenticated within N minutes for destructive/mint ops; 'off' to clear.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data

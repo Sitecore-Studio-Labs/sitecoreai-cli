@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { RootConfiguration } from "@/config/types";
 import { createScaiError } from "./errors";
-import { authorizeOperation } from "@/policy";
+import { authorizeOperation, riskTierForOperation } from "@/policy";
+import type { OperationId } from "@/policy";
 
 /**
  * Per-environment write gate. Throws `INPUT_INVALID` unless the
@@ -27,18 +28,22 @@ import { authorizeOperation } from "@/policy";
 export const ensureAllowWrite = (
   root: RootConfiguration,
   envName: string,
-  override?: boolean
+  override?: boolean,
+  operation?: OperationId
 ): void => {
-  // Phase 2 workspace-policy gate — environment ceiling + caller context.
-  // Runs unconditionally: `--allow-write` (override) bypasses the config
+  const env = root.environments[envName];
+  // Workspace-policy gate — environment ceiling + caller context, at the
+  // risk tier the operation registry assigns (`write` by default,
+  // `destructive` for a registered destructive operation). Runs
+  // unconditionally: `--allow-write` (override) bypasses the config
   // `allowWrite` requirement below but never the policy. A no-op in
   // unmanaged mode. See docs/policy-and-guardrails.md.
   authorizeOperation({
     envName,
     configRootDir: root.physicalPath ? path.dirname(root.physicalPath) : undefined,
-    tier: "write",
+    tier: operation ? riskTierForOperation(operation) : "write",
+    tokenLastUpdated: env?.deployTokenLastUpdated ?? undefined,
   });
-  const env = root.environments[envName];
   if (override || env?.allowWrite) return;
   const envKey = envName
     .trim()

@@ -106,7 +106,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
 
   const isDryRun = Boolean(options.whatIf);
   if (!isDryRun) {
-    ensureAllowWrite(tenant.root, tenant.envName, options.allowWrite);
+    ensureAllowWrite(tenant.root, tenant.envName, options.allowWrite, "recipe-push");
   }
 
   // One rollback-log scope per `recipe push` invocation. The file at

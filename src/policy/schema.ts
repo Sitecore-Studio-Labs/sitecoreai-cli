@@ -45,6 +45,8 @@ export const policyEnvironmentSchema = z.object({
   mintCredentials: z.boolean().optional(),
   /** Phase 2 — may a CI caller perform write/destructive ops here. */
   ciWrites: z.boolean().optional(),
+  /** Phase 3 — destructive/mint ops require a deploy token minted within this many minutes. */
+  stepUpMinutes: z.number().int().positive().optional(),
 });
 
 /** The user-global workspace policy — the hard ceiling. */
@@ -67,6 +69,7 @@ export const repoPolicySchema = z.object({
         ceiling: riskTierSchema.optional(),
         mintCredentials: z.boolean().optional(),
         ciWrites: z.boolean().optional(),
+        stepUpMinutes: z.number().int().positive().optional(),
       })
     )
     .optional(),

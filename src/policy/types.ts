@@ -58,6 +58,8 @@ export interface EffectivePolicy {
   mintCredentials: boolean;
   /** Phase 2 — whether a CI caller may write/destructive here (post repo-narrowing). */
   ciWrites: boolean;
+  /** Phase 3 — freshness window (minutes) for destructive/mint ops; `undefined` = no requirement. */
+  stepUpMinutes: number | undefined;
 }
 
 /** Rank of a tier (`read` = 0, `mint` = 3). */

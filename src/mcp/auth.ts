@@ -72,6 +72,10 @@ export const resolveMcpEnv = (options: BindMcpEnvironmentOptions): ResolvedEnvir
   return resolveEnvironment({
     config: options.configPath,
     environmentName: options.environmentName,
+    // Startup binding: `runMcpServe` enrolls the bound env into the
+    // workspace policy right after this resolves, so skip the gate here.
+    // Per-call retargeting (`resolveEnvBinding`) stays enforced.
+    skipPolicy: true,
   });
 };
 

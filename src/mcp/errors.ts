@@ -49,6 +49,8 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
     "Authenticate with the Sitecore Brand service for the bound environment, then re-run the tool.",
   AUTH_DENIED:
     "The bound environment has denyMcpElevation set; MCP write tools can't mutate this tenant. Run the destructive op via the CLI with --allow-write, or clear denyMcpElevation in sitecoreai.cli.json if MCP-driven writes are acceptable for this env.",
+  POLICY_DENIED:
+    "The target environment is not on the scai workspace-policy allowlist, or its tenant identity drifted from what was pinned at enrollment. The operator must enroll or re-pin it (`scai policy allow <env>` / `scai policy trust <env>`) — an agent cannot self-authorize an environment.",
   BRAND_API_FAILED:
     "Confirm the bound environment has Brand API access and the access token is fresh; check Sitecore Cloud status if the failure persists.",
   UNKNOWN: "Re-run with `SITECOREAI_TRACE=1` set in the launcher to capture a verbose trace.",
@@ -60,6 +62,8 @@ const summarizeError = (error: ScaiError): string => {
       return "Authentication required.";
     case "AUTH_DENIED":
       return "MCP write tools are not permitted for this environment.";
+    case "POLICY_DENIED":
+      return "The target environment is not allowed by the workspace policy.";
     case "CONFIG_NOT_FOUND":
       return "scai configuration was not found.";
     case "CONFIG_INVALID":

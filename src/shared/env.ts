@@ -15,6 +15,7 @@
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
+import { enforceEnvironmentPolicy } from "@/policy";
 import { resolveApiTimeoutMs } from "./cli-tasks";
 
 export interface ResolvedEnvironment {
@@ -29,6 +30,14 @@ export interface ResolvedEnvironment {
 export interface ResolveEnvironmentOptions {
   config?: string;
   environmentName?: string;
+  /**
+   * Skip the workspace-policy gate (`enforceEnvironmentPolicy`). Used by
+   * the paths that run *before* an environment is enrolled — `scai mcp
+   * serve` startup (which enrolls the bound env immediately after) and
+   * the `setup` / `policy` commands. Everything that touches tenant data
+   * leaves this unset, so the gate is on by default.
+   */
+  skipPolicy?: boolean;
 }
 
 export const resolveEnvironment = (options: ResolveEnvironmentOptions): ResolvedEnvironment => {
@@ -46,6 +55,11 @@ export const resolveEnvironment = (options: ResolveEnvironmentOptions): Resolved
     throw createScaiError(`Environment '${envName}' is not configured.`, "ENV_NOT_FOUND", {
       hint: "Run 'scai setup init' to configure the environment.",
     });
+  }
+  // Deny-by-default environment gate. A no-op in "unmanaged mode" (no
+  // ~/.sitecoreai/policy.json). See docs/policy-and-guardrails.md.
+  if (!options.skipPolicy) {
+    enforceEnvironmentPolicy({ envName, environment, configRootDir: rootFile.rootDir });
   }
   return { envName, environment, root, timeoutMs: resolveApiTimeoutMs(root) };
 };

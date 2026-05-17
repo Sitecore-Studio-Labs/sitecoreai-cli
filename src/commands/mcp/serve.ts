@@ -21,6 +21,7 @@ import { buildScaiMcpRegistry } from "@/mcp/build-registry";
 import { buildMcpServer, startStdioTransport } from "@/mcp/server";
 import { startHttpTransport } from "@/mcp/http";
 import { toScaiError } from "@/shared/errors";
+import { enrollEnvironment } from "@/policy";
 
 const DEFAULT_HTTP_PORT = 3399;
 const DEFAULT_HTTP_HOST = "127.0.0.1";
@@ -48,6 +49,23 @@ export const runMcpServe = async (options: McpServeOptions): Promise<void> => {
       environmentName: options.environmentName,
     });
     const configPath = options.config ?? process.cwd();
+
+    // Enroll the bound environment into the workspace policy. Starting a
+    // server bound to an environment is the operator's deliberate choice,
+    // so the bound env is auto-allowed; agents still cannot retarget a
+    // tool call at any environment that is not enrolled.
+    try {
+      enrollEnvironment({
+        envName: resolved.envName,
+        environment: resolved.environment,
+        via: "mcp-serve",
+      });
+    } catch (error) {
+      process.stderr.write(
+        `scai mcp: could not update the workspace policy — ${toScaiError(error).message}\n`
+      );
+    }
+
     const getContext = createMcpContextProvider(resolved, configPath);
     const registry = buildScaiMcpRegistry();
 

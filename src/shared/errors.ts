@@ -22,6 +22,7 @@ export type ScaiErrorCode =
   | "AUTH_REQUIRED"
   | "AUTH_BRAND_REQUIRED"
   | "AUTH_DENIED"
+  | "POLICY_DENIED"
   | "NETWORK"
   | "ENV_NOT_FOUND"
   | "DEPLOY_FAILED"
@@ -70,6 +71,7 @@ const exitCodeFor = (code: ScaiErrorCode): number => {
     case "AUTH_REQUIRED":
     case "AUTH_BRAND_REQUIRED":
     case "AUTH_DENIED":
+    case "POLICY_DENIED":
       return 3;
     case "NETWORK":
       return 4;

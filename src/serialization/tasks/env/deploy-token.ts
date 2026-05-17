@@ -5,7 +5,8 @@ import {
 } from "@/config/root-config";
 import { openBrowser } from "@/shared/browser";
 import { assertValidUrl } from "@/shared/validate";
-import { createScaiError } from "@/shared/errors";
+import { createScaiError, toScaiError } from "@/shared/errors";
+import { enrollEnvironment } from "@/policy";
 import { setCmTokens, setDeployToken } from "@/shared/keychain";
 import { resolveEnvClientSecret } from "@/shared/client-credential";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
@@ -207,6 +208,22 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   envProfiles[envName] = updated;
   rootConfigFile.config.envProfiles = envProfiles;
   writeRootConfigurationFile(configPath, rootConfigFile.config);
+
+  // Enroll this environment into the workspace policy. `scai setup login`
+  // is the operator interactively choosing this environment, so it is
+  // auto-allowed and its tenant identity is pinned for tamper detection.
+  // See docs/policy-and-guardrails.md.
+  try {
+    const enrollment = enrollEnvironment({ envName, environment: updated, via: "setup-login" });
+    if (enrollment.created) {
+      logger.info(
+        "Workspace policy created — environment guardrails are now active. Manage with 'scai policy'.",
+        "cyan"
+      );
+    }
+  } catch (error) {
+    logger.warn(`Could not update the workspace policy: ${toScaiError(error).message}`, "yellow");
+  }
 
   logger.info(
     `SitecoreAI access token saved to the OS keychain for environment '${envName}' (Deploy + CM/admin scopes).`,

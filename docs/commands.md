@@ -12,6 +12,7 @@ SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and
 **Top-level commands**
 
 - [`setup`](#scai-setup) — Configure environments and authenticate — init, login, env, logout, status
+- [`policy`](#scai-policy) — Inspect and manage the workspace environment-policy guardrails — the allowlist of Sitecore environments scai may operate against.
 - [`hygiene`](#scai-hygiene) — Content quality — read-only audits, mutating cleanup, and composed diagnostics
 - [`content`](#scai-content) — Operate on content items — publish and workflow handlers
 - [`ops`](#scai-ops) — Sitecore Content Operations — briefs and campaigns
@@ -249,6 +250,115 @@ Show configured Sitecore environments for this CLI
 
 ```
 scai setup status [options]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+## scai policy
+
+Inspect and manage the workspace environment-policy guardrails — the allowlist of Sitecore environments scai may operate against.
+
+```
+scai policy [options] [command]
+```
+
+**Subcommands**
+
+- [`scai policy show`](#scai-policy-show) — Show the effective workspace policy and the enrolled environments.
+- [`scai policy init`](#scai-policy-init) — Create the workspace policy, enrolling the default environment.
+- [`scai policy allow`](#scai-policy-allow) — Enroll an environment into the workspace-policy allowlist.
+- [`scai policy remove`](#scai-policy-remove) — Remove an environment from the workspace-policy allowlist.
+- [`scai policy trust`](#scai-policy-trust) — Re-pin an enrolled environment's tenant identity to the current config, after a legitimate change.
+
+### scai policy show
+
+Show the effective workspace policy and the enrolled environments.
+
+```
+scai policy show [options]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai policy init
+
+Create the workspace policy, enrolling the default environment.
+
+```
+scai policy init [options]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai policy allow
+
+Enroll an environment into the workspace-policy allowlist.
+
+```
+scai policy allow [options] [env]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai policy remove
+
+Remove an environment from the workspace-policy allowlist.
+
+**Aliases:** `rm`
+
+```
+scai policy remove [options] [env]
+```
+
+**Options**
+
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+### scai policy trust
+
+Re-pin an enrolled environment's tenant identity to the current config, after a legitimate change.
+
+```
+scai policy trust [options] [env]
 ```
 
 **Options**

@@ -88,6 +88,11 @@ const shouldSkipAutoWizard = (args: string[]): boolean => {
   if (parent === "mcp") {
     return true;
   }
+  // `policy` manages the workspace guardrails — it must not trigger
+  // auto-init/auto-login (e.g. `scai policy show` on an unconfigured dir).
+  if (parent === "policy") {
+    return true;
+  }
   if (parent === "setup" && ["init", "login", "logout", "client"].includes(child)) {
     return true;
   }

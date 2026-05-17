@@ -26,6 +26,7 @@ import { createInitCommand } from "./commands/init";
 import { createLogoutCommand } from "./commands/logout";
 import { createSetupClientCommand } from "./commands/setup-client";
 import { createMcpCommand } from "./commands/mcp";
+import { createPolicyCommand } from "./commands/policy";
 import { createBriefCommand } from "./commands/brief";
 import { createCampaignCommand } from "./commands/campaign";
 import { createAgentsCommand } from "./commands/agents";
@@ -137,6 +138,7 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
   cli.addCommand(createTopicsCommand());
 
   program.addCommand(setup);
+  program.addCommand(createPolicyCommand());
   program.addCommand(hygiene);
   program.addCommand(content);
   program.addCommand(ops);

@@ -110,7 +110,7 @@ describe("scai mcp serve — stdio integration", () => {
     expect(result.tools.length).toBeGreaterThanOrEqual(18);
   });
 
-  it("lists the 10 required resources", async () => {
+  it("lists the 11 required resources", async () => {
     const result = await client.listResources();
     const uris = result.resources.map((r) => r.uri).sort();
     expect(uris).toEqual([
@@ -124,6 +124,7 @@ describe("scai mcp serve — stdio integration", () => {
       "scai://help/recipes-grammar",
       "scai://help/recipes-workflow",
       "scai://help/sitecore-apis",
+      "scai://help/topics",
     ]);
   });
 

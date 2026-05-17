@@ -68,6 +68,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   recipe_push:
     "Executes a recipe against the bound tenant. Compiles in-memory if given a recipe source, plans against the tenant, then applies the plan unless whatIf is true. Requires allowWrite: true. Returns the per-action execution result list.",
 
+  // Recipe sync — cross-domain aggregate
+  recipe_sync:
+    "Pull, diff, or push every enumerable recipe kind in one call via a discriminated { verb } input — the cross-domain aggregate. `pull` enumerates every brand kit and brief type on the environment and writes each as a recipe file under the workspace directory; `status` diffs every workspace recipe against the environment; `push` converges them all (dry-run unless whatIf is false). Requires allowWrite: true — `pull` writes recipe files and `push` mutates the tenant. Reach for the per-instance brand_recipe_* / brief_recipe_* tools to target a single kit or type; use this when you want the whole environment captured or converged at once.",
+
   // Inspector
   tools_list:
     "Returns the names + descriptions + auth class of every tool registered on this MCP server. Use this for human debugging or when an agent needs to discover the available action surface without an external manifest.",
@@ -88,11 +92,21 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   audit_suite_run:
     "Execute a YAML-defined audit suite by file path. Loads the suite, applies its include/exclude + per-audit options, optionally enables baseline filtering, expands {date}/{datetime}/{env}/{suite} tokens in the output path, and runs every selected audit through `runAuditAll`. Read-only — suites themselves can't mutate the tenant. Use `only` to scope a re-run after a targeted fix.",
 
+  // Explain — composed-audit answers
+  explain:
+    "Answer a specific operator question by composing several audits via a discriminated { verb } input — `why-blocked` lists every inbound reference that would block a delete of `itemId` (audit references + audit template-dependencies, sorted by kind); `orphan-site` lists the residue a deleted `site` left behind and flags trees still referenced by live content (audit site-residue + audit references). Read-only. Reach for this instead of running the underlying audits by hand when triaging a failed delete or planning a site-residue cleanup.",
+
   // Cleanup
   cleanup_preview:
     "Plan a cleanup operation without mutating the tenant — runs the chosen `verb` with whatIf: true and returns the per-action plan list. Same input shape as cleanup_execute so the agent can show the user the diff first, then re-invoke cleanup_execute with the same arguments after authorization. Safe to call iteratively while tuning scope flags.",
   cleanup_execute:
     "Execute a destructive hygiene cleanup verb. Covers versions-prune, versions-archive, archive-purge, dead-templates, duplicates, empty-folders, find-replace, roles, site-residue, subtree, users, workflow-advance — every verb in the `scai hygiene cleanup` CLI group. Requires allowWrite: true. Honors per-verb blast-radius caps (`maxDeletions`, `limit`, `maxAdvances`) and the global `whatIf` flag for plan-only mode; pair with cleanup_preview when the user wants to see the plan before authorizing.",
+
+  // Publishing (SAI Publishing API)
+  publish_inspect:
+    "Reads publishing-job state from the SAI Publishing API: a single job by id, the list of currently queued/running jobs, or the local audit log (env-level history). Use this before any cancel call so the operator knows what's in flight. Returns structured job records; never mints scope tokens (those come from CLI dry-runs, out-of-band).",
+  publish_lifecycle:
+    "Mutating publishing operations. v1 exposes only `cancel` — the safety-improving op that stops a running publish. Submission verbs (`submit_item` / `submit_all` / `unpublish`) are intentionally CLI-only because publishing pushes content to Experience Edge and the consent model requires a token minted from a human-driven dry-run. Use `publish_inspect verb='list-running'` to find a jobId to cancel; cancellation is recoverable via resubmission.",
 
   // Brief (Content Operations)
   brief_inspect:

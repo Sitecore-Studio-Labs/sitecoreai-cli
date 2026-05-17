@@ -30,6 +30,12 @@ export interface ExplainOrphanSiteOptions extends HygieneCommonOptions {
   index?: string;
   /** Cap on inbound refs counted per orphan tree. */
   limit?: number;
+  /**
+   * Suppress the printed report. The structured `ExplainOrphanSiteReport`
+   * is still returned — set by non-CLI callers (the MCP `explain` tool)
+   * that render the result themselves and must not write to stdout.
+   */
+  silent?: boolean;
 }
 
 export interface OrphanSiteEntry {
@@ -97,18 +103,20 @@ export const runExplainOrphanSite = async (
 
   const report: ExplainOrphanSiteReport = { site, orphans };
 
-  printReport({
-    logger,
-    command: "explain.orphan-site",
-    envName,
-    results: orphans,
-    summary: summarize(site, orphans),
-    formatLine: (o) =>
-      `[${o.kind}] ${o.path} — ${o.descendantCount} item(s), ` +
-      `${o.inboundRefs} inbound ref(s)${o.inboundRefs > 0 ? " — still referenced" : ""}`,
-    extra: { site, orphanCount: orphans.length },
-    options,
-  });
+  if (!options.silent) {
+    printReport({
+      logger,
+      command: "explain.orphan-site",
+      envName,
+      results: orphans,
+      summary: summarize(site, orphans),
+      formatLine: (o) =>
+        `[${o.kind}] ${o.path} — ${o.descendantCount} item(s), ` +
+        `${o.inboundRefs} inbound ref(s)${o.inboundRefs > 0 ? " — still referenced" : ""}`,
+      extra: { site, orphanCount: orphans.length },
+      options,
+    });
+  }
 
   return report;
 };

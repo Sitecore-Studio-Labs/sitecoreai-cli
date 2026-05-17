@@ -89,9 +89,11 @@ const loosen = <O>(fn: (options: O) => Promise<readonly unknown[]>): LoosedRunne
 
 /**
  * Routing table for `audit_inspect` verb=run. The list mirrors
- * `AUDIT_REGISTRY` in `src/hygiene/tasks/audit-all.ts`.
+ * `AUDIT_REGISTRY` in `src/hygiene/tasks/audit/all.ts` — the
+ * `cli-mcp-parity.test.ts` routing-table test asserts the two stay in
+ * lockstep, so it is exported for that test.
  */
-const SINGLE_AUDIT_RUNNERS: Record<string, LoosedRunner> = {
+export const SINGLE_AUDIT_RUNNERS: Record<string, LoosedRunner> = {
   "alt-text-missing": loosen(runAuditAltTextMissing),
   "broken-images": loosen(runAuditBrokenImages),
   "broken-links": loosen(runAuditBrokenLinks),

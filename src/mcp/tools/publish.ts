@@ -36,6 +36,7 @@ import { cancelPublishJob, getPublishJob, listPublishJobs } from "@/publishing/a
 import { readRecentPublishAudit } from "@/publishing/audit";
 import type { PublishingApiClientOptions } from "@/publishing/api/types";
 import { resolveToolBinding } from "../auth";
+import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
 import { allowWriteShape, environmentBindingShape, paginationShape } from "../schemas/common";
 
@@ -48,8 +49,7 @@ const acquireClient = async (envName: string): Promise<PublishingApiClientOption
 export const registerPublishingTools = (registry: McpRegistry): void => {
   registry.registerTool({
     name: "publish_inspect",
-    description:
-      "Reads publishing-job state from the SAI Publishing API: a single job by id, the list of currently queued/running jobs, or the local audit log (env-level history). Use this before any cancel call so the operator knows what's in flight. Returns structured job records; never mints scope tokens (those come from CLI dry-runs, out-of-band).",
+    description: TOOL_DESCRIPTIONS.publish_inspect,
     auth: "read",
     annotations: {
       title: "Inspect publishing jobs and history",
@@ -143,8 +143,7 @@ export const registerPublishingTools = (registry: McpRegistry): void => {
 
   registry.registerTool({
     name: "publish_lifecycle",
-    description:
-      "Mutating publishing operations. v1 exposes only `cancel` — the safety-improving op that stops a running publish. Submission verbs (`submit_item` / `submit_all` / `unpublish`) are intentionally CLI-only because publishing pushes content to Experience Edge and the consent model requires a token minted from a human-driven dry-run. Use `publish_inspect verb='list-running'` to find a jobId to cancel; cancellation is recoverable via resubmission.",
+    description: TOOL_DESCRIPTIONS.publish_lifecycle,
     auth: "write",
     annotations: {
       title: "Cancel a running publish job",

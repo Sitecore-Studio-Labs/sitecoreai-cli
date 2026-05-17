@@ -7,16 +7,62 @@
  * overview resource).
  */
 
+import { TOPICS } from "@/shared/topics";
 import type { McpRegistry } from "../registry";
+
+/**
+ * Render the shared intent index (`@/shared/topics`) as markdown — the
+ * MCP-side projection of `scai cli topics`. Both surfaces read the same
+ * `TOPICS` data, so the agent-facing index can never drift from the CLI.
+ */
+const renderTopicsMarkdown = (): string => {
+  const lines: string[] = [
+    "# scai topics — intent-based command index",
+    "",
+    "Commands grouped by what you're trying to do, not where they sit in",
+    "the command tree. This is the same index `scai cli topics` renders.",
+    "Each entry is a CLI invocation; from an MCP host map it to the",
+    "matching tool — e.g. `scai hygiene explain why-blocked` is the",
+    "`explain` tool with verb `why-blocked`, `scai sync pull` is",
+    "`recipe_sync` with verb `pull`.",
+    "",
+  ];
+  for (const topic of TOPICS) {
+    lines.push(`## ${topic.name}`, "", topic.description, "");
+    for (const command of topic.commands) {
+      lines.push(`- \`${command.command}\``, `  ${command.description}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd() + "\n";
+};
 
 const OVERVIEW_TEXT = `# scai MCP server — overview
 
 scai is the developer-side MCP for Sitecore XM Cloud. It is intentionally
 complementary to Sitecore's managed Marketer MCP: the marketer surface
 operates pages, components, and content from the marketer's vantage
-point; the scai surface operates **the developer-facing primitives** —
-deployment runs, environment lifecycle, source-control bindings,
-serialization (.scs) sync, and Recipe DSL execution.
+point; the scai surface operates **the developer-facing primitives**
+across these domains:
+
+- **Deploy** — organizations, projects, environments, deployments,
+  environment variables, source-control bindings, restart/promote.
+- **Serialization** — Sitecore Content Serialization (.scs) pull / push
+  / diff / validate, plus Authoring-GraphQL publish.
+- **Recipes** — Recipe DSL compile / plan / diff / push, and
+  \`recipe_sync\`, the cross-domain pull/diff/push aggregate.
+- **Content hygiene** — audits, baselines, cleanup verbs, and
+  \`explain\` (composed-audit answers like "why won't this delete?").
+- **Workflow & webhooks** — workflow inspection + lifecycle, webhook
+  handler management.
+- **Publishing** — SAI Publishing API job inspection + cancel.
+- **Brand** — brand kits, the ingestion/enrichment pipelines, brand
+  review scoring, and brand-kit recipes.
+- **Content Operations** — briefs and Orchestrate campaigns (+ recipes).
+- **Agentic Studio** — agent / skill / widget inspection, agent runs,
+  and Agentic Studio recipes.
+
+See \`tools_list\` / \`tools_schema\` for the live, exhaustive inventory.
 
 ## Binding model
 
@@ -44,10 +90,16 @@ See \`tools_list\` and \`tools_schema\` for the live inventory.
 ## Resources
 
 - \`scai://help/overview\` — this resource.
+- \`scai://help/topics\` — intent-based command index ("why won't this
+  delete?", "sync recipes across domains", …); mirrors \`scai cli topics\`.
 - \`scai://help/recipes-grammar\` — Recipe DSL grammar synopsis.
+- \`scai://help/recipes-workflow\` — recipe authoring + sync workflow.
 - \`scai://help/deploy-lifecycle\` — XM Cloud deploy state machine.
 - \`scai://help/sitecore-apis\` — curated index of Sitecore APIs with
   links into api-docs.sitecore.com and per-API tool mappings.
+- \`scai://help/brand-kit-generation\` — brand-kit seed vs direct-PATCH
+  population flows.
+- \`scai://help/brand-file-formats\` — brand-document file-format limits.
 - \`scai://env/current/manifest\` — bound environment metadata.
 - \`scai://env/current/last-deploy\` — most recent deployment summary.
 - \`https://api-docs.sitecore.com/\` — external pointer to the full
@@ -60,15 +112,23 @@ Slash commands available in compatible clients:
 
 - \`scai.deploy_recipe(recipeName, targetEnv)\`
 - \`scai.diff_envs(sourceEnv, targetEnv)\`
+- \`scai.compose_workflow(...)\`
 - \`scai.recover_failed_deploy(deploymentId?)\`
 
-## Known limitations (v1)
+## Concurrency, progress & cancellation
+
+- Reads run concurrently; writes are exclusive (an in-house read/write
+  lock — a queued \`recipe_push\` never observes a half-applied peer).
+- Long-running writes (\`recipe_sync\`, \`recipe_push\`,
+  \`serialization_sync\`, \`brand_manage\` seed) honor
+  \`notifications/cancelled\` and emit progress notifications when the
+  client supplies a \`progressToken\`.
+
+## Known limitations
 
 - HTTP transport is stateless: no Mcp-Session-Id, no resumable streams (stdio is unaffected).
-- Tool calls serialize through a single mutex; no parallel dispatch.
-- No cancellation (\`recipe_push\`, \`serialization_sync\` finish-then-return).
-- No streaming partial results.
-- No \`watch\` tools.
+- No \`watch\` tools — no long-lived subscriptions; re-invoke an
+  \`*_inspect\` tool to re-check state.
 `;
 
 const RECIPES_GRAMMAR_TEXT = `# scai Recipes — grammar synopsis
@@ -218,10 +278,12 @@ identify an API that scai doesn't yet surface.
 ### SAI Publishing API
 - **Base URL:** \`https://edge-platform.sitecorecloud.io/authoring/publishing/v1/jobs\`
 - **Docs:** [api-docs.sitecore.com/sai/publishing-api](https://api-docs.sitecore.com/sai/publishing-api)
-- **scai tools:** none yet — \`serialization_publish\` currently
-  publishes via the Authoring GraphQL \`publish()\` mutation; the SAI
-  Publishing API is planned for the dedicated \`scai content publish\` command
-  group.
+- **scai tools:** \`publish_inspect\` (job status / list-running /
+  history) and \`publish_lifecycle\` (cancel). Submission (\`submit_item\`
+  / \`submit_all\` / \`unpublish\`) stays CLI-only — the consent model
+  requires a token minted from a human-driven dry-run. The separate
+  \`serialization_publish\` tool publishes serialized items via the
+  Authoring GraphQL \`publish()\` mutation.
 - **What it does:** publish-to-Edge job lifecycle (start, status,
   cancel, list, summary).
 
@@ -263,6 +325,23 @@ export const registerHelpResources = (registry: McpRegistry): void => {
           uri: "scai://help/overview",
           mimeType: "text/markdown",
           text: OVERVIEW_TEXT,
+        },
+      ],
+    }),
+  });
+
+  registry.registerResource({
+    uri: "scai://help/topics",
+    name: "scai topics — intent-based command index",
+    description:
+      "Markdown index of scai commands grouped by operator intent ('why won't this delete?', 'sync recipes across domains'). Mirrors `scai cli topics`; fetch this to discover the right command/tool for a task instead of grepping the full tool list.",
+    mimeType: "text/markdown",
+    handler: async () => ({
+      contents: [
+        {
+          uri: "scai://help/topics",
+          mimeType: "text/markdown",
+          text: renderTopicsMarkdown(),
         },
       ],
     }),

@@ -18,7 +18,7 @@ const fakeContext: McpContext = {
 describe("MCP resources", () => {
   const registry = buildScaiMcpRegistry();
 
-  it("registers the 10 required URIs", () => {
+  it("registers the 11 required URIs", () => {
     const uris = registry
       .listResources()
       .map((r) => r.uri)
@@ -34,7 +34,17 @@ describe("MCP resources", () => {
       "scai://help/recipes-grammar",
       "scai://help/recipes-workflow",
       "scai://help/sitecore-apis",
+      "scai://help/topics",
     ]);
+  });
+
+  it("help/topics renders the shared intent index as markdown", async () => {
+    const resource = registry.listResources().find((r) => r.uri === "scai://help/topics")!;
+    const result = await resource.handler(fakeContext);
+    const body = result.contents[0] as { text: string };
+    expect(body.text).toContain("intent-based command index");
+    expect(body.text).toContain("diagnose-blocked-delete");
+    expect(body.text).toContain("sync-recipes-across-domains");
   });
 
   it("help/sitecore-apis returns the curated API catalog markdown", async () => {

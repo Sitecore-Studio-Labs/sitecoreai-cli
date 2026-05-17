@@ -62,6 +62,12 @@ export interface ExplainWhyBlockedOptions extends HygieneCommonOptions {
   skipTemplateDeps?: boolean;
   /** Pass through to the field-value scan when caching back-to-back invocations. */
   cache?: boolean;
+  /**
+   * Suppress the printed report. The structured `ExplainWhyBlockedReport`
+   * is still returned — set by non-CLI callers (the MCP `explain` tool)
+   * that render the result themselves and must not write to stdout.
+   */
+  silent?: boolean;
 }
 
 export interface BlockerEntry {
@@ -192,21 +198,23 @@ export const runExplainWhyBlocked = async (
     blockers,
   };
 
-  printReport({
-    logger,
-    command: "explain.why-blocked",
-    envName,
-    results: blockers,
-    summary: summarize(normalizedTarget, blockers),
-    formatLine: (b) =>
-      `[${b.referenceKind}] ${b.referrerPath ?? b.referrerItemId}${b.fieldName ? ` . ${b.fieldName}` : ""}`,
-    extra: {
-      itemId: normalizedTarget,
-      scannedContent: !options.skipContentScan,
-      scannedTemplateDeps: !options.skipTemplateDeps,
-    },
-    options,
-  });
+  if (!options.silent) {
+    printReport({
+      logger,
+      command: "explain.why-blocked",
+      envName,
+      results: blockers,
+      summary: summarize(normalizedTarget, blockers),
+      formatLine: (b) =>
+        `[${b.referenceKind}] ${b.referrerPath ?? b.referrerItemId}${b.fieldName ? ` . ${b.fieldName}` : ""}`,
+      extra: {
+        itemId: normalizedTarget,
+        scannedContent: !options.skipContentScan,
+        scannedTemplateDeps: !options.skipTemplateDeps,
+      },
+      options,
+    });
+  }
 
   return report;
 };

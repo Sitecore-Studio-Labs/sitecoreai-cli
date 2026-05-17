@@ -21,29 +21,18 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
 import { readRootConfiguration } from "@/config/root-config";
-import { brandKitKind } from "@/brand/recipe";
-import { briefTypeKind } from "@/brief/recipe";
+import { ENUMERABLE_RECIPE_KINDS } from "@/sync/aggregate-kinds";
 import {
   aggregatePull,
   aggregatePush,
   aggregateStatus,
   DEFAULT_SYNC_DIR,
-  type RecipeKind,
   type SyncContext,
   type SyncMode,
 } from "@/sync";
 import { toLogger } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
-
-/**
- * The kinds the aggregate covers — every `RecipeKind` that implements
- * `list`. Add a row when a new enumerable kind ships.
- */
-const AGGREGATE_KINDS: RecipeKind<unknown>[] = [
-  brandKitKind as RecipeKind<unknown>,
-  briefTypeKind as RecipeKind<unknown>,
-];
 
 interface SyncOptions extends CommonOptions {
   environmentName?: string;
@@ -66,7 +55,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
 const runPull = async (options: SyncOptions): Promise<void> => {
   const logger = toLogger(options);
   const ctx = buildContext(options, logger);
-  const result = await aggregatePull(AGGREGATE_KINDS, ctx, { dir: options.dir });
+  const result = await aggregatePull(ENUMERABLE_RECIPE_KINDS, ctx, { dir: options.dir });
   for (const kind of result.kinds) {
     logger.info(`${kind.kind}:`, "cyan");
     if (kind.skipped) {
@@ -85,7 +74,7 @@ const runPull = async (options: SyncOptions): Promise<void> => {
 const runStatus = async (options: SyncOptions): Promise<void> => {
   const logger = toLogger(options);
   const ctx = buildContext(options, logger);
-  const result = await aggregateStatus(AGGREGATE_KINDS, ctx, { dir: options.dir });
+  const result = await aggregateStatus(ENUMERABLE_RECIPE_KINDS, ctx, { dir: options.dir });
   for (const kind of result.kinds) {
     logger.info(`${kind.kind}:`, "cyan");
     for (const item of kind.items) {
@@ -116,7 +105,7 @@ const runPush = async (options: SyncOptions): Promise<void> => {
   if (mode === "what-if") {
     logger.info("Dry run — no writes. Re-run with --allow-write to converge.", "yellow");
   }
-  const result = await aggregatePush(AGGREGATE_KINDS, ctx, {
+  const result = await aggregatePush(ENUMERABLE_RECIPE_KINDS, ctx, {
     dir: options.dir,
     mode,
     prune: Boolean(options.prune),

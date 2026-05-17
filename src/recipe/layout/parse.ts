@@ -105,8 +105,7 @@ export interface ParsedLayout {
 }
 
 /** Normalise a Sitecore GUID to bare 32-hex, lower-case (strip `{}` and `-`). */
-const normalizeGuid = (guid: string): string =>
-  guid.trim().toLowerCase().replace(/[{}-]/g, "");
+const normalizeGuid = (guid: string): string => guid.trim().toLowerCase().replace(/[{}-]/g, "");
 
 /**
  * Decode the XML-attribute entity escapes `escapeXmlAttribute` introduces.
@@ -273,9 +272,7 @@ export function parseLayoutXml(xml: string): ParsedLayout {
   // Delta form declares the `p` (parameters) namespace and carries `p:p`;
   // canonical declares the XSD/XSI schema namespaces. Default to canonical.
   const mode: "canonical" | "delta" =
-    rootAttrs["xmlns:p"] !== undefined || rootAttrs["p:p"] !== undefined
-      ? "delta"
-      : "canonical";
+    rootAttrs["xmlns:p"] !== undefined || rootAttrs["p:p"] !== undefined ? "delta" : "canonical";
 
   // The device element wraps every rendering. Recover its `l` (JSON
   // Layout) attribute when present — canonical-only.

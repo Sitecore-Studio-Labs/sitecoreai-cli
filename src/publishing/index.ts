@@ -14,12 +14,7 @@
  */
 
 // --- HTTP client primitives --------------------------------------------
-export {
-  submitPublishJob,
-  getPublishJob,
-  cancelPublishJob,
-  listPublishJobs,
-} from "./api/client";
+export { submitPublishJob, getPublishJob, cancelPublishJob, listPublishJobs } from "./api/client";
 
 export type {
   CreatePublishJobRequest,

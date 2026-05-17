@@ -9,9 +9,8 @@ const syncMocks = vi.hoisted(() => ({
   syncPush: vi.fn(),
 }));
 vi.mock("../../../../src/sync", async () => {
-  const actual = await vi.importActual<typeof import("../../../../src/sync")>(
-    "../../../../src/sync"
-  );
+  const actual =
+    await vi.importActual<typeof import("../../../../src/sync")>("../../../../src/sync");
   return { ...actual, ...syncMocks };
 });
 

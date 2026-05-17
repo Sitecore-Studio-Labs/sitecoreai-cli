@@ -85,11 +85,7 @@ const createPullCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const campaignName = options.campaign ?? "";
-    const recipe = await syncPull(
-      campaignKind,
-      { kind: campaignKind.name, id: campaignName },
-      ctx
-    );
+    const recipe = await syncPull(campaignKind, { kind: campaignKind.name, id: campaignName }, ctx);
     if (!recipe) {
       throw inputError(
         `Campaign "${campaignName}" not found.`,

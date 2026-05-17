@@ -148,11 +148,7 @@ const resultsToChanges = (
  * `RecipeChange`, and stashes the compiled IRs in `RecipePlan.payload`
  * so `apply` can re-execute them without recompiling.
  */
-const plan = async (
-  desired: Recipe[],
-  _ref: KindRef,
-  ctx: SyncContext
-): Promise<RecipePlan> => {
+const plan = async (desired: Recipe[], _ref: KindRef, ctx: SyncContext): Promise<RecipePlan> => {
   const { client, context } = resolveContext(ctx);
   // Stamp every CreateItem op with the `Scai Handle` identity marker
   // before planning, so the IRs carried into `apply` (via payload) write

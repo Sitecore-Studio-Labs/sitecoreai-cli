@@ -4,6 +4,9 @@
  * A widget carries a declarative `spec` (a tree of typed UI elements).
  * `generateWidgetSpec` is the AI-assisted authoring helper: it streams
  * JSON-Patch ops that build a spec up from a prompt.
+ *
+ * `updateWidget` / `deleteWidget` use `PUT`/`DELETE /api/widgets/{id}` —
+ * verified working 2026-05-17 against agentic-studio-euw.
  */
 import { agentsRequest, agentsStream } from "./request";
 import type { AgentsSession } from "../session/types";
@@ -13,6 +16,15 @@ import type { Widget, WidgetSpec } from "./schema";
 export const listWidgets = async (session: AgentsSession): Promise<Widget[]> => {
   const data = await agentsRequest<unknown>(session, "/api/widgets");
   return Array.isArray(data) ? (data as Widget[]) : [];
+};
+
+/** Find one widget by `id` or `name`. Returns `undefined` if not found. */
+export const getWidget = async (
+  session: AgentsSession,
+  idOrName: string
+): Promise<Widget | undefined> => {
+  const widgets = await listWidgets(session);
+  return widgets.find((widget) => widget.id === idOrName || widget.name === idOrName);
 };
 
 export interface CreateWidgetInput {
@@ -34,6 +46,31 @@ export const createWidget = async (
       spec: input.spec,
     },
   });
+
+export interface UpdateWidgetInput extends CreateWidgetInput {
+  /** Id of the widget to replace. */
+  id: string;
+}
+
+/** Update a widget (`PUT /api/widgets/{id}`, full-replacement). */
+export const updateWidget = async (
+  session: AgentsSession,
+  input: UpdateWidgetInput
+): Promise<void> => {
+  await agentsRequest(session, `/api/widgets/${encodeURIComponent(input.id)}`, {
+    method: "PUT",
+    body: {
+      name: input.name,
+      description: input.description ?? null,
+      spec: input.spec,
+    },
+  });
+};
+
+/** Delete a widget (`DELETE /api/widgets/{id}`). */
+export const deleteWidget = async (session: AgentsSession, id: string): Promise<void> => {
+  await agentsRequest(session, `/api/widgets/${encodeURIComponent(id)}`, { method: "DELETE" });
+};
 
 /** A JSON-Patch op emitted by `generateWidgetSpec`. */
 export interface WidgetSpecPatch {

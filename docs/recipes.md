@@ -148,7 +148,7 @@ re-namespace items on a tenant that already has a push.
 
 The handle's GUID isn't a single item — it's the root of a stable tree.
 Fields, sections, variants, and standard-values derive their GUIDs
-*under* the template's GUID:
+_under_ the template's GUID:
 
 ```
 fieldId(site, handle, fieldName) = uuidv5(fieldName, templateId(site, handle))
@@ -230,7 +230,7 @@ Cross-recipe references are validated at compile time —
 doesn't resolve.
 
 Resolution is two-phase. At **compile time**, each referenced handle is
-turned into a *refKey* — the deterministic GUID computed from that
+turned into a _refKey_ — the deterministic GUID computed from that
 handle (see [Handles](#handles)). At **execute time**, the refKey is
 substituted for the referenced item's resolved itemId from the per-run
 captured-itemId map, once that item's `CreateItem` op has run

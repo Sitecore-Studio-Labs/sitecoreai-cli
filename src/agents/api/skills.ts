@@ -2,8 +2,9 @@
  * Skills — reusable markdown guidance an agent attaches (`/api/skills`).
  *
  * `POST /api/skills` returns the created skill directly (not wrapped in an
- * array, unlike `/api/agents`). Update/delete endpoints have not been
- * captured — add them here once observed.
+ * array, unlike `/api/agents`). `updateSkill` / `deleteSkill` use
+ * `PUT`/`DELETE /api/skills/{id}` — verified working 2026-05-17 against
+ * agentic-studio-euw (a probe created, updated, and deleted a skill).
  */
 import { agentsRequest } from "./request";
 import type { AgentsSession } from "../session/types";
@@ -49,3 +50,30 @@ export const createSkill = async (
       visibility: input.visibility ?? "team",
     },
   });
+
+export interface UpdateSkillInput extends CreateSkillInput {
+  /** Id of the skill to replace. */
+  id: string;
+}
+
+/** Update a skill (`PUT /api/skills/{id}`, full-replacement). */
+export const updateSkill = async (
+  session: AgentsSession,
+  input: UpdateSkillInput
+): Promise<void> => {
+  await agentsRequest(session, `/api/skills/${encodeURIComponent(input.id)}`, {
+    method: "PUT",
+    body: {
+      name: input.name,
+      description: input.description,
+      content: input.content,
+      tags: input.tags ?? [],
+      visibility: input.visibility ?? "team",
+    },
+  });
+};
+
+/** Delete a skill (`DELETE /api/skills/{id}`). */
+export const deleteSkill = async (session: AgentsSession, id: string): Promise<void> => {
+  await agentsRequest(session, `/api/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
+};

@@ -9,16 +9,16 @@ design system, safe to push as a unit.
 
 ## What it covers
 
-| Recipe | Kind | Role |
-| ------ | ---- | ---- |
-| `cta.recipe.ts` | `component-template` | A placeable CTA button |
-| `rich-text.recipe.ts` | `component-template` | A placeable rich-text block |
-| `main-placeholder.recipe.ts` | `placeholder` | `headless-main` page-body slot (folder: `Page Designs`) |
-| `header-placeholder.recipe.ts` | `placeholder` | `/header` slot (folder: `Partial Designs`) |
-| `header.recipe.ts` | `partial-design` | Header partial — places the CTA into `/header` |
-| `page.recipe.ts` | `page-template` | The page template (SXA Headless page base set) |
-| `design.recipe.ts` | `page-design` | Wraps the header partial, seeds the page body |
-| `home.recipe.ts` | `page` | The home page — conforms to the template, scoped datasource |
+| Recipe                         | Kind                 | Role                                                        |
+| ------------------------------ | -------------------- | ----------------------------------------------------------- |
+| `cta.recipe.ts`                | `component-template` | A placeable CTA button                                      |
+| `rich-text.recipe.ts`          | `component-template` | A placeable rich-text block                                 |
+| `main-placeholder.recipe.ts`   | `placeholder`        | `headless-main` page-body slot (folder: `Page Designs`)     |
+| `header-placeholder.recipe.ts` | `placeholder`        | `/header` slot (folder: `Partial Designs`)                  |
+| `header.recipe.ts`             | `partial-design`     | Header partial — places the CTA into `/header`              |
+| `page.recipe.ts`               | `page-template`      | The page template (SXA Headless page base set)              |
+| `design.recipe.ts`             | `page-design`        | Wraps the header partial, seeds the page body               |
+| `home.recipe.ts`               | `page`               | The home page — conforms to the template, scoped datasource |
 
 Together they exercise: component templates + renderings + variants,
 the hybrid placeholder model (`Allowed Controls` whitelists +

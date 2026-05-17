@@ -56,7 +56,13 @@ import { compileSiteRecipe } from "./compile/site";
 import { compileEnumerationRecipe } from "./compile/enumeration";
 import { compileWorkflowRecipe } from "./compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
-import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./compile/shared";
+import {
+  joinPath,
+  sharedField,
+  siteOf,
+  versionedField,
+  type CompileContext,
+} from "./compile/shared";
 
 // Re-export per-kind compile functions so existing import paths
 // (`import { compileComponentTemplateRecipe } from "@/recipe/compile"`)
@@ -1041,9 +1047,7 @@ export function compileRecipeSet(
   // (`home@1` sorts before `page@1`). The sort is STABLE — input order
   // is preserved within a rank, so intra-rank emission order (section
   // folders, etc.) is untouched.
-  const ranked = [...recipes].sort(
-    (a, b) => RECIPE_APPLY_RANK[a.kind] - RECIPE_APPLY_RANK[b.kind]
-  );
+  const ranked = [...recipes].sort((a, b) => RECIPE_APPLY_RANK[a.kind] - RECIPE_APPLY_RANK[b.kind]);
   const irs: OperationIr[] = ranked.map((r) => irByHandle.get(r.handle)!);
 
   const setSite = siteOf(context);
@@ -1137,11 +1141,7 @@ export function compileRecipeSet(
   // SetField per unique placeholder key (standalone PlaceholderRecipe +
   // inline component placeholders). Emitted last so per-recipe rendering
   // CreateItem ops have run before its ref-recipe-list resolves.
-  const placeholderSettings = buildPlaceholderSettingsAggregate(
-    recipes,
-    context,
-    setSiteForShared
-  );
+  const placeholderSettings = buildPlaceholderSettingsAggregate(recipes, context, setSiteForShared);
   if (placeholderSettings) {
     irs.push(placeholderSettings);
   }

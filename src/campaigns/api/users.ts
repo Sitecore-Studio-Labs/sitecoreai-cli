@@ -13,7 +13,5 @@ import type { CampaignApiClientOptions } from "./types";
  */
 
 /** List users available as campaign members / task assignees. */
-export const listUsers = (
-  options: CampaignApiClientOptions
-): Promise<PagedResult<CampaignUser>> =>
+export const listUsers = (options: CampaignApiClientOptions): Promise<PagedResult<CampaignUser>> =>
   campaignRequest<PagedResult<CampaignUser>>(options, "/api/orchestrate/v1/users");

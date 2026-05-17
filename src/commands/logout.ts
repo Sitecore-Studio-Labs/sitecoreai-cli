@@ -13,7 +13,10 @@ export const createLogoutCommand = (): Command => {
     .addOption(new Option("--all", "Clear tokens for all environments"))
     .action(async (options) => runLogout(options));
 
-  command.addHelpText("after", "\nExamples:\n  $ scai setup logout -n demo\n  $ scai setup logout --all\n");
+  command.addHelpText(
+    "after",
+    "\nExamples:\n  $ scai setup logout -n demo\n  $ scai setup logout --all\n"
+  );
 
   return command;
 };

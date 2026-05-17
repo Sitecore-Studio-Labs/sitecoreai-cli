@@ -80,10 +80,7 @@ describe("diffBriefType — brief type present with changes", () => {
   });
 
   it("marks unchanged elements as noop while changed ones update", () => {
-    const plan = diffBriefType(
-      recipe({ ...base, icon: "mdi-star" }),
-      recipe(base)
-    );
+    const plan = diffBriefType(recipe({ ...base, icon: "mdi-star" }), recipe(base));
     const byPath = Object.fromEntries(plan.changes.map((change) => [change.path, change.kind]));
     expect(byPath["briefType.icon"]).toBe("update");
     expect(byPath["briefType.label"]).toBe("noop");
@@ -93,10 +90,7 @@ describe("diffBriefType — brief type present with changes", () => {
   it("diffs the fields array structurally", () => {
     const current = recipe({ ...base, fields: [richField("summary")] });
 
-    const same = diffBriefType(
-      recipe({ ...base, fields: [richField("summary")] }),
-      current
-    );
+    const same = diffBriefType(recipe({ ...base, fields: [richField("summary")] }), current);
     expect(same.changes.find((change) => change.path === "briefType.fields")?.kind).toBe("noop");
 
     const changed = diffBriefType(
@@ -111,9 +105,7 @@ describe("diffBriefType — brief type present with changes", () => {
     const current = recipe({ ...base, fields: [richField("summary", false)] });
     const desired = recipe({ ...base, fields: [richField("summary", true)] });
     const plan = diffBriefType(desired, current);
-    expect(plan.changes.find((change) => change.path === "briefType.fields")?.kind).toBe(
-      "update"
-    );
+    expect(plan.changes.find((change) => change.path === "briefType.fields")?.kind).toBe("update");
   });
 
   it("never emits a stage:type change when nothing changed", () => {

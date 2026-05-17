@@ -17,17 +17,11 @@ import { z } from "zod";
  */
 export const CampaignTaskSchema = z.object({
   name: z.string().min(1).describe("Task name. Identifies the task within its deliverable."),
-  status: z
-    .string()
-    .optional()
-    .describe('Task status — a server enum, e.g. "NOT_STARTED".'),
+  status: z.string().optional().describe('Task status — a server enum, e.g. "NOT_STARTED".'),
   dueDate: z.string().optional().describe("Task due date (ISO-8601)."),
   priority: z.string().optional().describe("Task priority — a server enum."),
   description: z.string().optional().describe("Task description. HTML."),
-  assignee: z
-    .string()
-    .optional()
-    .describe('Assignee — an Auth0 user subject (e.g. "auth0|...").'),
+  assignee: z.string().optional().describe('Assignee — an Auth0 user subject (e.g. "auth0|...").'),
   labels: z.array(z.string()).default([]).describe("Free-form labels on the task."),
 });
 
@@ -36,25 +30,21 @@ export const CampaignTaskSchema = z.object({
  * Identified within its campaign by `name`.
  */
 export const CampaignDeliverableSchema = z.object({
-  name: z.string().min(1).describe("Deliverable name. Identifies the deliverable within its campaign."),
-  status: z
+  name: z
     .string()
-    .optional()
-    .describe('Deliverable status — a server enum, e.g. "NOT_STARTED".'),
+    .min(1)
+    .describe("Deliverable name. Identifies the deliverable within its campaign."),
+  status: z.string().optional().describe('Deliverable status — a server enum, e.g. "NOT_STARTED".'),
   dueDate: z.string().optional().describe("Deliverable due date (ISO-8601)."),
-  funnelStage: z
-    .string()
-    .optional()
-    .describe('Funnel stage — a server enum, e.g. "TOP".'),
-  funnelTactics: z
-    .array(z.string())
-    .default([])
-    .describe("Funnel tactics for the deliverable."),
+  funnelStage: z.string().optional().describe('Funnel stage — a server enum, e.g. "TOP".'),
+  funnelTactics: z.array(z.string()).default([]).describe("Funnel tactics for the deliverable."),
   labels: z.array(z.string()).default([]).describe("Free-form labels on the deliverable."),
   tasks: z
     .array(CampaignTaskSchema)
     .default([])
-    .describe("Tasks under this deliverable. On push, missing tasks are created and existing ones converged."),
+    .describe(
+      "Tasks under this deliverable. On push, missing tasks are created and existing ones converged."
+    ),
 });
 
 /** The full campaign recipe — a project plus its nested deliverables. */
@@ -64,10 +54,7 @@ export const CampaignRecipeSchema = z.object({
     .min(1)
     .describe("Display name of the campaign (project). Identifies the campaign when pushing."),
   description: z.string().optional().describe("Human description of the campaign."),
-  status: z
-    .string()
-    .optional()
-    .describe('Campaign status — a server enum, e.g. "NOT_STARTED".'),
+  status: z.string().optional().describe('Campaign status — a server enum, e.g. "NOT_STARTED".'),
   startDate: z.string().optional().describe("Campaign start date (ISO-8601)."),
   dueDate: z.string().optional().describe("Campaign due date (ISO-8601)."),
   brandKitId: z

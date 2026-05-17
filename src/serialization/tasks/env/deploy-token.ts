@@ -22,6 +22,17 @@ import {
   SCAI_DEVICE_FLOW_SCOPES,
 } from "./constants";
 
+/**
+ * Read an env var, treating an empty / whitespace-only value as unset.
+ * `process.env.X` is `""` for an exported-but-blank var (common in CI and
+ * sourced `.env` files); a plain `?? fallback` would keep that `""` and
+ * shadow the default, so normalize to `undefined` first.
+ */
+const envValue = (key: string): string | undefined => {
+  const value = process.env[key]?.trim();
+  return value ? value : undefined;
+};
+
 export const runDeployToken = async (options: DeployTokenOptions): Promise<void> => {
   const logger = toLogger(options);
   const envName = options.environmentName;
@@ -39,14 +50,14 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   const isInteractive =
     process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
   const baseAuthority =
-    baseEnv.authority ?? process.env.SITECOREAI_AUTHORITY ?? "https://auth.sitecorecloud.io";
+    baseEnv.authority ?? envValue("SITECOREAI_AUTHORITY") ?? "https://auth.sitecorecloud.io";
   if (baseAuthority) {
     assertValidUrl(baseAuthority, "Authority");
   }
   const deviceDefaultClientId =
-    options.clientId ?? process.env.SITECOREAI_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID;
+    options.clientId ?? envValue("SITECOREAI_CLIENT_ID") ?? DEFAULT_PUBLIC_CLIENT_ID;
   const clientCredentialsDefaultClientId =
-    options.clientId ?? baseEnv.clientId ?? process.env.SITECOREAI_CLIENT_ID;
+    options.clientId ?? baseEnv.clientId ?? envValue("SITECOREAI_CLIENT_ID");
   let wantsClientCredentials = Boolean(
     options.useClientCredentials || baseEnv.useClientCredentials
   );

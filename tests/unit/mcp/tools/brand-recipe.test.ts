@@ -9,9 +9,8 @@ const syncMocks = vi.hoisted(() => ({
   syncPush: vi.fn(),
 }));
 vi.mock("../../../../src/sync", async () => {
-  const actual = await vi.importActual<typeof import("../../../../src/sync")>(
-    "../../../../src/sync"
-  );
+  const actual =
+    await vi.importActual<typeof import("../../../../src/sync")>("../../../../src/sync");
   return { ...actual, ...syncMocks };
 });
 
@@ -35,7 +34,13 @@ const fakeExtra = {
   sendNotification: async () => undefined,
 };
 
-const recipe = { name: "Acme", description: undefined, industry: undefined, documents: [], sections: {} };
+const recipe = {
+  name: "Acme",
+  description: undefined,
+  industry: undefined,
+  documents: [],
+  sections: {},
+};
 
 const setup = async () => {
   const { buildScaiMcpRegistry } = await import("../../../../src/mcp/build-registry");

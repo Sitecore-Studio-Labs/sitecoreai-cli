@@ -33,8 +33,7 @@ describe("sitecore api auth", () => {
   });
 
   it("throws when device login is missing authority or clientId", async () => {
-    const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/api/auth");
+    const { requestDeviceAuthorization } = await import("../../../src/serialization/api/auth");
     await expect(requestDeviceAuthorization({} as EnvironmentConfiguration)).rejects.toThrow(
       "Authority and clientId are required for device login."
     );
@@ -52,8 +51,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/api/auth");
+    const { requestDeviceAuthorization } = await import("../../../src/serialization/api/auth");
     await requestDeviceAuthorization(makeEnv(), "openid");
 
     expect(fetchMock.mock.calls[1][0]).toBe("https://auth.example/oauth/device/code");
@@ -70,8 +68,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { requestDeviceAuthorization } =
-      await import("../../../src/serialization/api/auth");
+    const { requestDeviceAuthorization } = await import("../../../src/serialization/api/auth");
     await expect(requestDeviceAuthorization(makeEnv())).rejects.toThrow(
       "Failed to start device login (400): bad request"
     );
@@ -83,8 +80,7 @@ describe("sitecore api auth", () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(abortError);
     vi.stubGlobal("fetch", fetchMock);
 
-    const { requestClientCredentialsToken } =
-      await import("../../../src/serialization/api/auth");
+    const { requestClientCredentialsToken } = await import("../../../src/serialization/api/auth");
     await expect(requestClientCredentialsToken(makeEnv())).rejects.toMatchObject({
       code: "NETWORK",
       message: "Identity discovery timed out.",
@@ -100,8 +96,7 @@ describe("sitecore api auth", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { requestClientCredentialsToken } =
-      await import("../../../src/serialization/api/auth");
+    const { requestClientCredentialsToken } = await import("../../../src/serialization/api/auth");
     await expect(requestClientCredentialsToken(makeEnv())).rejects.toThrow(
       "Failed to obtain access token (401): invalid_client"
     );

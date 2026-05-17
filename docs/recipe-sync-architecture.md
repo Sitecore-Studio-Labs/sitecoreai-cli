@@ -24,18 +24,18 @@ already does declarative-apply for Sitecore items, and `serialization`
 already mirrors Sitecore items to disk as YAML.
 
 The first instinct was a new `declarative` framework parallel to
-`recipe`. That was wrong: "declarative" only names the *write* side, and
+`recipe`. That was wrong: "declarative" only names the _write_ side, and
 that side already has a name. The reusable thing is not a new framework —
 it is **one model and one engine** that every surface shares.
 
 ## The model: `recipe` (noun) + `sync` (verb)
 
-- **recipe** — the *definition*. A clean, schema'd, validated description
+- **recipe** — the _definition_. A clean, schema'd, validated description
   of a thing's desired state. Not raw GUID-heavy item YAML — a proper
-  abstraction. Every surface is a *recipe kind*: `component`, `page`,
+  abstraction. Every surface is a _recipe kind_: `component`, `page`,
   `site`, `brand-kit`, `brief`, `campaign`.
 
-- **sync** — the *engine*. Kind-agnostic. Moves recipes against live
+- **sync** — the _engine_. Kind-agnostic. Moves recipes against live
   remote state in both directions:
   - `sync pull` — remote → recipe file (capture)
   - `sync push` — recipe file → remote (idempotent apply)
@@ -59,7 +59,7 @@ A recipe kind is **one Zod schema**. That schema feeds every surface:
 
 - **sync** — defines what `pull` captures and what `push` applies.
 - **CLI** — validates the recipe file; the field set drives the command.
-- **MCP tool** — the Zod schema *is* the tool's `inputSchema` (the MCP SDK
+- **MCP tool** — the Zod schema _is_ the tool's `inputSchema` (the MCP SDK
   consumes Zod directly); each `.describe()` becomes the parameter doc the
   model reads.
 - **MCP resource** — "the current brand kit, as a recipe" is a natural
@@ -75,11 +75,11 @@ file format, they are the canonical description of each surface.
 
 ```ts
 interface RecipeKind<TRecipe> {
-  name: string;                        // "brand-kit", "component", …
-  schema: ZodType<TRecipe>;            // validates files; feeds CLI + MCP
+  name: string; // "brand-kit", "component", …
+  schema: ZodType<TRecipe>; // validates files; feeds CLI + MCP
 
-  readCurrent(ref, ctx): Promise<TRecipe | null>;            // live remote → recipe
-  plan(desired: TRecipe, ref, ctx): Promise<RecipePlan>;     // compute the convergence plan
+  readCurrent(ref, ctx): Promise<TRecipe | null>; // live remote → recipe
+  plan(desired: TRecipe, ref, ctx): Promise<RecipePlan>; // compute the convergence plan
   apply(plan: RecipePlan, ref, ctx): Promise<ApplyResult>;
 }
 ```
@@ -111,7 +111,7 @@ editable by any CMS user. The consequences:
 
 - Rename or move an item and the next `push` no longer finds it by
   path → it creates a duplicate; the moved item is orphaned.
-- `readCurrent` has no stored handle to recover, so it *synthesises*
+- `readCurrent` has no stored handle to recover, so it _synthesises_
   one from the item name — a guess, not the author's handle.
 
 **Decision: a marker field.** Every recipe-managed item carries its
@@ -126,7 +126,7 @@ is env-independent and human-readable — one recipe pushes cleanly to
 dev / staging / prod, and content references stay as handles/paths.
 
 **The field.** `Scai Handle` — a single shared string field added to the
-**Standard Template**, so *every* item (template, section, field,
+**Standard Template**, so _every_ item (template, section, field,
 enumeration, content) inherits it uniformly. Kept in an Advanced /
 non-prominent slot so content authors don't edit it; it is scai-managed
 metadata. scai bootstraps the field once per environment — itself
@@ -139,7 +139,7 @@ expressible as a template recipe that extends the Standard Template.
 - `push` matching resolves "does this recipe's item exist?" by the
   marker, not the path → survives moves and renames. Path is the
   fallback only for first contact / unmarked items.
-- `readCurrent` reads `Scai Handle` → the *exact* original handle (no
+- `readCurrent` reads `Scai Handle` → the _exact_ original handle (no
   synthesis), and uses it to tell which items are recipe-managed.
 
 **First contact.** An environment scai never pushed has no markers; the
@@ -149,7 +149,7 @@ nothing to match). Every sync after the first `push` is marker-robust.
 This is foundational — matching cannot be trusted without it — so it is
 sequenced **ahead of** extending `readCurrent` coverage.
 
-*Verify on implementation:* that adding a field to the Standard Template
+_Verify on implementation:_ that adding a field to the Standard Template
 behaves cleanly on XM Cloud, and the field-visibility setting that keeps
 it out of the content editor.
 
@@ -157,7 +157,7 @@ it out of the content editor.
 
 `ContentItemRecipe` describes one content item with a single flat `fields`
 block. That covers catalog-shipped datasources, but not the **story-seed**
-use case: standing up a demo environment whose content has a *narrative* — a
+use case: standing up a demo environment whose content has a _narrative_ — a
 page that reads "coming soon" at version 1 and "we launched" at version 2, an
 item localized into three languages, a hero with a personalized variant for
 returning visitors. Seeding a story requires real Sitecore items with real
@@ -165,7 +165,7 @@ versions, and the recipe must be able to author them.
 
 This is a **push-only** capability. `readCurrent` does not reverse-project a
 version stack (see "Asymmetry" below) — capturing arbitrary version history
-is `serialization`'s job. A story-seed recipe is *authored* material: every
+is `serialization`'s job. A story-seed recipe is _authored_ material: every
 version is intentional, curated, reproducible. That is what separates it from
 a backup.
 
@@ -178,15 +178,15 @@ A Sitecore content item varies along three independent axes:
 - **Personalization variant** — within a language version, an
   audience-conditional alternative.
 
-Which axes a field *may* vary along is fixed by its **storage** — the
+Which axes a field _may_ vary along is fixed by its **storage** — the
 template-side option `SitecoreFieldAugment.storage` (`shared` / `unversioned`
 / `versioned`):
 
 | `storage`     | varies by language | varies by numbered version |
-|---------------|:------------------:|:--------------------------:|
-| `shared`      | no                 | no                         |
-| `unversioned` | yes                | no                         |
-| `versioned`   | yes                | yes                        |
+| ------------- | :----------------: | :------------------------: |
+| `shared`      |         no         |             no             |
+| `unversioned` |        yes         |             no             |
+| `versioned`   |        yes         |            yes             |
 
 So `storage` is the **gate**. A story-seed that authors per-version values is
 only coherent when those fields are `versioned`; per-language values need
@@ -195,9 +195,9 @@ template's storage and rejects (`INPUT_INVALID`) any value placed on an axis
 the field cannot carry.
 
 None of this touches identity. The handle's `@<major>` is the
-*recipe-definition* version — a `@2` is a deliberately new recipe — and the
+_recipe-definition_ version — a `@2` is a deliberately new recipe — and the
 `Scai Handle` marker is shared: one identity per item, never forked per
-language or version. Languages and versions are modeled *inside* the recipe
+language or version. Languages and versions are modeled _inside_ the recipe
 body.
 
 ### Schema — two modes
@@ -212,7 +212,7 @@ every existing single-language content recipe still validates unchanged:
 kind: content-item
 handle: homepage-hero@1
 templateType: hero@1
-fields:                               # primary language, single version
+fields: # primary language, single version
   Headline: { shape: text, value: "We launched!" }
 translations:
   fr:
@@ -224,25 +224,25 @@ translations:
 `versions` is keyed by language; each entry is one numbered version and
 carries, beyond its `fields`: an optional `workflow` state, a `date`, a
 per-version `layout`, and `variants` (personalization). Story mode replaces
-`fields`/`translations` — a recipe is simple *or* a story, never both:
+`fields`/`translations` — a recipe is simple _or_ a story, never both:
 
 ```yaml
 kind: content-item
 handle: homepage-hero@1
 templateType: hero@1
-shared:                               # storage:shared fields — item-level
+shared: # storage:shared fields — item-level
   CampaignCode: { shape: text, value: "LAUNCH26" }
 versions:
   en:
     - version: 1
-      fields:   { Headline: { shape: text, value: "Coming soon" } }
+      fields: { Headline: { shape: text, value: "Coming soon" } }
       workflow: "Draft"
-      date:     "2026-01-10T00:00:00Z"
+      date: "2026-01-10T00:00:00Z"
     - version: 2
-      fields:   { Headline: { shape: text, value: "We launched!" } }
+      fields: { Headline: { shape: text, value: "We launched!" } }
       workflow: "Approved"
-      date:     "2026-03-01T00:00:00Z"
-      layout:   { placeholders: { ... } }  # per-version → __Final Renderings
+      date: "2026-03-01T00:00:00Z"
+      layout: { placeholders: { ... } } # per-version → __Final Renderings
       variants:
         - audience: "returning-visitor"
           fields: { Headline: { shape: text, value: "Welcome back" } }
@@ -261,8 +261,8 @@ each is stored.)
 A version's optional `layout` writes to the item's **`__Final Renderings`**
 (per-version) field — not `__Renderings` (shared). This is the recipe surface
 for the shared-vs-final layout distinction: design artifacts (partial design,
-page design, page template) own *shared* layout via `__Renderings` and that
-stays kind-implicit; a story-seed version owns its *final* layout, and
+page design, page template) own _shared_ layout via `__Renderings` and that
+stays kind-implicit; a story-seed version owns its _final_ layout, and
 `__Final Renderings` is reached only here.
 
 ### Variants — personalization & experimentation
@@ -279,28 +279,28 @@ A version's `variants` cover two XM Cloud features that share one mechanism:
 - **Experimentation** — an A/B/n test variant (up to 6 component variants,
   measured against a goal).
 
-Sitecore's own framing: *personalization and A/B/n testing are the same
-functionality with minor tweaks.* Both are decided at request time by
+Sitecore's own framing: _personalization and A/B/n testing are the same
+functionality with minor tweaks._ Both are decided at request time by
 **Sitecore Personalize**, which returns a **variant ID** the renderer uses
 to fetch the right content.
 
 **A variant is two parts, in two systems** — this is the load-bearing fact:
 
-1. **Content — in XM.** What the variant *looks like*: field deltas (XM
+1. **Content — in XM.** What the variant _looks like_: field deltas (XM
    Cloud copies the datasource to a `<name>_var2`-style item in the same
    folder) and/or layout deltas (swap or hide a component). It lives in the
    datasource items plus the page layout data, published to Experience Edge.
    **This is the part a recipe compiles.**
 
-2. **Rule — in Sitecore Personalize.** *Who* sees it (a personalization
-   audience/condition) or the *experiment* it belongs to (A/B/n config +
+2. **Rule — in Sitecore Personalize.** _Who_ sees it (a personalization
+   audience/condition) or the _experiment_ it belongs to (A/B/n config +
    goal). Created in Personalize, identified by an ID; the XM-side content
    is registered against it — `variantId` for personalization,
    `componentId_variantId` for component A/B/n. **A recipe does not create
    the rule; it references it by ID.**
 
 **Consequence for the schema.** `ContentVariant` should become a content
-delta plus a typed *rule reference*, not a free-form `audience` string:
+delta plus a typed _rule reference_, not a free-form `audience` string:
 
 ```yaml
 variants:
@@ -319,7 +319,7 @@ same content delta binds to a per-environment rule.
 **Future work — roadmap (not scheduled).** Variants are deliberately
 deferred; the research above is the design basis. The work, in order:
 
-1. Revise `ContentVariant` — a content delta + a typed *rule reference*
+1. Revise `ContentVariant` — a content delta + a typed _rule reference_
    (`{ kind: personalization | experiment, … }`), replacing the free-form
    `audience` string.
 2. Teach `compileContentItemRecipe` to emit the content delta — datasource
@@ -327,7 +327,7 @@ deferred; the research above is the design basis. The work, in order:
    `componentId_variantId` layout-JSON encoding is to be pinned against a
    live tenant at that point.
 3. Decide whether scai grows a **Sitecore Personalize integration** so a
-   recipe can *create* the audience/experiment rule — a separate product
+   recipe can _create_ the audience/experiment rule — a separate product
    surface (the Personalize API, not XM authoring; likely its own recipe
    kind). The v1 line is reference-by-ID; rule-creation is the bigger bet.
 4. Possibly a distinct page-level page-variant shape — component-level
@@ -342,7 +342,7 @@ compiled and shipped.
 
 `push` materializes the whole story — every language, version, and variant.
 `readCurrent` does **not** reverse-project it: it captures only the latest
-numbered version of each language, projected back into *simple mode*. A
+numbered version of each language, projected back into _simple mode_. A
 `pull` of a story-seeded item is therefore lossy by design; recovering a full
 version stack is `serialization`'s job. This is consistent with `readCurrent`
 already being a documented best-effort projection.
@@ -365,12 +365,12 @@ already being a documented best-effort projection.
 
 ## Relationship to existing modules
 
-| Module | Role after this lands |
-|---|---|
-| `src/sync/` (new) | The kind-agnostic engine + `RecipeKind` contract |
-| `src/recipe/` | The Sitecore-item recipe kind; IR becomes kind-internal |
+| Module               | Role after this lands                                                         |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `src/sync/` (new)    | The kind-agnostic engine + `RecipeKind` contract                              |
+| `src/recipe/`        | The Sitecore-item recipe kind; IR becomes kind-internal                       |
 | `src/serialization/` | Legacy. Superseded by `sync`; retired once item `pull` produces clean recipes |
-| `declarative` | Dropped — never created as a term or module |
+| `declarative`        | Dropped — never created as a term or module                                   |
 
 ## Locked decisions
 
@@ -389,7 +389,7 @@ already being a documented best-effort projection.
 - **Brand-kit `apply` is full orchestration** — when the kit or its
   sections are absent, `apply` runs the create → upload → publish →
   ingest → enrich flow (reusing `seedBrandKit`), then converges field
-  values. Not value-only. Because ingestion/enrichment are *paid* AI
+  values. Not value-only. Because ingestion/enrichment are _paid_ AI
   pipeline runs (~5 min each), `what-if` must spell out the cost and
   `apply` requires explicit `--allow-write`.
 - **Recipe identity is the handle, carried in a `Scai Handle` marker
@@ -401,7 +401,7 @@ already being a documented best-effort projection.
 
 Brand-first, because `brand-kit`'s `readCurrent` is a trivial API GET,
 while the Sitecore-item kind's `readCurrent` (reverse-engineering items
-into a *clean* recipe) is the hard research problem. Brand proves the
+into a _clean_ recipe) is the hard research problem. Brand proves the
 engine; items follow once that is solved.
 
 1. **`src/sync/`** — `RecipeKind` contract, plan types, the
@@ -413,15 +413,15 @@ engine; items follow once that is solved.
    - `readCurrent` — `getBrandKit` + `listBrandKitSections` +
      `listBrandKitFields`, projected into the recipe shape (server
      `id`s dropped).
-   - `diff` — match sections/fields by name; emit a *heterogeneous*
+   - `diff` — match sections/fields by name; emit a _heterogeneous_
      plan: kit-lifecycle stages (create / publish / ingest / enrich,
      when the kit or its sections are absent) plus per-field value
      changes.
    - `apply` — run the needed lifecycle stages via `seedBrandKit`, then
      `updateBrandKitField` per value change. Idempotent: skip
      seed/ingest when the kit already has populated sections.
-   `seedBrandKit` accepts a `documents` array — a multi-document
-   brand-kit recipe uploads them all before a single ingest/enrich pass.
+     `seedBrandKit` accepts a `documents` array — a multi-document
+     brand-kit recipe uploads them all before a single ingest/enrich pass.
 3. **CLI** — `sync` verbs for the brand surface (`pull`/`push`/`diff`),
    `--what-if`/`--allow-write`, fit into the reorganized command tree.
 4. **MCP** — derive the brand-kit tool `inputSchema` from
@@ -436,10 +436,10 @@ Then `brief`, `campaign`, then `component`/`page`/`site` as kinds.
 ## Open questions
 
 - CLI verb placement — `scai brand sync push` vs `scai sync push --kind
-  brand`; how `recipe compile/plan/push` verbs reconcile with `sync`.
+brand`; how `recipe compile/plan/push` verbs reconcile with `sync`.
 - Whether existing `.recipe.ts` item recipes convert to JSON/YAML.
 - `serialization` retirement — scope and timing of the migration.
-- The hard one: turning arbitrary live Sitecore items into a *clean*
+- The hard one: turning arbitrary live Sitecore items into a _clean_
   recipe (`readCurrent` for the item kind) without leaking raw item YAML.
 - How `what-if` surfaces paid-pipeline cost (two ~5-min AI runs) in the
   plan output so the operator sees it before approving `apply`.

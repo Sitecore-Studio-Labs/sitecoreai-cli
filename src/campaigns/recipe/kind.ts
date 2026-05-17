@@ -86,10 +86,7 @@ const toRecipeDeliverable = (deliverable: Deliverable): CampaignDeliverable => (
 });
 
 /** Capture a live campaign as a recipe. `null` when no project has the name. */
-const readCurrent = async (
-  ref: KindRef,
-  ctx: SyncContext
-): Promise<CampaignRecipe | null> => {
+const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignRecipe | null> => {
   const client = await resolveCampaignClient(ctx);
   const found = await findProjectByName(client, ref.id);
   if (!found) return null;
@@ -111,19 +108,13 @@ const readCurrent = async (
 };
 
 /** Apply a plan — create the project, then converge deliverables and tasks. */
-const apply = async (
-  plan: RecipePlan,
-  ref: KindRef,
-  ctx: SyncContext
-): Promise<ApplyResult> => {
+const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
   const client = await resolveCampaignClient(ctx);
   const applied: RecipeChange[] = [];
   const skipped: RecipeChange[] = [];
 
   const projectChange = plan.changes.find((change) => change.meta?.stage === "project");
-  const deliverableChanges = plan.changes.filter(
-    (change) => change.meta?.stage === "deliverable"
-  );
+  const deliverableChanges = plan.changes.filter((change) => change.meta?.stage === "deliverable");
   const taskChanges = plan.changes.filter((change) => change.meta?.stage === "task");
 
   // Resolve the campaign (project) id — creating it when the plan says so.
@@ -256,11 +247,8 @@ const resolveTaskId = (deliverable: Deliverable, task: CampaignTask): string => 
 };
 
 /** Compute the plan to converge a campaign onto `desired`. */
-const plan = async (
-  desired: CampaignRecipe,
-  ref: KindRef,
-  ctx: SyncContext
-): Promise<RecipePlan> => diffCampaign(desired, await readCurrent(ref, ctx));
+const plan = async (desired: CampaignRecipe, ref: KindRef, ctx: SyncContext): Promise<RecipePlan> =>
+  diffCampaign(desired, await readCurrent(ref, ctx));
 
 /** The `campaign` recipe kind. */
 export const campaignKind: RecipeKind<CampaignRecipe> = {

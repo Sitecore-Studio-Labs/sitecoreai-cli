@@ -76,8 +76,15 @@ const main = async (): Promise<void> => {
       if (result.httpStatus >= 200 && result.httpStatus < 300) {
         confirmedStatus = (await getBrief(client, created.id)).status;
       }
-      const ok = confirmedStatus === candidate || (result.httpStatus >= 200 && result.httpStatus < 300);
-      log.push({ candidate, httpStatus: result.httpStatus, confirmedStatus, body: result.body, ok });
+      const ok =
+        confirmedStatus === candidate || (result.httpStatus >= 200 && result.httpStatus < 300);
+      log.push({
+        candidate,
+        httpStatus: result.httpStatus,
+        confirmedStatus,
+        body: result.body,
+        ok,
+      });
       process.stderr.write(
         `  ${ok ? "OK  " : "FAIL"} '${candidate}' -> ${result.httpStatus}${confirmedStatus ? ` (now ${confirmedStatus})` : ""}\n`
       );

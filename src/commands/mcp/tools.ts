@@ -59,11 +59,11 @@ export const createMcpToolsCommand = (): Command => {
     .command("list")
     .description("List every registered tool with its description and auth class.")
     .addOption(new Option("--json", "Emit JSON instead of TSV."))
-    .addOption(new Option("--names", "List tool names only — one per line, no auth or description."))
+    .addOption(
+      new Option("--names", "List tool names only — one per line, no auth or description.")
+    )
     .action((options: { json?: boolean; names?: boolean }) => {
-      process.stdout.write(
-        `${formatToolsList(Boolean(options.json), Boolean(options.names))}\n`
-      );
+      process.stdout.write(`${formatToolsList(Boolean(options.json), Boolean(options.names))}\n`);
     });
 
   tools

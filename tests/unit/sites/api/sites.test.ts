@@ -92,7 +92,9 @@ describe("sites API — recipe-required helpers", () => {
   });
 
   it("updateSite PATCHes /api/v1/sites/{siteId} with the partial body", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "site-1", displayName: "Renamed" }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ id: "site-1", displayName: "Renamed" }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await updateSite(baseOptions, "site-1", { displayName: "Renamed" });

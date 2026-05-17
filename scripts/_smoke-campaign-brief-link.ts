@@ -43,7 +43,13 @@ const main = async (): Promise<void> => {
   const hit = async (
     method: string,
     path: string
-  ): Promise<{ method: string; path: string; status: number; allow: string | null; body: string }> => {
+  ): Promise<{
+    method: string;
+    path: string;
+    status: number;
+    allow: string | null;
+    body: string;
+  }> => {
     const response = await fetch(`${DEFAULT_CAMPAIGN_API_BASE}${path}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },

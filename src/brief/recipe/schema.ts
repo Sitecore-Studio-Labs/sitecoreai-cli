@@ -25,7 +25,9 @@ const briefFieldBaseShape = {
     .min(1)
     .describe("Stable field codename — the key a brief instance stores its value under."),
   label: LocalizedStringSchema.describe("Localized human label shown in the brief authoring UI."),
-  helpText: LocalizedStringSchema.optional().describe("Optional localized help text for the field."),
+  helpText: LocalizedStringSchema.optional().describe(
+    "Optional localized help text for the field."
+  ),
   required: z.boolean().describe("Whether the field must be filled before the brief can advance."),
   aiEditable: z
     .boolean()
@@ -38,12 +40,18 @@ const briefFieldBaseShape = {
 
 /** A free-form rich-text field. */
 export const RichTextFieldSchema = z
-  .object({ type: z.literal("RichText").describe("Discriminator — a rich-text field."), ...briefFieldBaseShape })
+  .object({
+    type: z.literal("RichText").describe("Discriminator — a rich-text field."),
+    ...briefFieldBaseShape,
+  })
   .describe("A rich-text field.");
 
 /** A single date-time field. */
 export const DateTimeFieldSchema = z
-  .object({ type: z.literal("DateTime").describe("Discriminator — a date-time field."), ...briefFieldBaseShape })
+  .object({
+    type: z.literal("DateTime").describe("Discriminator — a date-time field."),
+    ...briefFieldBaseShape,
+  })
   .describe("A date-time field.");
 
 /** A timeline field — a schedule with holiday/weekend handling. */
@@ -67,7 +75,7 @@ export const BudgetFieldSchema = z
     ...briefFieldBaseShape,
     currencies: z
       .array(z.string())
-      .describe("ISO-4217 currency codes the field accepts, e.g. [\"USD\", \"EUR\"]."),
+      .describe('ISO-4217 currency codes the field accepts, e.g. ["USD", "EUR"].'),
   })
   .describe("A budget/currency field.");
 

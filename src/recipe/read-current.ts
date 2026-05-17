@@ -129,8 +129,7 @@ export interface ReadCurrentRoots {
  * hyphenated — normalising both sides to the bare 32-hex form is what makes
  * `conformsTo` / `guidEquals` actually match against a live tenant.
  */
-const normalizeGuid = (guid: string): string =>
-  guid.trim().toLowerCase().replace(/[{}-]/g, "");
+const normalizeGuid = (guid: string): string => guid.trim().toLowerCase().replace(/[{}-]/g, "");
 
 /** True when two Sitecore GUIDs refer to the same item (curly/case-insensitive). */
 const guidEquals = (a: string | undefined, b: string | undefined): boolean =>
@@ -142,11 +141,7 @@ const guidEquals = (a: string | undefined, b: string | undefined): boolean =>
  * matches on either so it stays robust against the GUID/name split the
  * executor's resolver papers over (see `RemoteFieldValue.name`).
  */
-const fieldValue = (
-  item: RemoteItem,
-  fieldId: string,
-  fieldName?: string
-): string | undefined => {
+const fieldValue = (item: RemoteItem, fieldId: string, fieldName?: string): string | undefined => {
   const byId = item.fields.find((f) => guidEquals(f.fieldId, fieldId));
   if (byId) return byId.value;
   if (fieldName) {
@@ -633,9 +628,7 @@ const hasSxaComponentBases = (templateItem: RemoteItem): boolean => {
   const bases = fieldValue(templateItem, SYSTEM_FIELDS.BASE_TEMPLATE, "__Base template");
   if (!bases) return false;
   const baseGuids = bases.split("|").map(normalizeGuid);
-  return SXA_COMPONENT_BASE_TEMPLATES.some((sxaBase) =>
-    baseGuids.includes(normalizeGuid(sxaBase))
-  );
+  return SXA_COMPONENT_BASE_TEMPLATES.some((sxaBase) => baseGuids.includes(normalizeGuid(sxaBase)));
 };
 
 /**
@@ -758,14 +751,10 @@ const walkTemplatesTree = async (
           continue;
         }
         // A folder directly under contentModelsRoot is a taxonomy group.
-        const nextGroup =
-          isContentModelsRoot && depth === 0 ? child.name : group;
+        const nextGroup = isContentModelsRoot && depth === 0 ? child.name : group;
         // Skip the subordinate buckets (Component Folders / Presentation
         // Parameters) — they hold support templates, not authorable kinds.
-        if (
-          child.name === "Component Folders" ||
-          child.name === "Presentation Parameters"
-        ) {
+        if (child.name === "Component Folders" || child.name === "Presentation Parameters") {
           continue;
         }
         await walk(child, sectionHandle, nextGroup, depth + 1);
@@ -1036,8 +1025,7 @@ const partialDesignFromItem = (
   item: RemoteItem,
   guidIndex: GuidHandleIndex
 ): PartialDesignRecipe => {
-  const displayName =
-    fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
   const icon = fieldValue(item, SYSTEM_FIELDS.ICON, "__Icon");
 
@@ -1100,8 +1088,7 @@ const pageDesignFromItem = (
   appliesTo: string[],
   guidIndex: GuidHandleIndex
 ): PageDesignRecipe => {
-  const displayName =
-    fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
   const icon = fieldValue(item, SYSTEM_FIELDS.ICON, "__Icon");
 
@@ -1169,8 +1156,7 @@ const pageFromItem = (
   templateHandle: string,
   guidIndex: GuidHandleIndex
 ): PageRecipe => {
-  const displayName =
-    fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
 
   const recipe: PageRecipe = {
@@ -1225,8 +1211,7 @@ const placeholderFromItem = (
     return null;
   }
 
-  const displayName =
-    fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
   const icon = fieldValue(item, SYSTEM_FIELDS.ICON, "__Icon");
 
@@ -1428,8 +1413,7 @@ export const readCurrentRecipes = async (
   roots: ReadCurrentRoots,
   client: AuthoringApiClient
 ): Promise<Recipe[] | null> => {
-  const isSet = (r: string | undefined): r is string =>
-    typeof r === "string" && r.length > 0;
+  const isSet = (r: string | undefined): r is string => typeof r === "string" && r.length > 0;
   const anyRootSet = [
     roots.componentsRoot,
     roots.contentModelsRoot,
@@ -1505,9 +1489,7 @@ export const readCurrentRecipes = async (
   if (hasLayoutRoot) {
     const guidIndex = await buildGuidHandleIndex(roots, client);
     if (roots.partialDesignsRoot) {
-      recipes.push(
-        ...(await walkPartialDesignsTree(roots.partialDesignsRoot, client, guidIndex))
-      );
+      recipes.push(...(await walkPartialDesignsTree(roots.partialDesignsRoot, client, guidIndex)));
     }
     if (roots.pageDesignsRoot) {
       recipes.push(...(await walkPageDesignsTree(roots.pageDesignsRoot, client, guidIndex)));
@@ -1517,11 +1499,7 @@ export const readCurrentRecipes = async (
     }
     if (roots.placeholderSettingsRoot) {
       recipes.push(
-        ...(await walkPlaceholderSettingsTree(
-          roots.placeholderSettingsRoot,
-          client,
-          guidIndex
-        ))
+        ...(await walkPlaceholderSettingsTree(roots.placeholderSettingsRoot, client, guidIndex))
       );
     }
   }

@@ -10,9 +10,8 @@ const syncMocks = vi.hoisted(() => ({
   syncPush: vi.fn(),
 }));
 vi.mock("../../../../src/sync", async () => {
-  const actual = await vi.importActual<typeof import("../../../../src/sync")>(
-    "../../../../src/sync"
-  );
+  const actual =
+    await vi.importActual<typeof import("../../../../src/sync")>("../../../../src/sync");
   return { ...actual, ...syncMocks };
 });
 
@@ -80,9 +79,7 @@ describe("campaign recipe tools", () => {
   it("inspect verb=diff routes to syncDiff and returns the plan", async () => {
     const reg = setup();
     syncMocks.syncDiff.mockResolvedValue({
-      changes: [
-        { kind: "update", path: "deliverables.A.tasks.B", summary: "A / B" },
-      ],
+      changes: [{ kind: "update", path: "deliverables.A.tasks.B", summary: "A / B" }],
     });
     const result = await reg
       .getTool("campaign_recipe_inspect")!

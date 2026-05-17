@@ -102,9 +102,10 @@ const main = async (): Promise<void> => {
   }
 
   process.stderr.write(`> loading env profile '${envName}' from sitecoreai.cli.json\n`);
-  const rootConfig = (
-    await import("@/config/root-config")
-  ).readRootConfiguration("./sitecoreai.cli.json", envName);
+  const rootConfig = (await import("@/config/root-config")).readRootConfiguration(
+    "./sitecoreai.cli.json",
+    envName
+  );
   const environment = rootConfig.environments[envName];
   if (!environment) {
     process.stderr.write(`Env profile '${envName}' not in sitecoreai.cli.json\n`);
@@ -198,7 +199,7 @@ const main = async (): Promise<void> => {
   let createdId: string | null = null;
   if (lastPost.status >= 200 && lastPost.status < 300) {
     createdId =
-      (lastPost.parsed as Record<string, unknown> | undefined)?.id as string | undefined ?? null;
+      ((lastPost.parsed as Record<string, unknown> | undefined)?.id as string | undefined) ?? null;
   } else if (
     lastPost.status >= 400 &&
     lastPost.status < 500 &&
@@ -225,7 +226,7 @@ const main = async (): Promise<void> => {
     const retry = records[records.length - 1];
     if (retry.status >= 200 && retry.status < 300) {
       createdId =
-        (retry.parsed as Record<string, unknown> | undefined)?.id as string | undefined ?? null;
+        ((retry.parsed as Record<string, unknown> | undefined)?.id as string | undefined) ?? null;
     }
   }
 

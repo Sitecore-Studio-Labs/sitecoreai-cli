@@ -52,7 +52,13 @@ export const diffBrandKit = (
       const currentValue = current?.sections[section]?.[field];
 
       if (current === null || currentValue === undefined) {
-        changes.push({ kind: "create", path, summary: `${section} / ${field}`, after: value, meta });
+        changes.push({
+          kind: "create",
+          path,
+          summary: `${section} / ${field}`,
+          after: value,
+          meta,
+        });
       } else if (isDeepStrictEqual(currentValue, value)) {
         changes.push({ kind: "noop", path, summary: `${section} / ${field} unchanged`, meta });
       } else {

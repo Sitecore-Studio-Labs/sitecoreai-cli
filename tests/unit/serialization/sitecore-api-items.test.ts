@@ -168,8 +168,7 @@ describe("sitecore api items", () => {
   });
 
   it("executes serialization commands via GraphQL", async () => {
-    const { executeSerializationCommands } =
-      await import("../../../src/serialization/api/items");
+    const { executeSerializationCommands } = await import("../../../src/serialization/api/items");
     runGraphQL.mockResolvedValueOnce({ executeSerializationCommands: [{ ok: true }] });
     const result = await executeSerializationCommands(env, [{ command: "noop" }], "Information");
     expect(result).toEqual([{ ok: true }]);

@@ -30,12 +30,15 @@ const context: CompileContext = {
   site: "demo-registry",
   templatesRoot: "/sitecore/templates/Project",
   renderingsRoot: "/sitecore/layout/Renderings/Project",
-  partialDesignsRoot: "/sitecore/content/demo-registry/content-modelling/Presentation/Partial Designs",
+  partialDesignsRoot:
+    "/sitecore/content/demo-registry/content-modelling/Presentation/Partial Designs",
   pageDesignsRoot: "/sitecore/content/demo-registry/content-modelling/Presentation/Page Designs",
-  headlessVariantsRoot: "/sitecore/content/demo-registry/content-modelling/Presentation/Headless Variants",
+  headlessVariantsRoot:
+    "/sitecore/content/demo-registry/content-modelling/Presentation/Headless Variants",
   pageTemplatesRoot: "/sitecore/templates/Project/demo-registry",
   pagesRoot: "/sitecore/content/demo-registry/content-modelling/Home",
-  placeholderSettingsRoot: "/sitecore/content/demo-registry/content-modelling/Presentation/Placeholder Settings",
+  placeholderSettingsRoot:
+    "/sitecore/content/demo-registry/content-modelling/Presentation/Placeholder Settings",
 };
 
 const result = validateRecipeSet(recipes);

@@ -11,6 +11,7 @@
 import { createAgent, listAgents, updateAgent } from "../api/agents";
 import { listSkills } from "../api/skills";
 import type { Agent, AgentConfig, AgentToolToggles } from "../api/schema";
+import type { AgentsSession } from "../session/types";
 import { createScaiError } from "@/shared/errors";
 import type { ApplyResult, KindRef, RecipeKind, RecipePlan, SyncContext } from "@/sync";
 import { resolveAgentsSession } from "./client";
@@ -43,6 +44,20 @@ const toAgentConfig = (recipe: AgentRecipe, skillSlugToId: Map<string, string>):
   output: recipe.output,
 });
 
+/**
+ * Build an `AgentConfig` from a recipe, resolving skill slugs to ids
+ * against the live `/api/skills` catalog. Shared by the recipe `apply`
+ * path and the imperative `scai agents agent create|update` runners.
+ */
+export const buildAgentConfig = async (
+  session: AgentsSession,
+  recipe: AgentRecipe
+): Promise<AgentConfig> => {
+  const skills = await listSkills(session);
+  const skillSlugToId = new Map(skills.map((skill) => [skill.slug, skill.id]));
+  return toAgentConfig(recipe, skillSlugToId);
+};
+
 /** Capture a live agent as a recipe. `null` when no agent has the name. */
 const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<AgentRecipe | null> => {
   const session = await resolveAgentsSession(ctx);
@@ -71,9 +86,7 @@ const apply = async (
   const session = await resolveAgentsSession(ctx);
   const recipe =
     (change.meta?.recipe as AgentRecipe | undefined) ?? AgentRecipeSchema.parse(change.after);
-  const skills = await listSkills(session);
-  const skillSlugToId = new Map(skills.map((skill) => [skill.slug, skill.id]));
-  const config = toAgentConfig(recipe, skillSlugToId);
+  const config = await buildAgentConfig(session, recipe);
 
   if (change.kind === "create") {
     ctx.logger?.info(`Creating agent "${recipe.name}".`);

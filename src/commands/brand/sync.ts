@@ -88,7 +88,10 @@ const createPullCommand = (): Command => {
     const kitName = options.kit ?? "";
     const recipe = await syncPull(brandKitKind, { kind: brandKitKind.name, id: kitName }, ctx);
     if (!recipe) {
-      throw inputError(`Brand kit "${kitName}" not found.`, "List kits with `scai brand kits list`.");
+      throw inputError(
+        `Brand kit "${kitName}" not found.`,
+        "List kits with `scai brand kits list`."
+      );
     }
     const file = options.file ?? `${slug(kitName)}.brandkit.yaml`;
     writeRecipe(file, recipe);

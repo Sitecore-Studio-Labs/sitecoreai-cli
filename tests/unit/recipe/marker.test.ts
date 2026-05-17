@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/marker";
-import type { CreateItemOp, FieldValue, Operation, OperationIr } from "../../../src/recipe/ir/operations";
+import type {
+  CreateItemOp,
+  FieldValue,
+  Operation,
+  OperationIr,
+} from "../../../src/recipe/ir/operations";
 
 const GUID_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const GUID_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";

@@ -10,10 +10,7 @@ import {
   fetchItemData,
   executeSerializationCommands,
 } from "../../../src/serialization/api/items";
-import {
-  fetchHistoryTimestamp,
-  fetchHistoryEntries,
-} from "../../../src/serialization/api/history";
+import { fetchHistoryTimestamp, fetchHistoryEntries } from "../../../src/serialization/api/history";
 import { fetchRoles, pushRoleCommands } from "../../../src/serialization/api/roles";
 import { fetchUsers, pushUserCommands } from "../../../src/serialization/api/users";
 import {

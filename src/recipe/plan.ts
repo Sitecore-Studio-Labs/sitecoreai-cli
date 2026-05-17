@@ -235,9 +235,7 @@ const computeFieldDrift = (
     const isLayoutField =
       field.fieldId === LAYOUT_FIELDS.RENDERINGS ||
       field.fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS;
-    const equal = isLayoutField
-      ? layoutXmlEquivalent(found.value, want)
-      : found.value === want;
+    const equal = isLayoutField ? layoutXmlEquivalent(found.value, want) : found.value === want;
     if (!equal) {
       drift.push({
         fieldId: field.fieldId,

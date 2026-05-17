@@ -7,6 +7,12 @@
  * `PUT /api/spaces/{id}/config` (the order observed in the UI).
  *
  * The space's `launchTarget` is what the run engine actually launches.
+ *
+ * Verified 2026-05-17 (agentic-studio-euw): a space has no list or delete
+ * endpoint (`GET /api/spaces` → 405, `GET`/`DELETE /api/spaces/{id}` →
+ * 404), but `/config` and `/artifacts` are readable and `/config` is
+ * writable — so a space can be read, renamed, and have its agents /
+ * context changed, just not enumerated or deleted.
  */
 import { randomUUID } from "node:crypto";
 import { agentsRequest } from "./request";
@@ -58,4 +64,52 @@ export const createSpace = async (
     body: { spaceConfig: config },
   });
   return { spaceId, config };
+};
+
+/** Read a space's stored config (`GET /api/spaces/{id}/config`). */
+export const getSpaceConfig = async (
+  session: AgentsSession,
+  spaceId: string
+): Promise<SpaceConfig> => {
+  const data = await agentsRequest<{ spaceConfig?: SpaceConfig }>(
+    session,
+    `/api/spaces/${encodeURIComponent(spaceId)}/config`
+  );
+  return (data?.spaceConfig ?? {}) as SpaceConfig;
+};
+
+/** A space's run artifacts — the structured results of its agent runs. */
+export interface SpaceArtifacts {
+  ok?: boolean;
+  /** The artifact payload; shape is run-specific and parsed defensively. */
+  data?: unknown;
+  [key: string]: unknown;
+}
+
+/** Read a space's run artifacts / output (`GET /api/spaces/{id}/artifacts`). */
+export const getSpaceArtifacts = async (
+  session: AgentsSession,
+  spaceId: string
+): Promise<SpaceArtifacts> => {
+  const data = await agentsRequest<SpaceArtifacts>(
+    session,
+    `/api/spaces/${encodeURIComponent(spaceId)}/artifacts`
+  );
+  return data ?? {};
+};
+
+/**
+ * Replace a space's config (`PUT /api/spaces/{id}/config`). The BFF has no
+ * space delete; rewriting the config is how a space is renamed or has its
+ * agents / global context changed.
+ */
+export const updateSpaceConfig = async (
+  session: AgentsSession,
+  spaceId: string,
+  config: SpaceConfig
+): Promise<void> => {
+  await agentsRequest(session, `/api/spaces/${encodeURIComponent(spaceId)}/config`, {
+    method: "PUT",
+    body: { spaceConfig: config },
+  });
 };

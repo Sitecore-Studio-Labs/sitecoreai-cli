@@ -127,9 +127,7 @@ export const diffCampaign = (
       // A brand-new deliverable's tasks are all created alongside it.
       changes.push(...diffTasks(deliverable.name, deliverable.tasks, []));
     } else {
-      changes.push(
-        ...diffTasks(deliverable.name, deliverable.tasks, currentDeliverable.tasks)
-      );
+      changes.push(...diffTasks(deliverable.name, deliverable.tasks, currentDeliverable.tasks));
     }
   }
 

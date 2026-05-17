@@ -103,8 +103,16 @@ describe("readCurrent", () => {
 
   it("pages the project list to find a match", async () => {
     campaignApi.listProjects
-      .mockResolvedValueOnce({ totalCount: 2, next: "cursor-2", data: [{ id: "p1", name: "Other" }] })
-      .mockResolvedValueOnce({ totalCount: 2, next: null, data: [{ id: "p2", name: "Spring Launch" }] });
+      .mockResolvedValueOnce({
+        totalCount: 2,
+        next: "cursor-2",
+        data: [{ id: "p1", name: "Other" }],
+      })
+      .mockResolvedValueOnce({
+        totalCount: 2,
+        next: null,
+        data: [{ id: "p2", name: "Spring Launch" }],
+      });
     campaignApi.getProject.mockResolvedValue({
       id: "p2",
       name: "Spring Launch",

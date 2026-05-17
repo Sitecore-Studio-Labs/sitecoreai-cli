@@ -48,8 +48,6 @@ export const loadRecipe = <T>(filePath: string, schema: ZodType<T>): T => {
 /** Serialize a recipe to a file — JSON when the path ends `.json`, else YAML. */
 export const writeRecipe = (filePath: string, recipe: unknown): void => {
   const serialized =
-    extname(filePath) === ".json"
-      ? `${JSON.stringify(recipe, null, 2)}\n`
-      : stringifyYaml(recipe);
+    extname(filePath) === ".json" ? `${JSON.stringify(recipe, null, 2)}\n` : stringifyYaml(recipe);
   writeFileSync(filePath, serialized, "utf8");
 };

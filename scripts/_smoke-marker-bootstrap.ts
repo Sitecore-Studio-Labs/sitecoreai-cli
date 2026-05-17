@@ -30,7 +30,11 @@ const main = async (): Promise<void> => {
   }
 
   const configPath = process.env.SCAI_CONFIG;
-  const { environment, envName: resolved, timeoutMs } = resolveEnvironment({
+  const {
+    environment,
+    envName: resolved,
+    timeoutMs,
+  } = resolveEnvironment({
     environmentName: envName,
     ...(configPath ? { config: configPath } : {}),
   });

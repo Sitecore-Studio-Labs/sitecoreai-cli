@@ -127,8 +127,8 @@ export const ensureMarkerField = async (
 
   // Direct-child Template Sections of the Standard Template. A
   // previously-bootstrapped marker field lives under one of them.
-  const sections = (await client.getChildren({ itemId: standardTemplate.itemId })).filter(
-    (child) => sameGuid(child.templateId, SITECORE_TEMPLATES.TEMPLATE_SECTION)
+  const sections = (await client.getChildren({ itemId: standardTemplate.itemId })).filter((child) =>
+    sameGuid(child.templateId, SITECORE_TEMPLATES.TEMPLATE_SECTION)
   );
 
   for (const section of sections) {

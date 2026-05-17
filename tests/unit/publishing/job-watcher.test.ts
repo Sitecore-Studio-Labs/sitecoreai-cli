@@ -11,10 +11,7 @@ import {
   throwOnTerminalFailure,
   watchPublishJob,
 } from "../../../src/publishing/job-watcher";
-import type {
-  PublishJob,
-  PublishingApiClientOptions,
-} from "../../../src/publishing/api/types";
+import type { PublishJob, PublishingApiClientOptions } from "../../../src/publishing/api/types";
 
 const mockGetJob = getPublishJob as unknown as ReturnType<typeof vi.fn>;
 const noopLogger = new Logger(false, false, false, true);

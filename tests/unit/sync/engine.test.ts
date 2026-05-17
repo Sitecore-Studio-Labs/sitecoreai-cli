@@ -91,9 +91,9 @@ describe("syncPush", () => {
     const controller = new AbortController();
     controller.abort();
     const abortCtx: SyncContext = { ...ctx, signal: controller.signal };
-    await expect(
-      syncPush(kind, { name: "d" }, ref, abortCtx, { mode: "apply" })
-    ).rejects.toThrow(/cancelled/i);
+    await expect(syncPush(kind, { name: "d" }, ref, abortCtx, { mode: "apply" })).rejects.toThrow(
+      /cancelled/i
+    );
     expect(kind.apply).not.toHaveBeenCalled();
   });
 });

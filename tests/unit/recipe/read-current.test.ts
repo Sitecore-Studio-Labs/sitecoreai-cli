@@ -68,8 +68,7 @@ const makeClient = (items: RemoteItem[]): AuthoringApiClient => {
   };
   return {
     getItem: async (selector) => resolve(selector),
-    getItemsByPaths: async (paths) =>
-      new Map(paths.map((p) => [p, byPath.get(p) ?? null])),
+    getItemsByPaths: async (paths) => new Map(paths.map((p) => [p, byPath.get(p) ?? null])),
     getChildren: async (selector) => {
       const parent = resolve(selector);
       if (!parent) return [];
@@ -239,7 +238,11 @@ describe("readCurrentRecipes — component-section + component-template", () => 
       rSection,
       rendering,
     ]);
-    const roots: ReadCurrentRoots = { templatesRoot: componentsRoot, renderingsRoot, componentsRoot };
+    const roots: ReadCurrentRoots = {
+      templatesRoot: componentsRoot,
+      renderingsRoot,
+      componentsRoot,
+    };
 
     const recipes = await readCurrentRecipes(roots, client);
     expect(recipes).not.toBeNull();
@@ -327,9 +330,7 @@ describe("readCurrentRecipes — content-template", () => {
     };
 
     const recipes = await readCurrentRecipes(roots, client);
-    const content = recipes!.find(
-      (r): r is ContentTemplateRecipe => r.kind === "content-template"
-    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
     expect(content).toBeDefined();
     expect(content!.name).toBe("AccordionItem");
     expect(content!.displayName).toBe("Accordion Item");
@@ -460,9 +461,7 @@ describe("readCurrentRecipes — enumeration", () => {
     };
 
     const recipes = await readCurrentRecipes(roots, client);
-    const enumeration = recipes!.find(
-      (r): r is EnumerationRecipe => r.kind === "enumeration"
-    );
+    const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
     expect(enumeration).toBeDefined();
     expect(enumeration!.name).toBe("ColorScheme");
     expect(enumeration!.displayName).toBe("Color Scheme");
@@ -511,9 +510,7 @@ describe("readCurrentRecipes — enumeration", () => {
     };
 
     const recipes = await readCurrentRecipes(roots, client);
-    const enumeration = recipes!.find(
-      (r): r is EnumerationRecipe => r.kind === "enumeration"
-    );
+    const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
     expect(enumeration).toBeDefined();
     expect(enumeration!.name).toBe("Spacing");
     expect(enumeration!.location).toEqual({ scope: "site", folder: "Theme" });
@@ -557,10 +554,7 @@ describe("readCurrentRecipes — enumeration", () => {
 describe("readCurrentRecipes — edge cases", () => {
   it("returns null when no recipe roots are configured at all", async () => {
     const client = makeClient([]);
-    const result = await readCurrentRecipes(
-      { templatesRoot: "", renderingsRoot: "" },
-      client
-    );
+    const result = await readCurrentRecipes({ templatesRoot: "", renderingsRoot: "" }, client);
     expect(result).toBeNull();
   });
 
@@ -692,9 +686,7 @@ describe("readCurrentRecipes — Scai Handle marker", () => {
       { templatesRoot: "/t", renderingsRoot: "/r", enumerationsRoot },
       client
     );
-    const enumeration = recipes!.find(
-      (r): r is EnumerationRecipe => r.kind === "enumeration"
-    );
+    const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
     expect(enumeration!.handle).toBe("color-scheme@1");
   });
 });
@@ -884,9 +876,7 @@ describe("readCurrentRecipes — field storage axis", () => {
       },
       client
     );
-    const content = recipes!.find(
-      (r): r is ContentTemplateRecipe => r.kind === "content-template"
-    );
+    const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
     const byName = (n: string) => content!.fields.find((fd) => fd.name === n);
 
     // `versioned` is the Sitecore default — omitted, never fabricated.
@@ -1002,9 +992,7 @@ describe("readCurrentRecipes — partial-design", () => {
       { templatesRoot: "", renderingsRoot, partialDesignsRoot },
       client
     );
-    const partial = recipes!.find(
-      (r): r is PartialDesignRecipe => r.kind === "partial-design"
-    );
+    const partial = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
     expect(partial).toBeDefined();
     expect(partial!.name).toBe("StandardHeader");
     expect(partial!.displayName).toBe("Standard Header");
@@ -1012,10 +1000,7 @@ describe("readCurrentRecipes — partial-design", () => {
     // Layout XML reverse-parsed: two placements, order preserved, the
     // FieldNames param lifted back to `variant`.
     const placements = partial!.layout.placeholders["/header"];
-    expect(placements.map((p) => p.componentHandle)).toEqual([
-      "site-logo@1",
-      "primary-nav@1",
-    ]);
+    expect(placements.map((p) => p.componentHandle)).toEqual(["site-logo@1", "primary-nav@1"]);
     expect(placements[0].variant).toBe("FullWidth");
   });
 
@@ -1062,10 +1047,7 @@ describe("readCurrentRecipes — partial-design", () => {
     const layoutXml = emitLayoutXml(
       {
         placeholders: {
-          "/header": [
-            { componentHandle: "site-logo@1" },
-            { componentHandle: "orphan-widget@1" },
-          ],
+          "/header": [{ componentHandle: "site-logo@1" }, { componentHandle: "orphan-widget@1" }],
         },
       },
       layoutCtx(header.itemId, {
@@ -1080,9 +1062,7 @@ describe("readCurrentRecipes — partial-design", () => {
       { templatesRoot: "", renderingsRoot, partialDesignsRoot },
       client
     );
-    const partial = recipes!.find(
-      (r): r is PartialDesignRecipe => r.kind === "partial-design"
-    );
+    const partial = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
     // Only the marked placement survives; the orphan is omitted (not
     // fabricated into a dangling handle).
     expect(partial!.layout.placeholders["/header"].map((p) => p.componentHandle)).toEqual([
@@ -1113,7 +1093,11 @@ describe("readCurrentRecipes — page-design", () => {
       path: `${pageTemplatesRoot}/ArticlePage`,
       fields: [
         marker("article-page@1"),
-        f(SYSTEM_FIELDS.BASE_TEMPLATE, SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"), "__Base template"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
       ],
     });
 
@@ -1156,21 +1140,12 @@ describe("readCurrentRecipes — page-design", () => {
     pdgRoot.fields.push(
       f(
         COMPOSITION_FIELDS.TEMPLATES_MAPPING,
-        encodeTemplatesMapping([
-          { templateGuid: articleTpl.itemId, designGuid: landing.itemId },
-        ]),
+        encodeTemplatesMapping([{ templateGuid: articleTpl.itemId, designGuid: landing.itemId }]),
         "TemplatesMapping"
       )
     );
 
-    const client = makeClient([
-      ptRoot,
-      articleTpl,
-      pdRoot,
-      headerPartial,
-      pdgRoot,
-      landing,
-    ]);
+    const client = makeClient([ptRoot, articleTpl, pdRoot, headerPartial, pdgRoot, landing]);
     const recipes = await readCurrentRecipes(
       {
         templatesRoot: "",
@@ -1254,7 +1229,11 @@ describe("readCurrentRecipes — page", () => {
       path: `${pageTemplatesRoot}/ArticlePage`,
       fields: [
         marker("article-page@1"),
-        f(SYSTEM_FIELDS.BASE_TEMPLATE, SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"), "__Base template"),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
       ],
     });
 
@@ -1271,18 +1250,13 @@ describe("readCurrentRecipes — page", () => {
       templateId: articleTpl.itemId, // conforms to the page template
       parentId: homeRoot.itemId,
       path: `${pagesRoot}/About`,
-      fields: [
-        marker("about@1"),
-        f(SYSTEM_FIELDS.DISPLAY_NAME, "About Us", "__Display name"),
-      ],
+      fields: [marker("about@1"), f(SYSTEM_FIELDS.DISPLAY_NAME, "About Us", "__Display name")],
     });
     const finalLayout = emitLayoutXml(
       { placeholders: { "/main": [{ componentHandle: "hero@1", variant: "Centered" }] } },
       layoutCtx(aboutPage.itemId, { "hero@1": hero.itemId })
     );
-    aboutPage.fields.push(
-      f(LAYOUT_FIELDS.FINAL_RENDERINGS, finalLayout, "__Final Renderings")
-    );
+    aboutPage.fields.push(f(LAYOUT_FIELDS.FINAL_RENDERINGS, finalLayout, "__Final Renderings"));
 
     const client = makeClient([rRoot, hero, ptRoot, articleTpl, homeRoot, aboutPage]);
     const recipes = await readCurrentRecipes(
@@ -1334,8 +1308,7 @@ describe("readCurrentRecipes — placeholder", () => {
   it("reverse-projects a Placeholder Settings item with allowed controls", async () => {
     idSeq = 0;
     const renderingsRoot = "/sitecore/layout/Renderings/Project/demo";
-    const placeholderSettingsRoot =
-      "/sitecore/content/demo/Presentation/Placeholder Settings";
+    const placeholderSettingsRoot = "/sitecore/content/demo/Presentation/Placeholder Settings";
 
     const rRoot = item({
       name: "demo",
@@ -1382,9 +1355,7 @@ describe("readCurrentRecipes — placeholder", () => {
       { templatesRoot: "", renderingsRoot, placeholderSettingsRoot },
       client
     );
-    const placeholder = recipes!.find(
-      (r): r is PlaceholderRecipe => r.kind === "placeholder"
-    );
+    const placeholder = recipes!.find((r): r is PlaceholderRecipe => r.kind === "placeholder");
     expect(placeholder).toBeDefined();
     expect(placeholder!.name).toBe("MainSlot");
     expect(placeholder!.key).toBe("headless-main");
@@ -1398,8 +1369,7 @@ describe("readCurrentRecipes — placeholder", () => {
 
   it("skips a Placeholder Settings item that carries no Placeholder Key", async () => {
     idSeq = 0;
-    const placeholderSettingsRoot =
-      "/sitecore/content/demo/Presentation/Placeholder Settings";
+    const placeholderSettingsRoot = "/sitecore/content/demo/Presentation/Placeholder Settings";
     const psRoot = item({
       name: "Placeholder Settings",
       templateId: SITECORE_TEMPLATES.FOLDER,
@@ -1493,9 +1463,7 @@ describe("readCurrentRecipes — layout round-trip through the compiler", () => 
       { templatesRoot: "", renderingsRoot, partialDesignsRoot },
       client
     );
-    const partial = recipes!.find(
-      (r): r is PartialDesignRecipe => r.kind === "partial-design"
-    );
+    const partial = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
 
     // Round-trip equality: the reverse-projected Layout matches the
     // original recipe-author intent (variant + params + ordering).

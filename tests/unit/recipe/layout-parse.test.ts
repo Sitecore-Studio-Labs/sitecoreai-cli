@@ -181,10 +181,7 @@ describe("parseLayoutXml — canonical wire form", () => {
     const xml = emitLayoutXml(
       {
         placeholders: {
-          "/header": [
-            { componentHandle: "site-logo@1" },
-            { componentHandle: "primary-nav@1" },
-          ],
+          "/header": [{ componentHandle: "site-logo@1" }, { componentHandle: "primary-nav@1" }],
           "/footer": [{ componentHandle: "primary-nav@1" }],
         },
       },
@@ -358,9 +355,9 @@ describe("layoutXmlEquivalent", () => {
         "/header": [layout.placeholders["/header"][1], layout.placeholders["/header"][0]],
       },
     };
-    expect(layoutXmlEquivalent(emitLayoutXml(layout, baseCtx), emitLayoutXml(layout, baseCtx))).toBe(
-      true
-    );
+    expect(
+      layoutXmlEquivalent(emitLayoutXml(layout, baseCtx), emitLayoutXml(layout, baseCtx))
+    ).toBe(true);
     // Swapped placement order is a real difference.
     expect(
       layoutXmlEquivalent(emitLayoutXml(layout, baseCtx), emitLayoutXml(reordered, baseCtx))

@@ -88,7 +88,10 @@ const createCreateCommand = (): Command => {
   const command = new Command("create")
     .description("Create a new brief type from a JSON document.")
     .addOption(
-      new Option("-f, --file <path>", "Path to a JSON file matching CreateBriefTypeInput").makeOptionMandatory(true)
+      new Option(
+        "-f, --file <path>",
+        "Path to a JSON file matching CreateBriefTypeInput"
+      ).makeOptionMandatory(true)
     );
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -111,7 +114,10 @@ const createUpdateCommand = (): Command => {
     )
     .argument("<briefTypeId>", "Brief type UUID")
     .addOption(
-      new Option("-f, --file <path>", "Path to a JSON file matching CreateBriefTypeInput").makeOptionMandatory(true)
+      new Option(
+        "-f, --file <path>",
+        "Path to a JSON file matching CreateBriefTypeInput"
+      ).makeOptionMandatory(true)
     );
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -119,12 +125,10 @@ const createUpdateCommand = (): Command => {
   addApplyOption(command);
   addWhatIfOption(command);
   command.action(async (briefTypeId, options) => {
-    await withApplyGate(
-      async (opts: { file: string; apply?: boolean; whatIf?: boolean }) => {
-        const input = validateInput(readJsonFile(opts.file));
-        await runBriefTypeUpdate({ ...opts, briefTypeId, input });
-      }
-    )(options);
+    await withApplyGate(async (opts: { file: string; apply?: boolean; whatIf?: boolean }) => {
+      const input = validateInput(readJsonFile(opts.file));
+      await runBriefTypeUpdate({ ...opts, briefTypeId, input });
+    })(options);
   });
   return command;
 };
@@ -133,28 +137,28 @@ const createDeleteCommand = (): Command => {
   const command = new Command("delete")
     .description("Delete a brief type. Requires --apply; non-TTY callers must also pass --force.")
     .argument("<briefTypeId>", "Brief type UUID")
-    .addOption(new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents)."));
+    .addOption(
+      new Option("--force", "Skip TTY confirmation prompt (required for non-TTY agents).")
+    );
   addEnvironmentOption(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
   addWhatIfOption(command);
   command.action(async (briefTypeId, options) => {
-    await withApplyGate(
-      async (opts: { force?: boolean; apply?: boolean; whatIf?: boolean }) => {
-        if (!opts.whatIf) {
-          const confirmed = await confirmDestructive(
-            `Delete brief type ${briefTypeId}? This cannot be undone.`,
-            opts.force
-          );
-          if (!confirmed) {
-            process.stderr.write("Aborted.\n");
-            return;
-          }
+    await withApplyGate(async (opts: { force?: boolean; apply?: boolean; whatIf?: boolean }) => {
+      if (!opts.whatIf) {
+        const confirmed = await confirmDestructive(
+          `Delete brief type ${briefTypeId}? This cannot be undone.`,
+          opts.force
+        );
+        if (!confirmed) {
+          process.stderr.write("Aborted.\n");
+          return;
         }
-        await runBriefTypeDelete({ ...opts, briefTypeId });
       }
-    )(options);
+      await runBriefTypeDelete({ ...opts, briefTypeId });
+    })(options);
   });
   return command;
 };

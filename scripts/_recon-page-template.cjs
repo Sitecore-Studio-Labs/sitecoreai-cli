@@ -63,7 +63,8 @@ query($where: ItemQueryInput!) {
   }
 }`;
 
-const where = (arg) => (/^[{(]?[0-9a-fA-F-]{36}/.test(arg.replace(/[{}]/g, "")) ? { itemId: arg } : { path: arg });
+const where = (arg) =>
+  /^[{(]?[0-9a-fA-F-]{36}/.test(arg.replace(/[{}]/g, "")) ? { itemId: arg } : { path: arg };
 
 const showItem = (item) => {
   if (!item) return console.log("  (item not found)");
@@ -108,11 +109,15 @@ const showItem = (item) => {
       const item = data?.item;
       if (!item) return console.log(`${"  ".repeat(depth)}(not found: ${idOrPath})`);
       const id = item.itemId.toLowerCase();
-      if (seen.has(id)) return console.log(`${"  ".repeat(depth)}${item.name}  ${item.itemId}  [seen]`);
+      if (seen.has(id))
+        return console.log(`${"  ".repeat(depth)}${item.name}  ${item.itemId}  [seen]`);
       seen.add(id);
       console.log(`${"  ".repeat(depth)}${item.name}  ${item.itemId}  (${item.path})`);
       const baseField = (item.fields?.nodes ?? []).find((f) => f.name === "__Base template");
-      const bases = (baseField?.value ?? "").split("|").map((s) => s.trim()).filter(Boolean);
+      const bases = (baseField?.value ?? "")
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
       for (const b of bases) await walk(b, depth + 1);
     };
     await walk(arg, 0);

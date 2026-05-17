@@ -6,6 +6,13 @@
  * server action via `agentsServerAction` — coupling scai to Agentic
  * Studio's internal build (the action hash rotates on every deploy). To
  * be deleted when a real `POST /api/schemas` endpoint ships.
+ *
+ * `updateSchema` re-runs the `/schemas/create` server action — verified
+ * 2026-05-17 (agentic-studio-euw): that action upserts by name, so a
+ * re-create *is* an update (REST `PUT /api/schemas/{id}` returns 405).
+ * `deleteSchema` is still **UNVERIFIED** — `DELETE /api/schemas/{id}`
+ * returns 405 and no delete server action has been captured. See
+ * docs/agentic-studio-har-capture.md.
  */
 import { agentsRequest, agentsServerAction, RSC_UNDEFINED } from "./request";
 import type { AgentsSession } from "../session/types";
@@ -15,6 +22,17 @@ import type { StructuredSchema } from "./schema";
 export const listSchemas = async (session: AgentsSession): Promise<StructuredSchema[]> => {
   const data = await agentsRequest<unknown>(session, "/api/schemas");
   return Array.isArray(data) ? (data as StructuredSchema[]) : [];
+};
+
+/** Find one schema by `id`, `schemaId`, or `name`. Returns `undefined` if not found. */
+export const getSchema = async (
+  session: AgentsSession,
+  idOrName: string
+): Promise<StructuredSchema | undefined> => {
+  const schemas = await listSchemas(session);
+  return schemas.find(
+    (schema) => schema.id === idOrName || schema.schemaId === idOrName || schema.name === idOrName
+  );
 };
 
 /**
@@ -83,4 +101,27 @@ export const createSchema = async (
       },
     ],
   });
+};
+
+export interface UpdateSchemaInput extends CreateSchemaInput {
+  /** Id of the schema to replace. */
+  id: string;
+}
+
+/**
+ * Update a structured-output schema. There is no REST update
+ * (`PUT /api/schemas/{id}` → 405); instead the `/schemas/create` server
+ * action upserts by name, so an update is a re-create — verified
+ * 2026-05-17. `input.id` is unused: the server action keys on the name.
+ */
+export const updateSchema = async (
+  session: AgentsSession,
+  input: UpdateSchemaInput
+): Promise<void> => {
+  await createSchema(session, input);
+};
+
+/** Delete a schema (`DELETE /api/schemas/{id}`). **UNVERIFIED — returned 405; see header.** */
+export const deleteSchema = async (session: AgentsSession, id: string): Promise<void> => {
+  await agentsRequest(session, `/api/schemas/${encodeURIComponent(id)}`, { method: "DELETE" });
 };

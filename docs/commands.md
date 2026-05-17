@@ -144,7 +144,7 @@ scai setup client [options] [command]
 Mint an automation client — env-scoped by default, org-scoped with --org (idempotent).
 
 ```
-scai setup client create [options] <env>
+scai setup client create [options] [env]
 ```
 
 **Options**
@@ -4518,14 +4518,14 @@ scai agents [options] [command]
 - [`scai agents login`](#scai-agents-login) — Capture an Agentic Studio browser session for the environment (opens a browser).
 - [`scai agents logout`](#scai-agents-logout) — Forget the stored Agentic Studio session.
 - [`scai agents status`](#scai-agents-status) — Show the Agentic Studio session status.
-- [`scai agents list`](#scai-agents-list) — List agents.
-- [`scai agents skills`](#scai-agents-skills) — List skills.
-- [`scai agents tools`](#scai-agents-tools) — List the tool catalog.
-- [`scai agents widgets`](#scai-agents-widgets) — List widgets.
-- [`scai agents schemas`](#scai-agents-schemas) — List structured-output schemas.
-- [`scai agents mcps`](#scai-agents-mcps) — List registered custom MCP servers.
-- [`scai agents run`](#scai-agents-run) — Run an agent and stream its output.
-- [`scai agents rm`](#scai-agents-rm) — Delete an agent. Requires --apply.
+- [`scai agents agent`](#scai-agents-agent) — Agentic Studio agents — full create / read / update / delete.
+- [`scai agents space`](#scai-agents-space) — Agentic Studio spaces — the run container (read config + artifacts, update config).
+- [`scai agents skill`](#scai-agents-skill) — Agentic Studio skills — reusable markdown guidance an agent attaches.
+- [`scai agents widget`](#scai-agents-widget) — Agentic Studio widgets — configurable report/dashboard surfaces.
+- [`scai agents schema`](#scai-agents-schema) — Agentic Studio structured-output schemas.
+- [`scai agents mcp`](#scai-agents-mcp) — Registered custom MCP servers.
+- [`scai agents html-template`](#scai-agents-html-template) — Agentic Studio HTML templates.
+- [`scai agents tool`](#scai-agents-tool) — Agentic Studio tool catalog (read-only — no write path).
 - [`scai agents sync`](#scai-agents-sync) — Pull, diff, and push Agentic Studio resources as declarative recipes.
 
 ### scai agents login
@@ -4586,12 +4586,30 @@ scai agents status [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-### scai agents list
+### scai agents agent
+
+Agentic Studio agents — full create / read / update / delete.
+
+```
+scai agents agent [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents agent list`](#scai-agents-agent-list) — List agents.
+- [`scai agents agent get`](#scai-agents-agent-get) — Show one agent.
+- [`scai agents agent create`](#scai-agents-agent-create) — Create an agent from a recipe file.
+- [`scai agents agent update`](#scai-agents-agent-update) — Update an agent from a recipe file (full-replacement of config).
+- [`scai agents agent duplicate`](#scai-agents-agent-duplicate) — Duplicate an agent under a new name.
+- [`scai agents agent delete`](#scai-agents-agent-delete) — Delete an agent. Requires --apply; non-TTY callers must also pass --force.
+- [`scai agents agent run`](#scai-agents-agent-run) — Run an agent and stream its output.
+
+#### scai agents agent list
 
 List agents.
 
 ```
-scai agents list [options]
+scai agents agent list [options]
 ```
 
 **Options**
@@ -4605,31 +4623,12 @@ scai agents list [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-### scai agents skills
+#### scai agents agent get
 
-List skills.
-
-```
-scai agents skills [options]
-```
-
-**Options**
-
-- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
-- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
-- `-v, --verbose` — Write some additional diagnostic and performance data
-- `-t, --trace` — Write more additional diagnostic and performance data
-- `-q, --quiet` — Suppress non-error output
-- `--json` — Output machine-readable JSON
-- `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
-
-### scai agents tools
-
-List the tool catalog.
+Show one agent.
 
 ```
-scai agents tools [options]
+scai agents agent get [options] <idOrSlug>
 ```
 
 **Options**
@@ -4643,31 +4642,12 @@ scai agents tools [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-### scai agents widgets
+#### scai agents agent create
 
-List widgets.
-
-```
-scai agents widgets [options]
-```
-
-**Options**
-
-- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
-- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
-- `-v, --verbose` — Write some additional diagnostic and performance data
-- `-t, --trace` — Write more additional diagnostic and performance data
-- `-q, --quiet` — Suppress non-error output
-- `--json` — Output machine-readable JSON
-- `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
-
-### scai agents schemas
-
-List structured-output schemas.
+Create an agent from a recipe file.
 
 ```
-scai agents schemas [options]
+scai agents agent create [options]
 ```
 
 **Options**
@@ -4680,13 +4660,16 @@ scai agents schemas [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a agent recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
 
-### scai agents mcps
+#### scai agents agent update
 
-List registered custom MCP servers.
+Update an agent from a recipe file (full-replacement of config).
 
 ```
-scai agents mcps [options]
+scai agents agent update [options] <idOrSlug>
 ```
 
 **Options**
@@ -4699,13 +4682,60 @@ scai agents mcps [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a agent recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
 
-### scai agents run
+#### scai agents agent duplicate
+
+Duplicate an agent under a new name.
+
+```
+scai agents agent duplicate [options] <idOrSlug>
+```
+
+**Options**
+
+- `--name <name>` — Name for the new agent
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents agent delete
+
+Delete an agent. Requires --apply; non-TTY callers must also pass --force.
+
+```
+scai agents agent delete [options] <idOrSlug>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents agent run
 
 Run an agent and stream its output.
 
 ```
-scai agents run [options] <agentSlug>
+scai agents agent run [options] <agentSlug>
 ```
 
 **Options**
@@ -4720,12 +4750,26 @@ scai agents run [options] <agentSlug>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-### scai agents rm
+### scai agents space
 
-Delete an agent. Requires --apply.
+Agentic Studio spaces — the run container (read config + artifacts, update config).
 
 ```
-scai agents rm [options] <idOrSlug>
+scai agents space [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents space get`](#scai-agents-space-get) — Show a space's config.
+- [`scai agents space artifacts`](#scai-agents-space-artifacts) — Show a space's run artifacts — the structured output of its runs.
+- [`scai agents space update`](#scai-agents-space-update) — Update a space's config — merges a JSON/YAML patch into the live config (rename via `spaceName`, change `agents` / `globalContext`).
+
+#### scai agents space get
+
+Show a space's config.
+
+```
+scai agents space get [options] <spaceId>
 ```
 
 **Options**
@@ -4738,8 +4782,682 @@ scai agents rm [options] <idOrSlug>
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents space artifacts
+
+Show a space's run artifacts — the structured output of its runs.
+
+```
+scai agents space artifacts [options] <spaceId>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents space update
+
+Update a space's config — merges a JSON/YAML patch into the live config (rename via `spaceName`, change `agents` / `globalContext`).
+
+```
+scai agents space update [options] <spaceId>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a JSON/YAML patch — only the keys to change
 - `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents skill
+
+Agentic Studio skills — reusable markdown guidance an agent attaches.
+
+```
+scai agents skill [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents skill list`](#scai-agents-skill-list) — List skills.
+- [`scai agents skill get`](#scai-agents-skill-get) — Show one skill.
+- [`scai agents skill create`](#scai-agents-skill-create) — Create a skill from a recipe file.
+- [`scai agents skill update`](#scai-agents-skill-update) — Update a skill from a recipe file.
+- [`scai agents skill delete`](#scai-agents-skill-delete) — Delete a skill. Requires --apply; --force for non-TTY.
+
+#### scai agents skill list
+
+List skills.
+
+```
+scai agents skill list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents skill get
+
+Show one skill.
+
+```
+scai agents skill get [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents skill create
+
+Create a skill from a recipe file.
+
+```
+scai agents skill create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a skill recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents skill update
+
+Update a skill from a recipe file.
+
+```
+scai agents skill update [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a skill recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents skill delete
+
+Delete a skill. Requires --apply; --force for non-TTY.
+
+```
+scai agents skill delete [options] <idOrName>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents widget
+
+Agentic Studio widgets — configurable report/dashboard surfaces.
+
+```
+scai agents widget [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents widget list`](#scai-agents-widget-list) — List widgets.
+- [`scai agents widget get`](#scai-agents-widget-get) — Show one widget.
+- [`scai agents widget create`](#scai-agents-widget-create) — Create a widget from a recipe file.
+- [`scai agents widget update`](#scai-agents-widget-update) — Update a widget from a recipe file.
+- [`scai agents widget delete`](#scai-agents-widget-delete) — Delete a widget. Requires --apply; --force for non-TTY.
+
+#### scai agents widget list
+
+List widgets.
+
+```
+scai agents widget list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents widget get
+
+Show one widget.
+
+```
+scai agents widget get [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents widget create
+
+Create a widget from a recipe file.
+
+```
+scai agents widget create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a widget recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents widget update
+
+Update a widget from a recipe file.
+
+```
+scai agents widget update [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a widget recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents widget delete
+
+Delete a widget. Requires --apply; --force for non-TTY.
+
+```
+scai agents widget delete [options] <idOrName>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents schema
+
+Agentic Studio structured-output schemas.
+
+```
+scai agents schema [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents schema list`](#scai-agents-schema-list) — List schemas.
+- [`scai agents schema get`](#scai-agents-schema-get) — Show one schema.
+- [`scai agents schema create`](#scai-agents-schema-create) — Create a schema from a recipe file.
+- [`scai agents schema update`](#scai-agents-schema-update) — Update a schema from a recipe file.
+- [`scai agents schema delete`](#scai-agents-schema-delete) — Delete a schema. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+
+#### scai agents schema list
+
+List schemas.
+
+```
+scai agents schema list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents schema get
+
+Show one schema.
+
+```
+scai agents schema get [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents schema create
+
+Create a schema from a recipe file.
+
+```
+scai agents schema create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a schema recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents schema update
+
+Update a schema from a recipe file.
+
+```
+scai agents schema update [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a schema recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents schema delete
+
+Delete a schema. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+
+```
+scai agents schema delete [options] <idOrName>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents mcp
+
+Registered custom MCP servers.
+
+```
+scai agents mcp [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents mcp list`](#scai-agents-mcp-list) — List mcps.
+- [`scai agents mcp get`](#scai-agents-mcp-get) — Show one mcp.
+- [`scai agents mcp create`](#scai-agents-mcp-create) — Create a mcp from a recipe file.
+- [`scai agents mcp update`](#scai-agents-mcp-update) — Update a mcp from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+- [`scai agents mcp delete`](#scai-agents-mcp-delete) — Delete a mcp. Requires --apply; --force for non-TTY.
+
+#### scai agents mcp list
+
+List mcps.
+
+```
+scai agents mcp list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents mcp get
+
+Show one mcp.
+
+```
+scai agents mcp get [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents mcp create
+
+Create a mcp from a recipe file.
+
+```
+scai agents mcp create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a mcp recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents mcp update
+
+Update a mcp from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+
+```
+scai agents mcp update [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a mcp recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents mcp delete
+
+Delete a mcp. Requires --apply; --force for non-TTY.
+
+```
+scai agents mcp delete [options] <idOrName>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents html-template
+
+Agentic Studio HTML templates.
+
+```
+scai agents html-template [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents html-template list`](#scai-agents-html-template-list) — List html-templates.
+- [`scai agents html-template get`](#scai-agents-html-template-get) — Show one html-template.
+- [`scai agents html-template create`](#scai-agents-html-template-create) — Create a html-template from a recipe file.
+- [`scai agents html-template update`](#scai-agents-html-template-update) — Update a html-template from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+- [`scai agents html-template delete`](#scai-agents-html-template-delete) — Delete a html-template. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+
+#### scai agents html-template list
+
+List html-templates.
+
+```
+scai agents html-template list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents html-template get
+
+Show one html-template.
+
+```
+scai agents html-template get [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai agents html-template create
+
+Create a html-template from a recipe file.
+
+```
+scai agents html-template create [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a html-template recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents html-template update
+
+Update a html-template from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+
+```
+scai agents html-template update [options] <idOrName>
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `-f, --file <path>` — Path to a html-template recipe file (YAML or JSON) — same format as `scai agents sync`.
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai agents html-template delete
+
+Delete a html-template. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+
+```
+scai agents html-template delete [options] <idOrName>
+```
+
+**Options**
+
+- `--force` — Skip the TTY confirmation prompt (required for non-TTY agents).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+### scai agents tool
+
+Agentic Studio tool catalog (read-only — no write path).
+
+```
+scai agents tool [options] [command]
+```
+
+**Subcommands**
+
+- [`scai agents tool list`](#scai-agents-tool-list) — List the tool catalog.
+
+#### scai agents tool list
+
+List the tool catalog.
+
+```
+scai agents tool list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
 
 ### scai agents sync
 

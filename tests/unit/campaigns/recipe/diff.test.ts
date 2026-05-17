@@ -122,9 +122,7 @@ describe("diffCampaign — campaign present", () => {
     const plan = diffCampaign(
       recipe({
         name: "Spring Launch",
-        deliverables: [
-          { name: "Landing page", tasks: [{ name: "Draft copy", status: "DONE" }] },
-        ],
+        deliverables: [{ name: "Landing page", tasks: [{ name: "Draft copy", status: "DONE" }] }],
       }),
       current
     );

@@ -225,9 +225,7 @@ describe("apply", () => {
   });
 
   it("throws when the plan carries no compiled IRs", async () => {
-    await expect(recipeKind.apply({ changes: [] }, ref, ctx)).rejects.toThrow(
-      /no compiled IRs/
-    );
+    await expect(recipeKind.apply({ changes: [] }, ref, ctx)).rejects.toThrow(/no compiled IRs/);
   });
 });
 

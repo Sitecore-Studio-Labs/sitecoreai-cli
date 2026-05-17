@@ -92,9 +92,7 @@ describe("BriefTypeRecipeSchema", () => {
     expect(() =>
       BriefTypeRecipeSchema.parse({
         ...baseRecipe,
-        fields: [
-          { type: "Budget", name: "b", label: {}, required: false, aiEditable: false },
-        ],
+        fields: [{ type: "Budget", name: "b", label: {}, required: false, aiEditable: false }],
       })
     ).toThrow();
   });

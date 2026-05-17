@@ -138,9 +138,15 @@ describe("compilePageTemplateRecipe", () => {
   });
 
   it("nests the template under <root>/<group> when meta.tax.group is set", () => {
-    const grouped = { ...articlePage, meta: { tax: { group: "Editorial" } } } satisfies PageTemplateRecipe;
+    const grouped = {
+      ...articlePage,
+      meta: { tax: { group: "Editorial" } },
+    } satisfies PageTemplateRecipe;
     const groupedIr = compilePageTemplateRecipe(grouped, CONTEXT);
-    const folder = findCreate(groupedIr.operations, "page-templates-group-folder:default:Editorial");
+    const folder = findCreate(
+      groupedIr.operations,
+      "page-templates-group-folder:default:Editorial"
+    );
     expect(folder.policy).toBe("CreateOnly");
     expect(folder.path).toBe("/sitecore/templates/Project/Demo/Editorial");
     const create = findCreate(groupedIr.operations, "template:article-page@1");
@@ -149,7 +155,10 @@ describe("compilePageTemplateRecipe", () => {
   });
 
   it("emits the group folder once across a set of same-group page templates", () => {
-    const a = { ...articlePage, meta: { tax: { group: "Editorial" } } } satisfies PageTemplateRecipe;
+    const a = {
+      ...articlePage,
+      meta: { tax: { group: "Editorial" } },
+    } satisfies PageTemplateRecipe;
     const b = {
       ...articlePage,
       handle: "news-page@1",
@@ -258,7 +267,13 @@ describe("compilePageRecipe", () => {
     // datasource item conforms to THAT, not the component template.
     const componentWithDs: ComponentTemplateRecipe = {
       ...component("widget@1"),
-      datasource: { template: { handle: "widget-data@1" }, autoCreate: true, openPropertiesAfterAdd: false, locations: [], query: [] },
+      datasource: {
+        template: { handle: "widget-data@1" },
+        autoCreate: true,
+        openPropertiesAfterAdd: false,
+        locations: [],
+        query: [],
+      },
     };
     const scopedPage = {
       ...homePage,
@@ -356,9 +371,7 @@ describe("buildPlaceholderSettingsAggregate (via compileRecipeSet)", () => {
     const create = findCreate(aggregate.operations, "placeholder-settings:default:headless-main");
     expect(create.id).toBe(placeholderSettingsId(SITE, "headless-main"));
     expect(create.templateOf).toBe(PLACEHOLDER_TEMPLATE_ID);
-    expect(create.path).toBe(
-      "/sitecore/content/Demo/Presentation/Placeholder Settings/Main"
-    );
+    expect(create.path).toBe("/sitecore/content/Demo/Presentation/Placeholder Settings/Main");
     const keyField = create.fields.find((f) => f.fieldId === PLACEHOLDER_FIELDS.PLACEHOLDER_KEY);
     expect(keyField?.value).toEqual({ kind: "string", value: "headless-main" });
   });
@@ -386,7 +399,9 @@ describe("buildPlaceholderSettingsAggregate (via compileRecipeSet)", () => {
 
   it("emits no placeholder aggregate when the set declares no placeholders", () => {
     const none = compileRecipeSet([component("solo-block@1")], CONTEXT);
-    expect(none.find((ir) => ir.recipeHandle === PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE)).toBeUndefined();
+    expect(
+      none.find((ir) => ir.recipeHandle === PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE)
+    ).toBeUndefined();
   });
 
   it("nests a placeholder under its folder path, each segment a Placeholder Settings Folder", () => {
@@ -437,9 +452,10 @@ describe("buildPlaceholderSettingsAggregate (via compileRecipeSet)", () => {
       dynamic: false,
       allowedComponents: [],
     });
-    const agg = compileRecipeSet([mk("a@1", "ph-a", "PhA"), mk("b@1", "ph-b", "PhB")], CONTEXT).find(
-      (ir) => ir.recipeHandle === PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE
-    )!;
+    const agg = compileRecipeSet(
+      [mk("a@1", "ph-a", "PhA"), mk("b@1", "ph-b", "PhB")],
+      CONTEXT
+    ).find((ir) => ir.recipeHandle === PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE)!;
     const folderOps = agg.operations.filter(
       (op) => op.label === "placeholder-settings-folder:default:Shared"
     );
@@ -516,9 +532,7 @@ describe("validateRecipeSet — placeholders & page templates", () => {
   it("flags a page-design appliesTo that doesn't resolve to a page-template", () => {
     const result = validateRecipeSet([component("alpha-block@1"), pageDesign("alpha-block@1")]);
     // article-page@1 isn't in the set — appliesTo is unresolved.
-    expect(
-      result.unresolvedHandles.some((u) => u.fromField.startsWith("appliesTo"))
-    ).toBe(true);
+    expect(result.unresolvedHandles.some((u) => u.fromField.startsWith("appliesTo"))).toBe(true);
   });
 });
 
@@ -526,7 +540,10 @@ describe("example recipes — page-level kinds", () => {
   it("article-page + home-page parse as PageTemplateRecipe and compile", () => {
     expect(() => PageTemplateRecipeSchema.parse(articlePageRecipe)).not.toThrow();
     expect(() => PageTemplateRecipeSchema.parse(homePageRecipe)).not.toThrow();
-    const ir = compilePageTemplateRecipe(PageTemplateRecipeSchema.parse(articlePageRecipe), CONTEXT);
+    const ir = compilePageTemplateRecipe(
+      PageTemplateRecipeSchema.parse(articlePageRecipe),
+      CONTEXT
+    );
     expect(ir.operations.length).toBeGreaterThan(0);
   });
 

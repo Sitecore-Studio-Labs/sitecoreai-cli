@@ -24,20 +24,16 @@ export const createBriefSetStatusCommand = (): Command => {
   const command = new Command("set-status")
     .description("Set a brief's workflow status (Draft, InReview, Approved, Canceled, Archived).")
     .argument("<briefId>", "Brief UUID")
-    .addArgument(
-      new Argument("<status>", "New status — API wire form").choices(BRIEF_STATUSES)
-    );
+    .addArgument(new Argument("<status>", "New status — API wire form").choices(BRIEF_STATUSES));
   addEnvironmentOption(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
   addWhatIfOption(command);
   command.action(async (briefId: string, status: BriefStatus, options) => {
-    await withApplyGate(
-      async (opts: { apply?: boolean; whatIf?: boolean }) => {
-        await runBriefSetStatus({ ...opts, briefId, status });
-      }
-    )(options);
+    await withApplyGate(async (opts: { apply?: boolean; whatIf?: boolean }) => {
+      await runBriefSetStatus({ ...opts, briefId, status });
+    })(options);
   });
   return command;
 };

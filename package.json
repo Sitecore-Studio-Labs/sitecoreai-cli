@@ -97,6 +97,8 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx -r tsconfig-paths/register src/cli.ts",
     "docs:commands": "tsx scripts/generate-commands-doc.ts",
+    "scan:agentic-actions": "tsx -r tsconfig-paths/register scripts/scan-agentic-actions.ts",
+    "record:agentic-actions": "tsx -r tsconfig-paths/register scripts/record-agentic-actions.ts",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",

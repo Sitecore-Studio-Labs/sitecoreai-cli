@@ -145,8 +145,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
         // component template itself (the inline-`fields:` pattern, and
         // the only option for a standalone single-recipe compile).
         const component = context.componentsByHandle?.get(componentHandle);
-        const datasourceTemplateHandle =
-          component?.datasource?.template?.handle ?? componentHandle;
+        const datasourceTemplateHandle = component?.datasource?.template?.handle ?? componentHandle;
         operations.push({
           op: "CreateItem",
           policy,

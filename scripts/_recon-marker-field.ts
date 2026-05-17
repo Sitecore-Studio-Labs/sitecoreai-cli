@@ -28,7 +28,9 @@ const main = async (): Promise<void> => {
   console.log(`item: "${item.name}" (${item.itemId}) template=${item.templateId}`);
   console.log(`fields (${item.fields.length}):`);
   for (const f of [...item.fields].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))) {
-    console.log(`  ${(f.name ?? "(noname)").padEnd(26)} id=${f.fieldId}  value=${JSON.stringify(f.value)}`);
+    console.log(
+      `  ${(f.name ?? "(noname)").padEnd(26)} id=${f.fieldId}  value=${JSON.stringify(f.value)}`
+    );
   }
 };
 

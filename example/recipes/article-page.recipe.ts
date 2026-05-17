@@ -41,7 +41,10 @@ export const articlePageRecipe = {
     {
       name: "Eyebrow",
       shape: "text",
-      sitecore: { hint: "Small uppercase label shown above the article title.", section: "Content" },
+      sitecore: {
+        hint: "Small uppercase label shown above the article title.",
+        section: "Content",
+      },
     },
   ],
 

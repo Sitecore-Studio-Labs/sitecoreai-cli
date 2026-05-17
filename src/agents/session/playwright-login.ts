@@ -68,8 +68,11 @@ const discoverActionHash = async (
   await page.goto(url, { waitUntil: "networkidle" }).catch(() => undefined);
   page.off("response", collect);
 
-  // `createServerReference("<hash>", callServer, …, "<actionName>")`
-  const pattern = /createServerReference\("([0-9a-f]{30,})"[^)]*?"([^"]*)"/g;
+  // Minified call site: `(0,x.createServerReference)("<hash>",x.callServer,
+  // void 0,x.findSourceMapURL,"<actionName>")`. The `\)?` matches that
+  // comma-expression form (and skips the runtime *definition*, which has
+  // no `(` after the name) — verified by `scripts/scan-agentic-actions.ts`.
+  const pattern = /createServerReference\)?\(\s*"([0-9a-f]{30,})"[^)]*?"([^"]*)"/g;
   for (const chunk of await Promise.all(chunkBodies)) {
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(chunk)) !== null) {
@@ -111,6 +114,13 @@ export const runPlaywrightLogin = async (
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+    // Capture the real browser User-Agent now, on the stable `about:blank`
+    // page — it is replayed on every API call so the edge WAF accepts
+    // requests made from Node. Done *after* sign-in this raced the Auth0
+    // redirect chain and destroyed the evaluate context ("Execution
+    // context was destroyed"); the blank page has the same UA and never
+    // navigates, so capturing it here is race-free.
+    const userAgent = String(await page.evaluate("navigator.userAgent"));
     await page.goto(`${baseUrl}/agents`, { waitUntil: "domcontentloaded" });
 
     // The operator completes Auth0 (+ MFA) in the window. Detect completion
@@ -145,10 +155,6 @@ export const runPlaywrightLogin = async (
         "AUTH_REQUIRED"
       );
     }
-
-    // The real browser User-Agent — replayed on every API call so the
-    // edge WAF accepts requests made from Node.
-    const userAgent = String(await page.evaluate("navigator.userAgent"));
 
     // Capture the server-action hashes for the create pages — they rotate
     // per Agentic Studio deploy, so discovering them here keeps the

@@ -39,8 +39,7 @@ const findSet = (
 ): SetFieldOp =>
   ops.find(
     (op): op is SetFieldOp =>
-      op.op === "SetField" &&
-      op.label === `content-item-field:${recipeHandle}:${tag}:${fieldName}`
+      op.op === "SetField" && op.label === `content-item-field:${recipeHandle}:${tag}:${fieldName}`
   )!;
 
 const buildRecipe = (
@@ -308,9 +307,7 @@ describe("compileContentItemRecipe — translations (simple mode)", () => {
     );
 
     // The primary language stays at en v1; fr needs its language version made.
-    const addFr = ir.operations.find(
-      (op) => op.op === "AddItemVersion" && op.language === "fr"
-    );
+    const addFr = ir.operations.find((op) => op.op === "AddItemVersion" && op.language === "fr");
     expect(addFr).toMatchObject({ op: "AddItemVersion", language: "fr", version: 1 });
 
     const frTitle = findSet(ir.operations, "Title", "test-content@1", "fr");
@@ -445,10 +442,7 @@ describe("compileContentItemRecipe — story mode (versions)", () => {
   it("rejects a per-version workflowState when the recipe has no workflow", () => {
     expect(() =>
       compileContentItemRecipe(
-        buildRecipe(
-          {},
-          { versions: { en: [{ version: 1, fields: {}, workflowState: "draft" }] } }
-        ),
+        buildRecipe({}, { versions: { en: [{ version: 1, fields: {}, workflowState: "draft" }] } }),
         CONTEXT
       )
     ).toThrow(/no `workflow`/);

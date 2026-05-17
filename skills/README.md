@@ -2,6 +2,7 @@
 
 This directory contains Cursor-style skills (each in its own folder with a `SKILL.md`).
 
+- `access-and-policy` — Policy allowlist + credential patterns; clearing `POLICY_DENIED` / `AUTH_REQUIRED` fast.
 - `agent-mode` — Non-interactive and CI usage defaults.
 - `ci-smoke-test` — Run the CLI smoke test in CI.
 - `config-bootstrap` — Create and validate `sitecoreai.cli.json`.

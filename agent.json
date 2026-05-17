@@ -13,6 +13,11 @@
   },
   "skills": [
     {
+      "id": "access-and-policy",
+      "path": "skills/access-and-policy/SKILL.md",
+      "summary": "Navigate the workspace policy allowlist and credential patterns to gain environment access fast."
+    },
+    {
       "id": "agent-mode",
       "path": "skills/agent-mode/SKILL.md",
       "summary": "Run the CLI safely in non-interactive or CI environments."

@@ -92,6 +92,8 @@ See \`tools_list\` and \`tools_schema\` for the live inventory.
 - \`scai://help/overview\` — this resource.
 - \`scai://help/topics\` — intent-based command index ("why won't this
   delete?", "sync recipes across domains", …); mirrors \`scai cli topics\`.
+- \`scai://help/access-and-policy\` — the policy allowlist + credential
+  gates and the one command that clears each.
 - \`scai://help/recipes-grammar\` — Recipe DSL grammar synopsis.
 - \`scai://help/recipes-workflow\` — recipe authoring + sync workflow.
 - \`scai://help/deploy-lifecycle\` — XM Cloud deploy state machine.
@@ -312,6 +314,59 @@ full external docs index (clients with HTTP-resource support can fetch
 it directly).
 `;
 
+const ACCESS_POLICY_TEXT = `# scai access model — policy allowlist + credentials
+
+Two gates stand between a command and a Sitecore environment. Run
+\`scai setup status\` first — it names which gate is closed for each env.
+
+## Gate 1 — workspace policy allowlist
+
+\`~/.sitecoreai/policy.json\` is a deny-by-default allowlist.
+
+- File absent → unmanaged mode: the gate is a no-op.
+- File present → managed mode: only enrolled environments work.
+- \`POLICY_DENIED\` "not in the allowlist" → \`scai policy allow <env>\`.
+- \`POLICY_DENIED\` "identity has changed" → \`scai policy trust <env>\`,
+  only if the org / project / env / host change is legitimate.
+- \`scai policy show\` lists what is allowed.
+
+Enrollment pins the tenant identity; later drift fails the gate closed.
+
+## Gate 2 — credentials
+
+Config (\`sitecoreai.cli.json\`) holds non-secret metadata only; secrets
+live in the OS keychain keyed by the literal env name (\`deploy:<env>\`,
+\`cm-client:<env>\`, \`org-client:<orgId>\`). A profile's \`ref\` shares
+config fields but NOT keychain secrets — a ref'd env still needs its own
+credential.
+
+- Deploy token — \`scai setup login\` device flow; ~24h.
+- Env CM client — \`scai setup client create <env>\`; long-lived.
+- Org client — \`scai setup client create --org\`; shared org-wide.
+
+## Two gotchas
+
+- Device login needs a TTY: \`scai setup login\` hard-fails when stdin is
+  not a TTY. An MCP / agent shell is not a TTY, so an agent cannot
+  trigger device login — ask the human to run it, or use client
+  credentials.
+- Minting needs a token to bootstrap: \`setup client create\` calls the
+  Deploy API and needs a deploy token for that env. A brand-new env has
+  none — device-login it first, or pass \`SITECOREAI_DEPLOY_TOKEN\` (with
+  the operator's explicit okay for cross-env reuse).
+
+## Non-interactive auth
+
+\`SITECOREAI_CLIENT_ID\` + \`SITECOREAI_CLIENT_SECRET\` (or profile
+\`useClientCredentials\` + \`SITECOREAI_ENV_<ENV>_CLIENT_SECRET\`) — no
+device login, no token reuse.
+
+## Asking for access
+
+State all four in one message: the environment, the gate that is closed,
+the exact command that clears it, and who must run it (you or the human).
+`;
+
 export const registerHelpResources = (registry: McpRegistry): void => {
   registry.registerResource({
     uri: "scai://help/overview",
@@ -392,6 +447,23 @@ export const registerHelpResources = (registry: McpRegistry): void => {
           uri: "scai://help/sitecore-apis",
           mimeType: "text/markdown",
           text: SITECORE_APIS_TEXT,
+        },
+      ],
+    }),
+  });
+
+  registry.registerResource({
+    uri: "scai://help/access-and-policy",
+    name: "Access model — policy allowlist + credentials",
+    description:
+      "How scai gates environment access — the deny-by-default policy allowlist and the keychain credential model — with the one command that clears each POLICY_DENIED / AUTH_REQUIRED failure.",
+    mimeType: "text/markdown",
+    handler: async () => ({
+      contents: [
+        {
+          uri: "scai://help/access-and-policy",
+          mimeType: "text/markdown",
+          text: ACCESS_POLICY_TEXT,
         },
       ],
     }),

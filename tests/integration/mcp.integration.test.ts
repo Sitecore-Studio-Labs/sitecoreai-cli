@@ -110,13 +110,14 @@ describe("scai mcp serve — stdio integration", () => {
     expect(result.tools.length).toBeGreaterThanOrEqual(18);
   });
 
-  it("lists the 11 required resources", async () => {
+  it("lists the 12 required resources", async () => {
     const result = await client.listResources();
     const uris = result.resources.map((r) => r.uri).sort();
     expect(uris).toEqual([
       "https://api-docs.sitecore.com/",
       "scai://env/current/last-deploy",
       "scai://env/current/manifest",
+      "scai://help/access-and-policy",
       "scai://help/brand-file-formats",
       "scai://help/brand-kit-generation",
       "scai://help/deploy-lifecycle",

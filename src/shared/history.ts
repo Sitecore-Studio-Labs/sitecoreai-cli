@@ -58,6 +58,59 @@ export const recordHistory = async (entry: HistoryEntry): Promise<void> => {
 
 export const getHistoryPath = (): string => resolveHistoryPath();
 
+/** One entry returned by {@link readHistory}. */
+export type HistoryReadEntry = {
+  /** The raw recorded line. */
+  raw: string;
+  /** Parsed entry, or `null` when the line is not valid JSON. */
+  entry: HistoryEntry | null;
+};
+
+/** Options for {@link readHistory}. */
+export type ReadHistoryOptions = {
+  /** Override the history log path. */
+  path?: string;
+  /** Maximum number of (most-recent) entries to return. 0 or negative = all. */
+  limit?: number;
+  /** Return newest-first instead of file order. */
+  reverse?: boolean;
+};
+
+/**
+ * Read recorded CLI history.
+ *
+ * A missing log file is treated as empty (nothing recorded yet), not an
+ * error — only an unexpected read failure propagates. Entries come back
+ * in file order (oldest first) unless `reverse` is set; `limit` keeps
+ * the most recent N.
+ */
+export const readHistory = async (
+  options: ReadHistoryOptions = {}
+): Promise<HistoryReadEntry[]> => {
+  const filePath = options.path ?? resolveHistoryPath();
+  let lines: string[] = [];
+  try {
+    const content = await fs.readFile(filePath, "utf8");
+    lines = content.split("\n").filter((line) => line.trim().length > 0);
+  } catch (error) {
+    const code =
+      error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
+    if (code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const limit = options.limit ?? 0;
+  const selected = limit > 0 ? lines.slice(-limit) : lines;
+  const ordered = options.reverse ? [...selected].reverse() : selected;
+  return ordered.map((raw) => {
+    try {
+      return { raw, entry: JSON.parse(raw) as HistoryEntry };
+    } catch {
+      return { raw, entry: null };
+    }
+  });
+};
+
 export const ensureHistoryFile = async (): Promise<void> => {
   const filePath = resolveHistoryPath();
   try {

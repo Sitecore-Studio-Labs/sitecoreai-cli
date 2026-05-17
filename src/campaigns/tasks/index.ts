@@ -1,8 +1,5 @@
 import { Logger } from "@/shared/logger";
-import { resolveEnvironment } from "@/shared/env";
-import { resolveRegionalBaseUrl } from "@/shared/region";
-import { acquireCampaignToken } from "../auth";
-import { CAMPAIGN_API_HOST_TEMPLATE } from "../api/types";
+import { resolveCampaignClient } from "../client";
 import {
   createProject,
   deleteProject,
@@ -32,8 +29,10 @@ import type { CampaignApiClientOptions } from "../api/types";
  * CLI runners for the `scai ops campaign …` command family.
  *
  * Each runner resolves the env, acquires an Orchestrate-scoped token,
- * calls the library helper, then prints human or JSON output. Shared
- * scaffolding lives in `prepareCampaignClient()`.
+ * calls the library helper, then prints human or JSON output. The
+ * env+token+client orchestration lives in the exported
+ * `resolveCampaignClient()` (see `../client.ts`); `prepareCampaignClient()`
+ * only pairs it with a CLI `Logger`.
  *
  * Write runners (`create`, `update`, `delete`) honour an `options.whatIf`
  * flag — when set they skip the API call and emit a plan-only summary.
@@ -67,23 +66,8 @@ const prepareCampaignClient = async (
   options: RunCampaignBaseOptions
 ): Promise<{ logger: Logger; client: CampaignApiClientOptions; envName: string }> => {
   const logger = toLogger(options);
-  const { envName, environment, root } = resolveEnvironment(options);
-  const orgId = environment.organizationId;
-  const accessToken = await acquireCampaignToken({
-    organizationId: orgId,
-    brandCredential: orgId ? root.brand?.[orgId] : undefined,
-  });
-  // Host is region-resolved from the org id (shared resolver). An env
-  // profile may still pin `campaignBaseUrl` to override it outright.
-  // The AI APIs key token may lack `platform.tenants:listall`; region
-  // resolution is best-effort and falls back to DEFAULT_REGION if so.
-  const baseUrl = await resolveRegionalBaseUrl({
-    hostTemplate: CAMPAIGN_API_HOST_TEMPLATE,
-    organizationId: environment.organizationId,
-    override: (environment as unknown as { campaignBaseUrl?: string }).campaignBaseUrl,
-    acquireToken: async () => accessToken,
-  });
-  return { logger, envName, client: { accessToken, baseUrl } };
+  const { client, envName } = await resolveCampaignClient(options);
+  return { logger, envName, client };
 };
 
 const writeJson = (value: unknown): void => {

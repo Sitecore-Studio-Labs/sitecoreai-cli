@@ -1,3 +1,4 @@
+import { createScaiError } from "@/shared/errors";
 import { briefRequest } from "./request";
 import type { BriefField, BriefType, LocalizedString, PagedResult } from "./schema";
 import type { BriefApiClientOptions } from "./types";
@@ -50,15 +51,66 @@ export type CreateBriefTypeInput = {
   fields: BriefField[];
 };
 
+/**
+ * The Brief API requires `name` to match this pattern — a letter first,
+ * then letters / digits / underscore. Names starting with a non-letter
+ * or carrying other punctuation are rejected server-side.
+ */
+const BRIEF_TYPE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+const BRIEF_TYPE_REQUIRED_KEYS = [
+  "name",
+  "label",
+  "description",
+  "icon",
+  "iconColor",
+  "fields",
+] as const;
+
+/**
+ * Validate an untyped value against the `CreateBriefTypeInput` contract.
+ *
+ * Mirrors the Brief API's own input rules so a malformed payload fails
+ * fast with a clear message instead of a raw server 400. Throws a
+ * `ScaiError` (`INPUT_INVALID`); returns the narrowed input on success.
+ * `createBriefType` / `updateBriefType` call this themselves, so direct
+ * SDK consumers are guarded without invoking it explicitly.
+ */
+export const assertCreateBriefTypeInput = (value: unknown): CreateBriefTypeInput => {
+  if (!value || typeof value !== "object") {
+    throw createScaiError("Brief type body must be a JSON object.", "INPUT_INVALID");
+  }
+  const obj = value as Record<string, unknown>;
+  const missing = BRIEF_TYPE_REQUIRED_KEYS.filter((key) => obj[key] === undefined);
+  if (missing.length > 0) {
+    throw createScaiError(
+      `Brief type body is missing required fields: ${missing.join(", ")}.`,
+      "INPUT_INVALID",
+      { hint: "Required: name, label, description, icon, iconColor, fields." }
+    );
+  }
+  if (typeof obj.name !== "string" || !BRIEF_TYPE_NAME_PATTERN.test(obj.name)) {
+    throw createScaiError(`Invalid 'name': ${JSON.stringify(obj.name)}.`, "INPUT_INVALID", {
+      hint: "Server requires name to match /^[A-Za-z][A-Za-z0-9_]*$/.",
+    });
+  }
+  if (!Array.isArray(obj.fields)) {
+    throw createScaiError("'fields' must be an array (use [] for none).", "INPUT_INVALID");
+  }
+  return obj as unknown as CreateBriefTypeInput;
+};
+
 /** Create a brief type. Returns the persisted record (201). */
 export const createBriefType = (
   options: BriefApiClientOptions,
   input: CreateBriefTypeInput
-): Promise<BriefType> =>
-  briefRequest<BriefType>(options, "/api/brief/v1/brief-types", {
+): Promise<BriefType> => {
+  assertCreateBriefTypeInput(input);
+  return briefRequest<BriefType>(options, "/api/brief/v1/brief-types", {
     method: "POST",
     body: input,
   });
+};
 
 /**
  * Full-replacement update of a brief type (PUT — 204 No Content).
@@ -72,11 +124,17 @@ export const updateBriefType = (
   options: BriefApiClientOptions,
   briefTypeId: string,
   input: CreateBriefTypeInput
-): Promise<void> =>
-  briefRequest<void>(options, `/api/brief/v1/brief-types/${encodeURIComponent(briefTypeId)}`, {
-    method: "PUT",
-    body: input,
-  });
+): Promise<void> => {
+  assertCreateBriefTypeInput(input);
+  return briefRequest<void>(
+    options,
+    `/api/brief/v1/brief-types/${encodeURIComponent(briefTypeId)}`,
+    {
+      method: "PUT",
+      body: input,
+    }
+  );
+};
 
 /** Delete a brief type. Returns void (204 No Content). */
 export const deleteBriefType = (

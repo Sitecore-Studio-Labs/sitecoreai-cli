@@ -1,6 +1,6 @@
-import { consola } from "consola";
 import { redactSecrets } from "../../../shared/redact";
 import { createScaiError } from "../../../shared/errors";
+import { getDeployTransportListener } from "./transport-events";
 import {
   DEFAULT_DEPLOY_API_BASE,
   DeployApiClientOptions,
@@ -117,65 +117,6 @@ export const extractErrorMessage = (body: unknown): string | undefined => {
   return summary;
 };
 
-type SpinnerHandle = { succeed: () => void; fail: () => void; stop: () => void };
-
-const activeSpinners = new Set<SpinnerHandle>();
-let handlersInstalled = false;
-
-const installHandlers = (): void => {
-  if (handlersInstalled) {
-    return;
-  }
-  handlersInstalled = true;
-  const cleanup = () => {
-    for (const spinner of activeSpinners) {
-      try {
-        spinner.stop();
-      } catch {
-        // ignore spinner cleanup failures
-      }
-    }
-    activeSpinners.clear();
-  };
-  process.on("SIGINT", cleanup);
-  process.on("SIGTERM", cleanup);
-  process.on("exit", cleanup);
-};
-
-export const startDeploySpinner = async (
-  text: string,
-  options?: { silent?: boolean }
-): Promise<{ succeed: () => void; fail: () => void } | null> => {
-  if (options?.silent) {
-    return null;
-  }
-  if (!process.stdout.isTTY) {
-    return null;
-  }
-  if (process.env.SITECOREAI_QUIET === "1" || process.env.SITECOREAI_JSON === "1") {
-    return null;
-  }
-  const { default: ora } = await import("ora");
-  const spinner = ora({ text }).start();
-  const handle: SpinnerHandle = {
-    succeed: () => {
-      spinner.succeed();
-      activeSpinners.delete(handle);
-    },
-    fail: () => {
-      spinner.fail();
-      activeSpinners.delete(handle);
-    },
-    stop: () => {
-      spinner.stop();
-      activeSpinners.delete(handle);
-    },
-  };
-  activeSpinners.add(handle);
-  installHandlers();
-  return { succeed: handle.succeed, fail: handle.fail };
-};
-
 /**
  * Resolve a transport tuning value: explicit caller value wins; falls
  * back to env-var; falls back to built-in default. Pure-library callers
@@ -208,9 +149,11 @@ export const deployRequest = async <T>(
   const baseUrl = options.baseUrl ?? DEFAULT_DEPLOY_API_BASE;
   const url = `${baseUrl.replace(/\/$/, "")}${path}${toQueryString(query)}`;
   const method = init?.method ? init.method.toUpperCase() : "GET";
-  const spinner = await startDeploySpinner(`${method} ${path}`, { silent: init?.silent });
+  const span =
+    (await getDeployTransportListener()?.onRequestStart?.(method, path, Boolean(init?.silent))) ??
+    null;
   if (init?.whatIf) {
-    spinner?.succeed();
+    span?.succeed();
     return {
       whatIf: true,
       request: {
@@ -260,7 +203,7 @@ export const deployRequest = async <T>(
     const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
     try {
       if (traceEnabled) {
-        consola.debug(`HTTP ${method} ${url}`);
+        getDeployTransportListener()?.onTrace?.(`HTTP ${method} ${url}`);
       }
       response = await fetch(url, {
         method,
@@ -276,7 +219,7 @@ export const deployRequest = async <T>(
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
-      spinner?.fail();
+      span?.fail();
       throw createScaiError("Deploy API request failed due to a network error.", "NETWORK", {
         hint: "Check network connectivity or try again later.",
       });
@@ -293,7 +236,7 @@ export const deployRequest = async <T>(
   }
 
   if (!response.ok) {
-    spinner?.fail();
+    span?.fail();
     const body = await parseJsonIfPossible(response);
     const message = extractErrorMessage(body);
     const sanitized = message ? redactSecrets(message) : undefined;
@@ -303,9 +246,9 @@ export const deployRequest = async <T>(
     );
   }
 
-  spinner?.succeed();
+  span?.succeed();
   if (traceEnabled) {
-    consola.debug(`HTTP ${method} ${path} -> ${response.status}`);
+    getDeployTransportListener()?.onTrace?.(`HTTP ${method} ${path} -> ${response.status}`);
   }
   return (await parseJsonIfPossible(response)) as T;
 };

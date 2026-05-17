@@ -22,9 +22,7 @@ import { runValidate } from "@/serialization/tasks/validate";
 import { runInfo } from "@/serialization/tasks/info";
 import { loadConfigAndModules } from "@/serialization/tasks/shared";
 import type { SerializationProgressEvent } from "@/serialization/tasks/types";
-import { publishItems } from "@/serialization/api/publish";
-import { fetchItemMetadata } from "@/serialization/api/items";
-import { createFieldFilterSet } from "@/serialization/field-filter";
+import { publishItemSubtree } from "@/serialization/api/publish";
 import { createScaiError } from "@/shared/errors";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
@@ -295,37 +293,23 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
     },
     handler: async (input, context) => {
       const binding = await resolveToolBinding(context, input.environmentName);
-      const env = binding.resolved.environment;
-      const fieldFilter = createFieldFilterSet([], []);
-      const metadata = await fetchItemMetadata(
-        env,
-        input.database,
-        input.path,
-        "ItemAndDescendants",
-        fieldFilter,
-        false
-      );
-      const itemIds = metadata.map((entry) => entry.id);
-      if (itemIds.length === 0) {
-        throw createScaiError(
-          `No items found under path '${input.path}' in database '${input.database}'.`,
-          "INPUT_INVALID"
-        );
-      }
-      const receipt = await publishItems(env, itemIds, input.target);
+      const result = await publishItemSubtree(binding.resolved.environment, input.path, {
+        database: input.database,
+        target: input.target,
+      });
       return {
         content: [
           {
             type: "text",
-            text: `Published ${itemIds.length} item(s) under '${input.path}'. Job '${receipt.id}' state '${receipt.stateName}'.`,
+            text: `Published ${result.itemCount} item(s) under '${result.path}'. Job '${result.job.id}' state '${result.job.stateName}'.`,
           },
         ],
         structuredContent: {
-          path: input.path,
-          database: input.database,
-          target: input.target,
-          itemCount: itemIds.length,
-          job: receipt,
+          path: result.path,
+          database: result.database,
+          target: result.target,
+          itemCount: result.itemCount,
+          job: result.job,
         },
       };
     },

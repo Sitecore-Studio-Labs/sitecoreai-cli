@@ -65,3 +65,9 @@ export {
 export { listUsers } from "./api/users";
 
 export { acquireCampaignToken, type AcquireCampaignTokenOptions } from "./auth";
+
+export {
+  resolveCampaignClient,
+  type ResolveCampaignClientOptions,
+  type ResolvedCampaignClient,
+} from "./client";

@@ -1,9 +1,5 @@
 import { Logger } from "@/shared/logger";
-import { resolveEnvironment } from "@/shared/env";
-import { resolveRegionalBaseUrl } from "@/shared/region";
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import { acquireBriefToken } from "../auth";
-import { BRIEF_API_HOST_TEMPLATE } from "../api/types";
+import { resolveBriefClient } from "../client";
 import { listBriefs, getBrief, setBriefStatus, deleteBrief } from "../api/briefs";
 import {
   createBriefType,
@@ -30,8 +26,10 @@ import type { BriefApiClientOptions } from "../api/types";
  *
  * Each runner resolves the env, acquires a brief-scoped token, calls
  * the library helper, then prints either human or JSON output via
- * `Logger`. Shared scaffolding (env+token+client) lives in
- * `prepareBriefClient()` to avoid 5x copy-paste.
+ * `Logger`. The env+token+client orchestration lives in the exported
+ * `resolveBriefClient()` (see `../client.ts`) — the SDK seam these
+ * runners and the MCP tools share; `prepareBriefClient()` only pairs it
+ * with a CLI `Logger`.
  *
  * Read verbs:
  *   - `runBriefList`     — list briefs
@@ -77,28 +75,8 @@ const prepareBriefClient = async (
   options: RunBriefBaseOptions
 ): Promise<{ logger: Logger; client: BriefApiClientOptions; envName: string }> => {
   const logger = toLogger(options);
-  const { envName, environment, root } = resolveEnvironment(options);
-  // Carry the org-scoped automation client's non-secret `clientId` from
-  // the root config so `resolveClientCredential` can pair it with the
-  // org-client secret in the keychain (tier 3).
-  const orgClientId = environment.organizationId
-    ? root.orgClients[environment.organizationId]?.clientId
-    : undefined;
-  const accessToken = await acquireBriefToken({
-    envName,
-    environment: { ...environment, orgClientId },
-  });
-  // Host is region-resolved from the org id (shared resolver); an env
-  // profile may pin `briefBaseUrl` to override it. The brief token is
-  // scoped to `co.briefs:*`, so the region lookup mints a separate
-  // no-scope M2M token that carries `platform.tenants:listall`.
-  const baseUrl = await resolveRegionalBaseUrl({
-    hostTemplate: BRIEF_API_HOST_TEMPLATE,
-    organizationId: environment.organizationId,
-    override: (environment as unknown as { briefBaseUrl?: string }).briefBaseUrl,
-    acquireToken: async () => (await requestClientCredentialsToken(environment)).accessToken,
-  });
-  return { logger, envName, client: { accessToken, baseUrl } };
+  const { client, envName } = await resolveBriefClient(options);
+  return { logger, envName, client };
 };
 
 const writeJson = (value: unknown): void => {

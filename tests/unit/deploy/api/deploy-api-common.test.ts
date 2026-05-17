@@ -1,28 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { consola } from "consola";
 import {
   deployRequest,
   extractErrorMessage,
   parseJsonIfPossible,
-  startDeploySpinner,
 } from "../../../../src/deploy/api/common/request";
+import { setDeployTransportListener } from "../../../../src/deploy/api/common/transport-events";
 import { withOrganizationHeaders } from "../../../../src/deploy/api/common/headers";
 import { ScaiError } from "../../../../src/shared/errors";
-
-const oraMocks = vi.hoisted(() => {
-  const spinner = {
-    succeed: vi.fn(),
-    fail: vi.fn(),
-    stop: vi.fn(),
-  };
-  const start = vi.fn(() => spinner);
-  const ora = vi.fn(() => ({ start }));
-  return { spinner, start, ora };
-});
-
-vi.mock("ora", () => ({
-  default: oraMocks.ora,
-}));
 
 describe("withOrganizationHeaders", () => {
   it("returns undefined when organizationId is missing", () => {
@@ -102,6 +86,7 @@ describe("deployRequest", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     Object.defineProperty(process.stdout, "isTTY", { value: originalTty, configurable: true });
+    setDeployTransportListener(null);
   });
 
   it("builds query string and sends request with auth", async () => {
@@ -209,9 +194,29 @@ describe("deployRequest", () => {
     });
   });
 
-  it("logs trace output when HTTP tracing is enabled", async () => {
+  it("settles the transport span on success and failure", async () => {
+    const span = { succeed: vi.fn(), fail: vi.fn() };
+    setDeployTransportListener({ onRequestStart: () => span });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    );
+    await deployRequest({ accessToken: "token" }, "/api/ok");
+    expect(span.succeed).toHaveBeenCalledTimes(1);
+
+    process.env.SITECOREAI_HTTP_RETRIES = "0";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
+    await expect(deployRequest({ accessToken: "token" }, "/api/bad")).rejects.toBeInstanceOf(
+      ScaiError
+    );
+    expect(span.fail).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports trace output to the transport listener when HTTP tracing is enabled", async () => {
     process.env.SITECOREAI_TRACE_HTTP = "1";
-    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => {});
+    const onTrace = vi.fn();
+    setDeployTransportListener({ onTrace });
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
@@ -219,69 +224,7 @@ describe("deployRequest", () => {
 
     await deployRequest({ accessToken: "token", baseUrl: "https://api.example/" }, "/api/trace");
 
-    expect(debugSpy).toHaveBeenCalled();
-    debugSpy.mockRestore();
-  });
-});
-
-describe("startDeploySpinner", () => {
-  const originalTty = process.stdout.isTTY;
-  const originalQuiet = process.env.SITECOREAI_QUIET;
-  const originalJson = process.env.SITECOREAI_JSON;
-
-  beforeEach(() => {
-    vi.resetAllMocks();
-    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    delete process.env.SITECOREAI_QUIET;
-    delete process.env.SITECOREAI_JSON;
-  });
-
-  afterEach(() => {
-    Object.defineProperty(process.stdout, "isTTY", { value: originalTty, configurable: true });
-    if (originalQuiet === undefined) {
-      delete process.env.SITECOREAI_QUIET;
-    } else {
-      process.env.SITECOREAI_QUIET = originalQuiet;
-    }
-    if (originalJson === undefined) {
-      delete process.env.SITECOREAI_JSON;
-    } else {
-      process.env.SITECOREAI_JSON = originalJson;
-    }
-  });
-
-  it("returns null when stdout is not a TTY", async () => {
-    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
-    const result = await startDeploySpinner("GET /status");
-    expect(result).toBeNull();
-    expect(oraMocks.ora).not.toHaveBeenCalled();
-  });
-
-  it("returns null when quiet or JSON mode is enabled", async () => {
-    process.env.SITECOREAI_QUIET = "1";
-    const quietResult = await startDeploySpinner("GET /quiet");
-    expect(quietResult).toBeNull();
-
-    delete process.env.SITECOREAI_QUIET;
-    process.env.SITECOREAI_JSON = "1";
-    const jsonResult = await startDeploySpinner("GET /json");
-    expect(jsonResult).toBeNull();
-  });
-
-  it("starts a spinner and exposes success/fail handlers", async () => {
-    const handle = await startDeploySpinner("GET /health");
-    expect(handle).not.toBeNull();
-    expect(oraMocks.ora).toHaveBeenCalledWith({ text: "GET /health" });
-    handle?.succeed();
-    handle?.fail();
-    expect(oraMocks.spinner.succeed).toHaveBeenCalled();
-    expect(oraMocks.spinner.fail).toHaveBeenCalled();
-  });
-
-  it("returns null in TTY mode when silent: true is passed (library callers)", async () => {
-    const result = await startDeploySpinner("GET /silent", { silent: true });
-    expect(result).toBeNull();
-    expect(oraMocks.ora).not.toHaveBeenCalled();
+    expect(onTrace).toHaveBeenCalled();
   });
 });
 
@@ -295,15 +238,18 @@ describe("deployRequest library transport overrides", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    setDeployTransportListener(null);
   });
 
-  it("silent: true suppresses the spinner even on a TTY", async () => {
+  it("passes silent: true through to the transport listener", async () => {
+    const onRequestStart = vi.fn().mockReturnValue(null);
+    setDeployTransportListener({ onRequestStart });
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal("fetch", fetchMock);
 
     await deployRequest({ accessToken: "token" }, "/api/silent", undefined, { silent: true });
 
-    expect(oraMocks.ora).not.toHaveBeenCalled();
+    expect(onRequestStart).toHaveBeenCalledWith("GET", "/api/silent", true);
   });
 
   it("init.transport.maxRetries wins over SITECOREAI_HTTP_RETRIES env var", async () => {
@@ -321,9 +267,10 @@ describe("deployRequest library transport overrides", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("init.transport.traceHttp: true forces trace logging without env var", async () => {
+  it("init.transport.traceHttp: true forces trace reporting without env var", async () => {
     delete process.env.SITECOREAI_TRACE_HTTP;
-    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => {});
+    const onTrace = vi.fn();
+    setDeployTransportListener({ onTrace });
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
@@ -333,13 +280,13 @@ describe("deployRequest library transport overrides", () => {
       transport: { traceHttp: true },
     });
 
-    expect(debugSpy).toHaveBeenCalled();
-    debugSpy.mockRestore();
+    expect(onTrace).toHaveBeenCalled();
   });
 
-  it("init.transport.traceHttp: false suppresses trace logging even when env var is set", async () => {
+  it("init.transport.traceHttp: false suppresses trace reporting even when env var is set", async () => {
     process.env.SITECOREAI_TRACE_HTTP = "1";
-    const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => {});
+    const onTrace = vi.fn();
+    setDeployTransportListener({ onTrace });
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
@@ -349,8 +296,7 @@ describe("deployRequest library transport overrides", () => {
       transport: { traceHttp: false },
     });
 
-    expect(debugSpy).not.toHaveBeenCalled();
-    debugSpy.mockRestore();
+    expect(onTrace).not.toHaveBeenCalled();
   });
 
   it("falls back to env var when init.transport.maxRetries is undefined", async () => {

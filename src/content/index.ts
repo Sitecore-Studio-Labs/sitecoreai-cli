@@ -30,6 +30,12 @@ export {
   type WriteVersionFieldsOptions,
 } from "./api/version-fields";
 
+// --- Target resolution --------------------------------------------------
+// `resolveTargetItemId` turns an `--item-id` *or* `--path` into a
+// canonical item id — the presentation-free target-resolution step the
+// content-version runners share.
+export { resolveTargetItemId } from "./tasks/shared";
+
 // --- Task runners -------------------------------------------------------
 export {
   runContentVersionSetNeverPublish,

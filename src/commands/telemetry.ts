@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { addConfigOption, addVerbosityOptions } from "./shared";
-import { getTelemetryStatus } from "../shared/telemetry";
-import { readRootConfigurationFile, writeRootConfigurationFile } from "../config/root-config";
+import { getTelemetryStatus, setTelemetryEnabled } from "../shared/telemetry";
 import { Logger } from "../shared/logger";
 
 type TelemetryOptions = {
@@ -21,22 +20,6 @@ const buildLogger = (options: TelemetryOptions): Logger =>
     Boolean(options.quiet),
     options.logFile
   );
-
-/**
- * Persist `settings.telemetryEnabled` to the root config. Telemetry is
- * opt-out (on by default), so `disable` is the primary lever here;
- * `enable` exists for symmetry and to undo a prior `disable`.
- */
-const writeTelemetrySetting = (configPath: string, enabled: boolean): void => {
-  const root = readRootConfigurationFile(configPath);
-  writeRootConfigurationFile(root.rootPath, {
-    ...root.config,
-    settings: {
-      ...(root.config.settings ?? {}),
-      telemetryEnabled: enabled,
-    },
-  });
-};
 
 export const createTelemetryCommand = (): Command => {
   const command = new Command("telemetry").description("Telemetry utilities");
@@ -62,7 +45,7 @@ export const createTelemetryCommand = (): Command => {
   enable.action(async (options: TelemetryOptions) => {
     const logger = buildLogger(options);
     const configPath = options.config ?? process.cwd();
-    writeTelemetrySetting(configPath, true);
+    setTelemetryEnabled(configPath, true);
     if (logger.isJson()) {
       logger.json({ enabled: true });
       return;
@@ -76,7 +59,7 @@ export const createTelemetryCommand = (): Command => {
   disable.action(async (options: TelemetryOptions) => {
     const logger = buildLogger(options);
     const configPath = options.config ?? process.cwd();
-    writeTelemetrySetting(configPath, false);
+    setTelemetryEnabled(configPath, false);
     if (logger.isJson()) {
       logger.json({ enabled: false });
       return;

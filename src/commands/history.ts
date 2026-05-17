@@ -1,7 +1,6 @@
 import { Command, Option } from "commander";
-import fs from "node:fs/promises";
 import { Logger } from "../shared/logger";
-import { getHistoryPath } from "../shared/history";
+import { getHistoryPath, readHistory } from "../shared/history";
 import { addVerbosityOptions } from "./shared";
 
 type HistoryOptions = {
@@ -68,52 +67,20 @@ export const createHistoryCommand = (): Command => {
       return;
     }
     const limit = options.limit ?? 50;
-
-    // A missing log file means nothing has been recorded yet — the same
-    // state as an empty file. Both resolve to an empty entry list rather
-    // than an error; only an unexpected read failure propagates.
-    let lines: string[] = [];
-    try {
-      const content = await fs.readFile(filePath, "utf8");
-      lines = content.split("\n").filter((line) => line.trim().length > 0);
-    } catch (error) {
-      const code =
-        error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
-      if (code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    const selected = limit > 0 ? lines.slice(-limit) : lines;
-    const output = options.reverse ? [...selected].reverse() : selected;
+    const entries = await readHistory({ path: options.path, limit, reverse: options.reverse });
 
     if (logger.isJson()) {
-      const parsed = output.map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return { raw: line };
-        }
-      });
-      logger.json(parsed);
+      logger.json(entries.map(({ raw, entry }) => entry ?? { raw }));
       return;
     }
 
-    if (output.length === 0) {
+    if (entries.length === 0) {
       logger.info(`No CLI history recorded yet — log file: ${filePath}`);
       return;
     }
 
-    for (const line of output) {
-      if (options.raw) {
-        logger.info(line);
-        continue;
-      }
-      try {
-        logger.info(formatEntry(JSON.parse(line)));
-      } catch {
-        logger.info(line);
-      }
+    for (const { raw, entry } of entries) {
+      logger.info(options.raw || !entry ? raw : formatEntry(entry));
     }
   });
 

@@ -82,3 +82,9 @@ export {
 } from "./api/comments";
 
 export { acquireBriefToken, BRIEF_SCOPES_REQUESTED, type AcquireBriefTokenOptions } from "./auth";
+
+export {
+  resolveBriefClient,
+  type ResolveBriefClientOptions,
+  type ResolvedBriefClient,
+} from "./client";

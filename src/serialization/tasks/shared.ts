@@ -1,18 +1,13 @@
 /**
- * Helpers specific to `scai provision serialization` task runners — config and
- * module loading, subtree grouping by database, allowWrite check.
- * Neutral helpers (`toLogger`, `selectMatch`, `confirmDestructive`,
- * etc.) live in `@/shared/cli-tasks`; deploy-specific helpers
- * (`getDeployContext`, `extractDeployEnvironmentList`, etc.) live in
- * `@/deploy/tasks/shared`.
+ * `scai provision serialization` task-runner helpers.
+ *
+ * The substantive helpers — root config + serialization-module loading,
+ * subtree grouping, and the write-consent guard — moved to
+ * `@/serialization/context` (presentation-free, barrel-exported); this
+ * file re-exports them so the runners keep their `./shared` import
+ * surface. Neutral helpers (`toLogger`, `selectMatch`, etc.) live in
+ * `@/shared/cli-tasks`.
  */
-
-import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
-import { readSerializationModules } from "@/config/modules";
-import type { RootConfiguration, SerializationModuleConfiguration } from "@/config/types";
-import { FilesystemTreeSpec } from "../tree-spec";
-import { createScaiError } from "@/shared/errors";
-import type { CommonOptions } from "./types";
 
 // Re-exports preserve the existing barrel surface; new code should
 // import these directly from `@/shared/cli-tasks`.
@@ -26,47 +21,11 @@ export {
   resolveApiTimeoutMs,
 } from "@/shared/cli-tasks";
 
-export const loadConfigAndModules = async (
-  options: CommonOptions
-): Promise<{ root: RootConfiguration; modules: SerializationModuleConfiguration[] }> => {
-  const configPath = options.config ?? process.cwd();
-  const rootFile = readRootConfigurationFile(configPath);
-  const envName =
-    (options as { environmentName?: string }).environmentName ?? rootFile.config.defaultEnvProfile;
-  const root = readRootConfiguration(configPath, envName);
-  const modules = await readSerializationModules(root, options.include, options.exclude);
-  return { root, modules };
-};
-
-export const groupSubtreesByDatabase = (
-  modules: SerializationModuleConfiguration[]
-): Map<string, FilesystemTreeSpec[]> => {
-  const map = new Map<string, FilesystemTreeSpec[]>();
-  for (const module of modules) {
-    for (const subtree of module.items.includes) {
-      if (!map.has(subtree.database)) {
-        map.set(subtree.database, []);
-      }
-      map.get(subtree.database)!.push(subtree);
-    }
-  }
-  return map;
-};
-
-export const ensureAllowWrite = (root: RootConfiguration, environmentName: string): void => {
-  const env = root.environments[environmentName];
-  if (!env?.allowWrite) {
-    const envKey = environmentName
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-    throw createScaiError(
-      `Environment ${environmentName} is not configured to allow writing data.`,
-      "INPUT_INVALID",
-      {
-        hint: `Set allowWrite in sitecoreai.cli.json, set SITECOREAI_ENV_${envKey}_ALLOW_WRITE=true, or pass --allow-write.`,
-      }
-    );
-  }
-};
+// The serialization context helpers, re-exported so the runners keep
+// their `./shared` import surface.
+export {
+  loadConfigAndModules,
+  groupSubtreesByDatabase,
+  ensureAllowWrite,
+  type LoadSerializationModulesOptions,
+} from "@/serialization/context";

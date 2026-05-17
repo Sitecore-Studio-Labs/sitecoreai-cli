@@ -260,11 +260,47 @@ export {
   runBaselineCreate,
   runBaselineRemove,
   runBaselineReset,
+  runBaselineAccept,
 } from "./tasks/audit/baseline";
 export type {
   BaselineShowOptions,
   BaselineCreateOptions,
   BaselineRemoveOptions,
   BaselineResetOptions,
+  BaselineAcceptOptions,
 } from "./tasks/audit/baseline";
 export type { HygieneCommonOptions } from "./tasks/shared";
+
+// --- Reference / dependency audits --------------------------------------
+export { runAuditReferences } from "./tasks/audit/references";
+export type { AuditReferencesOptions, ReferenceReport } from "./tasks/audit/references";
+export { runAuditTemplateDependencies } from "./tasks/audit/template-dependencies";
+export type {
+  AuditTemplateDependenciesOptions,
+  TemplateDependencyReport,
+  TemplateReferenceKind,
+} from "./tasks/audit/template-dependencies";
+
+// --- Subtree cleanup ----------------------------------------------------
+export { runCleanupSubtree } from "./tasks/cleanup/subtree";
+export type {
+  CleanupSubtreeOptions,
+  CleanupSubtreeResult,
+  InboundBlocker,
+  OrphanExternalRefsPolicy,
+  SubtreeDeletion,
+} from "./tasks/cleanup/subtree";
+
+// --- Explain (diagnostic composition) -----------------------------------
+export { runExplainWhyBlocked } from "./tasks/explain/why-blocked";
+export type {
+  ExplainWhyBlockedOptions,
+  ExplainWhyBlockedReport,
+  BlockerEntry,
+} from "./tasks/explain/why-blocked";
+export { runExplainOrphanSite } from "./tasks/explain/orphan-site";
+export type {
+  ExplainOrphanSiteOptions,
+  ExplainOrphanSiteReport,
+  OrphanSiteEntry,
+} from "./tasks/explain/orphan-site";

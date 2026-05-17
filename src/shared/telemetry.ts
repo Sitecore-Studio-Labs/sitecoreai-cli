@@ -272,3 +272,19 @@ export const getTelemetryStatus = (
   const status = resolveTelemetryStatus(configPath);
   return { ...status, url: getTelemetryUrl() };
 };
+
+/**
+ * Persist `settings.telemetryEnabled` to the root config. Telemetry is
+ * opt-out (on by default), so disabling is the primary use; enabling
+ * exists for symmetry and to undo a prior disable.
+ */
+export const setTelemetryEnabled = (configPath: string, enabled: boolean): void => {
+  const root = readRootConfigurationFile(configPath);
+  writeRootConfigurationFile(root.rootPath, {
+    ...root.config,
+    settings: {
+      ...(root.config.settings ?? {}),
+      telemetryEnabled: enabled,
+    },
+  });
+};

@@ -5,10 +5,9 @@
  * Agentic Studio session, calls a library helper, then prints human or
  * JSON output. The helpers here keep that boilerplate in one place.
  */
-import { resolveEnvironment } from "@/shared/env";
 import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
-import { acquireAgentsSession } from "../session";
+import { resolveAgentsSession } from "../client";
 import type { AgentsSession } from "../session/types";
 
 /** The option bag every `agents` runner accepts (env + verbosity flags). */
@@ -41,8 +40,7 @@ export const prepare = async (
   options: RunAgentsBaseOptions
 ): Promise<{ logger: Logger; session: AgentsSession; envName: string }> => {
   const logger = toLogger(options);
-  const { envName } = resolveEnvironment(options);
-  const session = await acquireAgentsSession(envName);
+  const { session, envName } = await resolveAgentsSession(options);
   return { logger, session, envName };
 };
 

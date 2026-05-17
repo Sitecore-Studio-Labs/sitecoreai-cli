@@ -38,9 +38,13 @@ const sharedMocks = vi.hoisted(() => ({
 }));
 
 const apiMocks = vi.hoisted(() => ({
-  publishItems: vi
-    .fn()
-    .mockResolvedValue({ id: "pub-1", processedCount: 3, stateName: "Completed" }),
+  publishItemSubtree: vi.fn().mockResolvedValue({
+    path: "/sitecore/content/Home",
+    database: "master",
+    target: undefined,
+    itemCount: 2,
+    job: { id: "pub-1", processedCount: 2, stateName: "Completed" },
+  }),
   fetchItemMetadata: vi.fn().mockResolvedValue([
     { id: "{aaa}", path: "/x" },
     { id: "{bbb}", path: "/x/y" },
@@ -60,7 +64,7 @@ vi.mock("../../../../src/serialization/tasks/validate", () => ({
 vi.mock("../../../../src/serialization/tasks/info", () => ({ runInfo: taskMocks.runInfo }));
 vi.mock("../../../../src/serialization/tasks/shared", () => ({ ...sharedMocks }));
 vi.mock("../../../../src/serialization/api/publish", () => ({
-  publishItems: apiMocks.publishItems,
+  publishItemSubtree: apiMocks.publishItemSubtree,
 }));
 vi.mock("../../../../src/serialization/api/items", () => ({
   fetchItemMetadata: apiMocks.fetchItemMetadata,
@@ -185,7 +189,7 @@ describe("serialization tools", () => {
     expect(progressMessages.some((m) => m.includes("12 change"))).toBe(true);
   });
 
-  it("serialization_publish publishes resolved ids", async () => {
+  it("serialization_publish delegates to publishItemSubtree", async () => {
     const reg = await setup();
     const result = await reg
       .getTool("serialization_publish")!
@@ -194,11 +198,10 @@ describe("serialization tools", () => {
         fakeContext,
         fakeExtra
       );
-    expect(apiMocks.fetchItemMetadata).toHaveBeenCalled();
-    expect(apiMocks.publishItems).toHaveBeenCalledWith(
+    expect(apiMocks.publishItemSubtree).toHaveBeenCalledWith(
       fakeContext.resolved.environment,
-      ["{aaa}", "{bbb}"],
-      undefined
+      "/sitecore/content/Home",
+      { database: "master", target: undefined }
     );
     const structured = result.structuredContent as { itemCount: number; job: { id: string } };
     expect(structured.itemCount).toBe(2);

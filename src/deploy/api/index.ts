@@ -1,12 +1,16 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/deploy`.
+ * Curated public Deploy API surface — re-exported by `../index.ts`
+ * (`@sitecoreai-labs/sitecoreai-cli/deploy`).
  *
  * Source of truth for what's part of the public Deploy API surface.
  * Every symbol below is intentional — adding one here is a public API
- * decision. Internal helpers (`parseJsonIfPossible`, `extractErrorMessage`,
- * `startDeploySpinner`) stay reachable from sibling `api/*` files via
- * direct `./common/request` imports but are not re-exported here, so
- * library consumers never accidentally pick them up.
+ * decision. Internal helpers (`parseJsonIfPossible`, `extractErrorMessage`)
+ * stay reachable from sibling `api/*` files via direct `./common/request`
+ * imports but are not re-exported here, so library consumers never
+ * accidentally pick them up. The transport reports request lifecycle to
+ * an optional listener (`./common/transport-events`); the CLI installs an
+ * `ora` spinner via it, but `deployRequest` itself carries no
+ * `ora`/`consola` dependency.
  *
  * Internal scai callers should keep importing from
  * `@/deploy/api/common/*` for the unstable helpers; this index file is

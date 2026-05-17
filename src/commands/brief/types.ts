@@ -7,7 +7,7 @@ import {
   runBriefTypeUpdate,
   runBriefTypes,
 } from "@/brief/tasks";
-import type { CreateBriefTypeInput } from "@/brief/api/brief-types";
+import { assertCreateBriefTypeInput } from "@/brief/api/brief-types";
 import { confirmDestructive, inputError } from "@/shared/cli-tasks";
 import {
   addApplyOption,
@@ -27,35 +27,6 @@ const readJsonFile = (path: string): unknown => {
       "Pass --file <path> pointing at a valid CreateBriefTypeInput JSON document."
     );
   }
-};
-
-const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
-
-const validateInput = (value: unknown): CreateBriefTypeInput => {
-  if (!value || typeof value !== "object") {
-    throw inputError("Brief type body must be a JSON object.");
-  }
-  const obj = value as Record<string, unknown>;
-  const missing: string[] = [];
-  for (const key of ["name", "label", "description", "icon", "iconColor", "fields"] as const) {
-    if (obj[key] === undefined) missing.push(key);
-  }
-  if (missing.length > 0) {
-    throw inputError(
-      `Brief type body is missing required fields: ${missing.join(", ")}.`,
-      "Required: name, label, description, icon, iconColor, fields."
-    );
-  }
-  if (typeof obj.name !== "string" || !NAME_PATTERN.test(obj.name)) {
-    throw inputError(
-      `Invalid 'name': ${JSON.stringify(obj.name)}.`,
-      "Server requires name to match /^[A-Za-z][A-Za-z0-9_]*$/."
-    );
-  }
-  if (!Array.isArray(obj.fields)) {
-    throw inputError("'fields' must be an array (use [] for none).");
-  }
-  return obj as unknown as CreateBriefTypeInput;
 };
 
 const createListCommand = (): Command => {
@@ -100,7 +71,7 @@ const createCreateCommand = (): Command => {
   addWhatIfOption(command);
   command.action(
     withApplyGate(async (options: { file: string; apply?: boolean; whatIf?: boolean }) => {
-      const input = validateInput(readJsonFile(options.file));
+      const input = assertCreateBriefTypeInput(readJsonFile(options.file));
       await runBriefTypeCreate({ ...options, input });
     })
   );
@@ -126,7 +97,7 @@ const createUpdateCommand = (): Command => {
   addWhatIfOption(command);
   command.action(async (briefTypeId, options) => {
     await withApplyGate(async (opts: { file: string; apply?: boolean; whatIf?: boolean }) => {
-      const input = validateInput(readJsonFile(opts.file));
+      const input = assertCreateBriefTypeInput(readJsonFile(opts.file));
       await runBriefTypeUpdate({ ...opts, briefTypeId, input });
     })(options);
   });

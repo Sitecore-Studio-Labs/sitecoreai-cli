@@ -20,6 +20,7 @@ import { readRootConfiguration, readRootConfigurationFile } from "./config/root-
 import { runDeployToken } from "./serialization/tasks/env/deploy-token";
 import { runInit } from "./serialization/tasks/env/init";
 import { getDeployToken } from "./shared/keychain";
+import { installDeployTransportSpinner } from "./deploy/tasks/transport-spinner";
 
 type AutoWizardNeed =
   | { kind: "init"; envName?: string; hint: string }
@@ -257,6 +258,9 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   if (args.includes("--trace") || args.includes("-t")) {
     process.env.SITECOREAI_TRACE_HTTP = "1";
   }
+  // The Deploy transport (`deployRequest`) stays silent for SDK
+  // consumers; this is the CLI opting in to a spinner + HTTP trace.
+  installDeployTransportSpinner();
   if (!options.skipBanner) {
     showBanner(packageJson.version);
   }

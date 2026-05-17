@@ -1,5 +1,7 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/serialization`.
+ * Curated public Sitecore Management + Authoring GraphQL client surface —
+ * re-exported by `../index.ts`
+ * (`@sitecoreai-labs/sitecoreai-cli/serialization`).
  *
  * Source of truth for what's part of the public Sitecore Management +
  * Authoring GraphQL client surface. Every symbol below is intentional.
@@ -62,7 +64,13 @@ export { fetchUsers, pushUserCommands } from "./users";
 
 // --- Publishing ---------------------------------------------------------
 
-export { publishItems, checkPublishStatus, fetchPublishingTargets } from "./publish";
+export {
+  publishItems,
+  checkPublishStatus,
+  fetchPublishingTargets,
+  publishItemSubtree,
+  type PublishItemSubtreeResult,
+} from "./publish";
 
 // --- Data types and domain objects ---------------------------------------
 //

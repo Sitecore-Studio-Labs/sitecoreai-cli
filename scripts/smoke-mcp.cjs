@@ -45,7 +45,6 @@ fs.writeFileSync(
           authority: "https://auth.invalid",
           audience: "https://api.invalid",
           clientId: "stub",
-          clientSecret: "stub",
           deployToken: "stub-deploy-token",
           organizationId: "org-stub",
           projectId: "proj-stub",

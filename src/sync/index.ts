@@ -18,3 +18,25 @@ export { syncDiff, syncPull, syncPush } from "./engine";
 export { loadRecipe, writeRecipe } from "./io";
 
 export { getKind, listKinds, registerKind } from "./registry";
+
+// --- Cross-domain aggregate ---------------------------------------------
+export {
+  aggregatePull,
+  aggregateStatus,
+  aggregatePush,
+  slugifyRecipeId,
+  DEFAULT_SYNC_DIR,
+} from "./aggregate";
+export type {
+  AggregatePullItem,
+  AggregatePullKind,
+  AggregatePullResult,
+  AggregateDriftStatus,
+  AggregateStatusItem,
+  AggregateStatusKind,
+  AggregateStatusResult,
+  AggregatePushStatus,
+  AggregatePushItem,
+  AggregatePushKind,
+  AggregatePushResult,
+} from "./aggregate";

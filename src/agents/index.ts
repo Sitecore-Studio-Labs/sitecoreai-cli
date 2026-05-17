@@ -29,3 +29,8 @@ export * from "./api/spaces";
 export * from "./api/runs";
 export * from "./api/catalog";
 export * from "./recipe";
+export {
+  resolveAgentsSession,
+  type ResolveAgentsSessionOptions,
+  type ResolvedAgentsSession,
+} from "./client";

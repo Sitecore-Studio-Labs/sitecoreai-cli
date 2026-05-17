@@ -23,12 +23,12 @@
       "default": "./dist/recipe/index.js"
     },
     "./deploy": {
-      "types": "./dist/deploy/api/index.d.ts",
-      "default": "./dist/deploy/api/index.js"
+      "types": "./dist/deploy/index.d.ts",
+      "default": "./dist/deploy/index.js"
     },
     "./serialization": {
-      "types": "./dist/serialization/api/index.d.ts",
-      "default": "./dist/serialization/api/index.js"
+      "types": "./dist/serialization/index.d.ts",
+      "default": "./dist/serialization/index.js"
     },
     "./errors": {
       "types": "./dist/shared/errors.d.ts",
@@ -73,6 +73,18 @@
     "./scripting": {
       "types": "./dist/scripting/index.d.ts",
       "default": "./dist/scripting/index.js"
+    },
+    "./sync": {
+      "types": "./dist/sync/index.d.ts",
+      "default": "./dist/sync/index.js"
+    },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "default": "./dist/agents/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
     },
     "./package.json": "./package.json"
   },

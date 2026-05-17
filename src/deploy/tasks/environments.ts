@@ -25,6 +25,8 @@ import {
   fetchProjectEnvironments,
   createProjectEnvironment,
 } from "@/deploy/api/projects";
+import { resolveEnvironment } from "@/shared/env";
+import { ensureAllowWrite } from "@/shared/allow-write";
 import type { DeployEnvironment } from "@/deploy/api/common/types";
 import {
   confirmDestructive,
@@ -452,6 +454,14 @@ export const runDeployEnvironmentsDelete = async (
     });
     return;
   }
+  // Destructive-tier policy gate — environment deletion is irreversible.
+  // Refused for m2m / mcp callers and for CI without ciWrites; a no-op in
+  // unmanaged mode. See docs/policy-and-guardrails.md.
+  const { root, envName } = resolveEnvironment({
+    config: options.config,
+    environmentName: options.environmentName,
+  });
+  ensureAllowWrite(root, envName, true, "deploy-environment-delete");
   const confirmed = await confirmDestructive(
     `Delete environment '${environmentId}'? This cannot be undone.`,
     options.force

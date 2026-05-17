@@ -13,12 +13,14 @@ describe("operation risk registry", () => {
     expect(riskTierForOperation("recipe-push")).toBe("destructive");
   });
 
-  it("registers the destructive cleanup verbs and recipe push", () => {
+  it("registers the destructive cleanup verbs, recipe push, and deploy deletes", () => {
     const ids = Object.keys(OPERATION_RISK);
     expect(ids).toContain("cleanup-versions-prune");
     expect(ids).toContain("cleanup-archive-purge");
     expect(ids).toContain("cleanup-users");
     expect(ids).toContain("cleanup-site-residue");
     expect(ids).toContain("recipe-push");
+    expect(ids).toContain("deploy-environment-delete");
+    expect(ids).toContain("deploy-project-delete");
   });
 });

@@ -64,11 +64,17 @@ take scai down — and its only output is data re-validated against the schema.
 
 ### Out of scope / follow-up
 
-- **OS-level confinement** — spawning the child under Node's permission
-  model (`--permission` / `--experimental-permission`, to block filesystem
-  writes and `child_process`) is a worthwhile hardening layer, but the
-  flag-name churn across Node 20–23 and the `--allow-fs` allow-listing that
-  tsx's compile cache needs make it its own tuning exercise. Deferred.
+- **OS-level confinement** — running the child under Node's permission model
+  does not work while the child loads `.recipe.ts` with tsx. tsx's transform
+  (esbuild) needs a worker thread, and `--allow-worker` is flagged by Node
+  itself as a grant that "could invalidate the permission model" — so the one
+  capability tsx requires is the one that defeats the sandbox. (Verified on
+  Node 22: without `--allow-worker` the transform throws `ERR_ACCESS_DENIED`;
+  with it, Node prints a security warning.) Real OS-level confinement needs a
+  redesign: the **parent** transpiles `.recipe.ts` to JS (trusted —
+  transpiling is not executing) and the child runs only the resulting plain
+  JS under a strict permission model (no worker, no child-process, no
+  fs-write). Tracked as a follow-up.
 
 - **Network egress** is not blocked — Node's permission model has no network
   switch. This is acceptable: the child holds no secrets (clean env) and its

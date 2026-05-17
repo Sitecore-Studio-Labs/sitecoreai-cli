@@ -24,7 +24,9 @@ export type OperationId =
   | "cleanup-roles"
   | "cleanup-users"
   | "cleanup-site-residue"
-  | "recipe-push";
+  | "recipe-push"
+  | "deploy-environment-delete"
+  | "deploy-project-delete";
 
 /**
  * Risk tier of each classified operation. Every entry here is currently
@@ -41,6 +43,8 @@ export const OPERATION_RISK: Record<OperationId, RiskTier> = {
   "cleanup-users": "destructive",
   "cleanup-site-residue": "destructive",
   "recipe-push": "destructive",
+  "deploy-environment-delete": "destructive",
+  "deploy-project-delete": "destructive",
 };
 
 /** The risk tier of an operation. */

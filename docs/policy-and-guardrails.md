@@ -344,6 +344,8 @@ export const OPERATION_RISK: Record<OperationId, RiskTier> = {
   "cleanup-users": "destructive",
   "cleanup-site-residue": "destructive",
   "recipe-push": "destructive",
+  "deploy-environment-delete": "destructive",
+  "deploy-project-delete": "destructive",
 };
 ```
 
@@ -392,10 +394,6 @@ it; `scai policy show` displays it.
 
 - Operations not in the registry stay `write`-tier — their existing
   `--apply` / `confirmDestructive` gates are untouched.
-- Deploy environment / project deletion is not policy-tiered: those runners
-  operate on a Deploy `environmentId` and carry no config-env in the policy
-  sense. They keep their `confirmDestructive` + `--force` gate; wiring them
-  needs a small dedicated design and is a tracked follow-up.
 - Recipe execution still runs `.recipe.ts` as in-process code — see Phase 4.
 
 ## Phase 4 — recipe execution sandboxing

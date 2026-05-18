@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": major
+"@sitecoreai-labs/sitecoreai-cli": minor
 ---
 
 **BREAKING: Canonical `ScaiEnvelope` shape for every `--json` CLI output.**

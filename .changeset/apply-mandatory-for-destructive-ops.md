@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": major
+"@sitecoreai-labs/sitecoreai-cli": minor
 ---
 
 **BREAKING: `--apply` is now required to execute mutations on every destructive scai CLI command.**

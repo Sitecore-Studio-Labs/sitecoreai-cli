@@ -304,7 +304,10 @@ import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/unstable
 import { runAuditOrphans, createHygieneApiClient } from "@sitecoreai-labs/sitecoreai-cli/hygiene";
 
 // Brand — Brand Review SARIF + JSON pipelines (unstable)
-import { generateBrandReview, runBrandReview } from "@sitecoreai-labs/sitecoreai-cli/unstable/brand";
+import {
+  generateBrandReview,
+  runBrandReview,
+} from "@sitecoreai-labs/sitecoreai-cli/unstable/brand";
 
 // Webhooks + Workflow — Sitecore event handlers and item workflow operations
 import { createWebhookApiClient } from "@sitecoreai-labs/sitecoreai-cli/webhooks";

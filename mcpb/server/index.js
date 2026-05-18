@@ -29,6 +29,7 @@
  * channel is exclusively JSON-RPC frames from the child.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports -- a CommonJS bundle launcher; require() is the contract. */
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");

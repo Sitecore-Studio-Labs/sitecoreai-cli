@@ -93,19 +93,40 @@
   },
   "tools_generated": true,
   "tools": [
-    { "name": "scai_overview", "description": "Summarize scai's available surfaces and the bound environment." },
-    { "name": "environment_status", "description": "Report the bound environment's health and identity." },
+    {
+      "name": "scai_overview",
+      "description": "Summarize scai's available surfaces and the bound environment."
+    },
+    {
+      "name": "environment_status",
+      "description": "Report the bound environment's health and identity."
+    },
     { "name": "explain", "description": "Explain a scai concept, error, or workflow." },
-    { "name": "deploy_run_start", "description": "Start a deployment run for an XM Cloud environment." },
-    { "name": "deploy_run_inspect", "description": "Inspect deployment runs and their status and logs." },
-    { "name": "deploy_environment_lifecycle", "description": "Provision, promote, or tear down XM Cloud environments." },
-    { "name": "serialization_sync", "description": "Pull or push serialized Sitecore items between disk and an environment." },
+    {
+      "name": "deploy_run_start",
+      "description": "Start a deployment run for an XM Cloud environment."
+    },
+    {
+      "name": "deploy_run_inspect",
+      "description": "Inspect deployment runs and their status and logs."
+    },
+    {
+      "name": "deploy_environment_lifecycle",
+      "description": "Provision, promote, or tear down XM Cloud environments."
+    },
+    {
+      "name": "serialization_sync",
+      "description": "Pull or push serialized Sitecore items between disk and an environment."
+    },
     { "name": "serialization_publish", "description": "Publish serialized items after a sync." },
     { "name": "recipe_plan", "description": "Plan a Recipe DSL change set without applying it." },
     { "name": "recipe_push", "description": "Apply a Recipe DSL change set to an environment." },
     { "name": "publish_lifecycle", "description": "Run and manage Sitecore publishing jobs." },
     { "name": "audit_suite_run", "description": "Run read-only content and configuration audits." },
-    { "name": "cleanup_preview", "description": "Preview content hygiene cleanup, such as version pruning, before executing." },
+    {
+      "name": "cleanup_preview",
+      "description": "Preview content hygiene cleanup, such as version pruning, before executing."
+    },
     { "name": "workflow_lifecycle", "description": "Drive Sitecore workflow state transitions." },
     { "name": "brand_review", "description": "Run a brand review against a brand kit." },
     { "name": "campaign_manage", "description": "Create, update, or delete Orchestrate campaigns." }

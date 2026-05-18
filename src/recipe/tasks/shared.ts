@@ -161,6 +161,31 @@ export const resolveTenant = (
 };
 
 /**
+ * Recipe kinds whose compilers create items under hardcoded
+ * `/sitecore/system/*` roots and never read `templatesRoot` /
+ * `renderingsRoot`:
+ *   - `workflow`              → `/sitecore/system/Workflows`
+ *   - `webhook-authorization` → `/sitecore/system/Settings/Webhooks/Authorizations`
+ *
+ * A recipe set built only from these kinds can compile, plan, and push
+ * with neither root configured — see `recipeSetNeedsRoots`.
+ */
+const ROOTLESS_RECIPE_KINDS: ReadonlySet<string> = new Set(["workflow", "webhook-authorization"]);
+
+/**
+ * Whether a recipe set needs `templatesRoot` / `renderingsRoot` resolved.
+ *
+ * True when at least one recipe creates template / rendering items —
+ * every kind except `ROOTLESS_RECIPE_KINDS`. An empty set (e.g. a push
+ * fed only pre-compiled `.ir.json` inputs, which carry their roots baked
+ * in) needs neither. New recipe kinds default to *needing* roots; add a
+ * kind to `ROOTLESS_RECIPE_KINDS` only once its compiler is confirmed to
+ * ignore both roots.
+ */
+export const recipeSetNeedsRoots = (recipes: readonly { kind: string }[]): boolean =>
+  recipes.some((recipe) => !ROOTLESS_RECIPE_KINDS.has(recipe.kind));
+
+/**
  * Resolve the recipe parent paths that the compiler will use for top-level
  * template + rendering items.
  *
@@ -170,7 +195,13 @@ export const resolveTenant = (
  *      sitecoreai.cli.json (env-overrides via
  *      `SITECOREAI_ENV_<NAME>_TEMPLATES_ROOT` / `_RENDERINGS_ROOT` apply
  *      at config-load time before this helper runs)
- *   3. Throws `INPUT_INVALID` with a hint pointing at the envProfile shape
+ *   3. When `required`, throws `INPUT_INVALID` with a hint pointing at
+ *      the envProfile shape. When not required (a workflow- /
+ *      webhook-authorization-only set, or an IR-only push), missing
+ *      roots resolve to `""` — the compilers in play never read them.
+ *
+ * Pass `required` from `recipeSetNeedsRoots(recipes)` once the set's
+ * recipe kinds are known.
  *
  * Tenant-specific because each site has its own
  * `/sitecore/templates/Project/<site>/Components` location. Putting roots
@@ -180,10 +211,17 @@ export const resolveTenant = (
 export const resolveRecipeRoots = (
   options: { templatesRoot?: string; renderingsRoot?: string },
   environment: EnvironmentConfiguration | undefined,
-  envName: string
+  envName: string,
+  required = true
 ): { templatesRoot: string; renderingsRoot: string } => {
   const templatesRoot = options.templatesRoot ?? environment?.templatesRoot;
   const renderingsRoot = options.renderingsRoot ?? environment?.renderingsRoot;
+  if (!required) {
+    // The recipe set in play never reads these roots — pass through
+    // whatever's configured, or "" so the requirement doesn't block a
+    // set that doesn't need it.
+    return { templatesRoot: templatesRoot ?? "", renderingsRoot: renderingsRoot ?? "" };
+  }
   if (!templatesRoot || !renderingsRoot) {
     const missing =
       !templatesRoot && !renderingsRoot

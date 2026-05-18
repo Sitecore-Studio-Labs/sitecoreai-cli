@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { runRecipeCompile } from "../../../../src/recipe/tasks/compile";
 import { ctaButtonRecipe } from "../../../../example/recipes/cta-button.recipe";
+import { blogArticleApproval } from "../../../../example/recipes/blog-article-approval.recipe";
 
 const CONTEXT = {
   templatesRoot: "/sitecore/templates/Project/sandbox/Components",
@@ -50,6 +51,28 @@ describe("runRecipeCompile", () => {
     // "droplist", so the inline-enum folder + value items + per-site
     // Enumeration template pair don't emit. 19 baseline ops total.
     expect(written.operations).toHaveLength(19);
+  });
+
+  it("compiles a workflow recipe with no templatesRoot / renderingsRoot configured", async () => {
+    const tmpDir = await setupTmpWorkspace();
+    const recipePath = path.join(tmpDir, "blog-article-approval.recipe.json");
+    const irPath = path.join(tmpDir, "blog-article-approval.ir.json");
+    await fs.writeFile(recipePath, JSON.stringify(blogArticleApproval), "utf8");
+
+    // No roots passed and none in the config — a workflow recipe creates
+    // its items under the hardcoded /sitecore/system/Workflows root, so
+    // the templatesRoot / renderingsRoot gate must not fire.
+    await runRecipeCompile({
+      config: tmpDir,
+      input: recipePath,
+      output: irPath,
+      json: true,
+      quiet: true,
+    });
+
+    const written = JSON.parse(await fs.readFile(irPath, "utf8"));
+    expect(written.recipeHandle).toBe("blog-article-approval@1");
+    expect(written.operations.length).toBeGreaterThan(0);
   });
 
   it("rejects an invalid recipe with a CONFIG-style hint", async () => {

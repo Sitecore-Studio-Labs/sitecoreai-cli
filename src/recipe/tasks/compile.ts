@@ -4,6 +4,7 @@ import { createScaiError } from "@/shared/errors";
 import { compileRecipe } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";
 import {
+  recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
   toLogger,
@@ -25,13 +26,31 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const logger = toLogger(options);
   const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
 
-  // Resolve parent paths from CLI flags or active env profile (when given).
   const envName = options.environmentName ?? root.defaultEnvironment;
   const environment = envName ? root.environments[envName] : undefined;
+
+  const { files, source } = await resolveRecipeInputs(options, root);
+
+  if (options.output && files.length > 1) {
+    throw createScaiError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
+      hint: "Compile a single recipe with --input <file> --output <ir>, or omit --output to write per-recipe IRs to <dir>/<handle>.ir.json.",
+    });
+  }
+
+  // Load every recipe up front so the templatesRoot / renderingsRoot
+  // requirement can be scoped to what the set actually compiles — a
+  // workflow- / webhook-authorization-only set creates its items under
+  // hardcoded /sitecore/system roots and needs neither.
+  const loaded = await Promise.all(
+    files.map(async (file) => ({ file, recipe: await loadRecipe(file) }))
+  );
+
+  // Resolve parent paths from CLI flags or active env profile (when given).
   const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
     options,
     environment,
-    envName ?? "(no environment)"
+    envName ?? "(no environment)",
+    recipeSetNeedsRoots(loaded.map((entry) => entry.recipe))
   );
   // Phase 2 per-site folder layout roots — optional. When unset the
   // compiler falls back to `templatesRoot` for both, which means
@@ -58,14 +77,6 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const placeholderSettingsRoot = environment?.placeholderSettingsRoot;
   const pagesRoot = environment?.pagesRoot;
 
-  const { files, source } = await resolveRecipeInputs(options, root);
-
-  if (options.output && files.length > 1) {
-    throw createScaiError("--output cannot be combined with multi-file compile.", "INPUT_INVALID", {
-      hint: "Compile a single recipe with --input <file> --output <ir>, or omit --output to write per-recipe IRs to <dir>/<handle>.ir.json.",
-    });
-  }
-
   const results: Array<{
     recipeHandle: string;
     input: string;
@@ -73,8 +84,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     operationCount: number;
   }> = [];
 
-  for (const file of files) {
-    const recipe = await loadRecipe(file);
+  for (const { file, recipe } of loaded) {
     const ir = compileRecipe(recipe, {
       templatesRoot,
       renderingsRoot,

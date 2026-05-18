@@ -29,10 +29,11 @@ const addOutputOption = (command: Command): Command =>
 
 // All flags are optional. Each falls back to the matching field on
 // envProfiles[<name>] in sitecoreai.cli.json. resolveRecipeRoots() throws
-// `INPUT_INVALID` for the two required ones (templatesRoot, renderingsRoot)
-// when neither source is set; the Phase 4 composition roots are optional
-// and only surface errors when their corresponding recipe kinds are
-// being compiled.
+// `INPUT_INVALID` for templatesRoot / renderingsRoot when neither source
+// is set AND the recipe set contains a kind that creates template or
+// rendering items; a workflow- / webhook-authorization-only set needs
+// neither. The Phase 4 composition roots are optional and only surface
+// errors when their corresponding recipe kinds are being compiled.
 const addRecipeRootOptions = (command: Command): Command =>
   command
     .addOption(

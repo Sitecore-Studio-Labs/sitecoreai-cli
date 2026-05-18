@@ -23,6 +23,7 @@ import { createRollbackLogger } from "../rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
+  recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
   resolveTenant,
@@ -115,11 +116,6 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const rollbackRunId = randomUUID();
   const rollbackLog = createRollbackLogger(rollbackRunId);
 
-  const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
-    options,
-    tenant.environment,
-    tenant.envName
-  );
   // Phase 2 per-site folder layout roots — optional at the envProfile
   // level. When unset the compiler falls back to `templatesRoot` for
   // both, which means section-aware components nest under templatesRoot
@@ -185,6 +181,17 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
   }
   const recipes: Recipe[] = await mapWithConcurrency(recipeFiles, (f) => loadRecipe(f));
+  // Resolve templatesRoot / renderingsRoot now that the recipe kinds are
+  // known: a set built only from workflow / webhook-authorization recipes
+  // — which create items under hardcoded /sitecore/system roots — needs
+  // neither. An IR-only push has an empty `recipes` and skips the
+  // requirement too; pre-compiled IRs carry their roots baked in.
+  const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
+    options,
+    tenant.environment,
+    tenant.envName,
+    recipeSetNeedsRoots(recipes)
+  );
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,

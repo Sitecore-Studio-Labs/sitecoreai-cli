@@ -4,6 +4,7 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   toLogger: vi.fn(),
   resolveTenant: vi.fn(),
   resolveRecipeRoots: vi.fn(),
+  recipeSetNeedsRoots: vi.fn(),
   resolveRecipeInputs: vi.fn(),
   ensureAllowWrite: vi.fn(),
 }));

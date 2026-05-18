@@ -61,7 +61,10 @@ vi.mock("node:readline/promises", () => ({
 }));
 
 describe("cli entrypoint (non-TTY)", () => {
-  it("runs without prompting in headless mode", async () => {
+  // A cold `import("../../../src/cli")` pulls in the whole command tree;
+  // on a slow Windows CI runner that transform + import can edge past the
+  // 5s default timeout. Give it generous headroom.
+  it("runs without prompting in headless mode", { timeout: 20_000 }, async () => {
     const originalArgv = process.argv;
     const originalIn = process.stdin.isTTY;
     const originalOut = process.stdout.isTTY;

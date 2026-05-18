@@ -1,0 +1,117 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/dist/mcpb-manifest-latest.schema.json",
+  "manifest_version": "0.3",
+  "name": "sitecoreai-cli",
+  "display_name": "SitecoreAI CLI (scai)",
+  "version": "0.1.0",
+  "description": "Developer-side Sitecore AI / XM Cloud automation as MCP tools — deploy, serialization, recipes, publishing, hygiene, brand, brief, campaign, and workflow.",
+  "long_description": "scai is the developer-side counterpart to Sitecore's managed Marketer MCP. Where the marketer surface operates pages and content, scai operates deployment runs, environment lifecycle, source-control bindings, serialization sync, Recipe DSL execution, content hygiene, publishing, and brand/brief/campaign automation against Sitecore AI and XM Cloud. This bundle is a thin launcher: it runs your own installed scai build as an MCP stdio server bound to a single environment. Writes are gated — destructive operations require explicit consent and the server honors the environment policy.",
+  "author": {
+    "name": "Liz Nelson",
+    "email": "liz.nelson@sitecore.com",
+    "url": "https://github.com/sitecore-studio-labs/sitecoreai-cli"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sitecore-studio-labs/sitecoreai-cli.git"
+  },
+  "homepage": "https://github.com/sitecore-studio-labs/sitecoreai-cli",
+  "documentation": "https://github.com/sitecore-studio-labs/sitecoreai-cli/blob/main/docs/mcp.md",
+  "support": "https://github.com/sitecore-studio-labs/sitecoreai-cli/issues",
+  "license": "MIT",
+  "keywords": ["sitecore", "sitecore-ai", "xm-cloud", "mcp", "deploy", "cli"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "SCAI_CLI_PATH": "${user_config.scai_cli_path}",
+        "SCAI_CONFIG_PATH": "${user_config.config_path}",
+        "SCAI_ENVIRONMENT_NAME": "${user_config.environment_name}",
+        "SCAI_ORG_ID": "${user_config.organization_id}",
+        "SCAI_CLIENT_ID": "${user_config.client_id}",
+        "SCAI_CLIENT_SECRET": "${user_config.client_secret}",
+        "SCAI_DEPLOY_PROJECT": "${user_config.deploy_project}",
+        "SCAI_DEPLOY_ENVIRONMENT": "${user_config.deploy_environment}",
+        "SITECOREAI_AUTO_WIZARD": "0"
+      }
+    }
+  },
+  "user_config": {
+    "scai_cli_path": {
+      "type": "file",
+      "title": "scai CLI entry point",
+      "description": "Path to dist/cli.js inside a built scai checkout (run `npm run build` in the scai repo first), or the cli.js of a global `npm i -g @sitecoreai-labs/sitecoreai-cli` install.",
+      "required": true,
+      "default": "/Users/nels/Projects/sitecoreai-deploy-sync-cli/dist/cli.js"
+    },
+    "config_path": {
+      "type": "file",
+      "title": "Config file (use your own)",
+      "description": "Path to your own sitecoreai.cli.json — e.g. from a project where you have run `scai setup`. The bundle never writes to this file. Leave blank to let the bundle manage its own config from the credential fields below.",
+      "required": false
+    },
+    "environment_name": {
+      "type": "string",
+      "title": "Environment name",
+      "description": "With your own config file, the profile to bind (blank = its defaultEnvProfile). With the bundle-managed config, the name given to the profile built from the credentials below (blank = 'default').",
+      "required": false
+    },
+    "organization_id": {
+      "type": "string",
+      "title": "Sitecore organization ID",
+      "description": "Your Sitecore organization ID (org_…). Needed for the bundle to build its own config.",
+      "required": false
+    },
+    "client_id": {
+      "type": "string",
+      "title": "Automation client ID",
+      "description": "Client ID of an OAuth machine-to-machine (automation) client for your organization, created in the Sitecore Cloud Portal.",
+      "required": false
+    },
+    "client_secret": {
+      "type": "string",
+      "title": "Automation client secret",
+      "description": "Client secret for the automation client. Stored by Claude Desktop in the OS keychain and passed to scai as an env var — never written to disk.",
+      "required": false,
+      "sensitive": true
+    },
+    "deploy_project": {
+      "type": "string",
+      "title": "Deploy project (if prompted)",
+      "description": "Sitecore Cloud project name or ID. Only needed if `scai setup init` reports that a project must be specified because your organization has more than one.",
+      "required": false
+    },
+    "deploy_environment": {
+      "type": "string",
+      "title": "Deploy environment (if prompted)",
+      "description": "Sitecore Cloud environment name or ID within the project above. Only needed if `scai setup init` reports that an environment must be specified.",
+      "required": false
+    }
+  },
+  "tools_generated": true,
+  "tools": [
+    { "name": "scai_overview", "description": "Summarize scai's available surfaces and the bound environment." },
+    { "name": "environment_status", "description": "Report the bound environment's health and identity." },
+    { "name": "explain", "description": "Explain a scai concept, error, or workflow." },
+    { "name": "deploy_run_start", "description": "Start a deployment run for an XM Cloud environment." },
+    { "name": "deploy_run_inspect", "description": "Inspect deployment runs and their status and logs." },
+    { "name": "deploy_environment_lifecycle", "description": "Provision, promote, or tear down XM Cloud environments." },
+    { "name": "serialization_sync", "description": "Pull or push serialized Sitecore items between disk and an environment." },
+    { "name": "serialization_publish", "description": "Publish serialized items after a sync." },
+    { "name": "recipe_plan", "description": "Plan a Recipe DSL change set without applying it." },
+    { "name": "recipe_push", "description": "Apply a Recipe DSL change set to an environment." },
+    { "name": "publish_lifecycle", "description": "Run and manage Sitecore publishing jobs." },
+    { "name": "audit_suite_run", "description": "Run read-only content and configuration audits." },
+    { "name": "cleanup_preview", "description": "Preview content hygiene cleanup, such as version pruning, before executing." },
+    { "name": "workflow_lifecycle", "description": "Drive Sitecore workflow state transitions." },
+    { "name": "brand_review", "description": "Run a brand review against a brand kit." },
+    { "name": "campaign_manage", "description": "Create, update, or delete Orchestrate campaigns." }
+  ],
+  "prompts_generated": true,
+  "compatibility": {
+    "runtimes": { "node": ">=20.0.0" }
+  }
+}

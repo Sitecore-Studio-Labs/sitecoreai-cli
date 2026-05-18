@@ -123,6 +123,7 @@
     "format:check": "prettier . --check",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "mcpb:pack": "npx -y @anthropic-ai/mcpb@2 validate mcpb/manifest.json && npx -y @anthropic-ai/mcpb@2 pack mcpb scai.mcpb",
     "prepack": "npm run build",
     "prepare": "husky",
     "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && changeset publish",

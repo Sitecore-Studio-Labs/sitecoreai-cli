@@ -1,5 +1,13 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.1.1
+
+### Patch Changes
+
+- a1b0336: Scope the `templatesRoot` / `renderingsRoot` requirement to recipe sets that actually create template or rendering items.
+
+  `recipe compile` and `recipe push` previously required both roots to be configured (in the env profile or via `--templates-root` / `--renderings-root`) before they would run — even for a `workflow` or `webhook-authorization` recipe, whose compilers create items under hardcoded `/sitecore/system` roots and never read either value. A workflow recipe now compiles, plans, and pushes with neither root configured. An IR-only `recipe push` (no recipe-source files) skips the requirement for the same reason.
+
 ## 0.1.0
 
 ### Minor Changes
@@ -416,13 +424,10 @@ og-image,og-title`; configurable via `--required-fields`. Scope to
     - `--max-matches-per-item N` caps sample collection (default 10).
   - `audit stale-content list --not-updated-in-days N` — items not
     updated in N days (default 365). Distinct from `audit
-stale-workflow`:
-    - `stale-workflow` finds items stuck mid-flight in a non-final
-      workflow state.
-    - `stale-content` finds **abandoned** content — published items no
-      one has touched in a long time.
-    - By default excludes items currently in a workflow (set
-      `--no-exclude-workflow-items` to include).
+stale-workflow`: - `stale-workflow` finds items stuck mid-flight in a non-final
+    workflow state. - `stale-content` finds **abandoned** content — published items no
+    one has touched in a long time. - By default excludes items currently in a workflow (set
+    `--no-exclude-workflow-items` to include).
 
   **New `scai cleanup *` verb (mutating, with `--what-if` / `--allow-write`):**
   - `cleanup find-replace apply --pattern <regex> --replacement <text>` —

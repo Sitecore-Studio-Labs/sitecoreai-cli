@@ -158,7 +158,7 @@
     "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",
     "consola": "^3.4.2",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.4.2",
     "esbuild": "^0.28.0",
     "fast-glob": "^3.3.3",
     "ora": "^9.1.0",

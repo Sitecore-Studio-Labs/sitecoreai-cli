@@ -49,3 +49,38 @@ describe("errors", () => {
     expect(wrapped.code).toBe("UNKNOWN");
   });
 });
+
+describe("errors — remediation", () => {
+  it("createScaiError carries a structured remediation", () => {
+    const error = createScaiError("Not enrolled", "POLICY_DENIED", {
+      hint: "Enroll it.",
+      remediation: {
+        actor: "agent",
+        fix: "scai policy allow demo",
+        detail: "Enrolls the environment.",
+      },
+    });
+    expect(error.remediation).toEqual({
+      actor: "agent",
+      fix: "scai policy allow demo",
+      detail: "Enrolls the environment.",
+    });
+  });
+
+  it("withHint preserves the remediation", () => {
+    const original = createScaiError("Needs a human", "POLICY_DENIED", {
+      remediation: { actor: "needs-human-terminal", fix: "scai setup client create demo" },
+    });
+    const rehinted = withHint(original, "new hint");
+    expect(rehinted.hint).toBe("new hint");
+    expect(rehinted.remediation).toEqual({
+      actor: "needs-human-terminal",
+      fix: "scai setup client create demo",
+    });
+  });
+
+  it("remediation is absent when not supplied", () => {
+    expect(createScaiError("plain", "NETWORK").remediation).toBeUndefined();
+    expect(toScaiError(new Error("boom")).remediation).toBeUndefined();
+  });
+});

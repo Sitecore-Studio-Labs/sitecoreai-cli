@@ -1086,23 +1086,32 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
   ): Promise<ItemTemplateSummary[]> => {
     const results: ItemTemplateSummary[] = [];
     let rootItemId: string | undefined;
+    let rootPrefix: string | undefined;
     if (opts.rootPath) {
+      const normalizedRoot = opts.rootPath.replace(/\/+$/, "").toLowerCase();
+      // A `pageSize: 1` `_fullpath` lookup cannot distinguish an exact hit
+      // from a near-match the index ranked first; a wrong (shallower) root
+      // silently widens the `_path CONTAINS` scope below. Fetch a small
+      // page and confirm the path matches exactly.
       const r = await search({
-        paging: { pageSize: 1 },
+        paging: { pageSize: 20 },
         searchStatement: {
           criteria: {
             field: "_fullpath",
-            value: opts.rootPath.toLowerCase(),
+            value: normalizedRoot,
             criteriaType: "EXACT",
           },
         },
       });
-      rootItemId = r.results[0]?.itemId;
+      rootItemId = r.results.find((x) => x.path?.toLowerCase() === normalizedRoot)?.itemId;
       if (!rootItemId) {
-        // Path doesn't resolve in the index — caller-error-shaped, but
-        // not fatal here; we just return an empty list with no items.
-        return [];
+        throw createScaiError(
+          `Root path '${opts.rootPath}' was not found in the template tree.`,
+          "INPUT_INVALID",
+          { hint: "Pass --root as an existing item path, e.g. /sitecore/templates/Project." }
+        );
       }
+      rootPrefix = `${normalizedRoot}/`;
     }
     const statement = rootItemId
       ? {
@@ -1146,6 +1155,9 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
       opts.pageSize ?? 100
     )) {
       if (!r.itemId || seen.has(r.itemId)) continue;
+      // The `_path CONTAINS` index filter is a substring match and can
+      // over-match; confirm the hit truly sits under the requested root.
+      if (rootPrefix && !(r.path?.toLowerCase() ?? "").startsWith(rootPrefix)) continue;
       seen.add(r.itemId);
       const fullName = r.path ? r.path.replace(/^\/sitecore\/templates\//i, "") : null;
       results.push({

@@ -733,3 +733,80 @@ describe("hygiene client — deleteUser / deleteRole", () => {
     await expect(client.deleteRole("Authors")).rejects.toMatchObject({ code: "UNKNOWN" });
   });
 });
+
+describe("hygiene client — listItemTemplates root scoping", () => {
+  it("resolves the root by exact path, not results[0], and scopes by path prefix", async () => {
+    let call = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      call += 1;
+      if (call === 1) {
+        // _fullpath lookup — the index ranks a shallower near-match
+        // first; the exact match is later in the page.
+        return Promise.resolve(
+          okResponse({
+            data: {
+              search: {
+                totalCount: 2,
+                results: [
+                  { itemId: "shallow", path: "/sitecore/templates/project", name: "project" },
+                  {
+                    itemId: "root-id",
+                    path: "/sitecore/templates/project/site/components",
+                    name: "components",
+                  },
+                ],
+              },
+            },
+          })
+        );
+      }
+      // searchAll _template page — the _path CONTAINS substring filter
+      // over-matches templates outside the requested root.
+      return Promise.resolve(
+        okResponse({
+          data: {
+            search: {
+              totalCount: 3,
+              results: [
+                {
+                  itemId: "t1",
+                  path: "/sitecore/templates/Project/site/components/Hero",
+                  name: "Hero",
+                },
+                {
+                  itemId: "t2",
+                  path: "/sitecore/templates/Project/othersite/Card",
+                  name: "Card",
+                },
+                { itemId: "t3", path: "/sitecore/templates/Foundation/Other", name: "Other" },
+              ],
+            },
+          },
+        })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createHygieneApiClient({ environment: baseEnv });
+    const templates = await client.listItemTemplates({
+      rootPath: "/sitecore/templates/Project/site/components",
+    });
+
+    // Exact resolution scopes to the components folder — `Card` (a
+    // sibling-site template the index over-matched) and `Other` are
+    // dropped. Trusting results[0] would have kept `Card`.
+    expect(templates.map((t) => t.name)).toEqual(["Hero"]);
+  });
+
+  it("throws INPUT_INVALID when the root path does not resolve", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ data: { search: { totalCount: 0, results: [] } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createHygieneApiClient({ environment: baseEnv });
+    await expect(
+      client.listItemTemplates({ rootPath: "/sitecore/templates/Project/missing" })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+});

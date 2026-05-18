@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScaiError } from "../../../../src/shared/errors";
+import type { Logger } from "../../../../src/shared/logger";
 
 /**
  * Covers the list-or-mint reconciliation in `runSetupEnv`: fresh mint,
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   listEnvironmentClients: vi.fn(),
   mintCmClient: vi.fn(),
   deleteClient: vi.fn().mockResolvedValue(undefined),
+  requestClientCredentialsToken: vi.fn(),
 }));
 
 vi.mock("../../../../src/config/root-config", () => ({
@@ -49,7 +51,16 @@ vi.mock("../../../../src/deploy/api", async (importActual) => {
   };
 });
 
-const { runSetupEnv } = await import("../../../../src/serialization/tasks/env/setup-env");
+vi.mock("../../../../src/serialization/api/auth", async (importActual) => {
+  const actual = await importActual<typeof import("../../../../src/serialization/api/auth")>();
+  return {
+    ...actual,
+    requestClientCredentialsToken: mocks.requestClientCredentialsToken,
+  };
+});
+
+const { runSetupEnv, waitForClientActivation } =
+  await import("../../../../src/serialization/tasks/env/setup-env");
 
 const CONFIGURED_ENV = {
   organizationId: "org-1",
@@ -90,6 +101,7 @@ beforeEach(() => {
     clientId: "minted-client-id",
     clientSecret: "minted-secret",
   });
+  mocks.requestClientCredentialsToken.mockResolvedValue({ accessToken: "cm-token" });
   vi.stubEnv("SITECOREAI_DEPLOY_TOKEN", "");
 });
 
@@ -206,5 +218,51 @@ describe("runSetupEnv — what-if", () => {
       { accessToken: "deploy-token" },
       "org-1"
     );
+  });
+});
+
+describe("waitForClientActivation", () => {
+  const fakeLogger = (): Logger =>
+    ({ info: vi.fn(), warn: vi.fn(), verbose: vi.fn() }) as unknown as Logger;
+  const credential = {
+    authority: "https://auth.example",
+    clientId: "minted-client-id",
+    clientSecret: "minted-secret",
+  };
+
+  it("returns true when the client activates on the first try", async () => {
+    mocks.requestClientCredentialsToken.mockReset();
+    mocks.requestClientCredentialsToken.mockResolvedValue({ accessToken: "cm-token" });
+    const ok = await waitForClientActivation(credential, fakeLogger(), { timeoutMs: 200 });
+    expect(ok).toBe(true);
+    expect(mocks.requestClientCredentialsToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries with backoff until the client activates", async () => {
+    mocks.requestClientCredentialsToken.mockReset();
+    mocks.requestClientCredentialsToken
+      .mockRejectedValueOnce(new Error("client not active"))
+      .mockRejectedValueOnce(new Error("client not active"))
+      .mockResolvedValue({ accessToken: "cm-token" });
+    const ok = await waitForClientActivation(credential, fakeLogger(), {
+      timeoutMs: 2000,
+      initialDelayMs: 5,
+      maxDelayMs: 10,
+    });
+    expect(ok).toBe(true);
+    expect(mocks.requestClientCredentialsToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns false and warns when the activation window elapses", async () => {
+    mocks.requestClientCredentialsToken.mockReset();
+    mocks.requestClientCredentialsToken.mockRejectedValue(new Error("client not active"));
+    const logger = fakeLogger();
+    const ok = await waitForClientActivation(credential, logger, {
+      timeoutMs: 40,
+      initialDelayMs: 5,
+      maxDelayMs: 10,
+    });
+    expect(ok).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("did not activate"));
   });
 });

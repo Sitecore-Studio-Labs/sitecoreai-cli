@@ -362,6 +362,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         code: finalError.code,
         hint: finalError.hint,
         details: finalError.details,
+        remediation: finalError.remediation,
         exitCode: finalError.exitCode,
       });
     } else {
@@ -373,6 +374,10 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
       }
       if (finalError.hint) {
         baseLogger.warn(`Hint: ${finalError.hint}`);
+      }
+      if (finalError.remediation) {
+        const { actor, fix, detail } = finalError.remediation;
+        baseLogger.warn(`Fix (${actor}): ${fix}${detail ? ` — ${detail}` : ""}`);
       }
     }
     process.exitCode = finalError.exitCode;

@@ -39,8 +39,72 @@ import {
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import { createScaiError, toScaiError } from "@/shared/errors";
 import { authorizeOperation } from "@/policy";
+import { requestClientCredentialsToken } from "@/serialization/api/auth";
+import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import type { CommonOptions } from "@/shared/cli-options";
+import type { Logger } from "@/shared/logger";
 import packageJson from "../../../../package.json";
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Timing knobs for {@link waitForClientActivation} — overridable for tests. */
+export interface ClientActivationOptions {
+  /** Give up after this long (default 120_000 ms). */
+  timeoutMs?: number;
+  /** First backoff delay (default 2_000 ms). */
+  initialDelayMs?: number;
+  /** Backoff ceiling (default 15_000 ms). */
+  maxDelayMs?: number;
+}
+
+/**
+ * Poll a client-credentials grant until a freshly-minted automation
+ * client activates.
+ *
+ * A just-created Sitecore automation client is not immediately usable —
+ * the identity provider takes up to ~2 min to propagate it, and the
+ * grant fails until it has. Returns `true` once a token is obtained,
+ * `false` if the window elapses first (the client is minted regardless
+ * and usually becomes usable shortly after).
+ */
+export const waitForClientActivation = async (
+  credential: SitecoreApiClientOptions,
+  logger: Logger,
+  options: ClientActivationOptions = {}
+): Promise<boolean> => {
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const maxDelayMs = options.maxDelayMs ?? 15_000;
+  let delayMs = options.initialDelayMs ?? 2_000;
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      await requestClientCredentialsToken(credential);
+      if (attempt > 1) {
+        logger.info("  Client is active.", "green");
+      }
+      return true;
+    } catch (error) {
+      if (Date.now() + delayMs >= deadline) {
+        logger.warn(
+          `The minted client did not activate within ${Math.round(timeoutMs / 1000)}s. ` +
+            "It usually becomes usable within a minute or two — retry your command then."
+        );
+        return false;
+      }
+      if (attempt === 1) {
+        logger.info("  Waiting for the new client to activate…");
+      }
+      logger.verbose(
+        `Client not active yet (attempt ${attempt}): ${toScaiError(error).message}. ` +
+          `Retrying in ${Math.round(delayMs / 1000)}s.`
+      );
+      await sleep(delayMs);
+      delayMs = Math.min(Math.round(delayMs * 1.5), maxDelayMs);
+    }
+  }
+};
 
 export type SetupEnvOptions = CommonOptions & {
   environmentName?: string;
@@ -185,6 +249,33 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
   rootConfigFile.config.envProfiles = envProfiles;
   writeRootConfigurationFile(configPath, rootConfigFile.config);
 
+  if (!logger.isJson()) {
+    logger.info(`Minted CM client '${clientName}' for '${envName}'.`, "green");
+    logger.info(`  clientId: ${minted.clientId}`);
+    if (!persisted) {
+      logger.warn(
+        "Keychain unavailable — the client secret was NOT persisted. The minted client is unusable; re-run when the keychain is available."
+      );
+    }
+  }
+
+  // A freshly-minted client is not usable until the identity provider
+  // activates it (~1-2 min), during which a client-credentials grant
+  // still fails. Poll so the command does not report success on a client
+  // an immediate follow-up call would be rejected by — the race an agent
+  // hits when it uses the credential right after the mint.
+  const active = env.authority
+    ? await waitForClientActivation(
+        {
+          authority: env.authority,
+          clientId: minted.clientId,
+          clientSecret: minted.clientSecret,
+          audience: env.audience,
+        },
+        logger
+      )
+    : true;
+
   if (logger.isJson()) {
     logger.json({
       environment: envName,
@@ -192,15 +283,7 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
       action: replaceExisting ? "replace" : "mint",
       clientId: minted.clientId,
       persisted,
+      active,
     });
-    return;
-  }
-
-  logger.info(`Minted CM client '${clientName}' for '${envName}'.`, "green");
-  logger.info(`  clientId: ${minted.clientId}`);
-  if (!persisted) {
-    logger.warn(
-      "Keychain unavailable — the client secret was NOT persisted. The minted client is unusable; re-run when the keychain is available."
-    );
   }
 };

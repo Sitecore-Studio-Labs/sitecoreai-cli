@@ -44,6 +44,11 @@ export const enforceEnvironmentPolicy = (params: EnforceEnvironmentPolicyParams)
         hint:
           `Enroll it with 'scai policy allow ${envName}', or run ` +
           `'scai policy show' to see which environments are allowed.`,
+        remediation: {
+          actor: "agent",
+          fix: `scai policy allow ${envName}`,
+          detail: "Enrolls the environment in the workspace-policy allowlist.",
+        },
       }
     );
   }
@@ -59,6 +64,12 @@ export const enforceEnvironmentPolicy = (params: EnforceEnvironmentPolicyParams)
           hint:
             `If this change is expected, re-pin it with 'scai policy trust ${envName}'. ` +
             `If not, your sitecoreai.cli.json may have been tampered with.`,
+          remediation: {
+            actor: "agent",
+            fix: `scai policy trust ${envName}`,
+            detail:
+              "Re-pins the tenant identity to the current config — only if the change is expected.",
+          },
         }
       );
     }

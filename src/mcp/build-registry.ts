@@ -10,8 +10,10 @@
  */
 
 import { McpRegistry } from "./registry";
+import { registerAccessCheckTools } from "./tools/access-check";
 import { registerAuditTools } from "./tools/audit";
 import { registerBootstrapTools } from "./tools/bootstrap";
+import { registerBrowseTools } from "./tools/browse";
 import { registerBrandTools } from "./tools/brand";
 import { registerBrandRecipeTools } from "./tools/brand-recipe";
 import { registerBriefTools } from "./tools/brief";
@@ -28,6 +30,7 @@ import { registerRecipeTools } from "./tools/recipe";
 import { registerRecipeSyncTools } from "./tools/recipe-sync";
 import { registerExplainTools } from "./tools/explain";
 import { registerInspectorTools } from "./tools/inspector";
+import { registerOnboardTools } from "./tools/onboard";
 import { registerWebhookTools } from "./tools/webhook";
 import { registerWorkflowTools } from "./tools/workflow";
 import { registerBrandResources } from "./resources/brand";
@@ -39,6 +42,9 @@ import { registerWorkflowPrompts } from "./prompts/workflows";
 export const buildScaiMcpRegistry = (): McpRegistry => {
   const registry = new McpRegistry();
   registerBootstrapTools(registry);
+  registerAccessCheckTools(registry);
+  registerBrowseTools(registry);
+  registerOnboardTools(registry);
   registerDeployTools(registry);
   registerSerializationTools(registry);
   registerRecipeTools(registry);

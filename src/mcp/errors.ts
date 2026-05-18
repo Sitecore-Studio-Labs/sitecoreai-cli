@@ -13,7 +13,7 @@
  */
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { toScaiError, type ScaiError, type ScaiErrorCode } from "@/shared/errors";
+import { toScaiError, type Remediation, type ScaiError, type ScaiErrorCode } from "@/shared/errors";
 import { redactString, redactStructured } from "./redact";
 
 const DOCS_URI_BY_CODE: Partial<Record<ScaiErrorCode, string>> = {
@@ -95,6 +95,12 @@ export interface ToolErrorEnvelope {
   why: string;
   hint?: string;
   next: string;
+  /**
+   * Machine-actionable remediation when the error carries one — lets the
+   * agent route the failure (`actor`: act itself / hand to a human /
+   * retry) without parsing the prose `next` line.
+   */
+  remediation?: Remediation;
   docsUri?: string;
 }
 
@@ -105,11 +111,26 @@ export const toolResultFromError = (error: unknown): CallToolResult => {
   const hint = scaiError.hint ? redactString(scaiError.hint) : undefined;
   const next = NEXT_HINT_BY_CODE[scaiError.code] ?? NEXT_HINT_BY_CODE.UNKNOWN;
   const docsUri = DOCS_URI_BY_CODE[scaiError.code];
+  const remediation: Remediation | undefined = scaiError.remediation
+    ? {
+        actor: scaiError.remediation.actor,
+        fix: redactString(scaiError.remediation.fix),
+        detail: scaiError.remediation.detail
+          ? redactString(scaiError.remediation.detail)
+          : undefined,
+      }
+    : undefined;
+
+  // A structured remediation is more specific than the per-code `next`
+  // hint — lead the "Next" line with it when present.
+  const nextLine = remediation
+    ? `${remediation.fix} [${remediation.actor}]${remediation.detail ? ` — ${remediation.detail}` : ""}`
+    : next;
 
   const text = [
     `What happened: ${what}`,
     `Why: ${why}${hint ? ` (${hint})` : ""}`,
-    `Next: ${next}`,
+    `Next: ${nextLine}`,
   ].join("\n");
 
   const envelope: ToolErrorEnvelope = {
@@ -119,6 +140,7 @@ export const toolResultFromError = (error: unknown): CallToolResult => {
     why,
     hint,
     next,
+    remediation,
     docsUri,
   };
 

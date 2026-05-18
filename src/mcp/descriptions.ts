@@ -22,6 +22,12 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Returns the server version, the bound environment, the available tool domains, the registered Resource URIs, and whether writes are permitted — plus the discovery map: every configured environment and organization, each with its four-credential matrix (deploy / cmClient / brand / brief). Call this first from a cold start so subsequent decisions know what surface is reachable and which environments are credentialed.",
   environment_status:
     "Probes the bound environment for live health, deploy-token freshness, and the most recent deployment summary. Use this when you need a quick health pulse before scheduling work against the environment.",
+  access_check:
+    "Preflights an environment before you operate against it: resolves the config, workspace-policy, and credential gates in one offline call and returns every blocker at once — each with a structured remediation classified by who fixes it (agent / needs-human-terminal). Call this when a tool fails with AUTH_REQUIRED or POLICY_DENIED, or before targeting an environment you have not used yet, instead of discovering blockers one failed call at a time.",
+  content_browse:
+    "Enumerates the content tree under a path — a bounded-depth walk of item children returning each item's name, path, id, and template id. Read-only and traversal-based, so it works on environments with no provisioned search index. Use it to answer 'what templates / renderings / items do I have under X' in one call instead of bending a quality audit to the job.",
+  environment_onboard:
+    "Stands up a new environment profile in sitecoreai.cli.json from supplied identity (organization / project / environment ids + CM host), then runs the access preflight and reports what remains — policy enrollment and the human-only credential step. Write-gated. This is the agent-drivable half of environment setup; resolve the identity first with the deploy tools or scai_overview. Does not mint credentials or log in — those are human-terminal-only.",
 
   // Deploy — organization + projects + envs
   deploy_organization_inspect:

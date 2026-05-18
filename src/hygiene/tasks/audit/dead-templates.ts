@@ -1,4 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
   normalizeItemId,
@@ -36,6 +37,14 @@ const isTransientError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
   return TRANSIENT_GRAPHQL_ERROR_PATTERNS.some((p) => p.test(error.message));
 };
+
+/**
+ * "The search service is not available" — the environment has no search
+ * index provisioned. Unlike the transient patterns above this never
+ * clears on retry: dead-templates simply cannot run without search.
+ */
+const isSearchUnavailableError = (error: unknown): boolean =>
+  error instanceof Error && /search service is not available/i.test(error.message);
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -140,7 +149,29 @@ export const runAuditDeadTemplates = async (
   logger.verbose(`Listing templates under ${root} (limit ${limit}).`);
 
   const includeSystem = Boolean(options.includeSystem);
-  const raw = await client.listItemTemplates({ rootPath: root });
+  let raw: Awaited<ReturnType<typeof client.listItemTemplates>>;
+  try {
+    raw = await client.listItemTemplates({ rootPath: root });
+  } catch (error) {
+    if (!isSearchUnavailableError(error)) {
+      throw error;
+    }
+    // No search index on this environment — dead-templates can't run.
+    // Point the caller at the traversal-based audits that can.
+    throw createScaiError(
+      "The dead-templates audit needs a provisioned search index, which this environment does not have.",
+      "NETWORK",
+      {
+        hint: "Use a traversal-based audit — it does not depend on a search index.",
+        remediation: {
+          actor: "agent",
+          fix: `scai hygiene audit heavy-templates list --root ${root}`,
+          detail:
+            "heavy-templates (and the content_browse MCP tool) walk the item tree directly and work without a search index; dead-templates cannot.",
+        },
+      }
+    );
+  }
   const filtered = includeSystem
     ? raw
     : raw.filter((t) => {

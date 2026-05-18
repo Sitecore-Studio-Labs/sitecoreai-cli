@@ -77,11 +77,15 @@ describe("bootstrap tools", () => {
       organizations: unknown[];
       toolCount: number;
       resourceUris: string[];
+      humanOnlyOperations: Array<{ id: string; command: string }>;
     };
     expect(structured.server.name).toBe("scai");
     expect(structured.environment.name).toBe("test-env");
     expect(structured.toolCount).toBeGreaterThan(0);
     expect(structured.resourceUris).toContain("scai://help/overview");
+    // Credential provisioning is human-only — declared up front so an
+    // agent routes around it instead of hitting a refusal.
+    expect(structured.humanOnlyOperations.map((o) => o.id)).toContain("mint-automation-client");
     // Config threw — discovery degrades to empty lists, no crash.
     expect(structured.environments).toEqual([]);
     expect(structured.organizations).toEqual([]);

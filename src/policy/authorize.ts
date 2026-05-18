@@ -80,7 +80,14 @@ export const authorizeOperation = (params: AuthorizeOperationParams): void => {
     throw createScaiError(
       `Environment '${envName}' is not in the scai workspace policy allowlist.`,
       "POLICY_DENIED",
-      { hint: `Enroll it with 'scai policy allow ${envName}'.` }
+      {
+        hint: `Enroll it with 'scai policy allow ${envName}'.`,
+        remediation: {
+          actor: "agent",
+          fix: `scai policy allow ${envName}`,
+          detail: "Enrolls the environment in the workspace-policy allowlist.",
+        },
+      }
     );
   }
 
@@ -91,7 +98,14 @@ export const authorizeOperation = (params: AuthorizeOperationParams): void => {
       throw createScaiError(
         `The workspace policy does not permit minting automation clients for '${envName}'.`,
         "POLICY_DENIED",
-        { hint: `An operator can enable it with 'scai policy set ${envName} --mint on'.` }
+        {
+          hint: `An operator can enable it with 'scai policy set ${envName} --mint on'.`,
+          remediation: {
+            actor: "agent",
+            fix: `scai policy set ${envName} --mint on`,
+            detail: "Grants this environment mint eligibility in the workspace policy.",
+          },
+        }
       );
     }
     if (caller.kind !== "interactive-human") {
@@ -100,6 +114,12 @@ export const authorizeOperation = (params: AuthorizeOperationParams): void => {
         "POLICY_DENIED",
         {
           hint: "Run 'scai setup client create' yourself in a terminal. Agents, CI, and unattended processes cannot mint credentials.",
+          remediation: {
+            actor: "needs-human-terminal",
+            fix: `scai setup client create ${envName}`,
+            detail:
+              "Credential minting requires an interactive human terminal; agents and CI callers are refused.",
+          },
         }
       );
     }

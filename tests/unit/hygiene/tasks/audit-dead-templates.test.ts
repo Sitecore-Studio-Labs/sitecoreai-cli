@@ -19,6 +19,7 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
 import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 import { runAuditDeadTemplates } from "../../../../src/hygiene/tasks/audit/dead-templates";
+import { ScaiError } from "../../../../src/shared/errors";
 
 const stubClient = (params: {
   listItemTemplates: ReturnType<typeof vi.fn>;
@@ -116,5 +117,29 @@ describe("audit dead-templates — transient retry", () => {
     });
     // Only one attempt — the error wasn't transient-shaped.
     expect(attempts).toBe(1);
+  });
+});
+
+describe("audit dead-templates — search-service unavailable", () => {
+  it("rethrows a clear error with an agent remediation when the search index is missing", async () => {
+    const listItemTemplates = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Authoring GraphQL errors: The search service is not available.")
+      );
+    stubClient({ listItemTemplates, search: vi.fn() });
+
+    const error = await runAuditDeadTemplates({ json: true } as never).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ScaiError);
+    const scaiError = error as ScaiError;
+    expect(scaiError.message).toMatch(/search index/i);
+    expect(scaiError.remediation?.actor).toBe("agent");
+    expect(scaiError.remediation?.fix).toContain("heavy-templates");
+  });
+
+  it("propagates other listItemTemplates failures unchanged", async () => {
+    const original = new Error("some other failure");
+    stubClient({ listItemTemplates: vi.fn().mockRejectedValue(original), search: vi.fn() });
+    await expect(runAuditDeadTemplates({ json: true } as never)).rejects.toBe(original);
   });
 });

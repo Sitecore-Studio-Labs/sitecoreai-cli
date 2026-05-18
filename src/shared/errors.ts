@@ -34,11 +34,40 @@ export type ScaiErrorCode =
   | "CANCELLED"
   | "UNKNOWN";
 
+/**
+ * Who can clear a failure — the classification an agent reads to decide
+ * whether to act itself, hand off to a human, or retry.
+ *
+ * - `agent` — fixable without a human: enroll an environment, pass a
+ *   flag, correct an input.
+ * - `needs-human-terminal` — a human must run a command in an
+ *   interactive terminal; scai refuses the operation for non-human
+ *   callers (credential provisioning: `setup login`, `setup env`).
+ * - `transient-retry` — a transient failure; wait briefly and retry.
+ */
+export type RemediationActor = "agent" | "needs-human-terminal" | "transient-retry";
+
+/**
+ * Machine-actionable remediation attached to a {@link ScaiError}. Where
+ * `hint` is prose for a human, `remediation` is structured so an agent
+ * (CLI JSON consumer, MCP client) can route the failure without parsing
+ * free text.
+ */
+export interface Remediation {
+  /** Who can clear this failure. */
+  actor: RemediationActor;
+  /** The concrete fix — a command to run, or a short imperative action. */
+  fix: string;
+  /** Optional extra context: why a human is needed, what to retry, etc. */
+  detail?: string;
+}
+
 export class ScaiError extends Error {
   code: ScaiErrorCode;
   exitCode: number;
   hint?: string;
   details?: string[];
+  remediation?: Remediation;
 
   constructor(
     message: string,
@@ -47,6 +76,7 @@ export class ScaiError extends Error {
       exitCode?: number;
       hint?: string;
       details?: string[];
+      remediation?: Remediation;
       cause?: unknown;
     } = {}
   ) {
@@ -56,6 +86,7 @@ export class ScaiError extends Error {
     this.exitCode = options.exitCode ?? 1;
     this.hint = options.hint;
     this.details = options.details;
+    this.remediation = options.remediation;
     if (options.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
     }
@@ -107,18 +138,20 @@ export const withHint = (error: ScaiError, hint: string): ScaiError =>
     exitCode: error.exitCode,
     hint,
     details: error.details,
+    remediation: error.remediation,
   });
 
 export const createScaiError = (
   message: string,
   code: ScaiErrorCode,
-  options: { hint?: string; details?: string[] } = {}
+  options: { hint?: string; details?: string[]; remediation?: Remediation } = {}
 ): ScaiError =>
   new ScaiError(message, {
     code,
     exitCode: exitCodeFor(code),
     hint: options.hint,
     details: options.details,
+    remediation: options.remediation,
   });
 
 /**

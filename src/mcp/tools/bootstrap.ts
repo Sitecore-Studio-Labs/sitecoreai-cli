@@ -16,6 +16,7 @@ import {
 } from "@/deploy/api";
 import { readRootConfiguration } from "@/config/root-config";
 import { resolveCredentialMatrix, type CredentialMatrix } from "@/shared/credential-matrix";
+import { HUMAN_ONLY_OPERATIONS } from "@/shared/human-only-operations";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -103,6 +104,7 @@ const TOOL_DOMAINS = ["deploy", "serialization", "recipe", "bootstrap", "inspect
 
 const RESOURCE_URIS = [
   "scai://help/overview",
+  "scai://help/access-and-policy",
   "scai://help/recipes-grammar",
   "scai://help/deploy-lifecycle",
   "scai://help/sitecore-apis",
@@ -144,6 +146,10 @@ export const registerBootstrapTools = (registry: McpRegistry): void => {
         toolCount: registry.listTools().length,
         resourceUris: [...RESOURCE_URIS],
         promptCount: registry.listPrompts().length,
+        // Operations no agent / CI / MCP caller can perform — a human
+        // must run them in a terminal. Declared up front so an agent
+        // routes around them instead of discovering it via a refusal.
+        humanOnlyOperations: HUMAN_ONLY_OPERATIONS,
       };
       const discovery =
         environments.length > 0
@@ -152,7 +158,8 @@ export const registerBootstrapTools = (registry: McpRegistry): void => {
       const text =
         `scai MCP server ${packageJson.version} bound to '${context.envName}'. ` +
         `${discovery}${summary.toolCount} tool(s), ${summary.resourceUris.length} resource(s), ` +
-        `${summary.promptCount} prompt(s). Writes require allowWrite: true on each call.`;
+        `${summary.promptCount} prompt(s). Writes require allowWrite: true on each call. ` +
+        `Credential provisioning (login, client mint) is human-terminal-only — see humanOnlyOperations.`;
       return {
         content: [{ type: "text", text }],
         structuredContent: summary,

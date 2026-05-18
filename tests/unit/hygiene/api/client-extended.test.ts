@@ -210,14 +210,17 @@ describe("hygiene client — listItemTemplates", () => {
     expect(secondCall.query).toContain('field: "_path"');
   });
 
-  it("returns an empty array when the root path doesn't resolve", async () => {
+  it("throws INPUT_INVALID when the root path doesn't resolve", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(okResponse({ data: { search: { totalCount: 0, results: [] } } }));
     vi.stubGlobal("fetch", fetchMock);
     const client = createHygieneApiClient({ environment: baseEnv });
-    const result = await client.listItemTemplates({ rootPath: "/sitecore/templates/Nonexistent" });
-    expect(result).toEqual([]);
+    // An unresolved --root used to return [] silently, which masked a
+    // bad path as an empty subtree — it now fails loud.
+    await expect(
+      client.listItemTemplates({ rootPath: "/sitecore/templates/Nonexistent" })
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -250,11 +253,11 @@ describe("hygiene client — listItemTemplates", () => {
             search: {
               totalCount: 5,
               results: [
-                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
-                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
-                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
-                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
-                { itemId: "dup-id", name: "Project", path: "/sitecore/templates/Project" },
+                { itemId: "dup-id", name: "Base", path: "/sitecore/templates/Project/Base" },
+                { itemId: "dup-id", name: "Base", path: "/sitecore/templates/Project/Base" },
+                { itemId: "dup-id", name: "Base", path: "/sitecore/templates/Project/Base" },
+                { itemId: "dup-id", name: "Base", path: "/sitecore/templates/Project/Base" },
+                { itemId: "dup-id", name: "Base", path: "/sitecore/templates/Project/Base" },
               ],
             },
           },

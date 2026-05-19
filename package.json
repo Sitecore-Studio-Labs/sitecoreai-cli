@@ -186,7 +186,7 @@
     "@typescript-eslint/parser": "^8.43.0",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.35.0",
-    "globals": "^15.15.0",
+    "globals": "^17.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "openapi-typescript": "^7.13.0",

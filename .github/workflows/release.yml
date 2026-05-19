@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  # Manual trigger for canary (pre-release) builds. Pick the branch to
+  # build when dispatching — usually `dev`.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,6 +15,9 @@ permissions:
 
 jobs:
   release:
+    # Stable release path only — never runs on a manual dispatch (that is
+    # the `canary` job below).
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     concurrency: release
     environment: release
@@ -67,3 +73,65 @@ jobs:
           # NPM_CONFIG_PROVENANCE still unset: provenance requires a public
           # source repo; Trusted Publishing does not.
           HUSKY: 0
+
+  # Canary (pre-release) publish. Manually dispatched against a branch
+  # (usually `dev`) to make an unreleased fix testable before it ships.
+  # Publishes a snapshot version (e.g. 0.1.2-canary-20260519123456) under
+  # the npm `canary` dist-tag — `latest` is untouched, no git tag, no
+  # changelog entry. The pending changesets are NOT consumed: they still
+  # flow through the stable `release` job above and become the official
+  # version on `latest`.
+  canary:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    concurrency: canary
+    # `environment: release` is required, not cosmetic: npm's Trusted
+    # Publisher for this package verifies the workflow file AND the
+    # environment, so the OIDC publish only succeeds from here.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      HUSKY: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # npm Trusted Publishing (OIDC) requires npm >= 11.5.1 — see the
+      # release job above.
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test
+        run: npm run smoke
+
+      - name: Require a pending changeset
+        run: |
+          if [ -z "$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' -print -quit)" ]; then
+            echo "::error::No pending changesets — a canary needs at least one unreleased change to publish."
+            exit 1
+          fi
+
+      - name: "Publish canary to npm (dist-tag: canary)"
+        run: |
+          npx changeset version --snapshot canary
+          npx changeset publish --tag canary --no-git-tag

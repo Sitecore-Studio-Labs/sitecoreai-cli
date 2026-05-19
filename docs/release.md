@@ -25,6 +25,38 @@ pnpm changeset
 - npm provenance is currently disabled while the repo is private; it will
   be re-enabled when the repo goes public.
 
+## Canary releases (pre-release testing)
+
+To get a fix in front of testers before it is official, publish a
+**canary** build. A canary is a snapshot version
+(e.g. `0.1.2-canary-20260519123456`) published under the npm `canary`
+dist-tag — it never moves `latest`, never tags git, and never writes the
+changelog.
+
+Trigger it manually from the **Release** workflow — GitHub → Actions →
+Release → **Run workflow** (pick the branch, usually `dev`), or:
+
+```sh
+gh workflow run release.yml --ref dev
+```
+
+The `canary` job runs the full gate (lint + test + build + smoke), then
+`changeset version --snapshot canary` + `changeset publish --tag canary`.
+It requires at least one pending `.changeset/*.md` file — the canary
+version is calculated from the bump those changesets describe.
+
+Testers install the canary instead of the stable release:
+
+```sh
+npm i -g @sitecoreai-labs/sitecoreai-cli@canary
+scai --version    # 0.1.2-canary-...
+```
+
+A canary does **not** consume the changeset: the same `.changeset/*.md`
+files still flow through the stable `dev` → `main` release and become the
+official version on `latest`. There is nothing to "promote" — cutting the
+real release is the unchanged flow above.
+
 ## Manual release (rare)
 
 ```sh

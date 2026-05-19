@@ -164,26 +164,34 @@ describe("scai mcp serve — stdio integration", () => {
     expect((result.structuredContent as { code: string }).code).toBe("INPUT_INVALID");
   });
 
-  it("write tool with allowWrite=true reaches the handler (network error envelope acceptable)", async () => {
-    const result = (await client.callTool({
-      name: "deploy_environment_lifecycle",
-      arguments: { action: "restart", environmentId: "env-stub", allowWrite: true },
-    })) as ToolResultEnvelope;
-    // Network call will fail against example.test — we only require the
-    // envelope to be an error envelope with a known code, not isError=false.
-    if (result.isError) {
-      const code = (result.structuredContent as { code: string }).code;
-      expect([
-        "NETWORK",
-        "AUTH_REQUIRED",
-        "UNKNOWN",
-        "DEPLOY_FAILED",
-        "SITES_API_FAILED",
-      ]).toContain(code);
-    } else {
-      expect(result.content).toBeTruthy();
+  // Reaching the handler makes a real (failing) network call against the
+  // example.test stub host; on a slow CI runner the DNS failure can edge
+  // past the 5s default (observed 5000ms+ timeout). Give it headroom —
+  // the call still terminates well inside this budget.
+  it(
+    "write tool with allowWrite=true reaches the handler (network error envelope acceptable)",
+    { timeout: 30_000 },
+    async () => {
+      const result = (await client.callTool({
+        name: "deploy_environment_lifecycle",
+        arguments: { action: "restart", environmentId: "env-stub", allowWrite: true },
+      })) as ToolResultEnvelope;
+      // Network call will fail against example.test — we only require the
+      // envelope to be an error envelope with a known code, not isError=false.
+      if (result.isError) {
+        const code = (result.structuredContent as { code: string }).code;
+        expect([
+          "NETWORK",
+          "AUTH_REQUIRED",
+          "UNKNOWN",
+          "DEPLOY_FAILED",
+          "SITES_API_FAILED",
+        ]).toContain(code);
+      } else {
+        expect(result.content).toBeTruthy();
+      }
     }
-  });
+  );
 
   it("reads scai://help/overview", async () => {
     const result = await client.readResource({ uri: "scai://help/overview" });

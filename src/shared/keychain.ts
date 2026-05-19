@@ -1,5 +1,7 @@
 import { consola } from "consola";
 
+import { redactSecrets } from "./redact";
+
 /**
  * OS keychain access via `@napi-rs/keyring` (Rust-based, actively maintained,
  * prebuilt binaries). Replaces `keytar`, whose upstream `atom/node-keytar`
@@ -14,6 +16,18 @@ import { consola } from "consola";
  * without a keychain backend), every operation returns undefined/false with
  * a one-shot warning. No plaintext disk fallback — callers fall back to
  * SITECOREAI_* env vars in those environments.
+ *
+ * Chunking: Windows Credential Manager caps a single credential blob at
+ * `CRED_MAX_CREDENTIAL_BLOB_SIZE` = 2560 bytes, and keyring-rs stores the
+ * password UTF-16-encoded there — so the real budget is ~1280 UTF-16 code
+ * units. A Sitecore access token (a JWT carrying several scope claims)
+ * routinely exceeds that, which made deploy-token writes silently fail on
+ * Windows. Any value too large for one blob is transparently split across
+ * companion `<account>#chunk<i>` entries with a small manifest in the
+ * primary account; `readSecret` reassembles them. macOS Keychain and
+ * libsecret have far larger limits, but chunking is applied uniformly so
+ * behavior doesn't diverge by platform. Values that fit are written verbatim
+ * — credentials written by older CLI versions still read back unchanged.
  */
 
 type KeyringModule = typeof import("@napi-rs/keyring");
@@ -43,6 +57,22 @@ const AGENTS_ACCOUNT_PREFIX = "agents:";
 const BRAND_SECRET_ACCOUNT_PREFIX = "ai-skills-secret:";
 const BRAND_TOKEN_ACCOUNT_PREFIX = "ai-skills-token:";
 
+/**
+ * Max UTF-16 code units written to a single keychain blob. 1024 units =
+ * 2048 bytes UTF-16, leaving headroom under the Windows Credential Manager
+ * 2560-byte `CRED_MAX_CREDENTIAL_BLOB_SIZE` limit. A JS string's `.length`
+ * is already its UTF-16 code-unit count, so chunk sizing is exact.
+ */
+const CHUNK_SIZE = 1024;
+/**
+ * Sentinel stored in the primary account when a value is chunked; the chunk
+ * count follows. The leading NUL guarantees it can't collide with a real
+ * stored value — JWTs, JSON bundles, and OAuth secrets never contain NUL.
+ */
+const CHUNK_MARKER = "\u0000scai-keychain-chunked-v1\u0000";
+
+const chunkAccount = (account: string, index: number): string => `${account}#chunk${index}`;
+
 let cachedKeyring: KeyringModule | null | undefined;
 let warnedKeyringUnavailable = false;
 let warnedKeyringError = false;
@@ -66,6 +96,27 @@ const warnOnce = (message: string, type: "unavailable" | "error"): void => {
     warnedKeyringError = true;
   }
   consola.warn(message);
+};
+
+/**
+ * Turn an error thrown by the keyring into a concise, redacted reason
+ * string. The previous `catch {}` blocks discarded this entirely, which is
+ * why a Windows Credential Manager rejection (e.g. an over-limit blob)
+ * surfaced only as a generic "unable to write" with no diagnosable cause.
+ */
+const describeKeyringError = (error: unknown): string => {
+  if (!(error instanceof Error)) {
+    return typeof error === "string" ? redactSecrets(error) : "";
+  }
+  const code = (error as { code?: unknown }).code;
+  const text =
+    typeof code === "string" && code.length > 0 ? `${code}: ${error.message}` : error.message;
+  return redactSecrets(text);
+};
+
+const withReason = (message: string, error: unknown): string => {
+  const reason = describeKeyringError(error);
+  return reason ? `${message} (${reason})` : message;
 };
 
 const loadKeyring = async (): Promise<KeyringModule | null> => {
@@ -101,100 +152,190 @@ const safeParse = <T>(value: string): T | undefined => {
   }
 };
 
+const entryFor = (
+  ring: KeyringModule,
+  account: string
+): InstanceType<KeyringModule["AsyncEntry"]> => new ring.AsyncEntry(SERVICE_NAME, account);
+
 /**
- * Treat any read failure as "no token stored" — `@napi-rs/keyring` throws
- * a NoEntry error when the credential doesn't exist (vs keytar which returned
- * null). Distinguishing NoEntry from real errors requires platform-specific
+ * Read a single account's blob. `@napi-rs/keyring` throws a NoEntry error
+ * when the credential doesn't exist (vs keytar which returned null).
+ * Distinguishing NoEntry from real errors requires platform-specific
  * inspection; the conservative choice is to return undefined silently and
  * surface real failures the next time a set/delete is attempted.
  */
 const readPassword = async (ring: KeyringModule, account: string): Promise<string | undefined> => {
   try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, account);
-    return (await entry.getPassword()) ?? undefined;
+    return (await entryFor(ring, account).getPassword()) ?? undefined;
   } catch {
     return undefined;
   }
 };
 
-export const getDeployToken = async (envName: string): Promise<string | undefined> => {
+/** Number of chunks a primary blob references, or 0 if it isn't a manifest. */
+const chunkCountOf = (primary: string | undefined): number => {
+  if (primary === undefined || !primary.startsWith(CHUNK_MARKER)) {
+    return 0;
+  }
+  const count = Number.parseInt(primary.slice(CHUNK_MARKER.length), 10);
+  return Number.isInteger(count) && count > 0 ? count : 0;
+};
+
+/** Delete chunk entries `[from, count)` for an account, ignoring NoEntry. */
+const deleteChunks = async (
+  ring: KeyringModule,
+  account: string,
+  count: number,
+  from = 0
+): Promise<void> => {
+  for (let index = from; index < count; index += 1) {
+    try {
+      await entryFor(ring, chunkAccount(account, index)).deleteCredential();
+    } catch {
+      // A missing chunk is fine — we're deleting it anyway.
+    }
+  }
+};
+
+/**
+ * Write a secret, splitting it across `<account>#chunk<i>` entries when it
+ * exceeds a single blob's budget. Throws on any underlying keyring failure
+ * so the caller can report it. Chunks are written before the manifest so a
+ * crash mid-write leaves the previous value referenced by the old primary
+ * blob rather than a half-written one.
+ */
+const writeSecret = async (ring: KeyringModule, account: string, value: string): Promise<void> => {
+  const previousChunks = chunkCountOf(await readPassword(ring, account));
+
+  if (value.length <= CHUNK_SIZE) {
+    await entryFor(ring, account).setPassword(value);
+    // The new value fits in one blob — drop any chunks a larger prior
+    // value left behind.
+    await deleteChunks(ring, account, previousChunks);
+    return;
+  }
+
+  const count = Math.ceil(value.length / CHUNK_SIZE);
+  for (let index = 0; index < count; index += 1) {
+    const part = value.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+    await entryFor(ring, chunkAccount(account, index)).setPassword(part);
+  }
+  await entryFor(ring, account).setPassword(`${CHUNK_MARKER}${count}`);
+  // A prior value with more chunks leaves orphans past the new count.
+  if (previousChunks > count) {
+    await deleteChunks(ring, account, previousChunks, count);
+  }
+};
+
+/**
+ * Read a secret, reassembling chunk entries when the primary blob is a
+ * manifest. A missing or unreadable chunk resolves to undefined ("no value")
+ * rather than a truncated secret — callers re-authenticate on undefined,
+ * which is always safe; a partial token never is.
+ */
+const readSecret = async (ring: KeyringModule, account: string): Promise<string | undefined> => {
+  const primary = await readPassword(ring, account);
+  if (primary === undefined) {
+    return undefined;
+  }
+  const count = chunkCountOf(primary);
+  if (count === 0) {
+    return primary;
+  }
+  const parts: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const part = await readPassword(ring, chunkAccount(account, index));
+    if (part === undefined) {
+      return undefined;
+    }
+    parts.push(part);
+  }
+  return parts.join("");
+};
+
+/** Delete a secret and any chunk entries it spans. */
+const deleteSecret = async (ring: KeyringModule, account: string): Promise<boolean> => {
+  const count = chunkCountOf(await readPassword(ring, account));
+  if (count > 0) {
+    await deleteChunks(ring, account, count);
+  }
+  return entryFor(ring, account).deleteCredential();
+};
+
+/** Read a credential family's value; undefined when absent or unavailable. */
+const readFamily = async (prefix: string, key: string): Promise<string | undefined> => {
   const ring = await loadKeyring();
   if (!ring) {
     return undefined;
   }
-  return readPassword(ring, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
+  return readSecret(ring, makeAccount(prefix, key));
 };
 
-export const setDeployToken = async (envName: string, token: string): Promise<boolean> => {
+/**
+ * Write a credential family's value. Returns false (never throws) on
+ * failure, warning once with the underlying keyring error so the cause is
+ * diagnosable instead of being silently swallowed.
+ */
+const writeFamily = async (
+  prefix: string,
+  key: string,
+  value: string,
+  failureMessage: string
+): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(token);
+    await writeSecret(ring, makeAccount(prefix, key), value);
     return true;
-  } catch {
-    warnOnce("Unable to write deploy token to the OS keychain.", "error");
+  } catch (error) {
+    warnOnce(withReason(failureMessage, error), "error");
     return false;
   }
 };
 
-export const clearDeployToken = async (envName: string): Promise<boolean> => {
+/** Delete a credential family's value (and its chunks). False on failure. */
+const clearFamily = async (prefix: string, key: string): Promise<boolean> => {
   const ring = await loadKeyring();
   if (!ring) {
     return false;
   }
   try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(DEPLOY_ACCOUNT_PREFIX, envName));
-    return await entry.deleteCredential();
+    return await deleteSecret(ring, makeAccount(prefix, key));
   } catch {
-    // NoEntry on delete is idempotent success; other errors warn.
+    // NoEntry on delete is idempotent success; other errors warn elsewhere.
     return false;
   }
 };
 
-export const getPublishingToken = async (envName: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName));
-};
+export const getDeployToken = (envName: string): Promise<string | undefined> =>
+  readFamily(DEPLOY_ACCOUNT_PREFIX, envName);
 
-export const setPublishingToken = async (envName: string, token: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
-    );
-    await entry.setPassword(token);
-    return true;
-  } catch {
-    warnOnce("Unable to write publishing token to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setDeployToken = (envName: string, token: string): Promise<boolean> =>
+  writeFamily(
+    DEPLOY_ACCOUNT_PREFIX,
+    envName,
+    token,
+    "Unable to write deploy token to the OS keychain."
+  );
 
-export const clearPublishingToken = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(PUBLISHING_ACCOUNT_PREFIX, envName)
-    );
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearDeployToken = (envName: string): Promise<boolean> =>
+  clearFamily(DEPLOY_ACCOUNT_PREFIX, envName);
+
+export const getPublishingToken = (envName: string): Promise<string | undefined> =>
+  readFamily(PUBLISHING_ACCOUNT_PREFIX, envName);
+
+export const setPublishingToken = (envName: string, token: string): Promise<boolean> =>
+  writeFamily(
+    PUBLISHING_ACCOUNT_PREFIX,
+    envName,
+    token,
+    "Unable to write publishing token to the OS keychain."
+  );
+
+export const clearPublishingToken = (envName: string): Promise<boolean> =>
+  clearFamily(PUBLISHING_ACCOUNT_PREFIX, envName);
 
 /**
  * The cached Content Operations Brief API token, keyed by Sitecore
@@ -202,77 +343,33 @@ export const clearPublishingToken = async (envName: string): Promise<boolean> =>
  * covers every env profile in the organization — so the cache key is
  * the org id, not an env-profile name.
  */
-export const getBriefToken = async (orgId: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
-};
+export const getBriefToken = (orgId: string): Promise<string | undefined> =>
+  readFamily(BRIEF_ACCOUNT_PREFIX, orgId);
 
-export const setBriefToken = async (orgId: string, token: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
-    await entry.setPassword(token);
-    return true;
-  } catch {
-    warnOnce("Unable to write brief token to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setBriefToken = (orgId: string, token: string): Promise<boolean> =>
+  writeFamily(
+    BRIEF_ACCOUNT_PREFIX,
+    orgId,
+    token,
+    "Unable to write brief token to the OS keychain."
+  );
 
-export const clearBriefToken = async (orgId: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRIEF_ACCOUNT_PREFIX, orgId));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearBriefToken = (orgId: string): Promise<boolean> =>
+  clearFamily(BRIEF_ACCOUNT_PREFIX, orgId);
 
-export const getCampaignToken = async (envName: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
-};
+export const getCampaignToken = (envName: string): Promise<string | undefined> =>
+  readFamily(CAMPAIGN_ACCOUNT_PREFIX, envName);
 
-export const setCampaignToken = async (envName: string, token: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(token);
-    return true;
-  } catch {
-    warnOnce("Unable to write campaign token to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setCampaignToken = (envName: string, token: string): Promise<boolean> =>
+  writeFamily(
+    CAMPAIGN_ACCOUNT_PREFIX,
+    envName,
+    token,
+    "Unable to write campaign token to the OS keychain."
+  );
 
-export const clearCampaignToken = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CAMPAIGN_ACCOUNT_PREFIX, envName));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearCampaignToken = (envName: string): Promise<boolean> =>
+  clearFamily(CAMPAIGN_ACCOUNT_PREFIX, envName);
 
 /**
  * The Agentic Studio browser session for an environment, stored as a
@@ -281,84 +378,35 @@ export const clearCampaignToken = async (envName: string): Promise<boolean> => {
  * Studio has no machine-credential path yet, so scai captures a browser
  * session cookie instead. Temporary; tracked in that file.
  */
-export const getAgentsCredential = async (envName: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
-};
+export const getAgentsCredential = (envName: string): Promise<string | undefined> =>
+  readFamily(AGENTS_ACCOUNT_PREFIX, envName);
 
-export const setAgentsCredential = async (
-  envName: string,
-  credential: string
-): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(credential);
-    return true;
-  } catch {
-    warnOnce("Unable to write the Agentic Studio session to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setAgentsCredential = (envName: string, credential: string): Promise<boolean> =>
+  writeFamily(
+    AGENTS_ACCOUNT_PREFIX,
+    envName,
+    credential,
+    "Unable to write the Agentic Studio session to the OS keychain."
+  );
 
-export const clearAgentsCredential = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(AGENTS_ACCOUNT_PREFIX, envName));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearAgentsCredential = (envName: string): Promise<boolean> =>
+  clearFamily(AGENTS_ACCOUNT_PREFIX, envName);
 
 export const getCmTokens = async (envName: string): Promise<CmTokenBundle | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  const raw = await readPassword(ring, makeAccount(CM_ACCOUNT_PREFIX, envName));
-  if (!raw) {
-    return undefined;
-  }
-  return safeParse<CmTokenBundle>(raw);
+  const raw = await readFamily(CM_ACCOUNT_PREFIX, envName);
+  return raw === undefined ? undefined : safeParse<CmTokenBundle>(raw);
 };
 
-export const setCmTokens = async (envName: string, tokens: CmTokenBundle): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(JSON.stringify(tokens));
-    return true;
-  } catch {
-    warnOnce("Unable to write CM tokens to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setCmTokens = (envName: string, tokens: CmTokenBundle): Promise<boolean> =>
+  writeFamily(
+    CM_ACCOUNT_PREFIX,
+    envName,
+    JSON.stringify(tokens),
+    "Unable to write CM tokens to the OS keychain."
+  );
 
-export const clearCmTokens = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_ACCOUNT_PREFIX, envName));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearCmTokens = (envName: string): Promise<boolean> =>
+  clearFamily(CM_ACCOUNT_PREFIX, envName);
 
 /**
  * The **secret** of the scai-minted env-scoped automation client for an
@@ -372,41 +420,19 @@ export const clearCmTokens = async (envName: string): Promise<boolean> => {
  * `scai setup client create` writes the metadata to the config and the
  * secret here.
  */
-export const getCmClientSecret = async (envName: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-};
+export const getCmClientSecret = (envName: string): Promise<string | undefined> =>
+  readFamily(CM_CLIENT_ACCOUNT_PREFIX, envName);
 
-export const setCmClientSecret = async (envName: string, secret: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-    await entry.setPassword(secret);
-    return true;
-  } catch {
-    warnOnce("Unable to write the CM client secret to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setCmClientSecret = (envName: string, secret: string): Promise<boolean> =>
+  writeFamily(
+    CM_CLIENT_ACCOUNT_PREFIX,
+    envName,
+    secret,
+    "Unable to write the CM client secret to the OS keychain."
+  );
 
-export const clearCmClientSecret = async (envName: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(CM_CLIENT_ACCOUNT_PREFIX, envName));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearCmClientSecret = (envName: string): Promise<boolean> =>
+  clearFamily(CM_CLIENT_ACCOUNT_PREFIX, envName);
 
 /**
  * The **secret** of the scai-minted **org-level** automation client,
@@ -419,41 +445,19 @@ export const clearCmClientSecret = async (envName: string): Promise<boolean> => 
  * client's non-secret metadata (`clientId`, `name`, `mintedAt`) lives in
  * the `orgClients[orgId]` block in `sitecoreai.cli.json`.
  */
-export const getOrgClientSecret = async (orgId: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
-};
+export const getOrgClientSecret = (orgId: string): Promise<string | undefined> =>
+  readFamily(ORG_CLIENT_ACCOUNT_PREFIX, orgId);
 
-export const setOrgClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
-    await entry.setPassword(secret);
-    return true;
-  } catch {
-    warnOnce("Unable to write the org automation client secret to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setOrgClientSecret = (orgId: string, secret: string): Promise<boolean> =>
+  writeFamily(
+    ORG_CLIENT_ACCOUNT_PREFIX,
+    orgId,
+    secret,
+    "Unable to write the org automation client secret to the OS keychain."
+  );
 
-export const clearOrgClientSecret = async (orgId: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(ORG_CLIENT_ACCOUNT_PREFIX, orgId));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearOrgClientSecret = (orgId: string): Promise<boolean> =>
+  clearFamily(ORG_CLIENT_ACCOUNT_PREFIX, orgId);
 
 /**
  * Brand credentials are keyed by Sitecore `organizationId`, not by
@@ -463,80 +467,30 @@ export const clearOrgClientSecret = async (orgId: string): Promise<boolean> => {
  * access token under separate entries to keep their lifecycles
  * independent (token rotates ~daily; secret is long-lived).
  */
-export const getBrandClientSecret = async (orgId: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId));
-};
+export const getBrandClientSecret = (orgId: string): Promise<string | undefined> =>
+  readFamily(BRAND_SECRET_ACCOUNT_PREFIX, orgId);
 
-export const setBrandClientSecret = async (orgId: string, secret: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId)
-    );
-    await entry.setPassword(secret);
-    return true;
-  } catch {
-    warnOnce("Unable to write Brand client secret to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setBrandClientSecret = (orgId: string, secret: string): Promise<boolean> =>
+  writeFamily(
+    BRAND_SECRET_ACCOUNT_PREFIX,
+    orgId,
+    secret,
+    "Unable to write Brand client secret to the OS keychain."
+  );
 
-export const clearBrandClientSecret = async (orgId: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(
-      SERVICE_NAME,
-      makeAccount(BRAND_SECRET_ACCOUNT_PREFIX, orgId)
-    );
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearBrandClientSecret = (orgId: string): Promise<boolean> =>
+  clearFamily(BRAND_SECRET_ACCOUNT_PREFIX, orgId);
 
-export const getBrandToken = async (orgId: string): Promise<string | undefined> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return undefined;
-  }
-  return readPassword(ring, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
-};
+export const getBrandToken = (orgId: string): Promise<string | undefined> =>
+  readFamily(BRAND_TOKEN_ACCOUNT_PREFIX, orgId);
 
-export const setBrandToken = async (orgId: string, token: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
-    await entry.setPassword(token);
-    return true;
-  } catch {
-    warnOnce("Unable to write Brand token to the OS keychain.", "error");
-    return false;
-  }
-};
+export const setBrandToken = (orgId: string, token: string): Promise<boolean> =>
+  writeFamily(
+    BRAND_TOKEN_ACCOUNT_PREFIX,
+    orgId,
+    token,
+    "Unable to write Brand token to the OS keychain."
+  );
 
-export const clearBrandToken = async (orgId: string): Promise<boolean> => {
-  const ring = await loadKeyring();
-  if (!ring) {
-    return false;
-  }
-  try {
-    const entry = new ring.AsyncEntry(SERVICE_NAME, makeAccount(BRAND_TOKEN_ACCOUNT_PREFIX, orgId));
-    return await entry.deleteCredential();
-  } catch {
-    return false;
-  }
-};
+export const clearBrandToken = (orgId: string): Promise<boolean> =>
+  clearFamily(BRAND_TOKEN_ACCOUNT_PREFIX, orgId);

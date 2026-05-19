@@ -75,6 +75,18 @@ storage principle and lives in the config file: the deploy token's
 `deployTokenExpiresIn` / `deployTokenLastUpdated` on the env profile, the
 brand token's `tokenExpiresIn` / `tokenLastUpdated` in `brand[orgId]`.
 
+### Keychain blob chunking
+
+Windows Credential Manager caps a single credential blob at 2560 bytes, and
+a Sitecore access token (a JWT carrying several scope claims) routinely
+exceeds it. Any secret too large for one blob is transparently split across
+companion `<account>#chunk<i>` entries — so a chunked `deploy:<env>` slot
+may appear in the OS keychain alongside `deploy:<env>#chunk0`,
+`deploy:<env>#chunk1`, etc. This is an encoding detail of
+`src/shared/keychain.ts`, not a change to the credential model: the slots
+above are unchanged, and values small enough for one blob are stored
+verbatim. Chunking is applied on every platform so behavior doesn't diverge.
+
 ## Bootstrap
 
 Minting the first automation client needs a deploy token. `scai setup

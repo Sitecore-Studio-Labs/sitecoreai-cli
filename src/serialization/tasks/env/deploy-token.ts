@@ -112,9 +112,9 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     }
     token = await requestClientCredentialsToken(
       {
-        authority: authority ?? "",
+        authority,
         clientId,
-        clientSecret: clientSecret ?? "",
+        clientSecret,
         audience,
       },
       SCAI_CLIENT_CREDENTIALS_SCOPES
@@ -202,7 +202,7 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     deployTokenLastUpdated: new Date().toISOString(),
     ...({ clientSecret: undefined } as Record<string, undefined>),
   };
-  if (wantsClientCredentials && clientId) {
+  if (wantsClientCredentials) {
     updated.clientId = clientId;
   }
   envProfiles[envName] = updated;

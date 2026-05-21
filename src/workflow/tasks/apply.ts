@@ -104,16 +104,12 @@ export const runWorkflowApply = async (
   }
 
   // Resolve target state. Default to initial state.
-  let targetStateId: string | null = null;
+  let targetStateId: string;
   let targetStateName: string | null = null;
   if (options.state) {
     const stateRef = options.state.trim();
     const match = resolveWorkflowState(workflowDetail, stateRef);
-    if (match) {
-      targetStateId = match.itemId;
-      targetStateName = match.name;
-    }
-    if (!targetStateId) {
+    if (!match) {
       const result: WorkflowApplyResult = {
         itemId: null,
         path: itemSelector.path ?? null,
@@ -133,6 +129,8 @@ export const runWorkflowApply = async (
       });
       return result;
     }
+    targetStateId = match.itemId;
+    targetStateName = match.name;
   } else {
     const initialStateId = await client.getWorkflowInitialStateId(workflowDetail.itemId);
     if (!initialStateId) {
@@ -159,7 +157,7 @@ export const runWorkflowApply = async (
       workflowDetail.itemId.replace(/[{}]/g, "").toLowerCase() &&
     existingWf.stateId &&
     existingWf.stateId.replace(/[{}]/g, "").toLowerCase() ===
-      (targetStateId ?? "").replace(/[{}]/g, "").toLowerCase()
+      targetStateId.replace(/[{}]/g, "").toLowerCase()
   ) {
     const result: WorkflowApplyResult = {
       itemId: existingWf.itemId,
@@ -206,7 +204,7 @@ export const runWorkflowApply = async (
     await client.setItemWorkflowState({
       ...(itemSelector.itemId ? { itemId: itemSelector.itemId } : { path: itemSelector.path }),
       workflowId: workflowDetail.itemId,
-      stateId: targetStateId ?? undefined,
+      stateId: targetStateId,
     });
     const result: WorkflowApplyResult = {
       itemId: existingWf?.itemId ?? itemSelector.itemId ?? null,

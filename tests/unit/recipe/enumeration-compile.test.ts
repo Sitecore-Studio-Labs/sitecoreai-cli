@@ -20,7 +20,7 @@ import {
   designParameterFieldId,
   designParametersStandardValuesId,
   designParametersTemplateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import {
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,

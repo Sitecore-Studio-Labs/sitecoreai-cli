@@ -18,7 +18,7 @@ import {
   renderingId,
   standardValuesId,
   templateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import type {
   CreateItemOp,
   Operation,

@@ -13,7 +13,7 @@ import {
   enumerationsRootId,
   enumerationsRootStandardValuesId,
   enumerationTemplateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import {
   ENUMERATION_ICON,
   SITECORE_TEMPLATES,

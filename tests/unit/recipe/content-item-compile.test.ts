@@ -12,7 +12,7 @@ import {
   templateId,
   workflowId,
   workflowStateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import type { ContentFieldValue, ContentItemRecipe } from "../../../src/recipe/schema/recipe";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";

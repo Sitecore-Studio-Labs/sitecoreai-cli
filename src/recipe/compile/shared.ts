@@ -20,7 +20,7 @@ import {
   sectionId,
   standardValuesId,
   templateId,
-} from "../guids";
+} from "../items/guids";
 import {
   type CreateItemOp,
   type FieldValue,

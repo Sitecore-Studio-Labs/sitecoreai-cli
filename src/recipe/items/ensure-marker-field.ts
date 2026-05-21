@@ -23,8 +23,8 @@
  * the content editor — both are flagged unverified in the architecture doc.
  */
 import { createScaiError } from "@/shared/errors";
-import type { AuthoringApiClient } from "./api/client";
-import type { FieldValue } from "./ir/operations";
+import type { AuthoringApiClient } from "../api/client";
+import type { FieldValue } from "../ir/operations";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
@@ -32,8 +32,8 @@ import {
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
-} from "./ir/sitecore-templates";
-import { sitecoreFieldTypeLabel } from "./schema/field-types";
+} from "../ir/sitecore-templates";
+import { sitecoreFieldTypeLabel } from "../schema/field-types";
 import { SCAI_HANDLE_FIELD_NAME } from "./marker";
 
 /** Name of the scai-owned Template Section the marker field lives under. */

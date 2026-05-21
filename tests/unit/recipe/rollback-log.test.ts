@@ -6,7 +6,7 @@ import {
   createRollbackLogger,
   resolveRollbackLogDir,
   ROLLBACK_LOG_SCHEMA_VERSION,
-} from "../../../src/recipe/rollback-log";
+} from "../../../src/recipe/rollback/rollback-log";
 
 let tmpDir: string;
 

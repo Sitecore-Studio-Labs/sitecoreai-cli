@@ -9,7 +9,7 @@ import {
   workflowId,
   workflowStateActionId,
   workflowStateId,
-} from "../guids";
+} from "../items/guids";
 import {
   type CreateItemOp,
   type FieldValue,
@@ -19,7 +19,7 @@ import {
   type SetFieldOp,
 } from "../ir/operations";
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import { WorkflowRecipeSchema, type WorkflowRecipe } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 import { v5 as uuidv5 } from "uuid";

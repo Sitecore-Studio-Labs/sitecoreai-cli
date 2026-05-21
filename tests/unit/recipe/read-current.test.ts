@@ -22,8 +22,8 @@ import type {
   ItemSelector,
   RemoteItem,
 } from "../../../src/recipe/api/client";
-import { readCurrentRecipes, type ReadCurrentRoots } from "../../../src/recipe/read-current";
-import { SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/marker";
+import { readCurrentRecipes, type ReadCurrentRoots } from "../../../src/recipe/items/read-current";
+import { SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
 import { compileRecipeSet } from "../../../src/recipe/compile";
 import { emitLayoutXml, type LayoutEmitContext } from "../../../src/recipe/layout/emit";
 import { encodeTemplatesMapping } from "../../../src/recipe/layout/templates-mapping";

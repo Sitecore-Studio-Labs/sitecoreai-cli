@@ -12,10 +12,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SyncContext } from "../../../src/sync";
-import type { ExecutionResult } from "../../../src/recipe/execute";
+import type { ExecutionResult } from "../../../src/recipe/runtime/execute";
 import type { OperationIr } from "../../../src/recipe/ir/operations";
-import { injectHandleMarker } from "../../../src/recipe/marker";
-import type { PlannedAction } from "../../../src/recipe/plan";
+import { injectHandleMarker } from "../../../src/recipe/items/marker";
+import type { PlannedAction } from "../../../src/recipe/runtime/plan";
 
 // Stub the env → tenant bridge so the kind never touches real config.
 const resolveEnvironment = vi.hoisted(() => vi.fn());
@@ -30,11 +30,11 @@ const compileRecipeSet = vi.hoisted(() => vi.fn());
 vi.mock("../../../src/recipe/compile", () => ({ compileRecipeSet }));
 
 const executeIr = vi.hoisted(() => vi.fn());
-vi.mock("../../../src/recipe/execute", () => ({ executeIr }));
+vi.mock("../../../src/recipe/runtime/execute", () => ({ executeIr }));
 
 // Mock the reverse-projection — recipe-kind only resolves roots + delegates.
 const readCurrentRecipes = vi.hoisted(() => vi.fn());
-vi.mock("../../../src/recipe/read-current", () => ({ readCurrentRecipes }));
+vi.mock("../../../src/recipe/items/read-current", () => ({ readCurrentRecipes }));
 
 import { recipeKind } from "../../../src/recipe/recipe-kind";
 

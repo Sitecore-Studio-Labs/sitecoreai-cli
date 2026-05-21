@@ -1,5 +1,5 @@
 import { createScaiError } from "@/shared/errors";
-import { contentItemId, pageDesignId, partialDesignId, renderingId } from "../guids";
+import { contentItemId, pageDesignId, partialDesignId, renderingId } from "../items/guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -7,7 +7,7 @@ import {
   OperationIrSchema,
   type SetFieldOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   COMPOSITION_FIELDS,
   DEFAULT_DEVICE_ID,

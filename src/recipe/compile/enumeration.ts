@@ -1,11 +1,11 @@
-import { enumerationFolderId, enumerationsGroupingFolderId, enumValueId } from "../guids";
+import { enumerationFolderId, enumerationsGroupingFolderId, enumValueId } from "../items/guids";
 import {
   type CreateItemOp,
   type Operation,
   type OperationIr,
   OperationIrSchema,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import { createScaiError } from "../../shared/errors";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";

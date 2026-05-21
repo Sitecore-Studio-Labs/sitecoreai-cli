@@ -59,7 +59,7 @@
  * the whole-set `KindRef` today.
  */
 
-import type { AuthoringApiClient, RemoteItem } from "./api/client";
+import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import {
   COMPOSITION_FIELDS,
   LAYOUT_FIELDS,
@@ -71,8 +71,8 @@ import {
   SXA_HEADLESS_PAGE_BASE_TEMPLATES,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
-} from "./ir/sitecore-templates";
-import { parseLayoutXml, type ParsedPlacement } from "./layout/parse";
+} from "../ir/sitecore-templates";
+import { parseLayoutXml, type ParsedPlacement } from "../layout/parse";
 import { SCAI_HANDLE_FIELD_NAME } from "./marker";
 import type {
   ComponentPlacement,
@@ -89,9 +89,9 @@ import type {
   PlaceholderRecipe,
   Recipe,
   SitecoreFieldAugment,
-} from "./schema/recipe";
-import type { FieldShape, SitecoreFieldType } from "./schema/field-types";
-import { sitecoreFieldTypeLabel } from "./schema/field-types";
+} from "../schema/recipe";
+import type { FieldShape, SitecoreFieldType } from "../schema/field-types";
+import { sitecoreFieldTypeLabel } from "../schema/field-types";
 
 /**
  * The compile-time content-tree roots `readCurrent` walks. Mirrors the

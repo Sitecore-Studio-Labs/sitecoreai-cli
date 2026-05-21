@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAction } from "../../../src/recipe/plan";
+import { buildAction } from "../../../src/recipe/runtime/plan";
 import type { AppendToMultiListOp } from "../../../src/recipe/ir/operations";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 

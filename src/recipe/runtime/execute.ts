@@ -1,8 +1,8 @@
 import { createScaiError } from "@/shared/errors";
-import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "./api/client";
-import { renderRefValue } from "./api/ref-encoding";
-import type { SitesApiClient } from "./api/sites-client";
-import type { FieldValue, OperationIr } from "./ir/operations";
+import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "../api/client";
+import { renderRefValue } from "../api/ref-encoding";
+import type { SitesApiClient } from "../api/sites-client";
+import type { FieldValue, OperationIr } from "../ir/operations";
 import {
   buildAction,
   buildPlan,
@@ -11,8 +11,13 @@ import {
   type PlannedAction,
   type PlanSummary,
 } from "./plan";
-import { rollback, type RollbackError, type RollbackEvent, type RollbackResult } from "./rollback";
-import type { RollbackLogger, RollbackSummaryLog } from "./rollback-log";
+import {
+  rollback,
+  type RollbackError,
+  type RollbackEvent,
+  type RollbackResult,
+} from "../rollback/rollback";
+import type { RollbackLogger, RollbackSummaryLog } from "../rollback/rollback-log";
 
 /**
  * `scai provision recipe push` and `scai provision recipe plan` share the same per-op

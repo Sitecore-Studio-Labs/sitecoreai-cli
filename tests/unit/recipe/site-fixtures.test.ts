@@ -7,7 +7,7 @@ import {
   compileRecipe,
   compileSiteTemplateRecipe,
 } from "../../../src/recipe/compile";
-import { templateId } from "../../../src/recipe/guids";
+import { templateId } from "../../../src/recipe/items/guids";
 import type { CreateItemOp, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
   SITECORE_TEMPLATES,

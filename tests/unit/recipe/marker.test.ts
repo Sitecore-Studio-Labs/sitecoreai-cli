@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/marker";
+import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
 import type {
   CreateItemOp,
   FieldValue,

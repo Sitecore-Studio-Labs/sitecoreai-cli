@@ -1,5 +1,5 @@
 import { runRecipePush } from "./push";
-import type { ExecutionResult } from "../execute";
+import type { ExecutionResult } from "../runtime/execute";
 import type { RecipePushOptions } from "./shared";
 
 /**

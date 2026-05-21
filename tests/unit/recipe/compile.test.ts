@@ -18,7 +18,7 @@ import {
   templateId,
   variantId,
   variantsFolderId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import {
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,

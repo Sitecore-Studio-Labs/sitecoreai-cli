@@ -3,7 +3,7 @@ import path from "node:path";
 import { ScaiError, createScaiError } from "@/shared/errors";
 import { type Recipe, RecipeSchema } from "./schema/recipe";
 import { OperationIrSchema, type OperationIr } from "./ir/operations";
-import type { Plan } from "./plan";
+import type { Plan } from "./runtime/plan";
 import { isRecipeSandboxEnabled, loadRecipeInSandbox } from "./sandbox/load";
 
 /**

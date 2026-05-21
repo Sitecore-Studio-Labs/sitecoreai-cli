@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
-import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
+import { executeIr, type ExecutionEvent } from "../../../src/recipe/runtime/execute";
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import type { CreateItemOp, OperationIr } from "../../../src/recipe/ir/operations";
 import type { AuthoringApiClient, RemoteItem } from "../../../src/recipe/api/client";

@@ -14,7 +14,7 @@ import {
   siteDataFolderTemplateId,
   siteDataRootStandardValuesId,
   templateId,
-} from "./guids";
+} from "./items/guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -24,7 +24,7 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "./ir/operations";
-import { defaultPolicyForRecipe, policyFor } from "./policy";
+import { defaultPolicyForRecipe, policyFor } from "./runtime/policy";
 import {
   AVAILABLE_RENDERINGS_FIELDS,
   COMPOSITION_FIELDS,

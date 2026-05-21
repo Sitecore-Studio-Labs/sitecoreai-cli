@@ -2,7 +2,7 @@ import {
   headlessVariantsSectionFolderId,
   renderingsSectionFolderId,
   sectionFolderId,
-} from "../guids";
+} from "../items/guids";
 import {
   type CreateItemOp,
   type FieldValue,

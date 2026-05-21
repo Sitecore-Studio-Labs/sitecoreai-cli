@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AddItemVersionOp } from "../../../src/recipe/ir/operations";
-import { buildAction } from "../../../src/recipe/plan";
+import { buildAction } from "../../../src/recipe/runtime/plan";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";

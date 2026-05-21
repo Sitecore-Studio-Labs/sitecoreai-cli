@@ -2,7 +2,7 @@ import {
   designParameterFieldId,
   designParametersSectionId,
   designParametersTemplateId,
-} from "../guids";
+} from "../items/guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -10,7 +10,7 @@ import {
   OperationIrSchema,
   type SetBaseTemplatesOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   DEFAULT_ICON,
   SITECORE_TEMPLATES,

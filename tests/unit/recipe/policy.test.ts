@@ -4,7 +4,7 @@ import {
   policyFor,
   policyForOp,
   purposeForRecipe,
-} from "../../../src/recipe/policy";
+} from "../../../src/recipe/runtime/policy";
 import type { CreateItemOp } from "../../../src/recipe/ir/operations";
 
 describe("policy.ts — Phase 1 invariants", () => {

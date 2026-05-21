@@ -1,7 +1,7 @@
 import { createScaiError } from "@/shared/errors";
-import type { AuthoringApiClient, RemoteItem, UpdateItemInput } from "./api/client";
-import type { FieldValue } from "./ir/operations";
-import type { PlannedAction } from "./plan";
+import type { AuthoringApiClient, RemoteItem, UpdateItemInput } from "../api/client";
+import type { FieldValue } from "../ir/operations";
+import type { PlannedAction } from "../runtime/plan";
 import type { RollbackLogger } from "./rollback-log";
 
 /**

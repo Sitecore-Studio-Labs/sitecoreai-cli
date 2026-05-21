@@ -20,14 +20,14 @@ vi.mock("../../../../src/recipe/io", () => ({
   writePlan: vi.fn(),
   defaultPlanPath: vi.fn(),
 }));
-vi.mock("../../../../src/recipe/plan", () => ({
+vi.mock("../../../../src/recipe/runtime/plan", () => ({
   buildPlan: vi.fn(),
 }));
 
 import { runRecipePlan } from "../../../../src/recipe/tasks/plan";
 import * as shared from "../../../../src/recipe/tasks/shared";
 import * as io from "../../../../src/recipe/io";
-import { buildPlan } from "../../../../src/recipe/plan";
+import { buildPlan } from "../../../../src/recipe/runtime/plan";
 
 interface FakeLogger {
   isJson: () => boolean;

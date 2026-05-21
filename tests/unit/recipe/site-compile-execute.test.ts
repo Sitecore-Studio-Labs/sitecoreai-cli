@@ -3,8 +3,8 @@ import { alarisRecipe } from "../../../example/recipes/alaris.recipe";
 import { solterraCoRecipe } from "../../../example/recipes/solterra-co.recipe";
 import { compileSiteRecipe } from "../../../src/recipe/compile";
 import type { CompileContext } from "../../../src/recipe/compile";
-import { executeIr } from "../../../src/recipe/execute";
-import { siteId, templateId } from "../../../src/recipe/guids";
+import { executeIr } from "../../../src/recipe/runtime/execute";
+import { siteId, templateId } from "../../../src/recipe/items/guids";
 import type { CreateSiteFromTemplateOp } from "../../../src/recipe/ir/operations";
 import type { AuthoringApiClient } from "../../../src/recipe/api/client";
 import type {

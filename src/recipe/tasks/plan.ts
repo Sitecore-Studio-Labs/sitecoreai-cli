@@ -1,7 +1,7 @@
 import path from "node:path";
 import { createScaiError } from "@/shared/errors";
 import { defaultPlanPath, loadIr, writePlan } from "../io";
-import { buildPlan, type Plan } from "../plan";
+import { buildPlan, type Plan } from "../runtime/plan";
 import { resolveTenant, toLogger, type RecipePlanOptions } from "./shared";
 
 /**

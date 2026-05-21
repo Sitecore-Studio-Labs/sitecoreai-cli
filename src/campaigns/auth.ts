@@ -1,7 +1,4 @@
-import {
-  DEFAULT_SITECORE_API_AUDIENCE,
-  requestClientCredentialsToken,
-} from "@/serialization/api/auth";
+import { createApiAuth } from "@/auth/factory";
 import type { BrandCredential } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { getBrandClientSecret, getCampaignToken, setCampaignToken } from "@/shared/keychain";
@@ -22,32 +19,14 @@ import { getBrandClientSecret, getCampaignToken, setCampaignToken } from "@/shar
  * Minted with no `scope` parameter — Auth0 issues the AI APIs key's full
  * (per-key) grant; the Orchestrate API enforces scope server-side. There
  * is no interactive login flow — campaign calls are agent-driven.
+ *
+ * The cache → resolve → mint → cache loop runs through the shared
+ * `createApiAuth` factory in `@/auth/factory`; campaign plugs in its
+ * own keychain slot (`getCampaignToken` / `setCampaignToken`), no
+ * scope parameter (AI APIs keys are minted unfiltered), and a
+ * credential resolver that pulls the org-scoped `clientId` from the
+ * `brand[orgId]` config block and its secret from the keychain.
  */
-
-/**
- * JWT exp claim (seconds) — used to decide whether a cached token is
- * still usable. Refresh ~60s early to absorb clock skew.
- */
-const decodeExp = (jwt: string): number | undefined => {
-  const parts = jwt.split(".");
-  if (parts.length < 2) return undefined;
-  try {
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
-    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
-      exp?: number;
-    };
-    return typeof payload.exp === "number" ? payload.exp : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const isFresh = (jwt: string, skewSeconds = 60): boolean => {
-  const exp = decodeExp(jwt);
-  if (exp === undefined) return false;
-  return exp > Math.floor(Date.now() / 1000) + skewSeconds;
-};
 
 export interface AcquireCampaignTokenOptions {
   /** Org id behind the campaign environment — keys the AI APIs key. */
@@ -79,35 +58,33 @@ export const acquireCampaignToken = async (
     );
   }
 
-  const cached = await getCampaignToken(organizationId);
-  if (cached && isFresh(cached)) {
-    return cached;
-  }
-
-  const clientSecret = await getBrandClientSecret(organizationId);
-  if (!brandCredential?.clientId || !clientSecret) {
-    throw createScaiError(
-      `No AI APIs key is registered for org '${organizationId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      {
-        hint: "The Orchestrate (Campaign) API authenticates with the AI APIs key — the same credential `scai brand` uses. Register one with `scai setup client register-brand`.",
-      }
-    );
-  }
-
-  const result = await requestClientCredentialsToken({
-    authority: brandCredential.authority ?? "https://auth.sitecorecloud.io",
-    clientId: brandCredential.clientId,
-    clientSecret,
-    audience: brandCredential.audience ?? DEFAULT_SITECORE_API_AUDIENCE,
+  const acquire = createApiAuth({
+    keychainKey: organizationId,
+    getCachedToken: getCampaignToken,
+    setCachedToken: setCampaignToken,
+    errorCode: "AUTH_BRAND_REQUIRED",
+    resolveCredential: async () => {
+      const clientSecret = await getBrandClientSecret(organizationId);
+      if (!brandCredential?.clientId || !clientSecret) return undefined;
+      return {
+        clientId: brandCredential.clientId,
+        clientSecret,
+        authority: brandCredential.authority,
+        audience: brandCredential.audience,
+      };
+    },
+    onMissingCredential: () => ({
+      message: `No AI APIs key is registered for org '${organizationId}'.`,
+      hint: "The Orchestrate (Campaign) API authenticates with the AI APIs key — the same credential `scai brand` uses. Register one with `scai setup client register-brand`.",
+    }),
+    onMintFailure: (error) => ({
+      message: `Failed to acquire campaign token for org '${organizationId}'.`,
+      hint: `Underlying error: ${error instanceof Error ? error.message : String(error)}`,
+    }),
+    onNoAccessToken: () => ({
+      message: `Sitecore returned no access token for org '${organizationId}'.`,
+      hint: "Re-register the AI APIs key with `scai setup client register-brand`.",
+    }),
   });
-  if (!result.accessToken) {
-    throw createScaiError(
-      `Sitecore returned no access token for org '${organizationId}'.`,
-      "AUTH_BRAND_REQUIRED",
-      { hint: "Re-register the AI APIs key with `scai setup client register-brand`." }
-    );
-  }
-  await setCampaignToken(organizationId, result.accessToken);
-  return result.accessToken;
+  return acquire();
 };

@@ -29,6 +29,7 @@ const SRC = path.resolve(__dirname, "../../../src");
 /** Top-level `src/` domain areas — anything `shared/` must not import. */
 const DOMAIN_AREAS = [
   "agents",
+  "auth",
   "brand",
   "brief",
   "campaigns",

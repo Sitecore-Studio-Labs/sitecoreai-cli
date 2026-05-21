@@ -161,8 +161,8 @@ truth after any scai upgrade.
 
 ## Resources
 
-11 resources for agent self-orientation. Ten use the `scai://` scheme
-(handled in-process); one is the direct `https://` URI for the
+12 resources for agent self-orientation. Eleven use the `scai://`
+scheme (handled in-process); one is the direct `https://` URI for the
 Sitecore API docs site, which compatible MCP clients can fetch
 externally. Use `scai mcp` resource listing as the source of truth —
 the set grows as new domains land.
@@ -171,6 +171,7 @@ the set grows as new domains land.
 | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `scai://help/overview`             | Markdown overview, binding model, write gate                                                   |
 | `scai://help/topics`               | Index of help topics the server exposes                                                        |
+| `scai://help/access-and-policy`    | Workspace-policy allowlist + credential model walkthrough                                      |
 | `scai://help/recipes-grammar`      | Recipe DSL grammar synopsis                                                                    |
 | `scai://help/recipes-workflow`     | Guided recipe authoring workflow (schema, dry-run/apply, failure modes)                        |
 | `scai://help/deploy-lifecycle`     | XM Cloud deploy state machine                                                                  |

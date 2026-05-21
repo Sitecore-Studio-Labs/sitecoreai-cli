@@ -2,6 +2,7 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/policy/environment";
 import { promptText } from "@/shared/prompt";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { acquirePublishingToken } from "../api/auth";
 import { listPublishJobs, submitPublishJob } from "../api/client";
 import { resolvePublishingLocales } from "../api/languages";
@@ -157,6 +158,29 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
   const whatIf = options.allowWrite ? Boolean(options.whatIf) : true;
 
   if (whatIf) {
+    // JSON-mode contract: skip the human-readable pre-flight (token
+    // acquisition, last-publish lookup, in-flight job warning) — it
+    // writes to stdout via the logger and the pre-flight is best-effort
+    // anyway. Agents that need this metadata can call
+    // `publish status`/`publish history` separately. The envelope
+    // carries the mint scope + token.
+    if (logger.isJson()) {
+      const token = mintScopeToken(scope);
+      const envelope = buildScaiEnvelope({
+        command: "publish.all",
+        environment: envName,
+        data: {
+          scope,
+          mode,
+          languages,
+          scopeToken: token,
+          scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
+        },
+        extra: { whatIf: true },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+      return;
+    }
     logger.warn(
       `⚠️  publish all is a whole-environment republish to ${target}. This will republish EVERY item across every site in env '${envName}'.`,
       "yellow"
@@ -318,7 +342,13 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
         options.timeoutS ?? DEFAULT_WATCH_TIMEOUT_S
       );
       if (logger.isJson()) {
-        process.stdout.write(`${JSON.stringify({ terminal: true, ...terminal }, null, 2)}\n`);
+        const envelope = buildScaiEnvelope({
+          command: "publish.all",
+          environment: envName,
+          data: { terminal: true, ...terminal },
+          extra: { summary: `Publish-all job ${job.id} reached a terminal state.` },
+        });
+        process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
       } else {
         printJobSummary(logger, terminal);
       }
@@ -327,7 +357,13 @@ export const runPublishAll = async (options: RunPublishAllOptions): Promise<void
     }
 
     if (logger.isJson()) {
-      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      const envelope = buildScaiEnvelope({
+        command: "publish.all",
+        environment: envName,
+        data: job,
+        extra: { summary: `Submitted publish-all job ${job.id} (${job.state}).` },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
       return;
     }
     logger.info(`Track with: scai content publish status ${job.id} -n ${envName}`, "gray");

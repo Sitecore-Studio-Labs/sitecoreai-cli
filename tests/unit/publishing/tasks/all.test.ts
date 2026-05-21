@@ -312,8 +312,12 @@ describe("runPublishAll — apply path", () => {
 
     await runPublishAll({ json: true, allowWrite: true, confirmToken: token, yes: true });
 
-    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as { id: string };
-    expect(last.id).toBe("job-json");
+    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as {
+      command: string;
+      data: { id: string };
+    };
+    expect(last.command).toBe("publish.all");
+    expect(last.data.id).toBe("job-json");
   });
 
   it("watches the job to terminal in non-interactive mode and prints a JSON summary", async () => {
@@ -343,10 +347,11 @@ describe("runPublishAll — apply path", () => {
     expect(vi.mocked(watchPublishJob)).toHaveBeenCalledOnce();
     expect(vi.mocked(throwOnTerminalFailure)).toHaveBeenCalledOnce();
     const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as {
-      terminal: boolean;
-      state: string;
+      command: string;
+      data: { terminal: boolean; state: string };
     };
-    expect(last).toMatchObject({ terminal: true, state: "completed" });
+    expect(last.command).toBe("publish.all");
+    expect(last.data).toMatchObject({ terminal: true, state: "completed" });
   });
 
   it("prints a human job summary when watching in non-interactive non-json mode", async () => {

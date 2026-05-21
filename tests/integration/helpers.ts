@@ -61,6 +61,22 @@ export const describeIfDeployAuth = () => {
   };
 };
 
+/**
+ * Honors the integration gate but does NOT require deploy auth. For
+ * integration tests that exercise the *binary spawn* path (e.g. the MCP
+ * stdio server) without making outbound HTTP calls — they still belong
+ * in the integration tier because they fork a real subprocess, but they
+ * don't need real Sitecore credentials.
+ */
+export const describeIfIntegration = () => {
+  const enabled = process.env.SITECOREAI_RUN_INTEGRATION === "1";
+  return {
+    describe: enabled ? describe : describe.skip,
+    it: enabled ? it : it.skip,
+    missing: enabled ? [] : ["SITECOREAI_RUN_INTEGRATION=1"],
+  };
+};
+
 export const resolveDeployToken = async (): Promise<string> => {
   if (cachedDeployToken) {
     return cachedDeployToken;

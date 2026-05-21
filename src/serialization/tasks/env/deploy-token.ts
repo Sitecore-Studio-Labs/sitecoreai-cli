@@ -230,7 +230,18 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
     "green"
   );
   if (options.print) {
-    // Intentional: allows piping token in automated environments.
-    console.log(token.accessToken);
+    // CLI-only token piping. Refuses to run under the MCP transport —
+    // a raw bearer print would corrupt JSON-RPC framing on stdout and
+    // leak a credential into the agent transcript. `runDeployToken`
+    // isn't wired to any MCP tool today; this is defense in depth so
+    // a future wiring mistake fails loudly.
+    if (process.env.SITECOREAI_MCP_SERVE === "1") {
+      throw createScaiError(
+        "Refusing to print an access token while running under the MCP transport.",
+        "AUTH_DENIED",
+        { hint: "Run `scai setup login --print` from a terminal, not via the MCP server." }
+      );
+    }
+    process.stdout.write(`${token.accessToken}\n`);
   }
 };

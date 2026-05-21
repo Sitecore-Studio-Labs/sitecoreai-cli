@@ -30,6 +30,7 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/policy/environment";
 import { promptConfirm, promptText } from "@/shared/prompt";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { createHygieneApiClient } from "@/hygiene/api/client";
 import {
   FIELD_NEVER_PUBLISH,
@@ -378,7 +379,17 @@ const runDeleteUnpublish = async (ctx: DeleteContext): Promise<void> => {
       outcome: "ok",
     });
     if (logger.isJson()) {
-      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      const envelope = buildScaiEnvelope({
+        command: "publish.unpublish",
+        environment: envName,
+        data: job,
+        extra: {
+          summary: `Submitted publish job ${job.id} (${job.state}).`,
+          strategy: "delete",
+          reversible: false,
+        },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
       return;
     }
     logger.info(`Submitted publish job ${job.id} (${job.state}).`, "green");
@@ -483,12 +494,28 @@ export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): 
   const productionTier = isProductionTier(environment);
 
   if (whatIf) {
+    const token = mintScopeToken(scope);
+    if (logger.isJson()) {
+      const envelope = buildScaiEnvelope({
+        command: "publish.unpublish",
+        environment: envName,
+        data: {
+          scope,
+          strategy,
+          scopeToken: token,
+          scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
+          productionTier,
+        },
+        extra: { whatIf: true },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+      return;
+    }
     logger.warn(
       `What-if: would unpublish ${itemIds.length} item(s) via strategy '${strategy}'.`,
       "yellow"
     );
     printScope(logger, scope);
-    const token = mintScopeToken(scope);
     logger.info("", "gray");
     if (productionTier) {
       logger.info(
@@ -669,7 +696,17 @@ export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): 
       fieldChanges: allFieldChanges,
     });
     if (logger.isJson()) {
-      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      const envelope = buildScaiEnvelope({
+        command: "publish.unpublish",
+        environment: envName,
+        data: job,
+        extra: {
+          summary: `Submitted publish job ${job.id} (${job.state}).`,
+          strategy,
+          fieldChanges: allFieldChanges,
+        },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
       return;
     }
     logger.info(`Submitted publish job ${job.id} (${job.state}).`, "green");

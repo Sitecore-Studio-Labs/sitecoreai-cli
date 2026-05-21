@@ -189,6 +189,27 @@ export const checkAccess = async (options: CheckAccessOptions): Promise<AccessRe
         },
       });
     }
+
+    // Brand / AI APIs key — org-scoped, required by every brand / brief
+    // / campaign / documents / pipeline / review call. Reported as
+    // `warn` (non-blocking) because env-tier work (deploy, serialization,
+    // publishing, hygiene) does NOT need it; an env preflight should not
+    // refuse to be `ready` for an unrelated credential gap. The
+    // remediation guides the operator before they hit AUTH_REQUIRED on
+    // their first brand-area call.
+    if (environment.organizationId && !matrix.brand) {
+      gates.push({
+        id: "credentials",
+        status: "warn",
+        summary: `No brand / AI APIs key for org '${environment.organizationId}'. Required for scai brand / brief / campaign / documents / pipeline / review.`,
+        remediation: {
+          actor: "needs-human-terminal",
+          fix: `scai setup client register-brand --org-id ${environment.organizationId}`,
+          detail:
+            "Registers an AI APIs key (Stream → Admin → AI APIs) against the org so brand-area commands can mint short-lived tokens.",
+        },
+      });
+    }
   }
 
   const blocking = gates.find((gate) => gate.status === "blocked");

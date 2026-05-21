@@ -68,11 +68,34 @@ beforeEach(() => {
 
 describe("checkAccess", () => {
   it("reports ready when config, policy, and credentials all pass", async () => {
+    // Brand key present so the org-scoped brand-credentials probe stays
+    // out of the gate list; this test owns the all-green path.
+    mocks.resolveCredentialMatrix.mockResolvedValue({
+      envClient: true,
+      orgClient: false,
+      brand: true,
+    });
     const report = await checkAccess({ configPath: "/proj", environmentName: "demo" });
     expect(report.ready).toBe(true);
     expect(report.gates.map((gate) => gate.status)).toEqual(["ok", "ok", "ok"]);
     expect(report.nextStep).toBeUndefined();
     expect(report.humanOnlyOperations.length).toBeGreaterThan(0);
+  });
+
+  it("warns (non-blocking) when the brand / AI APIs key is missing for the env's org", async () => {
+    mocks.resolveCredentialMatrix.mockResolvedValue({
+      envClient: true,
+      orgClient: false,
+      brand: false,
+    });
+    const report = await checkAccess({ configPath: "/proj", environmentName: "demo" });
+    expect(report.ready).toBe(true);
+    const credentialGates = report.gates.filter((gate) => gate.id === "credentials");
+    expect(credentialGates).toHaveLength(2);
+    expect(credentialGates[0].status).toBe("ok");
+    expect(credentialGates[1].status).toBe("warn");
+    expect(credentialGates[1].summary).toMatch(/brand/i);
+    expect(credentialGates[1].remediation?.fix).toContain("register-brand");
   });
 
   it("blocks the config gate when the environment is not configured", async () => {

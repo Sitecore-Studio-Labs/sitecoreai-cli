@@ -11,7 +11,6 @@
 import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { readSerializationModules } from "@/config/modules";
 import type { RootConfiguration, SerializationModuleConfiguration } from "@/config/types";
-import { createScaiError } from "@/shared/errors";
 import { FilesystemTreeSpec } from "./tree-spec";
 
 /** Options for {@link loadConfigAndModules}. */
@@ -57,21 +56,7 @@ export const groupSubtreesByDatabase = (
   return map;
 };
 
-/** Throw unless the environment is configured to allow writes. */
-export const ensureAllowWrite = (root: RootConfiguration, environmentName: string): void => {
-  const env = root.environments[environmentName];
-  if (!env?.allowWrite) {
-    const envKey = environmentName
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-    throw createScaiError(
-      `Environment ${environmentName} is not configured to allow writing data.`,
-      "INPUT_INVALID",
-      {
-        hint: `Set allowWrite in sitecoreai.cli.json, set SITECOREAI_ENV_${envKey}_ALLOW_WRITE=true, or pass --allow-write.`,
-      }
-    );
-  }
-};
+// `ensureAllowWrite` previously lived here as a second, divergent
+// implementation that skipped `authorizeOperation`. It is now sourced
+// exclusively from `@/policy/allow-write` and re-exported from the
+// area barrel and `./tasks/shared` for callers' import surface.

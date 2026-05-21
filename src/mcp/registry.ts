@@ -24,7 +24,18 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { z, ZodRawShape } from "zod";
 import type { McpContext } from "./auth";
 
-export type ToolAuth = "read" | "write";
+/**
+ * Auth class driving the dispatch-level `allowWrite` gate.
+ *
+ *   - `read`               — no `allowWrite` required.
+ *   - `write`              — `allowWrite: true` required at dispatch.
+ *   - `verb-discriminated` — handler decides per `verb` / `direction`
+ *     discriminator. Dispatch does NOT auto-require `allowWrite`; the
+ *     handler must enforce it (plus `ensureMcpElevationAllowed`) on the
+ *     writing verbs. Use only for tools whose verb space mixes read
+ *     verbs and write verbs and whose write verbs are clearly named.
+ */
+export type ToolAuth = "read" | "write" | "verb-discriminated";
 
 /**
  * Per-call extras handed to every tool handler. Carries the cancellation

@@ -14,6 +14,14 @@ vi.mock("../../../../src/sync", async () => {
   return { ...actual, ...aggMocks };
 });
 
+// `verb=push` path now calls into `@/config/root-config` +
+// `@/policy/allow-write` to enforce per-env denyMcpElevation. The mock
+// returns a benign root so `ensureMcpElevationAllowed` passes; the
+// behaviour-under-test is the aggregate routing, not the elevation gate.
+vi.mock("../../../../src/config/root-config", () => ({
+  readRootConfiguration: vi.fn(() => ({ environments: { "test-env": {} } })),
+}));
+
 import { McpRegistry } from "../../../../src/mcp/registry";
 import { registerRecipeSyncTools } from "../../../../src/mcp/tools/recipe-sync";
 
@@ -48,11 +56,14 @@ beforeEach(() => {
 });
 
 describe("recipe_sync tool", () => {
-  it("registers recipe_sync as a destructive write tool with a verb enum", () => {
+  it("registers recipe_sync as a verb-discriminated tool with a verb enum", () => {
     const reg = setup();
     const tool = reg.getTool("recipe_sync")!;
     expect(tool).toBeDefined();
-    expect(tool.auth).toBe("write");
+    // Verb-discriminated: dispatch doesn't auto-require allowWrite, the
+    // handler enforces it on the writing verb (`push`). Annotation
+    // remains destructive=true because the worst-case verb is destructive.
+    expect(tool.auth).toBe("verb-discriminated");
     expect(tool.annotations.destructiveHint).toBe(true);
     expect(Object.keys(tool.inputSchema)).toContain("allowWrite");
     const verb = tool.inputSchema.verb as unknown as { options: string[] };

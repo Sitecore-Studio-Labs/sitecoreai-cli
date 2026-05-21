@@ -17,10 +17,18 @@ export default defineConfig({
         "dist/**",
         "tests/**",
         "**/types.ts",
+        // The three deploy paths below are pure re-export shims (each
+        // file is a single `export ... from ...` line; either a 1-line
+        // forwarder or a curated barrel of explicit re-exports). They
+        // have no executable logic — coverage would be 100% trivially
+        // or undefined depending on the runtime — so excluding them
+        // from the threshold computation keeps the gate honest. Any
+        // file added to one of these barrels must be tested in the
+        // file that DEFINES the symbol; the barrel itself is not the
+        // unit under test. Audited 2026-05-21.
         "src/commands/deploy.ts",
         "src/deploy/api.ts",
         "src/deploy/api/index.ts",
-        "src/serialization/tasks.ts",
       ],
       // Ratchet floor, enforced by CI via `pnpm test:coverage`. Raise as
       // coverage improves, never lower. The 90/80/90/90 long-term target

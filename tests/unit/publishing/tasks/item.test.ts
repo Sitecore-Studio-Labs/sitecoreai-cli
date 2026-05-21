@@ -420,8 +420,13 @@ describe("runPublishItem — apply path", () => {
 
     await runPublishItem({ json: true, itemIds: ["id-1"], allowWrite: true, yes: true });
 
-    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as { id: string };
-    expect(last.id).toBe("job-json");
+    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as {
+      command: string;
+      environment: string;
+      data: { id: string };
+    };
+    expect(last.command).toBe("publish.item");
+    expect(last.data.id).toBe("job-json");
   });
 
   it("records an error audit entry and rethrows when submit fails", async () => {

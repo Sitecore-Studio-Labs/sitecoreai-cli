@@ -9,11 +9,16 @@
  * to widen the SDK surface.
  */
 
+// `export *` is safe here only because `./api/index.ts` is itself a
+// curated, explicit barrel. See the matching comment in
+// `src/deploy/index.ts`.
 export * from "./api";
 
 export {
   loadConfigAndModules,
   groupSubtreesByDatabase,
-  ensureAllowWrite,
   type LoadSerializationModulesOptions,
 } from "./context";
+
+// Single source of truth for the write gate — see `@/policy/allow-write`.
+export { ensureAllowWrite } from "@/policy/allow-write";

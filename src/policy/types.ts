@@ -13,7 +13,9 @@
 import type { z } from "zod";
 import type {
   envIdentitySchema,
+  orgIdentitySchema,
   policyEnvironmentSchema,
+  policyOrganizationSchema,
   repoPolicySchema,
   riskTierSchema,
   workspacePolicySchema,
@@ -31,6 +33,12 @@ export type EnvIdentity = z.infer<typeof envIdentitySchema>;
 
 /** One enrolled environment in the user-global workspace policy. */
 export type PolicyEnvironment = z.infer<typeof policyEnvironmentSchema>;
+
+/** The pinned identity of an enrolled organization. */
+export type OrgIdentity = z.infer<typeof orgIdentitySchema>;
+
+/** One enrolled organization in the user-global workspace policy. */
+export type PolicyOrganization = z.infer<typeof policyOrganizationSchema>;
 
 /** The user-global workspace policy — `~/.sitecoreai/policy.json`. */
 export type WorkspacePolicy = z.infer<typeof workspacePolicySchema>;

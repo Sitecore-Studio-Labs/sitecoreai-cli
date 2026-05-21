@@ -6,11 +6,15 @@
  *
  *   1. Boots `dist/cli.js mcp serve --environment-name __test__` against
  *      a throwaway sitecoreai.cli.json in a temp directory.
- *   2. Sends a JSON-RPC `initialize` + `tools/list` request on stdin.
+ *   2. Sends a JSON-RPC `initialize` + `tools/list` + `resources/list`
+ *      request on stdin.
  *   3. Asserts:
  *        a. A valid JSON-RPC response arrives within 5s.
  *        b. The `tools/list` result has >= 18 tools.
- *        c. stdout contains ONLY JSON-RPC frames — no banners, no log
+ *        c. The `resources/list` result has >= MIN_RESOURCE_COUNT
+ *           resources (catches doc/code drift like the 11-vs-8 gap
+ *           the 2026-05-21 audit found).
+ *        d. stdout contains ONLY JSON-RPC frames — no banners, no log
  *           lines, no spinner artefacts. This is the regression guard
  *           for the stdout-discipline rule.
  *
@@ -30,6 +34,10 @@ const path = require("node:path");
 const CLI = path.join("dist", "cli.js");
 const TIMEOUT_MS = 5000;
 const MIN_TOOL_COUNT = 18;
+// docs/mcp.md's resource table is the source of truth — keep this in
+// step. Lower bound, not equality, so adding a resource never breaks
+// the smoke; removing one without updating docs will.
+const MIN_RESOURCE_COUNT = 12;
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "scai-mcp-smoke-"));
 const configPath = path.join(tempDir, "sitecoreai.cli.json");
@@ -117,6 +125,7 @@ timer = setTimeout(
 
 let initializedSent = false;
 let toolsListId = null;
+let resourcesListId = null;
 
 const writeRequest = (request) => {
   const body = JSON.stringify(request);
@@ -149,7 +158,30 @@ const handleFrame = (line) => {
       cleanup(1, `tools/list returned ${count} tools, expected >= ${MIN_TOOL_COUNT}`);
       return;
     }
-    process.stdout.write(`smoke-mcp: ok (${count} tools)\n`);
+    // Chain into resources/list — same connection, same lifecycle.
+    resourcesListId = 3;
+    writeRequest({ jsonrpc: "2.0", id: resourcesListId, method: "resources/list" });
+    return;
+  }
+  if (frame.id === resourcesListId) {
+    if (!frame.result || !Array.isArray(frame.result.resources)) {
+      cleanup(
+        1,
+        `resources/list response missing resources array: ${JSON.stringify(frame).slice(0, 300)}`
+      );
+      return;
+    }
+    const resourceCount = frame.result.resources.length;
+    if (resourceCount < MIN_RESOURCE_COUNT) {
+      cleanup(
+        1,
+        `resources/list returned ${resourceCount} resources, expected >= ${MIN_RESOURCE_COUNT} (docs/mcp.md is the source of truth — keep MIN_RESOURCE_COUNT in step).`
+      );
+      return;
+    }
+    process.stdout.write(
+      `smoke-mcp: ok (tools >= ${MIN_TOOL_COUNT}, resources >= ${MIN_RESOURCE_COUNT})\n`
+    );
     cleanup(0);
   }
 };

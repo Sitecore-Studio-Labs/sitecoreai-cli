@@ -70,37 +70,42 @@ describe("cli entrypoint (non-TTY)", () => {
     const originalOut = process.stdout.isTTY;
     const originalCI = process.env.CI;
     const originalGH = process.env.GITHUB_ACTIONS;
+    let tempDir: string | undefined;
 
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-headless-"));
-    await fs.writeFile(
-      path.join(tempDir, "sitecoreai.cli.json"),
-      JSON.stringify({ modules: ["./module.module.json"], settings: {} }, null, 2),
-      "utf8"
-    );
+    try {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-headless-"));
+      await fs.writeFile(
+        path.join(tempDir, "sitecoreai.cli.json"),
+        JSON.stringify({ modules: ["./module.module.json"], settings: {} }, null, 2),
+        "utf8"
+      );
 
-    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
-    delete process.env.CI;
-    delete process.env.GITHUB_ACTIONS;
+      Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+      delete process.env.CI;
+      delete process.env.GITHUB_ACTIONS;
 
-    const telemetry = await import("../../../src/shared/telemetry");
-    (
-      telemetry.resolveConfigPathFromArgs as unknown as { mockReturnValue: (v: string) => void }
-    ).mockReturnValue(tempDir);
+      const telemetry = await import("../../../src/shared/telemetry");
+      (
+        telemetry.resolveConfigPathFromArgs as unknown as { mockReturnValue: (v: string) => void }
+      ).mockReturnValue(tempDir);
 
-    process.argv = ["node", "scai", "status"];
-    vi.resetModules();
-    await import("../../../src/cli");
-
-    process.argv = originalArgv;
-    Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
-    Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
-    if (originalCI !== undefined) {
-      process.env.CI = originalCI;
+      process.argv = ["node", "scai", "status"];
+      vi.resetModules();
+      await import("../../../src/cli");
+    } finally {
+      process.argv = originalArgv;
+      Object.defineProperty(process.stdin, "isTTY", { value: originalIn, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", { value: originalOut, configurable: true });
+      if (originalCI !== undefined) {
+        process.env.CI = originalCI;
+      }
+      if (originalGH !== undefined) {
+        process.env.GITHUB_ACTIONS = originalGH;
+      }
+      if (tempDir) {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
     }
-    if (originalGH !== undefined) {
-      process.env.GITHUB_ACTIONS = originalGH;
-    }
-    await fs.rm(tempDir, { recursive: true, force: true });
   });
 });

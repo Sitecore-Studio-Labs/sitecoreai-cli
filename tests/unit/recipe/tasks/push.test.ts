@@ -112,7 +112,7 @@ beforeEach(() => {
   } as never);
   vi.mocked(shared.resolveRecipeInputs).mockResolvedValue({
     files: ["hero.recipe.ts"],
-    source: "config",
+    source: "config-glob",
   } as never);
   vi.mocked(io.loadRecipe).mockResolvedValue({
     kind: "component-template",
@@ -177,7 +177,12 @@ describe("runRecipePush — apply vs dry-run", () => {
 
     expect(logger.json).toHaveBeenCalledTimes(1);
     const envelope = logger.json.mock.calls[0][0] as Record<string, unknown>;
-    expect(envelope).toMatchObject({ command: "recipe.push", environment: "test", whatIf: false });
+    expect(envelope).toMatchObject({
+      command: "recipe.push",
+      environment: "test",
+      whatIf: false,
+      source: "config-glob",
+    });
     expect((envelope.events as unknown[]).length).toBe(1);
   });
 });

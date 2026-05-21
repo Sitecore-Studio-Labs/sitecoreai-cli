@@ -12,7 +12,7 @@
 
 import "./setup";
 import path from "node:path";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import { afterAll, beforeAll, expect } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -41,7 +41,6 @@ describe("scai mcp serve — stdio integration", () => {
 
   beforeAll(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "scai-mcp-int-"));
-    await mkdir(path.join(tempDir), { recursive: true });
     const configPath = path.join(tempDir, "sitecoreai.cli.json");
     await writeFile(
       configPath,

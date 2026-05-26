@@ -412,7 +412,7 @@ describe("buildPlaceholderSettingsAggregate (via compileRecipeSet)", () => {
       key: "sxa-footer",
       name: "Footer",
       displayName: "Footer",
-      folder: "Partial Design/Chrome",
+      folder: ["Partial Design", "Chrome"],
       dynamic: false,
       allowedComponents: [],
     } satisfies PlaceholderRecipe;
@@ -448,7 +448,7 @@ describe("buildPlaceholderSettingsAggregate (via compileRecipeSet)", () => {
       key,
       name,
       displayName: name,
-      folder: "Shared",
+      folder: ["Shared"],
       dynamic: false,
       allowedComponents: [],
     });

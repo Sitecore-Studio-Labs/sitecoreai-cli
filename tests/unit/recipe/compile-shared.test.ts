@@ -104,14 +104,21 @@ describe("resolveRenderingParent", () => {
 });
 
 describe("resolveEnumFolderPath", () => {
-  const enumRecipe = (folder?: string): EnumerationRecipe =>
+  const enumRecipe = (folder?: string | string[]): EnumerationRecipe =>
     ({
       kind: "enumeration",
       schemaVersion: "1",
       handle: "color@1",
       name: "Color",
       values: [{ name: "red" }],
-      ...(folder ? { location: { scope: "site", folder } } : {}),
+      ...(folder
+        ? {
+            location: {
+              scope: "site",
+              folder: Array.isArray(folder) ? folder : folder.split("/"),
+            },
+          }
+        : {}),
     }) as EnumerationRecipe;
 
   it("throws INPUT_INVALID when enumerationsRoot is unset", () => {

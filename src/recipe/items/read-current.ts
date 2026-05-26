@@ -570,7 +570,7 @@ const componentSectionFromItem = (folderItem: RemoteItem): ComponentSectionRecip
  */
 const enumerationFromItem = async (
   containerItem: RemoteItem,
-  folder: string | undefined,
+  folderSegments: string[],
   client: AuthoringApiClient
 ): Promise<EnumerationRecipe | null> => {
   const valueItems = (await client.getChildren({ itemId: containerItem.itemId }))
@@ -610,7 +610,9 @@ const enumerationFromItem = async (
     recipe.displayName = displayName;
   }
   if (description !== undefined && description !== "") recipe.description = description;
-  if (folder) recipe.location = { scope: "site", folder };
+  if (folderSegments.length > 0) {
+    recipe.location = { scope: "site", folder: folderSegments };
+  }
   // Only carry `default` when it names a real value — the compiler rejects
   // an out-of-range default, and a stale container `Value` is not intent.
   if (
@@ -795,7 +797,11 @@ const walkEnumerationsTree = async (
    * a container. `Enumerations Folder` items are recursed; everything else
    * with ≥1 child is treated as a container.
    */
-  const walk = async (parent: RemoteItem, folderPath: string | undefined): Promise<void> => {
+  // `folderSegments` carries the grouping-folder path as `string[]` —
+  // matches the canonical array shape on `EnumerationRecipe.location.folder`
+  // so the reverse-projected recipe emits the same wire shape authors hand
+  // to scai (no slash-joined fallback).
+  const walk = async (parent: RemoteItem, folderSegments: string[]): Promise<void> => {
     const children = (await client.getChildren({ itemId: parent.itemId }))
       .filter((c) => c.name !== "__Standard Values")
       .sort(byTreeOrder);
@@ -821,16 +827,15 @@ const walkEnumerationsTree = async (
         }
       }
       if (groupsContainers) {
-        const nextFolder = folderPath ? `${folderPath}/${child.name}` : child.name;
-        await walk(child, nextFolder);
+        await walk(child, [...folderSegments, child.name]);
       } else {
-        const recipe = await enumerationFromItem(child, folderPath, client);
+        const recipe = await enumerationFromItem(child, folderSegments, client);
         if (recipe) recipes.push(recipe);
       }
     }
   };
 
-  await walk(root, undefined);
+  await walk(root, []);
   return recipes;
 };
 
@@ -1202,7 +1207,7 @@ const pageFromItem = (
  */
 const placeholderFromItem = (
   item: RemoteItem,
-  folder: string | undefined,
+  folderSegments: string[],
   guidIndex: GuidHandleIndex
 ): PlaceholderRecipe | null => {
   const key = fieldValue(item, PLACEHOLDER_FIELDS.PLACEHOLDER_KEY, "Placeholder Key");
@@ -1238,7 +1243,7 @@ const placeholderFromItem = (
   };
   if (description !== undefined && description !== "") recipe.description = description;
   if (icon !== undefined && icon !== "") recipe.icon = icon;
-  if (folder) recipe.folder = folder;
+  if (folderSegments.length > 0) recipe.folder = folderSegments;
   return recipe;
 };
 
@@ -1371,23 +1376,25 @@ const walkPlaceholderSettingsTree = async (
   const root = rootPath ? await client.getItem({ path: rootPath }) : null;
   if (!root) return recipes;
 
-  const visit = async (parent: RemoteItem, folderPath: string | undefined): Promise<void> => {
+  // `folderSegments` carries the grouping-folder path as `string[]` so
+  // reverse-projected placeholder recipes emit the canonical array
+  // shape that schemas/recipe.ts's `FolderPath` accepts.
+  const visit = async (parent: RemoteItem, folderSegments: string[]): Promise<void> => {
     const children = (await client.getChildren({ itemId: parent.itemId }))
       .filter((c) => c.name !== "__Standard Values")
       .sort(byTreeOrder);
     for (const child of children) {
       if (conformsTo(child, PLACEHOLDER_TEMPLATE_ID)) {
-        const recipe = placeholderFromItem(child, folderPath, guidIndex);
+        const recipe = placeholderFromItem(child, folderSegments, guidIndex);
         if (recipe) recipes.push(recipe);
         continue;
       }
       // Anything that isn't a Placeholder leaf is a grouping folder —
-      // descend, extending the cumulative folder path.
-      const nextFolder = folderPath ? `${folderPath}/${child.name}` : child.name;
-      await visit(child, nextFolder);
+      // descend, extending the cumulative segment list.
+      await visit(child, [...folderSegments, child.name]);
     }
   };
-  await visit(root, undefined);
+  await visit(root, []);
   return recipes;
 };
 

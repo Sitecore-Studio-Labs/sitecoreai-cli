@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BRAND_REQUIRED_SCOPES, extractScopes, hasBrandScopes } from "../../../src/brand/api/auth";
+
+vi.mock("../../../src/shared/keychain", () => ({
+  getBrandClientSecret: vi.fn(),
+  getBrandToken: vi.fn(),
+  setBrandToken: vi.fn(),
+}));
+vi.mock("../../../src/serialization/api/auth", () => ({
+  requestClientCredentialsToken: vi.fn(),
+}));
 
 /**
  * Build a minimal JWT with the given `scope` claim. The Brand auth
@@ -64,6 +73,81 @@ describe("brand/api/auth — hasBrandScopes", () => {
   it("rejects empty / malformed tokens", () => {
     expect(hasBrandScopes("")).toBe(false);
     expect(hasBrandScopes("garbage")).toBe(false);
+  });
+});
+
+/**
+ * `acquireBrandToken` — the auth seam every Brand API call mints
+ * through. Verifies the env-var fallback wires through the resolver
+ * without consulting the keychain, which is what the showcase
+ * orchestrator depends on in serverless Vercel functions.
+ */
+describe("brand/api/auth — acquireBrandToken env-var fallback", () => {
+  const BRAND_ENV_KEYS = [
+    "SITECOREAI_BRAND_CLIENT_ID",
+    "SITECOREAI_BRAND_CLIENT_SECRET",
+    "SITECOREAI_BRAND_AUTHORITY",
+    "SITECOREAI_BRAND_AUDIENCE",
+  ] as const;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(async () => {
+    for (const key of BRAND_ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    const keychain = await import("../../../src/shared/keychain");
+    const serializationAuth = await import("../../../src/serialization/api/auth");
+    vi.mocked(keychain.getBrandClientSecret).mockReset();
+    vi.mocked(keychain.getBrandToken).mockReset();
+    vi.mocked(keychain.setBrandToken).mockReset();
+    vi.mocked(serializationAuth.requestClientCredentialsToken).mockReset();
+  });
+
+  afterEach(() => {
+    for (const key of BRAND_ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  });
+
+  it("mints a token from SITECOREAI_BRAND_* env vars without touching the keychain secret", async () => {
+    process.env.SITECOREAI_BRAND_CLIENT_ID = "env-cid";
+    process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
+
+    const keychain = await import("../../../src/shared/keychain");
+    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const { acquireBrandToken } = await import("../../../src/brand/api/auth");
+
+    vi.mocked(keychain.getBrandToken).mockResolvedValue(undefined);
+    vi.mocked(serializationAuth.requestClientCredentialsToken).mockResolvedValue({
+      accessToken: "minted.from.env",
+      expiresIn: 3600,
+    });
+
+    const token = await acquireBrandToken({ orgId: "org_x" });
+
+    expect(token).toBe("minted.from.env");
+    expect(keychain.getBrandClientSecret).not.toHaveBeenCalled();
+    expect(serializationAuth.requestClientCredentialsToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: "env-cid",
+        clientSecret: "env-secret",
+        authority: "https://auth.sitecorecloud.io",
+        audience: "https://api.sitecorecloud.io",
+      })
+    );
+  });
+
+  it("throws AUTH_BRAND_REQUIRED with no credential available from any tier", async () => {
+    const keychain = await import("../../../src/shared/keychain");
+    const { acquireBrandToken } = await import("../../../src/brand/api/auth");
+
+    vi.mocked(keychain.getBrandToken).mockResolvedValue(undefined);
+
+    await expect(acquireBrandToken({ orgId: "org_x" })).rejects.toMatchObject({
+      code: "AUTH_BRAND_REQUIRED",
+    });
   });
 });
 

@@ -513,7 +513,7 @@ describe("readCurrentRecipes — enumeration", () => {
     const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
     expect(enumeration).toBeDefined();
     expect(enumeration!.name).toBe("Spacing");
-    expect(enumeration!.location).toEqual({ scope: "site", folder: "Theme" });
+    expect(enumeration!.location).toEqual({ scope: "site", folder: ["Theme"] });
     expect(enumeration!.values.map((v) => v.name)).toEqual(["sm"]);
   });
 
@@ -1361,8 +1361,8 @@ describe("readCurrentRecipes — placeholder", () => {
     expect(placeholder!.key).toBe("headless-main");
     expect(placeholder!.displayName).toBe("Page Body");
     expect(placeholder!.handle).toBe("page-body-slot@1");
-    // Grouping folder reverse-projects onto `folder`.
-    expect(placeholder!.folder).toBe("Partial Design");
+    // Grouping folder reverse-projects onto `folder` (array form).
+    expect(placeholder!.folder).toEqual(["Partial Design"]);
     // Allowed Controls GUID resolved through the marker index.
     expect(placeholder!.allowedComponents).toEqual(["hero@1"]);
   });
@@ -1994,7 +1994,7 @@ describe("readCurrentRecipes — placeholder arms", () => {
     );
     const placeholder = recipes!.find((r): r is PlaceholderRecipe => r.kind === "placeholder");
     expect(placeholder!.key).toBe("headless-main");
-    expect(placeholder!.folder).toBe("Headers");
+    expect(placeholder!.folder).toEqual(["Headers"]);
     // No Allowed Controls field → allowedComponents stays empty (default).
     expect(placeholder!.allowedComponents).toEqual([]);
   });
@@ -2741,7 +2741,7 @@ describe("readCurrentRecipes — enumeration grouping folder", () => {
     const enumeration = recipes!.find((r): r is EnumerationRecipe => r.kind === "enumeration");
     expect(enumeration!.name).toBe("Tone");
     // Recursed through the grouping folder → location.folder threaded in.
-    expect(enumeration!.location).toEqual({ scope: "site", folder: "Branding" });
+    expect(enumeration!.location).toEqual({ scope: "site", folder: ["Branding"] });
     expect(enumeration!.values.map((v) => v.name).sort()).toEqual(["bold", "calm"]);
   });
 });

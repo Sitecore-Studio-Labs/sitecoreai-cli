@@ -114,8 +114,8 @@ describe("seedBrandKit — multiple documents", () => {
       baseOptions({
         source: undefined,
         documents: [
-          { url: "https://example.com/a.pdf", title: "A" },
-          { url: "https://example.com/b.pdf" },
+          { kind: "url", url: "https://example.com/a.pdf", title: "A" },
+          { kind: "url", url: "https://example.com/b.pdf" },
         ],
       })
     );
@@ -131,7 +131,7 @@ describe("seedBrandKit — multiple documents", () => {
   it("prefers `documents` over `source` when both are set", async () => {
     await seedBrandKit(
       baseOptions({
-        documents: [{ url: "https://example.com/doc.pdf" }],
+        documents: [{ kind: "url", url: "https://example.com/doc.pdf" }],
       })
     );
 
@@ -139,6 +139,23 @@ describe("seedBrandKit — multiple documents", () => {
     expect(uploadDocument).toHaveBeenCalledWith(
       expect.objectContaining({ source: { url: "https://example.com/doc.pdf" } })
     );
+  });
+
+  it("rejects a registry-file document with INPUT_INVALID before any API call", async () => {
+    // The Sitecore Documents API has no working bytes-upload path
+    // (verified empirically; see LOCAL_UPLOAD_UNSUPPORTED_MESSAGE in
+    // src/brand/documents/upload.ts). seedBrandKit fails fast so the
+    // operator gets a clear hint pointing at the orchestrator-side
+    // translation step, not a confusing 400 from the upload endpoint.
+    await expect(
+      seedBrandKit(
+        baseOptions({
+          source: undefined,
+          documents: [{ kind: "registry-file", path: "brand-docs/voice.pdf" }],
+        })
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(uploadDocument).not.toHaveBeenCalled();
   });
 });
 

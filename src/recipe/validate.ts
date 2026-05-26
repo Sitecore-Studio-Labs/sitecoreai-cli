@@ -1,5 +1,15 @@
 import { createScaiError } from "@/shared/errors";
-import type { Recipe } from "./schema/recipe";
+import type { Recipe, SitecoreFieldAugment } from "./schema/recipe";
+
+/**
+ * The picker-scope handles to validate on a `SitecoreFieldAugment`.
+ * Empty when the augment is absent OR uses the `raw` source mode
+ * (verbatim Source string; nothing to resolve).
+ */
+const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readonly string[] => {
+  if (augment?.source?.kind !== "filter") return [];
+  return augment.source.types ?? [];
+};
 
 /**
  * Cross-recipe validation: walks every handle reference in a recipe set
@@ -12,8 +22,8 @@ import type { Recipe } from "./schema/recipe";
  * Reference inventory checked:
  *
  *   ComponentTemplateRecipe / ContentTemplateRecipe
- *     fields[*].sitecore.sourceTypes[*]   → any template-bearing recipe
- *     params[*].sitecore.sourceTypes[*]   → any template-bearing recipe
+ *     fields[*].sitecore.source.types[*]   → any template-bearing recipe
+ *     params[*].sitecore.source.types[*]  → any template-bearing recipe
  *     insertOptions[*]                    → any template-bearing recipe
  *
  *   ComponentTemplateRecipe
@@ -25,7 +35,7 @@ import type { Recipe } from "./schema/recipe";
  *     fields[*].reference.refs[*]         → any recipe
  *
  *   PageTemplateRecipe
- *     fields[*].sitecore.sourceTypes[*]   → any template-bearing recipe
+ *     fields[*].sitecore.source.types[*]   → any template-bearing recipe
  *     insertOptions[*]                    → PageTemplateRecipe
  *     layout.placeholders[*][*].componentHandle           → ComponentTemplateRecipe
  *     layout.placeholders[*][*].datasourceRef.handle      → ContentItemRecipe
@@ -339,20 +349,20 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
     switch (recipe.kind) {
       case "component-template":
         recipe.fields.forEach((field, idx) => {
-          field.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
             checkRef(
               recipe.handle,
-              `fields.${idx}.sitecore.sourceTypes.${sIdx}`,
+              `fields.${idx}.sitecore.source.types.${sIdx}`,
               handle,
               TEMPLATE_KINDS
             );
           });
         });
         recipe.params.forEach((param, idx) => {
-          param.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+          sourceTypesOf(param.sitecore).forEach((handle, sIdx) => {
             checkRef(
               recipe.handle,
-              `params.${idx}.sitecore.sourceTypes.${sIdx}`,
+              `params.${idx}.sitecore.source.types.${sIdx}`,
               handle,
               TEMPLATE_KINDS
             );
@@ -396,10 +406,10 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         break;
       case "design-parameters-template":
         recipe.params.forEach((param, idx) => {
-          param.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+          sourceTypesOf(param.sitecore).forEach((handle, sIdx) => {
             checkRef(
               recipe.handle,
-              `params.${idx}.sitecore.sourceTypes.${sIdx}`,
+              `params.${idx}.sitecore.source.types.${sIdx}`,
               handle,
               TEMPLATE_KINDS
             );
@@ -412,10 +422,10 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         break;
       case "content-template":
         recipe.fields.forEach((field, idx) => {
-          field.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
             checkRef(
               recipe.handle,
-              `fields.${idx}.sitecore.sourceTypes.${sIdx}`,
+              `fields.${idx}.sitecore.source.types.${sIdx}`,
               handle,
               TEMPLATE_KINDS
             );
@@ -490,10 +500,10 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
 
       case "page-template":
         (recipe.fields ?? []).forEach((field, idx) => {
-          field.sitecore?.sourceTypes?.forEach((handle, sIdx) => {
+          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
             checkRef(
               recipe.handle,
-              `fields.${idx}.sitecore.sourceTypes.${sIdx}`,
+              `fields.${idx}.sitecore.source.types.${sIdx}`,
               handle,
               TEMPLATE_KINDS
             );

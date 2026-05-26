@@ -41,48 +41,89 @@ import { FieldShapeSchema, SitecoreFieldTypeSchema } from "./field-types";
 const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
 
 /**
- * Sitecore-side override on a field or param. Defaults apply when omitted.
+ * The picker-scope source ("Sitecore's Source field") expressed as a
+ * discriminated union over the two real modes:
  *
- * The picker-scope concept (Sitecore's `Source` field) is expressed as
- * three composable structured fields rather than a stringly-typed
- * mini-language. They combine: e.g. `sourceScope` + `sourceTypes` becomes
- * `DataSource=<path>&IncludeTemplatesForSelection={GUID},...` on emit.
+ *   - `filter` — composable structured fields. `types` is a picker
+ *     filter restricting which recipe-defined templates appear; `query`
+ *     is a Sitecore Query; `scope` is a fixed content-tree path. They
+ *     combine, e.g. `scope + types` → `DataSource=<path>&IncludeTemplatesForSelection=...`.
+ *   - `raw` — verbatim Source string, the escape hatch. Use when the
+ *     structured surface doesn't fit (e.g. a bare path Treelist source
+ *     like `/sitecore/content/Tags`).
  *
- *   sourceTypes   — "picker filter": only items of these recipe handles.
- *   sourceQuery   — "where to look": a Sitecore Query (e.g. `$site/...`).
- *   sourceScope   — "where to look": a fixed content-tree path.
- *   sourceRaw     — escape hatch; verbatim Source string (mutually exclusive
- *                   with the structured fields).
+ * Previously the four fields were peers on `SitecoreFieldAugment` with
+ * a `.refine` enforcing the mutex; the union makes the constraint
+ * structural so JSON Schema's `oneOf` expresses it natively and Agent
+ * Studio can't emit an invalid combination. See
+ * `docs/recipe-schema-audit.md` (A1).
  */
+export const SitecoreFieldSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("filter"),
+    types: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        "Picker filter: restrict to items conforming to one of these recipe handles. Compiler resolves each handle to its deterministic template GUID and emits `IncludeTemplatesForSelection={GUID},{GUID}`."
+      ),
+    query: z
+      .string()
+      .optional()
+      .describe(
+        "Where to look: a Sitecore Query (e.g. `$site/*[@@name='Data']`). Standalone becomes `query:<query>`; combined with `types` becomes `DataSource=query:<query>&IncludeTemplatesForSelection=...`."
+      ),
+    scope: z
+      .string()
+      .optional()
+      .describe(
+        "Where to look: a fixed Sitecore content-tree path. Emitted as `DataSource=<path>`, alone or combined with `types`."
+      ),
+  }),
+  z.object({
+    kind: z.literal("raw"),
+    value: z
+      .string()
+      .min(1)
+      .describe(
+        "Verbatim Sitecore Source string. Escape hatch for Source shapes that don't fit the `filter` mode (e.g. a bare path Treelist source like `/sitecore/content/Tags`)."
+      ),
+  }),
+]);
+
+export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
+
+/**
+ * Sitecore-side override on a field or param. Defaults apply when
+ * omitted.
+ *
+ * `source` carries the picker-scope shape as a discriminated union
+ * (`filter` | `raw`) — see `SitecoreFieldSourceSchema`. Internal
+ * scai code converts to a flat `SourceFields` bag via
+ * `augmentSourceToFields()` before passing to `renderSourceFields()`.
+ */
+/**
+ * Defensive guard: pre-A1 recipes carried `sourceTypes` / `sourceQuery` /
+ * `sourceScope` / `sourceRaw` as peer optional fields on the augment.
+ * After A1 the picker scope lives inside a discriminated `source`
+ * union. Without this guard Zod's default `.strip()` would silently
+ * drop the legacy keys and produce a parsed augment with no `source`
+ * — losing author intent quietly. Reject explicitly with a migration
+ * pointer instead.
+ */
+const LEGACY_SOURCE_KEYS = ["sourceTypes", "sourceQuery", "sourceScope", "sourceRaw"] as const;
+
 export const SitecoreFieldAugmentSchema = z
   .object({
     /** Override the default shape→Sitecore type mapping. */
     type: SitecoreFieldTypeSchema.optional(),
     /**
-     * Picker filter: restrict to items conforming to one of these recipe
-     * handles. Compiler resolves each handle to its deterministic template
-     * GUID and emits `IncludeTemplatesForSelection={GUID},{GUID}`.
+     * Picker scope — discriminated union of two modes: `filter`
+     * (composable `types` / `query` / `scope`) or `raw` (verbatim
+     * Source string). See `SitecoreFieldSourceSchema`.
      */
-    sourceTypes: z.array(z.string()).optional(),
-    /**
-     * Where to look: a Sitecore Query (e.g. `$site/*[@@name='Data']`).
-     * Standalone, becomes the entire Source as `query:<query>` (the
-     * shorthand Sitecore evaluates directly for Droplist-style fields).
-     * Combined with `sourceTypes`, becomes `DataSource=query:<query>&...`.
-     */
-    sourceQuery: z.string().optional(),
-    /**
-     * Where to look: a fixed Sitecore content-tree path. Emitted as
-     * `DataSource=<path>`, alone or combined with `sourceTypes`.
-     */
-    sourceScope: z.string().optional(),
-    /**
-     * Escape hatch: verbatim Source string. Mutually exclusive with the
-     * structured fields above. Use when you need a Source form that
-     * doesn't fit the structured surface (e.g. a bare path Treelist
-     * source like `/sitecore/content/Tags`).
-     */
-    sourceRaw: z.string().optional(),
+    source: SitecoreFieldSourceSchema.optional(),
     /** Author-facing hint surfaced in the CMS. */
     hint: z.string().optional(),
     /** Required marker (translates to a Sitecore validation rule). */
@@ -126,15 +167,24 @@ export const SitecoreFieldAugmentSchema = z
      */
     storage: z.enum(["versioned", "unversioned", "shared"]).optional(),
   })
-  .refine(
-    (v) =>
-      v.sourceRaw === undefined ||
-      (v.sourceTypes === undefined && v.sourceQuery === undefined && v.sourceScope === undefined),
-    {
-      message: "sourceRaw is mutually exclusive with sourceTypes/sourceQuery/sourceScope",
-      path: ["sourceRaw"],
+  .passthrough()
+  .superRefine((augment, ctx) => {
+    // Pre-A1 recipes carried sourceTypes/sourceQuery/sourceScope/sourceRaw
+    // as peer fields; the new shape is `source: { kind, ... }`. Without
+    // `.passthrough()` Zod's default `.strip()` would drop those keys
+    // before the refine runs; with passthrough they survive to here and
+    // we reject loudly with a migration pointer.
+    const legacyPresent = LEGACY_SOURCE_KEYS.filter(
+      (key) => (augment as Record<string, unknown>)[key] !== undefined
+    );
+    if (legacyPresent.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [legacyPresent[0]],
+        message: `Legacy source field(s) [${legacyPresent.join(", ")}] are no longer accepted on \`sitecore\`. Move them into the new \`source\` discriminated union: \`source: { kind: "filter", types/query/scope }\` or \`source: { kind: "raw", value }\`. See docs/recipe-schema-audit.md (A1).`,
+      });
     }
-  );
+  });
 
 export type SitecoreFieldAugment = z.infer<typeof SitecoreFieldAugmentSchema>;
 

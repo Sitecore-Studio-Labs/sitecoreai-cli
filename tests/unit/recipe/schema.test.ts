@@ -80,39 +80,59 @@ describe("ComponentTemplateRecipe Zod schema", () => {
   });
 });
 
-describe("SitecoreFieldAugment — sourceRaw mutual exclusion", () => {
-  it("accepts sourceTypes alone", () => {
-    const result = SitecoreFieldAugmentSchema.safeParse({ sourceTypes: ["a@1"] });
+describe("SitecoreFieldAugment — source discriminated union", () => {
+  it("accepts filter mode with types alone", () => {
+    const result = SitecoreFieldAugmentSchema.safeParse({
+      source: { kind: "filter", types: ["a@1"] },
+    });
     expect(result.success).toBe(true);
   });
 
-  it("accepts sourceRaw alone", () => {
-    const result = SitecoreFieldAugmentSchema.safeParse({ sourceRaw: "/sitecore/content/Tags" });
+  it("accepts filter mode with composed types + scope", () => {
+    const result = SitecoreFieldAugmentSchema.safeParse({
+      source: {
+        kind: "filter",
+        types: ["a@1"],
+        scope: "/sitecore/content/Library",
+      },
+    });
     expect(result.success).toBe(true);
   });
 
-  it("rejects sourceRaw combined with sourceTypes", () => {
+  it("accepts raw mode alone", () => {
     const result = SitecoreFieldAugmentSchema.safeParse({
-      sourceRaw: "/literal",
-      sourceTypes: ["a@1"],
+      source: { kind: "raw", value: "/sitecore/content/Tags" },
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects sourceRaw combined with sourceQuery", () => {
-    const result = SitecoreFieldAugmentSchema.safeParse({
-      sourceRaw: "/literal",
-      sourceQuery: "$site/Data",
-    });
-    expect(result.success).toBe(false);
+  it("rejects the legacy flat-shape sourceTypes / sourceRaw fields", () => {
+    expect(
+      SitecoreFieldAugmentSchema.safeParse({
+        sourceTypes: ["a@1"],
+      }).success
+    ).toBe(false);
+    expect(
+      SitecoreFieldAugmentSchema.safeParse({
+        sourceRaw: "/sitecore/content/Tags",
+      }).success
+    ).toBe(false);
   });
 
-  it("rejects sourceRaw combined with sourceScope", () => {
-    const result = SitecoreFieldAugmentSchema.safeParse({
-      sourceRaw: "/literal",
-      sourceScope: "/sitecore/content",
-    });
-    expect(result.success).toBe(false);
+  it("rejects raw mode without a value", () => {
+    expect(
+      SitecoreFieldAugmentSchema.safeParse({
+        source: { kind: "raw" },
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects an unknown source.kind", () => {
+    expect(
+      SitecoreFieldAugmentSchema.safeParse({
+        source: { kind: "verbatim", value: "/sitecore/content/Tags" },
+      }).success
+    ).toBe(false);
   });
 });
 

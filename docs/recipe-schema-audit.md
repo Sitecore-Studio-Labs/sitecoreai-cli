@@ -264,13 +264,22 @@ What landed on `agent/recipe-schema-audit`:
 
 What stayed deferred to follow-up branches:
 
-- **A1** (`SitecoreFieldAugment.source*` discriminated union):
-  largest blast radius — touches `recipe/schema/recipe.ts`,
-  `recipe/schema/source-fields.ts`, `recipe/compile/shared.ts`,
-  `recipe/api/ref-encoding.ts`, `recipe/items/read-current.ts`,
-  `recipe/validate.ts` (8+ touch sites), 6 test files, and an
-  example recipe. Plan it as its own focused branch; the audit's
-  proposed shape is unchanged.
+- **A1** (resolved 2026-05-26): landed as a discriminated union
+  `source: { kind: "filter" | "raw", ... }` on
+  `SitecoreFieldAugmentSchema`. The four-peer `sourceTypes` /
+  `sourceQuery` / `sourceScope` / `sourceRaw` legacy keys are
+  rejected loudly at parse time via `.passthrough()` +
+  `.superRefine` with a migration pointer (so unmigrated recipes
+  fail visibly rather than silently losing their picker scope to
+  Zod's default `.strip()`).
+  Internal compiler is unchanged — a new `augmentSourceToFields()`
+  adapter in `recipe/schema/source-fields.ts` flattens the union
+  for `renderSourceFields()` and the `ref-source-fields` IR op,
+  both of which keep their flat shape (they're internal wire,
+  never author surface). `compile/shared.ts` + `validate.ts` use
+  the adapter / new walk shape; `items/read-current.ts` emits
+  `source: { kind: "raw", value }` on `recipe pull`. JSON Schema
+  now expresses the mutex structurally via `oneOf`.
 - **A3** (resolved 2026-05-26): landed as
   `z.union([z.enum(KNOWN_*), z.string()])` for `status` and
   `funnelStage`, with shared `KNOWN_CAMPAIGN_STATUSES` /

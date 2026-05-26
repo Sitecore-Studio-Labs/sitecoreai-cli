@@ -1759,7 +1759,7 @@ describe("readCurrentRecipes — field projection branches", () => {
     expect(title.sitecore?.sortOrder).toBeUndefined();
   });
 
-  it("carries sitecore.sourceRaw verbatim when a Source field is set", async () => {
+  it("carries sitecore.source = { kind: 'raw', value } verbatim when a Source field is set", async () => {
     const sourceWire = "query:./*[@@templatename='Page']";
     const { contentModelsRoot, items } = contentTemplateWith((parent, root) => [
       item({
@@ -1779,10 +1779,10 @@ describe("readCurrentRecipes — field projection branches", () => {
     );
     const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
     const picker = content!.fields.find((x) => x.name === "Picker")!;
-    expect(picker.sitecore?.sourceRaw).toBe(sourceWire);
+    expect(picker.sitecore?.source).toEqual({ kind: "raw", value: sourceWire });
   });
 
-  it("does not set sourceRaw when the Source field is the empty string", async () => {
+  it("does not set sitecore.source when the Source field is the empty string", async () => {
     const { contentModelsRoot, items } = contentTemplateWith((parent, root) => [
       item({
         name: "Plain",
@@ -1801,7 +1801,7 @@ describe("readCurrentRecipes — field projection branches", () => {
     );
     const content = recipes!.find((r): r is ContentTemplateRecipe => r.kind === "content-template");
     const plain = content!.fields.find((x) => x.name === "Plain")!;
-    expect(plain.sitecore?.sourceRaw).toBeUndefined();
+    expect(plain.sitecore?.source).toBeUndefined();
   });
 
   it("records a non-Content section name onto sitecore.section", async () => {

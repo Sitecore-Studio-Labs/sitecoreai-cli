@@ -1,5 +1,40 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.1.2
+
+### Patch Changes
+
+- bc7fa7e: Hardens two security-adjacent paths and clears a sweep of CodeQL +
+  AI-suggested findings:
+  - `scai setup login` (Windows): the device-flow browser launcher now
+    validates the URL via `new URL()` and switches the Windows code path
+    from `cmd /c start "" <url>` (shell:true) to
+    `rundll32 url.dll,FileProtocolHandler <url>` so shell metacharacters
+    in a hostile verification URI can't chain commands. Closes the CodeQL
+    `js/command-line-injection` finding.
+  - `scai setup login --use-brand`: the AI-APIs-client detector matches
+    the actual scope namespace (`ai.org.`) rather than the bare `ai.org`
+    prefix, removing a spurious-match window against any scope that
+    happens to start with those characters. Closes the CodeQL
+    `js/incomplete-url-substring-sanitization` finding.
+
+  Plus internal reliability cleanups (collapsed five redundant `??` /
+  `&&` fallbacks flagged by `js/useless-expression`), CI workflow
+  `permissions: contents: read` hardening on `ci.yml` + `smoke.yml`, a
+  test-cleanup try/finally on the headless-CLI test, a corrected
+  `RecipeInputResolution` mock value in `recipe push` tests, and three
+  CHANGELOG markdown list-formatting repairs.
+
+- bc7fa7e: Fix credential writes silently failing on Windows when a secret exceeds the
+  Windows Credential Manager 2560-byte blob limit. Sitecore access tokens
+  (deploy/CM/publishing/brief/campaign) and the CM token bundle routinely
+  exceed it, which made `scai setup login` report success while the keychain
+  write was rejected. Large secrets are now transparently split across
+  companion keychain entries and reassembled on read; values that fit are
+  stored unchanged, so existing credentials keep working. Keychain write
+  failures also now surface the underlying error in the warning instead of
+  being silently swallowed.
+
 ## 0.1.1
 
 ### Patch Changes
@@ -424,7 +459,7 @@ og-image,og-title`; configurable via `--required-fields`. Scope to
     - `--max-matches-per-item N` caps sample collection (default 10).
   - `audit stale-content list --not-updated-in-days N` — items not
     updated in N days (default 365). Distinct from `audit
-    stale-workflow`:
+stale-workflow`:
     - `stale-workflow` finds items stuck mid-flight in a non-final
       workflow state.
     - `stale-content` finds **abandoned** content — published items no
@@ -545,7 +580,7 @@ og-image,og-title`; configurable via `--required-fields`. Scope to
   - `scai audit all` — runs every audit (skipping `find-replace`, which
     needs `--pattern`) and emits a consolidated envelope. Honors
     `--include broken-links,unused-media` to scope, `--exclude-audit
-    find-replace` to skip, plus all of the new cross-cutting flags
+find-replace` to skip, plus all of the new cross-cutting flags
     below.
 
   **Baseline (ignore-list) management:**
@@ -907,10 +942,10 @@ references` / `audit template-dependencies`) so the `explain` verb owns
     that no template should reference.
 
   Output is the canonical `ScaiEnvelope` (`command:
-  "explain.why-blocked"`, `data: { itemId, blockers: [...] }`, summary
-  + meta). 6 unit tests in
-  `tests/unit/hygiene/tasks/explain-why-blocked.test.ts` pin the merge
-  sort + skip-flag behavior.
+"explain.why-blocked"`, `data: { itemId, blockers: [...] }`, summary
+  - meta). 6 unit tests in
+    `tests/unit/hygiene/tasks/explain-why-blocked.test.ts` pin the merge
+    sort + skip-flag behavior.
 
 - ce3af45: **`scai audit` performance — tunable concurrency, parallel pagination,
   and an opt-in field cache.** Cuts repeated-run audit time ~2.4× on

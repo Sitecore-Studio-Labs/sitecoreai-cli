@@ -110,7 +110,7 @@ const createDiffCommand = (): Command => {
   command.action(async (options: SyncOptions) => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", brandKitKind.schema);
+    const recipe = await loadRecipe(options.file ?? "", brandKitKind.schema);
     const plan = await syncDiff(
       brandKitKind,
       recipe,
@@ -137,7 +137,7 @@ const createPushCommand = (): Command => {
   command.action(async (options: SyncOptions) => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", brandKitKind.schema);
+    const recipe = await loadRecipe(options.file ?? "", brandKitKind.schema);
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
     const outcome = await syncPush(
       brandKitKind,

@@ -41,7 +41,7 @@ export const runSpaceUpdate = async (
   options: RunAgentsBaseOptions & { spaceId: string; file: string; whatIf?: boolean }
 ): Promise<void> => {
   const { logger, session } = await prepare(options);
-  const patch = loadRecipe(options.file, SpaceConfigPatchSchema);
+  const patch = await loadRecipe(options.file, SpaceConfigPatchSchema);
   const current = await getSpaceConfig(session, options.spaceId);
   const merged = { ...current, ...patch } as SpaceConfig;
   if (options.whatIf) {

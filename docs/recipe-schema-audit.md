@@ -247,13 +247,20 @@ What landed on `agent/recipe-schema-audit`:
   `IsRenderingsWithDynamicPlaceholders`). Stayed light-touch — a
   refine would break the documented escape-hatch case where authors
   intentionally override a typed default.
-- **A2**: `ComponentTemplateRecipeSchema` carries a `.refine()` that
-  rejects setting both `parameters` (external template ref) AND
-  inline `params` on the same recipe. Doesn't translate to JSON
-  Schema (refines never do), but closes the parse-time gap.
-  Full discriminated-union restructure deferred to A2-v2 (would
-  require moving `params` inside the union, ripples through ~7
-  compiler call sites + tests).
+- **A2** (re-shaped 2026-05-26): the audit's originally proposed
+  discriminated union landed. Top-level `params` is gone;
+  `parameters` is now
+  `parameters?: { kind: "ref"; handle: HandleString } | { kind:
+"inline"; params: ParamDefinition[] }`. The mutex is now
+  structural — JSON Schema's `anyOf` with `additionalProperties:
+false` on each branch means Agent Studio can't emit an invalid
+  combination at all. The earlier `.refine()` is gone. scai's
+  `compile/component-template.ts` reads from
+  `recipe.parameters?.kind`; `validate.ts` walks the inline
+  branch; in-tree example recipes (6 in scai, 8 in registry)
+  migrated. Registry's top-level `Recipe` switched back from
+  `z.union` to `z.discriminatedUnion("kind", ...)` now that the
+  ZodEffects wrapper is gone.
 - **D1**: `DesignParametersTemplateRecipeSchema.section` is now
   `{ handle: HandleString }` instead of a bare-string section name —
   matches `ComponentTemplateRecipeSchema.section` shape. Compiler
@@ -264,14 +271,17 @@ What landed on `agent/recipe-schema-audit`:
 
 What stayed deferred to follow-up branches:
 
-- **A1** (resolved 2026-05-26): landed as a discriminated union
-  `source: { kind: "filter" | "raw", ... }` on
-  `SitecoreFieldAugmentSchema`. The four-peer `sourceTypes` /
-  `sourceQuery` / `sourceScope` / `sourceRaw` legacy keys are
-  rejected loudly at parse time via `.passthrough()` +
-  `.superRefine` with a migration pointer (so unmigrated recipes
-  fail visibly rather than silently losing their picker scope to
-  Zod's default `.strip()`).
+- **A1** (resolved 2026-05-26; migration guard dropped same day
+  after all in-tree recipes were verified migrated): landed as a
+  discriminated union `source: { kind: "filter" | "raw", ... }`
+  on `SitecoreFieldAugmentSchema`. The four-peer `sourceTypes` /
+  `sourceQuery` / `sourceScope` / `sourceRaw` legacy keys no
+  longer have a schema slot; Zod's default `.strip()` silently
+  drops them if a pre-migration recipe is fed in. The migration-
+  period `.passthrough()` + `.superRefine` guard was removed
+  once all 1 scai example + 7 registry recipes were confirmed
+  migrated (all recipes today live within scai + registry; no
+  external consumers).
   Internal compiler is unchanged — a new `augmentSourceToFields()`
   adapter in `recipe/schema/source-fields.ts` flattens the union
   for `renderSourceFields()` and the `ref-source-fields` IR op,

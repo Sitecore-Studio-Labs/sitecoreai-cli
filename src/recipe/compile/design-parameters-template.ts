@@ -21,6 +21,7 @@ import {
   type DesignParametersTemplateRecipe,
   DesignParametersTemplateRecipeSchema,
 } from "../schema/recipe";
+import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
   buildFieldOp,
@@ -54,14 +55,20 @@ export function compileDesignParametersTemplateRecipe(
   const icon = recipe.icon ?? DEFAULT_ICON;
   const site = siteOf(context);
 
-  ensureSectionFolder(operations, context, recipe.section, emittedFolders);
+  const sectionName = resolveSectionRecipe(
+    recipe.handle,
+    recipe.section.handle,
+    context.sectionsByHandle
+  ).name;
+
+  ensureSectionFolder(operations, context, sectionName, emittedFolders);
   const bucketRefKey = ensurePresentationDesignParametersBucket(
     operations,
     context,
-    recipe.section,
+    sectionName,
     emittedFolders
   );
-  const parentPath = resolvePresentationDesignParametersBucketPath(context, recipe.section);
+  const parentPath = resolvePresentationDesignParametersBucketPath(context, sectionName);
 
   // The standalone parameters template lands at the same identity
   // (designParametersTemplateId) as inline-hoisted ones — keeps re-pushes

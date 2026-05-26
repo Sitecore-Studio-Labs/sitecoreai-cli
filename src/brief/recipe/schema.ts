@@ -74,7 +74,12 @@ export const BudgetFieldSchema = z
     type: z.literal("Budget").describe("Discriminator — a budget/currency field."),
     ...briefFieldBaseShape,
     currencies: z
-      .array(z.string())
+      .array(
+        z
+          .string()
+          .length(3)
+          .regex(/^[A-Z]{3}$/, "ISO-4217 currency code must be 3 uppercase letters (e.g. `USD`).")
+      )
       .describe('ISO-4217 currency codes the field accepts, e.g. ["USD", "EUR"].'),
   })
   .describe("A budget/currency field.");

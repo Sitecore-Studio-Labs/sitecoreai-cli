@@ -271,12 +271,16 @@ What stayed deferred to follow-up branches:
   `recipe/validate.ts` (8+ touch sites), 6 test files, and an
   example recipe. Plan it as its own focused branch; the audit's
   proposed shape is unchanged.
-- **A3** (`CampaignTask.status` / `priority` /
-  `CampaignDeliverable.funnelStage` / `CampaignRecipe.status`
-  z.enums): full wire enum set isn't authoritatively known — the
-  schema only documents observed values (`NOT_STARTED`, `TOP`).
-  Locking to a partial enum would reject valid future server
-  values. Revisit when the API docs firm up.
+- **A3** (resolved 2026-05-26): landed as
+  `z.union([z.enum(KNOWN_*), z.string()])` for `status` and
+  `funnelStage`, with shared `KNOWN_CAMPAIGN_STATUSES` /
+  `KNOWN_CAMPAIGN_FUNNEL_STAGES` constants exported from
+  `src/campaigns/recipe/schema.ts` (and mirrored in the registry).
+  JSON Schema renders as `anyOf: [{ enum: [...] }, { type: "string" }]`,
+  which gives Agent Studio the observed values as a strong hint
+  without rejecting future server-side enum additions or
+  `recipe pull` round-trips. `Task.priority` stays plain `z.string()`
+  until any priority values are observed in capture.
 - **D3** (`PageItemRecipe.itemPath` placeholder): N/A to scai —
   scai has no `PageItemRecipe`. Registry-only; carried over to
   the registry follow-up.

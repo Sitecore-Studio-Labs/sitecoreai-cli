@@ -1,5 +1,151 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.2.0
+
+### Minor Changes
+
+- 7c243b6: Three related changes that let the showcase orchestrator drive
+  `scai brand sync push` from a serverless context end-to-end and
+  let recipe authors hand-write either array or slash-string folder
+  paths:
+  - **Brand credential env-var fallback.** `acquireBrandToken` (and the
+    campaign auth seam that mints from the same AI APIs key) now resolve
+    the client id, client secret, authority, and audience via a two-tier
+    chain: `SITECOREAI_BRAND_CLIENT_ID` / `SITECOREAI_BRAND_CLIENT_SECRET`
+    / `SITECOREAI_BRAND_AUTHORITY` / `SITECOREAI_BRAND_AUDIENCE`
+    environment variables first, then the existing
+    `brand[orgId]` config + OS keychain pair. Env-tier wins when both the
+    id and secret are present so a Vercel function or CI runner can
+    override per invocation without a keychain; a partial pair throws
+    `AUTH_BRAND_REQUIRED` naming the missing var, never silently falling
+    through. The new `resolveBrandSecrets` helper lives in
+    `src/brand/credential.ts`.
+  - **Brand-kit recipe schema superset.** `BrandKitRecipeSchema` now
+    parses the richer recipe shape the registry's `sitecore-recipes.ts`
+    exports: optional top-level `kind: "brandkit"`, `schemaVersion: "1"`,
+    `handle` (regex `^[a-z][a-z0-9-]*@\d+$`), and `displayName`, plus a
+    discriminated `documents[]` union (`url` | `registry-file`) with
+    optional `tags` and `sections` ingestion hints. Back-compat is
+    preserved via a preprocess step that defaults a missing `kind` to
+    `"url"` whenever `url` is present, so existing scai-native YAML/JSON
+    recipes keep parsing without a migration. `registry-file` documents
+    carry a path relative to the recipe; the seed runner rejects them
+    with `INPUT_INVALID` and a pointer at the orchestrator-side
+    translation step (the Sitecore Documents API has no working
+    bytes-upload path, so URL conversion has to happen upstream of
+    scai). Also exports `BRAND_KIT_CANONICAL_SECTIONS` for the seven
+    canonical section names that the EnrichSections pipeline produces.
+  - **Recipe `FolderPath` normalization.** `location.folder` and
+    `placeholder.folder` now accept either the canonical array form
+    (`["Theme", "Color"]`) or the legacy slash-string form
+    (`"Theme/Color"`). Both normalize to `string[]` during Zod parse,
+    filtering empty segments after split + trim. The registry already
+    moved to array form (slash-strings are fragile to author through
+    Agent Studio with no IDE help inside the string); scai now accepts
+    both so existing recipes keep working and new ones use the explicit
+    shape. Downstream consumers (`compile/enumeration`, `compile/shared`,
+    `items/read-current`) see `string[]` uniformly.
+
+- 7c243b6: Recipe schema audit Tier A1: replace the four-peer `sourceTypes` /
+  `sourceQuery` / `sourceScope` / `sourceRaw` fields on
+  `SitecoreFieldAugment` with a single discriminated union `source: {
+kind: "filter" | "raw", ... }`.
+  - `kind: "filter"` carries the composable `types` / `query` /
+    `scope` trio — same combination semantics as before (e.g. `types +
+scope` → `DataSource=<path>&IncludeTemplatesForSelection=...`).
+  - `kind: "raw"` carries the verbatim Source escape hatch.
+  - The mutex between `raw` and the structured trio is now
+    structural, not an `.refine()`; JSON Schema's `oneOf` expresses it
+    natively so Agent Studio can't emit an invalid combination.
+  - Pre-A1 recipes that still carry `sourceTypes` / `sourceRaw` etc.
+    are rejected at parse time with a migration pointer (the augment
+    schema uses `.passthrough()` + a `.superRefine` so the legacy
+    keys can't slip through Zod's default `.strip()` silently).
+  - Internal compiler unchanged: a new `augmentSourceToFields()`
+    adapter in `src/recipe/schema/source-fields.ts` flattens the
+    union to the existing `SourceFields` shape that
+    `renderSourceFields()` and the `ref-source-fields` IR op
+    already consume. `compile/shared.ts` and `validate.ts` updated
+    to use the adapter / new walk shape; `items/read-current.ts`
+    emits the new union shape on `recipe pull` capture.
+
+  **Breaking change for recipe authors**: migrate any
+  `sitecore: { sourceTypes: [...] }` to `sitecore: { source: { kind:
+"filter", types: [...] } }`, and any
+  `sitecore: { sourceRaw: "..." }` to `sitecore: { source: { kind:
+"raw", value: "..." } }`.
+
+- 7c243b6: Recipe schema audit Tier A3: campaign server-enum fields now use
+  `z.union([z.enum(KNOWN_*), z.string()])` instead of bare `z.string()`,
+  so AI authors get the observed values as a strong hint without
+  breaking `recipe pull` when the API returns an unobserved enum
+  value.
+  - `CampaignTask.status` / `CampaignDeliverable.status` /
+    `CampaignRecipe.status` accept `KNOWN_CAMPAIGN_STATUSES` =
+    `["NOT_STARTED"]` plus any other string.
+  - `CampaignDeliverable.funnelStage` accepts
+    `KNOWN_CAMPAIGN_FUNNEL_STAGES` = `["TOP"]` plus any other string.
+  - `KNOWN_CAMPAIGN_STATUSES` and `KNOWN_CAMPAIGN_FUNNEL_STAGES` are
+    exported from `src/campaigns/recipe/schema.ts` — extend them as
+    more enum values are observed in HAR captures.
+  - `Task.priority` stays `z.string()` until any priority values are
+    observed in capture.
+
+  JSON Schema renders these as `anyOf: [{ enum: [...] }, { type:
+"string" }]` so Agent Studio gets the confirmed set surfaced
+  first while remaining schema-valid against unobserved values.
+
+- 7c243b6: First pass of the recipe-schema audit (see
+  `docs/recipe-schema-audit.md`). Tightens recipe-side validation
+  without changing compiler output:
+  - **ISO-8601 dates** on `CampaignRecipe`, `CampaignDeliverable`, and
+    `CampaignTask` (`startDate` / `dueDate`) are now validated via a
+    shared `Iso8601` regex schema. Accepts both date-only
+    (`2026-05-26`) and full datetime (`2026-05-26T15:00:00Z` /
+    `2026-05-26T15:00:00.500+02:00`); rejects free-form strings like
+    `"April 1"` or `"2026/06/30"`.
+  - **ISO-4217 currencies** on `BudgetFieldSchema` items now require
+    a 3-letter uppercase pattern (`USD`, `EUR`, `GBP`). Lowercase
+    and non-letter values are rejected at parse time.
+  - **`ComponentTemplateRecipe.parameters` ↔ `params` conflict**: a
+    recipe that sets both `parameters: { handle }` (external template
+    ref) AND a non-empty inline `params: [...]` is now rejected at
+    parse time. Previously the compiler silently dropped `params`
+    when `parameters` was set; the new check surfaces the ambiguity
+    to the author.
+  - **`DesignParametersTemplateRecipe.section` is now `{ handle }`,
+    not a bare string**: aligns with `ComponentTemplateRecipe.section`'s
+    shape. The compiler resolves the section handle via the same
+    cross-recipe `resolveSectionRecipe` lookup component-template
+    already uses, so dangling section refs fail with `INPUT_INVALID`
+    at compile time. **Breaking change** for any in-tree recipe that
+    was authoring `section: "ui"` (now `section: { handle:
+"ui-section@1" }`).
+  - **`ComponentTemplateRecipe.otherProperties` description** now
+    explicitly calls out which keys are reserved for the typed
+    `datasource.autoCreate` and `dynamicPlaceholders` shortcuts. No
+    behavior change; helps AI-driven authoring avoid silently
+    overriding the typed values.
+
+  Tier-A1 (`SitecoreFieldAugment.source*` discriminated union) and
+  Tier-A3 (campaign server enums as `z.enum`) stayed deferred — see
+  the audit doc for the reasoning and the planned follow-up scope.
+
+- 7c243b6: Unify recipe loading: the schema-aware `loadRecipe` from `@/sync`
+  (used by `brand`, `agents`, `campaign`, `brief` sync verbs) now also
+  loads `.ts` / `.tsx` / `.mts` / `.cts` recipes, going through the same
+  sandboxed transpile path the CMS recipe loader already used.
+
+  Recipe authors can now write a single format — `.recipe.ts` with
+  Zod-derived `satisfies` checks — for every kind. YAML and JSON keep
+  working unchanged (still the format `sync pull` round-trips).
+
+  Shared TS-loader machinery moved to `src/sync/typescript-recipe.ts`
+  and is now consumed by both `src/sync/io.ts` and `src/recipe/io.ts`.
+  The library `loadRecipe(filePath, schema)` is now async; every
+  existing call site already ran inside an `async` task runner or
+  commander `command.action(async …)` handler.
+
 ## 0.1.2
 
 ### Patch Changes
@@ -459,13 +605,10 @@ og-image,og-title`; configurable via `--required-fields`. Scope to
     - `--max-matches-per-item N` caps sample collection (default 10).
   - `audit stale-content list --not-updated-in-days N` — items not
     updated in N days (default 365). Distinct from `audit
-stale-workflow`:
-    - `stale-workflow` finds items stuck mid-flight in a non-final
-      workflow state.
-    - `stale-content` finds **abandoned** content — published items no
-      one has touched in a long time.
-    - By default excludes items currently in a workflow (set
-      `--no-exclude-workflow-items` to include).
+stale-workflow`: - `stale-workflow` finds items stuck mid-flight in a non-final
+    workflow state. - `stale-content` finds **abandoned** content — published items no
+    one has touched in a long time. - By default excludes items currently in a workflow (set
+    `--no-exclude-workflow-items` to include).
 
   **New `scai cleanup *` verb (mutating, with `--what-if` / `--allow-write`):**
   - `cleanup find-replace apply --pattern <regex> --replacement <text>` —

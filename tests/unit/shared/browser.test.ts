@@ -30,20 +30,36 @@ describe("openBrowser", () => {
     openBrowser("https://example.com");
     expect(spawn).toHaveBeenCalledWith(
       "open",
-      ["https://example.com"],
-      expect.objectContaining({ shell: false })
+      ["https://example.com/"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      })
     );
   });
 
-  it("uses the Windows start command", async () => {
+  it("uses rundll32 FileProtocolHandler on Windows", async () => {
     setPlatform("win32");
     const { openBrowser } = await import("../../../src/shared/browser");
     openBrowser("https://example.com");
     expect(spawn).toHaveBeenCalledWith(
-      "cmd",
-      ["/c", "start", "", "https://example.com"],
-      expect.objectContaining({ shell: true })
+      "rundll32",
+      ["url.dll,FileProtocolHandler", "https://example.com/"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      })
     );
+  });
+
+  it("rejects non-http(s) URLs without launching anything", async () => {
+    setPlatform("linux");
+    const { openBrowser } = await import("../../../src/shared/browser");
+    expect(openBrowser("file:///etc/passwd")).toBe(false);
+    expect(openBrowser("javascript:alert(1)")).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("returns false when spawn throws", async () => {

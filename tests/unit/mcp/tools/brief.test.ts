@@ -33,6 +33,8 @@ const taskMocks = vi.hoisted(() => ({
   runBriefCommentsList: vi.fn().mockResolvedValue({ totalCount: 1, data: [{ id: "c-1" }] }),
   runBriefSetStatus: vi.fn().mockResolvedValue({ id: "b-1", status: "InReview" }),
   runBriefDelete: vi.fn().mockResolvedValue({ id: "b-1", deleted: true }),
+  runBriefCreate: vi.fn().mockResolvedValue({ id: "b-new", name: "New Brief" }),
+  runBriefUpdate: vi.fn().mockResolvedValue({ id: "b-1" }),
   runBriefCommentAdd: vi.fn().mockResolvedValue({ id: "c-new" }),
   runBriefTypeCreate: vi.fn().mockResolvedValue({ id: "bt-new", name: "Campaign" }),
   runBriefTypeUpdate: vi.fn().mockResolvedValue({ id: "bt-1" }),
@@ -244,13 +246,111 @@ describe("brief_manage", () => {
     expect(planned.content[0].text).toContain("Plan: delete brief");
   });
 
-  it("brief verb='create' is rejected (brief only supports set-status / delete)", async () => {
+  it("brief create requires both `brief` body and `briefTypeId`", async () => {
     const reg = await setup();
     await expect(
       reg
         .getTool("brief_manage")!
         .handler({ resource: "brief", verb: "create", allowWrite: true } as never, fakeContext)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    await expect(
+      reg.getTool("brief_manage")!.handler(
+        {
+          resource: "brief",
+          verb: "create",
+          brief: { name: "New Brief" },
+          allowWrite: true,
+        } as never,
+        fakeContext
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("brief create forwards the body and resolved briefTypeId to runBriefCreate", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("brief_manage")!.handler(
+      {
+        resource: "brief",
+        verb: "create",
+        brief: { name: "New Brief", locale: "en-us", fields: { f1: "x" } },
+        briefTypeId: UUID_B,
+        allowWrite: true,
+      },
+      fakeContext
+    );
+    expect(taskMocks.runBriefCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          name: "New Brief",
+          briefTypeId: UUID_B,
+          locale: "en-us",
+          fields: { f1: "x" },
+        }),
+      })
+    );
+    expect(result.content[0].text).toContain("Created brief 'New Brief'");
+  });
+
+  it("brief update requires briefId and at least one patch field", async () => {
+    const reg = await setup();
+    await expect(
+      reg
+        .getTool("brief_manage")!
+        .handler({ resource: "brief", verb: "update", allowWrite: true } as never, fakeContext)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    // briefId present but neither brief body nor status — also rejected.
+    await expect(
+      reg.getTool("brief_manage")!.handler(
+        {
+          resource: "brief",
+          verb: "update",
+          briefId: UUID_A,
+          allowWrite: true,
+        } as never,
+        fakeContext
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("brief update accepts a top-level status as the sole patch", async () => {
+    const reg = await setup();
+    const result = await reg.getTool("brief_manage")!.handler(
+      {
+        resource: "brief",
+        verb: "update",
+        briefId: UUID_A,
+        status: "Approved",
+        allowWrite: true,
+      },
+      fakeContext
+    );
+    expect(taskMocks.runBriefUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        briefId: UUID_A,
+        patch: expect.objectContaining({ status: "Approved" }),
+      })
+    );
+    expect(result.content[0].text).toContain("Updated brief");
+  });
+
+  it("brief update merges the brief body fields and a top-level status", async () => {
+    const reg = await setup();
+    await reg.getTool("brief_manage")!.handler(
+      {
+        resource: "brief",
+        verb: "update",
+        briefId: UUID_A,
+        brief: { name: "Renamed", locale: "en-gb" },
+        status: "InReview",
+        allowWrite: true,
+      },
+      fakeContext
+    );
+    expect(taskMocks.runBriefUpdate.mock.calls[0][0].patch).toMatchObject({
+      name: "Renamed",
+      locale: "en-gb",
+      status: "InReview",
+    });
   });
 
   it("comment create requires briefId and commentText", async () => {

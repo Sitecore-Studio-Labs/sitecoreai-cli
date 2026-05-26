@@ -46,6 +46,13 @@ const recipe = {
   fields: [],
 };
 
+const briefInstanceRecipe = {
+  name: "Q3 Launch",
+  briefTypeName: "CreativeBrief",
+  status: "Draft" as const,
+  fields: {},
+};
+
 const setup = (): McpRegistry => {
   const registry = new McpRegistry();
   registerBriefRecipeTools(registry);
@@ -132,5 +139,67 @@ describe("brief recipe tools", () => {
       .getTool("brief_recipe_push")!
       .handler({ recipe, whatIf: false, allowWrite: true, prune: false }, fakeContext, fakeExtra);
     expect(syncMocks.syncPush.mock.calls[0][4]).toMatchObject({ mode: "apply" });
+  });
+});
+
+describe("brief recipe tools — kind discriminator routes to the right kind", () => {
+  it("inspect verb=pull with kind='brief' routes to briefInstanceKind", async () => {
+    const reg = setup();
+    syncMocks.syncPull.mockResolvedValue(briefInstanceRecipe);
+    const result = await reg
+      .getTool("brief_recipe_inspect")!
+      .handler({ verb: "pull", kind: "brief", name: "Q3 Launch" }, fakeContext, fakeExtra);
+
+    // The engine entry point gets the brief-instance kind ('brief'), not 'brief-type'.
+    expect(syncMocks.syncPull.mock.calls[0][0].name).toBe("brief");
+    expect(syncMocks.syncPull.mock.calls[0][1]).toEqual({ kind: "brief", id: "Q3 Launch" });
+    expect(result.structuredContent).toMatchObject({ kind: "brief", verb: "pull", found: true });
+    expect(result.content[0].text).toContain('Captured brief "Q3 Launch"');
+  });
+
+  it("inspect verb=pull defaults kind to 'brief-type' for back-compat", async () => {
+    const reg = setup();
+    syncMocks.syncPull.mockResolvedValue(recipe);
+    await reg
+      .getTool("brief_recipe_inspect")!
+      .handler({ verb: "pull", name: "CreativeBrief" }, fakeContext, fakeExtra);
+
+    // No `kind` passed — default applies.
+    expect(syncMocks.syncPull.mock.calls[0][0].name).toBe("brief-type");
+  });
+
+  it("inspect verb=diff accepts a brief-instance recipe under kind='brief'", async () => {
+    const reg = setup();
+    syncMocks.syncDiff.mockResolvedValue({
+      changes: [{ kind: "create", path: "brief", summary: "create" }],
+    });
+    const result = await reg
+      .getTool("brief_recipe_inspect")!
+      .handler(
+        { verb: "diff", kind: "brief", recipe: briefInstanceRecipe },
+        fakeContext,
+        fakeExtra
+      );
+    expect(syncMocks.syncDiff.mock.calls[0][0].name).toBe("brief");
+    expect(syncMocks.syncDiff.mock.calls[0][2]).toEqual({ kind: "brief", id: "Q3 Launch" });
+    expect(result.structuredContent).toMatchObject({ kind: "brief", verb: "diff" });
+  });
+
+  it("push with kind='brief' routes to briefInstanceKind", async () => {
+    const reg = setup();
+    syncMocks.syncPush.mockResolvedValue({ plan: { changes: [] }, result: null });
+    await reg.getTool("brief_recipe_push")!.handler(
+      {
+        kind: "brief",
+        recipe: briefInstanceRecipe,
+        whatIf: true,
+        allowWrite: false,
+        prune: false,
+      },
+      fakeContext,
+      fakeExtra
+    );
+    expect(syncMocks.syncPush.mock.calls[0][0].name).toBe("brief");
+    expect(syncMocks.syncPush.mock.calls[0][2]).toEqual({ kind: "brief", id: "Q3 Launch" });
   });
 });

@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   runBriefCommentAdd,
   runBriefCommentsList,
+  runBriefCreate,
   runBriefDelete,
   runBriefList,
   runBriefSetStatus,
@@ -27,7 +28,9 @@ import {
   runBriefTypeGet,
   runBriefTypeUpdate,
   runBriefTypes,
+  runBriefUpdate,
 } from "@/brief/tasks";
+import type { CreateBriefInput } from "@/brief";
 import type { CreateBriefTypeInput } from "@/brief/api/brief-types";
 import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
@@ -216,23 +219,27 @@ export const registerBriefTools = (registry: McpRegistry): void => {
       verb: z
         .enum(["create", "update", "delete", "set-status"])
         .describe(
-          "Mutation verb. brief-type: create (POST), update (PUT-replace), delete (irreversible). brief: set-status, delete. comment: create."
+          "Mutation verb. brief-type: create (POST), update (PUT-replace), delete (irreversible). brief: create (POST), update (partial PUT), set-status, delete. comment: create."
         ),
       briefTypeId: z
         .string()
         .uuid()
         .optional()
-        .describe("Brief type UUID. Required for brief-type verb='update' and verb='delete'."),
+        .describe(
+          "Brief type UUID. Required for brief-type verb='update' and verb='delete', and for brief verb='create' (the type to build the brief against)."
+        ),
       briefId: z
         .string()
         .uuid()
         .optional()
-        .describe("Brief UUID. Required for resource='brief' verb='set-status'."),
+        .describe(
+          "Brief UUID. Required for resource='brief' verbs 'update', 'set-status', and 'delete'."
+        ),
       status: z
         .enum(["Draft", "InReview", "Approved", "Canceled", "Archived"])
         .optional()
         .describe(
-          "Target brief status for verb='set-status'. Wire form — 'InReview' is the 'In Review' UI label. A brief must leave 'Draft' before it can be linked to a campaign."
+          "Target brief status. Required for verb='set-status'; optional on brief 'create'/'update' (defaults to server 'Draft' on create). Wire form — 'InReview' is the 'In Review' UI label. A brief must leave 'Draft' before it can be linked to a campaign."
         ),
       commentText: z
         .string()
@@ -260,7 +267,23 @@ export const registerBriefTools = (registry: McpRegistry): void => {
         })
         .optional()
         .describe(
-          "Full BriefType body for verb='create' or verb='update'. Required on writes; ignored on delete."
+          "Full BriefType body for resource='brief-type' verb='create' or verb='update'. Required on brief-type writes; ignored on delete."
+        ),
+      brief: z
+        .object({
+          name: z.string().min(1).describe("Brief display name."),
+          locale: z.string().optional().describe("BCP-47-ish locale, e.g. 'en-us'."),
+          fields: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe(
+              "Field values keyed by BriefField.name; the per-field shape follows the brief type's field definitions."
+            ),
+          isTemplate: z.boolean().optional().describe("Whether the brief is a template."),
+        })
+        .optional()
+        .describe(
+          "Brief body. Required for resource='brief' verb='create' (with `briefTypeId`); optional for verb='update' (any subset of name/locale/fields/isTemplate plus the top-level `status`)."
         ),
       ...environmentBindingShape,
       ...allowWriteShape,
@@ -274,6 +297,83 @@ export const registerBriefTools = (registry: McpRegistry): void => {
       const whatIf = input.whatIf;
 
       if (input.resource === "brief") {
+        if (input.verb === "create") {
+          if (!input.brief) {
+            throw createScaiError(
+              "verb='create' on resource='brief' requires `brief`.",
+              "INPUT_INVALID"
+            );
+          }
+          if (!input.briefTypeId) {
+            throw createScaiError(
+              "verb='create' on resource='brief' requires `briefTypeId`.",
+              "INPUT_INVALID"
+            );
+          }
+          const createInput: CreateBriefInput = {
+            name: input.brief.name,
+            briefTypeId: input.briefTypeId,
+            ...(input.brief.locale !== undefined && { locale: input.brief.locale }),
+            ...(input.brief.fields !== undefined && { fields: input.brief.fields }),
+            ...(input.brief.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
+          };
+          const result = await runBriefCreate({
+            ...taskOpts,
+            input: createInput,
+            whatIf,
+          } as never);
+          const isPlan = "plan" in (result as Record<string, unknown>);
+          return {
+            content: [
+              {
+                type: "text",
+                text: isPlan
+                  ? `Plan: create brief '${input.brief.name}'.`
+                  : `Created brief '${input.brief.name}'.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
+        }
+        if (input.verb === "update") {
+          if (!input.briefId) {
+            throw createScaiError(
+              "verb='update' on resource='brief' requires `briefId`.",
+              "INPUT_INVALID"
+            );
+          }
+          const patch: Partial<CreateBriefInput> & { status?: typeof input.status } = {
+            ...(input.brief?.name !== undefined && { name: input.brief.name }),
+            ...(input.brief?.locale !== undefined && { locale: input.brief.locale }),
+            ...(input.brief?.fields !== undefined && { fields: input.brief.fields }),
+            ...(input.brief?.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
+            ...(input.status !== undefined && { status: input.status }),
+          };
+          if (Object.keys(patch).length === 0) {
+            throw createScaiError(
+              "verb='update' on resource='brief' requires at least one field in `brief` or a top-level `status`.",
+              "INPUT_INVALID"
+            );
+          }
+          const result = await runBriefUpdate({
+            ...taskOpts,
+            briefId: input.briefId,
+            patch,
+            whatIf,
+          } as never);
+          const isPlan = "plan" in (result as Record<string, unknown>);
+          return {
+            content: [
+              {
+                type: "text",
+                text: isPlan
+                  ? `Plan: update brief ${input.briefId} (${Object.keys(patch).join(", ")}).`
+                  : `Updated brief ${input.briefId}.`,
+              },
+            ],
+            structuredContent: { resource: input.resource, verb: input.verb, result },
+          };
+        }
         if (input.verb === "set-status") {
           if (!input.briefId) {
             throw createScaiError("verb='set-status' requires `briefId`.", "INPUT_INVALID");
@@ -325,7 +425,7 @@ export const registerBriefTools = (registry: McpRegistry): void => {
           };
         }
         throw createScaiError(
-          "resource='brief' supports verb='set-status' and verb='delete'.",
+          "resource='brief' supports verbs 'create', 'update', 'set-status', and 'delete'.",
           "INPUT_INVALID"
         );
       }

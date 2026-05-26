@@ -2,7 +2,7 @@
 
 # Command reference
 
-Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.0.4.
+Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.2.0.
 The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs.
 
 ## scai
@@ -3374,10 +3374,12 @@ scai ops brief [options] [command]
 
 - [`scai ops brief list`](#scai-ops-brief-list) — List briefs in the tenant.
 - [`scai ops brief show`](#scai-ops-brief-show) — Show one brief by id, including its field values, tasks, and comments.
+- [`scai ops brief create`](#scai-ops-brief-create) — Create a brief instance from a CreateBriefInput JSON document. For declarative + idempotent pushes, use `brief sync push --kind brief`.
+- [`scai ops brief update`](#scai-ops-brief-update) — Update a brief instance with a partial-PUT body. Provide --file for arbitrary patches, or --status as a shortcut for a status-only move.
 - [`scai ops brief set-status`](#scai-ops-brief-set-status) — Set a brief's workflow status (Draft, InReview, Approved, Canceled, Archived).
 - [`scai ops brief delete`](#scai-ops-brief-delete) — Delete a brief. Requires --apply; non-TTY callers must also pass --force.
 - [`scai ops brief types`](#scai-ops-brief-types) — Brief type operations (list, get, create, update, delete).
-- [`scai ops brief sync`](#scai-ops-brief-sync) — Pull, diff, and push a brief type as a declarative recipe.
+- [`scai ops brief sync`](#scai-ops-brief-sync) — Pull, diff, and push a brief type or brief instance as a declarative recipe.
 - [`scai ops brief todos`](#scai-ops-brief-todos) — List to-dos across briefs, or filter to one brief with [briefId].
 - [`scai ops brief comments`](#scai-ops-brief-comments) — Brief comment operations (list, add).
 
@@ -3392,6 +3394,7 @@ scai ops brief list [options]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3413,6 +3416,7 @@ scai ops brief show [options] <briefId>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3420,6 +3424,53 @@ scai ops brief show [options] <briefId>
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
+
+#### scai ops brief create
+
+Create a brief instance from a CreateBriefInput JSON document. For declarative + idempotent pushes, use `brief sync push --kind brief`.
+
+```
+scai ops brief create [options]
+```
+
+**Options**
+
+- `-f, --file <path>` — Path to a JSON file matching CreateBriefInput (name + briefTypeId, plus optional locale/fields/isTemplate).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+
+#### scai ops brief update
+
+Update a brief instance with a partial-PUT body. Provide --file for arbitrary patches, or --status as a shortcut for a status-only move.
+
+```
+scai ops brief update [options] <briefId>
+```
+
+**Options**
+
+- `-f, --file <path>` — Path to a JSON file with the partial patch.
+- `--status <status>` — Shortcut: status-only patch. Equivalent to `scai ops brief set-status`.
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
 
 #### scai ops brief set-status
 
@@ -3432,6 +3483,7 @@ scai ops brief set-status [options] <briefId> <status>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3454,6 +3506,7 @@ scai ops brief delete [options] <briefId>
 
 - `--force` — Skip TTY confirmation prompt (required for non-TTY agents).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3491,6 +3544,7 @@ scai ops brief types list [options]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3510,6 +3564,7 @@ scai ops brief types get [options] <briefTypeId>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3530,6 +3585,7 @@ scai ops brief types create [options]
 
 - `-f, --file <path>` — Path to a JSON file matching CreateBriefTypeInput
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3552,6 +3608,7 @@ scai ops brief types update [options] <briefTypeId>
 
 - `-f, --file <path>` — Path to a JSON file matching CreateBriefTypeInput
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3574,6 +3631,7 @@ scai ops brief types delete [options] <briefTypeId>
 
 - `--force` — Skip TTY confirmation prompt (required for non-TTY agents).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3586,7 +3644,7 @@ scai ops brief types delete [options] <briefTypeId>
 
 #### scai ops brief sync
 
-Pull, diff, and push a brief type as a declarative recipe.
+Pull, diff, and push a brief type or brief instance as a declarative recipe.
 
 ```
 scai ops brief sync [options] [command]
@@ -3594,13 +3652,13 @@ scai ops brief sync [options] [command]
 
 **Subcommands**
 
-- [`scai ops brief sync pull`](#scai-ops-brief-sync-pull) — Capture a live brief type as a recipe file.
-- [`scai ops brief sync diff`](#scai-ops-brief-sync-diff) — Show the plan to converge a brief type onto a recipe file.
-- [`scai ops brief sync push`](#scai-ops-brief-sync-push) — Converge a brief type onto a recipe file. Dry-run unless --allow-write.
+- [`scai ops brief sync pull`](#scai-ops-brief-sync-pull) — Capture a live brief type or brief instance as a recipe file.
+- [`scai ops brief sync diff`](#scai-ops-brief-sync-diff) — Show the plan to converge a brief type or brief onto a recipe file.
+- [`scai ops brief sync push`](#scai-ops-brief-sync-push) — Converge a brief type or brief onto a recipe file. Dry-run unless --allow-write.
 
 ##### scai ops brief sync pull
 
-Capture a live brief type as a recipe file.
+Capture a live brief type or brief instance as a recipe file.
 
 ```
 scai ops brief sync pull [options]
@@ -3608,8 +3666,9 @@ scai ops brief sync pull [options]
 
 **Options**
 
-- `--name <name>` — Brief type codename
-- `--file <path>` — Output recipe file (default: <name>.brieftype.yaml)
+- `--name <name>` — Identifier of the recipe. Brief-type codename (`CreativeBrief`) or brief display name (`Q3 Launch`).
+- `--file <path>` — Output recipe file (default: <name>.<kind>.yaml)
+- `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -3621,7 +3680,7 @@ scai ops brief sync pull [options]
 
 ##### scai ops brief sync diff
 
-Show the plan to converge a brief type onto a recipe file.
+Show the plan to converge a brief type or brief onto a recipe file.
 
 ```
 scai ops brief sync diff [options]
@@ -3630,6 +3689,7 @@ scai ops brief sync diff [options]
 **Options**
 
 - `--file <path>` — Recipe file (.yaml / .json)
+- `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -3641,7 +3701,7 @@ scai ops brief sync diff [options]
 
 ##### scai ops brief sync push
 
-Converge a brief type onto a recipe file. Dry-run unless --allow-write.
+Converge a brief type or brief onto a recipe file. Dry-run unless --allow-write.
 
 ```
 scai ops brief sync push [options]
@@ -3652,6 +3712,7 @@ scai ops brief sync push [options]
 - `--file <path>` — Recipe file (.yaml / .json)
 - `--allow-write` — Apply the plan (default is a dry-run)
 - `--prune` — Include delete changes (off by default)
+- `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -3672,6 +3733,7 @@ scai ops brief todos [options] [briefId]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3706,6 +3768,7 @@ scai ops brief comments list [options] [briefId]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3727,6 +3790,7 @@ scai ops brief comments add [options] <briefId>
 
 - `--text <text>` — Comment text
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3767,6 +3831,7 @@ scai ops campaign list [options]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3787,6 +3852,7 @@ scai ops campaign show [options] <campaignId>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3812,6 +3878,7 @@ scai ops campaign create [options]
 - `--brandkit-id <id>` — Associated brand kit UUID
 - `--status <status>` — Initial status (default: `"NOT_STARTED"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3834,6 +3901,7 @@ scai ops campaign delete [options] <campaignId>
 
 - `--force` — Skip TTY confirmation prompt (required for non-TTY agents).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3855,6 +3923,7 @@ scai ops campaign users [options]
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3892,6 +3961,7 @@ scai ops campaign deliverable create [options] <campaignId>
 - `--funnel-tactics <csv>` — Comma-separated funnel tactics
 - `--status <status>` — Initial status (default: `"NOT_STARTED"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3914,6 +3984,7 @@ scai ops campaign deliverable delete [options] <campaignId> <deliverableId>
 
 - `--force` — Skip TTY confirmation prompt (required for non-TTY agents).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3951,6 +4022,7 @@ scai ops campaign task list [options] <campaignId> <deliverableId>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3970,6 +4042,7 @@ scai ops campaign task show [options] <campaignId> <deliverableId> <taskId>
 **Options**
 
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -3992,6 +4065,7 @@ scai ops campaign task create [options] <campaignId> <deliverableId>
 - `--due-date <iso>` — Due date (ISO-8601)
 - `--status <status>` — Initial status (default: `"NOT_STARTED"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -4019,6 +4093,7 @@ scai ops campaign task update [options] <campaignId> <deliverableId> <taskId>
 - `--description <html>` — Description (HTML)
 - `--assignee <userId>` — Assignee — an Auth0 subject
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -4041,6 +4116,7 @@ scai ops campaign task delete [options] <campaignId> <deliverableId> <taskId>
 
 - `--force` — Skip TTY confirmation prompt (required for non-TTY agents).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data

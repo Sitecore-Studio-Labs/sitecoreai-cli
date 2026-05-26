@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createBriefCreateCommand } from "./create";
 import { createBriefListCommand } from "./list";
 import { createBriefShowCommand } from "./show";
 import { createBriefSetStatusCommand } from "./set-status";
@@ -7,6 +8,7 @@ import { createBriefTodosCommand } from "./todos";
 import { createBriefCommentsCommand } from "./comments";
 import { createBriefDeleteCommand } from "./delete";
 import { createBriefSyncCommand } from "./sync";
+import { createBriefUpdateCommand } from "./update";
 
 /**
  * `scai ops brief …` command family — Sitecore Content Operations Brief
@@ -15,10 +17,12 @@ import { createBriefSyncCommand } from "./sync";
  * Surface:
  *   - `scai ops brief list`                            — list briefs in the tenant
  *   - `scai ops brief show <briefId>`                  — read one brief in detail
+ *   - `scai ops brief create -f <file>`                — create a brief from CreateBriefInput JSON
+ *   - `scai ops brief update <briefId>`                — partial-PUT update (file or --status)
  *   - `scai ops brief set-status <briefId> <status>`   — move a brief's workflow status
  *   - `scai ops brief delete <briefId>`                — delete a brief
  *   - `scai ops brief types {list,get,create,update,delete}` — brief type CRUD
- *   - `scai ops brief sync {pull,diff,push}`           — brief type as a recipe
+ *   - `scai ops brief sync {pull,diff,push} [--kind brief|brief-type]` — recipe sync
  *   - `scai ops brief todos [briefId]`                 — list to-dos
  *   - `scai ops brief comments {list,add}`             — list / post comments
  *
@@ -32,6 +36,8 @@ export const createBriefCommand = (): Command => {
 
   command.addCommand(createBriefListCommand());
   command.addCommand(createBriefShowCommand());
+  command.addCommand(createBriefCreateCommand());
+  command.addCommand(createBriefUpdateCommand());
   command.addCommand(createBriefSetStatusCommand());
   command.addCommand(createBriefDeleteCommand());
   command.addCommand(createBriefTypesCommand());
@@ -44,11 +50,15 @@ export const createBriefCommand = (): Command => {
     "\nExamples:\n" +
       "  $ scai ops brief list -n agents                      # list briefs\n" +
       "  $ scai ops brief show <briefId> -n agents            # read one brief\n" +
+      "  $ scai ops brief create -f b.json -n agents --apply  # create a brief (raw API shape)\n" +
+      "  $ scai ops brief update <id> --status Approved --apply  # status-only patch\n" +
       "  $ scai ops brief set-status <briefId> Approved --apply  # move out of Draft\n" +
       "  $ scai ops brief delete <briefId> --apply --force    # delete a brief\n" +
       "  $ scai ops brief types list -n agents                # list brief schemas\n" +
       "  $ scai ops brief types create -f t.json --apply      # create a new schema\n" +
       "  $ scai ops brief sync pull --name CreativeBrief      # capture a type as a recipe\n" +
+      "  $ scai ops brief sync pull --kind brief --name MyBrief  # capture a brief as a recipe\n" +
+      "  $ scai ops brief sync push --kind brief -f b.yaml --allow-write  # converge a brief\n" +
       "  $ scai ops brief todos <briefId> --assignees         # to-dos on a brief, with assignees\n" +
       "  $ scai ops brief comments list <briefId>             # comments on a brief\n" +
       '  $ scai ops brief comments add <briefId> --text "…" --apply  # post a comment\n'

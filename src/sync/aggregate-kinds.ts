@@ -17,7 +17,7 @@
  * have nothing to enumerate and stay with `provision recipe`.
  */
 import { brandKitKind } from "@/brand/recipe";
-import { briefTypeKind } from "@/brief/recipe";
+import { briefInstanceKind, briefTypeKind } from "@/brief/recipe";
 import type { RecipeKind } from "@/sync";
 
 /**
@@ -28,4 +28,5 @@ import type { RecipeKind } from "@/sync";
 export const ENUMERABLE_RECIPE_KINDS: ReadonlyArray<RecipeKind<unknown>> = [
   brandKitKind as RecipeKind<unknown>,
   briefTypeKind as RecipeKind<unknown>,
+  briefInstanceKind as RecipeKind<unknown>,
 ];

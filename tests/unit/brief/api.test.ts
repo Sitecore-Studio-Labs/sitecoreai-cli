@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  assertCreateBriefInput,
   listBriefs,
   getBrief,
   createBrief,
   deleteBrief,
   setBriefStatus,
+  updateBrief,
 } from "../../../src/brief/api/briefs";
 import {
   createBriefType,
@@ -241,6 +243,43 @@ describe("brief instance CRUD", () => {
     expect((init as { method: string }).method).toBe("PUT");
     expect(JSON.parse((init as { body: string }).body)).toEqual({ status: "Approved" });
     expect(result).toBeUndefined();
+  });
+
+  it("updateBrief PUTs an arbitrary partial body to the brief item URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateBrief(baseOptions, "brief-xyz", { name: "Renamed", locale: "en-us" });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${DEFAULT_BRIEF_API_BASE}/api/brief/v1/briefs/brief-xyz`);
+    expect((init as { method: string }).method).toBe("PUT");
+    expect(JSON.parse((init as { body: string }).body)).toEqual({
+      name: "Renamed",
+      locale: "en-us",
+    });
+  });
+
+  it("assertCreateBriefInput accepts a minimal valid body", () => {
+    const input = assertCreateBriefInput({ name: "B", briefTypeId: "type-1" });
+    expect(input.name).toBe("B");
+  });
+
+  it("assertCreateBriefInput rejects a missing briefTypeId with a hint", () => {
+    expect(() => assertCreateBriefInput({ name: "B" })).toThrowError(/briefTypeId/);
+  });
+
+  it("assertCreateBriefInput rejects an empty name", () => {
+    expect(() => assertCreateBriefInput({ name: "", briefTypeId: "t" })).toThrowError(/'name'/);
+  });
+
+  it("assertCreateBriefInput rejects an array `fields`", () => {
+    // The Brief API takes `fields` as an object keyed by field name; an
+    // array silently 400s with a generic 'invalid body' error — assert
+    // early instead.
+    expect(() =>
+      assertCreateBriefInput({ name: "B", briefTypeId: "t", fields: [] as unknown })
+    ).toThrowError(/'fields'/);
   });
 
   it("setBriefStatus URL-encodes the brief id", async () => {

@@ -37,12 +37,16 @@ export {
 } from "./api/templates";
 export { runWebhookAuthoringGraphQL, type WebhookRequestOptions } from "./api/graphql";
 
+// `toLogger` and `printWebhookResult` deliberately omitted — they're
+// CLI presentation helpers (Logger wraps consola + log-file routing,
+// `printWebhookResult` writes to stdout). SDK consumers should bring
+// their own presentation; if they need the Logger they can import it
+// from `@sitecoreai-labs/sitecoreai-cli/...` once a stable subpath
+// exposes it (none does today, deliberately).
 export {
   type WebhookTaskOptions,
   type ResolvedWebhookTenant,
   resolveWebhookTenant,
-  toLogger,
-  printWebhookResult,
 } from "./tasks/shared";
 export {
   runWebhookList,

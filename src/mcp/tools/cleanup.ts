@@ -286,13 +286,17 @@ export const registerCleanupTools = (registry: McpRegistry): void => {
       ...environmentBindingShape,
       ...allowWriteShape,
     },
-    handler: async (input, context) => {
+    handler: async (input, context, extra) => {
       validateVerbInputs(input.verb, input as Record<string, unknown>);
       const runner = CLEANUP_RUNNERS[input.verb];
       if (!runner) {
         throw createScaiError(`Unknown cleanup verb '${input.verb}'.`, "INPUT_INVALID");
       }
       const whatIf = input.whatIf === true;
+      // Pre-flight cancel — cheap.
+      if (extra.signal.aborted) {
+        throw createScaiError("Cleanup cancelled before start.", "CANCELLED");
+      }
       // Resolve the target environment (bound default unless retargeted
       // via `environmentName`).
       const binding = await resolveToolBinding(context, input.environmentName);
@@ -302,6 +306,15 @@ export const registerCleanupTools = (registry: McpRegistry): void => {
       if (!whatIf) {
         ensureMcpElevationAllowed(binding.resolved.root, binding.envName);
       }
+      // Emit a coarse "starting" progress notification so the client
+      // sees the tool is alive while a long verb runs. The cleanup
+      // runners don't yet thread per-item progress / cancel — that'd
+      // require wiring an emit + signal through 16 runner signatures
+      // (follow-up). For now: start + done bookends + a post-completion
+      // cancel check that turns the result into CANCELLED if the
+      // client gave up mid-call. `sendProgress` is a no-op when the
+      // client didn't request progress, so unconditional is fine.
+      void extra.sendProgress(0, undefined, `${input.verb}: starting${whatIf ? " (whatIf)" : ""}`);
       const opts = buildRunnerOptions(
         input.verb,
         input as Record<string, unknown>,
@@ -311,6 +324,20 @@ export const registerCleanupTools = (registry: McpRegistry): void => {
         whatIf
       );
       const actions = await runner(opts);
+      if (extra.signal.aborted) {
+        // Work already happened (the runner doesn't honor the signal
+        // yet) — surface it as CANCELLED so the client doesn't treat
+        // a stopped call as successful completion.
+        throw createScaiError(
+          `Cleanup ${input.verb} ran to completion but the client cancelled mid-call.`,
+          "CANCELLED"
+        );
+      }
+      void extra.sendProgress(
+        actions.length,
+        actions.length,
+        `${input.verb}: ${actions.length} action(s)${whatIf ? " (whatIf)" : ""}`
+      );
       return {
         content: [{ type: "text", text: summarizeActions(input.verb, actions) }],
         structuredContent: {

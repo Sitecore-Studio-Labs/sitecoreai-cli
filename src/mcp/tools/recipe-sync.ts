@@ -17,11 +17,11 @@
  * kinds come from `@/sync/aggregate-kinds` — the same list `scai sync`
  * uses, so the two surfaces can never drift on which kinds participate.
  *
- * `auth: "write"` because `pull` writes recipe files to the workspace
- * and `push` mutates the tenant — the whole tool sits behind the
- * `allowWrite` gate, matching `audit_baseline` (read-ish `status` verb
- * included). The structured result is verbatim from the aggregate
- * engine; this layer only adds the text summary + envelope.
+ * Verb-discriminated gating: classified `auth: "read"` so the
+ * dispatch-level `allowWrite` requirement doesn't false-positive on
+ * `status` (a pure read) or `pull` (writes only to the local workspace,
+ * never the tenant). The `push` verb enforces `allowWrite` + the MCP
+ * elevation gate inside the handler — see the runtime check below.
  */
 import { z } from "zod";
 import {
@@ -33,6 +33,9 @@ import {
   type SyncMode,
 } from "@/sync";
 import { ENUMERABLE_RECIPE_KINDS } from "@/sync/aggregate-kinds";
+import { createScaiError } from "@/shared/errors";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
+import { readRootConfiguration } from "@/config/root-config";
 import type { McpContext } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -52,7 +55,10 @@ export const registerRecipeSyncTools = (registry: McpRegistry): void => {
   registry.registerTool({
     name: "recipe_sync",
     description: TOOL_DESCRIPTIONS.recipe_sync,
-    auth: "write",
+    // Verb-discriminated: `status` is a pure read, `pull` writes only
+    // to the local workspace. Only `push` mutates the tenant — gated
+    // inside the handler. See ToolAuth doc in registry.ts.
+    auth: "verb-discriminated",
     annotations: {
       title: "Pull, diff, and push every enumerable recipe kind at once",
       readOnlyHint: false,
@@ -84,6 +90,17 @@ export const registerRecipeSyncTools = (registry: McpRegistry): void => {
     handler: async (input, context, extra) => {
       const ctx = syncContextFrom(context, input.environmentName, extra.signal);
       const dir = input.dir;
+
+      if (input.verb === "push") {
+        if (!input.allowWrite) {
+          throw createScaiError(
+            "verb='push' mutates the tenant and requires allowWrite: true.",
+            "INPUT_INVALID"
+          );
+        }
+        const targetRoot = readRootConfiguration(context.configPath, ctx.environmentName);
+        ensureMcpElevationAllowed(targetRoot, ctx.environmentName);
+      }
 
       if (input.verb === "pull") {
         const result = await aggregatePull(ENUMERABLE_RECIPE_KINDS, ctx, { dir });

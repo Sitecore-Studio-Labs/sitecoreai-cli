@@ -148,8 +148,12 @@ describe("runPublishUnpublish — JSON output", () => {
       yes: true,
     });
 
-    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as { id: string };
-    expect(last.id).toBe("job-json");
+    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as {
+      command: string;
+      data: { id: string };
+    };
+    expect(last.command).toBe("publish.unpublish");
+    expect(last.data.id).toBe("job-json");
     expect(vi.mocked(writeVersionFields)).toHaveBeenCalledOnce();
   });
 });
@@ -333,8 +337,14 @@ describe("runPublishUnpublish — delete strategy", () => {
       confirmItemPath: "/sitecore/content/Home",
     });
 
-    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as { id: string };
-    expect(last.id).toBe("job-del-json");
+    const last = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null")) as {
+      command: string;
+      data: { id: string };
+      meta?: { reversible?: boolean };
+    };
+    expect(last.command).toBe("publish.unpublish");
+    expect(last.data.id).toBe("job-del-json");
+    expect(last.meta?.reversible).toBe(false);
   });
 
   it("throws INPUT_INVALID when --confirm-item-path doesn't match the resolved path", async () => {

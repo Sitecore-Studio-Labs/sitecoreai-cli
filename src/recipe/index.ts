@@ -134,7 +134,7 @@ export {
   templateId,
   variantId,
   variantsFolderId,
-} from "./guids";
+} from "./items/guids";
 
 // Operation IR ------------------------------------------------------------
 export {
@@ -178,7 +178,7 @@ export {
 } from "./ir/sitecore-templates";
 
 // Planner / executor ------------------------------------------------------
-export { buildPlan } from "./plan";
+export { buildPlan } from "./runtime/plan";
 export type {
   FieldDiffEntry,
   Plan,
@@ -186,10 +186,15 @@ export type {
   PlanOptions,
   PlanSummary,
   PlannedAction,
-} from "./plan";
+} from "./runtime/plan";
 
-export { executeIr } from "./execute";
-export type { ExecuteOptions, ExecutionEvent, ExecutionMode, ExecutionResult } from "./execute";
+export { executeIr } from "./runtime/execute";
+export type {
+  ExecuteOptions,
+  ExecutionEvent,
+  ExecutionMode,
+  ExecutionResult,
+} from "./runtime/execute";
 
 // Authoring API client seam (interface — bring your own implementation,
 // OR use `createAuthoringClient` below for scai's production client).
@@ -245,7 +250,7 @@ export {
   policyForOp,
   purposeForRecipe,
   type OpPurpose,
-} from "./policy";
+} from "./runtime/policy";
 
 // Cross-recipe validation -----------------------------------------------
 export {

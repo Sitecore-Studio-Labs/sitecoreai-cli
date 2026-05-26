@@ -2,6 +2,7 @@ import { Logger } from "@/shared/logger";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/policy/environment";
 import { promptConfirm } from "@/shared/prompt";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { acquirePublishingToken } from "../api/auth";
 import { submitPublishJob } from "../api/client";
 import { resolveItemPathsToIds } from "../api/path-resolver";
@@ -196,9 +197,28 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
 
   if (whatIf) {
     // Dry-run path — print the scope, mint a scope token, exit.
+    const token = mintScopeToken(scope);
+    if (logger.isJson()) {
+      // JSON-mode contract: emit the canonical envelope ONLY. The raw
+      // token lives in `data.scopeToken`; agents reuse it via
+      // `--confirm-token`. No bare stdout writes here — they'd corrupt
+      // any downstream JSON parser.
+      const envelope = buildScaiEnvelope({
+        command: "publish.item",
+        environment: envName,
+        data: {
+          scope,
+          scopeToken: token,
+          scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
+          productionTier,
+        },
+        extra: { whatIf: true },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+      return;
+    }
     logger.info(`What-if: would publish ${itemIds.length} item(s) to ${target}.`, "yellow");
     printScope(logger, scope);
-    const token = mintScopeToken(scope);
     logger.info("", "gray");
     if (productionTier) {
       logger.info(
@@ -294,7 +314,13 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
       outcome: "ok",
     });
     if (logger.isJson()) {
-      process.stdout.write(`${JSON.stringify(job, null, 2)}\n`);
+      const envelope = buildScaiEnvelope({
+        command: "publish.item",
+        environment: envName,
+        data: job,
+        extra: { summary: `Submitted publish job ${job.id} (${job.state}).` },
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
       return;
     }
     logger.info(`Submitted publish job ${job.id} (${job.state}).`, "green");

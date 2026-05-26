@@ -3,8 +3,12 @@ import "../setup";
 import { describeIfDeployAuth, getEnv, requireEnv, resolveDeployToken } from "../helpers";
 import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
-import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
-import { designParametersTemplateId, renderingId, templateId } from "../../../src/recipe/guids";
+import { executeIr, type ExecutionEvent } from "../../../src/recipe/runtime/execute";
+import {
+  designParametersTemplateId,
+  renderingId,
+  templateId,
+} from "../../../src/recipe/items/guids";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
 import type { AuthoringApiClient } from "../../../src/recipe/api/client";
 import type { ComponentTemplateRecipe } from "../../../src/recipe/schema/recipe";

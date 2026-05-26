@@ -11,7 +11,7 @@ import {
   siteDataFolderStandardValuesId,
   siteDataFolderTemplateId,
   templateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import {
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,

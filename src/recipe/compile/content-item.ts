@@ -7,7 +7,7 @@ import {
   templateId,
   workflowId,
   workflowStateId,
-} from "../guids";
+} from "../items/guids";
 import {
   type AddItemVersionOp,
   type CreateItemOp,
@@ -17,7 +17,7 @@ import {
   type RefValue,
   type SetFieldOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   DEFAULT_DEVICE_ID,
   DEFAULT_ICON,

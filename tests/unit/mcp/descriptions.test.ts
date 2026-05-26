@@ -60,6 +60,25 @@ describe("MCP tool descriptions + annotations", () => {
     }
   });
 
+  it("verb-discriminated tools declare allowWrite and reflect the worst-case verb in hints", () => {
+    // Verb-discriminated tools mix read verbs and write verbs behind one
+    // tool entry. Dispatch defers gating to the handler, so `auth` is
+    // not `write`; but `allowWrite` must still be declared (the handler
+    // enforces it per-verb) and `destructiveHint` should be true so the
+    // host UI surfaces the worst-case impact.
+    for (const tool of tools) {
+      if (tool.auth !== "verb-discriminated") continue;
+      expect(
+        Object.keys(tool.inputSchema).includes("allowWrite"),
+        `Verb-discriminated tool '${tool.name}' must declare allowWrite`
+      ).toBe(true);
+      expect(
+        tool.annotations.destructiveHint,
+        `Verb-discriminated tool '${tool.name}' should be destructiveHint=true (worst-case verb)`
+      ).toBe(true);
+    }
+  });
+
   it("every write tool's input schema declares allowWrite", () => {
     for (const tool of tools) {
       if (tool.auth !== "write") continue;

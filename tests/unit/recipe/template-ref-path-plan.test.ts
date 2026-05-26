@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan } from "../../../src/recipe/plan";
-import { templatePathRefKey } from "../../../src/recipe/guids";
+import { buildPlan } from "../../../src/recipe/runtime/plan";
+import { templatePathRefKey } from "../../../src/recipe/items/guids";
 import type { OperationIr } from "../../../src/recipe/ir/operations";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 

@@ -19,7 +19,7 @@ import {
   sectionDefinitionId,
   sectionFolderId,
   templateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import type {
   AppendToMultiListOp,
   CreateItemOp,

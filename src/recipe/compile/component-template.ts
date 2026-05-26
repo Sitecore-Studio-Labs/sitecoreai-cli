@@ -15,7 +15,7 @@ import {
   templateId,
   variantId,
   variantsFolderId,
-} from "../guids";
+} from "../items/guids";
 import {
   type AppendToMultiListOp,
   type CreateItemOp,
@@ -28,7 +28,7 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_ICON,

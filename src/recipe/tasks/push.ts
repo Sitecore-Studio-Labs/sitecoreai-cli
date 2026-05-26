@@ -12,14 +12,14 @@ import {
   loadRecipeCache,
   recordCacheEntry,
   saveRecipeCache,
-} from "../cache";
+} from "../runtime/cache";
 import { compileRecipeSet } from "../compile";
-import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../guids";
+import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { loadIr, loadRecipe } from "../io";
-import { executeIr, type ExecutionEvent, type ExecutionResult } from "../execute";
+import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
-import { createRollbackLogger } from "../rollback-log";
+import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,

@@ -1,12 +1,12 @@
 import { v5 as uuidv5 } from "uuid";
-import { contentItemId, renderingId, standardValuesId, workflowId } from "../guids";
+import { contentItemId, renderingId, standardValuesId, workflowId } from "../items/guids";
 import {
   type Operation,
   type OperationIr,
   OperationIrSchema,
   type SetFieldOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   DEFAULT_DEVICE_ID,
   LAYOUT_FIELDS,

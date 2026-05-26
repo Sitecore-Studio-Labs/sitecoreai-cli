@@ -172,7 +172,7 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
         }`
       );
     }
-  } else if (options?.baseline && !auditName) {
+  } else if (options?.baseline) {
     logger.warn(
       `--baseline requested but the audit command name '${command}' doesn't map to a baseline key.`
     );

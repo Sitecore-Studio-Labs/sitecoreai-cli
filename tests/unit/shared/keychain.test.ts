@@ -38,6 +38,35 @@ const makeRing = (spies: {
   return { AsyncEntry, lastArgs: () => lastArgs };
 };
 
+/**
+ * Build a fake `@napi-rs/keyring` backed by a real per-account `Map`, so
+ * tests can exercise the chunked write/read/delete round-trip (the shared
+ * `makeRing` spies return one value for every account and can't model it).
+ */
+const makeStoreRing = (): {
+  ring: { AsyncEntry: unknown };
+  store: Map<string, string>;
+} => {
+  const store = new Map<string, string>();
+  class AsyncEntry {
+    constructor(
+      _service: string,
+      private readonly account: string
+    ) {}
+    getPassword(): Promise<string | undefined> {
+      return Promise.resolve(store.get(this.account));
+    }
+    setPassword(password: string): Promise<void> {
+      store.set(this.account, password);
+      return Promise.resolve();
+    }
+    deleteCredential(): Promise<boolean> {
+      return Promise.resolve(store.delete(this.account));
+    }
+  }
+  return { ring: { AsyncEntry }, store };
+};
+
 const okSpies = (password: string | undefined) => ({
   getPassword: vi.fn().mockResolvedValue(password),
   setPassword: vi.fn().mockResolvedValue(undefined),
@@ -428,6 +457,125 @@ describe("keychain — unavailable warning suppression", () => {
     await keychain.getBriefToken("demo");
 
     expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});
+
+describe("keychain — chunked storage for oversized values", () => {
+  // Windows Credential Manager caps a single blob at 2560 bytes; a value
+  // longer than the CHUNK_SIZE (1024 UTF-16 units) must be split.
+  const big = "J".repeat(3000);
+  const chunkKeys = (store: Map<string, string>, account: string): string[] =>
+    [...store.keys()].filter((key) => key.startsWith(`${account}#chunk`));
+
+  it("round-trips a value too large for a single keychain blob", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    expect(await keychain.setDeployToken("prod", big)).toBe(true);
+    // The primary blob holds a manifest, not the raw token; the payload
+    // lives in companion chunk entries.
+    expect(store.get("deploy:prod")).not.toBe(big);
+    expect(chunkKeys(store, "deploy:prod").length).toBeGreaterThan(1);
+
+    expect(await keychain.getDeployToken("prod")).toBe(big);
+  });
+
+  it("keeps a value that fits in one blob unchunked (back-compat)", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    await keychain.setDeployToken("prod", "short-token");
+
+    expect(store.get("deploy:prod")).toBe("short-token");
+    expect(chunkKeys(store, "deploy:prod")).toHaveLength(0);
+  });
+
+  it("drops stale chunk entries when a later value fits in one blob", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    await keychain.setDeployToken("prod", big);
+    expect(await keychain.setDeployToken("prod", "small-token")).toBe(true);
+
+    expect(await keychain.getDeployToken("prod")).toBe("small-token");
+    expect(store.get("deploy:prod")).toBe("small-token");
+    expect(chunkKeys(store, "deploy:prod")).toHaveLength(0);
+  });
+
+  it("drops orphaned chunks when a later value needs fewer of them", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    await keychain.setDeployToken("prod", "J".repeat(5000));
+    const fewer = "J".repeat(2500);
+    await keychain.setDeployToken("prod", fewer);
+
+    expect(store.has("deploy:prod#chunk3")).toBe(false);
+    expect(store.has("deploy:prod#chunk4")).toBe(false);
+    expect(await keychain.getDeployToken("prod")).toBe(fewer);
+  });
+
+  it("returns undefined (never a truncated token) when a chunk is missing", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    await keychain.setDeployToken("prod", big);
+    store.delete("deploy:prod#chunk1");
+
+    expect(await keychain.getDeployToken("prod")).toBeUndefined();
+  });
+
+  it("clear removes the manifest and every chunk entry", async () => {
+    const { ring, store } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    await keychain.setDeployToken("prod", big);
+    expect(await keychain.clearDeployToken("prod")).toBe(true);
+
+    expect(store.size).toBe(0);
+  });
+
+  it("chunks the CM token bundle and parses it back", async () => {
+    const { ring } = makeStoreRing();
+    const keychain = await importKeychainWith(() => ring);
+
+    const bundle = { accessToken: "A".repeat(2000), refreshToken: "R".repeat(2000) };
+    expect(await keychain.setCmTokens("env", bundle)).toBe(true);
+    expect(await keychain.getCmTokens("env")).toEqual(bundle);
+  });
+});
+
+describe("keychain — write-failure diagnostics", () => {
+  it("surfaces the underlying keyring error in the write-failure warning", async () => {
+    vi.resetModules();
+    const failure = Object.assign(new Error("credential blob exceeds 2560 bytes"), {
+      code: "WindowsCredManagerError",
+    });
+    vi.doMock("@napi-rs/keyring", () => {
+      class AsyncEntry {
+        getPassword() {
+          return Promise.resolve(undefined);
+        }
+        setPassword() {
+          return Promise.reject(failure);
+        }
+        deleteCredential() {
+          return Promise.resolve(true);
+        }
+      }
+      return { AsyncEntry };
+    });
+    const { consola } = await import("consola");
+    const warn = vi.spyOn(consola, "warn").mockImplementation(() => undefined);
+
+    const keychain = await import("../../../src/shared/keychain");
+    expect(await keychain.setDeployToken("prod", "token")).toBe(false);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]?.[0]);
+    expect(message).toContain("WindowsCredManagerError");
+    expect(message).toContain("credential blob exceeds 2560 bytes");
     warn.mockRestore();
   });
 });

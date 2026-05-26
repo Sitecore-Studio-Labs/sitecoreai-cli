@@ -1,5 +1,5 @@
-import type { Operation, PushPolicy } from "./ir/operations";
-import type { Recipe } from "./schema/recipe";
+import type { Operation, PushPolicy } from "../ir/operations";
+import type { Recipe } from "../schema/recipe";
 
 /**
  * Policy assignment for compiler-emitted operations.

@@ -22,6 +22,19 @@ import path from "node:path";
  * disk full, etc.) the publish call MUST fail rather than silently
  * proceed without trail. The whole safety design relies on the log
  * being trustworthy.
+ *
+ * Placement note: this module sits under `src/shared/` despite being
+ * publish-domain logic by name. It was relocated here from
+ * `src/publishing/` on 2026-05-16 to break the `content↔publishing`
+ * import cycle — `content/` tasks (publish item, unpublish version)
+ * needed to record audit entries, and `publishing/` couldn't depend on
+ * `content/` without a cycle. The 2026-05-21 audit re-flagged the
+ * placement as a leaf-vs-domain smell. Decision: keep here. Renaming
+ * to drop the `publish-` prefix would be misleading — the data shape
+ * (`scope`, `scopeHash`, `scopeToken`, `jobId`, `fieldChanges`) is
+ * specific to publishing. A future broader audit/consent surface
+ * would warrant a `src/audit/` domain; today, one tenant of this
+ * module isn't enough to justify the area.
  */
 
 export type PublishAuditCaller =

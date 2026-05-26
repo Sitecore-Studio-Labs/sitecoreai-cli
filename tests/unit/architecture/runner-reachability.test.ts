@@ -44,12 +44,16 @@ const TASK_ROOTS = [
 const SURFACES = ["commands", "mcp/tools"];
 
 /**
- * Runners that are intentionally not surfaced. Empty today — every
- * `run*` export has a caller. Add entries only with a comment that
- * names the upstream caller so reviewers can verify the exclusion
- * is still valid.
+ * Runners that are intentionally not surfaced. Add entries only with a
+ * comment that names the upstream caller so reviewers can verify the
+ * exclusion is still valid.
  */
-const ALLOWED_ORPHANS: ReadonlySet<string> = new Set([]);
+const ALLOWED_ORPHANS: ReadonlySet<string> = new Set([
+  // Internal helper of `runPublishUnpublish` (src/publishing/tasks/unpublish.ts).
+  // Split out into unpublish-delete.ts for file-size reasons; the parent
+  // runner is the one wired to the CLI and MCP surfaces.
+  "runDeleteUnpublish",
+]);
 
 const walkTs = async (dir: string): Promise<string[]> => {
   let entries: Awaited<ReturnType<typeof fs.readdir>>;

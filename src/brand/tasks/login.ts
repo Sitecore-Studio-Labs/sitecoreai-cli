@@ -194,7 +194,7 @@ export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> =
   );
   const looksLikePagesSitesClient =
     grantedScopes.some((s) => s.startsWith("xmclouddeploy.") || s.startsWith("xmcpub.")) &&
-    !grantedScopes.some((s) => s.startsWith("ai.org"));
+    !grantedScopes.some((s) => s.startsWith("ai.org."));
   if (looksLikePagesSitesClient) {
     // The credential is the wrong client class entirely — refuse to
     // persist. A typed Pages/Sites automation client never carries

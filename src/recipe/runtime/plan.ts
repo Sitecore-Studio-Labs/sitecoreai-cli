@@ -11,12 +11,12 @@ import type {
   SetBaseTemplatesOp,
   SetFieldOp,
   SetStandardValuesOp,
-} from "./ir/operations";
-import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "./ir/sitecore-templates";
-import { SCAI_HANDLE_FIELD_NAME } from "./marker";
-import { templatePathRefKey } from "./guids";
-import { renderRefValue, resolveRecipeRefs } from "./api/ref-encoding";
-import { layoutXmlEquivalent } from "./layout/parse";
+} from "../ir/operations";
+import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../ir/sitecore-templates";
+import { SCAI_HANDLE_FIELD_NAME } from "../items/marker";
+import { templatePathRefKey } from "../items/guids";
+import { renderRefValue, resolveRecipeRefs } from "../api/ref-encoding";
+import { layoutXmlEquivalent } from "../layout/parse";
 import type {
   AuthoringApiClient,
   CreateItemInput,
@@ -24,8 +24,8 @@ import type {
   RemoteFieldValue,
   RemoteItem,
   UpdateItemInput,
-} from "./api/client";
-import type { NewSiteInput, SitesApiClient } from "./api/sites-client";
+} from "../api/client";
+import type { NewSiteInput, SitesApiClient } from "../api/sites-client";
 
 /**
  * `scai provision recipe plan` and `scai provision recipe push` share this read-then-diff path:

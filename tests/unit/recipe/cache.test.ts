@@ -9,7 +9,7 @@ import {
   loadRecipeCache,
   recordCacheEntry,
   saveRecipeCache,
-} from "../../../src/recipe/cache";
+} from "../../../src/recipe/runtime/cache";
 import type { OperationIr } from "../../../src/recipe/ir/operations";
 
 const exampleIr: OperationIr = {

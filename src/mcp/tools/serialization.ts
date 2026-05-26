@@ -24,6 +24,8 @@ import { loadConfigAndModules } from "@/serialization/tasks/shared";
 import type { SerializationProgressEvent } from "@/serialization/tasks/types";
 import { publishItemSubtree } from "@/serialization/api/publish";
 import { createScaiError } from "@/shared/errors";
+import { ensureMcpElevationAllowed } from "@/policy/allow-write";
+import { readRootConfiguration } from "@/config/root-config";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
@@ -115,7 +117,12 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
   registry.registerTool({
     name: "serialization_sync",
     description: TOOL_DESCRIPTIONS.serialization_sync,
-    auth: "write",
+    // Verb-discriminated gating: `pull` is read-only-to-tenant (writes
+    // only to the local workspace) and `diff` without `pushOnDiff` is
+    // read-only-to-tenant too. The handler enforces `allowWrite` + the
+    // MCP-elevation gate only on the writing verbs (`push`, and `diff`
+    // with `pushOnDiff`). See ToolAuth doc in registry.ts.
+    auth: "verb-discriminated",
     annotations: {
       title: "Pull / push / diff serialized items",
       readOnlyHint: false,
@@ -145,11 +152,19 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
       const envName = input.environmentName ?? context.envName;
       const isWrite =
         input.direction === "push" || (input.direction === "diff" && input.pushOnDiff);
-      if (isWrite && !input.allowWrite) {
-        throw createScaiError(
-          "Direction 'push' (and 'diff' with pushOnDiff) requires allowWrite: true.",
-          "INPUT_INVALID"
-        );
+      if (isWrite) {
+        if (!input.allowWrite) {
+          throw createScaiError(
+            "Direction 'push' (and 'diff' with pushOnDiff) requires allowWrite: true.",
+            "INPUT_INVALID"
+          );
+        }
+        // Per-env denyMcpElevation opt-out — the dispatch-level boundary
+        // gate runs only for `auth: "write"` tools, so re-enforce here
+        // for the writing verbs of a verb-discriminated `auth: "read"`
+        // tool. Matches dispatch.ts:88-91 for the multi-env case.
+        const targetRoot = readRootConfiguration(context.configPath, envName);
+        ensureMcpElevationAllowed(targetRoot, envName);
       }
       const include = input.modules ?? [];
       let dbCount = 0;

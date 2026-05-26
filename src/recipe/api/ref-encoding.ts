@@ -140,7 +140,7 @@ export const resolveRecipeRefs = (
 // Re-import here to avoid a circular dep with `guids.ts → ir/operations`.
 // `templateId` is a pure uuidv5 derivation; importing it lazily keeps the
 // resolver self-contained.
-import { templateId as templateIdForHandle } from "../guids";
+import { templateId as templateIdForHandle } from "../items/guids";
 
 /**
  * Normalise a Sitecore itemId to the canonical 8-4-4-4-12 dashed

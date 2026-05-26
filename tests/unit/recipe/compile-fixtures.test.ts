@@ -10,7 +10,7 @@ import {
   templateId,
   variantId,
   variantsFolderId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import {
   SITECORE_TEMPLATES,
   SYSTEM_FIELDS,

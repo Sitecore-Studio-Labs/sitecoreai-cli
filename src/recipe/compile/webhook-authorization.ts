@@ -1,6 +1,6 @@
 import { v5 as uuidv5 } from "uuid";
 import { createScaiError } from "../../shared/errors";
-import { webhookAuthorizationId } from "../guids";
+import { webhookAuthorizationId } from "../items/guids";
 import {
   type CreateItemOp,
   type FieldValue,
@@ -9,7 +9,7 @@ import {
   OperationIrSchema,
 } from "../ir/operations";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   WebhookAuthorizationRecipeSchema,
   type WebhookAuthorizationRecipe,

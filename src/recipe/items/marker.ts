@@ -14,7 +14,7 @@
  *
  * See docs/recipe-sync-architecture.md, "Recipe identity — the marker field".
  */
-import type { FieldValue, OperationIr } from "./ir/operations";
+import type { FieldValue, OperationIr } from "../ir/operations";
 
 /** Field name of the recipe-identity marker on the Standard Template. */
 export const SCAI_HANDLE_FIELD_NAME = "Scai Handle";

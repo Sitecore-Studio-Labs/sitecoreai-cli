@@ -424,10 +424,13 @@ og-image,og-title`; configurable via `--required-fields`. Scope to
     - `--max-matches-per-item N` caps sample collection (default 10).
   - `audit stale-content list --not-updated-in-days N` — items not
     updated in N days (default 365). Distinct from `audit
-stale-workflow`: - `stale-workflow` finds items stuck mid-flight in a non-final
-    workflow state. - `stale-content` finds **abandoned** content — published items no
-    one has touched in a long time. - By default excludes items currently in a workflow (set
-    `--no-exclude-workflow-items` to include).
+    stale-workflow`:
+    - `stale-workflow` finds items stuck mid-flight in a non-final
+      workflow state.
+    - `stale-content` finds **abandoned** content — published items no
+      one has touched in a long time.
+    - By default excludes items currently in a workflow (set
+      `--no-exclude-workflow-items` to include).
 
   **New `scai cleanup *` verb (mutating, with `--what-if` / `--allow-write`):**
   - `cleanup find-replace apply --pattern <regex> --replacement <text>` —
@@ -542,7 +545,7 @@ stale-workflow`: - `stale-workflow` finds items stuck mid-flight in a non-final
   - `scai audit all` — runs every audit (skipping `find-replace`, which
     needs `--pattern`) and emits a consolidated envelope. Honors
     `--include broken-links,unused-media` to scope, `--exclude-audit
-find-replace` to skip, plus all of the new cross-cutting flags
+    find-replace` to skip, plus all of the new cross-cutting flags
     below.
 
   **Baseline (ignore-list) management:**
@@ -904,10 +907,10 @@ references` / `audit template-dependencies`) so the `explain` verb owns
     that no template should reference.
 
   Output is the canonical `ScaiEnvelope` (`command:
-"explain.why-blocked"`, `data: { itemId, blockers: [...] }`, summary
-  - meta). 6 unit tests in
-    `tests/unit/hygiene/tasks/explain-why-blocked.test.ts` pin the merge
-  - sort + skip-flag behavior.
+  "explain.why-blocked"`, `data: { itemId, blockers: [...] }`, summary
+  + meta). 6 unit tests in
+  `tests/unit/hygiene/tasks/explain-why-blocked.test.ts` pin the merge
+  sort + skip-flag behavior.
 
 - ce3af45: **`scai audit` performance — tunable concurrency, parallel pagination,
   and an opt-in field cache.** Cuts repeated-run audit time ~2.4× on

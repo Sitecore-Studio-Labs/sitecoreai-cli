@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 import { renderRefValue } from "../../../src/recipe/api/ref-encoding";
-import { buildPlan } from "../../../src/recipe/plan";
-import { executeIr } from "../../../src/recipe/execute";
-import { templateId } from "../../../src/recipe/guids";
+import { buildPlan } from "../../../src/recipe/runtime/plan";
+import { executeIr } from "../../../src/recipe/runtime/execute";
+import { templateId } from "../../../src/recipe/items/guids";
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 

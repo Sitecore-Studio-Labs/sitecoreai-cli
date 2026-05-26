@@ -7,6 +7,14 @@
 
 export { enforceEnvironmentPolicy } from "./enforce";
 export type { EnforceEnvironmentPolicyParams } from "./enforce";
+export {
+  enforceOrganizationPolicy,
+  resolveEffectiveOrganizationPolicy,
+} from "./organization-policy";
+export type {
+  EffectiveOrganizationPolicy,
+  EnforceOrganizationPolicyParams,
+} from "./organization-policy";
 export { authorizeOperation } from "./authorize";
 export type { AuthorizeOperationParams } from "./authorize";
 export { resolveCallerContext } from "./caller";
@@ -29,7 +37,9 @@ export type {
   EffectivePolicy,
   EnrollSource,
   EnvIdentity,
+  OrgIdentity,
   PolicyEnvironment,
+  PolicyOrganization,
   RepoPolicy,
   RiskTier,
   WorkspacePolicy,

@@ -36,11 +36,11 @@ import type {
 import { createAuthoringClient } from "./api/authoring-client";
 import type { AuthoringApiClient } from "./api/client";
 import { compileRecipeSet, type CompileContext } from "./compile";
-import { executeIr, type ExecutionResult } from "./execute";
+import { executeIr, type ExecutionResult } from "./runtime/execute";
 import type { OperationIr } from "./ir/operations";
-import { injectHandleMarker } from "./marker";
-import type { PlannedAction } from "./plan";
-import { readCurrentRecipes, type ReadCurrentRoots } from "./read-current";
+import { injectHandleMarker } from "./items/marker";
+import type { PlannedAction } from "./runtime/plan";
+import { readCurrentRecipes, type ReadCurrentRoots } from "./items/read-current";
 import { type Recipe, RecipeSchema } from "./schema/recipe";
 
 /**

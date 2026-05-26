@@ -8,8 +8,11 @@
  */
 import { describe, expect, it } from "vitest";
 import type { RemoteItem } from "../../../src/recipe/api/client";
-import { ensureMarkerField, SCAI_SECTION_NAME } from "../../../src/recipe/ensure-marker-field";
-import { SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/marker";
+import {
+  ensureMarkerField,
+  SCAI_SECTION_NAME,
+} from "../../../src/recipe/items/ensure-marker-field";
+import { SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
 import {
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,

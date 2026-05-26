@@ -8,6 +8,11 @@
  * `context.ts` must be added here deliberately to widen the SDK surface.
  */
 
+// `export *` is safe here only because `./api/index.ts` is itself a
+// curated, explicit barrel — every symbol there is an intentional
+// public API decision. New exports added to `./api/index.ts` widen the
+// SDK surface; new files under `./api/*` do NOT until added to
+// `./api/index.ts`. Do not change this to `export * from "./api/*"`.
 export * from "./api";
 
 export {

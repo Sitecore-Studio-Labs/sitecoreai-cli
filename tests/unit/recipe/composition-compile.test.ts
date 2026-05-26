@@ -16,7 +16,7 @@ import {
   pageDesignId,
   partialDesignId,
   renderingId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
   COMPOSITION_FIELDS,

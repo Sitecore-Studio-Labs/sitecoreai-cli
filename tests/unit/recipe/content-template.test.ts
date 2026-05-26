@@ -4,7 +4,7 @@ import {
   compileRecipe,
   type CompileContext,
 } from "../../../src/recipe/compile";
-import { templateId, standardValuesId, workflowId } from "../../../src/recipe/guids";
+import { templateId, standardValuesId, workflowId } from "../../../src/recipe/items/guids";
 import {
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,

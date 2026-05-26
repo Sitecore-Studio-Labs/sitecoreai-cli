@@ -4,12 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
-import { executeIr, type ExecutionEvent } from "../../../src/recipe/execute";
-import { templateId } from "../../../src/recipe/guids";
+import { executeIr, type ExecutionEvent } from "../../../src/recipe/runtime/execute";
+import { templateId } from "../../../src/recipe/items/guids";
 import { SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
-import { inverseOf, rollback, type RollbackEvent } from "../../../src/recipe/rollback";
-import { createRollbackLogger } from "../../../src/recipe/rollback-log";
-import type { PlannedAction } from "../../../src/recipe/plan";
+import { inverseOf, rollback, type RollbackEvent } from "../../../src/recipe/rollback/rollback";
+import { createRollbackLogger } from "../../../src/recipe/rollback/rollback-log";
+import type { PlannedAction } from "../../../src/recipe/runtime/plan";
 import type { CreateItemOp, SetBaseTemplatesOp } from "../../../src/recipe/ir/operations";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 

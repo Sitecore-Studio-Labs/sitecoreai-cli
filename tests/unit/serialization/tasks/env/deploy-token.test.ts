@@ -108,7 +108,9 @@ describe("runDeployToken", () => {
     promptText.mockResolvedValue("client");
     promptSecret.mockResolvedValue("secret");
     requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    // Token print routes through process.stdout.write (not console.log)
+    // so an MCP transport guard at the call site can short-circuit it.
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const { runDeployToken } =
       await import("../../../../../src/serialization/tasks/env/deploy-token");
@@ -121,8 +123,33 @@ describe("runDeployToken", () => {
     expect(requestClientCredentialsToken).toHaveBeenCalled();
     expect(setDeployToken).toHaveBeenCalledWith("demo", "token");
     expect(writeRootConfigurationFile).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("token");
-    logSpy.mockRestore();
+    expect(writeSpy).toHaveBeenCalledWith("token\n");
+    writeSpy.mockRestore();
+  });
+
+  it("refuses to print a token while running under the MCP transport", async () => {
+    promptText.mockResolvedValue("client");
+    promptSecret.mockResolvedValue("secret");
+    requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
+    const prior = process.env.SITECOREAI_MCP_SERVE;
+    process.env.SITECOREAI_MCP_SERVE = "1";
+    try {
+      const { runDeployToken } =
+        await import("../../../../../src/serialization/tasks/env/deploy-token");
+      await expect(
+        runDeployToken({
+          environmentName: "demo",
+          useClientCredentials: true,
+          print: true,
+        })
+      ).rejects.toMatchObject({ code: "AUTH_DENIED" });
+    } finally {
+      if (prior === undefined) {
+        delete process.env.SITECOREAI_MCP_SERVE;
+      } else {
+        process.env.SITECOREAI_MCP_SERVE = prior;
+      }
+    }
   });
 
   it("uses the selected environment client id for client credentials", async () => {

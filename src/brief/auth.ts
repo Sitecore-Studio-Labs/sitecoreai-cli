@@ -1,7 +1,6 @@
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { createApiAuth } from "@/auth/factory";
 import { resolveClientCredential } from "@/shared/client-credential";
-import { createScaiError } from "@/shared/errors";
 import { getBriefToken, setBriefToken } from "@/shared/keychain";
 
 /**
@@ -23,32 +22,8 @@ const M2M_SCOPE_PARAM = BRIEF_SCOPES_REQUESTED.join(" ");
 const SCOPE_DENIED_HINT =
   "Confirm the environment's automation client is authorized in Auth0 for the co.briefs:r and co.briefs:w scopes.";
 
-/**
- * JWT exp claim (seconds since epoch) — used to decide whether a cached
- * token is still usable. We refresh ~60s early to absorb clock skew and
- * in-flight request latency.
- */
-const decodeExp = (jwt: string): number | undefined => {
-  const parts = jwt.split(".");
-  if (parts.length < 2) return undefined;
-  try {
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
-    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
-      exp?: number;
-    };
-    return typeof payload.exp === "number" ? payload.exp : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const isFresh = (jwt: string, skewSeconds = 60): boolean => {
-  const exp = decodeExp(jwt);
-  if (exp === undefined) return false;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  return exp > nowSeconds + skewSeconds;
-};
+const MISSING_CREDENTIAL_HINT =
+  "Provide an automation client for the org — run `scai setup env <name>` (env-scoped) or `scai setup client create --org` (org-scoped) to mint one (its secret is stored in the OS keychain), or bring your own by setting SITECOREAI_ENV_<ENV>_CLIENT_ID and SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.";
 
 export interface AcquireBriefTokenOptions {
   /**
@@ -79,56 +54,54 @@ export interface AcquireBriefTokenOptions {
  *
  * Refuses with `AUTH_REQUIRED` if neither path yields a token. There
  * is no interactive login flow — Brief calls are always agent-driven.
+ *
+ * The cache → resolve → mint → cache loop is implemented by the shared
+ * `createApiAuth` factory in `@/auth/factory`; brief plugs in its own
+ * keychain slot, scope-request string, error hints, and credential
+ * resolver (the three-tier chain, gated on `env.authority` so a
+ * profile with no authority falls into the missing-credential branch).
  */
 export const acquireBriefToken = async (options: AcquireBriefTokenOptions): Promise<string> => {
-  const cached = await getBriefToken(options.orgId);
-  if (cached && isFresh(cached)) {
-    return cached;
-  }
-
   const env = options.environment;
-  // The client secret never lives in the config file — `resolveClientCredential`
-  // walks the three tiers (env-var override → env-scoped keychain client →
-  // org-scoped keychain client) and pairs the secret with the `clientId`
-  // it is handed from the config-resident metadata. `env.name` is the
-  // matched env profile's name (tiers 1–2); it is `undefined` when the
-  // org was resolved with no env profile, leaving only tier 3.
-  const credential = await resolveClientCredential({
-    envName: env.name,
-    clientId: env.clientId,
-    automationClientId: env.automationClient?.clientId,
-    organizationId: env.organizationId,
-    orgClientId: env.orgClientId,
+  const acquire = createApiAuth({
+    keychainKey: options.orgId,
+    getCachedToken: getBriefToken,
+    setCachedToken: setBriefToken,
+    scopes: M2M_SCOPE_PARAM,
+    errorCode: "AUTH_REQUIRED",
+    resolveCredential: async () => {
+      // `env.authority` is required to mint — fall into the missing-credential
+      // branch when absent (matches pre-factory behaviour).
+      if (!env.authority) return undefined;
+      const credential = await resolveClientCredential({
+        envName: env.name,
+        clientId: env.clientId,
+        automationClientId: env.automationClient?.clientId,
+        organizationId: env.organizationId,
+        orgClientId: env.orgClientId,
+      });
+      if (!credential) return undefined;
+      return {
+        clientId: credential.clientId,
+        clientSecret: credential.clientSecret,
+        authority: env.authority,
+        audience: env.audience,
+      };
+    },
+    onMissingCredential: () => ({
+      message: `No brief-scoped token available for organization '${options.orgId}'.`,
+      hint: MISSING_CREDENTIAL_HINT,
+    }),
+    onMintFailure: (error) => ({
+      message: "Could not acquire a brief-scoped token via client credentials.",
+      hint: `${SCOPE_DENIED_HINT} Underlying error: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    }),
+    onNoAccessToken: () => ({
+      message: `No brief-scoped token available for organization '${options.orgId}'.`,
+      hint: MISSING_CREDENTIAL_HINT,
+    }),
   });
-
-  if (credential && env.authority) {
-    try {
-      const result = await requestClientCredentialsToken(
-        { ...env, clientId: credential.clientId, clientSecret: credential.clientSecret },
-        M2M_SCOPE_PARAM
-      );
-      if (result.accessToken) {
-        await setBriefToken(options.orgId, result.accessToken);
-        return result.accessToken;
-      }
-    } catch (error) {
-      throw createScaiError(
-        "Could not acquire a brief-scoped token via client credentials.",
-        "AUTH_REQUIRED",
-        {
-          hint: `${SCOPE_DENIED_HINT} Underlying error: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        }
-      );
-    }
-  }
-
-  throw createScaiError(
-    `No brief-scoped token available for organization '${options.orgId}'.`,
-    "AUTH_REQUIRED",
-    {
-      hint: "Provide an automation client for the org — run `scai setup env <name>` (env-scoped) or `scai setup client create --org` (org-scoped) to mint one (its secret is stored in the OS keychain), or bring your own by setting SITECOREAI_ENV_<ENV>_CLIENT_ID and SITECOREAI_ENV_<ENV>_CLIENT_SECRET. The Brief API does not support interactive operator login.",
-    }
-  );
+  return acquire();
 };

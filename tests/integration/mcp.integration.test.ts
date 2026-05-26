@@ -12,11 +12,12 @@
 
 import "./setup";
 import path from "node:path";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { describeIfIntegration } from "./helpers";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const CLI_ENTRY = path.join(REPO_ROOT, "src", "cli.ts");
@@ -27,6 +28,12 @@ interface ToolResultEnvelope {
   isError?: boolean;
 }
 
+// Gated by SITECOREAI_RUN_INTEGRATION=1 even though no live HTTP is
+// made — this test forks the real CLI subprocess and runs against the
+// stdio transport, which is too heavy for the default unit-tier `pnpm
+// test` run. Sat un-gated through 2026-05-20.
+const { describe, it } = describeIfIntegration();
+
 describe("scai mcp serve — stdio integration", () => {
   let tempDir: string;
   let client: Client;
@@ -34,7 +41,6 @@ describe("scai mcp serve — stdio integration", () => {
 
   beforeAll(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "scai-mcp-int-"));
-    await mkdir(path.join(tempDir), { recursive: true });
     const configPath = path.join(tempDir, "sitecoreai.cli.json");
     await writeFile(
       configPath,

@@ -1,5 +1,6 @@
 import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 import { getDeployToken, getPublishingToken, setPublishingToken } from "@/shared/keychain";
 
@@ -170,12 +171,34 @@ export const acquirePublishingToken = async (
     return deployToken;
   }
 
-  // 3. Fresh M2M mint via env-level client credentials.
+  // 3. Fresh M2M mint via env-level client credentials. The
+  //    `{ clientId, clientSecret }` pair resolves through the same
+  //    three-tier chain serialization uses (`SITECOREAI_ENV_<ENV>_*`
+  //    env var → `cm-client:<env>` keychain → `org-client:<orgId>`
+  //    keychain). The publishing path used to read `env.clientSecret`
+  //    directly off the env profile, which silently skipped the keychain
+  //    tiers — fixed 2026-05-21.
   const env = options.environment;
-  if (env.clientId && env.clientSecret && env.authority) {
+  const resolved = env.clientSecret
+    ? env
+    : env.name
+      ? await (async () => {
+          const credential = await resolveClientCredential({
+            envName: env.name,
+            clientId: env.clientId,
+            automationClientId: env.automationClient?.clientId,
+            organizationId: env.organizationId,
+            orgClientId: env.orgClientId,
+          });
+          return credential
+            ? { ...env, clientId: credential.clientId, clientSecret: credential.clientSecret }
+            : env;
+        })()
+      : env;
+  if (resolved.clientId && resolved.clientSecret && resolved.authority) {
     let result;
     try {
-      result = await requestClientCredentialsToken(env, M2M_SCOPE_PARAM);
+      result = await requestClientCredentialsToken(resolved, M2M_SCOPE_PARAM);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw createScaiError(

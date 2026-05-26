@@ -26,6 +26,10 @@ export {
 export {
   loadConfigAndModules,
   groupSubtreesByDatabase,
-  ensureAllowWrite,
   type LoadSerializationModulesOptions,
 } from "@/serialization/context";
+
+// `ensureAllowWrite` lives in the policy module — that is the single
+// authoritative gate; the prior context-local copy elided the
+// caller-context tier check and is gone.
+export { ensureAllowWrite } from "@/policy/allow-write";

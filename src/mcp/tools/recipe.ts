@@ -22,7 +22,7 @@ import { loadRecipe } from "@/recipe/io";
 import { runRecipeDiff } from "@/recipe/tasks/diff";
 import { runRecipePlan } from "@/recipe/tasks/plan";
 import { runRecipePush } from "@/recipe/tasks/push";
-import type { ExecutionEvent } from "@/recipe/execute";
+import type { ExecutionEvent } from "@/recipe/runtime/execute";
 import { createScaiError } from "@/shared/errors";
 import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";

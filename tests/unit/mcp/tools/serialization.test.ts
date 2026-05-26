@@ -71,6 +71,12 @@ vi.mock("../../../../src/serialization/api/items", () => ({
 }));
 vi.mock("../../../../src/serialization/field-filter", () => ({ ...filterMocks }));
 
+// The push-verb branch now calls `readRootConfiguration` to enforce
+// per-env denyMcpElevation; mock to a benign root so the gate passes.
+vi.mock("../../../../src/config/root-config", () => ({
+  readRootConfiguration: vi.fn(() => ({ environments: { "test-env": {} } })),
+}));
+
 const fakeContext: McpContext = {
   envName: "test-env",
   configPath: "/tmp",

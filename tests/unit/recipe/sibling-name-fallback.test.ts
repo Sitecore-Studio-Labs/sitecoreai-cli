@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ItemSelector, RemoteFieldValue, RemoteItem } from "../../../src/recipe/api/client";
 import type { CreateItemOp } from "../../../src/recipe/ir/operations";
-import { buildAction } from "../../../src/recipe/plan";
-import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/marker";
+import { buildAction } from "../../../src/recipe/runtime/plan";
+import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 /**

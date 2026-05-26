@@ -73,12 +73,13 @@ export {
   type WorkflowApplyResult,
   type WorkflowApplyStatus,
 } from "./tasks/apply";
+// `toLogger` and `printWorkflowResult` deliberately omitted — they're
+// CLI presentation helpers. SDK consumers should bring their own
+// presentation.
 export {
   type WorkflowTaskOptions,
   type ResolvedWorkflowTenant,
   resolveWorkflowTenant,
-  toLogger,
   parseItemReference,
-  printWorkflowResult,
   dashifyItemId,
 } from "./tasks/shared";

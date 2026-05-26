@@ -26,7 +26,7 @@ import {
   siteDataFolderId,
   standardValuesId,
   templateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 
 const DEFAULT_SITE = "default";
 

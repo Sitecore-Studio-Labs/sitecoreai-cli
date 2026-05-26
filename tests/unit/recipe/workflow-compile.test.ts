@@ -11,7 +11,7 @@ import {
   workflowId,
   workflowStateActionId,
   workflowStateId,
-} from "../../../src/recipe/guids";
+} from "../../../src/recipe/items/guids";
 import type { CreateItemOp, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
   WebhookAuthorizationRecipeSchema,

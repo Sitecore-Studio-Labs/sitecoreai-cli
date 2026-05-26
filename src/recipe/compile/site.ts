@@ -1,5 +1,5 @@
 import { createScaiError } from "@/shared/errors";
-import { dictionaryPhraseId, siteId, templateId } from "../guids";
+import { dictionaryPhraseId, siteId, templateId } from "../items/guids";
 import {
   type CreateSiteFromTemplateOp,
   type Operation,
@@ -7,7 +7,7 @@ import {
   OperationIrSchema,
   type SetFieldOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../policy";
+import { defaultPolicyForRecipe } from "../runtime/policy";
 import { DICTIONARY_ENTRY_FIELDS } from "../ir/sitecore-templates";
 import { type SiteRecipe, SiteRecipeSchema } from "../schema/recipe";
 import { siteOf, type CompileContext } from "./shared";

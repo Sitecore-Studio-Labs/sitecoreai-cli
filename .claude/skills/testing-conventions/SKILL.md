@@ -44,30 +44,38 @@ CI runs integration only on tagged jobs with secrets injected.
 
 ## Mocking the keychain
 
-Tests must never write real tokens. Mock `keytar`:
+Tests must never write real tokens. scai uses `@napi-rs/keyring` (the
+former `keytar` dependency was swapped out for a pure-Rust binding
+with prebuilt binaries). The mock is constructed per-test against the
+factory pattern in `tests/unit/shared/keychain.test.ts`:
 
 ```ts
 import { vi } from "vitest";
 
-vi.mock("keytar", () => ({
-  default: {
-    setPassword: vi.fn().mockResolvedValue(undefined),
-    getPassword: vi.fn().mockResolvedValue("fake-token"),
-    deletePassword: vi.fn().mockResolvedValue(true),
-    findCredentials: vi.fn().mockResolvedValue([]),
+const spies = {
+  getPassword: vi.fn().mockResolvedValue("fake-token"),
+  setPassword: vi.fn().mockResolvedValue(undefined),
+  deleteCredential: vi.fn().mockResolvedValue(true),
+};
+
+vi.doMock("@napi-rs/keyring", () => ({
+  Entry: class {
+    constructor(_service: string, _account: string) {}
+    getPassword = spies.getPassword;
+    setPassword = spies.setPassword;
+    deleteCredential = spies.deleteCredential;
   },
 }));
 ```
 
-If a test asserts what was stored, capture the call:
+The `Entry` class is what `src/shared/keychain.ts` constructs. To
+assert what was stored, capture against `spies.setPassword` — the
+service/account values are private to each `Entry` instance, so the
+test must spy at the instance method, not via a global registry.
 
-```ts
-expect(keytar.default.setPassword).toHaveBeenCalledWith(
-  "sitecoreai-cli",
-  expect.stringMatching(/^deployToken:/),
-  expect.any(String)
-);
-```
+For tests that need a fail-closed keyring (native module missing),
+have the factory throw — `keychain.ts` catches the import error and
+treats every operation as a no-op.
 
 ## Mocking HTTP
 

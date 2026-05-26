@@ -14,15 +14,18 @@
  * behaviour instead of dragging in the env-requiring resolver purely to
  * read `environment.organizationId`.
  *
- * Unlike `resolveEnvironment` this does **not** run `enforceEnvironmentPolicy`:
- * the workspace policy gate is environment-scoped, and org-scoped
- * commands do not act on a specific environment's tenant data. `brand`
- * already skips the gate for the same reason.
+ * Workspace-policy gating: runs `enforceOrganizationPolicy` once the
+ * orgId is resolved — the org-scoped counterpart of the env-scoped gate
+ * inside `resolveEnvironment`. Closes the prior bypass where brand /
+ * brief / campaign retargeted any orgId without an allowlist check.
+ * `skipPolicy` is the same escape hatch used by `setup` / `policy`
+ * commands and `mcp serve` startup.
  */
 
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
-import { readRootConfiguration } from "@/config/root-config";
+import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
+import { enforceOrganizationPolicy } from "./organization-policy";
 
 export interface ResolveOrganizationOptions {
   /** Base directory for resolving `sitecoreai.cli.json`; defaults to cwd. */
@@ -31,6 +34,13 @@ export interface ResolveOrganizationOptions {
   orgId?: string;
   /** Explicit env profile name (e.g. from `-n` / `--environment-name`). */
   environmentName?: string;
+  /**
+   * Skip the workspace-policy gate (`enforceOrganizationPolicy`). Used
+   * by paths that run *before* an org is enrolled — `scai mcp serve`
+   * startup, the `setup` / `policy` commands. Everything that touches
+   * tenant data leaves this unset, so the gate is on by default.
+   */
+  skipPolicy?: boolean;
 }
 
 export interface ResolvedOrganization {
@@ -67,8 +77,15 @@ export interface ResolvedOrganization {
  */
 export const resolveOrganization = (options: ResolveOrganizationOptions): ResolvedOrganization => {
   const configPath = options.config ?? process.cwd();
+  const rootFile = readRootConfigurationFile(configPath);
+  const configRootDir = rootFile.rootDir;
   const root = readRootConfiguration(configPath, options.environmentName);
   const environments = root.environments;
+  const gate = (orgId: string): void => {
+    if (!options.skipPolicy) {
+      enforceOrganizationPolicy({ orgId, configRootDir });
+    }
+  };
   // `defaultEnvProfile` is the raw config value (undefined when unset) —
   // distinct from `defaultEnvironment`, which collapses an unset default
   // to the literal "default". Only a real flag or configured default
@@ -88,6 +105,7 @@ export const resolveOrganization = (options: ResolveOrganizationOptions): Resolv
 
   // 1. Explicit --org-id.
   if (options.orgId) {
+    gate(options.orgId);
     return { orgId: options.orgId, root, ...envForOrg(options.orgId) };
   }
 
@@ -101,6 +119,7 @@ export const resolveOrganization = (options: ResolveOrganizationOptions): Resolv
       });
     }
     if (named.organizationId) {
+      gate(named.organizationId);
       return { orgId: named.organizationId, root, envName: namedEnvName, environment: named };
     }
     throw createScaiError(`Environment '${namedEnvName}' has no organizationId.`, "INPUT_INVALID", {
@@ -111,6 +130,7 @@ export const resolveOrganization = (options: ResolveOrganizationOptions): Resolv
   // 3. First env profile carrying an organizationId.
   const fromProfile = Object.entries(environments).find(([, env]) => Boolean(env.organizationId));
   if (fromProfile && fromProfile[1].organizationId) {
+    gate(fromProfile[1].organizationId);
     return {
       orgId: fromProfile[1].organizationId,
       root,
@@ -122,6 +142,7 @@ export const resolveOrganization = (options: ResolveOrganizationOptions): Resolv
   // 4. The sole brand credential entry.
   const brandOrgIds = Object.keys(root.brand ?? {});
   if (brandOrgIds.length === 1) {
+    gate(brandOrgIds[0]);
     return { orgId: brandOrgIds[0], root, ...envForOrg(brandOrgIds[0]) };
   }
 

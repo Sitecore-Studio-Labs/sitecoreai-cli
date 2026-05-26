@@ -15,10 +15,10 @@ vi.mock("../../../../src/recipe/io", () => ({
 vi.mock("../../../../src/recipe/compile", () => ({
   compileRecipeSet: vi.fn(),
 }));
-vi.mock("../../../../src/recipe/execute", () => ({
+vi.mock("../../../../src/recipe/runtime/execute", () => ({
   executeIr: vi.fn(),
 }));
-vi.mock("../../../../src/recipe/cache", () => ({
+vi.mock("../../../../src/recipe/runtime/cache", () => ({
   loadRecipeCache: vi.fn(),
   cachedSkipFor: vi.fn(),
   hashIr: vi.fn(() => "ir-hash"),
@@ -26,7 +26,7 @@ vi.mock("../../../../src/recipe/cache", () => ({
   recordCacheEntry: vi.fn(),
   saveRecipeCache: vi.fn(),
 }));
-vi.mock("../../../../src/recipe/rollback-log", () => ({
+vi.mock("../../../../src/recipe/rollback/rollback-log", () => ({
   createRollbackLogger: vi.fn(),
 }));
 vi.mock("../../../../src/recipe/api/auth", () => ({
@@ -43,9 +43,9 @@ import { runRecipePush } from "../../../../src/recipe/tasks/push";
 import * as shared from "../../../../src/recipe/tasks/shared";
 import * as io from "../../../../src/recipe/io";
 import { compileRecipeSet } from "../../../../src/recipe/compile";
-import { executeIr } from "../../../../src/recipe/execute";
-import * as cache from "../../../../src/recipe/cache";
-import { createRollbackLogger } from "../../../../src/recipe/rollback-log";
+import { executeIr } from "../../../../src/recipe/runtime/execute";
+import * as cache from "../../../../src/recipe/runtime/cache";
+import { createRollbackLogger } from "../../../../src/recipe/rollback/rollback-log";
 import { getAccessToken } from "../../../../src/recipe/api/auth";
 import { createSitesApiClient } from "../../../../src/recipe/api/sites-client";
 import { applyPlaceholderAllowControls } from "../../../../src/recipe/tasks/placeholder-allow";
@@ -112,7 +112,7 @@ beforeEach(() => {
   } as never);
   vi.mocked(shared.resolveRecipeInputs).mockResolvedValue({
     files: ["hero.recipe.ts"],
-    source: "config",
+    source: "config-glob",
   } as never);
   vi.mocked(io.loadRecipe).mockResolvedValue({
     kind: "component-template",
@@ -177,7 +177,12 @@ describe("runRecipePush — apply vs dry-run", () => {
 
     expect(logger.json).toHaveBeenCalledTimes(1);
     const envelope = logger.json.mock.calls[0][0] as Record<string, unknown>;
-    expect(envelope).toMatchObject({ command: "recipe.push", environment: "test", whatIf: false });
+    expect(envelope).toMatchObject({
+      command: "recipe.push",
+      environment: "test",
+      whatIf: false,
+      source: "config-glob",
+    });
     expect((envelope.events as unknown[]).length).toBe(1);
   });
 });

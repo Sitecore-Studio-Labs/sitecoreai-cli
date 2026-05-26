@@ -116,7 +116,7 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    * a client. The CLI logger does not need this — it observes the same
    * events via its own internal collator.
    */
-  emit?: (event: { recipe: string; event: import("../execute").ExecutionEvent }) => void;
+  emit?: (event: { recipe: string; event: import("../runtime/execute").ExecutionEvent }) => void;
   /**
    * Cooperative cancellation. When the signal fires, the executor
    * stops between operations, rolls back applied mutations, and the

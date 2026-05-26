@@ -13,7 +13,7 @@
  */
 import { resolveEnvironment } from "@/shared/env";
 import { createAuthoringClient } from "@/recipe/api/authoring-client";
-import { ensureMarkerField } from "@/recipe/ensure-marker-field";
+import { ensureMarkerField } from "@/recipe/items/ensure-marker-field";
 import { SITECORE_TEMPLATES, STANDARD_TEMPLATE_ID } from "@/recipe/ir/sitecore-templates";
 
 /** Compare two Sitecore GUIDs ignoring case, curly braces, and hyphens. */

@@ -10,7 +10,11 @@ import {
   compileRecipeSet,
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
 } from "../../../src/recipe/compile";
-import { PAGE_DESIGNS_ROOT_REF_KEY, pageDesignId, templateId } from "../../../src/recipe/guids";
+import {
+  PAGE_DESIGNS_ROOT_REF_KEY,
+  pageDesignId,
+  templateId,
+} from "../../../src/recipe/items/guids";
 import type { OperationIr, SetFieldOp } from "../../../src/recipe/ir/operations";
 import { COMPOSITION_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 

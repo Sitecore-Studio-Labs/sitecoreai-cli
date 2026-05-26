@@ -308,11 +308,11 @@ const shapeFromSitecoreType = (type: SitecoreFieldType): FieldShape => {
  * `sitecore.type`), the section it lives under (`sitecore.section`),
  * `sitecore.sortOrder`, and the storage axis (`sitecore.storage`, recovered
  * from the field's `Shared` / `Unversioned` flags). The `Source` value is
- * preserved verbatim via `sitecore.sourceRaw` — the structured
- * `sourceTypes`/`sourceQuery`/`sourceScope` decomposition is intentionally
- * NOT reverse-engineered (it would require parsing the URL-encoded Source
- * and resolving GUIDs back to handles); `sourceRaw` round-trips to the
- * identical wire string.
+ * preserved verbatim via `sitecore.source = { kind: "raw", value }` —
+ * the structured `filter` decomposition (`types`/`query`/`scope`) is
+ * intentionally NOT reverse-engineered (it would require parsing the
+ * URL-encoded Source and resolving GUIDs back to recipe handles);
+ * `kind: "raw"` round-trips to the identical wire string.
  *
  * LOSSY / omitted: `required`, `hint`, `default`, `enumHandle`, and the
  * abstract `multiple` flag are not recoverable from a field item alone and
@@ -331,8 +331,9 @@ const fieldFromItem = (fieldItem: RemoteItem, sectionName: string): FieldDefinit
 
   const source = fieldValue(fieldItem, TEMPLATE_FIELD_FIELDS.SOURCE, "Source");
   if (source !== undefined && source !== "") {
-    // Verbatim round-trip: sourceRaw re-emits the identical Source string.
-    augment.sourceRaw = source;
+    // Verbatim round-trip: `source: { kind: "raw", value }` re-emits
+    // the identical Source string at compile time.
+    augment.source = { kind: "raw", value: source };
   }
 
   // Field storage axis — `Shared` / `Unversioned` are shared flags on the

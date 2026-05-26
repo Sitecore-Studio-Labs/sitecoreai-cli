@@ -290,7 +290,7 @@ describe("validateRecipeSet — unresolved handles", () => {
           name: "Picker",
           shape: "reference",
           multiple: true,
-          sitecore: { type: "treelist", sourceTypes: ["nonexistent@1"] },
+          sitecore: { type: "treelist", source: { kind: "filter", types: ["nonexistent@1"] } },
         },
       ],
       variants: [],
@@ -299,7 +299,7 @@ describe("validateRecipeSet — unresolved handles", () => {
     const result = validateRecipeSet([componentWithBadSource]);
     expect(result.unresolvedHandles).toContainEqual({
       fromRecipe: "bad-source@1",
-      fromField: "fields.0.sitecore.sourceTypes.0",
+      fromField: "fields.0.sitecore.source.types.0",
       handle: "nonexistent@1",
       expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: undefined,
@@ -911,14 +911,14 @@ describe("validateRecipeSet — content-template + design-parameters-template", 
         {
           name: "Theme",
           shape: "reference",
-          sitecore: { type: "droplink", sourceTypes: ["ghost@1"] },
+          sitecore: { type: "droplink", source: { kind: "filter", types: ["ghost@1"] } },
         },
       ],
     };
     const result = validateRecipeSet([template]);
     expect(result.unresolvedHandles).toContainEqual({
       fromRecipe: "shared-params@1",
-      fromField: "params.0.sitecore.sourceTypes.0",
+      fromField: "params.0.sitecore.source.types.0",
       handle: "ghost@1",
       expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: undefined,
@@ -1164,14 +1164,14 @@ describe("validateRecipeSet — component-template parameters + children", () =>
         {
           name: "Target",
           shape: "reference",
-          sitecore: { type: "droplink", sourceTypes: ["ghost-source@1"] },
+          sitecore: { type: "droplink", source: { kind: "filter", types: ["ghost-source@1"] } },
         },
       ],
     };
     const result = validateRecipeSet([component]);
     expect(result.unresolvedHandles).toContainEqual({
       fromRecipe: "picker@1",
-      fromField: "fields.0.sitecore.sourceTypes.0",
+      fromField: "fields.0.sitecore.source.types.0",
       handle: "ghost-source@1",
       expectedKinds: ["component-template", "content-template", "page-template"],
       actualKind: undefined,
@@ -1350,14 +1350,14 @@ describe("validateRecipeSet — sourceTypes loops on every template kind", () =>
         {
           name: "Theme",
           shape: "enum",
-          sitecore: { sourceTypes: ["ghost-template@1"] },
+          sitecore: { source: { kind: "filter", types: ["ghost-template@1"] } },
         },
       ] as never,
     };
     const result = validateRecipeSet([comp]);
     expect(result.unresolvedHandles[0]).toMatchObject({
       handle: "ghost-template@1",
-      fromField: "params.0.sitecore.sourceTypes.0",
+      fromField: "params.0.sitecore.source.types.0",
     });
   });
 
@@ -1372,14 +1372,14 @@ describe("validateRecipeSet — sourceTypes loops on every template kind", () =>
         {
           name: "Related",
           shape: "reference",
-          sitecore: { sourceTypes: ["ghost@1"] },
+          sitecore: { source: { kind: "filter", types: ["ghost@1"] } },
         },
       ] as never,
     };
     const result = validateRecipeSet([content]);
     expect(result.unresolvedHandles[0]).toMatchObject({
       handle: "ghost@1",
-      fromField: "fields.0.sitecore.sourceTypes.0",
+      fromField: "fields.0.sitecore.source.types.0",
     });
   });
 });

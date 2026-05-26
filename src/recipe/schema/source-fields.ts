@@ -89,3 +89,31 @@ export const renderSourceFields = (
  */
 export const sourceFieldsNeedHandleResolution = (fields: SourceFields): boolean =>
   Array.isArray(fields.sourceTypes) && fields.sourceTypes.length > 0;
+
+/**
+ * Convert the author-surface `SitecoreFieldSource` discriminated union
+ * to the flat `SourceFields` bag the renderer + IR consume. Internal
+ * adapter — author surface stays union-shaped (clean for JSON Schema
+ * and Agent Studio), compiler internals stay flat-shaped (clean for
+ * `renderSourceFields` and the `ref-source-fields` IR op).
+ *
+ * Returns an empty bag when `source` is undefined, so callers can
+ * unconditionally invoke this and feed the result to
+ * `renderSourceFields` / `sourceFieldsNeedHandleResolution`.
+ */
+export const augmentSourceToFields = (
+  source:
+    | { kind: "filter"; types?: readonly string[]; query?: string; scope?: string }
+    | { kind: "raw"; value: string }
+    | undefined
+): SourceFields => {
+  if (!source) return {};
+  if (source.kind === "raw") {
+    return { sourceRaw: source.value };
+  }
+  return {
+    sourceTypes: source.types,
+    sourceQuery: source.query,
+    sourceScope: source.scope,
+  };
+};

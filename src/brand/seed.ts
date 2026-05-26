@@ -8,6 +8,7 @@ import {
 } from "./documents/upload";
 import { runBrandIngestionPipeline, runEnrichSectionsPipeline } from "./pipeline/run";
 import type { BrandKitSummary } from "./kits/list";
+import type { BrandDocument } from "./recipe/schema";
 import { createScaiError } from "@/shared/errors";
 
 /**
@@ -45,8 +46,15 @@ export interface SeedBrandKitOptions {
   /**
    * Multiple source documents — uploaded before a single ingestion +
    * enrichment pass. Takes precedence over `source` when non-empty.
+   * Accepts the recipe-shaped `BrandDocument` union (URL or
+   * registry-file). The seed runner rejects `registry-file` entries
+   * with `INPUT_INVALID` and a clear hint — see the
+   * `LOCAL_UPLOAD_UNSUPPORTED_MESSAGE` rationale in
+   * `documents/upload.ts` for why bytes uploads don't work end-to-end.
+   * Callers (orchestrator's `brandkit_deploy` handler) must translate
+   * registry-file paths to public URLs before invoking scai.
    */
-  documents?: { url: string; title?: string; summary?: string }[];
+  documents?: BrandDocument[];
   /** Optional kit metadata. */
   description?: string;
   industry?: string;
@@ -116,17 +124,49 @@ export const seedBrandKit = async (options: SeedBrandKitOptions): Promise<SeedBr
   emit({ stage: "createKit", message: `Created kit ${kit.id}` });
 
   // 2. UPLOAD doc(s) — one or many, before a single ingestion pass.
+  //
+  // The `documents` list is the recipe-shaped discriminated union.
+  // `registry-file` entries arrive unresolved (path relative to the
+  // recipe file) and CANNOT be uploaded as bytes — the Sitecore
+  // Documents API has no working local-upload path (verified
+  // 2026-05-15; see documents/upload.ts). The caller (orchestrator's
+  // `brandkit_deploy` handler) must translate them to URL entries
+  // first. Failing fast here — with the path in the hint — beats
+  // a confusing 400 from `uploadDocument` minutes later.
+  if (options.documents) {
+    for (const doc of options.documents) {
+      if (doc.kind === "registry-file") {
+        throw createScaiError(
+          `Brand document "${doc.path}" is a registry-file path; scai cannot upload local bytes.`,
+          "INPUT_INVALID",
+          {
+            hint: 'Host the file at an HTTPS URL Sitecore\'s edge can reach (S3, GitHub raw, a CDN) and pass it as a `{ kind: "url", url }` document. The Sitecore Documents API rejects local-file uploads — translation has to happen upstream of scai.',
+          }
+        );
+      }
+    }
+  }
   const uploadList: {
     source: UploadDocumentSource | { url: string };
     title?: string;
     summary?: string;
   }[] =
     options.documents && options.documents.length > 0
-      ? options.documents.map((doc) => ({
-          source: { url: doc.url },
-          title: doc.title,
-          summary: doc.summary,
-        }))
+      ? options.documents.map((doc) => {
+          // After the registry-file guard above, every doc is a URL
+          // variant; the narrow keeps the TS surface clean.
+          if (doc.kind !== "url") {
+            throw createScaiError(
+              "Unreachable: non-URL document survived the registry-file guard.",
+              "INPUT_INVALID"
+            );
+          }
+          return {
+            source: { url: doc.url },
+            title: doc.title,
+            summary: doc.summary,
+          };
+        })
       : options.source
         ? [
             {

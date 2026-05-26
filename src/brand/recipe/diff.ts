@@ -35,11 +35,16 @@ export const diffBrandKit = (
       meta: { stage: "kit", description: desired.description, industry: desired.industry },
     });
     desired.documents.forEach((document, index) => {
+      // The discriminated union has two shapes — `url` carries a URL,
+      // `registry-file` carries a `path`. The diff describes the
+      // change in human terms only; the apply step is where the
+      // registry-file → URL contract is enforced.
+      const label = document.kind === "url" ? document.url : `registry-file:${document.path}`;
       changes.push({
         kind: "create",
         path: `documents[${index}]`,
-        summary: `Upload + ingest ${document.url}`,
-        after: document.url,
+        summary: `Upload + ingest ${label}`,
+        after: label,
         meta: { stage: "document", document },
       });
     });

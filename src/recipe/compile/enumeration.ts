@@ -154,21 +154,12 @@ export function compileEnumerationRecipe(
     kind: "ref-path",
     value: context.enumerationsRoot,
   };
-  const folder = recipe.location?.folder;
-  if (folder) {
-    const folderSegments = folder
-      .split("/")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (folderSegments.length === 0) {
-      throw createScaiError(
-        `Recipe '${recipe.handle}' declares location.folder that is empty after trimming.`,
-        "INPUT_INVALID",
-        {
-          hint: "Use a non-empty folder string like 'Theme' or 'Components/Card'.",
-        }
-      );
-    }
+  // `recipe.location.folder` is normalized to `string[]` by the schema
+  // (`FolderPath` in schema/recipe.ts) — both `"Theme/Color"` and
+  // `["Theme", "Color"]` input shapes land here as `["Theme", "Color"]`,
+  // already trimmed and non-empty.
+  const folderSegments = recipe.location?.folder;
+  if (folderSegments && folderSegments.length > 0) {
     const cumulativeSegments: string[] = [];
     for (const segment of folderSegments) {
       cumulativeSegments.push(segment);

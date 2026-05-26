@@ -664,14 +664,18 @@ describe("compileRecipeSet — Placeholder Settings aggregate", () => {
       "/sitecore/content/test-tenant/test-site/Presentation/Placeholder Settings",
   };
 
-  const placeholderRecipe = (handle: string, key: string, folder?: string): Recipe => ({
+  const placeholderRecipe = (handle: string, key: string, folder?: string | string[]): Recipe => ({
     kind: "placeholder",
     schemaVersion: "1",
     handle,
     key,
     name: key.replace(/[^a-zA-Z0-9]/g, "") || "ph",
     displayName: key,
-    ...(folder ? { folder } : {}),
+    ...(folder
+      ? {
+          folder: Array.isArray(folder) ? folder : folder.split("/").filter(Boolean),
+        }
+      : {}),
   });
 
   it("emits no Placeholder Settings IR when the set declares no placeholders", () => {

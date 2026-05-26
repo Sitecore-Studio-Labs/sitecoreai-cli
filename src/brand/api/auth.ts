@@ -1,11 +1,9 @@
-import {
-  DEFAULT_SITECORE_API_AUDIENCE,
-  requestClientCredentialsToken,
-} from "@/serialization/api/auth";
+import { requestClientCredentialsToken } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import { createScaiError } from "@/shared/errors";
-import { getBrandClientSecret, getBrandToken, setBrandToken } from "@/shared/keychain";
+import { getBrandToken, setBrandToken } from "@/shared/keychain";
 import type { BrandCredential } from "@/config/types";
+import { resolveBrandSecrets } from "../credential";
 
 /**
  * OAuth scopes scai's *currently shipped* Brand operations require.
@@ -40,11 +38,16 @@ import type { BrandCredential } from "@/config/types";
 export const BRAND_REQUIRED_SCOPES = ["ai.org.br:gen"] as const;
 
 const NO_CREDENTIAL_HINT =
-  "Run `scai setup login brand --env <env>` to provision the credential, or paste an existing AI APIs key into `brand.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys.";
+  "Run `scai setup login brand --env <env>` to provision the credential, or paste an existing AI APIs key into `brand.<orgId>` in sitecoreai.cli.json (clientId only; secret goes through the keychain via the login flow). Create the credential in Cloud Portal → Stream → Admin → AI APIs keys. In serverless contexts (Vercel functions, CI runners) without an OS keychain, set the SITECOREAI_BRAND_CLIENT_ID + SITECOREAI_BRAND_CLIENT_SECRET env vars instead — they take precedence over the config+keychain pair.";
 
 export interface AcquireBrandTokenOptions {
   orgId: string;
-  credential: BrandCredential;
+  /**
+   * The `brand[orgId]` config block, if present. Optional: serverless
+   * callers (showcase orchestrator) may have no config file at all and
+   * supply credentials via the `SITECOREAI_BRAND_*` env vars instead.
+   */
+  credential?: BrandCredential;
 }
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
@@ -78,8 +81,6 @@ export const hasBrandScopes = (token: string): boolean => {
   return BRAND_REQUIRED_SCOPES.every((s) => granted.has(s));
 };
 
-const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
-
 /**
  * Returns a Bearer JWT for the Sitecore Brand APIs.
  *
@@ -89,15 +90,17 @@ const DEFAULT_AUTHORITY = "https://auth.sitecorecloud.io";
  *      by a previous mint via this function. Reused while it still
  *      carries the required scopes; cleared on next 401 by callers.
  *   2. Fresh M2M mint against the `auth.sitecorecloud.io/oauth/token`
- *      endpoint with `audience=https://api.sitecorecloud.io`, using
- *      the org-scoped `clientId` from `brand[orgId]` and the
- *      matching secret from the keychain. Cached on success.
+ *      endpoint with `audience=https://api.sitecorecloud.io`. The
+ *      `clientId` + secret + authority + audience are resolved by
+ *      `resolveBrandSecrets`, which walks: (a) the
+ *      `SITECOREAI_BRAND_*` env vars (serverless override), then
+ *      (b) the `brand[orgId]` config block + OS keychain. Successful
+ *      mints are cached.
  *
- * Refuses with `AUTH_BRAND_REQUIRED` when none of these paths
- * produces a token carrying the required scopes. The error message
- * decodes the granted-scope set and infers the credential class so
- * operators know whether they need to provision a new AI APIs key or
- * just re-login.
+ * Refuses with `AUTH_BRAND_REQUIRED` when neither tier supplies a
+ * credential. The error message points operators at both the OS
+ * keychain login flow AND the serverless env-var path so the right
+ * fix is one re-read away.
  */
 export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Promise<string> => {
   const { orgId, credential } = options;
@@ -106,14 +109,24 @@ export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Prom
   //    server-side scope enforcement happens on the API call itself,
   //    and gating here would skip a perfectly usable token whenever
   //    the operation it's used for doesn't need the validated scope.
+  //
+  //    NB: in a serverless context (no keychain) the cache lookup
+  //    silently returns undefined via the keychain wrapper's
+  //    fail-closed behaviour, so we drop straight to the mint path —
+  //    every invocation re-mints, which is correct: there is no
+  //    persistent process to hold a cached token across invocations.
   const cached = await getBrandToken(orgId);
   if (cached) {
     return cached;
   }
 
-  // 2. Fresh M2M mint via the AI APIs key.
-  const clientSecret = await getBrandClientSecret(orgId);
-  if (!credential.clientId || !clientSecret) {
+  // 2. Fresh M2M mint via the AI APIs key. `resolveBrandSecrets`
+  //    picks env-var vs config+keychain; partial-env states throw
+  //    inside the resolver (so the operator sees the malformed-env
+  //    hint, not a generic missing-credential one), an empty result
+  //    here means neither tier had anything to offer.
+  const secrets = await resolveBrandSecrets({ orgId, credential });
+  if (!secrets) {
     throw createScaiError(
       `No Brand credential is configured for org '${orgId}'.`,
       "AUTH_BRAND_REQUIRED",
@@ -121,17 +134,14 @@ export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Prom
     );
   }
 
-  const authority = credential.authority ?? DEFAULT_AUTHORITY;
-  const audience = credential.audience ?? DEFAULT_SITECORE_API_AUDIENCE;
-
   // Reuse the shared client-credentials helper. It accepts a
   // `SitecoreApiClientOptions`-shaped argument; we only need the
   // auth-relevant fields.
   const mintEnv: SitecoreApiClientOptions = {
-    authority,
-    clientId: credential.clientId,
-    clientSecret,
-    audience,
+    authority: secrets.authority,
+    clientId: secrets.clientId,
+    clientSecret: secrets.clientSecret,
+    audience: secrets.audience,
   };
 
   let result;

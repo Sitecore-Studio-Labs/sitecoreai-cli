@@ -2,6 +2,33 @@ import { z } from "zod";
 import { FieldShapeSchema, SitecoreFieldTypeSchema } from "./field-types";
 
 /**
+ * Multi-segment folder path accepted by `location.folder` /
+ * `placeholder.folder`. Two wire shapes:
+ *
+ *   Array form (canonical):    `["Theme", "Color"]`
+ *   Slash-string form (legacy): `"Theme/Color"`
+ *
+ * Both normalize to `string[]` after parsing. The registry moved its
+ * recipe schema to array form because the slash-string was implicit
+ * and fragile to author through Agent Studio (no IDE help for the
+ * segments inside the string); scai accepts both so old recipes keep
+ * working and new ones use the explicit shape. Empty segments
+ * (`""` / `"a//b"`) after split + trim are filtered out so callers
+ * don't have to remember to clean them.
+ *
+ * Downstream consumers (compile/enumeration, compile/placeholder,
+ * read-current) all see `string[]` and don't need to split anything
+ * themselves.
+ */
+const FolderPath = z
+  .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+  .transform((value) => {
+    const segments = (Array.isArray(value) ? value : value.split("/")).map((s) => s.trim());
+    return segments.filter((s) => s.length > 0);
+  })
+  .pipe(z.array(z.string().min(1)).min(1));
+
+/**
  * Recipe author surface — what users hand-author for one Sitecore template.
  *
  * Two recipe kinds:
@@ -276,7 +303,7 @@ export const PlaceholderDefinitionSchema = z.object({
    * Insert Options. Recipes naming the same folder share it. Omit → the
    * item lands flat at the root.
    */
-  folder: z.string().min(1).optional(),
+  folder: FolderPath.optional(),
   /**
    * SXA dynamic placeholder. When true the host rendering must also set
    * `dynamicPlaceholders: true` so SXA generates per-instance keys; the
@@ -338,7 +365,7 @@ export const PlaceholderRecipeSchema = z.object({
    * Settings Folder` template (inheriting its Insert Options). Recipes
    * naming the same folder share it. Omit → flat at the root.
    */
-  folder: z.string().min(1).optional(),
+  folder: FolderPath.optional(),
   /** SXA dynamic placeholder — see `PlaceholderDefinitionSchema.dynamic`. */
   dynamic: z.boolean().default(false),
   /**
@@ -1657,7 +1684,7 @@ export const EnumerationRecipeSchema = z.object({
   location: z
     .object({
       scope: z.enum(["site", "siteCollection"]),
-      folder: z.string().min(1).optional(),
+      folder: FolderPath.optional(),
     })
     .optional(),
   values: z.array(EnumerationValueSchema).min(1),

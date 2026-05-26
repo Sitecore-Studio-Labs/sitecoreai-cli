@@ -319,9 +319,12 @@ export const resolveEnumFolderPath = (
       }
     );
   }
-  const folder = enumRecipe.location?.folder;
-  return folder
-    ? joinPath(joinPath(context.enumerationsRoot, folder), enumRecipe.name)
+  // `location.folder` is a `string[]` of grouping segments after the
+  // schema's `FolderPath` normalisation — join with `/` here to build
+  // the cumulative path under enumerationsRoot.
+  const folderSegments = enumRecipe.location?.folder;
+  return folderSegments && folderSegments.length > 0
+    ? joinPath(joinPath(context.enumerationsRoot, folderSegments.join("/")), enumRecipe.name)
     : joinPath(context.enumerationsRoot, enumRecipe.name);
 };
 

@@ -6,6 +6,8 @@ vi.mock("../../../../src/brief/client", () => ({
 vi.mock("../../../../src/brief/api/briefs", () => ({
   listBriefs: vi.fn(),
   getBrief: vi.fn(),
+  createBrief: vi.fn(),
+  updateBrief: vi.fn(),
   setBriefStatus: vi.fn(),
   deleteBrief: vi.fn(),
 }));
@@ -278,6 +280,52 @@ describe("brief runners — write verbs honour --what-if", () => {
     expect(deletedJson).toEqual({ id: "bt-1", deleted: true });
     const deletedHuman = await runners.runBriefTypeDelete({ quiet: true, briefTypeId: "bt-1" });
     expect(deletedHuman).toEqual({ id: "bt-1", deleted: true });
+  });
+
+  it("runBriefCreate plans then applies", async () => {
+    const input = { name: "New Brief", briefTypeId: "bt-1", locale: "en-us" };
+
+    const planJson = await runners.runBriefCreate({ json: true, input, whatIf: true });
+    expect(planJson).toMatchObject({ plan: input });
+    await runners.runBriefCreate({ quiet: true, input, whatIf: true });
+    expect(vi.mocked(briefsApi.createBrief)).not.toHaveBeenCalled();
+
+    vi.mocked(briefsApi.createBrief).mockResolvedValue(
+      makeBrief({ id: "brief-99", name: "New Brief" }) as never
+    );
+    const createdJson = await runners.runBriefCreate({ json: true, input });
+    expect(createdJson).toMatchObject({ id: "brief-99", name: "New Brief" });
+    expect(vi.mocked(briefsApi.createBrief)).toHaveBeenCalledWith(client, input);
+    const createdHuman = await runners.runBriefCreate({ quiet: true, input });
+    expect(createdHuman).toMatchObject({ id: "brief-99" });
+  });
+
+  it("runBriefUpdate plans then PUT-patches", async () => {
+    const patch = { name: "Renamed", status: "Approved" as never };
+
+    const planJson = await runners.runBriefUpdate({
+      json: true,
+      briefId: "brief-1",
+      patch,
+      whatIf: true,
+    });
+    expect(planJson).toMatchObject({ plan: { id: "brief-1", patch } });
+    expect(vi.mocked(briefsApi.updateBrief)).not.toHaveBeenCalled();
+
+    vi.mocked(briefsApi.updateBrief).mockResolvedValue(undefined as never);
+    const updatedJson = await runners.runBriefUpdate({
+      json: true,
+      briefId: "brief-1",
+      patch,
+    });
+    expect(updatedJson).toEqual({ id: "brief-1" });
+    expect(vi.mocked(briefsApi.updateBrief)).toHaveBeenCalledWith(client, "brief-1", patch);
+    const updatedHuman = await runners.runBriefUpdate({
+      quiet: true,
+      briefId: "brief-1",
+      patch,
+    });
+    expect(updatedHuman).toEqual({ id: "brief-1" });
   });
 
   it("runBriefDelete plans then deletes", async () => {

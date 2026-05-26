@@ -1,26 +1,31 @@
 /**
- * Brief-type recipe surface — the MCP projection of the `brief-type`
- * recipe kind. Two workflow-shaped tools:
+ * Brief recipe surface — the MCP projection of both brief recipe kinds.
+ * Two workflow-shaped tools, each discriminating on `kind`:
  *
  *   - `brief_recipe_inspect` — read. `verb=pull` captures a live brief
- *     type as a declarative recipe; `verb=diff` plans the convergence of
- *     a brief type onto a given recipe. Neither writes.
+ *     type OR brief instance as a declarative recipe; `verb=diff` plans
+ *     the convergence of the named resource onto a given recipe.
  *
- *   - `brief_recipe_push` — write. Converges a brief type onto a recipe,
- *     gated by `allowWrite`; `whatIf` returns the plan without writing.
+ *   - `brief_recipe_push` — write. Converges a brief type or brief
+ *     instance onto a recipe, gated by `allowWrite`; `whatIf` returns
+ *     the plan without writing.
  *
- * The `recipe` input field IS `BriefTypeRecipeSchema` — the single
- * source of truth feeds the agent-facing tool surface for free. See
- * docs/recipe-sync-architecture.md.
+ * `kind: 'brief-type'` is the legacy default (kept for back-compat with
+ * the pre-instance surface). `kind: 'brief'` operates on populated
+ * brief instances. The matching recipe schema becomes the input shape
+ * for `recipe` automatically — the schema is the single source of truth.
+ *
+ * See docs/recipe-sync-architecture.md.
  */
 import { z } from "zod";
-import { briefTypeKind } from "@/brief/recipe";
+import { briefInstanceKind, briefTypeKind } from "@/brief/recipe";
 import { createScaiError } from "@/shared/errors";
 import {
   summarizePlan,
   syncDiff,
   syncPull,
   syncPush,
+  type RecipeKind,
   type RecipePlan,
   type SyncContext,
 } from "@/sync";
@@ -28,6 +33,8 @@ import type { McpContext } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
 import { allowWriteShape, environmentBindingShape, whatIfShape } from "../schemas/common";
+
+type BriefRecipeKind = "brief-type" | "brief";
 
 const syncContextFrom = (
   context: McpContext,
@@ -44,64 +51,91 @@ const planSummaryText = (plan: RecipePlan): string => {
   return `Plan: ${tally.create} create, ${tally.update} update, ${tally.delete} delete, ${tally.noop} unchanged.`;
 };
 
+/** Map the MCP `kind` discriminator to the underlying `RecipeKind`. */
+const recipeKindFor = (kind: BriefRecipeKind | undefined): RecipeKind<unknown> => {
+  const resolved = kind ?? "brief-type";
+  return resolved === "brief"
+    ? (briefInstanceKind as RecipeKind<unknown>)
+    : (briefTypeKind as RecipeKind<unknown>);
+};
+
+/** Both kinds carry a stable `name` — the identifier the engine matches on. */
+type NamedRecipe = { name: string } & Record<string, unknown>;
+
 export const registerBriefRecipeTools = (registry: McpRegistry): void => {
   registry.registerTool({
     name: "brief_recipe_inspect",
     description: TOOL_DESCRIPTIONS.brief_recipe_inspect,
     auth: "read",
     annotations: {
-      title: "Pull or diff a brief type as a declarative recipe",
+      title: "Pull or diff a brief type or brief instance as a declarative recipe",
       readOnlyHint: true,
       destructiveHint: false,
       openWorldHint: true,
     },
     inputSchema: {
+      kind: z
+        .enum(["brief-type", "brief"])
+        .default("brief-type")
+        .describe(
+          "Which recipe kind to operate on. 'brief-type' (default — the schema template) or 'brief' (a populated brief instance)."
+        ),
       verb: z
         .enum(["pull", "diff"])
         .describe(
-          "pull: capture the live brief type named `name` as a recipe. diff: compare `recipe` against the live brief type and return the plan."
+          "pull: capture the live resource named `name` as a recipe. diff: compare `recipe` against the live resource and return the plan."
         ),
-      name: z.string().optional().describe("Brief type codename. Required for verb='pull'."),
-      recipe: briefTypeKind.schema
+      name: z
+        .string()
         .optional()
-        .describe("A brief-type recipe. Required for verb='diff'."),
+        .describe("Brief-type codename or brief display name. Required for verb='pull'."),
+      recipe: z
+        .union([briefTypeKind.schema, briefInstanceKind.schema])
+        .optional()
+        .describe(
+          "A brief-type recipe or brief-instance recipe (matching `kind`). Required for verb='diff'."
+        ),
       ...environmentBindingShape,
     },
     handler: async (input, context) => {
       const ctx = syncContextFrom(context, input.environmentName);
+      const kind = recipeKindFor(input.kind);
+      const humanKind = input.kind === "brief" ? "brief" : "brief type";
       if (input.verb === "pull") {
         if (!input.name) {
           throw createScaiError("verb='pull' requires `name`.", "INPUT_INVALID");
         }
-        const recipe = await syncPull(
-          briefTypeKind,
-          { kind: briefTypeKind.name, id: input.name },
-          ctx
-        );
+        const recipe = await syncPull(kind, { kind: kind.name, id: input.name }, ctx);
         return {
           content: [
             {
               type: "text",
               text: recipe
-                ? `Captured "${input.name}" as a recipe.`
-                : `No brief type named "${input.name}".`,
+                ? `Captured ${humanKind} "${input.name}" as a recipe.`
+                : `No ${humanKind} named "${input.name}".`,
             },
           ],
-          structuredContent: { verb: input.verb, found: recipe !== null, recipe },
+          structuredContent: {
+            kind: input.kind ?? "brief-type",
+            verb: input.verb,
+            found: recipe !== null,
+            recipe,
+          },
         };
       }
       if (!input.recipe) {
         throw createScaiError("verb='diff' requires `recipe`.", "INPUT_INVALID");
       }
-      const plan = await syncDiff(
-        briefTypeKind,
-        input.recipe,
-        { kind: briefTypeKind.name, id: input.recipe.name },
-        ctx
-      );
+      const recipe = input.recipe as NamedRecipe;
+      const plan = await syncDiff(kind, recipe, { kind: kind.name, id: recipe.name }, ctx);
       return {
         content: [{ type: "text", text: planSummaryText(plan) }],
-        structuredContent: { verb: input.verb, plan, summary: summarizePlan(plan) },
+        structuredContent: {
+          kind: input.kind ?? "brief-type",
+          verb: input.verb,
+          plan,
+          summary: summarizePlan(plan),
+        },
       };
     },
   });
@@ -111,15 +145,23 @@ export const registerBriefRecipeTools = (registry: McpRegistry): void => {
     description: TOOL_DESCRIPTIONS.brief_recipe_push,
     auth: "write",
     annotations: {
-      title: "Push a brief-type recipe — converge the type onto the recipe",
+      title: "Push a brief-type or brief recipe — converge the resource onto the recipe",
       readOnlyHint: false,
       destructiveHint: true,
       openWorldHint: true,
     },
     inputSchema: {
-      recipe: briefTypeKind.schema.describe(
-        "The brief-type recipe to converge onto. The brief type is identified by `recipe.name`."
-      ),
+      kind: z
+        .enum(["brief-type", "brief"])
+        .default("brief-type")
+        .describe(
+          "Which recipe kind to push. 'brief-type' (default — the schema template) or 'brief' (a populated brief instance)."
+        ),
+      recipe: z
+        .union([briefTypeKind.schema, briefInstanceKind.schema])
+        .describe(
+          "The recipe to converge onto. Schema must match `kind`. The resource is identified by `recipe.name`."
+        ),
       prune: z
         .boolean()
         .default(false)
@@ -130,20 +172,20 @@ export const registerBriefRecipeTools = (registry: McpRegistry): void => {
     },
     handler: async (input, context, extra) => {
       const ctx = syncContextFrom(context, input.environmentName, extra.signal);
+      const kind = recipeKindFor(input.kind);
+      const recipe = input.recipe as NamedRecipe;
       const mode = input.whatIf ? "what-if" : "apply";
-      const outcome = await syncPush(
-        briefTypeKind,
-        input.recipe,
-        { kind: briefTypeKind.name, id: input.recipe.name },
-        ctx,
-        { mode, prune: input.prune }
-      );
+      const outcome = await syncPush(kind, recipe, { kind: kind.name, id: recipe.name }, ctx, {
+        mode,
+        prune: input.prune,
+      });
       const text = outcome.result
         ? `Applied ${outcome.result.applied.length} change(s); ${outcome.result.skipped.length} skipped.`
         : planSummaryText(outcome.plan);
       return {
         content: [{ type: "text", text }],
         structuredContent: {
+          kind: input.kind ?? "brief-type",
           mode,
           plan: outcome.plan,
           summary: summarizePlan(outcome.plan),

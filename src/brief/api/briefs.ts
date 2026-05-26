@@ -1,3 +1,4 @@
+import { createScaiError } from "@/shared/errors";
 import { briefRequest } from "./request";
 import type { Brief, BriefStatus, PagedResult } from "./schema";
 import type { BriefApiClientOptions, BriefQueryRecord } from "./types";
@@ -62,12 +63,56 @@ export type CreateBriefInput = {
   isTemplate?: boolean;
 };
 
+/** Required keys on a `CreateBriefInput` body. */
+const BRIEF_REQUIRED_KEYS = ["name", "briefTypeId"] as const;
+
+/**
+ * Validate an unknown value as a `CreateBriefInput`. Throws a typed
+ * `ScaiError` (`INPUT_INVALID`) on failure; returns the narrowed input
+ * on success. `createBrief` calls this itself, so direct SDK consumers
+ * are guarded without invoking it explicitly. Mirrors
+ * `assertCreateBriefTypeInput` in `./brief-types.ts`.
+ */
+export const assertCreateBriefInput = (value: unknown): CreateBriefInput => {
+  if (!value || typeof value !== "object") {
+    throw createScaiError("Brief body must be a JSON object.", "INPUT_INVALID");
+  }
+  const obj = value as Record<string, unknown>;
+  const missing = BRIEF_REQUIRED_KEYS.filter((key) => obj[key] === undefined);
+  if (missing.length > 0) {
+    throw createScaiError(
+      `Brief body is missing required fields: ${missing.join(", ")}.`,
+      "INPUT_INVALID",
+      { hint: "Required: name (string), briefTypeId (UUID of the brief type)." }
+    );
+  }
+  if (typeof obj.name !== "string" || obj.name.length === 0) {
+    throw createScaiError(`Invalid 'name': ${JSON.stringify(obj.name)}.`, "INPUT_INVALID", {
+      hint: "Brief name must be a non-empty string.",
+    });
+  }
+  if (typeof obj.briefTypeId !== "string" || obj.briefTypeId.length === 0) {
+    throw createScaiError(
+      `Invalid 'briefTypeId': ${JSON.stringify(obj.briefTypeId)}.`,
+      "INPUT_INVALID",
+      {
+        hint: "Pass the brief type's UUID. List types with `scai ops brief types list`.",
+      }
+    );
+  }
+  if (obj.fields !== undefined && (typeof obj.fields !== "object" || Array.isArray(obj.fields))) {
+    throw createScaiError("'fields' must be an object keyed by field name.", "INPUT_INVALID");
+  }
+  return obj as unknown as CreateBriefInput;
+};
+
 /** Create a brief. Returns the persisted record (201). */
 export const createBrief = (
   options: BriefApiClientOptions,
   input: CreateBriefInput
-): Promise<Brief> =>
-  briefRequest<Brief>(options, "/api/brief/v1/briefs", {
+): Promise<Brief> => {
+  assertCreateBriefInput(input);
+  return briefRequest<Brief>(options, "/api/brief/v1/briefs", {
     method: "POST",
     body: {
       name: input.name,
@@ -77,6 +122,7 @@ export const createBrief = (
       isTemplate: input.isTemplate,
     },
   });
+};
 
 /**
  * Partial update of a brief (`PUT /api/brief/v1/briefs/{id}` — 204 No

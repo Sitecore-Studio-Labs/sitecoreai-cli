@@ -1,6 +1,14 @@
 import { Logger } from "@/shared/logger";
 import { resolveBriefClient } from "../client";
-import { listBriefs, getBrief, setBriefStatus, deleteBrief } from "../api/briefs";
+import {
+  createBrief,
+  deleteBrief,
+  getBrief,
+  listBriefs,
+  setBriefStatus,
+  updateBrief,
+  type CreateBriefInput,
+} from "../api/briefs";
 import {
   createBriefType,
   deleteBriefType,
@@ -329,6 +337,75 @@ export const runBriefCommentsList = async (
     logger.info(`  ${comment.id}  ${JSON.stringify(comment).slice(0, 120)}`);
   }
   return result;
+};
+
+/**
+ * Create a brief instance from a `CreateBriefInput`. Mirrors
+ * `runBriefTypeCreate` — honours `whatIf` for a plan-only dry run. The
+ * SDK `createBrief` is verified against the Agents tenant.
+ */
+export const runBriefCreate = async (
+  options: RunBriefBaseOptions & { input: CreateBriefInput; whatIf?: boolean }
+): Promise<Brief | { plan: CreateBriefInput }> => {
+  const { logger, client } = await prepareBriefClient(options);
+  if (options.whatIf) {
+    const plan = { plan: options.input };
+    if (logger.isJson()) {
+      writeJson(plan);
+    } else {
+      logger.info(`Would create brief '${options.input.name}'.`, "yellow");
+      logger.info(`  Brief type:  ${options.input.briefTypeId}`);
+      if (options.input.locale) logger.info(`  Locale:      ${options.input.locale}`);
+      const fieldCount = Object.keys(options.input.fields ?? {}).length;
+      logger.info(`  Fields:      ${fieldCount}`);
+    }
+    return plan;
+  }
+  const created = await createBrief(client, options.input);
+  if (logger.isJson()) {
+    writeJson(created);
+    return created;
+  }
+  logger.info(`Created brief ${created.id} (${created.name}).`, "green");
+  return created;
+};
+
+/**
+ * Update a brief instance by id with a partial patch (`PUT`). Accepts
+ * any subset of `CreateBriefInput` plus an optional `status`. Mirrors
+ * `runBriefTypeUpdate` — honours `whatIf` for a plan-only dry run. The
+ * status-only PUT path is verified (2026-05-15); other partial fields
+ * are wired the same way but not smoke-tested.
+ */
+export const runBriefUpdate = async (
+  options: RunBriefBaseOptions & {
+    briefId: string;
+    patch: Partial<CreateBriefInput> & { status?: BriefStatus };
+    whatIf?: boolean;
+  }
+): Promise<
+  | { id: string }
+  | { plan: { id: string; patch: Partial<CreateBriefInput> & { status?: BriefStatus } } }
+> => {
+  const { logger, client } = await prepareBriefClient(options);
+  if (options.whatIf) {
+    const plan = { plan: { id: options.briefId, patch: options.patch } };
+    if (logger.isJson()) {
+      writeJson(plan);
+    } else {
+      logger.info(`Would PUT-update brief ${options.briefId}.`, "yellow");
+      const keys = Object.keys(options.patch);
+      logger.info(`  Patch keys:  ${keys.length === 0 ? "(none)" : keys.join(", ")}`);
+    }
+    return plan;
+  }
+  await updateBrief(client, options.briefId, options.patch);
+  if (logger.isJson()) {
+    writeJson({ id: options.briefId });
+    return { id: options.briefId };
+  }
+  logger.info(`Updated brief ${options.briefId}.`, "green");
+  return { id: options.briefId };
 };
 
 /**

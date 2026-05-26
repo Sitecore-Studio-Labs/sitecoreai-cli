@@ -56,6 +56,7 @@ export {
   updateBrief,
   setBriefStatus,
   deleteBrief,
+  assertCreateBriefInput,
   type CreateBriefInput,
   type ListBriefsQuery,
 } from "./api/briefs";

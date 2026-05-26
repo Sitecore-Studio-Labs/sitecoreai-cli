@@ -733,8 +733,11 @@ interface PlaceholderDecl {
   name: string;
   displayName: string;
   icon?: string;
-  /** Optional grouping folder path (`/`-separated) under the root. */
-  folder?: string;
+  /** Optional grouping folder segments under the root. Schema-level
+   *  `FolderPath` already normalised input from both the array form
+   *  (`["Partial Design", "Header"]`) and the legacy slash-string
+   *  (`"Partial Design/Header"`) into this `string[]` shape. */
+  folder?: string[];
   /** `component-template` handles allowed in this placeholder. */
   allowed: Set<string>;
 }
@@ -842,12 +845,12 @@ const buildPlaceholderSettingsAggregate = (
   // parent ref + path the leaf placeholder item lands under.
   const emittedFolders = new Set<string>();
   const resolveFolderParent = (
-    folder: string | undefined
+    folder: string[] | undefined
   ): { parent: CreateItemOp["parent"]; basePath: string } => {
-    const segments = (folder ?? "")
-      .split("/")
-      .map((segment) => segment.trim())
-      .filter(Boolean);
+    // `folder` is normalised to `string[]` at the schema boundary
+    // (`FolderPath` in schema/recipe.ts) — both array and legacy
+    // slash-string inputs land here as a clean segment list.
+    const segments = folder ?? [];
     let parentPath = root;
     let parentRef: CreateItemOp["parent"] = { kind: "ref-path", value: root };
     let cumulative = "";

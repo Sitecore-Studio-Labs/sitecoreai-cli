@@ -48,7 +48,11 @@ import {
   type SitecoreFieldType,
   sitecoreFieldTypeLabel,
 } from "../schema/field-types";
-import { renderSourceFields, sourceFieldsNeedHandleResolution } from "../schema/source-fields";
+import {
+  augmentSourceToFields,
+  renderSourceFields,
+  sourceFieldsNeedHandleResolution,
+} from "../schema/source-fields";
 
 /**
  * Where a recipe's items land in the Sitecore content tree. Tenant-side
@@ -315,9 +319,12 @@ export const resolveEnumFolderPath = (
       }
     );
   }
-  const folder = enumRecipe.location?.folder;
-  return folder
-    ? joinPath(joinPath(context.enumerationsRoot, folder), enumRecipe.name)
+  // `location.folder` is a `string[]` of grouping segments after the
+  // schema's `FolderPath` normalisation — join with `/` here to build
+  // the cumulative path under enumerationsRoot.
+  const folderSegments = enumRecipe.location?.folder;
+  return folderSegments && folderSegments.length > 0
+    ? joinPath(joinPath(context.enumerationsRoot, folderSegments.join("/")), enumRecipe.name)
     : joinPath(context.enumerationsRoot, enumRecipe.name);
 };
 
@@ -1305,19 +1312,16 @@ function resolveFieldSource(
 ): RefValue | undefined {
   const sc = field.sitecore;
   if (sc) {
-    const fields = {
-      sourceTypes: sc.sourceTypes,
-      sourceQuery: sc.sourceQuery,
-      sourceScope: sc.sourceScope,
-      sourceRaw: sc.sourceRaw,
-    };
+    const fields = augmentSourceToFields(sc.source);
     if (sourceFieldsNeedHandleResolution(fields)) {
+      // `types` is non-empty here because `sourceFieldsNeedHandleResolution`
+      // returned true; the cast is to satisfy the IR's `.min(1)` constraint.
       return {
         kind: "ref-source-fields",
         site,
-        sourceTypes: sc.sourceTypes!,
-        sourceQuery: sc.sourceQuery,
-        sourceScope: sc.sourceScope,
+        sourceTypes: fields.sourceTypes as string[],
+        sourceQuery: fields.sourceQuery,
+        sourceScope: fields.sourceScope,
       };
     }
     const rendered = renderSourceFields(fields, () => {

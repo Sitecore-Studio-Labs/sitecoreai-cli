@@ -132,14 +132,14 @@ describe("ContentTemplateRecipe schema — meta.tax", () => {
 });
 
 describe("DesignParametersTemplateRecipe schema", () => {
-  it("accepts a minimal parameters-template recipe", () => {
+  it("accepts a minimal parameters-template recipe with a section handle ref", () => {
     const result = DesignParametersTemplateRecipeSchema.safeParse({
       kind: "design-parameters-template",
       schemaVersion: "1",
       handle: "accordion-params@1",
       name: "Accordion Parameters",
       displayName: "Accordion Parameters",
-      section: "ui",
+      section: { handle: "ui-section@1" },
       params: [{ name: "Variant", shape: "text" }],
     });
     expect(result.success).toBe(true);
@@ -152,6 +152,32 @@ describe("DesignParametersTemplateRecipe schema", () => {
       handle: "accordion-params@1",
       name: "Accordion Parameters",
       displayName: "Accordion Parameters",
+      params: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a bare-string `section` (legacy shape)", () => {
+    const result = DesignParametersTemplateRecipeSchema.safeParse({
+      kind: "design-parameters-template",
+      schemaVersion: "1",
+      handle: "accordion-params@1",
+      name: "Accordion Parameters",
+      displayName: "Accordion Parameters",
+      section: "ui",
+      params: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-conforming `section.handle`", () => {
+    const result = DesignParametersTemplateRecipeSchema.safeParse({
+      kind: "design-parameters-template",
+      schemaVersion: "1",
+      handle: "accordion-params@1",
+      name: "Accordion Parameters",
+      displayName: "Accordion Parameters",
+      section: { handle: "no-version" },
       params: [],
     });
     expect(result.success).toBe(false);
@@ -191,7 +217,7 @@ describe("Recipe discriminated union — new kinds", () => {
         handle: "p@1",
         name: "P",
         displayName: "P",
-        section: "ui",
+        section: { handle: "ui-section@1" },
         params: [],
       }).success
     ).toBe(true);
@@ -357,7 +383,6 @@ describe("Parameters template path — section-aware emission", () => {
   it("does NOT synthesise inline params when `parameters: { handle }` is set", () => {
     const recipe = minimalComponentRecipe({
       section: { handle: UI_SECTION_RECIPE.handle },
-      params: [{ name: "Variant", shape: "text" }],
       parameters: { handle: "shared-params@1" },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -372,7 +397,6 @@ describe("Parameters template path — section-aware emission", () => {
   it("rendering's Parameters Template field points at the external `parameters.handle` when set", () => {
     const recipe = minimalComponentRecipe({
       section: { handle: UI_SECTION_RECIPE.handle },
-      params: [{ name: "Variant", shape: "text" }],
       parameters: { handle: "shared-params@1" },
     });
     const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
@@ -388,6 +412,18 @@ describe("Parameters template path — section-aware emission", () => {
       refKey: designParametersTemplateId(SITE, "shared-params@1"),
     });
   });
+
+  it("rejects setting both `parameters` (ref) and inline `params` on the same recipe", () => {
+    expect(() =>
+      ComponentTemplateRecipeSchema.parse(
+        minimalComponentRecipe({
+          section: { handle: UI_SECTION_RECIPE.handle },
+          params: [{ name: "Variant", shape: "text" }],
+          parameters: { handle: "shared-params@1" },
+        })
+      )
+    ).toThrow(/Set either `parameters`/);
+  });
 });
 
 describe("Standalone DesignParametersTemplateRecipe compile", () => {
@@ -399,7 +435,7 @@ describe("Standalone DesignParametersTemplateRecipe compile", () => {
         handle: "shared-params@1",
         name: "SharedParams",
         displayName: "Shared Params",
-        section: "ui",
+        section: { handle: UI_SECTION_RECIPE.handle },
         params: [{ name: "Mode", shape: "text" }],
       },
       CONTEXT

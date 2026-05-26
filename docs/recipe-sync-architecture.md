@@ -374,10 +374,17 @@ already being a documented best-effort projection.
 
 ## Locked decisions
 
-- **File format:** JSON/YAML + Zod for new kinds. No executable TS — this
-  sidesteps the recipe TS trust-model issue flagged in the 0.1.0 security
-  audit. (Open: whether existing `.recipe.ts` item recipes converge to
-  JSON/YAML or the item kind keeps a TS authoring path.)
+- **File format:** YAML, JSON, or TypeScript (`.recipe.ts` / `.tsx` /
+  `.mts` / `.cts`) — every kind through one loader. `sync pull`
+  round-trips to YAML; `.recipe.ts` is the authoring format when
+  Zod-derived `satisfies` checks are wanted (registry-style recipes).
+  The TS trust-model issue from the 0.1.0 security audit is mitigated
+  by the recipe sandbox (`docs/recipe-sandbox.md`): the file is
+  transpiled in the trusted parent and executed in a forked child
+  locked down with Node's permission model — no FS writes, no worker
+  threads, no child_process, scai secrets withheld from the child env.
+  `SITECOREAI_RECIPE_SANDBOX=0` opts out (with a stderr warning) for
+  debugging.
 - **Apply is additive by default** — `push` creates/updates only; never
   prunes remote state absent from the file. Pruning, if added, goes behind
   an explicit `--prune` flag (destructive → consent).
@@ -437,7 +444,10 @@ Then `brief`, `campaign`, then `component`/`page`/`site` as kinds.
 
 - CLI verb placement — `scai brand sync push` vs `scai sync push --kind
 brand`; how `recipe compile/plan/push` verbs reconcile with `sync`.
-- Whether existing `.recipe.ts` item recipes convert to JSON/YAML.
+- ~~Whether existing `.recipe.ts` item recipes convert to JSON/YAML.~~
+  Resolved: every kind accepts both. `.recipe.ts` for authoring (Zod
+  `satisfies` checks), YAML for `sync pull` round-trips, JSON for
+  non-engineer authoring. One loader handles all three.
 - `serialization` retirement — scope and timing of the migration.
 - The hard one: turning arbitrary live Sitecore items into a _clean_
   recipe (`readCurrent` for the item kind) without leaking raw item YAML.

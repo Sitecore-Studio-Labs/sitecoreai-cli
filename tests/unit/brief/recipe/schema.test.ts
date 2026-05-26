@@ -96,4 +96,26 @@ describe("BriefTypeRecipeSchema", () => {
       })
     ).toThrow();
   });
+
+  it("rejects Budget currencies that aren't ISO-4217 3-letter codes", () => {
+    const make = (currencies: string[]) =>
+      BriefTypeRecipeSchema.parse({
+        ...baseRecipe,
+        fields: [
+          {
+            type: "Budget",
+            name: "budget",
+            label: {},
+            required: false,
+            aiEditable: false,
+            currencies,
+          },
+        ],
+      });
+    expect(() => make(["usd"])).toThrow(); // lowercase
+    expect(() => make(["DOLLARS"])).toThrow(); // wrong length
+    expect(() => make(["US"])).toThrow(); // too short
+    expect(() => make(["US$"])).toThrow(); // non-letter
+    expect(() => make(["USD", "EUR", "GBP"])).not.toThrow();
+  });
 });

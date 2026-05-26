@@ -47,9 +47,9 @@ export const accordionBlockRecipe = {
       multiple: true,
       sitecore: {
         type: "treelist",
-        // Compiler resolves each handle in sourceTypes to its deterministic
+        // Compiler resolves each handle in source.types to its deterministic
         // template GUID and emits IncludeTemplatesForSelection={GUID},...
-        sourceTypes: ["accordion-item@1"],
+        source: { kind: "filter", types: ["accordion-item@1"] },
         hint: "Pick accordion items to include. Each must be of the AccordionItem template.",
         sortOrder: 200,
       },

@@ -18,6 +18,17 @@ describe("diffBrandKit — kit absent", () => {
     ]);
   });
 
+  it("labels a registry-file document by path in the summary, not by url", () => {
+    const desired = recipe({
+      name: "Acme",
+      documents: [{ kind: "registry-file", path: "brand-docs/voice.pdf" }],
+    });
+    const plan = diffBrandKit(desired, null);
+    const docChange = plan.changes.find((change) => change.path === "documents[0]");
+    expect(docChange?.summary).toContain("registry-file:brand-docs/voice.pdf");
+    expect(docChange?.after).toBe("registry-file:brand-docs/voice.pdf");
+  });
+
   it("plans just kit creation when there are no documents or sections", () => {
     const plan = diffBrandKit(recipe({ name: "Acme" }), null);
     expect(plan.changes).toHaveLength(1);

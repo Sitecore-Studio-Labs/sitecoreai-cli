@@ -128,7 +128,7 @@ const makeResourceTasks = <
 
   const runCreate: ResourceTasks["runCreate"] = async (options) => {
     const { logger, session } = await prepare(options);
-    const recipe = loadRecipe(options.file, config.schema);
+    const recipe = await loadRecipe(options.file, config.schema);
     if (await config.find(session, recipe.name)) {
       throw createScaiError(
         `A ${config.resource} named "${recipe.name}" already exists.`,
@@ -151,7 +151,7 @@ const makeResourceTasks = <
       requireUnverified(options.unverified, config.resource, "update");
     }
     const { logger, session } = await prepare(options);
-    const recipe = loadRecipe(options.file, config.schema);
+    const recipe = await loadRecipe(options.file, config.schema);
     let id: string;
     if (config.resolveById) {
       id = options.idOrName;

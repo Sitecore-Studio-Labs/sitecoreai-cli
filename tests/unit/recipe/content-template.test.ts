@@ -216,16 +216,20 @@ describe("structured source field resolution", () => {
     return findField(fieldOp!, TEMPLATE_FIELD_FIELDS.SOURCE);
   };
 
-  it("standalone sourceQuery → string with `query:<query>` shorthand", () => {
-    const ir = compileWithSitecore({ sourceQuery: "$site/*[@@name='Data']" });
+  it("standalone source.query → string with `query:<query>` shorthand", () => {
+    const ir = compileWithSitecore({
+      source: { kind: "filter", query: "$site/*[@@name='Data']" },
+    });
     expect(sourceField(ir)?.value).toEqual({
       kind: "string",
       value: "query:$site/*[@@name='Data']",
     });
   });
 
-  it("emits ref-source-fields for sourceTypes with one handle (executor resolves to IncludeTemplatesForSelection={guid})", () => {
-    const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1"] });
+  it("emits ref-source-fields for source.types with one handle (executor resolves to IncludeTemplatesForSelection={guid})", () => {
+    const ir = compileWithSitecore({
+      source: { kind: "filter", types: ["accordion-item@1"] },
+    });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
       site: SITE,
@@ -235,8 +239,10 @@ describe("structured source field resolution", () => {
     });
   });
 
-  it("emits ref-source-fields for sourceTypes with multiple handles (executor resolves at apply time)", () => {
-    const ir = compileWithSitecore({ sourceTypes: ["accordion-item@1", "rich-text-block@1"] });
+  it("emits ref-source-fields for source.types with multiple handles (executor resolves at apply time)", () => {
+    const ir = compileWithSitecore({
+      source: { kind: "filter", types: ["accordion-item@1", "rich-text-block@1"] },
+    });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
       site: SITE,
@@ -246,10 +252,13 @@ describe("structured source field resolution", () => {
     });
   });
 
-  it("emits ref-source-fields combining sourceScope + sourceTypes (executor resolves DataSource + IncludeTemplatesForSelection)", () => {
+  it("emits ref-source-fields combining source.scope + source.types (executor resolves DataSource + IncludeTemplatesForSelection)", () => {
     const ir = compileWithSitecore({
-      sourceScope: "/sitecore/content/Library",
-      sourceTypes: ["accordion-item@1"],
+      source: {
+        kind: "filter",
+        scope: "/sitecore/content/Library",
+        types: ["accordion-item@1"],
+      },
     });
     expect(sourceField(ir)?.value).toEqual({
       kind: "ref-source-fields",
@@ -260,8 +269,10 @@ describe("structured source field resolution", () => {
     });
   });
 
-  it("passes sourceRaw through verbatim as a plain string", () => {
-    const ir = compileWithSitecore({ sourceRaw: "/sitecore/content/Tags" });
+  it("passes source.kind=raw through verbatim as a plain string", () => {
+    const ir = compileWithSitecore({
+      source: { kind: "raw", value: "/sitecore/content/Tags" },
+    });
     expect(sourceField(ir)?.value).toEqual({
       kind: "string",
       value: "/sitecore/content/Tags",

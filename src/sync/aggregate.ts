@@ -164,7 +164,7 @@ export const aggregateStatus = async (
     }
     const items: AggregateStatusItem[] = [];
     for (const file of files) {
-      const recipe = loadRecipe(file, kind.schema);
+      const recipe = await loadRecipe(file, kind.schema);
       const id = recipeId(recipe);
       try {
         const plan = await syncDiff(kind, recipe, { kind: kind.name, id }, ctx);
@@ -237,7 +237,7 @@ export const aggregatePush = async (
     }
     const items: AggregatePushItem[] = [];
     for (const file of files) {
-      const recipe = loadRecipe(file, kind.schema);
+      const recipe = await loadRecipe(file, kind.schema);
       const id = recipeId(recipe);
       try {
         const outcome = await syncPush(kind, recipe, { kind: kind.name, id }, ctx, {

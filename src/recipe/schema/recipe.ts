@@ -2,6 +2,33 @@ import { z } from "zod";
 import { FieldShapeSchema, SitecoreFieldTypeSchema } from "./field-types";
 
 /**
+ * Multi-segment folder path accepted by `location.folder` /
+ * `placeholder.folder`. Two wire shapes:
+ *
+ *   Array form (canonical):    `["Theme", "Color"]`
+ *   Slash-string form (legacy): `"Theme/Color"`
+ *
+ * Both normalize to `string[]` after parsing. The registry moved its
+ * recipe schema to array form because the slash-string was implicit
+ * and fragile to author through Agent Studio (no IDE help for the
+ * segments inside the string); scai accepts both so old recipes keep
+ * working and new ones use the explicit shape. Empty segments
+ * (`""` / `"a//b"`) after split + trim are filtered out so callers
+ * don't have to remember to clean them.
+ *
+ * Downstream consumers (compile/enumeration, compile/placeholder,
+ * read-current) all see `string[]` and don't need to split anything
+ * themselves.
+ */
+const FolderPath = z
+  .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+  .transform((value) => {
+    const segments = (Array.isArray(value) ? value : value.split("/")).map((s) => s.trim());
+    return segments.filter((s) => s.length > 0);
+  })
+  .pipe(z.array(z.string().min(1)).min(1));
+
+/**
  * Recipe author surface — what users hand-author for one Sitecore template.
  *
  * Two recipe kinds:
@@ -41,48 +68,89 @@ import { FieldShapeSchema, SitecoreFieldTypeSchema } from "./field-types";
 const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
 
 /**
- * Sitecore-side override on a field or param. Defaults apply when omitted.
+ * The picker-scope source ("Sitecore's Source field") expressed as a
+ * discriminated union over the two real modes:
  *
- * The picker-scope concept (Sitecore's `Source` field) is expressed as
- * three composable structured fields rather than a stringly-typed
- * mini-language. They combine: e.g. `sourceScope` + `sourceTypes` becomes
- * `DataSource=<path>&IncludeTemplatesForSelection={GUID},...` on emit.
+ *   - `filter` — composable structured fields. `types` is a picker
+ *     filter restricting which recipe-defined templates appear; `query`
+ *     is a Sitecore Query; `scope` is a fixed content-tree path. They
+ *     combine, e.g. `scope + types` → `DataSource=<path>&IncludeTemplatesForSelection=...`.
+ *   - `raw` — verbatim Source string, the escape hatch. Use when the
+ *     structured surface doesn't fit (e.g. a bare path Treelist source
+ *     like `/sitecore/content/Tags`).
  *
- *   sourceTypes   — "picker filter": only items of these recipe handles.
- *   sourceQuery   — "where to look": a Sitecore Query (e.g. `$site/...`).
- *   sourceScope   — "where to look": a fixed content-tree path.
- *   sourceRaw     — escape hatch; verbatim Source string (mutually exclusive
- *                   with the structured fields).
+ * Previously the four fields were peers on `SitecoreFieldAugment` with
+ * a `.refine` enforcing the mutex; the union makes the constraint
+ * structural so JSON Schema's `oneOf` expresses it natively and Agent
+ * Studio can't emit an invalid combination. See
+ * `docs/recipe-schema-audit.md` (A1).
  */
+export const SitecoreFieldSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("filter"),
+    types: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        "Picker filter: restrict to items conforming to one of these recipe handles. Compiler resolves each handle to its deterministic template GUID and emits `IncludeTemplatesForSelection={GUID},{GUID}`."
+      ),
+    query: z
+      .string()
+      .optional()
+      .describe(
+        "Where to look: a Sitecore Query (e.g. `$site/*[@@name='Data']`). Standalone becomes `query:<query>`; combined with `types` becomes `DataSource=query:<query>&IncludeTemplatesForSelection=...`."
+      ),
+    scope: z
+      .string()
+      .optional()
+      .describe(
+        "Where to look: a fixed Sitecore content-tree path. Emitted as `DataSource=<path>`, alone or combined with `types`."
+      ),
+  }),
+  z.object({
+    kind: z.literal("raw"),
+    value: z
+      .string()
+      .min(1)
+      .describe(
+        "Verbatim Sitecore Source string. Escape hatch for Source shapes that don't fit the `filter` mode (e.g. a bare path Treelist source like `/sitecore/content/Tags`)."
+      ),
+  }),
+]);
+
+export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
+
+/**
+ * Sitecore-side override on a field or param. Defaults apply when
+ * omitted.
+ *
+ * `source` carries the picker-scope shape as a discriminated union
+ * (`filter` | `raw`) — see `SitecoreFieldSourceSchema`. Internal
+ * scai code converts to a flat `SourceFields` bag via
+ * `augmentSourceToFields()` before passing to `renderSourceFields()`.
+ */
+/**
+ * Defensive guard: pre-A1 recipes carried `sourceTypes` / `sourceQuery` /
+ * `sourceScope` / `sourceRaw` as peer optional fields on the augment.
+ * After A1 the picker scope lives inside a discriminated `source`
+ * union. Without this guard Zod's default `.strip()` would silently
+ * drop the legacy keys and produce a parsed augment with no `source`
+ * — losing author intent quietly. Reject explicitly with a migration
+ * pointer instead.
+ */
+const LEGACY_SOURCE_KEYS = ["sourceTypes", "sourceQuery", "sourceScope", "sourceRaw"] as const;
+
 export const SitecoreFieldAugmentSchema = z
   .object({
     /** Override the default shape→Sitecore type mapping. */
     type: SitecoreFieldTypeSchema.optional(),
     /**
-     * Picker filter: restrict to items conforming to one of these recipe
-     * handles. Compiler resolves each handle to its deterministic template
-     * GUID and emits `IncludeTemplatesForSelection={GUID},{GUID}`.
+     * Picker scope — discriminated union of two modes: `filter`
+     * (composable `types` / `query` / `scope`) or `raw` (verbatim
+     * Source string). See `SitecoreFieldSourceSchema`.
      */
-    sourceTypes: z.array(z.string()).optional(),
-    /**
-     * Where to look: a Sitecore Query (e.g. `$site/*[@@name='Data']`).
-     * Standalone, becomes the entire Source as `query:<query>` (the
-     * shorthand Sitecore evaluates directly for Droplist-style fields).
-     * Combined with `sourceTypes`, becomes `DataSource=query:<query>&...`.
-     */
-    sourceQuery: z.string().optional(),
-    /**
-     * Where to look: a fixed Sitecore content-tree path. Emitted as
-     * `DataSource=<path>`, alone or combined with `sourceTypes`.
-     */
-    sourceScope: z.string().optional(),
-    /**
-     * Escape hatch: verbatim Source string. Mutually exclusive with the
-     * structured fields above. Use when you need a Source form that
-     * doesn't fit the structured surface (e.g. a bare path Treelist
-     * source like `/sitecore/content/Tags`).
-     */
-    sourceRaw: z.string().optional(),
+    source: SitecoreFieldSourceSchema.optional(),
     /** Author-facing hint surfaced in the CMS. */
     hint: z.string().optional(),
     /** Required marker (translates to a Sitecore validation rule). */
@@ -126,15 +194,24 @@ export const SitecoreFieldAugmentSchema = z
      */
     storage: z.enum(["versioned", "unversioned", "shared"]).optional(),
   })
-  .refine(
-    (v) =>
-      v.sourceRaw === undefined ||
-      (v.sourceTypes === undefined && v.sourceQuery === undefined && v.sourceScope === undefined),
-    {
-      message: "sourceRaw is mutually exclusive with sourceTypes/sourceQuery/sourceScope",
-      path: ["sourceRaw"],
+  .passthrough()
+  .superRefine((augment, ctx) => {
+    // Pre-A1 recipes carried sourceTypes/sourceQuery/sourceScope/sourceRaw
+    // as peer fields; the new shape is `source: { kind, ... }`. Without
+    // `.passthrough()` Zod's default `.strip()` would drop those keys
+    // before the refine runs; with passthrough they survive to here and
+    // we reject loudly with a migration pointer.
+    const legacyPresent = LEGACY_SOURCE_KEYS.filter(
+      (key) => (augment as Record<string, unknown>)[key] !== undefined
+    );
+    if (legacyPresent.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [legacyPresent[0]],
+        message: `Legacy source field(s) [${legacyPresent.join(", ")}] are no longer accepted on \`sitecore\`. Move them into the new \`source\` discriminated union: \`source: { kind: "filter", types/query/scope }\` or \`source: { kind: "raw", value }\`. See docs/recipe-schema-audit.md (A1).`,
+      });
     }
-  );
+  });
 
 export type SitecoreFieldAugment = z.infer<typeof SitecoreFieldAugmentSchema>;
 
@@ -226,7 +303,7 @@ export const PlaceholderDefinitionSchema = z.object({
    * Insert Options. Recipes naming the same folder share it. Omit → the
    * item lands flat at the root.
    */
-  folder: z.string().min(1).optional(),
+  folder: FolderPath.optional(),
   /**
    * SXA dynamic placeholder. When true the host rendering must also set
    * `dynamicPlaceholders: true` so SXA generates per-instance keys; the
@@ -288,7 +365,7 @@ export const PlaceholderRecipeSchema = z.object({
    * Settings Folder` template (inheriting its Insert Options). Recipes
    * naming the same folder share it. Omit → flat at the root.
    */
-  folder: z.string().min(1).optional(),
+  folder: FolderPath.optional(),
   /** SXA dynamic placeholder — see `PlaceholderDefinitionSchema.dynamic`. */
   dynamic: z.boolean().default(false),
   /**
@@ -437,160 +514,171 @@ export const ComponentSectionRecipeSchema = z.object({
 
 export type ComponentSectionRecipe = z.infer<typeof ComponentSectionRecipeSchema>;
 
-export const ComponentTemplateRecipeSchema = z.object({
-  kind: z.literal("component-template"),
-  schemaVersion: z.literal("1"),
-  /** Stable identifier of the form `<kebab-name>@<major>`, e.g. `cta-button@1`. */
-  handle: z.string().regex(HANDLE_PATTERN, {
-    message: "handle must match `<kebab-name>@<major>`, e.g. cta-button@1",
-  }),
-  /** Matches the React export name and the consumer's component-map.ts key. */
-  name: z.string().min(1),
-  /** Author-facing label surfaced in the CMS tree and Pages experience. */
-  displayName: z.string().min(1),
-  description: z.string().optional(),
-  /** Defaults to "Office/32x32/document.png" if omitted. */
-  icon: z.string().optional(),
-  /**
-   * Reference to a `ComponentSectionRecipe` whose section folders this
-   * component lives under. The referenced recipe owns the templates
-   * section folder, Component Folders bucket, Presentation Parameters
-   * bucket, renderings-tree section folder, Headless Variants section,
-   * and Available Renderings section item.
-   *
-   * Compile errors INPUT_INVALID if `section.handle` doesn't resolve to
-   * a `ComponentSectionRecipe` in the same recipe set.
-   *
-   * Optional: omit for the flat layout (component + rendering land
-   * directly at `<templatesRoot>` / `<renderingsRoot>` with no section
-   * scaffolding). Registry-driven recipes inject this from
-   * `meta.tax.subgroup` at registry build time.
-   */
-  section: z
-    .object({
-      handle: z.string().regex(HANDLE_PATTERN, {
-        message: "section.handle must match `<kebab-name>@<major>`",
-      }),
-    })
-    .optional(),
-  fields: z.array(FieldDefinitionSchema).default([]),
-  /**
-   * Recipe handles whose templates are allowed as direct children of this
-   * datasource item. Maps to the datasource standard-values item's
-   * `Insert Options` field. Used for the **child-item pattern** — e.g.
-   * an accordion whose accordion-items live as Sitecore children of its
-   * own datasource rather than being referenced via a Treelist.
-   *
-   * Both reference patterns can coexist on the same recipe: declare a
-   * Treelist field with `template:<handle>` source AND list the same
-   * handle in `insertOptions`. Tenants pick which authoring flow they
-   * prefer; the React component handles either resolution path.
-   */
-  insertOptions: z.array(z.string()).optional(),
-  /**
-   * Datasource configuration — the rendering's data shape, picker
-   * locations, auto-create behaviour, and dialog UX. See
-   * `RecipeDatasourceSchema` for the full surface. Optional: omit
-   * for a rendering with no author-pickable datasource (e.g. a
-   * static component).
-   */
-  datasource: RecipeDatasourceSchema.optional(),
-  /**
-   * Reference to a separate `DesignParametersTemplateRecipe`. When present,
-   * the rendering's Parameters Template field points at this template
-   * and the compiler does NOT synthesise an anonymous parameters
-   * template from inline `params:`.
-   *
-   * When this is absent and `params:` is non-empty, the compiler
-   * synthesises a section-local Parameters template at
-   * `Components/<section>/Presentation Parameters/<Component> Parameters`.
-   */
-  parameters: z
-    .object({
-      handle: z.string().regex(HANDLE_PATTERN, {
-        message: "parameters.handle must match `<kebab-name>@<major>`",
-      }),
-    })
-    .optional(),
-  /**
-   * Children declaration — when present, the compiler emits a
-   * Component Folder template at
-   * `Components/<section>/Component Folders/<Component> Folder`. The
-   * folder template's `__Standard Values` carries an Insert Options
-   * field referencing the listed allowed handles, so author-side
-   * "Insert" UX surfaces the right children under each instance.
-   */
-  children: z
-    .object({
-      allowedHandles: z.array(z.string().regex(HANDLE_PATTERN)).min(1),
-    })
-    .optional(),
-  /**
-   * `SectionDefinitionRecipe` handles whose `Available Renderings`
-   * multi-list field should include this rendering's GUID. Drives the
-   * Sitecore Pages "Toolbox" surface — adding to this list registers
-   * the rendering with one or more Available Rendering Section
-   * Definition items.
-   */
-  availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
-  variants: z.array(RenderingVariantDefinitionSchema).default([]),
-  params: z.array(DesignParameterSchema).default([]),
-  /**
-   * SXA placeholder keys this rendering can be PLACED INTO — the
-   * placement allow-list. Each key contributes this rendering to that
-   * placeholder's `Allowed Controls` whitelist; without it the rendering
-   * exists in CM but Pages won't offer it in the slot's picker.
-   *
-   * Resolution is split by whether the key is recipe-defined:
-   *   - Keys that match a `PlaceholderRecipe` or an inline
-   *     `placeholders` slot in the same set → folded into the
-   *     `buildPlaceholderSettingsAggregate` IR write (one-push
-   *     convergence on a fresh tenant).
-   *   - Keys with no recipe declaration → resolved post-IR by
-   *     `applyPlaceholderAllowControls`, which walks the tenant's
-   *     existing Placeholder Settings items and patches the match.
-   *
-   * Example: `["headless-main", "sxa-footer"]`.
-   *
-   * Distinct from `placeholders` (below), which declares slots THIS
-   * component EXPOSES for child renderings.
-   */
-  placedIn: z.array(z.string().min(1)).default([]),
-  /**
-   * Container slots — placeholders this component DEFINES for child
-   * renderings to drop into. The hybrid placeholder model's
-   * component-owned half: only meaningful for container components
-   * (a Section / Grid / Tabs wrapper). Each entry compiles to a
-   * Sitecore Placeholder Settings item via
-   * `buildPlaceholderSettingsAggregate`.
-   *
-   * Distinct from `placedIn` (above), which lists placeholder keys
-   * this rendering can be placed INTO.
-   */
-  placeholders: z.array(PlaceholderDefinitionSchema).default([]),
-  /**
-   * First-class option for SXA "renderings with dynamic placeholders".
-   * When true, the compiler sets `IsRenderingsWithDynamicPlaceholders=true`
-   * in the rendering's `OtherProperties` blob — equivalent to passing
-   * `otherProperties: { IsRenderingsWithDynamicPlaceholders: "true" }`
-   * but typed and discoverable. Default false.
-   */
-  dynamicPlaceholders: z.boolean().default(false),
-  /**
-   * Free-form key/value pairs encoded into the rendering's
-   * `OtherProperties` URL-encoded shared field. Common keys are
-   * surfaced as dedicated options elsewhere on the recipe
-   * (`autoCreate` → `IsAutoDatasourceRendering`, `dynamicPlaceholders`
-   * → `IsRenderingsWithDynamicPlaceholders`); use this for anything
-   * else that needs to land in OtherProperties without a first-class
-   * option.
-   *
-   * Explicitly-set keys here OVERRIDE the auto-set values from
-   * `autoCreate` / `dynamicPlaceholders` — useful for the rare case
-   * where you need to force a specific value.
-   */
-  otherProperties: z.record(z.string(), z.string()).optional(),
-});
+export const ComponentTemplateRecipeSchema = z
+  .object({
+    kind: z.literal("component-template"),
+    schemaVersion: z.literal("1"),
+    /** Stable identifier of the form `<kebab-name>@<major>`, e.g. `cta-button@1`. */
+    handle: z.string().regex(HANDLE_PATTERN, {
+      message: "handle must match `<kebab-name>@<major>`, e.g. cta-button@1",
+    }),
+    /** Matches the React export name and the consumer's component-map.ts key. */
+    name: z.string().min(1),
+    /** Author-facing label surfaced in the CMS tree and Pages experience. */
+    displayName: z.string().min(1),
+    description: z.string().optional(),
+    /** Defaults to "Office/32x32/document.png" if omitted. */
+    icon: z.string().optional(),
+    /**
+     * Reference to a `ComponentSectionRecipe` whose section folders this
+     * component lives under. The referenced recipe owns the templates
+     * section folder, Component Folders bucket, Presentation Parameters
+     * bucket, renderings-tree section folder, Headless Variants section,
+     * and Available Renderings section item.
+     *
+     * Compile errors INPUT_INVALID if `section.handle` doesn't resolve to
+     * a `ComponentSectionRecipe` in the same recipe set.
+     *
+     * Optional: omit for the flat layout (component + rendering land
+     * directly at `<templatesRoot>` / `<renderingsRoot>` with no section
+     * scaffolding). Registry-driven recipes inject this from
+     * `meta.tax.subgroup` at registry build time.
+     */
+    section: z
+      .object({
+        handle: z.string().regex(HANDLE_PATTERN, {
+          message: "section.handle must match `<kebab-name>@<major>`",
+        }),
+      })
+      .optional(),
+    fields: z.array(FieldDefinitionSchema).default([]),
+    /**
+     * Recipe handles whose templates are allowed as direct children of this
+     * datasource item. Maps to the datasource standard-values item's
+     * `Insert Options` field. Used for the **child-item pattern** — e.g.
+     * an accordion whose accordion-items live as Sitecore children of its
+     * own datasource rather than being referenced via a Treelist.
+     *
+     * Both reference patterns can coexist on the same recipe: declare a
+     * Treelist field with `template:<handle>` source AND list the same
+     * handle in `insertOptions`. Tenants pick which authoring flow they
+     * prefer; the React component handles either resolution path.
+     */
+    insertOptions: z.array(z.string()).optional(),
+    /**
+     * Datasource configuration — the rendering's data shape, picker
+     * locations, auto-create behaviour, and dialog UX. See
+     * `RecipeDatasourceSchema` for the full surface. Optional: omit
+     * for a rendering with no author-pickable datasource (e.g. a
+     * static component).
+     */
+    datasource: RecipeDatasourceSchema.optional(),
+    /**
+     * Reference to a separate `DesignParametersTemplateRecipe`. When present,
+     * the rendering's Parameters Template field points at this template
+     * and the compiler does NOT synthesise an anonymous parameters
+     * template from inline `params:`.
+     *
+     * When this is absent and `params:` is non-empty, the compiler
+     * synthesises a section-local Parameters template at
+     * `Components/<section>/Presentation Parameters/<Component> Parameters`.
+     */
+    parameters: z
+      .object({
+        handle: z.string().regex(HANDLE_PATTERN, {
+          message: "parameters.handle must match `<kebab-name>@<major>`",
+        }),
+      })
+      .optional(),
+    /**
+     * Children declaration — when present, the compiler emits a
+     * Component Folder template at
+     * `Components/<section>/Component Folders/<Component> Folder`. The
+     * folder template's `__Standard Values` carries an Insert Options
+     * field referencing the listed allowed handles, so author-side
+     * "Insert" UX surfaces the right children under each instance.
+     */
+    children: z
+      .object({
+        allowedHandles: z.array(z.string().regex(HANDLE_PATTERN)).min(1),
+      })
+      .optional(),
+    /**
+     * `SectionDefinitionRecipe` handles whose `Available Renderings`
+     * multi-list field should include this rendering's GUID. Drives the
+     * Sitecore Pages "Toolbox" surface — adding to this list registers
+     * the rendering with one or more Available Rendering Section
+     * Definition items.
+     */
+    availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
+    variants: z.array(RenderingVariantDefinitionSchema).default([]),
+    params: z.array(DesignParameterSchema).default([]),
+    /**
+     * SXA placeholder keys this rendering can be PLACED INTO — the
+     * placement allow-list. Each key contributes this rendering to that
+     * placeholder's `Allowed Controls` whitelist; without it the rendering
+     * exists in CM but Pages won't offer it in the slot's picker.
+     *
+     * Resolution is split by whether the key is recipe-defined:
+     *   - Keys that match a `PlaceholderRecipe` or an inline
+     *     `placeholders` slot in the same set → folded into the
+     *     `buildPlaceholderSettingsAggregate` IR write (one-push
+     *     convergence on a fresh tenant).
+     *   - Keys with no recipe declaration → resolved post-IR by
+     *     `applyPlaceholderAllowControls`, which walks the tenant's
+     *     existing Placeholder Settings items and patches the match.
+     *
+     * Example: `["headless-main", "sxa-footer"]`.
+     *
+     * Distinct from `placeholders` (below), which declares slots THIS
+     * component EXPOSES for child renderings.
+     */
+    placedIn: z.array(z.string().min(1)).default([]),
+    /**
+     * Container slots — placeholders this component DEFINES for child
+     * renderings to drop into. The hybrid placeholder model's
+     * component-owned half: only meaningful for container components
+     * (a Section / Grid / Tabs wrapper). Each entry compiles to a
+     * Sitecore Placeholder Settings item via
+     * `buildPlaceholderSettingsAggregate`.
+     *
+     * Distinct from `placedIn` (above), which lists placeholder keys
+     * this rendering can be placed INTO.
+     */
+    placeholders: z.array(PlaceholderDefinitionSchema).default([]),
+    /**
+     * First-class option for SXA "renderings with dynamic placeholders".
+     * When true, the compiler sets `IsRenderingsWithDynamicPlaceholders=true`
+     * in the rendering's `OtherProperties` blob — equivalent to passing
+     * `otherProperties: { IsRenderingsWithDynamicPlaceholders: "true" }`
+     * but typed and discoverable. Default false.
+     */
+    dynamicPlaceholders: z.boolean().default(false),
+    /**
+     * Free-form key/value pairs encoded into the rendering's
+     * `OtherProperties` URL-encoded shared field. Common keys are
+     * surfaced as dedicated options elsewhere on the recipe
+     * (`autoCreate` → `IsAutoDatasourceRendering`, `dynamicPlaceholders`
+     * → `IsRenderingsWithDynamicPlaceholders`); use this for anything
+     * else that needs to land in OtherProperties without a first-class
+     * option.
+     *
+     * Explicitly-set keys here OVERRIDE the auto-set values from
+     * `autoCreate` / `dynamicPlaceholders` — useful for the rare case
+     * where you need to force a specific value.
+     */
+    otherProperties: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        "Free-form key/value pairs encoded into the rendering's `OtherProperties` URL-encoded shared field. Reserved keys `IsAutoDatasourceRendering` and `IsRenderingsWithDynamicPlaceholders` should normally be set via the typed `datasource.autoCreate` and `dynamicPlaceholders` shortcuts — overriding here silently wins and is intended only for the rare escape-hatch case."
+      ),
+  })
+  .refine((recipe) => !(recipe.parameters !== undefined && recipe.params.length > 0), {
+    message:
+      "Set either `parameters` (external template ref) or inline `params`, not both — the compiler ignores `params` when `parameters` is set, which silently drops author intent. Pick one form per recipe.",
+    path: ["params"],
+  });
 
 export type ComponentTemplateRecipe = z.infer<typeof ComponentTemplateRecipeSchema>;
 
@@ -706,11 +794,21 @@ export const DesignParametersTemplateRecipeSchema = z.object({
   /** Defaults to "Office/32x32/document.png" if omitted. */
   icon: z.string().optional(),
   /**
-   * Section name under which this parameters template lands —
-   * `Components/<section>/Presentation Parameters/<name>`. Required:
+   * Reference to a `ComponentSectionRecipe` whose section folders this
+   * parameters template lands under —
+   * `Components/<section.name>/Presentation Parameters/<name>`. Required:
    * presentation parameters are organised per-section by convention.
+   *
+   * Compile errors INPUT_INVALID if `section.handle` doesn't resolve to
+   * a `ComponentSectionRecipe` in the same recipe set. Matches the
+   * shape used by `ComponentTemplateRecipe.section` — `{ handle }` ref,
+   * not a bare section name string.
    */
-  section: z.string().min(1),
+  section: z.object({
+    handle: z.string().regex(HANDLE_PATTERN, {
+      message: "section.handle must match `<kebab-name>@<major>`",
+    }),
+  }),
   params: z.array(DesignParameterSchema).default([]),
 });
 
@@ -1586,7 +1684,7 @@ export const EnumerationRecipeSchema = z.object({
   location: z
     .object({
       scope: z.enum(["site", "siteCollection"]),
-      folder: z.string().min(1).optional(),
+      folder: FolderPath.optional(),
     })
     .optional(),
   values: z.array(EnumerationValueSchema).min(1),

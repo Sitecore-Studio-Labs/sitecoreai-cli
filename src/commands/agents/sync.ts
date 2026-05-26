@@ -130,7 +130,7 @@ const createDiffCommand = (): Command => {
     const logger = toLogger(options);
     const kind = resolveKind(options.kind);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", kind.schema);
+    const recipe = await loadRecipe(options.file ?? "", kind.schema);
     const plan = await syncDiff(kind, recipe, { kind: kind.name, id: recipeName(recipe) }, ctx);
     printPlan(logger, plan);
   });
@@ -150,7 +150,7 @@ const createPushCommand = (): Command => {
     const logger = toLogger(options);
     const kind = resolveKind(options.kind);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", kind.schema);
+    const recipe = await loadRecipe(options.file ?? "", kind.schema);
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
     const outcome = await syncPush(kind, recipe, { kind: kind.name, id: recipeName(recipe) }, ctx, {
       mode,

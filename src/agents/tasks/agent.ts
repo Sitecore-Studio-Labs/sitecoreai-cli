@@ -56,7 +56,7 @@ export const runAgentCreate = async (
   options: RunAgentsBaseOptions & { file: string; whatIf?: boolean }
 ): Promise<void> => {
   const { logger, session } = await prepare(options);
-  const recipe = loadRecipe(options.file, AgentRecipeSchema);
+  const recipe = await loadRecipe(options.file, AgentRecipeSchema);
   if (findByName(await listAgents(session), recipe.name)) {
     throw createScaiError(`Agent "${recipe.name}" already exists.`, "INPUT_INVALID", {
       hint: "Use `scai agents agent update` to change it, or pick a different name.",
@@ -83,7 +83,7 @@ export const runAgentUpdate = async (
   options: RunAgentsBaseOptions & { idOrSlug: string; file: string; whatIf?: boolean }
 ): Promise<void> => {
   const { logger, session } = await prepare(options);
-  const recipe = loadRecipe(options.file, AgentRecipeSchema);
+  const recipe = await loadRecipe(options.file, AgentRecipeSchema);
   const existing = await getAgent(session, options.idOrSlug);
   if (!existing) {
     throw createScaiError(`Agent "${options.idOrSlug}" not found.`, "INPUT_INVALID", {

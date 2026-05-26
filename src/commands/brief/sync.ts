@@ -107,7 +107,7 @@ const createDiffCommand = (): Command => {
   command.action(async (options: SyncOptions) => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", briefTypeKind.schema);
+    const recipe = await loadRecipe(options.file ?? "", briefTypeKind.schema);
     const plan = await syncDiff(
       briefTypeKind,
       recipe,
@@ -131,7 +131,7 @@ const createPushCommand = (): Command => {
   command.action(async (options: SyncOptions) => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
-    const recipe = loadRecipe(options.file ?? "", briefTypeKind.schema);
+    const recipe = await loadRecipe(options.file ?? "", briefTypeKind.schema);
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
     const outcome = await syncPush(
       briefTypeKind,

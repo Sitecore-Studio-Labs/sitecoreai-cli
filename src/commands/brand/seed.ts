@@ -90,7 +90,7 @@ const seedFromFile = async (options: SeedOptions, logger: Logger): Promise<void>
     configPath,
     logger,
   };
-  const recipe = loadRecipe(options.file ?? "", brandKitKind.schema);
+  const recipe = await loadRecipe(options.file ?? "", brandKitKind.schema);
   const outcome = await syncPush(
     brandKitKind,
     recipe,

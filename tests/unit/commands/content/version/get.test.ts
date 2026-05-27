@@ -1,22 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * `scai content version inspect` command wiring. The version-inspect
+ * `scai content version inspect` command wiring. The version-get
  * task runner is mocked; tests parse the single-level command the way
  * the CLI does and assert the item-targeting flags, numeric `--version`
  * coercion, and env / config / verbosity threading.
  */
 
 const taskMocks = vi.hoisted(() => ({
-  runContentVersionInspect: vi.fn(),
+  runContentVersionGet: vi.fn(),
 }));
 
-vi.mock("../../../../../src/content/tasks/version-inspect", () => taskMocks);
+vi.mock("../../../../../src/content/tasks/version-get", () => taskMocks);
 
-import { createInspectCommand } from "../../../../../src/commands/content/version/inspect";
+import { createContentVersionGetCommand } from "../../../../../src/commands/content/version/get";
 
 const runInspect = async (args: string[]): Promise<void> => {
-  const command = createInspectCommand();
+  const command = createContentVersionGetCommand();
   command.exitOverride();
   await command.parseAsync(["node", "scai", ...args]);
 };
@@ -29,8 +29,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("createInspectCommand — command shape", () => {
-  const inspect = createInspectCommand();
+describe("createContentVersionGetCommand — command shape", () => {
+  const inspect = createContentVersionGetCommand();
 
   it("declares the item-targeting + env / config / verbosity flags", () => {
     const opts = new Set(inspect.options.map((o) => o.long).filter((v): v is string => Boolean(v)));
@@ -53,10 +53,10 @@ describe("createInspectCommand — command shape", () => {
 });
 
 describe("content version inspect", () => {
-  it("delegates to runContentVersionInspect with the parsed option bag", async () => {
+  it("delegates to runContentVersionGet with the parsed option bag", async () => {
     await runInspect(["--quiet", "--path", "/sitecore/content/Home"]);
-    expect(taskMocks.runContentVersionInspect).toHaveBeenCalledOnce();
-    expect(taskMocks.runContentVersionInspect.mock.calls[0][0]).toMatchObject({
+    expect(taskMocks.runContentVersionGet).toHaveBeenCalledOnce();
+    expect(taskMocks.runContentVersionGet.mock.calls[0][0]).toMatchObject({
       path: "/sitecore/content/Home",
       quiet: true,
     });
@@ -70,7 +70,7 @@ describe("content version inspect", () => {
       "--language",
       "fr-CA",
     ]);
-    expect(taskMocks.runContentVersionInspect).toHaveBeenCalledWith(
+    expect(taskMocks.runContentVersionGet).toHaveBeenCalledWith(
       expect.objectContaining({
         itemId: "11111111-1111-1111-1111-111111111111",
         language: "fr-CA",
@@ -80,19 +80,19 @@ describe("content version inspect", () => {
 
   it("coerces --version to a number", async () => {
     await runInspect(["--quiet", "--path", "/sitecore/content/Home", "--version", "3"]);
-    expect(taskMocks.runContentVersionInspect).toHaveBeenCalledWith(
+    expect(taskMocks.runContentVersionGet).toHaveBeenCalledWith(
       expect.objectContaining({ version: 3 })
     );
   });
 
   it("leaves --version undefined when omitted (defaults to latest)", async () => {
     await runInspect(["--quiet", "--path", "/sitecore/content/Home"]);
-    expect(taskMocks.runContentVersionInspect.mock.calls[0][0].version).toBeUndefined();
+    expect(taskMocks.runContentVersionGet.mock.calls[0][0].version).toBeUndefined();
   });
 
   it("threads --environment-name through", async () => {
     await runInspect(["--quiet", "--path", "/sitecore/content/Home", "--environment-name", "prod"]);
-    expect(taskMocks.runContentVersionInspect).toHaveBeenCalledWith(
+    expect(taskMocks.runContentVersionGet).toHaveBeenCalledWith(
       expect.objectContaining({ environmentName: "prod" })
     );
   });

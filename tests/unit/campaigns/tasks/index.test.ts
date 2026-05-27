@@ -71,7 +71,11 @@ afterEach(() => {
   stdout.mockRestore();
 });
 
-const jsonOut = (): unknown => JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+const jsonOut = (): unknown => {
+  const raw = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+  if (raw && typeof raw === "object" && "data" in raw) return (raw as { data: unknown }).data;
+  return raw;
+};
 
 describe("campaign runners — read verbs", () => {
   it("runCampaignList prints JSON, the human table, and an empty result", async () => {
@@ -87,13 +91,13 @@ describe("campaign runners — read verbs", () => {
     expect(empty.totalCount).toBe(0);
   });
 
-  it("runCampaignShow prints JSON and human detail with deliverables", async () => {
+  it("runCampaignGet prints JSON and human detail with deliverables", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(makeProject() as never);
-    await runners.runCampaignShow({ json: true, campaignId: "proj-1" });
+    await runners.runCampaignGet({ json: true, campaignId: "proj-1" });
     expect(vi.mocked(projectsApi.getProject)).toHaveBeenCalledWith(client, "proj-1");
     expect(jsonOut()).toMatchObject({ id: "proj-1" });
 
-    const result = await runners.runCampaignShow({ quiet: true, campaignId: "proj-1" });
+    const result = await runners.runCampaignGet({ quiet: true, campaignId: "proj-1" });
     expect(result.deliverables).toHaveLength(1);
   });
 
@@ -127,9 +131,9 @@ describe("campaign runners — read verbs", () => {
     expect(empty.totalCount).toBe(0);
   });
 
-  it("runTaskShow prints JSON and human detail", async () => {
+  it("runTaskGet prints JSON and human detail", async () => {
     vi.mocked(tasksApi.getTask).mockResolvedValue(makeTask() as never);
-    await runners.runTaskShow({
+    await runners.runTaskGet({
       json: true,
       campaignId: "proj-1",
       deliverableId: "d1",
@@ -138,7 +142,7 @@ describe("campaign runners — read verbs", () => {
     expect(vi.mocked(tasksApi.getTask)).toHaveBeenCalledWith(client, "proj-1", "d1", "task-1");
     expect(jsonOut()).toMatchObject({ id: "task-1" });
 
-    const result = await runners.runTaskShow({
+    const result = await runners.runTaskGet({
       quiet: true,
       campaignId: "proj-1",
       deliverableId: "d1",

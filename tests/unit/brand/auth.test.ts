@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BRAND_REQUIRED_SCOPES, extractScopes, hasBrandScopes } from "../../../src/brand/api/auth";
+import { BRAND_REQUIRED_SCOPES, hasBrandScopes } from "../../../src/brand/api/auth";
+import { extractScopes } from "../../../src/shared/jwt";
 
 vi.mock("../../../src/shared/keychain", () => ({
   getBrandClientSecret: vi.fn(),

@@ -2,7 +2,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveTenant,
   toLogger,
@@ -50,7 +50,7 @@ export interface ArchivePurgeAction {
  *      shows partial success.
  *
  * Safety rails:
- *   - `ensureAllowWriteForCleanup` enforces `--allow-write` / env
+ *   - `ensureAllowWrite` enforces `--allow-write` / env
  *     `allowWrite` outside `--what-if` mode.
  *   - `--older-than-days 0` is allowed but logged as a warning — it
  *     purges everything in the archive.
@@ -76,7 +76,7 @@ export const runCleanupArchivePurge = async (
   const pageSize = options.pageSize ?? 100;
 
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(root, envName, options.allowWrite, "cleanup-archive-purge");
+    ensureAllowWrite(root, envName, options.allowWrite, "cleanup-archive-purge");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no archived items will be deleted.", "yellow");
   }

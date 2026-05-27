@@ -1,6 +1,7 @@
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { requestClientCredentialsToken } from "@/auth";
+import type { SitecoreApiClientOptions } from "@/auth";
 import { createScaiError } from "@/shared/errors";
+import { extractScopes } from "@/shared/jwt";
 import { getBrandToken, setBrandToken } from "@/shared/keychain";
 import type { BrandCredential } from "@/config/types";
 import { resolveBrandSecrets } from "../credential";
@@ -49,32 +50,6 @@ export interface AcquireBrandTokenOptions {
    */
   credential?: BrandCredential;
 }
-
-const decodeJwtPayload = (token: string): Record<string, unknown> | undefined => {
-  const parts = token.split(".");
-  if (parts.length !== 3) {
-    return undefined;
-  }
-  const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
-  try {
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-};
-
-export const extractScopes = (token: string): string[] => {
-  const payload = decodeJwtPayload(token);
-  if (!payload) return [];
-  const raw =
-    typeof payload.scope === "string"
-      ? payload.scope
-      : Array.isArray(payload.scp)
-        ? (payload.scp as unknown[]).join(" ")
-        : "";
-  return raw.split(/\s+/).filter(Boolean);
-};
 
 export const hasBrandScopes = (token: string): boolean => {
   const granted = new Set(extractScopes(token));

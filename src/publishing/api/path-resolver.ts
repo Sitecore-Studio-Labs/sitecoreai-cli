@@ -1,5 +1,5 @@
 import type { EnvironmentConfiguration } from "@/config/types";
-import { runAuthoringGraphQL } from "@/recipe/api/graphql";
+import { runAuthoringGraphQL } from "@/authoring";
 import { createScaiError } from "@/shared/errors";
 
 /**

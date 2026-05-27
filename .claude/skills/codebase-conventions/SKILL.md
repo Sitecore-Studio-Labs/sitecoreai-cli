@@ -120,7 +120,13 @@ Every command must work non-interactively:
   require explicit `--allow-write` or `allowWrite: true` in config
 - Honor `--what-if` on push-style operations (preview without applying)
 - `--json` output is structured + machine-parseable; never include
-  decorative text in JSON-mode output
+  decorative text in JSON-mode output. **Wrap your output in
+  `buildScaiEnvelope()` from `@/shared/envelope`** so consumers can
+  branch on `data` regardless of which task produced the output.
+  The canonical shape is `{ command, environment, data, count?,
+whatIf?, summary?, meta? }` — see `src/shared/envelope.ts`. Direct
+  `process.stdout.write(JSON.stringify(...))` of raw payloads is a
+  bug; agents and downstream automation depend on the envelope shape.
 
 ## Destructive-ops contract (two-layer gate)
 
@@ -146,7 +152,7 @@ without changing CLI behaviour.
 
 **Adding a new destructive runner:**
 
-- Call `ensureAllowWriteForCleanup(root, envName, options.allowWrite)`
+- Call `ensureAllowWrite(root, envName, options.allowWrite)`
   (or `ensureAllowWrite` directly) at the start, after `whatIf`
   is checked.
 - Default `whatIf: true` on the CLI command (preview-first).

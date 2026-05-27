@@ -18,10 +18,11 @@
 export {
   BRAND_REQUIRED_SCOPES,
   acquireBrandToken,
-  extractScopes,
   hasBrandScopes,
   type AcquireBrandTokenOptions,
 } from "./api/auth";
+
+export { extractScopes } from "@/shared/jwt";
 
 export { requestBrandApi, type BrandApiClientOptions, type BrandApiRequest } from "./api/client";
 

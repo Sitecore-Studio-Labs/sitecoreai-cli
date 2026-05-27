@@ -5,7 +5,7 @@ import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   isSystemPath,
   normalizeItemId,
   printReport,
@@ -100,7 +100,7 @@ export const runCleanupWorkflowAdvance = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no workflow commands will be executed.", "yellow");
   }

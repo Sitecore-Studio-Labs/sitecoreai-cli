@@ -53,7 +53,7 @@ across these domains:
   \`recipe_sync\`, the cross-domain pull/diff/push aggregate.
 - **Content hygiene** — audits, baselines, cleanup verbs, and
   \`explain\` (composed-audit answers like "why won't this delete?").
-- **Workflow & webhooks** — workflow inspection + lifecycle, webhook
+- **Workflow & webhooks** — workflow getion + lifecycle, webhook
   handler management.
 - **Publishing** — SAI Publishing API job inspection + cancel.
 - **Brand** — brand kits, the ingestion/enrichment pipelines, brand

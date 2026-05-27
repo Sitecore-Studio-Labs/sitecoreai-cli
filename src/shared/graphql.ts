@@ -23,7 +23,17 @@ type GetAccessToken = (environment: EnvironmentConfiguration) => Promise<string 
 
 type GraphQLResponse<T> = {
   data?: T;
-  errors?: Array<{ message: string; path?: Array<string | number> }>;
+  errors?: Array<{
+    message: string;
+    path?: Array<string | number>;
+    /**
+     * Sitecore Authoring GraphQL attaches a structured `code` (and
+     * sometimes a stack/message bundle) under `extensions`. Preserved
+     * verbatim so callers can match on `extensions.code` instead of
+     * fragile message-text scraping.
+     */
+    extensions?: Record<string, unknown>;
+  }>;
 };
 
 export interface GraphQLRequestOptions {
@@ -257,9 +267,18 @@ export const runSitecoreGraphQL = async <T>(
       const result = parsed as GraphQLResponse<T>;
       if (result.errors?.length) {
         const message = result.errors.map((error) => error.message).join("; ");
+        // Surface any structured `extensions` payloads as `details` so
+        // callers can pattern-match on `extensions.code` / `code` /
+        // `errorCode` without re-parsing the human-readable message.
+        // Each detail line is one GraphQL error's extensions blob,
+        // JSON-stringified. Errors without extensions are dropped.
+        const details = result.errors
+          .map((error) => (error.extensions ? JSON.stringify(error.extensions) : undefined))
+          .filter((line): line is string => typeof line === "string");
         throw createScaiError(
           redactSecrets(`${transport.label} GraphQL errors: ${message}`),
-          "NETWORK"
+          "NETWORK",
+          details.length > 0 ? { details } : undefined
         );
       }
       if (!result.data) {

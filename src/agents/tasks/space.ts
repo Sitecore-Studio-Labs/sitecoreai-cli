@@ -12,7 +12,7 @@ import { z } from "zod";
 import { loadRecipe } from "@/sync";
 import { getSpaceArtifacts, getSpaceConfig, updateSpaceConfig } from "../api/spaces";
 import type { SpaceConfig } from "../api/schema";
-import { prepare, renderItem, writeJson, type RunAgentsBaseOptions } from "./shared";
+import { prepare, renderItem, writeAgentsEnvelope, type RunAgentsBaseOptions } from "./shared";
 
 /** A space-config patch file — any object; merged onto the live config. */
 const SpaceConfigPatchSchema = z.record(z.string(), z.unknown());
@@ -22,7 +22,13 @@ export const runSpaceGet = async (
 ): Promise<void> => {
   const { logger, session } = await prepare(options);
   const config = await getSpaceConfig(session, options.spaceId);
-  renderItem(logger, `space ${options.spaceId}`, config as unknown as Record<string, unknown>);
+  renderItem(
+    logger,
+    "space.get",
+    options,
+    `space ${options.spaceId}`,
+    config as unknown as Record<string, unknown>
+  );
 };
 
 export const runSpaceArtifacts = async (
@@ -31,10 +37,10 @@ export const runSpaceArtifacts = async (
   const { logger, session } = await prepare(options);
   const artifacts = await getSpaceArtifacts(session, options.spaceId);
   if (logger.isJson()) {
-    writeJson(artifacts);
+    writeAgentsEnvelope("space.artifacts", options, artifacts);
     return;
   }
-  renderItem(logger, `space ${options.spaceId} artifacts`, artifacts);
+  renderItem(logger, "space.artifacts", options, `space ${options.spaceId} artifacts`, artifacts);
 };
 
 export const runSpaceUpdate = async (
@@ -47,11 +53,17 @@ export const runSpaceUpdate = async (
   if (options.whatIf) {
     const fields = Object.keys(patch).join(", ") || "(none)";
     if (logger.isJson())
-      writeJson({ plan: { update: options.spaceId, fields: Object.keys(patch) } });
+      writeAgentsEnvelope(
+        "space.update",
+        options,
+        { plan: { update: options.spaceId, fields: Object.keys(patch) } },
+        { whatIf: true }
+      );
     else logger.info(`Would update space ${options.spaceId} — fields: ${fields}.`, "yellow");
     return;
   }
   await updateSpaceConfig(session, options.spaceId, merged);
-  if (logger.isJson()) writeJson({ ok: true, updated: options.spaceId });
+  if (logger.isJson())
+    writeAgentsEnvelope("space.update", options, { ok: true, updated: options.spaceId });
   else logger.info(`Updated space ${options.spaceId}.`, "green");
 };

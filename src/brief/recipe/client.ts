@@ -14,7 +14,7 @@ import { acquireBriefToken, BRIEF_API_HOST_TEMPLATE } from "@/brief";
 import type { BriefApiClientOptions } from "@/brief";
 import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
+import { requestClientCredentialsToken } from "@/auth";
 import { createScaiError } from "@/shared/errors";
 import type { SyncContext } from "@/sync";
 

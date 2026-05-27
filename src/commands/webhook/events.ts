@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import { runWebhookEventTypes } from "@/webhooks/tasks/event-types";
+import { runWebhookEvents } from "@/webhooks/tasks/events";
 import { addWebhookReadOptions } from "./shared";
 
-export const createWebhookEventTypesCommand = (): Command => {
-  const command = new Command("event-types")
+export const createWebhookEventsCommand = (): Command => {
+  const command = new Command("events")
     .description(
       "List the event-type catalog the tenant accepts (the strings you pass to `--events` on `webhook create`)"
     )
@@ -14,7 +14,7 @@ export const createWebhookEventTypesCommand = (): Command => {
       return value;
     })
     .action(async (options: Record<string, unknown>) => {
-      await runWebhookEventTypes(options as never);
+      await runWebhookEvents(options as never);
     });
   addWebhookReadOptions(command);
   return command;

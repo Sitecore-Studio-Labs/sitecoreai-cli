@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
 import type { RemoteItem } from "../api/client";
@@ -498,15 +499,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   }
 
   if (logger.isJson()) {
-    logger.json({
-      command: "recipe.push",
-      environment: tenant.envName,
-      source,
-      whatIf: isDryRun,
-      placeholderAllowControls: placeholderAllowSummary ?? undefined,
-      rollbackLog: rollbackLog.wasUsed
-        ? { runId: rollbackLog.runId, path: rollbackLog.logPath }
-        : undefined,
+    const data = {
       results: results.map((r) => ({
         recipeHandle: r.plan.recipeHandle,
         summary: r.summary,
@@ -529,7 +522,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
         mutation: "action" in event ? event.action.mutation : undefined,
         error: "error" in event ? event.error : undefined,
       })),
-    });
+    };
+    logger.json(
+      buildScaiEnvelope({
+        command: "recipe.push",
+        environment: tenant.envName,
+        data,
+        extra: {
+          source,
+          ...(isDryRun ? { whatIf: true as const } : {}),
+          ...(placeholderAllowSummary ? { placeholderAllowControls: placeholderAllowSummary } : {}),
+          ...(rollbackLog.wasUsed
+            ? { rollbackLog: { runId: rollbackLog.runId, path: rollbackLog.logPath } }
+            : {}),
+        },
+      }) as unknown as Record<string, unknown>
+    );
   }
 
   return results;

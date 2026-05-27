@@ -1,3 +1,4 @@
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError, ScaiError } from "@/shared/errors";
 import type {
   ItemSelector,
@@ -23,7 +24,7 @@ export interface WorkflowInspectOptions extends WorkflowTaskOptions {
    *
    * When given free-form text, the inspect task walks the workflow
    * definition list and matches case-insensitively against `name` or
-   * `displayName`. Useful for `scai content workflow inspect "Blog Article Approval"`.
+   * `displayName`. Useful for `scai content workflow get "Blog Article Approval"`.
    */
   item: string;
 }
@@ -65,7 +66,7 @@ const parseSelectorOrName = (value: string): { selector?: ItemSelector; name?: s
   } catch (error) {
     // parseItemReference throws INPUT_INVALID for anything that isn't a
     // GUID or `/sitecore/`-prefixed path. Treat that as the name-lookup
-    // signal rather than re-throwing — `runWorkflowInspect` will try
+    // signal rather than re-throwing — `runWorkflowGet` will try
     // `findWorkflowDefinitionByName(value)` next.
     if (error instanceof ScaiError && error.code === "INPUT_INVALID") {
       return { name: value.trim() };
@@ -121,7 +122,7 @@ const renderDefinitionLines = (def: WorkflowDefinitionDetail): string[] => {
  *
  * Returns `null` (without error) if neither shape resolves.
  */
-export const runWorkflowInspect = async (
+export const runWorkflowGet = async (
   options: WorkflowInspectOptions
 ): Promise<WorkflowInspectResult | null> => {
   const logger = toLogger(options);
@@ -167,31 +168,35 @@ export const runWorkflowInspect = async (
   // a valid GUID or path).
   if (parsed.name && !defSelector) {
     if (logger.isJson()) {
-      logger.json({
-        command: "workflow.inspect",
-        environment: envName,
-        result: null,
-        reason: "no-workflow-with-that-name",
-      });
+      logger.json(
+        buildScaiEnvelope({
+          command: "workflow.get",
+          environment: envName,
+          data: null,
+          extra: { reason: "no-workflow-with-that-name" },
+        }) as unknown as Record<string, unknown>
+      );
     } else {
       logger.info(
-        `No workflow definition matched '${parsed.name}'. Run 'scai content workflow list-defs' to see what's available.`
+        `No workflow definition matched '${parsed.name}'. Run 'scai content workflow definitions' to see what's available.`
       );
     }
     return null;
   }
 
-  // Fall through to item-under-workflow inspection.
+  // Fall through to item-under-workflow getion.
   const selector = parsed.selector!;
   const wf: ItemWorkflowState | null = await client.getItemWorkflow(selector);
   if (!wf) {
     if (logger.isJson()) {
-      logger.json({
-        command: "workflow.inspect",
-        environment: envName,
-        result: null,
-        reason: "item-not-found-or-not-under-workflow",
-      });
+      logger.json(
+        buildScaiEnvelope({
+          command: "workflow.get",
+          environment: envName,
+          data: null,
+          extra: { reason: "item-not-found-or-not-under-workflow" },
+        }) as unknown as Record<string, unknown>
+      );
     } else {
       logger.info(`No workflow on ${selector.path ?? selector.itemId ?? "(unknown)"}.`);
     }

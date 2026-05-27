@@ -20,6 +20,7 @@ import { createStatusCommand } from "./commands/status";
 import { createLoginCommand } from "./commands/login";
 import { createDeployCommand } from "./commands/deploy";
 import { createExplainCommand } from "./commands/explain";
+import { createDoctorCommand } from "./commands/doctor";
 import { createHealthCommand } from "./commands/health";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
@@ -143,6 +144,7 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
   cli.addCommand(createTopicsCommand());
 
   program.addCommand(setup);
+  program.addCommand(createDoctorCommand());
   program.addCommand(createPolicyCommand());
   program.addCommand(hygiene);
   program.addCommand(content);

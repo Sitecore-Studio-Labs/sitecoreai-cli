@@ -1,4 +1,4 @@
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import type { SitecoreApiClientOptions } from "@/auth";
 import { createScaiError } from "@/shared/errors";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
@@ -13,6 +13,7 @@ import {
   type CreateItemResult,
   type GetItemOptions,
   type ItemSelector,
+  type MoveItemInput,
   type RemoteItem,
   type UpdateItemInput,
 } from "./client";
@@ -175,6 +176,15 @@ const DELETE_ITEM_MUTATION = `
 mutation($input: DeleteItemInput!) {
   deleteItem(input: $input) {
     successful
+  }
+}`;
+
+const MOVE_ITEM_MUTATION = `
+mutation($input: MoveItemInput!) {
+  moveItem(input: $input) {
+    item {
+      itemId
+    }
   }
 }`;
 
@@ -704,6 +714,26 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         },
         writeRequest
       );
+    },
+
+    async moveItem(input: MoveItemInput): Promise<void> {
+      // Both selectors must carry either itemId or path. The Authoring
+      // GraphQL `MoveItemInput` accepts the same selector shape on both
+      // sides, so we forward verbatim.
+      const buildSelector = (sel: ItemSelector, label: string): Record<string, string> => {
+        if (sel.itemId) return { itemId: sel.itemId };
+        if (sel.path) return { path: sel.path };
+        throw createScaiError(`moveItem ${label} requires itemId or path.`, "INPUT_INVALID");
+      };
+      const wireInput = {
+        ...buildSelector(input.selector, "source"),
+        // Authoring's `MoveItemInput` names the destination
+        // `targetParent` — same wire key as our typed input.
+        targetParent: buildSelector(input.targetParent, "targetParent"),
+      };
+      await runAuthoringGraphQL<{
+        moveItem: { item: { itemId: string } | null } | null;
+      }>(environment, MOVE_ITEM_MUTATION, { input: wireInput }, writeRequest);
     },
 
     async deleteItem(selector: ItemSelector): Promise<void> {

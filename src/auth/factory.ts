@@ -4,6 +4,7 @@ import {
 } from "@/serialization/api/auth";
 import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import { createScaiError, type ScaiErrorCode } from "@/shared/errors";
+import { extractScopes as extractScopesShared } from "@/shared/jwt";
 
 /**
  * Shared client-credentials auth factory.
@@ -137,30 +138,11 @@ export interface ApiAuthSpec {
 }
 
 /**
- * Decode the granted scope claim from a JWT. Supports both the
- * Auth0-style `scope` string and the Microsoft-style `scp` array.
+ * Re-exported from `@/shared/jwt` so callers that already pull
+ * factory primitives don't have to reach across to `shared/` for
+ * the scope decoder. Implementation lives in shared/jwt.ts.
  */
-export const extractScopes = (token: string): string[] => {
-  const parts = token.split(".");
-  if (parts.length !== 3) return [];
-  try {
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "==".slice(0, (4 - (b64.length % 4)) % 4);
-    const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
-      scope?: unknown;
-      scp?: unknown;
-    };
-    const raw =
-      typeof payload.scope === "string"
-        ? payload.scope
-        : Array.isArray(payload.scp)
-          ? (payload.scp as unknown[]).join(" ")
-          : "";
-    return raw.split(/\s+/).filter(Boolean);
-  } catch {
-    return [];
-  }
-};
+export const extractScopes = extractScopesShared;
 
 /**
  * Builds the per-domain token acquirer. Returns an async function that

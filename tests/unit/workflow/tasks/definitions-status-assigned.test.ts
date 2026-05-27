@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runWorkflowListDefs } from "../../../../src/workflow/tasks/list-defs";
+import { runWorkflowDefinitions } from "../../../../src/workflow/tasks/definitions";
 import { runWorkflowAssigned } from "../../../../src/workflow/tasks/assigned";
 import { runWorkflowStatus } from "../../../../src/workflow/tasks/status";
 import * as sharedModule from "../../../../src/workflow/tasks/shared";
@@ -51,7 +51,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("runWorkflowListDefs", () => {
+describe("runWorkflowDefinitions", () => {
   it("returns the workflow list under the default root", async () => {
     const client = stubClient({
       listWorkflowDefinitions: vi.fn().mockResolvedValue([
@@ -65,7 +65,7 @@ describe("runWorkflowListDefs", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowListDefs({ json: true });
+    const result = await runWorkflowDefinitions({ json: true });
 
     expect(result.rootPath).toBe("/sitecore/system/Workflows");
     expect(result.workflows).toHaveLength(1);
@@ -78,7 +78,7 @@ describe("runWorkflowListDefs", () => {
     const client = stubClient();
     installClient(client);
 
-    await runWorkflowListDefs({ json: true, root: "/sitecore/system/Foo" });
+    await runWorkflowDefinitions({ json: true, root: "/sitecore/system/Foo" });
 
     expect(client.listWorkflowDefinitions).toHaveBeenCalledWith({
       rootPath: "/sitecore/system/Foo",

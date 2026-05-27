@@ -30,7 +30,7 @@
  */
 
 import type { EnvironmentConfiguration } from "@/config/types";
-import { runAuthoringGraphQL, type AuthoringRequestOptions } from "@/recipe/api/graphql";
+import { runAuthoringGraphQL, type AuthoringRequestOptions } from "@/authoring";
 import { createScaiError } from "@/shared/errors";
 
 /**

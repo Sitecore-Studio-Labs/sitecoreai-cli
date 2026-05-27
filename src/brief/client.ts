@@ -18,8 +18,8 @@
  */
 import { resolveOrganization } from "@/policy/organization";
 import { resolveRegionalBaseUrl } from "@/shared/region";
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { requestClientCredentialsToken } from "@/auth";
+import type { SitecoreApiClientOptions } from "@/auth";
 import { acquireBriefToken } from "./auth";
 import { BRIEF_API_HOST_TEMPLATE, type BriefApiClientOptions } from "./api/types";
 

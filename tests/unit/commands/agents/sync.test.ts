@@ -15,6 +15,11 @@ const syncMocks = vi.hoisted(() => ({
   syncPull: vi.fn(),
   syncPush: vi.fn(),
   writeRecipe: vi.fn(),
+  // Identity passthrough — agents/recipe/index.ts uses eraseKind to
+  // store typed RecipeKinds in a Record<RecipeKind<unknown>> map. The
+  // tests don't exercise registry behaviour, so a no-op is enough.
+  eraseKind: <T>(kind: T): T => kind,
+  registerKind: vi.fn(),
 }));
 
 vi.mock("../../../../src/sync", () => syncMocks);
@@ -45,7 +50,11 @@ const runSync = async (args: string[]): Promise<void> => {
 
 beforeEach(() => {
   configMocks.readRootConfiguration.mockReset().mockReturnValue(root);
-  for (const m of Object.values(syncMocks)) m.mockReset();
+  for (const m of Object.values(syncMocks)) {
+    if (typeof (m as { mockReset?: unknown }).mockReset === "function") {
+      (m as { mockReset: () => void }).mockReset();
+    }
+  }
   syncMocks.planIsNoop.mockReturnValue(true);
   syncMocks.summarizePlan.mockReturnValue(tally);
   syncMocks.syncPull.mockResolvedValue({ name: "Research Agent" });

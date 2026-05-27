@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
-import { discoverSites } from "@/recipe/api/site-discovery";
+import { discoverSites } from "@/authoring";
 import {
   type HygieneCommonOptions,
   normalizeItemId,

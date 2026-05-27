@@ -12,8 +12,8 @@
 import { z } from "zod";
 import { runWebhookCreate } from "@/webhooks/tasks/create";
 import { runWebhookDelete } from "@/webhooks/tasks/delete";
-import { runWebhookEventTypes } from "@/webhooks/tasks/event-types";
-import { runWebhookInspect } from "@/webhooks/tasks/inspect";
+import { runWebhookEvents } from "@/webhooks/tasks/events";
+import { runWebhookGet } from "@/webhooks/tasks/get";
 import { runWebhookList } from "@/webhooks/tasks/list";
 import { ensureMcpElevationAllowed } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
@@ -46,7 +46,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       openWorldHint: true,
     },
     inputSchema: {
-      verb: z.enum(["list", "get", "event-types"]).describe("Which read operation to run."),
+      verb: z.enum(["list", "get", "events"]).describe("Which read operation to run."),
       root: z
         .string()
         .optional()
@@ -67,7 +67,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
       category: z
         .enum(["item", "publish"])
         .optional()
-        .describe("Catalog branch for verb='event-types'. Omit to list both branches."),
+        .describe("Catalog branch for verb='events'. Omit to list both branches."),
       ...environmentBindingShape,
     },
     handler: async (input, context) => {
@@ -97,7 +97,7 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
           if (!input.webhook) {
             throw createScaiError("verb='get' requires `webhook`.", "INPUT_INVALID");
           }
-          const result = await runWebhookInspect({
+          const result = await runWebhookGet({
             ...taskOpts,
             webhook: input.webhook,
           } as never);
@@ -113,8 +113,8 @@ export const registerWebhookTools = (registry: McpRegistry): void => {
             structuredContent: { verb: input.verb, result },
           };
         }
-        case "event-types": {
-          const result = await runWebhookEventTypes({
+        case "events": {
+          const result = await runWebhookEvents({
             ...taskOpts,
             ...(input.category !== undefined && { category: input.category }),
           } as never);

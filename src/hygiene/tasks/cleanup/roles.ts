@@ -2,7 +2,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { runAuditEmptyRoles } from "../audit/empty-roles";
 import {
   type HygieneCommonOptions,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveHygieneKnobs,
   resolveTenant,
@@ -134,7 +134,7 @@ export const runCleanupRoles = async (
   const logger = toLogger(options);
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-roles");
+    ensureAllowWrite(rootConfig, envName, options.allowWrite, "cleanup-roles");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no roles will be deleted.", "yellow");
   }

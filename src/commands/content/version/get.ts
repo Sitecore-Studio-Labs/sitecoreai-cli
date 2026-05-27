@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import { runContentVersionInspect } from "@/content/tasks/version-inspect";
+import { runContentVersionGet } from "@/content/tasks/version-get";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../../shared";
 
-export const createInspectCommand = (): Command => {
-  const command = new Command("inspect")
+export const createContentVersionGetCommand = (): Command => {
+  const command = new Command("get")
     .description(
       "Print the publish-state fields (`__Never publish`, `__Valid from`, `__Valid to`) and the rest of the field list for an item version. Read-only — no audit-log write."
     )
@@ -21,7 +21,7 @@ export const createInspectCommand = (): Command => {
   addVerbosityOptions(command);
 
   command.action(async (options) => {
-    await runContentVersionInspect(options);
+    await runContentVersionGet(options);
   });
   return command;
 };

@@ -17,7 +17,7 @@
  * has been provisioned.
  */
 
-import { createAuthoringClient } from "@/recipe/api/authoring-client";
+import { createAuthoringClient } from "@/authoring";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/policy/environment";
 import { printDeployResultWithContext, toLogger } from "./shared";

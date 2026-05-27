@@ -23,7 +23,13 @@ import { runAgent } from "../api/runs";
 import { getSpaceArtifacts } from "../api/spaces";
 import { AgentRecipeSchema } from "../recipe/agent.schema";
 import { buildAgentConfig } from "../recipe/agent.kind";
-import { prepare, renderItem, renderList, writeJson, type RunAgentsBaseOptions } from "./shared";
+import {
+  prepare,
+  renderItem,
+  renderList,
+  writeAgentsEnvelope,
+  type RunAgentsBaseOptions,
+} from "./shared";
 
 /** Match an agent by display name, falling back to slug. */
 const findByName = (agents: Agent[], name: string): Agent | undefined =>
@@ -33,9 +39,11 @@ export const runAgentList = async (options: RunAgentsBaseOptions): Promise<void>
   const { logger, session } = await prepare(options);
   renderList(
     logger,
+    "agent.list",
+    options,
     "agent(s)",
     await listAgents(session),
-    (agent) => `${agent.slug.padEnd(30)} ${agent.name ?? ""}`
+    (agent: Agent) => `${agent.slug.padEnd(30)} ${agent.name ?? ""}`
   );
 };
 
@@ -49,7 +57,13 @@ export const runAgentGet = async (
       hint: "List agents with `scai agents agent list`.",
     });
   }
-  renderItem(logger, `agent "${agent.slug}"`, agent);
+  renderItem(
+    logger,
+    "agent.get",
+    options,
+    `agent "${agent.slug}"`,
+    agent as unknown as Record<string, unknown>
+  );
 };
 
 export const runAgentCreate = async (
@@ -63,7 +77,13 @@ export const runAgentCreate = async (
     });
   }
   if (options.whatIf) {
-    if (logger.isJson()) writeJson({ plan: { create: recipe.name } });
+    if (logger.isJson())
+      writeAgentsEnvelope(
+        "agent.create",
+        options,
+        { plan: { create: recipe.name } },
+        { whatIf: true }
+      );
     else logger.info(`Would create agent "${recipe.name}".`, "yellow");
     return;
   }
@@ -75,7 +95,7 @@ export const runAgentCreate = async (
     tags: recipe.tags,
     config,
   });
-  if (logger.isJson()) writeJson({ ok: true, created });
+  if (logger.isJson()) writeAgentsEnvelope("agent.create", options, { ok: true, created });
   else logger.info(`Created agent "${recipe.name}".`, "green");
 };
 
@@ -91,7 +111,13 @@ export const runAgentUpdate = async (
     });
   }
   if (options.whatIf) {
-    if (logger.isJson()) writeJson({ plan: { update: existing.id } });
+    if (logger.isJson())
+      writeAgentsEnvelope(
+        "agent.update",
+        options,
+        { plan: { update: existing.id } },
+        { whatIf: true }
+      );
     else logger.info(`Would update agent "${existing.slug}" (${existing.id}).`, "yellow");
     return;
   }
@@ -102,7 +128,8 @@ export const runAgentUpdate = async (
     description: recipe.description,
     config,
   });
-  if (logger.isJson()) writeJson({ ok: true, updated: existing.id });
+  if (logger.isJson())
+    writeAgentsEnvelope("agent.update", options, { ok: true, updated: existing.id });
   else logger.info(`Updated agent "${recipe.name}".`, "green");
 };
 
@@ -117,12 +144,18 @@ export const runAgentDuplicate = async (
     });
   }
   if (options.whatIf) {
-    if (logger.isJson()) writeJson({ plan: { duplicate: existing.id, as: options.name } });
+    if (logger.isJson())
+      writeAgentsEnvelope(
+        "agent.duplicate",
+        options,
+        { plan: { duplicate: existing.id, as: options.name } },
+        { whatIf: true }
+      );
     else logger.info(`Would duplicate agent "${existing.slug}" as "${options.name}".`, "yellow");
     return;
   }
   const created = await duplicateAgent(session, existing.id, options.name);
-  if (logger.isJson()) writeJson({ ok: true, created });
+  if (logger.isJson()) writeAgentsEnvelope("agent.duplicate", options, { ok: true, created });
   else logger.info(`Duplicated agent "${existing.slug}" as "${options.name}".`, "green");
 };
 
@@ -135,12 +168,19 @@ export const runAgentDelete = async (
     throw createScaiError(`Agent "${options.idOrSlug}" not found.`, "INPUT_INVALID");
   }
   if (options.whatIf) {
-    if (logger.isJson()) writeJson({ plan: { delete: agent.id } });
+    if (logger.isJson())
+      writeAgentsEnvelope(
+        "agent.delete",
+        options,
+        { plan: { delete: agent.id } },
+        { whatIf: true }
+      );
     else logger.info(`Would delete agent "${agent.slug}" (${agent.id}).`, "yellow");
     return;
   }
   await deleteAgent(session, agent.id);
-  if (logger.isJson()) writeJson({ ok: true, deleted: agent.id });
+  if (logger.isJson())
+    writeAgentsEnvelope("agent.delete", options, { ok: true, deleted: agent.id });
   else logger.info(`Deleted agent "${agent.slug}".`, "green");
 };
 
@@ -169,7 +209,11 @@ export const runAgentRun = async (
   if (logger.isJson()) {
     const collected = [];
     for await (const event of events) collected.push(event);
-    writeJson({ spaceId, events: collected, artifacts: await collectArtifacts(session, spaceId) });
+    writeAgentsEnvelope("agent.run", options, {
+      spaceId,
+      events: collected,
+      artifacts: await collectArtifacts(session, spaceId),
+    });
     return;
   }
 

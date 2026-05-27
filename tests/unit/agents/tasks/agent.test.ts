@@ -82,8 +82,16 @@ const usePrepare = (json: boolean): void => {
   } as never);
 };
 
-/** Last JSON document written to stdout. */
-const jsonOut = (): unknown => JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+/**
+ * Last JSON document written to stdout — unwraps the canonical
+ * `ScaiEnvelope` and returns the `data` field, since each test
+ * asserts on the per-runner payload shape, not the envelope.
+ */
+const jsonOut = (): unknown => {
+  const raw = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+  if (raw && typeof raw === "object" && "data" in raw) return (raw as { data: unknown }).data;
+  return raw;
+};
 
 /** Every human line routed through consola.info. */
 const humanLines = (): string[] => consolaInfo.mock.calls.map((c) => String(c[0]));

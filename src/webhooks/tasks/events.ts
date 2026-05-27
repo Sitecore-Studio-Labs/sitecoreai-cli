@@ -6,12 +6,12 @@ import {
   type WebhookTaskOptions,
 } from "./shared";
 
-export interface WebhookEventTypesOptions extends WebhookTaskOptions {
+export interface WebhookEventsOptions extends WebhookTaskOptions {
   /** Limit results to a single catalog branch. */
   category?: WebhookEventTypeCategory;
 }
 
-export interface WebhookEventTypesResult {
+export interface WebhookEventsResult {
   eventTypes: WebhookEventTypeSummary[];
 }
 
@@ -26,9 +26,9 @@ export interface WebhookEventTypesResult {
  * the order matches the Sitecore content tree's child order — operators
  * see what the CMS shows them, not an alphabetized rewrite.
  */
-export const runWebhookEventTypes = async (
-  options: WebhookEventTypesOptions
-): Promise<WebhookEventTypesResult> => {
+export const runWebhookEvents = async (
+  options: WebhookEventsOptions
+): Promise<WebhookEventsResult> => {
   const logger = toLogger(options);
   const { envName, client } = resolveWebhookTenant(options);
 

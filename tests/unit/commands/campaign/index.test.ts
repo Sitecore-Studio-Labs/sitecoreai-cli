@@ -12,14 +12,14 @@ const taskMocks = vi.hoisted(() => ({
   runCampaignCreate: vi.fn(),
   runCampaignDelete: vi.fn(),
   runCampaignList: vi.fn(),
-  runCampaignShow: vi.fn(),
+  runCampaignGet: vi.fn(),
   runCampaignUsers: vi.fn(),
   runDeliverableCreate: vi.fn(),
   runDeliverableDelete: vi.fn(),
   runTaskCreate: vi.fn(),
   runTaskDelete: vi.fn(),
   runTaskList: vi.fn(),
-  runTaskShow: vi.fn(),
+  runTaskGet: vi.fn(),
   runTaskUpdate: vi.fn(),
 }));
 
@@ -53,7 +53,7 @@ describe("createCampaignCommand — command tree", () => {
   it("registers the top-level verbs and the sync path", () => {
     for (const name of [
       "list",
-      "show",
+      "get",
       "create",
       "delete",
       "users",
@@ -71,9 +71,9 @@ describe("createCampaignCommand — command tree", () => {
     expect(sub(deliverable, "delete")).toBeDefined();
   });
 
-  it("gives task list/show/create/update/delete", () => {
+  it("gives task list/get/create/update/delete", () => {
     const task = sub(campaign, "task")!;
-    for (const name of ["list", "show", "create", "update", "delete"]) {
+    for (const name of ["list", "get", "create", "update", "delete"]) {
       expect(sub(task, name), name).toBeDefined();
     }
   });
@@ -92,10 +92,10 @@ describe("campaign list", () => {
   });
 });
 
-describe("campaign show", () => {
+describe("campaign get", () => {
   it("threads the positional campaignId into the runner options", async () => {
-    await runCampaign(["show", "camp-1", "--quiet"]);
-    expect(taskMocks.runCampaignShow).toHaveBeenCalledWith(
+    await runCampaign(["get", "camp-1", "--quiet"]);
+    expect(taskMocks.runCampaignGet).toHaveBeenCalledWith(
       expect.objectContaining({ campaignId: "camp-1" })
     );
   });
@@ -209,9 +209,9 @@ describe("campaign deliverable create — funnel-tactics CSV", () => {
 });
 
 describe("campaign task verbs", () => {
-  it("threads all three positionals into runTaskShow", async () => {
-    await runCampaign(["task", "show", "camp-1", "del-1", "task-1", "--quiet"]);
-    expect(taskMocks.runTaskShow).toHaveBeenCalledWith(
+  it("threads all three positionals into runTaskGet", async () => {
+    await runCampaign(["task", "get", "camp-1", "del-1", "task-1", "--quiet"]);
+    expect(taskMocks.runTaskGet).toHaveBeenCalledWith(
       expect.objectContaining({ campaignId: "camp-1", deliverableId: "del-1", taskId: "task-1" })
     );
   });

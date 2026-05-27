@@ -22,14 +22,14 @@ import {
   runCampaignCreate,
   runCampaignDelete,
   runCampaignList,
-  runCampaignShow,
+  runCampaignGet,
   runCampaignUsers,
   runDeliverableCreate,
   runDeliverableDelete,
   runTaskCreate,
   runTaskDelete,
   runTaskList,
-  runTaskShow,
+  runTaskGet,
   runTaskUpdate,
 } from "@/campaigns/tasks";
 import { createScaiError } from "@/shared/errors";
@@ -62,15 +62,15 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
     },
     inputSchema: {
       verb: z
-        .enum(["list", "show", "tasks", "task", "users"])
+        .enum(["list", "get", "tasks", "task", "users"])
         .describe(
-          "Read operation: list (campaigns), show (one campaign), tasks (list under a deliverable), task (one task), users (member directory)."
+          "Read operation: list (campaigns), get (one campaign), tasks (list under a deliverable), task (one task), users (member directory)."
         ),
       campaignId: z
         .string()
         .uuid()
         .optional()
-        .describe("Campaign UUID. Required for verb='show', 'tasks', 'task'."),
+        .describe("Campaign UUID. Required for verb='get', 'tasks', 'task'."),
       deliverableId: z
         .string()
         .uuid()
@@ -92,11 +92,11 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
             structuredContent: { verb: input.verb, result },
           };
         }
-        case "show": {
+        case "get": {
           if (!input.campaignId) {
-            throw createScaiError("verb='show' requires `campaignId`.", "INPUT_INVALID");
+            throw createScaiError("verb='get' requires `campaignId`.", "INPUT_INVALID");
           }
-          const result = await runCampaignShow({
+          const result = await runCampaignGet({
             ...taskOpts,
             campaignId: input.campaignId,
           } as never);
@@ -134,7 +134,7 @@ export const registerCampaignTools = (registry: McpRegistry): void => {
               "INPUT_INVALID"
             );
           }
-          const result = await runTaskShow({
+          const result = await runTaskGet({
             ...taskOpts,
             campaignId: input.campaignId,
             deliverableId: input.deliverableId,

@@ -47,7 +47,4 @@ export {
   type RunContentVersionSetValidityOptions,
 } from "./tasks/version-validity";
 
-export {
-  runContentVersionInspect,
-  type RunContentVersionInspectOptions,
-} from "./tasks/version-inspect";
+export { runContentVersionGet, type RunContentVersionGetOptions } from "./tasks/version-get";

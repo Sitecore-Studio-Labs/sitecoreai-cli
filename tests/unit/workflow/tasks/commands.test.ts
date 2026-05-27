@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runWorkflowListCommands } from "../../../../src/workflow/tasks/list-commands";
+import { runWorkflowCommands } from "../../../../src/workflow/tasks/commands";
 import * as sharedModule from "../../../../src/workflow/tasks/shared";
 import type { WorkflowApiClient } from "../../../../src/workflow/api/client";
 
@@ -38,12 +38,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("runWorkflowListCommands", () => {
+describe("runWorkflowCommands", () => {
   it("returns null when the item is not under workflow", async () => {
     const client = stubClient({ getItemWorkflow: vi.fn().mockResolvedValue(null) });
     installClient(client);
 
-    const result = await runWorkflowListCommands({
+    const result = await runWorkflowCommands({
       item: "/sitecore/content/x",
       json: true,
     });
@@ -69,7 +69,7 @@ describe("runWorkflowListCommands", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowListCommands({
+    const result = await runWorkflowCommands({
       item: "/sitecore/content/x",
       json: true,
     });

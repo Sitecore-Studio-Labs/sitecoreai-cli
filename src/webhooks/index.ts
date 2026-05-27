@@ -54,7 +54,7 @@ export {
   type WebhookListResult,
   type WebhookEventCategory,
 } from "./tasks/list";
-export { runWebhookInspect, parseWebhookRef, type WebhookInspectOptions } from "./tasks/inspect";
+export { runWebhookGet, parseWebhookRef, type WebhookInspectOptions } from "./tasks/get";
 export {
   runWebhookCreate,
   type WebhookCreateOptions,
@@ -66,7 +66,7 @@ export {
   type WebhookDeleteResult,
 } from "./tasks/delete";
 export {
-  runWebhookEventTypes,
-  type WebhookEventTypesOptions,
-  type WebhookEventTypesResult,
-} from "./tasks/event-types";
+  runWebhookEvents,
+  type WebhookEventsOptions,
+  type WebhookEventsResult,
+} from "./tasks/events";

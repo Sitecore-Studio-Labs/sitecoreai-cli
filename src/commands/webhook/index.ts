@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import { createWebhookCreateCommand } from "./create";
 import { createWebhookDeleteCommand } from "./delete";
-import { createWebhookEventTypesCommand } from "./event-types";
-import { createWebhookInspectCommand } from "./inspect";
+import { createWebhookEventsCommand } from "./events";
+import { createWebhookGetCommand } from "./get";
 import { createWebhookListCommand } from "./list";
 
 export const createWebhookCommand = (): Command => {
@@ -11,8 +11,8 @@ export const createWebhookCommand = (): Command => {
   );
 
   command.addCommand(createWebhookListCommand());
-  command.addCommand(createWebhookInspectCommand());
-  command.addCommand(createWebhookEventTypesCommand());
+  command.addCommand(createWebhookGetCommand());
+  command.addCommand(createWebhookEventsCommand());
   command.addCommand(createWebhookCreateCommand());
   command.addCommand(createWebhookDeleteCommand());
 
@@ -21,9 +21,9 @@ export const createWebhookCommand = (): Command => {
     "\nExamples:\n" +
       "  $ scai content workflow webhook list\n" +
       "  $ scai content workflow webhook list --event-type publish --enabled-only --json\n" +
-      "  $ scai content workflow webhook event-types\n" +
-      "  $ scai content workflow webhook event-types --category publish --json\n" +
-      "  $ scai content workflow webhook inspect /sitecore/system/Webhooks/CI-Notify\n" +
+      "  $ scai content workflow webhook events\n" +
+      "  $ scai content workflow webhook events --category publish --json\n" +
+      "  $ scai content workflow webhook get /sitecore/system/Webhooks/CI-Notify\n" +
       "  $ scai content workflow webhook create --name CI-Notify --url https://ci.example.com/hook \\\n" +
       "        --event item --events item:saved,item:deleted\n" +
       "  $ scai content workflow webhook create --name PublishHook --url https://ci.example.com/publish \\\n" +

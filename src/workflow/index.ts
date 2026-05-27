@@ -31,20 +31,20 @@ export {
 export { runWorkflowAuthoringGraphQL, type WorkflowRequestOptions } from "./api/graphql";
 
 export {
-  runWorkflowInspect,
+  runWorkflowGet,
   type WorkflowInspectOptions,
   type WorkflowInspectResult,
-} from "./tasks/inspect";
+} from "./tasks/get";
 export {
-  runWorkflowListCommands,
-  type WorkflowListCommandsOptions,
-  type WorkflowListCommandsResult,
-} from "./tasks/list-commands";
+  runWorkflowCommands,
+  type WorkflowCommandsOptions,
+  type WorkflowCommandsResult,
+} from "./tasks/commands";
 export {
-  runWorkflowListDefs,
-  type WorkflowListDefsOptions,
-  type WorkflowListDefsResult,
-} from "./tasks/list-defs";
+  runWorkflowDefinitions,
+  type WorkflowDefinitionsOptions,
+  type WorkflowDefinitionsResult,
+} from "./tasks/definitions";
 export {
   runWorkflowStatus,
   type WorkflowStatusOptions,

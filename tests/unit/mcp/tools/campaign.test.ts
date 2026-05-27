@@ -12,7 +12,7 @@ import type { ToolExtra } from "../../../../src/mcp/registry";
  */
 const taskMocks = vi.hoisted(() => ({
   runCampaignList: vi.fn().mockResolvedValue({ totalCount: 2, data: [{ id: "c-1" }] }),
-  runCampaignShow: vi.fn().mockResolvedValue({
+  runCampaignGet: vi.fn().mockResolvedValue({
     id: "c-1",
     name: "Q1 push",
     status: "ACTIVE",
@@ -24,7 +24,7 @@ const taskMocks = vi.hoisted(() => ({
   runDeliverableCreate: vi.fn().mockResolvedValue({ id: "d-new" }),
   runDeliverableDelete: vi.fn().mockResolvedValue({ id: "d-1", deleted: true }),
   runTaskList: vi.fn().mockResolvedValue({ totalCount: 3, data: [] }),
-  runTaskShow: vi.fn().mockResolvedValue({ id: "t-1", name: "Draft copy", status: "NOT_STARTED" }),
+  runTaskGet: vi.fn().mockResolvedValue({ id: "t-1", name: "Draft copy", status: "NOT_STARTED" }),
   runTaskCreate: vi.fn().mockResolvedValue({ id: "t-new" }),
   runTaskUpdate: vi.fn().mockResolvedValue({ id: "t-1" }),
   runTaskDelete: vi.fn().mockResolvedValue({ id: "t-1", deleted: true }),
@@ -87,19 +87,19 @@ describe("campaign_inspect", () => {
     expect(result.content[0].text).toContain("2 campaign(s)");
   });
 
-  it("verb='show' requires campaignId", async () => {
+  it("verb='get' requires campaignId", async () => {
     const reg = await setup();
     await expect(
-      reg.getTool("campaign_inspect")!.handler({ verb: "show" } as never, fakeContext)
+      reg.getTool("campaign_inspect")!.handler({ verb: "get" } as never, fakeContext)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("verb='show' forwards campaignId and summarizes deliverables", async () => {
+  it("verb='get' forwards campaignId and summarizes deliverables", async () => {
     const reg = await setup();
     const result = await reg
       .getTool("campaign_inspect")!
-      .handler({ verb: "show", campaignId: CAMPAIGN }, fakeContext);
-    expect(taskMocks.runCampaignShow).toHaveBeenCalledWith(
+      .handler({ verb: "get", campaignId: CAMPAIGN }, fakeContext);
+    expect(taskMocks.runCampaignGet).toHaveBeenCalledWith(
       expect.objectContaining({ campaignId: CAMPAIGN })
     );
     expect(result.content[0].text).toContain("1 deliverable(s)");
@@ -126,7 +126,7 @@ describe("campaign_inspect", () => {
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("verb='task' forwards all three ids to runTaskShow", async () => {
+  it("verb='task' forwards all three ids to runTaskGet", async () => {
     const reg = await setup();
     await reg
       .getTool("campaign_inspect")!
@@ -134,7 +134,7 @@ describe("campaign_inspect", () => {
         { verb: "task", campaignId: CAMPAIGN, deliverableId: DELIVERABLE, taskId: TASK },
         fakeContext
       );
-    expect(taskMocks.runTaskShow).toHaveBeenCalledWith(
+    expect(taskMocks.runTaskGet).toHaveBeenCalledWith(
       expect.objectContaining({ campaignId: CAMPAIGN, deliverableId: DELIVERABLE, taskId: TASK })
     );
   });

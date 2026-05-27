@@ -40,7 +40,7 @@ import {
   renderItem,
   renderList,
   requireUnverified,
-  writeJson,
+  writeAgentsEnvelope,
   type RunAgentsBaseOptions,
 } from "./shared";
 
@@ -116,14 +116,27 @@ const makeResourceTasks = <
 
   const runList: ResourceTasks["runList"] = async (options) => {
     const { logger, session } = await prepare(options);
-    renderList(logger, config.pluralLabel, await config.list(session), config.line);
+    renderList(
+      logger,
+      `${config.resource}.list`,
+      options,
+      config.pluralLabel,
+      await config.list(session),
+      config.line
+    );
   };
 
   const runGet: ResourceTasks["runGet"] = async (options) => {
     const { logger, session } = await prepare(options);
     const item = await config.find(session, options.idOrName);
     if (!item) throw notFound(options.idOrName);
-    renderItem(logger, `${config.resource} "${config.identify(item).name}"`, item);
+    renderItem(
+      logger,
+      `${config.resource}.get`,
+      options,
+      `${config.resource} "${config.identify(item).name}"`,
+      item
+    );
   };
 
   const runCreate: ResourceTasks["runCreate"] = async (options) => {
@@ -137,12 +150,19 @@ const makeResourceTasks = <
       );
     }
     if (options.whatIf) {
-      if (logger.isJson()) writeJson({ plan: { create: recipe.name } });
+      if (logger.isJson())
+        writeAgentsEnvelope(
+          `${config.resource}.create`,
+          options,
+          { plan: { create: recipe.name } },
+          { whatIf: true }
+        );
       else logger.info(`Would create ${config.resource} "${recipe.name}".`, "yellow");
       return;
     }
     const created = await config.create(session, recipe);
-    if (logger.isJson()) writeJson({ ok: true, created });
+    if (logger.isJson())
+      writeAgentsEnvelope(`${config.resource}.create`, options, { ok: true, created });
     else logger.info(`Created ${config.resource} "${recipe.name}".`, "green");
   };
 
@@ -161,12 +181,19 @@ const makeResourceTasks = <
       id = config.identify(item).id;
     }
     if (options.whatIf) {
-      if (logger.isJson()) writeJson({ plan: { update: id } });
+      if (logger.isJson())
+        writeAgentsEnvelope(
+          `${config.resource}.update`,
+          options,
+          { plan: { update: id } },
+          { whatIf: true }
+        );
       else logger.info(`Would update ${config.resource} "${options.idOrName}" (${id}).`, "yellow");
       return;
     }
     await config.update(session, id, recipe);
-    if (logger.isJson()) writeJson({ ok: true, updated: id });
+    if (logger.isJson())
+      writeAgentsEnvelope(`${config.resource}.update`, options, { ok: true, updated: id });
     else logger.info(`Updated ${config.resource} (${id}).`, "green");
   };
 
@@ -186,12 +213,19 @@ const makeResourceTasks = <
       ({ id, name } = config.identify(item));
     }
     if (options.whatIf) {
-      if (logger.isJson()) writeJson({ plan: { delete: id } });
+      if (logger.isJson())
+        writeAgentsEnvelope(
+          `${config.resource}.delete`,
+          options,
+          { plan: { delete: id } },
+          { whatIf: true }
+        );
       else logger.info(`Would delete ${config.resource} "${name}" (${id}).`, "yellow");
       return;
     }
     await config.remove(session, id);
-    if (logger.isJson()) writeJson({ ok: true, deleted: id });
+    if (logger.isJson())
+      writeAgentsEnvelope(`${config.resource}.delete`, options, { ok: true, deleted: id });
     else logger.info(`Deleted ${config.resource} "${name}".`, "green");
   };
 
@@ -309,8 +343,11 @@ export const runToolList = async (options: RunAgentsBaseOptions): Promise<void> 
   const { logger, session } = await prepare(options);
   renderList(
     logger,
+    "tool.list",
+    options,
     "tool(s)",
     await listTools(session),
-    (tool) => `${tool.toolKey.padEnd(30)} ${tool.category.padEnd(12)} ${tool.label}`
+    (tool: { toolKey: string; category: string; label: string }) =>
+      `${tool.toolKey.padEnd(30)} ${tool.category.padEnd(12)} ${tool.label}`
   );
 };

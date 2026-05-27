@@ -54,7 +54,6 @@ export {
   getBrief,
   createBrief,
   updateBrief,
-  setBriefStatus,
   deleteBrief,
   assertCreateBriefInput,
   type CreateBriefInput,

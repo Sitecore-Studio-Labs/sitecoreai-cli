@@ -12,7 +12,7 @@ import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   isSystemPath,
   normalizeItemId,
   printReport,
@@ -25,7 +25,7 @@ export interface CleanupWorkflowApplyOptions extends HygieneCommonOptions {
   /**
    * Workflow ref — GUID, content-tree path, or display/item name.
    * Required. Same resolution as `scai content workflow apply` /
-   * `scai content workflow inspect`.
+   * `scai content workflow get`.
    */
   workflow: string;
   /**
@@ -134,7 +134,7 @@ export const runCleanupWorkflowApply = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no workflow attachments will be written.", "yellow");
   }

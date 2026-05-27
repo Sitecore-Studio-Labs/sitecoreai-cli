@@ -22,18 +22,25 @@ CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers and module boundaries
 
-`src/` is organized into ~17 **domain areas** plus three cross-cutting
+`src/` is organized into ~19 **domain areas** plus three cross-cutting
 layers. The domain areas:
 
 ```
 deploy   serialization  recipe   brand    brief    campaigns
 sites    publishing     content  hygiene  webhooks workflow
-agents   policy         mcp      scripting sync
+agents   policy         mcp      scripting sync     auth      authoring
 ```
 
 Each domain area is a directory under `src/` that owns one product
 surface (its API client, task runners, and — where it has one — an
-`index.ts` SDK barrel). The cross-cutting layers:
+`index.ts` SDK barrel). `auth/` and `authoring/` are the cross-domain
+seams — `auth/` re-exports OAuth client-credentials primitives that
+were de facto shared across publishing/brand/brief/etc., and
+`authoring/` re-exports the Sitecore Authoring GraphQL transport +
+site discovery used cross-domain. Implementation still lives in
+`serialization/api/` and `recipe/api/` respectively; new cross-area
+callers should import via `@/auth` and `@/authoring`. The
+cross-cutting layers:
 
 ```
 src/cli.ts        ← entrypoint; src/program.ts builds the Commander tree

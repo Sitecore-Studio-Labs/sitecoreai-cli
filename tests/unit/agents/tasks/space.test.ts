@@ -48,7 +48,11 @@ const usePrepare = (json: boolean): void => {
 };
 
 /** Last JSON document written to stdout. */
-const jsonOut = (): unknown => JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+const jsonOut = (): unknown => {
+  const raw = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+  if (raw && typeof raw === "object" && "data" in raw) return (raw as { data: unknown }).data;
+  return raw;
+};
 
 /** Every human line routed through consola.info. */
 const humanLines = (): string[] => consolaInfo.mock.calls.map((c) => String(c[0]));

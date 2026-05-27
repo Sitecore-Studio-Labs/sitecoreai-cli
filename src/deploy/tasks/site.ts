@@ -10,7 +10,7 @@
  * env profile written by `scai setup login`.
  */
 
-import { discoverSites } from "@/recipe/api/site-discovery";
+import { discoverSites } from "@/authoring";
 import { resolveEnvironment } from "@/policy/environment";
 import { printDeployResultWithContext, toLogger } from "./shared";
 import type { DeploySiteListOptions } from "./types";

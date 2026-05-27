@@ -26,6 +26,20 @@ type AutoWizardNeed =
   | { kind: "init"; envName?: string; hint: string }
   | { kind: "login"; envName: string; hint: string };
 
+/**
+ * Returns a `.catch` handler for fire-and-forget observability writes
+ * (history file, telemetry). Errors go to stderr so they don't corrupt
+ * `--json` stdout but stay visible to operators chasing missing audit
+ * events. Set `SITECOREAI_OBSERVABILITY_SILENT=1` to suppress.
+ */
+const logSwallowedObservabilityWrite =
+  (origin: "history" | "telemetry") =>
+  (error: unknown): void => {
+    if (process.env.SITECOREAI_OBSERVABILITY_SILENT === "1") return;
+    const detail = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[scai:${origin}] write failed: ${detail}\n`);
+  };
+
 const toBoolean = (value?: string): boolean | undefined => {
   if (!value) {
     return undefined;
@@ -279,7 +293,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   try {
     await runAutoWizardIfNeeded(args, configPath, outputOptions);
     await ensureTelemetryNotice(telemetryConfigPath);
-    void Promise.resolve(ensureHistoryFile()).catch(() => {});
+    void Promise.resolve(ensureHistoryFile()).catch(logSwallowedObservabilityWrite("history"));
     void Promise.resolve(
       recordHistory({
         event: "start",
@@ -287,7 +301,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         args,
         cwd: process.cwd(),
       })
-    ).catch(() => {});
+    ).catch(logSwallowedObservabilityWrite("history"));
     void Promise.resolve(
       recordTelemetry({
         event: "command_start",
@@ -295,7 +309,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         args,
         configPath: telemetryConfigPath,
       })
-    ).catch(() => {});
+    ).catch(logSwallowedObservabilityWrite("telemetry"));
 
     await program.parseAsync(argv);
     await recordHistory({
@@ -335,7 +349,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         cwd: process.cwd(),
         error: error instanceof Error ? error.message : String(error),
       })
-    ).catch(() => {});
+    ).catch(logSwallowedObservabilityWrite("history"));
     void Promise.resolve(
       recordTelemetry({
         event: "command_error",
@@ -345,7 +359,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         error: error instanceof Error ? error.message : String(error),
         configPath: telemetryConfigPath,
       })
-    ).catch(() => {});
+    ).catch(logSwallowedObservabilityWrite("telemetry"));
     const baseLogger = new Logger(
       false,
       false,

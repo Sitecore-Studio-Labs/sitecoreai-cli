@@ -5,7 +5,6 @@ import {
   getBrief,
   createBrief,
   deleteBrief,
-  setBriefStatus,
   updateBrief,
 } from "../../../src/brief/api/briefs";
 import {
@@ -232,11 +231,11 @@ describe("brief instance CRUD", () => {
     expect(result).toBeUndefined();
   });
 
-  it("setBriefStatus PUTs a status-only body to the brief item URL", async () => {
+  it("updateBrief with a status-only body PUTs to the brief item URL (replaces setBriefStatus)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await setBriefStatus(baseOptions, "brief-xyz", "Approved");
+    const result = await updateBrief(baseOptions, "brief-xyz", { status: "Approved" });
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(`${DEFAULT_BRIEF_API_BASE}/api/brief/v1/briefs/brief-xyz`);
@@ -282,11 +281,11 @@ describe("brief instance CRUD", () => {
     ).toThrowError(/'fields'/);
   });
 
-  it("setBriefStatus URL-encodes the brief id", async () => {
+  it("updateBrief URL-encodes the brief id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
     vi.stubGlobal("fetch", fetchMock);
 
-    await setBriefStatus(baseOptions, "id/with/slash", "InReview");
+    await updateBrief(baseOptions, "id/with/slash", { status: "InReview" });
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       `${DEFAULT_BRIEF_API_BASE}/api/brief/v1/briefs/id%2Fwith%2Fslash`

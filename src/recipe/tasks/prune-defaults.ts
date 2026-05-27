@@ -109,18 +109,53 @@ const buildTargets = (
 };
 
 /**
+ * Patterns Sitecore Authoring GraphQL uses to report an "item is
+ * gone" condition (concurrent delete, stale itemId, never-existed).
+ * Treated as a list because Sitecore phrasing varies across versions
+ * and operations; extend here when a new variant shows up in the
+ * wild. Matched case-insensitively against both the joined error
+ * message and any structured `extensions` payload preserved by
+ * `shared/graphql.ts`.
+ */
+const ITEM_NOT_FOUND_PATTERNS: readonly RegExp[] = [
+  /was not found/i,
+  /may have been deleted by another user/i,
+  /item .* (was|is) not found/i,
+  /could not be found/i,
+  /does not exist/i,
+  /no item .* found/i,
+];
+
+/**
+ * Structured `extensions.code` values that Sitecore (or future
+ * passes of this code) may emit for the same condition. Matched
+ * against the extension-blob JSON stringified into ScaiError.details.
+ */
+const ITEM_NOT_FOUND_CODES: readonly string[] = [
+  "ITEM_NOT_FOUND",
+  "ITEM_NOT_FOUND_ERROR",
+  "ItemNotFoundError",
+];
+
+/**
  * Detect the Authoring GraphQL "item is gone" response. The shared
  * graphql.ts wrapper joins all error.message strings into a single
- * `Authoring GraphQL errors: <messages>` payload on a NETWORK ScaiError;
- * we match the canonical Sitecore phrasing that fires when an itemId
- * doesn't resolve at delete time.
+ * `Authoring GraphQL errors: <messages>` payload on a NETWORK ScaiError
+ * and preserves any GraphQL `extensions` as `details[]`. We prefer the
+ * structured signal (code-match against extensions) and fall back to
+ * the prose patterns when extensions aren't carried — Sitecore's
+ * Authoring GraphQL doesn't reliably emit extension codes today but
+ * may in future, and own-error preservation costs nothing.
  */
 const isItemNotFoundError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
-  const message = error.message;
-  return (
-    message.includes("was not found") || message.includes("may have been deleted by another user")
-  );
+  const scaiError = error as Error & { details?: string[] };
+  if (Array.isArray(scaiError.details)) {
+    for (const line of scaiError.details) {
+      if (ITEM_NOT_FOUND_CODES.some((code) => line.includes(code))) return true;
+    }
+  }
+  return ITEM_NOT_FOUND_PATTERNS.some((pattern) => pattern.test(error.message));
 };
 
 interface PruneCoreOptions {

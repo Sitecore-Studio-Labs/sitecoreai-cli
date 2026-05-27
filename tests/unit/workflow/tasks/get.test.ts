@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runWorkflowInspect } from "../../../../src/workflow/tasks/inspect";
+import { runWorkflowGet } from "../../../../src/workflow/tasks/get";
 import * as sharedModule from "../../../../src/workflow/tasks/shared";
 import type { WorkflowApiClient } from "../../../../src/workflow/api/client";
 
@@ -38,12 +38,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("runWorkflowInspect", () => {
+describe("runWorkflowGet", () => {
   it("returns null when the item is not under workflow", async () => {
     const client = stubClient({ getItemWorkflow: vi.fn().mockResolvedValue(null) });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "/sitecore/content/x",
       json: true,
     });
@@ -70,7 +70,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "/sitecore/content/x",
       json: true,
     });
@@ -116,7 +116,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "/sitecore/system/Workflows/Editorial/BlogArticleApproval",
       json: true,
     });
@@ -149,7 +149,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "Blog Article Approval",
       json: true,
     });
@@ -165,7 +165,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "made-up-workflow",
       json: true,
     });
@@ -178,7 +178,7 @@ describe("runWorkflowInspect", () => {
     const client = stubClient({ getItemWorkflow: vi.fn().mockResolvedValue(null) });
     installClient(client);
 
-    await runWorkflowInspect({
+    await runWorkflowGet({
       item: "/sitecore/content/x",
       json: true,
     });
@@ -193,7 +193,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    await runWorkflowInspect({
+    await runWorkflowGet({
       item: "{ABCDEF01-2345-6789-ABCD-EF0123456789}",
       json: true,
     });
@@ -223,7 +223,7 @@ describe("runWorkflowInspect", () => {
       getWorkflowDefinitionDetail: vi.fn().mockResolvedValue({ ...summary, states: [] }),
     });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => true,
@@ -232,7 +232,7 @@ describe("runWorkflowInspect", () => {
       warn,
     } as never);
 
-    await inspect.runWorkflowInspect({ item: "Approval", json: true });
+    await inspect.runWorkflowGet({ item: "Approval", json: true });
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Found 3 workflows matching"));
   });
@@ -251,9 +251,9 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    await expect(
-      runWorkflowInspect({ item: "/sitecore/content/x", json: true })
-    ).rejects.toMatchObject({ code: "UNKNOWN" });
+    await expect(runWorkflowGet({ item: "/sitecore/content/x", json: true })).rejects.toMatchObject(
+      { code: "UNKNOWN" }
+    );
     expect(client.getWorkflowCommandsForItem).not.toHaveBeenCalled();
   });
 
@@ -293,7 +293,7 @@ describe("runWorkflowInspect", () => {
       }),
     });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => false,
@@ -302,7 +302,7 @@ describe("runWorkflowInspect", () => {
       warn: vi.fn(),
     } as never);
 
-    const result = await inspect.runWorkflowInspect({
+    const result = await inspect.runWorkflowGet({
       item: "/sitecore/system/Workflows/Editorial",
     });
 
@@ -337,7 +337,7 @@ describe("runWorkflowInspect", () => {
       }),
     });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => false,
@@ -346,7 +346,7 @@ describe("runWorkflowInspect", () => {
       warn: vi.fn(),
     } as never);
 
-    await inspect.runWorkflowInspect({ item: "/sitecore/system/Workflows/Empty" });
+    await inspect.runWorkflowGet({ item: "/sitecore/system/Workflows/Empty" });
 
     const lines = info.mock.calls.map((c) => c[0] as string);
     expect(lines.some((l) => l.includes("(no commands or actions)"))).toBe(true);
@@ -367,7 +367,7 @@ describe("runWorkflowInspect", () => {
       getWorkflowCommandsForItem: vi.fn().mockResolvedValue([]),
     });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => false,
@@ -376,7 +376,7 @@ describe("runWorkflowInspect", () => {
       warn: vi.fn(),
     } as never);
 
-    const result = await inspect.runWorkflowInspect({ item: "/sitecore/content/x" });
+    const result = await inspect.runWorkflowGet({ item: "/sitecore/content/x" });
 
     expect(result).toMatchObject({ kind: "item" });
     const lines = info.mock.calls.map((c) => c[0] as string);
@@ -388,7 +388,7 @@ describe("runWorkflowInspect", () => {
     const info = vi.fn();
     const client = stubClient({ getItemWorkflow: vi.fn().mockResolvedValue(null) });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => false,
@@ -397,7 +397,7 @@ describe("runWorkflowInspect", () => {
       warn: vi.fn(),
     } as never);
 
-    const result = await inspect.runWorkflowInspect({ item: "/sitecore/content/x" });
+    const result = await inspect.runWorkflowGet({ item: "/sitecore/content/x" });
 
     expect(result).toBeNull();
     expect(info).toHaveBeenCalledWith(
@@ -411,7 +411,7 @@ describe("runWorkflowInspect", () => {
       findWorkflowDefinitionByName: vi.fn().mockResolvedValue(null),
     });
     installClient(client);
-    const inspect = await import("../../../../src/workflow/tasks/inspect");
+    const inspect = await import("../../../../src/workflow/tasks/get");
     const sharedSpy = await import("../../../../src/workflow/tasks/shared");
     vi.spyOn(sharedSpy, "toLogger").mockReturnValue({
       isJson: () => false,
@@ -420,7 +420,7 @@ describe("runWorkflowInspect", () => {
       warn: vi.fn(),
     } as never);
 
-    const result = await inspect.runWorkflowInspect({ item: "ghost-workflow" });
+    const result = await inspect.runWorkflowGet({ item: "ghost-workflow" });
 
     expect(result).toBeNull();
     expect(info).toHaveBeenCalledWith(
@@ -446,7 +446,7 @@ describe("runWorkflowInspect", () => {
     });
     installClient(client);
 
-    const result = await runWorkflowInspect({
+    const result = await runWorkflowGet({
       item: "abcdef01-2345-6789-abcd-ef0123456789",
       json: true,
     });

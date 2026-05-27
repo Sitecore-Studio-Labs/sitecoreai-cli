@@ -3,6 +3,7 @@ import { ItemMetadata } from "../types";
 import { fetchItemMetadata } from "../api/items";
 import { publishItems } from "../api/publish";
 import { loadFilesystemItems } from "../filesystem-store/items";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { startSpinner } from "@/shared/spinner";
 import {
   ensureAllowWrite,
@@ -156,6 +157,12 @@ export const runPush = async (options: SyncOptions): Promise<void> => {
   }
 
   if (logger.isJson()) {
-    logger.json(summary);
+    logger.json(
+      buildScaiEnvelope({
+        command: "serialization.push",
+        environment: envName,
+        data: summary,
+      }) as unknown as Record<string, unknown>
+    );
   }
 };

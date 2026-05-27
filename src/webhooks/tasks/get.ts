@@ -31,7 +31,7 @@ const parseWebhookRef = (value: string): { itemId?: string; path?: string } => {
   );
 };
 
-export const runWebhookInspect = async (
+export const runWebhookGet = async (
   options: WebhookInspectOptions
 ): Promise<WebhookHandlerDetail | null> => {
   const logger = toLogger(options);

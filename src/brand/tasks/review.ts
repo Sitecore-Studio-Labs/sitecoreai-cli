@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
 import packageJson from "../../../package.json";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { generateBrandReview } from "../review/generate";
@@ -386,18 +387,31 @@ export const runBrandReview = async (
     result.report = buildTextReport(outcomes, threshold);
   } else if (format === "json") {
     const report = buildJsonReport(outcomes, threshold);
-    const serialized = JSON.stringify(report, null, 2);
     if (options.output) {
-      fs.writeFileSync(options.output, serialized, "utf8");
+      // File output stays as the bare report — file consumers expect the
+      // raw report shape, not a CLI envelope wrapper.
+      fs.writeFileSync(options.output, JSON.stringify(report, null, 2), "utf8");
       logger.info(`Wrote JSON report to ${options.output}.`);
     } else {
-      // Direct stdout write — logger.info would prepend formatting
-      // that breaks JSON consumers piping to jq.
-      process.stdout.write(serialized + "\n");
+      // stdout pipes go through the canonical ScaiEnvelope so agents see
+      // the same `{ command, environment, data, ... }` shape they get
+      // from every other --json path.
+      const envelope = buildScaiEnvelope({
+        command: "brand.review",
+        environment: options.environmentName ?? null,
+        data: report,
+      });
+      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
     }
-    result.report = serialized;
+    result.report = JSON.stringify(report, null, 2);
     result.json = report;
   } else {
+    // SARIF stays unwrapped on every channel: it's a standardized
+    // OASIS schema that downstream tooling parses verbatim (GitHub
+    // code-scanning, IDE plugins, audit dashboards). Wrapping it in
+    // ScaiEnvelope would break those consumers. The `format=json`
+    // path above is the envelope-compliant alternative when a caller
+    // wants a structured report through scai's own contract.
     const driverVersion = (packageJson as { version?: string }).version ?? "0.0.0";
     const report = buildSarifReport(outcomes, threshold, driverVersion);
     const serialized = JSON.stringify(report, null, 2);

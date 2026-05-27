@@ -130,7 +130,7 @@ export const runWorkflowAdvance = async (
       commandRequested: options.command,
       commandUsed: null,
       status: "skipped-no-command",
-      message: `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. Run 'scai content workflow list-commands ${selector.path ?? selector.itemId}' to see available commands.`,
+      message: `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. Run 'scai content workflow commands ${selector.path ?? selector.itemId}' to see available commands.`,
     };
     printWorkflowResult({
       logger,

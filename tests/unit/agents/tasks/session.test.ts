@@ -56,7 +56,11 @@ const SESSION = { baseUrl: "https://agentic-studio-euw.sitecorecloud.io" } as ne
 let stdout: ReturnType<typeof vi.spyOn>;
 let consolaInfo: ReturnType<typeof vi.spyOn>;
 
-const jsonOut = (): unknown => JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+const jsonOut = (): unknown => {
+  const raw = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+  if (raw && typeof raw === "object" && "data" in raw) return (raw as { data: unknown }).data;
+  return raw;
+};
 const humanLines = (): string[] => consolaInfo.mock.calls.map((c) => String(c[0]));
 
 beforeEach(() => {

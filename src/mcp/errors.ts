@@ -35,6 +35,8 @@ const NEXT_HINT_BY_CODE: Record<ScaiErrorCode, string> = {
   ENV_NOT_FOUND: "Confirm the environment name is configured in sitecoreai.cli.json.",
   DEPLOY_FAILED:
     "Inspect deploy logs via `deploy_run_inspect` and address the failure before retrying.",
+  DEPLOY_CANCELED:
+    "The deployment was canceled in XM Cloud Deploy before reaching Complete. Re-run the deploy if the cancel was unintended; otherwise treat as user-initiated rollback.",
   SITES_API_FAILED:
     "Confirm the bound environment has Sites API access and the access token is fresh.",
   BRIEF_API_FAILED:

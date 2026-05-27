@@ -134,7 +134,12 @@ export const runDeployDeploymentsWatch = async (
     : 60 * 60;
   const timeoutMs = timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined;
   let lastStatus: string | undefined;
+  // XM Cloud Deploy API status codes: 0=Created, 1=InProgress, 2=Complete,
+  // 3=Failed, 4=Canceled. `>= 2` is terminal; only `=== 2` is success.
   const isTerminal = (value?: number): boolean => value !== undefined && value >= 2;
+  const isFailureStatus = (value?: number): boolean => value === 3 || value === 4;
+  const describeFailureStatus = (value?: number): string =>
+    value === 3 ? "Failed" : value === 4 ? "Canceled" : `status code ${value ?? "-"}`;
 
   if (options.whatIf) {
     const deployment = await fetchDeploymentV3(
@@ -178,6 +183,26 @@ export const runDeployDeploymentsWatch = async (
 
     if (done) {
       printDeployResultWithContext(logger, context, "deploy.deployments.watch", deployment);
+      // Distinguish success (Complete) from terminal failure (Failed /
+      // Canceled). Pre-2026-05-27, every terminal status printed the
+      // green "reached terminal status" line, which hid real failures.
+      const primary = calculatedStatus ?? deploymentStatus;
+      if (isFailureStatus(primary)) {
+        throw createScaiError(
+          `Deployment ${deploymentId} reached terminal status ${describeFailureStatus(primary)} (${statusLine}).`,
+          primary === 4 ? "DEPLOY_CANCELED" : "DEPLOY_FAILED",
+          {
+            hint: "Open the deployment in XM Cloud Deploy to inspect the build / deploy / post-action logs for the underlying failure.",
+          }
+        );
+      }
+      if (options.waitForPostActions && isFailureStatus(postActionStatus)) {
+        throw createScaiError(
+          `Deployment ${deploymentId} post-actions reached terminal status ${describeFailureStatus(postActionStatus)} (${statusLine}).`,
+          "DEPLOY_FAILED",
+          { hint: "Inspect the post-action logs in XM Cloud Deploy." }
+        );
+      }
       logger.info(`Deployment reached terminal status for ${deploymentId}.`, "green");
       return;
     }

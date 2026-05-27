@@ -2,7 +2,7 @@
 "@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
-0.2.1 — cleanup release: verb normalization, envelope adoption, content mutations, `scai doctor`
+Cleanup release: verb normalization, envelope adoption, content mutations, `scai doctor`
 
 A consolidated batch of structural cleanups, surface normalizations,
 and new content-tree primitives. **Breaking CLI / MCP / SDK surfaces

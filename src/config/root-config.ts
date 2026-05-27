@@ -199,6 +199,7 @@ const RECIPE_ROOT_PAIRS: ReadonlyArray<
   ["contentItems", "contentItemsRoot"],
   ["headlessVariants", "headlessVariantsRoot"],
   ["availableRenderings", "availableRenderingsRoot"],
+  ["presentationStyles", "presentationStylesRoot"],
   ["enumerations", "enumerationsRoot"],
   ["placeholderSettings", "placeholderSettingsRoots"],
   ["placeholderSettingsCreate", "placeholderSettingsRoot"],

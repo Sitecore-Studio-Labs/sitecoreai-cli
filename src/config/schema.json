@@ -315,6 +315,10 @@
           "type": "string",
           "description": "Sitecore parent path under which `scai provision recipe compile|push` creates SXA Available Renderings section items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings). One section per `recipe.section` is emitted with all renderings in that section listed in the Renderings field."
         },
+        "presentationStylesRoot": {
+          "type": "string",
+          "description": "Sitecore parent path for the per-site SXA Headless Styles bucket (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Styles). Consumed by `scai provision recipe prune-defaults` to remove the OOTB style buckets SXA seeds here."
+        },
         "enumerationsRoot": {
           "type": "string",
           "description": "Sitecore parent path under which `scai provision recipe compile|push` creates EnumerationRecipe items (e.g. /sitecore/content/<siteCollection>/<site>/Presentation/Enumerations). Each enum lands as `<enumerationsRoot>/<EnumName>` with one child item per declared value. Required for EnumerationRecipe compilation, and for any recipe whose fields carry `sitecore.enumHandle`."
@@ -352,6 +356,7 @@
             "contentItems": { "type": "string" },
             "headlessVariants": { "type": "string" },
             "availableRenderings": { "type": "string" },
+            "presentationStyles": { "type": "string" },
             "enumerations": { "type": "string" },
             "placeholderSettings": {
               "type": "array",

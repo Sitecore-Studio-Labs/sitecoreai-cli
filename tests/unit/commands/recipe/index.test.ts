@@ -154,12 +154,15 @@ describe("createRecipeCommand — action delegation", () => {
       "/X/HV",
       "--available-renderings-root",
       "/X/AR",
+      "--presentation-styles-root",
+      "/X/Styles",
       "--quiet",
     ]);
     expect(taskMocks.runRecipePruneDefaults).toHaveBeenCalledWith(
       expect.objectContaining({
         headlessVariantsRoot: "/X/HV",
         availableRenderingsRoot: "/X/AR",
+        presentationStylesRoot: "/X/Styles",
       })
     );
   });

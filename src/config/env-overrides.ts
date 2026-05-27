@@ -150,6 +150,13 @@ export const applyEnvOverrides = (
   if (availableRenderingsRoot !== undefined) {
     overrides.availableRenderingsRoot = availableRenderingsRoot;
   }
+  // SXA Headless Styles root — read by `runRecipePruneDefaults` to
+  // wire the fourth prune group (OOTB style buckets that SXA seeds at
+  // `<presentationStylesRoot>/<bucket>`).
+  const presentationStylesRoot = getEnvOverride(envName, "PRESENTATION_STYLES_ROOT", includeGlobal);
+  if (presentationStylesRoot !== undefined) {
+    overrides.presentationStylesRoot = presentationStylesRoot;
+  }
   // Enumerations root — required for EnumerationRecipe compilation
   // and for any field that carries `sitecore.enumHandle`.
   const enumerationsRoot = getEnvOverride(envName, "ENUMERATIONS_ROOT", includeGlobal);

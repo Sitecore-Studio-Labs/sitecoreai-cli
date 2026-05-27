@@ -207,7 +207,7 @@ const createPushCommand = (): Command => {
 
 const createPruneDefaultsCommand = (): Command => {
   const command = new Command("prune-defaults").description(
-    "Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), and Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved). Keeps the parent folders. Idempotent — missing items are skipped, not errored."
+    "Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored."
   );
 
   command.addOption(
@@ -226,6 +226,12 @@ const createPruneDefaultsCommand = (): Command => {
     new Option(
       "--content-items-root <path>",
       "Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--presentation-styles-root <path>",
+      "Override presentationStylesRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Styles)."
     )
   );
   addEnvironmentOption(command);

@@ -5,10 +5,10 @@
 `scai provision recipe prune-defaults`: also prune the SXA Headless OOTB
 `Presentation/Styles` buckets
 
-Adds a fourth prune group covering the 11 default style buckets SXA
+Adds a fourth prune group covering the 12 default style buckets SXA
 seeds under `<site>/Presentation/Styles` (Spacing, Add Highlight,
 Content Alignment, Background Color, Background Layout, Navigation,
-Link List, Rich Text, Promo, Image, Common Container). Parent
+Link List, Rich Text, Promo, Image, Common, Container). Parent
 `Styles` folder is preserved; only the named children are removed.
 Behaviour mirrors the existing three groups — idempotent, tolerant
 of the concurrent-delete race, names case-and-space exact (mismatches

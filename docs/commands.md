@@ -7728,7 +7728,7 @@ scai provision recipe [options] [command]
 - [`scai provision recipe diff`](#scai-provision-recipe-diff) — Show what `recipe push` would change — read-only diff against a tenant. Compiles recipes in-memory; never mutates.
 - [`scai provision recipe plan`](#scai-provision-recipe-plan) — Plan an Operation IR push against a tenant — read-then-diff, no mutations
 - [`scai provision recipe push`](#scai-provision-recipe-push) — Apply recipes to a tenant. Compiles in-memory and runs the executor with idempotency + best-effort rollback.
-- [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
+- [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
 
 #### scai provision recipe compile
 
@@ -7839,7 +7839,7 @@ scai provision recipe push [options]
 
 #### scai provision recipe prune-defaults
 
-Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
+Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
 
 ```
 scai provision recipe prune-defaults [options]

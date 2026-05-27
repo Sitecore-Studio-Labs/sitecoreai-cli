@@ -33,8 +33,8 @@ const ROOTS = {
   presentationStylesRoot: "/sitecore/content/sandbox-collection/sandbox/Presentation/Styles",
 };
 
-// 4 AR + 7 HV + 5 Data + 11 Styles = 27 total prune targets.
-const TOTAL_TARGETS = 27;
+// 4 AR + 7 HV + 5 Data + 12 Styles = 28 total prune targets.
+const TOTAL_TARGETS = 28;
 
 const fakeRemoteItem = (path: string, itemId: string): RemoteItem => ({
   itemId,
@@ -114,9 +114,8 @@ describe("pruneDefaultsAgainstClient", () => {
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.availableRenderingsRoot}/Navigation`);
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.headlessVariantsRoot}/LinkList`);
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.contentItemsRoot}/Images`);
-    expect(missing.map((a) => a.path)).toContain(
-      `${ROOTS.presentationStylesRoot}/Common Container`
-    );
+    expect(missing.map((a) => a.path)).toContain(`${ROOTS.presentationStylesRoot}/Common`);
+    expect(missing.map((a) => a.path)).toContain(`${ROOTS.presentationStylesRoot}/Container`);
     expect(client.deletes).toHaveLength(presentPaths.length);
     // Deletes go by itemId so we don't re-resolve the path inside the
     // mutation.
@@ -286,7 +285,8 @@ describe("pruneDefaultsAgainstClient", () => {
         "Add Highlight",
         "Background Color",
         "Background Layout",
-        "Common Container",
+        "Common",
+        "Container",
         "Content Alignment",
         "Image",
         "Link List",

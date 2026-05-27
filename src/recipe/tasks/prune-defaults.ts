@@ -74,7 +74,8 @@ const DEFAULT_PRUNE_TARGETS = {
     "Rich Text",
     "Promo",
     "Image",
-    "Common Container",
+    "Common",
+    "Container",
   ],
 } as const;
 

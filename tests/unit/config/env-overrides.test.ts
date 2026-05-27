@@ -36,6 +36,10 @@ const TOUCHED_KEYS = [
   "SITECOREAI_ENV_DEV_ENVIRONMENT_ID",
   "SITECOREAI_ENV_DEV_TEMPLATES_ROOT",
   "SITECOREAI_ENV_DEV_RENDERINGS_ROOT",
+  "SITECOREAI_ENV_DEV_HEADLESS_VARIANTS_ROOT",
+  "SITECOREAI_ENV_DEV_AVAILABLE_RENDERINGS_ROOT",
+  "SITECOREAI_ENV_DEV_CONTENT_ITEMS_ROOT",
+  "SITECOREAI_ENV_DEV_PRESENTATION_STYLES_ROOT",
   "SITECOREAI_ENV_QA_2_ALLOW_WRITE",
   "SITECOREAI_ALLOW_WRITE",
   "SITECOREAI_CM_HOST",
@@ -187,6 +191,20 @@ describe("applyEnvOverrides — identity/token/root fields", () => {
     const result = applyEnvOverrides("dev", base, true);
     expect(result.templatesRoot).toBe("/sitecore/templates/X");
     expect(result.renderingsRoot).toBe("/sitecore/layout/X");
+  });
+
+  it("merges the per-site prune-defaults roots from scoped vars", () => {
+    process.env.SITECOREAI_ENV_DEV_HEADLESS_VARIANTS_ROOT = "/X/HV";
+    process.env.SITECOREAI_ENV_DEV_AVAILABLE_RENDERINGS_ROOT = "/X/AR";
+    process.env.SITECOREAI_ENV_DEV_CONTENT_ITEMS_ROOT = "/X/Data";
+    process.env.SITECOREAI_ENV_DEV_PRESENTATION_STYLES_ROOT = "/X/Styles";
+    const result = applyEnvOverrides("dev", base, true);
+    expect(result).toMatchObject({
+      headlessVariantsRoot: "/X/HV",
+      availableRenderingsRoot: "/X/AR",
+      contentItemsRoot: "/X/Data",
+      presentationStylesRoot: "/X/Styles",
+    });
   });
 
   it("preserves the existing env fields and only layers overrides on top", () => {

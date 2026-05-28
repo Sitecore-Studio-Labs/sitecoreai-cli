@@ -4,7 +4,7 @@ import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   isSystemPath,
   normalizeItemId,
   printReport,
@@ -119,7 +119,7 @@ export const runCleanupVersionsPrune = async (
 
   const { envName, root, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(root, envName, options.allowWrite, "cleanup-versions-prune");
+    ensureAllowWrite(root, envName, options.allowWrite, "cleanup-versions-prune");
   }
 
   const concurrency = options.concurrency ?? 4;

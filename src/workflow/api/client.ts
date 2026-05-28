@@ -78,7 +78,7 @@ export interface AssignedItemSummary {
 /**
  * Full structure of one workflow definition — states, per-state commands
  * (with Next state), per-state actions, per-command validations. Backs
- * the workflow-definition mode of `scai content workflow inspect`.
+ * the workflow-definition mode of `scai content workflow get`.
  *
  * Action children of a state are anything whose template is NOT `State`,
  * `Command`, or `Workflow Folder` — typically Webhook Submit/Validation

@@ -5,4 +5,4 @@
  * `src/recipe/api/*` is self-contained and can be mocked at one
  * predictable seam in tests.
  */
-export { getAccessToken } from "@/serialization/api/auth";
+export { getAccessToken } from "@/auth";

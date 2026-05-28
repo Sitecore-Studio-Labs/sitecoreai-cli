@@ -4,16 +4,13 @@ import {
   writeRootConfigurationFile,
 } from "@/config/root-config";
 import type { BrandCredential } from "@/config/types";
-import {
-  DEFAULT_SITECORE_API_AUDIENCE,
-  requestClientCredentialsToken,
-} from "@/serialization/api/auth";
+import { DEFAULT_SITECORE_API_AUDIENCE, requestClientCredentialsToken } from "@/auth";
 import { createScaiError } from "@/shared/errors";
 import { getBrandClientSecret, setBrandClientSecret, setBrandToken } from "@/shared/keychain";
 import { toLogger, inputError } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import { promptConfirm, promptSecret, promptText } from "@/shared/prompt";
-import { extractScopes } from "../api/auth";
+import { extractScopes } from "@/shared/jwt";
 import { resolveBrandOrgId } from "../credential";
 
 export interface BrandLoginOptions extends CommonOptions {

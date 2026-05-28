@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BRAND_REQUIRED_SCOPES, extractScopes, hasBrandScopes } from "../../../src/brand/api/auth";
+import { BRAND_REQUIRED_SCOPES, hasBrandScopes } from "../../../src/brand/api/auth";
+import { extractScopes } from "../../../src/shared/jwt";
 
 vi.mock("../../../src/shared/keychain", () => ({
   getBrandClientSecret: vi.fn(),
   getBrandToken: vi.fn(),
   setBrandToken: vi.fn(),
+  clearBrandToken: vi.fn(),
 }));
 vi.mock("../../../src/serialization/api/auth", () => ({
   requestClientCredentialsToken: vi.fn(),
@@ -148,6 +150,100 @@ describe("brand/api/auth — acquireBrandToken env-var fallback", () => {
     await expect(acquireBrandToken({ orgId: "org_x" })).rejects.toMatchObject({
       code: "AUTH_BRAND_REQUIRED",
     });
+  });
+});
+
+/**
+ * Cached brand token expiry — Sitecore returns 403 "Token has expired"
+ * (not 401) for stale Bearers, and `requestBrandApi`'s re-mint path
+ * only triggers on 401. Pre-gating expired tokens in `acquireBrandToken`
+ * is the load-bearing fix; without it, a stale keychain entry surfaces
+ * as a hard BRAND_API_FAILED on every call until manually cleared.
+ */
+describe("brand/api/auth — acquireBrandToken cache expiry gate", () => {
+  const BRAND_ENV_KEYS = ["SITECOREAI_BRAND_CLIENT_ID", "SITECOREAI_BRAND_CLIENT_SECRET"] as const;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  const makeJwtWithExp = (offsetSeconds: number): string => {
+    const nowS = Math.floor(Date.now() / 1000);
+    return makeJwt({ scope: "ai.org.br:gen", exp: nowS + offsetSeconds });
+  };
+
+  beforeEach(async () => {
+    for (const key of BRAND_ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    const keychain = await import("../../../src/shared/keychain");
+    const serializationAuth = await import("../../../src/serialization/api/auth");
+    vi.mocked(keychain.getBrandClientSecret).mockReset();
+    vi.mocked(keychain.getBrandToken).mockReset();
+    vi.mocked(keychain.setBrandToken).mockReset();
+    vi.mocked(keychain.clearBrandToken).mockReset();
+    vi.mocked(serializationAuth.requestClientCredentialsToken).mockReset();
+  });
+
+  afterEach(() => {
+    for (const key of BRAND_ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  });
+
+  it("returns a cached token that is still well within its lifetime", async () => {
+    const keychain = await import("../../../src/shared/keychain");
+    const { acquireBrandToken } = await import("../../../src/brand/api/auth");
+
+    const fresh = makeJwtWithExp(3600);
+    vi.mocked(keychain.getBrandToken).mockResolvedValue(fresh);
+
+    const token = await acquireBrandToken({ orgId: "org_x" });
+
+    expect(token).toBe(fresh);
+    expect(keychain.clearBrandToken).not.toHaveBeenCalled();
+  });
+
+  it("evicts an expired cached token and mints a fresh one", async () => {
+    process.env.SITECOREAI_BRAND_CLIENT_ID = "env-cid";
+    process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
+
+    const keychain = await import("../../../src/shared/keychain");
+    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const { acquireBrandToken } = await import("../../../src/brand/api/auth");
+
+    vi.mocked(keychain.getBrandToken).mockResolvedValue(makeJwtWithExp(-60));
+    vi.mocked(serializationAuth.requestClientCredentialsToken).mockResolvedValue({
+      accessToken: "freshly.minted.token",
+      expiresIn: 3600,
+    });
+
+    const token = await acquireBrandToken({ orgId: "org_x" });
+
+    expect(token).toBe("freshly.minted.token");
+    expect(keychain.clearBrandToken).toHaveBeenCalledWith("org_x");
+    expect(serializationAuth.requestClientCredentialsToken).toHaveBeenCalled();
+  });
+
+  it("treats a token inside the 60s safety margin as expired", async () => {
+    process.env.SITECOREAI_BRAND_CLIENT_ID = "env-cid";
+    process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
+
+    const keychain = await import("../../../src/shared/keychain");
+    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const { acquireBrandToken } = await import("../../../src/brand/api/auth");
+
+    // 30s left — inside the 60s margin, so this should re-mint even
+    // though the token isn't yet technically expired.
+    vi.mocked(keychain.getBrandToken).mockResolvedValue(makeJwtWithExp(30));
+    vi.mocked(serializationAuth.requestClientCredentialsToken).mockResolvedValue({
+      accessToken: "remint-in-margin",
+      expiresIn: 3600,
+    });
+
+    const token = await acquireBrandToken({ orgId: "org_x" });
+
+    expect(token).toBe("remint-in-margin");
+    expect(keychain.clearBrandToken).toHaveBeenCalledWith("org_x");
   });
 });
 

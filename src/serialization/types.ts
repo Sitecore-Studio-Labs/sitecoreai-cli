@@ -1,7 +1,17 @@
 import { ItemPath } from "./item-path";
 
+/**
+ * Field filter on a serialization module's `items.excludedFields`. The
+ * canonical wire shape is camelCase `fieldId`; legacy / hand-edited
+ * configs sometimes use the PascalCase `FieldId` alias. Declaring
+ * both here formalizes what `normalizeFieldFilters()` already had to
+ * do with an inline cast, and lets the normalizer read the alias
+ * without `as unknown as`.
+ */
 export type FieldFilter = {
-  fieldId: string;
+  fieldId?: string;
+  /** Legacy PascalCase alias for `fieldId`. Normalized at load time. */
+  FieldId?: string;
   description?: string;
 };
 

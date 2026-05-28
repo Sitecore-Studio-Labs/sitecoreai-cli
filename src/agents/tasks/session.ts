@@ -5,10 +5,10 @@
  */
 import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionCode } from "@/shared/region";
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
+import { requestClientCredentialsToken } from "@/auth";
 import { loginAgents, logoutAgents } from "../session";
 import { agentsRequest } from "../api/request";
-import { prepare, toLogger, writeJson, type RunAgentsBaseOptions } from "./shared";
+import { prepare, toLogger, writeAgentsEnvelope, type RunAgentsBaseOptions } from "./shared";
 
 export const runAgentsLogin = async (
   options: RunAgentsBaseOptions & { region?: string }
@@ -28,7 +28,7 @@ export const runAgentsLogin = async (
   logger.info("Opening a browser — sign in to Sitecore in the window…", "cyan");
   const result = await loginAgents({ envName, region });
   if (logger.isJson()) {
-    writeJson({ ok: true, envName, ...result });
+    writeAgentsEnvelope("login", options, { ok: true, envName, ...result });
     return;
   }
   logger.info(
@@ -42,7 +42,7 @@ export const runAgentsLogout = async (options: RunAgentsBaseOptions): Promise<vo
   const { envName } = resolveEnvironment(options);
   const cleared = await logoutAgents(envName);
   if (logger.isJson()) {
-    writeJson({ ok: cleared, envName });
+    writeAgentsEnvelope("logout", options, { ok: cleared, envName });
     return;
   }
   logger.info(
@@ -61,7 +61,12 @@ export const runAgentsStatus = async (options: RunAgentsBaseOptions): Promise<vo
   );
   const valid = refresh?.success !== false;
   if (logger.isJson()) {
-    writeJson({ envName, endpoint: session.baseUrl, valid, expiresAt: refresh?.expiresAt });
+    writeAgentsEnvelope("status", options, {
+      envName,
+      endpoint: session.baseUrl,
+      valid,
+      expiresAt: refresh?.expiresAt,
+    });
     return;
   }
   logger.info(`Agentic Studio — ${envName}`, "cyan");

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runWebhookList } from "../../../../src/webhooks/tasks/list";
-import { runWebhookInspect } from "../../../../src/webhooks/tasks/inspect";
+import { runWebhookGet } from "../../../../src/webhooks/tasks/get";
 import { runWebhookCreate } from "../../../../src/webhooks/tasks/create";
 import { runWebhookDelete } from "../../../../src/webhooks/tasks/delete";
-import { runWebhookEventTypes } from "../../../../src/webhooks/tasks/event-types";
+import { runWebhookEvents } from "../../../../src/webhooks/tasks/events";
 import * as sharedModule from "../../../../src/webhooks/tasks/shared";
 import * as allowWriteModule from "../../../../src/policy/allow-write";
 import type { WebhookApiClient } from "../../../../src/webhooks/api/client";
@@ -77,7 +77,7 @@ describe("runWebhookList", () => {
   });
 });
 
-describe("runWebhookEventTypes", () => {
+describe("runWebhookEvents", () => {
   it("returns the full catalog when no category is provided", async () => {
     const eventTypes = [
       {
@@ -97,7 +97,7 @@ describe("runWebhookEventTypes", () => {
     const client = stubClient({ listEventTypes });
     installClient(client);
 
-    const result = await runWebhookEventTypes({ json: true });
+    const result = await runWebhookEvents({ json: true });
 
     expect(result.eventTypes).toEqual(eventTypes);
     expect(listEventTypes).toHaveBeenCalledWith(undefined);
@@ -108,18 +108,18 @@ describe("runWebhookEventTypes", () => {
     const client = stubClient({ listEventTypes });
     installClient(client);
 
-    await runWebhookEventTypes({ category: "publish", json: true });
+    await runWebhookEvents({ category: "publish", json: true });
 
     expect(listEventTypes).toHaveBeenCalledWith({ category: "publish" });
   });
 });
 
-describe("runWebhookInspect", () => {
+describe("runWebhookGet", () => {
   it("returns null when the webhook isn't found", async () => {
     const client = stubClient({ getEventHandler: vi.fn().mockResolvedValue(null) });
     installClient(client);
 
-    const result = await runWebhookInspect({
+    const result = await runWebhookGet({
       webhook: "/sitecore/system/Webhooks/Missing",
       json: true,
     });
@@ -146,7 +146,7 @@ describe("runWebhookInspect", () => {
     const client = stubClient({ getEventHandler: vi.fn().mockResolvedValue(detail) });
     installClient(client);
 
-    await runWebhookInspect({ webhook: "/sitecore/system/Webhooks/X", json: true });
+    await runWebhookGet({ webhook: "/sitecore/system/Webhooks/X", json: true });
 
     expect(client.getEventHandler).toHaveBeenCalledWith({
       path: "/sitecore/system/Webhooks/X",

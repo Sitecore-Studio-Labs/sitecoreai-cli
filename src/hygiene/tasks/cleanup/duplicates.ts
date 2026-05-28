@@ -6,7 +6,7 @@ import { runAuditReferences, type ReferenceReport } from "../audit/references";
 import {
   type HygieneCommonOptions,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveTenant,
   toLogger,
@@ -180,7 +180,7 @@ export const runCleanupDuplicates = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-duplicates");
+    ensureAllowWrite(rootConfig, envName, options.allowWrite, "cleanup-duplicates");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no items will be deleted.", "yellow");
   }

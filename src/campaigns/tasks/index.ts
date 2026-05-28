@@ -1,4 +1,5 @@
 import { Logger } from "@/shared/logger";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { resolveCampaignClient } from "../client";
 import {
   createProject,
@@ -73,8 +74,25 @@ const prepareCampaignClient = async (
   return { logger, orgId, client };
 };
 
-const writeJson = (value: unknown): void => {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+/**
+ * Emit a canonical `ScaiEnvelope` under `--json`. Each call site
+ * passes the command suffix (`list`, `get`, `task.create`, …) — the
+ * helper prefixes it with `campaign.` and threads through the env
+ * name from the options bag.
+ */
+const writeCampaignEnvelope = (
+  command: string,
+  options: RunCampaignBaseOptions,
+  data: unknown,
+  extra?: Record<string, unknown>
+): void => {
+  const envelope = buildScaiEnvelope({
+    command: `campaign.${command}`,
+    environment: options.environmentName ?? null,
+    data,
+    extra,
+  });
+  process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
 };
 
 export const runCampaignList = async (
@@ -83,7 +101,7 @@ export const runCampaignList = async (
   const { logger, client } = await prepareCampaignClient(options);
   const result = await listProjects(client, { limit: options.limit });
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("list", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -97,13 +115,13 @@ export const runCampaignList = async (
   return result;
 };
 
-export const runCampaignShow = async (
+export const runCampaignGet = async (
   options: RunCampaignBaseOptions & { campaignId: string }
 ): Promise<Project> => {
   const { logger, client } = await prepareCampaignClient(options);
   const project = await getProject(client, options.campaignId);
   if (logger.isJson()) {
-    writeJson(project);
+    writeCampaignEnvelope("get", options, project);
     return project;
   }
   logger.info(`Campaign ${project.id}`, "cyan");
@@ -128,7 +146,7 @@ export const runCampaignUsers = async (
   const { logger, client } = await prepareCampaignClient(options);
   const result = await listUsers(client);
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("users", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -148,13 +166,13 @@ export const runCampaignCreate = async (
   const { logger, client } = await prepareCampaignClient(options);
   if (options.whatIf) {
     const plan = { plan: options.input };
-    if (logger.isJson()) writeJson(plan);
+    if (logger.isJson()) writeCampaignEnvelope("create", options, plan, { whatIf: true });
     else logger.info(`Would create campaign '${options.input.name}'.`, "yellow");
     return plan;
   }
   const created = await createProject(client, options.input);
   if (logger.isJson()) {
-    writeJson(created);
+    writeCampaignEnvelope("create", options, created);
     return created;
   }
   logger.info(`Created campaign ${created.id} (${created.name}).`, "green");
@@ -171,7 +189,8 @@ export const runDeliverableCreate = async (
   const { logger, client } = await prepareCampaignClient(options);
   if (options.whatIf) {
     const plan = { plan: options.input };
-    if (logger.isJson()) writeJson(plan);
+    if (logger.isJson())
+      writeCampaignEnvelope("deliverable.create", options, plan, { whatIf: true });
     else
       logger.info(
         `Would create deliverable '${options.input.name}' on campaign ${options.campaignId}.`,
@@ -181,7 +200,7 @@ export const runDeliverableCreate = async (
   }
   const created = await createDeliverable(client, options.campaignId, options.input);
   if (logger.isJson()) {
-    writeJson(created);
+    writeCampaignEnvelope("deliverable.create", options, created);
     return created;
   }
   logger.info(`Created deliverable ${created.id} (${created.name}).`, "green");
@@ -194,7 +213,7 @@ export const runTaskList = async (
   const { logger, client } = await prepareCampaignClient(options);
   const result = await listTasks(client, options.campaignId, options.deliverableId);
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("task.list", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -208,7 +227,7 @@ export const runTaskList = async (
   return result;
 };
 
-export const runTaskShow = async (
+export const runTaskGet = async (
   options: RunCampaignBaseOptions & {
     campaignId: string;
     deliverableId: string;
@@ -218,7 +237,7 @@ export const runTaskShow = async (
   const { logger, client } = await prepareCampaignClient(options);
   const task = await getTask(client, options.campaignId, options.deliverableId, options.taskId);
   if (logger.isJson()) {
-    writeJson(task);
+    writeCampaignEnvelope("task.get", options, task);
     return task;
   }
   logger.info(`Task ${task.id}`, "cyan");
@@ -241,7 +260,7 @@ export const runTaskCreate = async (
   const { logger, client } = await prepareCampaignClient(options);
   if (options.whatIf) {
     const plan = { plan: options.input };
-    if (logger.isJson()) writeJson(plan);
+    if (logger.isJson()) writeCampaignEnvelope("task.create", options, plan, { whatIf: true });
     else logger.info(`Would create task '${options.input.name}'.`, "yellow");
     return plan;
   }
@@ -252,7 +271,7 @@ export const runTaskCreate = async (
     options.input
   );
   if (logger.isJson()) {
-    writeJson(created);
+    writeCampaignEnvelope("task.create", options, created);
     return created;
   }
   logger.info(`Created task ${created.id} (${created.name}).`, "green");
@@ -271,7 +290,7 @@ export const runTaskUpdate = async (
   const { logger, client } = await prepareCampaignClient(options);
   if (options.whatIf) {
     const plan = { plan: { id: options.taskId, input: options.input } };
-    if (logger.isJson()) writeJson(plan);
+    if (logger.isJson()) writeCampaignEnvelope("task.update", options, plan, { whatIf: true });
     else logger.info(`Would PUT-replace task ${options.taskId}.`, "yellow");
     return plan;
   }
@@ -283,7 +302,7 @@ export const runTaskUpdate = async (
     options.input
   );
   if (logger.isJson()) {
-    writeJson(updated);
+    writeCampaignEnvelope("task.update", options, updated);
     return updated;
   }
   logger.info(`Updated task ${updated.id}.`, "green");
@@ -303,7 +322,7 @@ export const runCampaignDelete = async (
   if (options.whatIf) {
     const plan = { id: options.campaignId, deleted: false as const };
     if (logger.isJson()) {
-      writeJson({ plan });
+      writeCampaignEnvelope("delete", options, { plan }, { whatIf: true });
     } else {
       logger.info(`Would delete campaign ${options.campaignId}.`, "yellow");
     }
@@ -312,7 +331,7 @@ export const runCampaignDelete = async (
   await deleteProject(client, options.campaignId);
   const result = { id: options.campaignId, deleted: true };
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("delete", options, result);
     return result;
   }
   logger.info(`Deleted campaign ${options.campaignId}.`, "green");
@@ -336,7 +355,7 @@ export const runDeliverableDelete = async (
   if (options.whatIf) {
     const plan = { id: options.deliverableId, deleted: false as const };
     if (logger.isJson()) {
-      writeJson({ plan });
+      writeCampaignEnvelope("deliverable.delete", options, { plan }, { whatIf: true });
     } else {
       logger.info(
         `Would delete deliverable ${options.deliverableId} on campaign ${options.campaignId}.`,
@@ -348,7 +367,7 @@ export const runDeliverableDelete = async (
   await deleteDeliverable(client, options.campaignId, options.deliverableId);
   const result = { id: options.deliverableId, deleted: true };
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("deliverable.delete", options, result);
     return result;
   }
   logger.info(`Deleted deliverable ${options.deliverableId}.`, "green");
@@ -373,7 +392,7 @@ export const runTaskDelete = async (
   if (options.whatIf) {
     const plan = { id: options.taskId, deleted: false as const };
     if (logger.isJson()) {
-      writeJson({ plan });
+      writeCampaignEnvelope("task.delete", options, { plan }, { whatIf: true });
     } else {
       logger.info(`Would delete task ${options.taskId}.`, "yellow");
     }
@@ -382,7 +401,7 @@ export const runTaskDelete = async (
   await deleteTask(client, options.campaignId, options.deliverableId, options.taskId);
   const result = { id: options.taskId, deleted: true };
   if (logger.isJson()) {
-    writeJson(result);
+    writeCampaignEnvelope("task.delete", options, result);
     return result;
   }
   logger.info(`Deleted task ${options.taskId}.`, "green");

@@ -26,6 +26,7 @@ export type ScaiErrorCode =
   | "NETWORK"
   | "ENV_NOT_FOUND"
   | "DEPLOY_FAILED"
+  | "DEPLOY_CANCELED"
   | "SITES_API_FAILED"
   | "BRAND_API_FAILED"
   | "BRIEF_API_FAILED"
@@ -109,6 +110,7 @@ const exitCodeFor = (code: ScaiErrorCode): number => {
     case "ENV_NOT_FOUND":
       return 5;
     case "DEPLOY_FAILED":
+    case "DEPLOY_CANCELED":
       return 6;
     case "SITES_API_FAILED":
     case "BRAND_API_FAILED":

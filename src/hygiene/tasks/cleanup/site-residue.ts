@@ -1,7 +1,7 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import {
   type HygieneCommonOptions,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   extractInternalRefs,
   normalizeItemId,
   printReport,
@@ -16,7 +16,7 @@ import {
   type SiteResidueReport,
 } from "../audit/site-residue";
 import { classifyReferenceKind, type ReferenceKind } from "../reference-kind";
-import { discoverSites } from "@/recipe/api/site-discovery";
+import { discoverSites } from "@/authoring";
 import type { HygieneApiClient } from "../../api/client";
 
 /**
@@ -182,7 +182,7 @@ export const runCleanupSiteResidue = async (
   const logger = toLogger(options);
   const { envName, environment, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-site-residue");
+    ensureAllowWrite(rootConfig, envName, options.allowWrite, "cleanup-site-residue");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no orphan trees will be deleted.", "yellow");
   }

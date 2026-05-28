@@ -7,7 +7,7 @@ import {
 } from "../audit/template-dependencies";
 import {
   type HygieneCommonOptions,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveTenant,
   toLogger,
@@ -205,7 +205,7 @@ export const runCleanupDeadTemplates = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite, "cleanup-dead-templates");
+    ensureAllowWrite(rootConfig, envName, options.allowWrite, "cleanup-dead-templates");
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no templates or folders will be deleted.", "yellow");
   }

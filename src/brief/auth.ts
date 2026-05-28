@@ -1,4 +1,4 @@
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import type { SitecoreApiClientOptions } from "@/auth";
 import { createApiAuth } from "@/auth/factory";
 import { resolveClientCredential } from "@/shared/client-credential";
 import { getBriefToken, setBriefToken } from "@/shared/keychain";

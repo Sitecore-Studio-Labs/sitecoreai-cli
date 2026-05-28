@@ -4,7 +4,7 @@ import {
   type HygieneCommonOptions,
   buildPathFilterStatement,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   isSystemPath,
   normalizeItemId,
   printReport,
@@ -96,7 +96,7 @@ export const runCleanupVersionsArchive = async (
 
   const { envName, root, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(root, envName, options.allowWrite);
+    ensureAllowWrite(root, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no versions will be archived.", "yellow");
   }

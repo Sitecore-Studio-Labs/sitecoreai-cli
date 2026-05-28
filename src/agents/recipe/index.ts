@@ -11,7 +11,7 @@
  * `agentRecipeKindByName` is the lookup the `agents-recipe` MCP tool and
  * the `scai agents sync` command dispatch through.
  */
-import { registerKind, type RecipeKind } from "@/sync";
+import { eraseKind, registerKind, type RecipeKind } from "@/sync";
 import { agentKind } from "./agent.kind";
 import { skillKind } from "./skill.kind";
 import { widgetKind } from "./widget.kind";
@@ -45,17 +45,17 @@ export type AgentKindName =
   | "html-template";
 
 /**
- * The Agentic Studio recipe kinds keyed by name. The value type is
- * erased to `RecipeKind<unknown>` here, exactly as `@/sync`'s own
- * registry does at its boundary.
+ * The Agentic Studio recipe kinds keyed by name. Values are erased to
+ * `RecipeKind<unknown>` via `eraseKind` because `RecipeKind<T>` is
+ * invariant in `T` and the map holds heterogeneous kinds.
  */
 export const agentRecipeKindByName: Record<AgentKindName, RecipeKind<unknown>> = {
-  agent: agentKind as unknown as RecipeKind<unknown>,
-  skill: skillKind as unknown as RecipeKind<unknown>,
-  widget: widgetKind as unknown as RecipeKind<unknown>,
-  "custom-mcp": customMcpKind as unknown as RecipeKind<unknown>,
-  schema: schemaKind as unknown as RecipeKind<unknown>,
-  "html-template": htmlTemplateKind as unknown as RecipeKind<unknown>,
+  agent: eraseKind(agentKind),
+  skill: eraseKind(skillKind),
+  widget: eraseKind(widgetKind),
+  "custom-mcp": eraseKind(customMcpKind),
+  schema: eraseKind(schemaKind),
+  "html-template": eraseKind(htmlTemplateKind),
 };
 
 /**

@@ -1,5 +1,5 @@
 import type { EnvironmentConfiguration } from "@/config/types";
-import { discoverSites } from "@/recipe/api/site-discovery";
+import { discoverSites } from "@/authoring";
 import { createScaiError } from "@/shared/errors";
 import { resolveItemPathsToIds } from "./path-resolver";
 

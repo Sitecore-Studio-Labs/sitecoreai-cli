@@ -1,11 +1,11 @@
 import { Logger } from "@/shared/logger";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { resolveBriefClient } from "../client";
 import {
   createBrief,
   deleteBrief,
   getBrief,
   listBriefs,
-  setBriefStatus,
   updateBrief,
   type CreateBriefInput,
 } from "../api/briefs";
@@ -41,7 +41,7 @@ import type { BriefApiClientOptions } from "../api/types";
  *
  * Read verbs:
  *   - `runBriefList`     — list briefs
- *   - `runBriefShow`     — read one brief by id
+ *   - `runBriefGet`     — read one brief by id
  *   - `runBriefTypes`    — list brief types
  *   - `runBriefTypeGet`  — read one brief type by id
  *   - `runBriefTodosList`— list to-dos (optionally filtered to a brief)
@@ -51,7 +51,7 @@ import type { BriefApiClientOptions } from "../api/types";
  *   - `runBriefTypeCreate` / `runBriefTypeUpdate` / `runBriefTypeDelete`
  *
  * Brief instance write verbs:
- *   - `runBriefSetStatus`  — move a brief through its workflow status
+ *   - `runBriefUpdate`     — partial PUT of a brief; pass `patch.status` to move workflow
  *   - `runBriefDelete`     — delete a brief (SDK `deleteBrief` verified)
  *   - `runBriefCommentAdd` — post a comment to a brief (UNVERIFIED body)
  *
@@ -90,8 +90,25 @@ const prepareBriefClient = async (
   return { logger, orgId, client };
 };
 
-const writeJson = (value: unknown): void => {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+/**
+ * Emit a canonical `ScaiEnvelope` under `--json`. The brief tasks are
+ * org-scoped, not env-scoped on the wire; we still pass the resolved
+ * env name through `environment` so consumers can tell what config
+ * profile produced the output.
+ */
+const writeBriefEnvelope = (
+  command: string,
+  options: RunBriefBaseOptions,
+  data: unknown,
+  extra?: Record<string, unknown>
+): void => {
+  const envelope = buildScaiEnvelope({
+    command: `brief.${command}`,
+    environment: options.environmentName ?? null,
+    data,
+    extra,
+  });
+  process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
 };
 
 export const runBriefList = async (
@@ -100,7 +117,9 @@ export const runBriefList = async (
   const { logger, client } = await prepareBriefClient(options);
   const result = await listBriefs(client, { limit: options.limit, locale: options.locale });
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("list", options, result, {
+      totalCount: result.totalCount,
+    });
     return result;
   }
   if (result.data.length === 0) {
@@ -114,13 +133,13 @@ export const runBriefList = async (
   return result;
 };
 
-export const runBriefShow = async (
+export const runBriefGet = async (
   options: RunBriefBaseOptions & { briefId: string }
 ): Promise<Brief> => {
   const { logger, client } = await prepareBriefClient(options);
   const brief = await getBrief(client, options.briefId);
   if (logger.isJson()) {
-    writeJson(brief);
+    writeBriefEnvelope("get", options, brief);
     return brief;
   }
   logger.info(`Brief ${brief.id}`, "cyan");
@@ -143,7 +162,7 @@ export const runBriefTypes = async (
   const { logger, client } = await prepareBriefClient(options);
   const result = await listBriefTypes(client);
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("types", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -157,40 +176,13 @@ export const runBriefTypes = async (
   return result;
 };
 
-export const runBriefSetStatus = async (
-  options: RunBriefBaseOptions & {
-    briefId: string;
-    status: BriefStatus;
-    whatIf?: boolean;
-  }
-): Promise<{ id: string; status: BriefStatus } | { plan: { id: string; status: BriefStatus } }> => {
-  const { logger, client } = await prepareBriefClient(options);
-  if (options.whatIf) {
-    const plan = { plan: { id: options.briefId, status: options.status } };
-    if (logger.isJson()) {
-      writeJson(plan);
-    } else {
-      logger.info(`Would set brief ${options.briefId} status to '${options.status}'.`, "yellow");
-    }
-    return plan;
-  }
-  await setBriefStatus(client, options.briefId, options.status);
-  const result = { id: options.briefId, status: options.status };
-  if (logger.isJson()) {
-    writeJson(result);
-    return result;
-  }
-  logger.info(`Brief ${options.briefId} status set to '${options.status}'.`, "green");
-  return result;
-};
-
 export const runBriefTypeGet = async (
   options: RunBriefBaseOptions & { briefTypeId: string }
 ): Promise<BriefType> => {
   const { logger, client } = await prepareBriefClient(options);
   const type = await getBriefType(client, options.briefTypeId);
   if (logger.isJson()) {
-    writeJson(type);
+    writeBriefEnvelope("type.get", options, type);
     return type;
   }
   logger.info(`Brief type ${type.id}`, "cyan");
@@ -216,7 +208,7 @@ export const runBriefTypeCreate = async (
   if (options.whatIf) {
     const plan = { plan: options.input };
     if (logger.isJson()) {
-      writeJson(plan);
+      writeBriefEnvelope("type.create", options, plan, { whatIf: true });
     } else {
       logger.info(`Would create brief type '${options.input.name}'.`, "yellow");
       logger.info(`  Label:       ${JSON.stringify(options.input.label)}`);
@@ -227,7 +219,7 @@ export const runBriefTypeCreate = async (
   }
   const created = await createBriefType(client, options.input);
   if (logger.isJson()) {
-    writeJson(created);
+    writeBriefEnvelope("type.create", options, created);
     return created;
   }
   logger.info(`Created brief type ${created.id} (${created.name}).`, "green");
@@ -245,7 +237,7 @@ export const runBriefTypeUpdate = async (
   if (options.whatIf) {
     const plan = { plan: { id: options.briefTypeId, input: options.input } };
     if (logger.isJson()) {
-      writeJson(plan);
+      writeBriefEnvelope("type.update", options, plan, { whatIf: true });
     } else {
       logger.info(`Would PUT-replace brief type ${options.briefTypeId}.`, "yellow");
       logger.info(`  Name:        ${options.input.name}`);
@@ -255,7 +247,7 @@ export const runBriefTypeUpdate = async (
   }
   await updateBriefType(client, options.briefTypeId, options.input);
   if (logger.isJson()) {
-    writeJson({ id: options.briefTypeId });
+    writeBriefEnvelope("type.update", options, { id: options.briefTypeId });
     return { id: options.briefTypeId };
   }
   logger.info(`Updated brief type ${options.briefTypeId}.`, "green");
@@ -269,7 +261,7 @@ export const runBriefTypeDelete = async (
   if (options.whatIf) {
     const plan = { id: options.briefTypeId, deleted: false as const };
     if (logger.isJson()) {
-      writeJson({ plan });
+      writeBriefEnvelope("type.delete", options, plan, { whatIf: true });
     } else {
       logger.info(`Would delete brief type ${options.briefTypeId}.`, "yellow");
     }
@@ -278,7 +270,7 @@ export const runBriefTypeDelete = async (
   await deleteBriefType(client, options.briefTypeId);
   const result = { id: options.briefTypeId, deleted: true };
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("type.delete", options, result);
     return result;
   }
   logger.info(`Deleted brief type ${options.briefTypeId}.`, "green");
@@ -296,7 +288,7 @@ export const runBriefTodosList = async (
     limit: options.limit,
   });
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("todos", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -322,7 +314,7 @@ export const runBriefCommentsList = async (
     limit: options.limit,
   });
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("comments", options, result, { totalCount: result.totalCount });
     return result;
   }
   if (result.data.length === 0) {
@@ -351,7 +343,7 @@ export const runBriefCreate = async (
   if (options.whatIf) {
     const plan = { plan: options.input };
     if (logger.isJson()) {
-      writeJson(plan);
+      writeBriefEnvelope("create", options, plan, { whatIf: true });
     } else {
       logger.info(`Would create brief '${options.input.name}'.`, "yellow");
       logger.info(`  Brief type:  ${options.input.briefTypeId}`);
@@ -363,7 +355,7 @@ export const runBriefCreate = async (
   }
   const created = await createBrief(client, options.input);
   if (logger.isJson()) {
-    writeJson(created);
+    writeBriefEnvelope("create", options, created);
     return created;
   }
   logger.info(`Created brief ${created.id} (${created.name}).`, "green");
@@ -391,7 +383,7 @@ export const runBriefUpdate = async (
   if (options.whatIf) {
     const plan = { plan: { id: options.briefId, patch: options.patch } };
     if (logger.isJson()) {
-      writeJson(plan);
+      writeBriefEnvelope("update", options, plan, { whatIf: true });
     } else {
       logger.info(`Would PUT-update brief ${options.briefId}.`, "yellow");
       const keys = Object.keys(options.patch);
@@ -401,7 +393,7 @@ export const runBriefUpdate = async (
   }
   await updateBrief(client, options.briefId, options.patch);
   if (logger.isJson()) {
-    writeJson({ id: options.briefId });
+    writeBriefEnvelope("update", options, { id: options.briefId });
     return { id: options.briefId };
   }
   logger.info(`Updated brief ${options.briefId}.`, "green");
@@ -420,7 +412,7 @@ export const runBriefDelete = async (
   if (options.whatIf) {
     const plan = { id: options.briefId, deleted: false as const };
     if (logger.isJson()) {
-      writeJson({ plan });
+      writeBriefEnvelope("delete", options, { plan }, { whatIf: true });
     } else {
       logger.info(`Would delete brief ${options.briefId}.`, "yellow");
     }
@@ -429,7 +421,7 @@ export const runBriefDelete = async (
   await deleteBrief(client, options.briefId);
   const result = { id: options.briefId, deleted: true };
   if (logger.isJson()) {
-    writeJson(result);
+    writeBriefEnvelope("delete", options, result);
     return result;
   }
   logger.info(`Deleted brief ${options.briefId}.`, "green");
@@ -447,7 +439,7 @@ export const runBriefCommentAdd = async (
   if (options.whatIf) {
     const plan = { plan: { briefId: options.briefId, text: options.text } };
     if (logger.isJson()) {
-      writeJson(plan);
+      writeBriefEnvelope("comment.add", options, plan, { whatIf: true });
     } else {
       logger.info(`Would post a comment to brief ${options.briefId}.`, "yellow");
     }
@@ -458,7 +450,7 @@ export const runBriefCommentAdd = async (
     text: options.text,
   });
   if (logger.isJson()) {
-    writeJson(created);
+    writeBriefEnvelope("comment.add", options, created);
     return created;
   }
   logger.info(`Posted comment ${created.id} to brief ${options.briefId}.`, "green");

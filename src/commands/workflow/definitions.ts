@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import { runWorkflowListDefs } from "@/workflow/tasks/list-defs";
+import { runWorkflowDefinitions } from "@/workflow/tasks/definitions";
 import { addWorkflowReadOptions } from "./shared";
 
-export const createWorkflowListDefsCommand = (): Command => {
-  const command = new Command("list-defs")
+export const createWorkflowDefinitionsCommand = (): Command => {
+  const command = new Command("definitions")
     .description(
       "List workflow definitions on the tenant (walks /sitecore/system/Workflows by default)"
     )
@@ -12,7 +12,7 @@ export const createWorkflowListDefsCommand = (): Command => {
       "Override the workflows root path (default: /sitecore/system/Workflows)"
     )
     .action(async (options: Record<string, unknown>) => {
-      await runWorkflowListDefs(options);
+      await runWorkflowDefinitions(options);
     });
   addWorkflowReadOptions(command);
   return command;

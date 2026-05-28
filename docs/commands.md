@@ -2,7 +2,7 @@
 
 # Command reference
 
-Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.2.0.
+Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.2.1.
 The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs.
 
 ## scai
@@ -12,6 +12,7 @@ SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and
 **Top-level commands**
 
 - [`setup`](#scai-setup) — Configure environments and authenticate — init, login, env, logout, status
+- [`doctor`](#scai-doctor) — Diagnose local config + credentials. Walks sitecoreai.cli.json, the OS keychain, and the Node runtime to surface what needs fixing before remote calls will work. Different from `scai cli health`, which probes the live tenant.
 - [`policy`](#scai-policy) — Inspect and manage the workspace environment-policy guardrails — the allowlist of Sitecore environments scai may operate against.
 - [`hygiene`](#scai-hygiene) — Content quality — read-only audits, mutating cleanup, and composed diagnostics
 - [`content`](#scai-content) — Operate on content items — publish and workflow handlers
@@ -254,6 +255,25 @@ scai setup status [options]
 
 **Options**
 
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+## scai doctor
+
+Diagnose local config + credentials. Walks sitecoreai.cli.json, the OS keychain, and the Node runtime to surface what needs fixing before remote calls will work. Different from `scai cli health`, which probes the live tenant.
+
+```
+scai doctor [options]
+```
+
+**Options**
+
+- `--strict` — Exit non-zero on any warning (not just failures). Useful in CI to enforce a clean baseline.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -2053,6 +2073,7 @@ scai hygiene cleanup [options] [command]
 - [`scai hygiene cleanup field-set`](#scai-hygiene-cleanup-field-set) — Bulk-edit one field across a content scope — replace, add (multilist), remove (multilist), clear
 - [`scai hygiene cleanup find-replace`](#scai-hygiene-cleanup-find-replace) — Apply a find-replace operation across content field values
 - [`scai hygiene cleanup language-versions`](#scai-hygiene-cleanup-language-versions) — Bulk-create language versions across items so translators can pick them up
+- [`scai hygiene cleanup multilist`](#scai-hygiene-cleanup-multilist) — Surgical multilist-field edits — promoted from `scai/scripting/helpers/multilist.ts` so they're reachable without an entry script
 - [`scai hygiene cleanup rename`](#scai-hygiene-cleanup-rename) — Bulk-rename items by pattern (modifies item Name and thus the URL slug)
 - [`scai hygiene cleanup roles`](#scai-hygiene-cleanup-roles) — Delete empty roles (the cleanup counterpart to `audit empty-roles`)
 - [`scai hygiene cleanup site-residue`](#scai-hygiene-cleanup-site-residue) — Delete SXA tenant/site folders left behind after a Sites-API delete (templates/Project, layout/Renderings/Project, media library/Project)
@@ -2366,6 +2387,45 @@ scai hygiene cleanup language-versions add [options]
 - `--index <name>` — Override the search index name
 - `--include-system` — Include /sitecore/system items in the scan (off by default)
 - `--cache` — Use the on-disk field cache for the discovery phase
+
+#### scai hygiene cleanup multilist
+
+Surgical multilist-field edits — promoted from `scai/scripting/helpers/multilist.ts` so they're reachable without an entry script
+
+```
+scai hygiene cleanup multilist [options] [command]
+```
+
+**Subcommands**
+
+- [`scai hygiene cleanup multilist remove-ref`](#scai-hygiene-cleanup-multilist-remove-ref) — Remove one GUID from a multilist / treelist / droplink-list field on a single item. Case-insensitive, brace-tolerant. Use --what-if first to see the before/after.
+
+##### scai hygiene cleanup multilist remove-ref
+
+Remove one GUID from a multilist / treelist / droplink-list field on a single item. Case-insensitive, brace-tolerant. Use --what-if first to see the before/after.
+
+```
+scai hygiene cleanup multilist remove-ref [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `--allow-write` — Allow write operations for this command without updating config
+- `--force` — Perform force sync. In case you have invalid includes
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--item-id <guid>` — Target item GUID (with or without braces)
+- `--field <name>` — Field name to mutate (must be a multilist-shaped field)
+- `--ref <guid>` — GUID to remove from the field
+- `--language <code>` — Sitecore language code (e.g. en, en-US, fr-CA)
 
 #### scai hygiene cleanup rename
 
@@ -3039,9 +3099,9 @@ scai content workflow [options] [command]
 
 **Subcommands**
 
-- [`scai content workflow inspect`](#scai-content-workflow-inspect) — Show an item's workflow assignment — current workflow, state, and the commands available from here
-- [`scai content workflow list-commands`](#scai-content-workflow-list-commands) — List the workflow commands available on an item at its current state
-- [`scai content workflow list-defs`](#scai-content-workflow-list-defs) — List workflow definitions on the tenant (walks /sitecore/system/Workflows by default)
+- [`scai content workflow get`](#scai-content-workflow-get) — Get an item's workflow assignment — current workflow, state, and the commands available from here
+- [`scai content workflow commands`](#scai-content-workflow-commands) — List the workflow commands available on an item at its current state
+- [`scai content workflow definitions`](#scai-content-workflow-definitions) — List workflow definitions on the tenant (walks /sitecore/system/Workflows by default)
 - [`scai content workflow status`](#scai-content-workflow-status) — Show per-site workflow rollup — workflows on the site, their states, and page counts per state
 - [`scai content workflow assigned`](#scai-content-workflow-assigned) — Find items currently in a given workflow state (workbox-style query)
 - [`scai content workflow advance`](#scai-content-workflow-advance) — Advance a single item through one workflow transition (counterpart to the cleanup batch sweep)
@@ -3049,12 +3109,12 @@ scai content workflow [options] [command]
 - [`scai content workflow apply`](#scai-content-workflow-apply) — Attach a workflow to an item (sets \_\_Workflow + \_\_Workflow state directly). Bypasses the workflow engine — use for content authored before the workflow existed or to recover orphaned items.
 - [`scai content workflow webhook`](#scai-content-workflow-webhook) — Manage Sitecore webhook handlers — item/publish event handlers and workflow submit/validation actions
 
-#### scai content workflow inspect
+#### scai content workflow get
 
-Show an item's workflow assignment — current workflow, state, and the commands available from here
+Get an item's workflow assignment — current workflow, state, and the commands available from here
 
 ```
-scai content workflow inspect [options] <item>
+scai content workflow get [options] <item>
 ```
 
 **Options**
@@ -3068,12 +3128,12 @@ scai content workflow inspect [options] <item>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-#### scai content workflow list-commands
+#### scai content workflow commands
 
 List the workflow commands available on an item at its current state
 
 ```
-scai content workflow list-commands [options] <item>
+scai content workflow commands [options] <item>
 ```
 
 **Options**
@@ -3087,12 +3147,12 @@ scai content workflow list-commands [options] <item>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-#### scai content workflow list-defs
+#### scai content workflow definitions
 
 List workflow definitions on the tenant (walks /sitecore/system/Workflows by default)
 
 ```
-scai content workflow list-defs [options]
+scai content workflow definitions [options]
 ```
 
 **Options**
@@ -3230,8 +3290,8 @@ scai content workflow webhook [options] [command]
 **Subcommands**
 
 - [`scai content workflow webhook list`](#scai-content-workflow-webhook-list) — List webhook handler items under the webhook tree
-- [`scai content workflow webhook inspect`](#scai-content-workflow-webhook-inspect) — Show a webhook handler's URL, events, authorization, and other fields
-- [`scai content workflow webhook event-types`](#scai-content-workflow-webhook-event-types) — List the event-type catalog the tenant accepts (the strings you pass to `--events` on `webhook create`)
+- [`scai content workflow webhook get`](#scai-content-workflow-webhook-get) — Get a webhook handler's URL, events, authorization, and other fields
+- [`scai content workflow webhook events`](#scai-content-workflow-webhook-events) — List the event-type catalog the tenant accepts (the strings you pass to `--events` on `webhook create`)
 - [`scai content workflow webhook create`](#scai-content-workflow-webhook-create) — Create a webhook handler — pick an event category and supply the URL + event names (or workflow state for workflow webhooks)
 - [`scai content workflow webhook delete`](#scai-content-workflow-webhook-delete) — Delete a webhook handler by item ID or path
 
@@ -3257,12 +3317,12 @@ scai content workflow webhook list [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-##### scai content workflow webhook inspect
+##### scai content workflow webhook get
 
-Show a webhook handler's URL, events, authorization, and other fields
+Get a webhook handler's URL, events, authorization, and other fields
 
 ```
-scai content workflow webhook inspect [options] <webhook>
+scai content workflow webhook get [options] <webhook>
 ```
 
 **Options**
@@ -3276,12 +3336,12 @@ scai content workflow webhook inspect [options] <webhook>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-##### scai content workflow webhook event-types
+##### scai content workflow webhook events
 
 List the event-type catalog the tenant accepts (the strings you pass to `--events` on `webhook create`)
 
 ```
-scai content workflow webhook event-types [options]
+scai content workflow webhook events [options]
 ```
 
 **Options**
@@ -3373,10 +3433,9 @@ scai ops brief [options] [command]
 **Subcommands**
 
 - [`scai ops brief list`](#scai-ops-brief-list) — List briefs in the tenant.
-- [`scai ops brief show`](#scai-ops-brief-show) — Show one brief by id, including its field values, tasks, and comments.
+- [`scai ops brief get`](#scai-ops-brief-get) — Get one brief by id, including its field values, tasks, and comments.
 - [`scai ops brief create`](#scai-ops-brief-create) — Create a brief instance from a CreateBriefInput JSON document. For declarative + idempotent pushes, use `brief sync push --kind brief`.
 - [`scai ops brief update`](#scai-ops-brief-update) — Update a brief instance with a partial-PUT body. Provide --file for arbitrary patches, or --status as a shortcut for a status-only move.
-- [`scai ops brief set-status`](#scai-ops-brief-set-status) — Set a brief's workflow status (Draft, InReview, Approved, Canceled, Archived).
 - [`scai ops brief delete`](#scai-ops-brief-delete) — Delete a brief. Requires --apply; non-TTY callers must also pass --force.
 - [`scai ops brief types`](#scai-ops-brief-types) — Brief type operations (list, get, create, update, delete).
 - [`scai ops brief sync`](#scai-ops-brief-sync) — Pull, diff, and push a brief type or brief instance as a declarative recipe.
@@ -3405,12 +3464,12 @@ scai ops brief list [options]
 - `--limit <n>` — Page size
 - `--locale <code>` — Filter by locale (e.g. en-us)
 
-#### scai ops brief show
+#### scai ops brief get
 
-Show one brief by id, including its field values, tasks, and comments.
+Get one brief by id, including its field values, tasks, and comments.
 
 ```
-scai ops brief show [options] <briefId>
+scai ops brief get [options] <briefId>
 ```
 
 **Options**
@@ -3460,28 +3519,6 @@ scai ops brief update [options] <briefId>
 
 - `-f, --file <path>` — Path to a JSON file with the partial patch.
 - `--status <status>` — Shortcut: status-only patch. Equivalent to `scai ops brief set-status`.
-- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
-- `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
-- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
-- `-v, --verbose` — Write some additional diagnostic and performance data
-- `-t, --trace` — Write more additional diagnostic and performance data
-- `-q, --quiet` — Suppress non-error output
-- `--json` — Output machine-readable JSON
-- `--log-file <path>` — Write logs to a file
-- `--non-interactive` — Disable prompts and require explicit input
-- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
-- `-w, --what-if` — Lists commands that would be executed, without executing them
-
-#### scai ops brief set-status
-
-Set a brief's workflow status (Draft, InReview, Approved, Canceled, Archived).
-
-```
-scai ops brief set-status [options] <briefId> <status>
-```
-
-**Options**
-
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
@@ -3812,7 +3849,7 @@ scai ops campaign [options] [command]
 **Subcommands**
 
 - [`scai ops campaign list`](#scai-ops-campaign-list) — List campaigns in the tenant.
-- [`scai ops campaign show`](#scai-ops-campaign-show) — Show a campaign with its deliverables and tasks.
+- [`scai ops campaign get`](#scai-ops-campaign-get) — Get a campaign with its deliverables and tasks.
 - [`scai ops campaign create`](#scai-ops-campaign-create) — Create a campaign. Requires --apply.
 - [`scai ops campaign delete`](#scai-ops-campaign-delete) — Delete a campaign. UNVERIFIED — the Orchestrate DELETE endpoint was never captured; inferred from REST conventions. Requires --apply; non-TTY callers must also pass --force.
 - [`scai ops campaign users`](#scai-ops-campaign-users) — List users available as campaign members / task assignees.
@@ -3841,12 +3878,12 @@ scai ops campaign list [options]
 - `--non-interactive` — Disable prompts and require explicit input
 - `--limit <n>` — Page size
 
-#### scai ops campaign show
+#### scai ops campaign get
 
-Show a campaign with its deliverables and tasks.
+Get a campaign with its deliverables and tasks.
 
 ```
-scai ops campaign show [options] <campaignId>
+scai ops campaign get [options] <campaignId>
 ```
 
 **Options**
@@ -4006,7 +4043,7 @@ scai ops campaign task [options] [command]
 **Subcommands**
 
 - [`scai ops campaign task list`](#scai-ops-campaign-task-list) — List tasks under a deliverable.
-- [`scai ops campaign task show`](#scai-ops-campaign-task-show) — Show one task.
+- [`scai ops campaign task get`](#scai-ops-campaign-task-get) — Get one task.
 - [`scai ops campaign task create`](#scai-ops-campaign-task-create) — Create a task under a deliverable. Requires --apply.
 - [`scai ops campaign task update`](#scai-ops-campaign-task-update) — Replace a task via PUT (full-replacement). Requires --apply.
 - [`scai ops campaign task delete`](#scai-ops-campaign-task-delete) — Delete a task under a deliverable. UNVERIFIED — the Orchestrate DELETE endpoint was never captured; inferred from REST conventions. Requires --apply; non-TTY callers must also pass --force.
@@ -4031,12 +4068,12 @@ scai ops campaign task list [options] <campaignId> <deliverableId>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 
-##### scai ops campaign task show
+##### scai ops campaign task get
 
-Show one task.
+Get one task.
 
 ```
-scai ops campaign task show [options] <campaignId> <deliverableId> <taskId>
+scai ops campaign task get [options] <campaignId> <deliverableId> <taskId>
 ```
 
 **Options**
@@ -7691,7 +7728,7 @@ scai provision recipe [options] [command]
 - [`scai provision recipe diff`](#scai-provision-recipe-diff) — Show what `recipe push` would change — read-only diff against a tenant. Compiles recipes in-memory; never mutates.
 - [`scai provision recipe plan`](#scai-provision-recipe-plan) — Plan an Operation IR push against a tenant — read-then-diff, no mutations
 - [`scai provision recipe push`](#scai-provision-recipe-push) — Apply recipes to a tenant. Compiles in-memory and runs the executor with idempotency + best-effort rollback.
-- [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), and Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
+- [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
 
 #### scai provision recipe compile
 
@@ -7802,7 +7839,7 @@ scai provision recipe push [options]
 
 #### scai provision recipe prune-defaults
 
-Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), and Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
+Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
 
 ```
 scai provision recipe prune-defaults [options]
@@ -7813,6 +7850,7 @@ scai provision recipe prune-defaults [options]
 - `--headless-variants-root <path>` — Override headlessVariantsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Headless Variants).
 - `--available-renderings-root <path>` — Override availableRenderingsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Available Renderings).
 - `--content-items-root <path>` — Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data).
+- `--presentation-styles-root <path>` — Override presentationStylesRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Styles).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `--allow-write` — Allow write operations for this command without updating config

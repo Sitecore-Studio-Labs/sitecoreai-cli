@@ -8,7 +8,7 @@ const taskMocks = vi.hoisted(() => ({
       { itemId: "h1", name: "X", path: "/sitecore/system/Webhooks/X", templateName: null },
     ],
   }),
-  runWebhookInspect: vi.fn().mockResolvedValue({
+  runWebhookGet: vi.fn().mockResolvedValue({
     itemId: "h1",
     name: "X",
     path: "/sitecore/system/Webhooks/X",
@@ -35,7 +35,7 @@ const taskMocks = vi.hoisted(() => ({
     },
   }),
   runWebhookDelete: vi.fn().mockResolvedValue({ status: "deleted", webhook: "/x" }),
-  runWebhookEventTypes: vi.fn().mockResolvedValue({
+  runWebhookEvents: vi.fn().mockResolvedValue({
     eventTypes: [
       {
         itemId: "e1",
@@ -56,8 +56,8 @@ const taskMocks = vi.hoisted(() => ({
 vi.mock("../../../../src/webhooks/tasks/list", () => ({
   runWebhookList: taskMocks.runWebhookList,
 }));
-vi.mock("../../../../src/webhooks/tasks/inspect", () => ({
-  runWebhookInspect: taskMocks.runWebhookInspect,
+vi.mock("../../../../src/webhooks/tasks/get", () => ({
+  runWebhookGet: taskMocks.runWebhookGet,
 }));
 vi.mock("../../../../src/webhooks/tasks/create", () => ({
   runWebhookCreate: taskMocks.runWebhookCreate,
@@ -65,8 +65,8 @@ vi.mock("../../../../src/webhooks/tasks/create", () => ({
 vi.mock("../../../../src/webhooks/tasks/delete", () => ({
   runWebhookDelete: taskMocks.runWebhookDelete,
 }));
-vi.mock("../../../../src/webhooks/tasks/event-types", () => ({
-  runWebhookEventTypes: taskMocks.runWebhookEventTypes,
+vi.mock("../../../../src/webhooks/tasks/events", () => ({
+  runWebhookEvents: taskMocks.runWebhookEvents,
 }));
 
 const fakeContext: McpContext = {
@@ -119,26 +119,26 @@ describe("webhook_inspect tool", () => {
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("routes verb='event-types' without requiring extra inputs", async () => {
+  it("routes verb='events' without requiring extra inputs", async () => {
     const reg = await setup();
     const result = await reg
       .getTool("webhook_inspect")!
-      .handler({ verb: "event-types" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWebhookEventTypes).toHaveBeenCalledWith(
+      .handler({ verb: "events" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWebhookEvents).toHaveBeenCalledWith(
       expect.objectContaining({ environmentName: "test-env" })
     );
     expect(result.structuredContent).toMatchObject({
-      verb: "event-types",
+      verb: "events",
       result: { eventTypes: expect.any(Array) },
     });
   });
 
-  it("forwards the category filter on verb='event-types'", async () => {
+  it("forwards the category filter on verb='events'", async () => {
     const reg = await setup();
     await reg
       .getTool("webhook_inspect")!
-      .handler({ verb: "event-types", category: "publish" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWebhookEventTypes).toHaveBeenCalledWith(
+      .handler({ verb: "events", category: "publish" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWebhookEvents).toHaveBeenCalledWith(
       expect.objectContaining({ category: "publish" })
     );
   });

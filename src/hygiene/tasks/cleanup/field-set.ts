@@ -3,7 +3,7 @@ import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveTenant,
   scanItemsAndFields,
@@ -202,7 +202,7 @@ export const runCleanupFieldSet = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no items will be modified.", "yellow");
   }

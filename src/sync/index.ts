@@ -17,7 +17,7 @@ export { syncDiff, syncPull, syncPush } from "./engine";
 
 export { loadRecipe, writeRecipe } from "./io";
 
-export { getKind, listKinds, registerKind } from "./registry";
+export { eraseKind, getKind, listKinds, registerKind } from "./registry";
 
 // --- Cross-domain aggregate ---------------------------------------------
 export {

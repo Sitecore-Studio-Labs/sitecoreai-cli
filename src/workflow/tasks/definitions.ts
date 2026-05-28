@@ -6,7 +6,7 @@ import {
   type WorkflowTaskOptions,
 } from "./shared";
 
-export interface WorkflowListDefsOptions extends WorkflowTaskOptions {
+export interface WorkflowDefinitionsOptions extends WorkflowTaskOptions {
   /**
    * Override the content-tree root. Defaults to
    * `/sitecore/system/Workflows`. Useful for tenants with workflows
@@ -15,7 +15,7 @@ export interface WorkflowListDefsOptions extends WorkflowTaskOptions {
   root?: string;
 }
 
-export interface WorkflowListDefsResult {
+export interface WorkflowDefinitionsResult {
   rootPath: string;
   workflows: WorkflowDefinitionSummary[];
 }
@@ -26,9 +26,9 @@ export interface WorkflowListDefsResult {
  * Workflow-Folder items one level deep, and returns every item whose
  * template is `Workflow`.
  */
-export const runWorkflowListDefs = async (
-  options: WorkflowListDefsOptions
-): Promise<WorkflowListDefsResult> => {
+export const runWorkflowDefinitions = async (
+  options: WorkflowDefinitionsOptions
+): Promise<WorkflowDefinitionsResult> => {
   const logger = toLogger(options);
   const { envName, client } = resolveWorkflowTenant(options);
 
@@ -42,7 +42,7 @@ export const runWorkflowListDefs = async (
 
   printWorkflowResult({
     logger,
-    command: "workflow.list-defs",
+    command: "workflow.definitions",
     envName,
     result: { rootPath, workflows },
     humanLines: lines,

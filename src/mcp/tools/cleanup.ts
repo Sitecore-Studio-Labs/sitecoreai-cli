@@ -32,6 +32,9 @@ import { runCleanupRoles } from "@/hygiene/tasks/cleanup/roles";
 import { runCleanupSiteResidue } from "@/hygiene/tasks/cleanup/site-residue";
 import { runCleanupSlugConflicts } from "@/hygiene/tasks/cleanup/slug-conflicts";
 import { runCleanupSubtree } from "@/hygiene/tasks/cleanup/subtree";
+import { runCleanupDeleteItem } from "@/hygiene/tasks/cleanup/delete-item";
+import { runCleanupMultilistRemoveRef } from "@/hygiene/tasks/cleanup/multilist-remove-ref";
+import { runContentMove } from "@/content/tasks/move";
 import { runCleanupUsers } from "@/hygiene/tasks/cleanup/users";
 import { runCleanupVersionsArchive } from "@/hygiene/tasks/cleanup/versions-archive";
 import { runCleanupVersionsPrune } from "@/hygiene/tasks/cleanup/versions-prune";
@@ -98,6 +101,22 @@ const CLEANUP_RUNNERS: Record<string, LoosedRunner> = {
       ...r.blockers.map((b) => ({ ...b, kind: "blocker" as const })),
       ...r.deletions.map((d) => ({ ...d, kind: "deletion" as const })),
     ];
+  }),
+  "delete-item": loosen(async (options: Parameters<typeof runCleanupDeleteItem>[0]) => {
+    const r = await runCleanupDeleteItem(options);
+    // Same flattened shape as subtree — `runCleanupDeleteItem`
+    // delegates to `runCleanupSubtree`, so its result envelope is
+    // the same {blockers, deletions} pair.
+    return [
+      ...r.blockers.map((b) => ({ ...b, kind: "blocker" as const })),
+      ...r.deletions.map((d) => ({ ...d, kind: "deletion" as const })),
+    ];
+  }),
+  "multilist-remove-ref": loosen(runCleanupMultilistRemoveRef),
+  "move-item": loosen(async (options: Parameters<typeof runContentMove>[0]) => {
+    // `runContentMove` returns a single summary object, not an array.
+    // Wrap into the array shape the dispatch handler expects.
+    return [await runContentMove(options)];
   }),
   users: loosen(runCleanupUsers),
   "workflow-advance": loosen(runCleanupWorkflowAdvance),
@@ -182,6 +201,35 @@ const validateVerbInputs = (verb: string, input: Record<string, unknown>): void 
       if (!input.languages) {
         throw createScaiError(
           "verb='language-versions-add' requires `languages`.",
+          "INPUT_INVALID"
+        );
+      }
+      break;
+    case "delete-item":
+      if (!input.path) {
+        throw createScaiError("verb='delete-item' requires `path`.", "INPUT_INVALID", {
+          hint: "Pass the content-tree path of the item to delete.",
+        });
+      }
+      break;
+    case "multilist-remove-ref":
+      if (!input.itemId || !input.fieldName || !input.refToRemove) {
+        throw createScaiError(
+          "verb='multilist-remove-ref' requires `itemId`, `fieldName`, and `refToRemove`.",
+          "INPUT_INVALID"
+        );
+      }
+      break;
+    case "move-item":
+      if (!input.itemId && !input.path) {
+        throw createScaiError(
+          "verb='move-item' requires a source (`itemId` or `path`).",
+          "INPUT_INVALID"
+        );
+      }
+      if (!input.toItemId && !input.toPath) {
+        throw createScaiError(
+          "verb='move-item' requires a target parent (`toItemId` or `toPath`).",
           "INPUT_INVALID"
         );
       }
@@ -365,11 +413,14 @@ const cleanupInputSchema = () =>
         "versions-archive",
         "archive-purge",
         "dead-templates",
+        "delete-item",
         "duplicates",
         "empty-folders",
         "field-set",
         "find-replace",
         "language-versions-add",
+        "move-item",
+        "multilist-remove-ref",
         "rename",
         "roles",
         "site-residue",
@@ -380,7 +431,7 @@ const cleanupInputSchema = () =>
         "workflow-apply",
       ])
       .describe(
-        "Which cleanup operation to run. Each verb maps 1:1 to a `scai hygiene cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); rename (`pattern`, `replacement`); subtree (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). slug-conflicts honors `keepRule` + `action` (`delete` default, or `rename` with optional `renameSuffix`) — `audit slug-conflicts` first to preview groups. subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. All others have safe defaults but accept the same option bag."
+        "Which cleanup operation to run. Each verb maps 1:1 to a `scai hygiene cleanup …` CLI command and shares its option contract. Mostly destructive — pair with cleanup_preview first, or pass `whatIf: true`. Required fields per verb: versions-prune/versions-archive (`keep`, `root`); empty-folders (`root`); field-set (`field`; `value` unless mode='clear'); find-replace (`pattern`, `replacement`); language-versions-add (`languages`); rename (`pattern`, `replacement`); subtree (`path`); delete-item (`path`); workflow-advance (`commandName`); workflow-apply (`workflow`). site-residue extends the SXA Project defaults via `extraRoots` (its underlying option is `string[]`, not the top-level `root`). slug-conflicts honors `keepRule` + `action` (`delete` default, or `rename` with optional `renameSuffix`) — `audit slug-conflicts` first to preview groups. subtree refuses by default when external items reference the deletion target — pass `orphanExternalRefs: 'clear'` to empty those fields first. delete-item is a single-item variant of subtree — same safety model, narrower contract; use when you want to delete one item without thinking about cascade semantics. All others have safe defaults but accept the same option bag."
       ),
 
     // versions-prune / versions-archive
@@ -759,5 +810,39 @@ const cleanupInputSchema = () =>
       .optional()
       .describe(
         "language-versions-add: cap on (item, language) versions created per run. Default 500."
+      ),
+
+    // multilist-remove-ref
+    itemId: z
+      .string()
+      .optional()
+      .describe(
+        "multilist-remove-ref: target item GUID (with or without braces). Required for multilist-remove-ref."
+      ),
+    fieldName: z
+      .string()
+      .optional()
+      .describe(
+        "multilist-remove-ref: name of the multilist-shaped field to mutate. Required for multilist-remove-ref."
+      ),
+    refToRemove: z
+      .string()
+      .optional()
+      .describe(
+        "multilist-remove-ref: GUID to remove from the field. Case-insensitive, brace-tolerant. Required for multilist-remove-ref."
+      ),
+
+    // move-item (target parent — source is the existing `itemId` / `path`)
+    toItemId: z
+      .string()
+      .optional()
+      .describe(
+        "move-item: destination parent GUID. Mutually exclusive with `toPath`. Either is required for move-item."
+      ),
+    toPath: z
+      .string()
+      .optional()
+      .describe(
+        "move-item: destination parent content-tree path. Mutually exclusive with `toItemId`. Either is required for move-item."
       ),
   }) as const;

@@ -94,11 +94,6 @@ const PARITY_ROWS: ParityRow[] = [
       return createWebhookCommand();
     },
     mcpTool: "webhook_inspect",
-    // CLI `inspect` reads one handler's detail; MCP collapses it into
-    // the read tool as verb='get'. CLI `list` maps to verb='list'.
-    renames: {
-      inspect: "get",
-    },
   },
   {
     // `scai hygiene explain` ⟷ the `explain` MCP tool — verbs match 1:1.

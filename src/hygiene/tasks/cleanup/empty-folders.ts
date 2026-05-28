@@ -1,7 +1,7 @@
 import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   normalizeItemId,
   printReport,
   resolveTenant,
@@ -124,7 +124,7 @@ export const runCleanupEmptyFolders = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no folders will be deleted.", "yellow");
   }

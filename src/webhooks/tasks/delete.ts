@@ -1,6 +1,6 @@
 import { ensureAllowWrite } from "@/policy/allow-write";
 import { createScaiError } from "@/shared/errors";
-import { parseWebhookRef } from "./inspect";
+import { parseWebhookRef } from "./get";
 import {
   printWebhookResult,
   resolveWebhookTenant,

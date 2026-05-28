@@ -8,7 +8,6 @@ vi.mock("../../../../src/brief/api/briefs", () => ({
   getBrief: vi.fn(),
   createBrief: vi.fn(),
   updateBrief: vi.fn(),
-  setBriefStatus: vi.fn(),
   deleteBrief: vi.fn(),
 }));
 vi.mock("../../../../src/brief/api/brief-types", () => ({
@@ -78,7 +77,11 @@ afterEach(() => {
 });
 
 /** Last JSON document written to stdout by a runner in --json mode. */
-const jsonOut = (): unknown => JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+const jsonOut = (): unknown => {
+  const raw = JSON.parse(String(stdout.mock.calls.at(-1)?.[0] ?? "null"));
+  if (raw && typeof raw === "object" && "data" in raw) return (raw as { data: unknown }).data;
+  return raw;
+};
 
 describe("brief runners — read verbs", () => {
   it("runBriefList prints JSON in --json mode", async () => {
@@ -110,19 +113,19 @@ describe("brief runners — read verbs", () => {
     expect(result.totalCount).toBe(0);
   });
 
-  it("runBriefShow prints JSON in --json mode", async () => {
+  it("runBriefGet prints JSON in --json mode", async () => {
     vi.mocked(briefsApi.getBrief).mockResolvedValue(makeBrief() as never);
 
-    await runners.runBriefShow({ json: true, briefId: "brief-1" });
+    await runners.runBriefGet({ json: true, briefId: "brief-1" });
 
     expect(vi.mocked(briefsApi.getBrief)).toHaveBeenCalledWith(client, "brief-1");
     expect(jsonOut()).toMatchObject({ id: "brief-1" });
   });
 
-  it("runBriefShow renders human detail", async () => {
+  it("runBriefGet renders human detail", async () => {
     vi.mocked(briefsApi.getBrief).mockResolvedValue(makeBrief() as never);
 
-    const result = await runners.runBriefShow({ quiet: true, briefId: "brief-1" });
+    const result = await runners.runBriefGet({ quiet: true, briefId: "brief-1" });
 
     expect(result.id).toBe("brief-1");
   });
@@ -188,38 +191,17 @@ describe("brief runners — read verbs", () => {
 });
 
 describe("brief runners — write verbs honour --what-if", () => {
-  it("runBriefSetStatus plans in --what-if and applies otherwise", async () => {
-    const planJson = await runners.runBriefSetStatus({
-      json: true,
-      briefId: "brief-1",
-      status: "InReview" as never,
-      whatIf: true,
-    });
-    expect(planJson).toMatchObject({ plan: { id: "brief-1", status: "InReview" } });
-    expect(vi.mocked(briefsApi.setBriefStatus)).not.toHaveBeenCalled();
-
-    await runners.runBriefSetStatus({
+  it("runBriefUpdate with a status-only patch applies via updateBrief (replaces runBriefSetStatus)", async () => {
+    vi.mocked(briefsApi.updateBrief).mockResolvedValue(undefined as never);
+    const applied = await runners.runBriefUpdate({
       quiet: true,
       briefId: "brief-1",
-      status: "Approved" as never,
-      whatIf: true,
+      patch: { status: "Approved" as never },
     });
-
-    vi.mocked(briefsApi.setBriefStatus).mockResolvedValue(undefined as never);
-    const appliedJson = await runners.runBriefSetStatus({
-      json: true,
-      briefId: "brief-1",
-      status: "Approved" as never,
+    expect(applied).toMatchObject({ id: "brief-1" });
+    expect(vi.mocked(briefsApi.updateBrief)).toHaveBeenCalledWith(client, "brief-1", {
+      status: "Approved",
     });
-    expect(appliedJson).toMatchObject({ id: "brief-1", status: "Approved" });
-    expect(vi.mocked(briefsApi.setBriefStatus)).toHaveBeenCalledWith(client, "brief-1", "Approved");
-
-    const appliedHuman = await runners.runBriefSetStatus({
-      quiet: true,
-      briefId: "brief-1",
-      status: "Approved" as never,
-    });
-    expect(appliedHuman).toMatchObject({ status: "Approved" });
   });
 
   it("runBriefTypeCreate plans then applies", async () => {

@@ -25,11 +25,9 @@ import {
   type CommonContentVersionOptions,
 } from "./shared";
 
-export type RunContentVersionInspectOptions = CommonContentVersionOptions;
+export type RunContentVersionGetOptions = CommonContentVersionOptions;
 
-export const runContentVersionInspect = async (
-  options: RunContentVersionInspectOptions
-): Promise<void> => {
+export const runContentVersionGet = async (options: RunContentVersionGetOptions): Promise<void> => {
   const logger = buildLogger(options);
   if (!options.language) {
     throw createScaiError("inspect requires --language.", "INPUT_INVALID");

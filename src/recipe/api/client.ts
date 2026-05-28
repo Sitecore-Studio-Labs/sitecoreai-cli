@@ -95,6 +95,17 @@ export interface UpdateItemInput {
   fields: FieldValue[];
 }
 
+export interface MoveItemInput {
+  /** Item to move, selected by itemId or content-tree path. */
+  selector: ItemSelector;
+  /**
+   * Destination parent. The moved item lands as a child of this
+   * parent, keeping its existing name. Selected by itemId or
+   * content-tree path.
+   */
+  targetParent: ItemSelector;
+}
+
 export interface AddItemVersionInput {
   /** Sitecore itemId of the target item. */
   itemId: string;
@@ -139,6 +150,19 @@ export interface AuthoringApiClient {
   updateItem(input: UpdateItemInput): Promise<void>;
   /** Phase 4 policy `CreateUpdateAndDelete` will use this. */
   deleteItem(selector: ItemSelector): Promise<void>;
+  /**
+   * Move an item to a new parent. Preserves the item's `itemId`, name,
+   * and all inbound references — the only thing that changes is the
+   * content-tree position. The Authoring GraphQL `moveItem` mutation
+   * is the canonical way to relocate items without breaking refs;
+   * delete + recreate would assign a new `itemId` and break every
+   * link pointing at the old one.
+   *
+   * Throws `INPUT_INVALID` when either selector resolves to nothing,
+   * or `NETWORK` on a server-side refusal (parent doesn't accept the
+   * source's template, name collision under the new parent, etc.).
+   */
+  moveItem(input: MoveItemInput): Promise<void>;
   /**
    * Add a numbered version to `input.itemId` in `input.language`. Sitecore
    * assigns the version number sequentially; the result carries the number

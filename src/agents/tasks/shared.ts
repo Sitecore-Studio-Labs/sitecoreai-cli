@@ -6,6 +6,7 @@
  * JSON output. The helpers here keep that boilerplate in one place.
  */
 import { Logger } from "@/shared/logger";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
 import { resolveAgentsSession } from "../client";
 import type { AgentsSession } from "../session/types";
@@ -30,9 +31,25 @@ export const toLogger = (options: RunAgentsBaseOptions): Logger =>
     options.logFile ?? process.env.SITECOREAI_LOG_FILE
   );
 
-/** Write a value as pretty JSON to stdout (used by `--json` output paths). */
-export const writeJson = (value: unknown): void => {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+/**
+ * Emit a canonical `ScaiEnvelope` on stdout. Used by `--json` output
+ * paths across the agents task family. Each call site passes a
+ * command suffix that gets prefixed with `agents.` (e.g. `agent.list`
+ * → `agents.agent.list`) plus the env name from the options bag.
+ */
+export const writeAgentsEnvelope = (
+  command: string,
+  options: RunAgentsBaseOptions,
+  data: unknown,
+  extra?: Record<string, unknown>
+): void => {
+  const envelope = buildScaiEnvelope({
+    command: `agents.${command}`,
+    environment: options.environmentName ?? null,
+    data,
+    extra,
+  });
+  process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
 };
 
 /** Resolve the env and load its Agentic Studio session. */
@@ -44,15 +61,22 @@ export const prepare = async (
   return { logger, session, envName };
 };
 
-/** Shared list rendering — JSON passthrough or one line per item. */
+/**
+ * Shared list rendering. JSON path emits a `ScaiEnvelope`; human
+ * path emits one line per item. `command` is the agents-suffix
+ * (e.g. `agent.list`) — the helper prefixes `agents.` for the
+ * envelope.
+ */
 export const renderList = <T>(
   logger: Logger,
+  command: string,
+  options: RunAgentsBaseOptions,
   label: string,
   items: T[],
   line: (item: T) => string
 ): void => {
   if (logger.isJson()) {
-    writeJson(items);
+    writeAgentsEnvelope(command, options, items);
     return;
   }
   if (items.length === 0) {
@@ -65,10 +89,16 @@ export const renderList = <T>(
   }
 };
 
-/** Shared single-item rendering — JSON passthrough or a flat key/value list. */
-export const renderItem = (logger: Logger, label: string, item: Record<string, unknown>): void => {
+/** Shared single-item rendering — envelope on `--json`, key/value list otherwise. */
+export const renderItem = (
+  logger: Logger,
+  command: string,
+  options: RunAgentsBaseOptions,
+  label: string,
+  item: Record<string, unknown>
+): void => {
   if (logger.isJson()) {
-    writeJson(item);
+    writeAgentsEnvelope(command, options, item);
     return;
   }
   logger.info(`${label}:`, "cyan");

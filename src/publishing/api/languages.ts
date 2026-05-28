@@ -1,4 +1,4 @@
-import { getAccessToken } from "@/serialization/api/auth";
+import { getAccessToken } from "@/auth";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { listLanguages } from "@/sites/api/languages";
 import { listSites } from "@/sites/api/sites";

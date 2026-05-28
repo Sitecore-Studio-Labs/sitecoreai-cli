@@ -7,7 +7,7 @@ import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/c
 vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
 vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 
-import { runContentVersionInspect } from "../../../src/content/tasks/version-inspect";
+import { runContentVersionGet } from "../../../src/content/tasks/version-get";
 import { resolveEnvironment } from "../../../src/policy/environment";
 import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
 
@@ -44,10 +44,10 @@ afterEach(() => {
   delete process.env.SITECOREAI_AUDIT_LOG;
 });
 
-describe("runContentVersionInspect", () => {
+describe("runContentVersionGet", () => {
   it("requires --language", async () => {
     setupEnv();
-    await expect(runContentVersionInspect({ itemId: "id-1", language: "" })).rejects.toMatchObject({
+    await expect(runContentVersionGet({ itemId: "id-1", language: "" })).rejects.toMatchObject({
       code: "INPUT_INVALID",
     });
   });
@@ -74,7 +74,7 @@ describe("runContentVersionInspect", () => {
       },
     });
 
-    await runContentVersionInspect({
+    await runContentVersionGet({
       itemId: "id-1",
       language: "en",
     });
@@ -102,7 +102,7 @@ describe("runContentVersionInspect", () => {
 
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await runContentVersionInspect({
+      await runContentVersionGet({
         itemId: "id-1",
         language: "en",
         json: true,

@@ -6,12 +6,14 @@ import { ensureAllowWrite, resolveTenant, toLogger, type RecipeTenantOptions } f
 /**
  * `scai provision recipe prune-defaults` — remove the SXA Headless OOTB content
  * that ships with every fresh site under `Available Renderings`,
- * `Headless Variants`, and the per-site `Data` bucket. Registry installs
- * ship their own renderings, variants, and datasources; the OOTB folders
- * just noise up the authoring tree. Folder parents are preserved (we
- * keep using `Available Renderings`, `Headless Variants`, and `Data`
- * ourselves) — only the named child folders are removed. `Tags` under
- * `Data` is left alone because authors typically populate it.
+ * `Headless Variants`, the per-site `Data` bucket, and the per-site
+ * `Presentation/Styles` bucket. Registry installs ship their own
+ * renderings, variants, datasources, and styles; the OOTB folders just
+ * noise up the authoring tree. Folder parents are preserved (we keep
+ * using `Available Renderings`, `Headless Variants`, `Data`, and
+ * `Styles` ourselves) — only the named child folders are removed.
+ * `Tags` under `Data` is left alone because authors typically populate
+ * it.
  *
  * Idempotent by design: each target is `getItem`-ed first, so a missing
  * path is a clean skip rather than an error. Re-runs after a successful
@@ -51,6 +53,30 @@ const DEFAULT_PRUNE_TARGETS = {
    * authors populate it during normal content work.
    */
   contentItems: ["Images", "Link Lists", "Navigation Filters", "Promos", "Texts"],
+  /**
+   * `Presentation/Styles` children to remove. SXA seeds a set of
+   * default style buckets per site (Spacing, Add Highlight, ...).
+   * Registry installs ship their own styles; the OOTB siblings are
+   * pure clutter. Names use Title Case to match the literal Sitecore
+   * item names — `getItem({ path })` is path-literal, so a casing or
+   * spacing mismatch makes the target report as `missing` rather than
+   * delete the wrong thing. Adjust on first `--what-if` run if any
+   * name doesn't match a real OOTB folder on the target tenant.
+   */
+  presentationStyles: [
+    "Spacing",
+    "Add Highlight",
+    "Content Alignment",
+    "Background Color",
+    "Background Layout",
+    "Navigation",
+    "Link List",
+    "Rich Text",
+    "Promo",
+    "Image",
+    "Common",
+    "Container",
+  ],
 } as const;
 
 export type PruneGroup = keyof typeof DEFAULT_PRUNE_TARGETS;
@@ -71,6 +97,8 @@ export interface RecipePruneDefaultsOptions extends RecipeTenantOptions {
   availableRenderingsRoot?: string;
   /** Override `contentItemsRoot` from the env profile. */
   contentItemsRoot?: string;
+  /** Override `presentationStylesRoot` from the env profile. */
+  presentationStylesRoot?: string;
   /** Print the deletions without applying them. */
   whatIf?: boolean;
   /** Bypass the env profile's `allowWrite` gate. */
@@ -87,11 +115,13 @@ export interface RecipePruneDefaultsResult {
 const buildTargets = (
   availableRenderingsRoot: string,
   headlessVariantsRoot: string,
-  contentItemsRoot: string
+  contentItemsRoot: string,
+  presentationStylesRoot: string
 ): Array<{ group: PruneGroup; path: string }> => {
   const ar = availableRenderingsRoot.replace(/\/+$/, "");
   const hv = headlessVariantsRoot.replace(/\/+$/, "");
   const ci = contentItemsRoot.replace(/\/+$/, "");
+  const ps = presentationStylesRoot.replace(/\/+$/, "");
   return [
     ...DEFAULT_PRUNE_TARGETS.availableRenderings.map((name) => ({
       group: "availableRenderings" as const,
@@ -105,22 +135,61 @@ const buildTargets = (
       group: "contentItems" as const,
       path: `${ci}/${name}`,
     })),
+    ...DEFAULT_PRUNE_TARGETS.presentationStyles.map((name) => ({
+      group: "presentationStyles" as const,
+      path: `${ps}/${name}`,
+    })),
   ];
 };
 
 /**
+ * Patterns Sitecore Authoring GraphQL uses to report an "item is
+ * gone" condition (concurrent delete, stale itemId, never-existed).
+ * Treated as a list because Sitecore phrasing varies across versions
+ * and operations; extend here when a new variant shows up in the
+ * wild. Matched case-insensitively against both the joined error
+ * message and any structured `extensions` payload preserved by
+ * `shared/graphql.ts`.
+ */
+const ITEM_NOT_FOUND_PATTERNS: readonly RegExp[] = [
+  /was not found/i,
+  /may have been deleted by another user/i,
+  /item .* (was|is) not found/i,
+  /could not be found/i,
+  /does not exist/i,
+  /no item .* found/i,
+];
+
+/**
+ * Structured `extensions.code` values that Sitecore (or future
+ * passes of this code) may emit for the same condition. Matched
+ * against the extension-blob JSON stringified into ScaiError.details.
+ */
+const ITEM_NOT_FOUND_CODES: readonly string[] = [
+  "ITEM_NOT_FOUND",
+  "ITEM_NOT_FOUND_ERROR",
+  "ItemNotFoundError",
+];
+
+/**
  * Detect the Authoring GraphQL "item is gone" response. The shared
  * graphql.ts wrapper joins all error.message strings into a single
- * `Authoring GraphQL errors: <messages>` payload on a NETWORK ScaiError;
- * we match the canonical Sitecore phrasing that fires when an itemId
- * doesn't resolve at delete time.
+ * `Authoring GraphQL errors: <messages>` payload on a NETWORK ScaiError
+ * and preserves any GraphQL `extensions` as `details[]`. We prefer the
+ * structured signal (code-match against extensions) and fall back to
+ * the prose patterns when extensions aren't carried — Sitecore's
+ * Authoring GraphQL doesn't reliably emit extension codes today but
+ * may in future, and own-error preservation costs nothing.
  */
 const isItemNotFoundError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
-  const message = error.message;
-  return (
-    message.includes("was not found") || message.includes("may have been deleted by another user")
-  );
+  const scaiError = error as Error & { details?: string[] };
+  if (Array.isArray(scaiError.details)) {
+    for (const line of scaiError.details) {
+      if (ITEM_NOT_FOUND_CODES.some((code) => line.includes(code))) return true;
+    }
+  }
+  return ITEM_NOT_FOUND_PATTERNS.some((pattern) => pattern.test(error.message));
 };
 
 interface PruneCoreOptions {
@@ -128,6 +197,7 @@ interface PruneCoreOptions {
   availableRenderingsRoot: string;
   headlessVariantsRoot: string;
   contentItemsRoot: string;
+  presentationStylesRoot: string;
   whatIf: boolean;
   logger?: Logger;
 }
@@ -145,10 +215,16 @@ export const pruneDefaultsAgainstClient = async (
     availableRenderingsRoot,
     headlessVariantsRoot,
     contentItemsRoot,
+    presentationStylesRoot,
     whatIf,
     logger,
   } = options;
-  const targets = buildTargets(availableRenderingsRoot, headlessVariantsRoot, contentItemsRoot);
+  const targets = buildTargets(
+    availableRenderingsRoot,
+    headlessVariantsRoot,
+    contentItemsRoot,
+    presentationStylesRoot
+  );
   const actions: PruneAction[] = [];
 
   for (const target of targets) {
@@ -203,11 +279,19 @@ export const runRecipePruneDefaults = async (
   const availableRenderingsRoot =
     options.availableRenderingsRoot ?? tenant.environment.availableRenderingsRoot;
   const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
-  if (!headlessVariantsRoot || !availableRenderingsRoot || !contentItemsRoot) {
+  const presentationStylesRoot =
+    options.presentationStylesRoot ?? tenant.environment.presentationStylesRoot;
+  if (
+    !headlessVariantsRoot ||
+    !availableRenderingsRoot ||
+    !contentItemsRoot ||
+    !presentationStylesRoot
+  ) {
     const missing = [
       !headlessVariantsRoot && "headlessVariantsRoot",
       !availableRenderingsRoot && "availableRenderingsRoot",
       !contentItemsRoot && "contentItemsRoot",
+      !presentationStylesRoot && "presentationStylesRoot",
     ]
       .filter(Boolean)
       .join(", ");
@@ -215,7 +299,7 @@ export const runRecipePruneDefaults = async (
       `Recipe prune-defaults missing root path(s): ${missing} not configured for environment '${tenant.envName}'.`,
       "INPUT_INVALID",
       {
-        hint: `Add 'headlessVariantsRoot', 'availableRenderingsRoot', and 'contentItemsRoot' to envProfiles.${tenant.envName} in sitecoreai.cli.json (or pass --headless-variants-root / --available-renderings-root / --content-items-root).`,
+        hint: `Add 'headlessVariantsRoot', 'availableRenderingsRoot', 'contentItemsRoot', and 'presentationStylesRoot' to envProfiles.${tenant.envName} in sitecoreai.cli.json (or pass --headless-variants-root / --available-renderings-root / --content-items-root / --presentation-styles-root).`,
       }
     );
   }
@@ -232,6 +316,7 @@ export const runRecipePruneDefaults = async (
     availableRenderingsRoot,
     headlessVariantsRoot,
     contentItemsRoot,
+    presentationStylesRoot,
     whatIf: isDryRun,
     logger: logger.isJson() ? undefined : logger,
   });

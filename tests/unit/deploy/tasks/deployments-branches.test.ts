@@ -107,6 +107,28 @@ describe("deploy deployments branches", () => {
     vi.useRealTimers();
   });
 
+  it("treats Failed terminal status (3) as DEPLOY_FAILED, not success", async () => {
+    apiMocks.fetchDeploymentV3.mockResolvedValue({
+      calculatedStatus: 3,
+      deploymentStatus: 3,
+    });
+    const { runDeployDeploymentsWatch } = await import("../../../../src/deploy/tasks/deployments");
+    await expect(runDeployDeploymentsWatch({ id: "dep-1" })).rejects.toThrow(
+      /reached terminal status Failed/
+    );
+  });
+
+  it("treats Canceled terminal status (4) as DEPLOY_CANCELED, not success", async () => {
+    apiMocks.fetchDeploymentV3.mockResolvedValue({
+      calculatedStatus: 4,
+      deploymentStatus: 4,
+    });
+    const { runDeployDeploymentsWatch } = await import("../../../../src/deploy/tasks/deployments");
+    await expect(runDeployDeploymentsWatch({ id: "dep-1" })).rejects.toThrow(
+      /reached terminal status Canceled/
+    );
+  });
+
   it("validates source inputs and uploads a directory", async () => {
     const { runDeployDeploymentsSource } = await import("../../../../src/deploy/tasks/deployments");
     await expect(

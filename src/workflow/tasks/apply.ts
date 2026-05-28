@@ -15,7 +15,7 @@ export interface WorkflowApplyOptions extends WorkflowTaskOptions {
   item: string;
   /**
    * Workflow GUID, content-tree path, or display/item name. Required.
-   * Same resolution as `runWorkflowInspect`: GUID → direct, path →
+   * Same resolution as `runWorkflowGet`: GUID → direct, path →
    * lookup, free text → name match against `listWorkflowDefinitions`.
    */
   workflow: string;
@@ -62,7 +62,7 @@ export interface WorkflowApplyResult {
  *
  * The `workflow` ref accepts any of: workflow GUID, content-tree path,
  * or display/item name (resolved against `listWorkflowDefinitions`).
- * Same resolver as `workflow_inspect verb=inspect`.
+ * Same resolver as `workflow_inspect verb=get`.
  */
 export const runWorkflowApply = async (
   options: WorkflowApplyOptions

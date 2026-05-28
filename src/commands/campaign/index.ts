@@ -3,14 +3,14 @@ import {
   runCampaignCreate,
   runCampaignDelete,
   runCampaignList,
-  runCampaignShow,
+  runCampaignGet,
   runCampaignUsers,
   runDeliverableCreate,
   runDeliverableDelete,
   runTaskCreate,
   runTaskDelete,
   runTaskList,
-  runTaskShow,
+  runTaskGet,
   runTaskUpdate,
 } from "@/campaigns/tasks";
 import { confirmDestructive } from "@/shared/cli-tasks";
@@ -37,12 +37,12 @@ import {
  * `scripts/_smoke-campaign-delete.ts` before relying on them.
  *
  *   scai ops campaign list
- *   scai ops campaign show <campaignId>
+ *   scai ops campaign get <campaignId>
  *   scai ops campaign create --name "Spring Launch" --apply
  *   scai ops campaign delete <campaignId> --apply --force
  *   scai ops campaign users
  *   scai ops campaign deliverable create|delete <campaignId> …
- *   scai ops campaign task list|show|create|update|delete …
+ *   scai ops campaign task list|get|create|update|delete …
  */
 
 const createListCommand = (): Command => {
@@ -57,15 +57,15 @@ const createListCommand = (): Command => {
   return command;
 };
 
-const createShowCommand = (): Command => {
-  const command = new Command("show")
-    .description("Show a campaign with its deliverables and tasks.")
+const createGetCommand = (): Command => {
+  const command = new Command("get")
+    .description("Get a campaign with its deliverables and tasks.")
     .argument("<campaignId>", "Campaign (project) UUID");
   addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   command.action(async (campaignId, options) => {
-    await runCampaignShow({ ...options, campaignId });
+    await runCampaignGet({ ...options, campaignId });
   });
   return command;
 };
@@ -255,16 +255,16 @@ const createTaskCommand = (): Command => {
     await runTaskList({ ...options, campaignId, deliverableId });
   });
 
-  const show = new Command("show")
-    .description("Show one task.")
+  const get = new Command("get")
+    .description("Get one task.")
     .argument("<campaignId>", "Campaign UUID")
     .argument("<deliverableId>", "Deliverable UUID")
     .argument("<taskId>", "Task UUID");
-  addOrgScopeOptions(show);
-  addConfigOption(show);
-  addVerbosityOptions(show);
-  show.action(async (campaignId, deliverableId, taskId, options) => {
-    await runTaskShow({ ...options, campaignId, deliverableId, taskId });
+  addOrgScopeOptions(get);
+  addConfigOption(get);
+  addVerbosityOptions(get);
+  get.action(async (campaignId, deliverableId, taskId, options) => {
+    await runTaskGet({ ...options, campaignId, deliverableId, taskId });
   });
 
   const create = new Command("create")
@@ -378,7 +378,7 @@ const createTaskCommand = (): Command => {
   });
 
   task.addCommand(list);
-  task.addCommand(show);
+  task.addCommand(get);
   task.addCommand(create);
   task.addCommand(update);
   task.addCommand(remove);
@@ -391,7 +391,7 @@ export const createCampaignCommand = (): Command => {
   );
 
   command.addCommand(createListCommand());
-  command.addCommand(createShowCommand());
+  command.addCommand(createGetCommand());
   command.addCommand(createCreateCommand());
   command.addCommand(createDeleteCommand());
   command.addCommand(createUsersCommand());
@@ -403,7 +403,7 @@ export const createCampaignCommand = (): Command => {
     "after",
     "\nExamples:\n" +
       "  $ scai ops campaign list -n agents\n" +
-      "  $ scai ops campaign show <campaignId> -n agents\n" +
+      "  $ scai ops campaign get <campaignId> -n agents\n" +
       "  $ scai ops campaign create --name 'Spring Launch' --apply -n agents\n" +
       "  $ scai ops campaign delete <campaignId> --apply --force   # UNVERIFIED endpoint\n" +
       "  $ scai ops campaign deliverable create <campaignId> --name 'Landing page' --apply\n" +

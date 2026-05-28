@@ -22,9 +22,9 @@ import { z } from "zod";
 import { runWorkflowAdvance } from "@/workflow/tasks/advance";
 import { runWorkflowApply } from "@/workflow/tasks/apply";
 import { runWorkflowAssigned } from "@/workflow/tasks/assigned";
-import { runWorkflowInspect } from "@/workflow/tasks/inspect";
-import { runWorkflowListCommands } from "@/workflow/tasks/list-commands";
-import { runWorkflowListDefs } from "@/workflow/tasks/list-defs";
+import { runWorkflowGet } from "@/workflow/tasks/get";
+import { runWorkflowCommands } from "@/workflow/tasks/commands";
+import { runWorkflowDefinitions } from "@/workflow/tasks/definitions";
 import { runWorkflowReset } from "@/workflow/tasks/reset";
 import { runWorkflowStatus } from "@/workflow/tasks/status";
 import { runCleanupWorkflowAdvance } from "@/hygiene/tasks/cleanup/workflow-advance";
@@ -61,19 +61,19 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
     },
     inputSchema: {
       verb: z
-        .enum(["inspect", "list-commands", "list-defs", "status", "assigned"])
+        .enum(["get", "commands", "definitions", "status", "assigned"])
         .describe("Which read operation to run."),
       item: z
         .string()
         .optional()
         .describe(
-          "Item reference. Required for verb='inspect' and verb='list-commands'. Accepts one of: a Sitecore item GUID (with or without braces/hyphens), a content-tree path starting with /sitecore/, OR a workflow display name / item name (case-insensitive, matched against `Workflow`-templated items under /sitecore/system/Workflows). For verb='inspect', the result is a discriminated `{ kind: 'item' | 'definition', ... }` envelope — `definition` for Workflow-templated refs (returns states/commands/actions tree), `item` for items under workflow (returns current state + available commands). Branch on `result.kind` before reading further fields."
+          "Item reference. Required for verb='get' and verb='commands'. Accepts one of: a Sitecore item GUID (with or without braces/hyphens), a content-tree path starting with /sitecore/, OR a workflow display name / item name (case-insensitive, matched against `Workflow`-templated items under /sitecore/system/Workflows). For verb='get', the result is a discriminated `{ kind: 'item' | 'definition', ... }` envelope — `definition` for Workflow-templated refs (returns states/commands/actions tree), `item` for items under workflow (returns current state + available commands). Branch on `result.kind` before reading further fields."
         ),
       root: z
         .string()
         .optional()
         .describe(
-          "Content-tree root for verb='list-defs' (defaults to /sitecore/system/Workflows)."
+          "Content-tree root for verb='definitions' (defaults to /sitecore/system/Workflows)."
         ),
       site: z.string().optional().describe("Site identifier. Required for verb='status'."),
       contentEnvironmentId: z
@@ -103,11 +103,11 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         input.environmentName ?? context.envName
       );
       switch (input.verb) {
-        case "inspect": {
+        case "get": {
           if (!input.item) {
-            throw createScaiError("verb='inspect' requires `item`.", "INPUT_INVALID");
+            throw createScaiError("verb='get' requires `item`.", "INPUT_INVALID");
           }
-          const result = await runWorkflowInspect({
+          const result = await runWorkflowGet({
             ...taskOpts,
             item: input.item,
           } as never);
@@ -130,11 +130,11 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
             structuredContent: { verb: input.verb, result },
           };
         }
-        case "list-commands": {
+        case "commands": {
           if (!input.item) {
-            throw createScaiError("verb='list-commands' requires `item`.", "INPUT_INVALID");
+            throw createScaiError("verb='commands' requires `item`.", "INPUT_INVALID");
           }
-          const result = await runWorkflowListCommands({
+          const result = await runWorkflowCommands({
             ...taskOpts,
             item: input.item,
           } as never);
@@ -150,8 +150,8 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
             structuredContent: { verb: input.verb, result },
           };
         }
-        case "list-defs": {
-          const result = await runWorkflowListDefs({
+        case "definitions": {
+          const result = await runWorkflowDefinitions({
             ...taskOpts,
             ...(input.root !== undefined && { root: input.root }),
           } as never);
@@ -256,7 +256,7 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
         .string()
         .optional()
         .describe(
-          "Workflow GUID, content-tree path, or display/item name (apply-workflow / bulk-apply). Same resolver as workflow_inspect verb=inspect."
+          "Workflow GUID, content-tree path, or display/item name (apply-workflow / bulk-apply). Same resolver as workflow_inspect verb=get."
         ),
       state: z
         .string()

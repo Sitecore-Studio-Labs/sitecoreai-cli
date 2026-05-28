@@ -59,7 +59,7 @@ const brandAuthMocks = vi.hoisted(() => ({
   extractScopes: vi.fn(),
 }));
 
-vi.mock("../../../../src/brand/api/auth", () => ({
+vi.mock("../../../../src/shared/jwt", () => ({
   extractScopes: brandAuthMocks.extractScopes,
 }));
 

@@ -180,10 +180,13 @@ describe("runRecipePush — apply vs dry-run", () => {
     expect(envelope).toMatchObject({
       command: "recipe.push",
       environment: "test",
-      whatIf: false,
-      source: "config-glob",
+      meta: { source: "config-glob" },
     });
-    expect((envelope.events as unknown[]).length).toBe(1);
+    // Non-dry-run paths omit `whatIf` (the canonical envelope key
+    // appears iff the run was plan-only).
+    expect(envelope.whatIf).toBeUndefined();
+    const data = envelope.data as { events: unknown[] };
+    expect(data.events.length).toBe(1);
   });
 });
 
@@ -488,8 +491,10 @@ describe("runRecipePush — aborted result rendering", () => {
 
     await runRecipePush({ allowWrite: true } as never);
 
-    const envelope = logger.json.mock.calls[0][0] as { events: Array<Record<string, unknown>> };
-    const events = envelope.events;
+    const envelope = logger.json.mock.calls[0][0] as {
+      data: { events: Array<Record<string, unknown>> };
+    };
+    const events = envelope.data.events;
     expect(events).toHaveLength(3);
     // operation-keyed event → label lifted, index from `index`.
     expect(events[0]).toMatchObject({ kind: "op-start", index: 3, label: "Create A" });

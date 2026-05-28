@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { createInspectCommand } from "./inspect";
+import { createContentVersionGetCommand } from "./get";
 import { createSetNeverPublishCommand } from "./set-never-publish";
 import { createSetValidityCommand } from "./set-validity";
 
@@ -8,7 +8,7 @@ export const createContentVersionCommand = (): Command => {
     "Per-version content-state controls. These verbs write CM-side publish-state fields (`__Never publish`, `__Valid from`, `__Valid to`) on a single item version. They do NOT auto-publish — run `scai content publish item` separately to push changes to Edge."
   );
 
-  command.addCommand(createInspectCommand());
+  command.addCommand(createContentVersionGetCommand());
   command.addCommand(createSetNeverPublishCommand());
   command.addCommand(createSetValidityCommand());
 

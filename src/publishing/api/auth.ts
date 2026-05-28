@@ -1,5 +1,5 @@
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { requestClientCredentialsToken } from "@/auth";
+import type { SitecoreApiClientOptions } from "@/auth";
 import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 import { getDeployToken, getPublishingToken, setPublishingToken } from "@/shared/keychain";

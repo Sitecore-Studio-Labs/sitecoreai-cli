@@ -249,7 +249,6 @@ describe("public library surface — /brief", () => {
     expect(typeof lib.getBrief).toBe("function");
     expect(typeof lib.createBrief).toBe("function");
     expect(typeof lib.updateBrief).toBe("function");
-    expect(typeof lib.setBriefStatus).toBe("function");
     expect(typeof lib.deleteBrief).toBe("function");
 
     // Brief-type CRUD.

@@ -15,7 +15,7 @@ const taskMocks = vi.hoisted(() => ({
     totalCount: 3,
     data: [{ id: "b-1" }, { id: "b-2" }],
   }),
-  runBriefShow: vi.fn().mockResolvedValue({
+  runBriefGet: vi.fn().mockResolvedValue({
     id: "b-1",
     name: "Spring launch",
     status: "Draft",
@@ -31,7 +31,6 @@ const taskMocks = vi.hoisted(() => ({
     .mockResolvedValue({ id: "bt-1", name: "Campaign", fields: [{ name: "f1" }] }),
   runBriefTodosList: vi.fn().mockResolvedValue({ totalCount: 5, data: [] }),
   runBriefCommentsList: vi.fn().mockResolvedValue({ totalCount: 1, data: [{ id: "c-1" }] }),
-  runBriefSetStatus: vi.fn().mockResolvedValue({ id: "b-1", status: "InReview" }),
   runBriefDelete: vi.fn().mockResolvedValue({ id: "b-1", deleted: true }),
   runBriefCreate: vi.fn().mockResolvedValue({ id: "b-new", name: "New Brief" }),
   runBriefUpdate: vi.fn().mockResolvedValue({ id: "b-1" }),
@@ -109,17 +108,17 @@ describe("brief_inspect", () => {
     expect(result.content[0].text).toContain("3 brief(s)");
   });
 
-  it("verb='show' requires briefId", async () => {
+  it("verb='get' requires briefId", async () => {
     const reg = await setup();
     await expect(
-      reg.getTool("brief_inspect")!.handler({ verb: "show" } as never, fakeContext)
+      reg.getTool("brief_inspect")!.handler({ verb: "get" } as never, fakeContext)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("verb='show' forwards the briefId to runBriefShow", async () => {
+  it("verb='get' forwards the briefId to runBriefGet", async () => {
     const reg = await setup();
-    await reg.getTool("brief_inspect")!.handler({ verb: "show", briefId: UUID_A }, fakeContext);
-    expect(taskMocks.runBriefShow).toHaveBeenCalledWith(
+    await reg.getTool("brief_inspect")!.handler({ verb: "get", briefId: UUID_A }, fakeContext);
+    expect(taskMocks.runBriefGet).toHaveBeenCalledWith(
       expect.objectContaining({ briefId: UUID_A })
     );
   });
@@ -165,65 +164,25 @@ describe("brief_manage", () => {
     expect(tool.annotations.destructiveHint).toBe(true);
   });
 
-  it("brief set-status requires briefId", async () => {
-    const reg = await setup();
-    await expect(
-      reg
-        .getTool("brief_manage")!
-        .handler(
-          { resource: "brief", verb: "set-status", status: "InReview", allowWrite: true } as never,
-          fakeContext
-        )
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
-  });
-
-  it("brief set-status requires status", async () => {
-    const reg = await setup();
-    await expect(
-      reg
-        .getTool("brief_manage")!
-        .handler(
-          { resource: "brief", verb: "set-status", briefId: UUID_A, allowWrite: true } as never,
-          fakeContext
-        )
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
-  });
-
-  it("brief set-status forwards whatIf and reports an apply result", async () => {
+  it("brief update --status routes a status-only patch through runBriefUpdate (replaces set-status)", async () => {
     const reg = await setup();
     const result = await reg.getTool("brief_manage")!.handler(
       {
         resource: "brief",
-        verb: "set-status",
+        verb: "update",
         briefId: UUID_A,
         status: "InReview",
         allowWrite: true,
       },
       fakeContext
     );
-    expect(taskMocks.runBriefSetStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ briefId: UUID_A, status: "InReview", whatIf: undefined })
-    );
-    expect(result.content[0].text).toContain("status set to 'InReview'");
-  });
-
-  it("brief set-status surfaces a plan result in what-if mode", async () => {
-    taskMocks.runBriefSetStatus.mockResolvedValueOnce({
-      plan: { id: UUID_A, status: "InReview" },
-    });
-    const reg = await setup();
-    const result = await reg.getTool("brief_manage")!.handler(
-      {
-        resource: "brief",
-        verb: "set-status",
+    expect(taskMocks.runBriefUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
         briefId: UUID_A,
-        status: "InReview",
-        whatIf: true,
-        allowWrite: true,
-      },
-      fakeContext
+        patch: { status: "InReview" },
+      })
     );
-    expect(result.content[0].text).toContain("Plan:");
+    expect(result.content[0].text).toContain("Updated brief");
   });
 
   it("brief delete reports 'Deleted' vs 'Plan' based on the runner result", async () => {
@@ -444,21 +403,6 @@ describe("brief_manage", () => {
       expect.objectContaining({ briefTypeId: UUID_B })
     );
     expect(result.content[0].text).toContain("Deleted brief type");
-  });
-
-  it("rejects set-status on resource='brief-type'", async () => {
-    const reg = await setup();
-    await expect(
-      reg.getTool("brief_manage")!.handler(
-        {
-          resource: "brief-type",
-          verb: "set-status",
-          briefTypeId: UUID_B,
-          allowWrite: true,
-        } as never,
-        fakeContext
-      )
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 });
 

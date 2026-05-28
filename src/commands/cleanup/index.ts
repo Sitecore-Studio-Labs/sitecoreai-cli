@@ -6,6 +6,7 @@ import { createCleanupEmptyFoldersCommand } from "./empty-folders";
 import { createCleanupFieldSetCommand } from "./field-set";
 import { createCleanupFindReplaceCommand } from "./find-replace";
 import { createCleanupLanguageVersionsCommand } from "./language-versions";
+import { createCleanupMultilistCommand } from "./multilist";
 import { createCleanupRenameCommand } from "./rename";
 import { createCleanupRolesCommand } from "./roles";
 import { createCleanupSiteResidueCommand } from "./site-residue";
@@ -27,6 +28,7 @@ export const createCleanupCommand = (): Command => {
   command.addCommand(createCleanupFieldSetCommand());
   command.addCommand(createCleanupFindReplaceCommand());
   command.addCommand(createCleanupLanguageVersionsCommand());
+  command.addCommand(createCleanupMultilistCommand());
   command.addCommand(createCleanupRenameCommand());
   command.addCommand(createCleanupRolesCommand());
   command.addCommand(createCleanupSiteResidueCommand());

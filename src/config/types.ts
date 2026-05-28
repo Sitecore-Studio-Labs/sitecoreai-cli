@@ -41,6 +41,7 @@ export type EnvironmentRecipeRoots = {
   contentItems?: string;
   headlessVariants?: string;
   availableRenderings?: string;
+  presentationStyles?: string;
   enumerations?: string;
   /** Walk roots for resolving `placedIn` against pre-existing placeholders. */
   placeholderSettings?: string[];
@@ -267,6 +268,15 @@ export type EnvironmentConfiguration = {
    * tenant-wide list, which usually isn't what you want).
    */
   availableRenderingsRoot?: string;
+  /**
+   * Sitecore parent path for the per-site SXA Headless `Styles` bucket —
+   * typically `/sitecore/content/<siteCollection>/<site>/Presentation/Styles`.
+   *
+   * Currently only consumed by `scai provision recipe prune-defaults`,
+   * which removes the OOTB style buckets (Spacing, Add Highlight, etc.)
+   * SXA seeds here. Recipe authoring does not write to this root today.
+   */
+  presentationStylesRoot?: string;
   /**
    * Per-site enumerations bucket — typically
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Enumerations`.

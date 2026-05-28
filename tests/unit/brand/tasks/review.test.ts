@@ -153,12 +153,17 @@ describe("runBrandReview — text format", () => {
 });
 
 describe("runBrandReview — json format", () => {
-  it("writes serialized JSON to stdout and exposes result.json", async () => {
+  it("writes a ScaiEnvelope to stdout wrapping the JSON report", async () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const result = await runBrandReview(baseOptions({ format: "json" }));
     expect(result.json).toBeDefined();
     expect(result.report).toBe(JSON.stringify(result.json, null, 2));
-    expect(writeSpy).toHaveBeenCalledWith(JSON.stringify(result.json, null, 2) + "\n");
+    // stdout receives the canonical envelope; the bare report still
+    // appears on `result.json` for in-process consumers.
+    const stdoutCall = String(writeSpy.mock.calls.at(-1)?.[0] ?? "");
+    const envelope = JSON.parse(stdoutCall.trim());
+    expect(envelope.command).toBe("brand.review");
+    expect(envelope.data).toEqual(result.json);
   });
 
   it("writes the JSON report to --output and does not touch stdout", async () => {

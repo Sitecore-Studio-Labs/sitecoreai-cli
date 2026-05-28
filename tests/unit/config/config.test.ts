@@ -118,6 +118,7 @@ describe("readRootConfiguration", () => {
           recipeRoots: {
             templates: "/sitecore/templates/Project/demo",
             renderings: "/sitecore/layout/Renderings/Project/demo",
+            presentationStyles: "/sitecore/content/demo/Presentation/Styles",
             placeholderSettings: ["/sitecore/content/demo/Presentation/Placeholder Settings"],
           },
         },
@@ -130,6 +131,9 @@ describe("readRootConfiguration", () => {
       expect(config.environments.demo.templatesRoot).toBe("/sitecore/templates/Project/demo");
       expect(config.environments.demo.renderingsRoot).toBe(
         "/sitecore/layout/Renderings/Project/demo"
+      );
+      expect(config.environments.demo.presentationStylesRoot).toBe(
+        "/sitecore/content/demo/Presentation/Styles"
       );
       expect(config.environments.demo.placeholderSettingsRoots).toEqual([
         "/sitecore/content/demo/Presentation/Placeholder Settings",

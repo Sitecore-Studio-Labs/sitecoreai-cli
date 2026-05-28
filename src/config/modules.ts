@@ -75,7 +75,7 @@ const resolveModuleItemsPath = (
 
 const normalizeFieldFilters = (filters?: FieldFilter[]): FieldFilter[] =>
   (filters ?? []).map((filter) => ({
-    fieldId: filter.fieldId ?? (filter as unknown as { FieldId?: string }).FieldId ?? "",
+    fieldId: filter.fieldId ?? filter.FieldId ?? "",
     description: filter.description,
   }));
 
@@ -100,21 +100,27 @@ export const normalizeModuleConfiguration = (
   };
 
   const basePath = resolveModuleItemsPath(moduleConfig, moduleFile, rootConfig);
-  for (const includeSpec of raw.items?.includes ?? []) {
-    const include = includeSpec as unknown as {
-      name?: string;
-      database?: string;
-      path?: string;
+  // `raw.items?.includes` is typed `FilesystemTreeSpec[]` so the
+  // canonical normalized shape is reusable downstream, but on the
+  // input side this is the JSON-parsed object — see the local
+  // `JsonIncludeSpec` type below. The Ajv schema validates the wire
+  // shape before this loop runs.
+  type JsonIncludeSpec = {
+    name?: string;
+    database?: string;
+    path?: string;
+    scope?: string;
+    allowedPushOperations?: string;
+    rules?: Array<{
+      path: string;
       scope?: string;
       allowedPushOperations?: string;
-      rules?: Array<{
-        path: string;
-        scope?: string;
-        allowedPushOperations?: string;
-        alias?: string;
-      }>;
-      maxRelativePathLength?: number;
-    };
+      alias?: string;
+    }>;
+    maxRelativePathLength?: number;
+  };
+  for (const includeSpec of (raw.items?.includes ?? []) as unknown as JsonIncludeSpec[]) {
+    const include = includeSpec;
 
     if (!include.path || !include.name) {
       continue;

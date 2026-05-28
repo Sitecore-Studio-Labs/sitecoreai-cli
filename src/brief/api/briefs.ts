@@ -139,20 +139,6 @@ export const updateBrief = (
     body: patch,
   });
 
-/**
- * Move a brief to a new workflow status.
- *
- * Verified 2026-05-15 against the Agents tenant: a plain `{ status }`
- * PUT transitions the brief directly (e.g. `Draft → Approved`), 204 on
- * success. Briefs must be out of `Draft` before they can be linked to
- * a campaign.
- */
-export const setBriefStatus = (
-  options: BriefApiClientOptions,
-  briefId: string,
-  status: BriefStatus
-): Promise<void> => updateBrief(options, briefId, { status });
-
 /** Delete a brief. Returns void (204). Verified against the Agents tenant 2026-05-15. */
 export const deleteBrief = (options: BriefApiClientOptions, briefId: string): Promise<void> =>
   briefRequest<void>(options, `/api/brief/v1/briefs/${encodeURIComponent(briefId)}`, {

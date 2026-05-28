@@ -30,7 +30,11 @@ const ROOTS = {
   headlessVariantsRoot:
     "/sitecore/content/sandbox-collection/sandbox/Presentation/Headless Variants",
   contentItemsRoot: "/sitecore/content/sandbox-collection/sandbox/Data",
+  presentationStylesRoot: "/sitecore/content/sandbox-collection/sandbox/Presentation/Styles",
 };
+
+// 4 AR + 7 HV + 5 Data + 12 Styles = 28 total prune targets.
+const TOTAL_TARGETS = 28;
 
 const fakeRemoteItem = (path: string, itemId: string): RemoteItem => ({
   itemId,
@@ -84,7 +88,7 @@ const makeClient = (
 };
 
 describe("pruneDefaultsAgainstClient", () => {
-  it("deletes the SXA OOTB Available Renderings + Headless Variants + Data children that exist", async () => {
+  it("deletes the SXA OOTB Available Renderings + Headless Variants + Data + Styles children that exist", async () => {
     const presentPaths = [
       `${ROOTS.availableRenderingsRoot}/Media`,
       `${ROOTS.availableRenderingsRoot}/Page Content`,
@@ -92,6 +96,8 @@ describe("pruneDefaultsAgainstClient", () => {
       `${ROOTS.headlessVariantsRoot}/Title`,
       `${ROOTS.contentItemsRoot}/Promos`,
       `${ROOTS.contentItemsRoot}/Texts`,
+      `${ROOTS.presentationStylesRoot}/Spacing`,
+      `${ROOTS.presentationStylesRoot}/Add Highlight`,
     ];
     const client = makeClient(presentPaths);
 
@@ -101,21 +107,22 @@ describe("pruneDefaultsAgainstClient", () => {
       whatIf: false,
     });
 
-    // 4 SXA AR children + 7 SXA HV children + 5 Data children = 16 targets.
-    expect(actions).toHaveLength(16);
+    expect(actions).toHaveLength(TOTAL_TARGETS);
     const deleted = actions.filter((a: PruneAction) => a.status === "deleted");
     expect(deleted.map((a) => a.path).sort()).toEqual(presentPaths.sort());
     const missing = actions.filter((a) => a.status === "missing");
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.availableRenderingsRoot}/Navigation`);
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.headlessVariantsRoot}/LinkList`);
     expect(missing.map((a) => a.path)).toContain(`${ROOTS.contentItemsRoot}/Images`);
+    expect(missing.map((a) => a.path)).toContain(`${ROOTS.presentationStylesRoot}/Common`);
+    expect(missing.map((a) => a.path)).toContain(`${ROOTS.presentationStylesRoot}/Container`);
     expect(client.deletes).toHaveLength(presentPaths.length);
     // Deletes go by itemId so we don't re-resolve the path inside the
     // mutation.
     expect(client.deletes.every((d) => Boolean(d.itemId) && !d.path)).toBe(true);
   });
 
-  it("preserves the parent folders (no delete call hits Available Renderings, Headless Variants, or Data)", async () => {
+  it("preserves the parent folders (no delete call hits Available Renderings, Headless Variants, Data, or Styles)", async () => {
     // Even if the parents *did* somehow show up as targets, the test
     // would fail — but more importantly, this asserts the build list
     // never mints the parent paths themselves.
@@ -123,6 +130,7 @@ describe("pruneDefaultsAgainstClient", () => {
       ROOTS.availableRenderingsRoot,
       ROOTS.headlessVariantsRoot,
       ROOTS.contentItemsRoot,
+      ROOTS.presentationStylesRoot,
     ]);
     const actions = await pruneDefaultsAgainstClient({
       client,
@@ -132,6 +140,7 @@ describe("pruneDefaultsAgainstClient", () => {
     expect(actions.every((a) => a.path !== ROOTS.availableRenderingsRoot)).toBe(true);
     expect(actions.every((a) => a.path !== ROOTS.headlessVariantsRoot)).toBe(true);
     expect(actions.every((a) => a.path !== ROOTS.contentItemsRoot)).toBe(true);
+    expect(actions.every((a) => a.path !== ROOTS.presentationStylesRoot)).toBe(true);
     expect(client.deletes).toHaveLength(0);
   });
 
@@ -254,12 +263,42 @@ describe("pruneDefaultsAgainstClient", () => {
       availableRenderingsRoot: `${ROOTS.availableRenderingsRoot}/`,
       headlessVariantsRoot: `${ROOTS.headlessVariantsRoot}/`,
       contentItemsRoot: `${ROOTS.contentItemsRoot}/`,
+      presentationStylesRoot: `${ROOTS.presentationStylesRoot}/`,
       whatIf: false,
     });
     // First targeted AR path should be `<root>/Media` (no double slash).
     const firstAr = actions.find((a) => a.group === "availableRenderings")!;
     expect(firstAr.path).toBe(`${ROOTS.availableRenderingsRoot}/Media`);
     expect(actions.find((a) => a.path.includes("//"))).toBeUndefined();
+  });
+
+  it("targets every listed Presentation/Styles bucket under the styles root", async () => {
+    const client = makeClient([]);
+    const actions = await pruneDefaultsAgainstClient({
+      client,
+      ...ROOTS,
+      whatIf: false,
+    });
+    const styleActions = actions.filter((a) => a.group === "presentationStyles");
+    expect(styleActions.map((a) => a.path.split("/").pop()!).sort()).toEqual(
+      [
+        "Add Highlight",
+        "Background Color",
+        "Background Layout",
+        "Common",
+        "Container",
+        "Content Alignment",
+        "Image",
+        "Link List",
+        "Navigation",
+        "Promo",
+        "Rich Text",
+        "Spacing",
+      ].sort()
+    );
+    expect(styleActions.every((a) => a.path.startsWith(`${ROOTS.presentationStylesRoot}/`))).toBe(
+      true
+    );
   });
 });
 
@@ -284,6 +323,7 @@ const makeTenant = (overrides: Record<string, unknown> = {}) => ({
     headlessVariantsRoot: ROOTS.headlessVariantsRoot,
     availableRenderingsRoot: ROOTS.availableRenderingsRoot,
     contentItemsRoot: ROOTS.contentItemsRoot,
+    presentationStylesRoot: ROOTS.presentationStylesRoot,
   },
   client: makeClient([]),
   ...overrides,
@@ -319,7 +359,7 @@ describe("runRecipePruneDefaults", () => {
     expect(result.environment).toBe("sandbox");
     expect(result.whatIf).toBe(false);
     expect(result.summary.deleted).toBe(1);
-    expect(result.summary.missing).toBe(15);
+    expect(result.summary.missing).toBe(TOTAL_TARGETS - 1);
     expect(result.summary.wouldDelete).toBe(0);
   });
 
@@ -357,7 +397,7 @@ describe("runRecipePruneDefaults", () => {
     vi.mocked(shared.resolveTenant).mockReturnValue(makeTenant({ environment: {} }) as never);
 
     await expect(runRecipePruneDefaults({ whatIf: true } as never)).rejects.toThrow(
-      /headlessVariantsRoot, availableRenderingsRoot, contentItemsRoot/
+      /headlessVariantsRoot, availableRenderingsRoot, contentItemsRoot, presentationStylesRoot/
     );
   });
 
@@ -365,10 +405,11 @@ describe("runRecipePruneDefaults", () => {
     const overrideAr = "/sitecore/content/x/Presentation/Available Renderings";
     const overrideHv = "/sitecore/content/x/Presentation/Headless Variants";
     const overrideCi = "/sitecore/content/x/Data";
+    const overridePs = "/sitecore/content/x/Presentation/Styles";
     vi.mocked(shared.resolveTenant).mockReturnValue(
       makeTenant({
         environment: {}, // no roots in the profile — overrides must fill them
-        client: makeClient([`${overrideAr}/Media`]),
+        client: makeClient([`${overrideAr}/Media`, `${overridePs}/Spacing`]),
       }) as never
     );
 
@@ -377,10 +418,12 @@ describe("runRecipePruneDefaults", () => {
       availableRenderingsRoot: overrideAr,
       headlessVariantsRoot: overrideHv,
       contentItemsRoot: overrideCi,
+      presentationStylesRoot: overridePs,
     } as never);
 
     expect(result.actions.some((a) => a.path === `${overrideAr}/Media`)).toBe(true);
-    expect(result.summary.wouldDelete).toBe(1);
+    expect(result.actions.some((a) => a.path === `${overridePs}/Spacing`)).toBe(true);
+    expect(result.summary.wouldDelete).toBe(2);
   });
 
   it("emits a recipe.prune-defaults JSON envelope in --json mode", async () => {
@@ -400,7 +443,7 @@ describe("runRecipePruneDefaults", () => {
       environment: "sandbox",
       whatIf: false,
     });
-    expect((envelope.actions as unknown[]).length).toBe(16);
+    expect((envelope.actions as unknown[]).length).toBe(TOTAL_TARGETS);
   });
 
   it("writes a human summary line in non-JSON mode", async () => {

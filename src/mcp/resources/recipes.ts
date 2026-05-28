@@ -197,7 +197,7 @@ idempotent receiver and external reconciliation.
 **templateOf path '/sitecore/templates/System/Workflow/Webhook Submit Action' did not resolve**
 
 Tenant either pre-dates the webhook-actions templates or has a custom
-layout. Run \`scai content workflow inspect "Sample Workflow"\` — if its
+layout. Run \`scai content workflow get "Sample Workflow"\` — if its
 actions are templated \`Webhook Submit Action\`, the templates exist
 somewhere else; PR an update to \`TEMPLATE_PATHS\` in
 \`src/recipe/compile/workflow.ts\`. Otherwise strip \`actions\` /
@@ -217,7 +217,7 @@ before the SetField runs. Not a real blocker.
 **Workflow lookup by name returns "No workflow definition matched"**
 
 Name matching is case-insensitive against \`name\` (item name) and
-\`displayName\`. Use \`workflow_inspect verb=list-defs\` to enumerate.
+\`displayName\`. Use \`workflow_inspect verb=definitions\` to enumerate.
 
 ## Verifying a push
 
@@ -229,8 +229,8 @@ scai provision recipe push -i your-workflow.recipe.ts --what-if
 scai provision recipe push -i your-workflow.recipe.ts
 
 # Verify
-scai content workflow inspect "Your Workflow Name"      # full definition tree
-scai content workflow list-defs                          # confirm it's there
+scai content workflow get "Your Workflow Name"      # full definition tree
+scai content workflow definitions                          # confirm it's there
 \`\`\`
 
 ## Caveats

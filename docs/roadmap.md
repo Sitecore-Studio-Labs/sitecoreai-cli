@@ -218,6 +218,16 @@ coverage.
 
 Tracked, not yet scheduled. Promote into a phase when prioritized.
 
+**ScaiEnvelope coverage** — adoption is now complete across every
+task family (brief, campaigns, workflow, serialization push, brand
+review JSON, recipe push, agents). The 2026-05-27 audit's seven
+remaining gaps were closed the same day; the codebase-conventions
+skill flags the requirement so new tasks must call
+`buildScaiEnvelope` on the `--json` path. SARIF output from
+`brand review` stays unwrapped — it's a standardized OASIS schema
+that downstream tooling parses verbatim, and the `--format json`
+path is the envelope-compliant alternative.
+
 **Publishing polish**
 
 - Token-scope re-mint on cache miss — when a cached publishing token's

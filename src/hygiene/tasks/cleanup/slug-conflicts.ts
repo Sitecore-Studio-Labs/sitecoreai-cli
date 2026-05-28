@@ -6,7 +6,7 @@ import { runAuditSlugConflicts, type SlugConflictGroup } from "../audit/slug-con
 import {
   type HygieneCommonOptions,
   dashifyItemId,
-  ensureAllowWriteForCleanup,
+  ensureAllowWrite,
   printReport,
   resolveTenant,
   toLogger,
@@ -229,7 +229,7 @@ export const runCleanupSlugConflicts = async (
 
   const { envName, root: rootConfig, client } = resolveTenant(options);
   if (!options.whatIf) {
-    ensureAllowWriteForCleanup(rootConfig, envName, options.allowWrite);
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
   } else if (!logger.isJson()) {
     logger.info("What-if mode active — no items will be deleted or renamed.", "yellow");
   }

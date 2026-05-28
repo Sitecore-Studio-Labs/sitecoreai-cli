@@ -13,7 +13,7 @@ vi.mock("../../../../src/mcp/auth", async () => {
 });
 
 const taskMocks = vi.hoisted(() => ({
-  runWorkflowInspect: vi.fn().mockResolvedValue({
+  runWorkflowGet: vi.fn().mockResolvedValue({
     kind: "item",
     item: {
       itemId: "x",
@@ -23,13 +23,13 @@ const taskMocks = vi.hoisted(() => ({
       availableCommands: [{ commandId: "c1", displayName: "Submit" }],
     },
   }),
-  runWorkflowListCommands: vi.fn().mockResolvedValue({
+  runWorkflowCommands: vi.fn().mockResolvedValue({
     itemId: "x",
     path: "/sitecore/content/x",
     workflowId: "w1",
     commands: [{ commandId: "c1", displayName: "Submit" }],
   }),
-  runWorkflowListDefs: vi.fn().mockResolvedValue({
+  runWorkflowDefinitions: vi.fn().mockResolvedValue({
     rootPath: "/sitecore/system/Workflows",
     workflows: [{ itemId: "wf1", name: "Sample", displayName: "Sample", path: "..." }],
   }),
@@ -90,14 +90,14 @@ vi.mock("../../../../src/workflow/tasks/apply", () => ({
 vi.mock("../../../../src/workflow/tasks/assigned", () => ({
   runWorkflowAssigned: taskMocks.runWorkflowAssigned,
 }));
-vi.mock("../../../../src/workflow/tasks/inspect", () => ({
-  runWorkflowInspect: taskMocks.runWorkflowInspect,
+vi.mock("../../../../src/workflow/tasks/get", () => ({
+  runWorkflowGet: taskMocks.runWorkflowGet,
 }));
-vi.mock("../../../../src/workflow/tasks/list-commands", () => ({
-  runWorkflowListCommands: taskMocks.runWorkflowListCommands,
+vi.mock("../../../../src/workflow/tasks/commands", () => ({
+  runWorkflowCommands: taskMocks.runWorkflowCommands,
 }));
-vi.mock("../../../../src/workflow/tasks/list-defs", () => ({
-  runWorkflowListDefs: taskMocks.runWorkflowListDefs,
+vi.mock("../../../../src/workflow/tasks/definitions", () => ({
+  runWorkflowDefinitions: taskMocks.runWorkflowDefinitions,
 }));
 vi.mock("../../../../src/workflow/tasks/reset", () => ({
   runWorkflowReset: taskMocks.runWorkflowReset,
@@ -157,34 +157,32 @@ describe("workflow_inspect tool", () => {
     expect(tool.annotations.readOnlyHint).toBe(true);
   });
 
-  it("routes verb='inspect' to runWorkflowInspect", async () => {
+  it("routes verb='get' to runWorkflowGet", async () => {
     const reg = await setup();
     const result = await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
-      expect.objectContaining({ item: "/x" })
-    );
-    expect(result.structuredContent).toMatchObject({ verb: "inspect" });
+      .handler({ verb: "get", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowGet).toHaveBeenCalledWith(expect.objectContaining({ item: "/x" }));
+    expect(result.structuredContent).toMatchObject({ verb: "get" });
   });
 
-  it("requires `item` for verb='inspect'", async () => {
+  it("requires `item` for verb='get'", async () => {
     const reg = await setup();
     await expect(
-      reg.getTool("workflow_inspect")!.handler({ verb: "inspect" } as never, fakeContext, fakeExtra)
+      reg.getTool("workflow_inspect")!.handler({ verb: "get" } as never, fakeContext, fakeExtra)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("routes verb='list-defs' to runWorkflowListDefs with optional root", async () => {
+  it("routes verb='definitions' to runWorkflowDefinitions with optional root", async () => {
     const reg = await setup();
     await reg
       .getTool("workflow_inspect")!
       .handler(
-        { verb: "list-defs", root: "/sitecore/system/Workflows/Editorial" },
+        { verb: "definitions", root: "/sitecore/system/Workflows/Editorial" },
         fakeContext,
         fakeExtra
       );
-    expect(taskMocks.runWorkflowListDefs).toHaveBeenCalledWith(
+    expect(taskMocks.runWorkflowDefinitions).toHaveBeenCalledWith(
       expect.objectContaining({ root: "/sitecore/system/Workflows/Editorial" })
     );
   });
@@ -309,33 +307,33 @@ describe("workflow_lifecycle tool", () => {
 });
 
 describe("workflow_inspect — remaining verbs + validation", () => {
-  it("verb='list-commands' requires `item`", async () => {
+  it("verb='commands' requires `item`", async () => {
     const reg = await setup();
     await expect(
       reg
         .getTool("workflow_inspect")!
-        .handler({ verb: "list-commands" } as never, fakeContext, fakeExtra)
+        .handler({ verb: "commands" } as never, fakeContext, fakeExtra)
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("verb='list-commands' routes to runWorkflowListCommands", async () => {
-    taskMocks.runWorkflowListCommands.mockClear();
+  it("verb='commands' routes to runWorkflowCommands", async () => {
+    taskMocks.runWorkflowCommands.mockClear();
     const reg = await setup();
     const result = await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "list-commands", item: "/x" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWorkflowListCommands).toHaveBeenCalledWith(
+      .handler({ verb: "commands", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowCommands).toHaveBeenCalledWith(
       expect.objectContaining({ item: "/x" })
     );
-    expect(result.structuredContent).toMatchObject({ verb: "list-commands" });
+    expect(result.structuredContent).toMatchObject({ verb: "commands" });
   });
 
-  it("verb='list-commands' reports 'not under workflow' when the runner returns null", async () => {
-    taskMocks.runWorkflowListCommands.mockResolvedValueOnce(null);
+  it("verb='commands' reports 'not under workflow' when the runner returns null", async () => {
+    taskMocks.runWorkflowCommands.mockResolvedValueOnce(null);
     const reg = await setup();
     const result = await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "list-commands", item: "/x" }, fakeContext, fakeExtra);
+      .handler({ verb: "commands", item: "/x" }, fakeContext, fakeExtra);
     expect(result.content[0]!.text).toContain("not under workflow");
   });
 
@@ -364,8 +362,8 @@ describe("workflow_inspect — remaining verbs + validation", () => {
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
-  it("verb='inspect' renders the definition branch when runner returns kind='definition'", async () => {
-    taskMocks.runWorkflowInspect.mockResolvedValueOnce({
+  it("verb='get' renders the definition branch when runner returns kind='definition'", async () => {
+    taskMocks.runWorkflowGet.mockResolvedValueOnce({
       kind: "definition",
       definition: {
         name: "Editorial",
@@ -377,17 +375,17 @@ describe("workflow_inspect — remaining verbs + validation", () => {
     const reg = await setup();
     const result = await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "inspect", item: "Editorial" }, fakeContext, fakeExtra);
+      .handler({ verb: "get", item: "Editorial" }, fakeContext, fakeExtra);
     expect(result.content[0]!.text).toContain("Workflow definition");
     expect(result.content[0]!.text).toContain("2 state(s)");
   });
 
-  it("verb='inspect' renders the 'not under workflow' branch when runner returns null", async () => {
-    taskMocks.runWorkflowInspect.mockResolvedValueOnce(null);
+  it("verb='get' renders the 'not under workflow' branch when runner returns null", async () => {
+    taskMocks.runWorkflowGet.mockResolvedValueOnce(null);
     const reg = await setup();
     const result = await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
+      .handler({ verb: "get", item: "/x" }, fakeContext, fakeExtra);
     expect(result.content[0]!.text).toContain("is not under workflow");
   });
 });
@@ -564,19 +562,19 @@ describe("workflow tools — per-call environment retargeting", () => {
     const reg = await setup();
     await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "inspect", item: "/x" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
+      .handler({ verb: "get", item: "/x" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowGet).toHaveBeenCalledWith(
       expect.objectContaining({ environmentName: "test-env" })
     );
   });
 
   it("workflow_inspect threads environmentName into the task runner when set", async () => {
-    taskMocks.runWorkflowInspect.mockClear();
+    taskMocks.runWorkflowGet.mockClear();
     const reg = await setup();
     await reg
       .getTool("workflow_inspect")!
-      .handler({ verb: "inspect", item: "/x", environmentName: "prod" }, fakeContext, fakeExtra);
-    expect(taskMocks.runWorkflowInspect).toHaveBeenCalledWith(
+      .handler({ verb: "get", item: "/x", environmentName: "prod" }, fakeContext, fakeExtra);
+    expect(taskMocks.runWorkflowGet).toHaveBeenCalledWith(
       expect.objectContaining({ environmentName: "prod" })
     );
   });

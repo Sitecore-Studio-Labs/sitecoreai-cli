@@ -1,4 +1,5 @@
 import { Logger } from "@/shared/logger";
+import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
 import { resolveEnvironment } from "@/policy/environment";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
@@ -141,7 +142,7 @@ export const parseItemReference = (value: string): ItemSelector => {
 
 /**
  * Render a result either as a `--json` envelope or as a small key/value
- * block for human-readable output. Used by `scai content workflow inspect` /
+ * block for human-readable output. Used by `scai content workflow get` /
  * `list-commands` where the result is a single record (not a long list
  * that would warrant the broader `printReport` helper from hygiene).
  */
@@ -155,7 +156,13 @@ export const printWorkflowResult = (params: {
 }): void => {
   const { logger, command, envName, result, humanLines } = params;
   if (logger.isJson()) {
-    logger.json({ command, environment: envName, result });
+    logger.json(
+      buildScaiEnvelope({
+        command,
+        environment: envName,
+        data: result,
+      }) as unknown as Record<string, unknown>
+    );
     return;
   }
   if (humanLines && humanLines.length > 0) {

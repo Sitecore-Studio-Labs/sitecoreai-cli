@@ -756,4 +756,4 @@ export const scanItemsAndFields = async ({
   return { scanned, fieldsByItemId, cache, knobs };
 };
 
-export { ensureAllowWrite as ensureAllowWriteForCleanup } from "@/policy/allow-write";
+export { ensureAllowWrite } from "@/policy/allow-write";

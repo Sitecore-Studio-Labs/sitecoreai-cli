@@ -1,6 +1,6 @@
 import type { EnvironmentConfiguration } from "@/config/types";
 import { runSitecoreGraphQL, type GraphQLRequestOptions } from "@/shared/graphql";
-import { getAccessToken } from "@/serialization/api/auth";
+import { getAccessToken } from "@/auth";
 
 const DEFAULT_AUTHORING_PATH = "/sitecore/api/authoring/graphql/v1";
 

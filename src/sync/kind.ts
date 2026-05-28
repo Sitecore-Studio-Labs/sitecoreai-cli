@@ -34,6 +34,25 @@ export interface SyncContext {
   logger?: Logger;
   /** Cancellation — kinds making HTTP calls should forward this. */
   signal?: AbortSignal;
+  /**
+   * Skip every code path that triggers a Sitecore AI enrichment
+   * pipeline run. Set by the operator via `--no-enrich` on a push
+   * command (or by an orchestrator-driven flow that knows the kit is
+   * already structured).
+   *
+   * Effect on the `brand-kit` kind:
+   *  - the kitChange path becomes an error (the kit doesn't exist yet
+   *    so PATCHes can't land) instead of seeding;
+   *  - the self-heal-on-existing-bare-kit path is skipped;
+   *  - the field-PATCH loop still runs, with operator-authored values
+   *    landing on whatever sections happen to already exist.
+   *
+   * Other kinds may ignore this flag — it's a brand-kit-specific
+   * trade-off today, but lives on the shared context so the engine
+   * can route the same intent through any future kind that has
+   * comparable side effects.
+   */
+  skipEnrichment?: boolean;
 }
 
 /** Outcome of applying a plan. */

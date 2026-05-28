@@ -33,6 +33,13 @@ interface SyncOptions extends CommonOptions {
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
+  /**
+   * Skip every Sitecore AI enrichment-triggering code path. Power-
+   * user flag — useful when iterating on field values against a kit
+   * that's already been seeded and you don't want to wait 5-15 min
+   * for the pipeline to re-run on a stub PDF.
+   */
+  noEnrich?: boolean;
 }
 
 /** Slugify a kit name for a default recipe filename. */
@@ -50,6 +57,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     environmentName: options.environmentName ?? root.defaultEnvironment,
     configPath,
     logger,
+    ...(options.noEnrich ? { skipEnrichment: true } : {}),
   };
 };
 
@@ -130,7 +138,13 @@ const createPushCommand = (): Command => {
     .description("Converge a brand kit onto a recipe file. Dry-run unless --allow-write.")
     .requiredOption("--file <path>", "Recipe file (.yaml / .json)")
     .addOption(new Option("--allow-write", "Apply the plan (default is a dry-run)"))
-    .addOption(new Option("--prune", "Include delete changes (off by default)"));
+    .addOption(new Option("--prune", "Include delete changes (off by default)"))
+    .addOption(
+      new Option(
+        "--no-enrich",
+        "Skip every code path that triggers a Sitecore AI enrichment pipeline run. Field PATCHes only — kit must already exist with the right section structure. Useful for fast iteration on field values without waiting 5-15 min for an enrichment cycle."
+      )
+    );
   addEnvironmentOption(command);
   addConfigOption(command);
   addVerbosityOptions(command);

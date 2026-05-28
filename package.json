@@ -1,6 +1,6 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",

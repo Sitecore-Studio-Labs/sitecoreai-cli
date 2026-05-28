@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
 `scai brand sync push`: self-heal a pre-existing bare kit on re-push

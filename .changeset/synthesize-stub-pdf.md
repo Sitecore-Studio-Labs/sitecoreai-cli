@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
 `scai brand sync push`: synthesize a stub PDF when the recipe has section data but no source document

@@ -622,20 +622,34 @@ function emitRendering(
   const sectionName = resolveSectionName(recipe, context);
   const renderingParentPath = resolveRenderingParent(context, sectionName);
   const renderingPath = joinPath(renderingParentPath, recipe.name);
-  // Datasource template ref: prefer the explicit `datasource.template`
-  // ref when present (separate ContentTemplateRecipe under Content
-  // Models/); otherwise the component template itself is the datasource
-  // template (inline `fields:` pattern).
+  // Datasource template ref. Three cases:
+  //   1. Explicit `datasource.template` handle → reference the separate
+  //      ContentTemplateRecipe (compatible-data-source pattern).
+  //   2. Inline `fields:` (recipe has ≥ 1 field) → the component template
+  //      IS the datasource template (legacy inline-fields pattern).
+  //   3. Neither — a pure-layout rendering (Container, ColumnSplitter,
+  //      RowSplitter, …). Emit no Datasource Template field at all so
+  //      the rendering item's shared field stays empty. Sitecore Pages
+  //      gates its "create or pick a datasource" prompt on this field
+  //      being non-empty, so an empty value is what makes a layout-only
+  //      rendering droppable without an authoring prompt.
+  const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
   const datasourceRefKey = recipe.datasource?.template
     ? templateId(site, recipe.datasource.template.handle)
-    : templateId(site, recipe.handle);
+    : hasInlineFields
+      ? templateId(site, recipe.handle)
+      : undefined;
 
   const fields: FieldValue[] = [
     sharedField(RENDERING_FIELDS.COMPONENT_NAME, { kind: "string", value: recipe.name }),
-    sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-      kind: "ref-recipe",
-      refKey: datasourceRefKey,
-    }),
+    ...(datasourceRefKey
+      ? [
+          sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+            kind: "ref-recipe",
+            refKey: datasourceRefKey,
+          }),
+        ]
+      : []),
     sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
     versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
   ];

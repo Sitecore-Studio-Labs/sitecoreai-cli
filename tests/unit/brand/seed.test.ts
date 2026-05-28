@@ -15,7 +15,7 @@ vi.mock("../../../src/brand/pipeline/run", () => ({
   runEnrichSectionsPipeline: vi.fn(),
 }));
 
-import { seedBrandKit } from "../../../src/brand/seed";
+import { seedBrandKit, enrichBrandKitWithDocuments } from "../../../src/brand/seed";
 import { createBrandKit, publishBrandKit } from "../../../src/brand/kits/create";
 import { listBrandKitSections } from "../../../src/brand/kits/sections";
 import { uploadDocument } from "../../../src/brand/documents/upload";
@@ -206,5 +206,151 @@ describe("seedBrandKit — input validation + error paths", () => {
 
     expect(listBrandKitSections).toHaveBeenCalledTimes(2);
     expect(result.sections).toHaveLength(2);
+  });
+});
+
+describe("enrichBrandKitWithDocuments — self-heal entry point", () => {
+  const enrichOptions = (overrides: Record<string, unknown> = {}) => ({
+    client: CLIENT,
+    brandKitId: "kit-stuck",
+    name: "Acme",
+    documents: [{ kind: "url" as const, url: "https://example.com/stub.pdf" }],
+    pollIntervalSec: 0,
+    timeoutSec: 5,
+    ...overrides,
+  });
+
+  it("drives upload -> publish -> ingest -> enrich -> poll against the existing kit (no createBrandKit call)", async () => {
+    const result = await enrichBrandKitWithDocuments(enrichOptions());
+
+    // The whole point of this entry point: it does NOT create a new kit.
+    expect(createBrandKit).not.toHaveBeenCalled();
+    expect(uploadDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-stuck", type: "brand guidelines" })
+    );
+    expect(publishBrandKit).toHaveBeenCalledWith({ client: CLIENT, brandKitId: "kit-stuck" });
+    expect(runBrandIngestionPipeline).toHaveBeenCalledWith({
+      client: CLIENT,
+      brandKitId: "kit-stuck",
+      populateSections: true,
+      documentIds: ["doc-1"],
+    });
+    expect(runEnrichSectionsPipeline).toHaveBeenCalledWith({
+      client: CLIENT,
+      brandKitId: "kit-stuck",
+    });
+    expect(result.document).toMatchObject({ id: "doc-1" });
+    expect(result.sections).toHaveLength(1);
+  });
+
+  it("defaults document title/summary against the kit name when not supplied", async () => {
+    await enrichBrandKitWithDocuments(enrichOptions());
+
+    expect(uploadDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Acme Brand Guidelines",
+        summary: "Source doc for Acme brand kit (seeded via scai)",
+      })
+    );
+  });
+
+  it("uses the caller-supplied document title/summary when provided", async () => {
+    await enrichBrandKitWithDocuments(
+      enrichOptions({
+        documents: [
+          {
+            kind: "url" as const,
+            url: "https://example.com/stub.pdf",
+            title: "Stub",
+            summary: "Self-heal stub",
+          },
+        ],
+      })
+    );
+
+    expect(uploadDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Stub", summary: "Self-heal stub" })
+    );
+  });
+
+  it("uploads every document and passes all ids to ingestion", async () => {
+    vi.mocked(uploadDocument)
+      .mockResolvedValueOnce({ id: "doc-a" } as never)
+      .mockResolvedValueOnce({ id: "doc-b" } as never);
+
+    await enrichBrandKitWithDocuments(
+      enrichOptions({
+        documents: [
+          { kind: "url" as const, url: "https://example.com/a.pdf" },
+          { kind: "url" as const, url: "https://example.com/b.pdf" },
+        ],
+      })
+    );
+
+    expect(uploadDocument).toHaveBeenCalledTimes(2);
+    expect(runBrandIngestionPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ documentIds: ["doc-a", "doc-b"] })
+    );
+  });
+
+  it("emits progress events covering every stage", async () => {
+    const stages: string[] = [];
+    await enrichBrandKitWithDocuments(
+      enrichOptions({ onProgress: (e: { stage: string }) => stages.push(e.stage) })
+    );
+
+    expect(stages).toContain("uploadDocument");
+    expect(stages).toContain("publishKit");
+    expect(stages).toContain("runIngestion");
+    expect(stages).toContain("runEnrichment");
+    expect(stages).toContain("pollSections");
+    expect(stages).toContain("done");
+    // createKit MUST NOT appear — this entry point operates on an existing kit.
+    expect(stages).not.toContain("createKit");
+  });
+
+  it("rejects an empty documents array with INPUT_INVALID", async () => {
+    await expect(
+      enrichBrandKitWithDocuments(enrichOptions({ documents: [] }))
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("rejects a registry-file document with INPUT_INVALID + a host-it-at-a-URL hint", async () => {
+    await expect(
+      enrichBrandKitWithDocuments(
+        enrichOptions({
+          documents: [{ kind: "registry-file" as const, path: "./brand.pdf" }],
+        })
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+  });
+
+  it("throws when the signal aborts mid-poll", async () => {
+    vi.mocked(listBrandKitSections).mockResolvedValue([] as never);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      enrichBrandKitWithDocuments(enrichOptions({ signal: controller.signal, timeoutSec: 5 }))
+    ).rejects.toThrow(/aborted by signal/);
+  });
+
+  it("breaks the poll loop as soon as sections appear (no sleep between polls)", async () => {
+    vi.mocked(listBrandKitSections)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ id: "sec-a" }, { id: "sec-b" }] as never);
+
+    const result = await enrichBrandKitWithDocuments(enrichOptions({ pollIntervalSec: 0 }));
+
+    expect(listBrandKitSections).toHaveBeenCalledTimes(2);
+    expect(result.sections).toHaveLength(2);
+  });
+
+  it("throws when the poll loop times out without sections appearing", async () => {
+    vi.mocked(listBrandKitSections).mockResolvedValue([] as never);
+
+    await expect(
+      enrichBrandKitWithDocuments(enrichOptions({ pollIntervalSec: 0, timeoutSec: 0 }))
+    ).rejects.toThrow(/Timed out/);
   });
 });

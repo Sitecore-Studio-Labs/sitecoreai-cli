@@ -262,6 +262,72 @@ describe("apply", () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining("[+3s] ingest: running"));
   });
 
+  it("synthesizes a stub document when the plan has field changes but no operator documents", async () => {
+    // Sections only exist after EnrichSections runs over an uploaded
+    // document. If the operator declared field values but no doc, the
+    // kind synthesizes a stub PDF naming the sections so enrichment
+    // produces the canonical section set; field values then converge.
+    brandApi.seedBrandKit.mockResolvedValue({ kit: { id: "kit-syn", name: "Acme" } });
+    brandApi.listBrandKitSections.mockResolvedValue([
+      { id: "sec-gg", name: "Global Goals" },
+      { id: "sec-bc", name: "Brand Context" },
+    ]);
+    brandApi.listBrandKitFields.mockImplementation(({ sectionId }: { sectionId: string }) =>
+      Promise.resolve(
+        sectionId === "sec-gg"
+          ? [{ id: "fld-cm", name: "contentMission", type: "text" }]
+          : [{ id: "fld-desc", name: "description", type: "text" }]
+      )
+    );
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "kit",
+            summary: "create",
+            after: "Acme",
+            meta: { stage: "kit" },
+          },
+          {
+            kind: "create",
+            path: "sections.Global Goals.contentMission",
+            summary: "contentMission",
+            after: "Inform every reader.",
+            meta: { stage: "field", section: "Global Goals", field: "contentMission" },
+          },
+          {
+            kind: "create",
+            path: "sections.Brand Context.description",
+            summary: "description",
+            after: "Acme is a thing.",
+            meta: { stage: "field", section: "Brand Context", field: "description" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      ctx
+    );
+
+    // seedBrandKit must be called — not createBrandKit — because the
+    // synthesis path goes through the full pipeline.
+    expect(brandApi.createBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.seedBrandKit).toHaveBeenCalledOnce();
+    const seedArgs = brandApi.seedBrandKit.mock.calls[0][0] as {
+      documents: Array<{ kind: string; url: string; tags?: string[] }>;
+    };
+    expect(seedArgs.documents).toHaveLength(1);
+    expect(seedArgs.documents[0].kind).toBe("url");
+    expect(seedArgs.documents[0].url.startsWith("data:application/pdf;base64,")).toBe(true);
+    expect(seedArgs.documents[0].tags).toEqual(["scai-synthesized", "stub"]);
+
+    // Both field PATCHes converge after the kit is seeded.
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledTimes(2);
+    expect(result.applied.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("creates a bare kit (no seed) when the plan has a kit change but no documents", async () => {
     brandApi.createBrandKit.mockResolvedValue({ id: "kit-bare", name: "Bare" });
     brandApi.listBrandKitSections.mockResolvedValue([]);

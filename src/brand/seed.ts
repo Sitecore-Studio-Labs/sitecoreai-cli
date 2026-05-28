@@ -80,6 +80,160 @@ export interface SeedBrandKitResult {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+export interface EnrichExistingKitOptions {
+  client: BrandApiClientOptions;
+  /** Brand kit id (the API uuid, not the display name). */
+  brandKitId: string;
+  /** Display name — used only for default upload metadata and log lines. */
+  name: string;
+  /** One or more documents to upload before the ingest+enrich cycle. */
+  documents: BrandDocument[];
+  pollIntervalSec?: number;
+  timeoutSec?: number;
+  onProgress?: (event: SeedProgressEvent) => void;
+  signal?: AbortSignal;
+}
+
+export interface EnrichExistingKitResult {
+  document: UploadedDocument;
+  sections: BrandKitSectionSummary[];
+  elapsedSec: number;
+}
+
+/**
+ * Run the upload → publish → ingest → enrich → poll pipeline against
+ * an EXISTING brand kit. Mirrors steps 2-6 of `seedBrandKit` without
+ * creating a new kit — the self-heal path for bare kits that were
+ * previously created without documents (and therefore have zero
+ * sections).
+ *
+ * Why this exists: `scai brand sync push` would historically call
+ * `createBrandKit` (no documents) when the operator's recipe shipped
+ * no source PDF, leaving the kit with zero sections forever. The
+ * synthesize-stub-PDF feature fixed initial creation; this function
+ * unblocks the kits already stuck in that state — calling
+ * `apply()` against the existing kit now produces a stub doc and
+ * runs enrichment, so field writes have somewhere to land.
+ */
+export const enrichBrandKitWithDocuments = async (
+  options: EnrichExistingKitOptions
+): Promise<EnrichExistingKitResult> => {
+  const start = Date.now();
+  const pollIntervalSec = options.pollIntervalSec ?? 15;
+  const timeoutSec = options.timeoutSec ?? 900;
+  const emit = (event: Omit<SeedProgressEvent, "elapsedSec">): void => {
+    options.onProgress?.({
+      ...event,
+      elapsedSec: Math.round((Date.now() - start) / 1000),
+    });
+  };
+
+  // Validate the document list — same registry-file guard seedBrandKit
+  // applies; keeps the rejection contract consistent across the two
+  // entry points.
+  for (const doc of options.documents) {
+    if (doc.kind === "registry-file") {
+      throw createScaiError(
+        `Brand document "${doc.path}" is a registry-file path; scai cannot upload local bytes.`,
+        "INPUT_INVALID",
+        {
+          hint: 'Host the file at an HTTPS URL Sitecore\'s edge can reach (S3, GitHub raw, a CDN) and pass it as a `{ kind: "url", url }` document.',
+        }
+      );
+    }
+  }
+  if (options.documents.length === 0) {
+    throw createScaiError(
+      "enrichBrandKitWithDocuments requires at least one document.",
+      "INPUT_INVALID"
+    );
+  }
+
+  // Upload docs
+  const documents: UploadedDocument[] = [];
+  for (const [index, doc] of options.documents.entries()) {
+    if (doc.kind !== "url") {
+      throw createScaiError(
+        "Unreachable: non-URL document survived the registry-file guard.",
+        "INPUT_INVALID"
+      );
+    }
+    emit({
+      stage: "uploadDocument",
+      message: `Uploading source document ${index + 1}/${options.documents.length}…`,
+    });
+    const uploaded = await uploadDocument({
+      client: options.client,
+      brandKitId: options.brandKitId,
+      source: { url: doc.url },
+      title: doc.title ?? `${options.name} Brand Guidelines`,
+      summary: doc.summary ?? `Source doc for ${options.name} brand kit (seeded via scai)`,
+      type: "brand guidelines",
+      fileType: "application/pdf",
+    });
+    documents.push(uploaded);
+    emit({ stage: "uploadDocument", message: `Uploaded document ${uploaded.id}` });
+  }
+
+  // Publish kit (idempotent — already-published kits accept the PATCH).
+  emit({ stage: "publishKit", message: "Publishing kit…" });
+  await publishBrandKit({ client: options.client, brandKitId: options.brandKitId });
+  emit({ stage: "publishKit", message: "Kit published" });
+
+  // Ingest + enrich
+  emit({ stage: "runIngestion", message: "Triggering BrandIngestionPipeline…" });
+  const ingestionRun = await runBrandIngestionPipeline({
+    client: options.client,
+    brandKitId: options.brandKitId,
+    populateSections: true,
+    documentIds: documents.map((doc) => doc.id),
+  });
+  emit({ stage: "runIngestion", message: `Ingestion run started: ${ingestionRun.id}` });
+
+  emit({ stage: "runEnrichment", message: "Triggering EnrichSectionsPipeline…" });
+  const enrichmentRun = await runEnrichSectionsPipeline({
+    client: options.client,
+    brandKitId: options.brandKitId,
+  });
+  emit({ stage: "runEnrichment", message: `Enrichment run started: ${enrichmentRun.id}` });
+
+  // Poll until sections appear
+  const deadline = Date.now() + timeoutSec * 1000;
+  let sections: BrandKitSectionSummary[] = [];
+  while (Date.now() < deadline) {
+    if (options.signal?.aborted) {
+      throw new Error("enrichBrandKitWithDocuments aborted by signal");
+    }
+    sections = await listBrandKitSections({
+      client: options.client,
+      brandKitId: options.brandKitId,
+    });
+    emit({
+      stage: "pollSections",
+      message: `Sections: ${sections.length}`,
+      sectionCount: sections.length,
+    });
+    if (sections.length > 0) break;
+    await sleep(pollIntervalSec * 1000);
+  }
+  if (sections.length === 0) {
+    throw new Error(
+      `Timed out after ${timeoutSec}s waiting for sections to populate on kit ${options.brandKitId}.`
+    );
+  }
+  emit({
+    stage: "done",
+    message: `Enriched kit ${options.brandKitId} with ${sections.length} sections`,
+    sectionCount: sections.length,
+  });
+
+  return {
+    document: documents[0],
+    sections,
+    elapsedSec: Math.round((Date.now() - start) / 1000),
+  };
+};
+
 /**
  * The headline composite — drive a brand kit from "doesn't exist" to
  * "has populated sections and is ready for Brand Review" in one call.

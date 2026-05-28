@@ -767,6 +767,106 @@ describe("compileRecipeSet — Placeholder Settings aggregate", () => {
   });
 });
 
+describe("compileComponentTemplateRecipe — layout-only (no fields, no datasource)", () => {
+  // Mirrors the registry's `container@1` / `column-splitter@1` /
+  // `row-splitter@1` recipes: only params + placeholders, no fields,
+  // no datasource block. Pure-layout renderings in stock SXA are
+  // dropped without a "create or pick a datasource" prompt — and
+  // Pages gates that prompt on the `Datasource Template` shared
+  // field being non-empty. The compiler must NOT emit a value for
+  // that field when the recipe describes no datasource surface.
+  const LAYOUT_HANDLE = "container@1";
+  const layoutRecipe: Recipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: LAYOUT_HANDLE,
+    name: "container",
+    displayName: "Container",
+    params: [
+      {
+        name: "BackgroundImage",
+        shape: "image",
+        sitecore: { type: "image", sortOrder: 100 },
+      },
+    ],
+    dynamicPlaceholders: true,
+    placeholders: [{ key: "container-{*}" }],
+  };
+
+  const ir = compileComponentTemplateRecipe(layoutRecipe, CONTEXT);
+
+  it("rendering item omits the Datasource Template field entirely (so Pages doesn't prompt for a content item)", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)).toBeUndefined();
+  });
+
+  it("rendering still carries componentName + Parameters Template (params are unaffected)", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.COMPONENT_NAME)?.value).toEqual({
+      kind: "string",
+      value: "container",
+    });
+    expect(findField(op.fields, RENDERING_FIELDS.PARAMETERS_TEMPLATE)?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: designParametersTemplateId(SITE, LAYOUT_HANDLE),
+    });
+  });
+
+  it("still emits Datasource Template when the recipe declares inline fields (existing behavior)", () => {
+    const withFields: Recipe = {
+      ...layoutRecipe,
+      handle: "with-fields@1",
+      name: "with-fields",
+      displayName: "With Fields",
+      fields: [
+        {
+          name: "Title",
+          shape: "text",
+          sitecore: { type: "single-line-text" },
+        },
+      ],
+    };
+    const ir2 = compileComponentTemplateRecipe(withFields, CONTEXT);
+    const op = onlyOp(
+      ir2.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "with-fields@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: templateId(SITE, "with-fields@1"),
+    });
+  });
+
+  it("still emits Datasource Template when the recipe declares an explicit datasource.template (compatible-data-source pattern)", () => {
+    const withExplicitDatasource: Recipe = {
+      ...layoutRecipe,
+      handle: "explicit-ds@1",
+      name: "explicit-ds",
+      displayName: "Explicit Datasource",
+      datasource: { template: { handle: "shared-author@1" } },
+    };
+    const ir3 = compileComponentTemplateRecipe(withExplicitDatasource, CONTEXT);
+    const op = onlyOp(
+      ir3.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "explicit-ds@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: templateId(SITE, "shared-author@1"),
+    });
+  });
+});
+
 describe("compileRecipe — front-door dispatcher remaining kinds", () => {
   it("dispatches an enumeration recipe", () => {
     const ir = compileRecipe(

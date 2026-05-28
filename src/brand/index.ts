@@ -128,8 +128,11 @@ export {
 
 export {
   seedBrandKit,
+  enrichBrandKitWithDocuments,
   type SeedBrandKitOptions,
   type SeedBrandKitResult,
   type SeedProgressEvent,
   type SeedStage,
+  type EnrichExistingKitOptions,
+  type EnrichExistingKitResult,
 } from "./seed";

@@ -15,6 +15,7 @@ const brandApi = vi.hoisted(() => ({
   updateBrandKitField: vi.fn(),
   seedBrandKit: vi.fn(),
   createBrandKit: vi.fn(),
+  enrichBrandKitWithDocuments: vi.fn(),
 }));
 vi.mock("../../../../src/brand", () => brandApi);
 
@@ -353,6 +354,111 @@ describe("apply", () => {
     );
     expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
     expect(result.applied).toHaveLength(1);
+  });
+
+  it("self-heals a pre-existing bare kit by synthesizing a stub doc and running enrichment", async () => {
+    // A kit previously created without sections (older scai, or a
+    // direct createBrandKit call) is stuck — every field write
+    // skips because no section IDs exist. This test verifies the
+    // self-heal: when the existing kit has zero sections AND there
+    // are pending field writes, the kind synthesizes a stub doc and
+    // runs enrichBrandKitWithDocuments against the existing kit id.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-stuck", name: "Acme" }],
+    });
+    // First listBrandKitSections call (in the self-heal pre-check) →
+    // empty; second call (inside indexFields after enrichment) →
+    // populated.
+    brandApi.listBrandKitSections.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { id: "sec-gg", name: "Global Goals" },
+      { id: "sec-bc", name: "Brand Context" },
+    ]);
+    brandApi.listBrandKitFields.mockImplementation(({ sectionId }: { sectionId: string }) =>
+      Promise.resolve(
+        sectionId === "sec-gg"
+          ? [{ id: "fld-cm", name: "contentMission", type: "text" }]
+          : [{ id: "fld-desc", name: "description", type: "text" }]
+      )
+    );
+    brandApi.enrichBrandKitWithDocuments.mockResolvedValue({
+      document: { id: "doc-stub" },
+      sections: [
+        { id: "sec-gg", name: "Global Goals" },
+        { id: "sec-bc", name: "Brand Context" },
+      ],
+      elapsedSec: 300,
+    });
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          // No kit change — kit exists. Only field writes.
+          {
+            kind: "create",
+            path: "sections.Global Goals.contentMission",
+            summary: "contentMission",
+            after: "Inform every reader.",
+            meta: { stage: "field", section: "Global Goals", field: "contentMission" },
+          },
+          {
+            kind: "create",
+            path: "sections.Brand Context.description",
+            summary: "description",
+            after: "Acme is a thing.",
+            meta: { stage: "field", section: "Brand Context", field: "description" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      ctx
+    );
+
+    expect(brandApi.enrichBrandKitWithDocuments).toHaveBeenCalledOnce();
+    const enrichArgs = brandApi.enrichBrandKitWithDocuments.mock.calls[0][0] as {
+      brandKitId: string;
+      documents: Array<{ kind: string; url: string; tags?: string[] }>;
+    };
+    expect(enrichArgs.brandKitId).toBe("kit-stuck");
+    expect(enrichArgs.documents).toHaveLength(1);
+    expect(enrichArgs.documents[0].url.startsWith("data:application/pdf;base64,")).toBe(true);
+    expect(enrichArgs.documents[0].tags).toEqual(["scai-synthesized", "stub"]);
+
+    // After enrichment, the two field writes converge.
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledTimes(2);
+    expect(result.applied).toHaveLength(2);
+  });
+
+  it("does not run the self-heal when the existing kit already has sections", async () => {
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-healthy", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-gg", name: "Global Goals" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([
+      { id: "fld-cm", name: "contentMission", type: "text" },
+    ]);
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "update",
+            path: "sections.Global Goals.contentMission",
+            summary: "contentMission",
+            after: "Updated mission.",
+            meta: { stage: "field", section: "Global Goals", field: "contentMission" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      ctx
+    );
+
+    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledOnce();
   });
 
   it("throws INPUT_INVALID when no kit change exists and the kit is not found", async () => {

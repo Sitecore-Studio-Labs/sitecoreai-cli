@@ -1,5 +1,76 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.2.3
+
+### Patch Changes
+
+- 413dbec: `scai brand sync push`: broaden self-heal to cover all "stuck kit" shapes
+
+  Companion fix to the synthesize-stub-PDF + self-heal-bare-kit pair.
+  The first cut of self-heal only fired when
+  `listBrandKitSections` returned an empty array. Production testing
+  on a real tenant surfaced a third stuck shape: sections exist on
+  Sitecore but with no fields — or with field names that don't match
+  what the recipe targets. In both cases the field-PATCH loop still
+  skipped every write silently and the operator saw a green job that
+  changed nothing.
+
+  `apply` now indexes the live kit's sections first, then checks
+  whether _any_ of the section/field pairs the recipe wants to write
+  are reachable. If none are, it runs the synthesize → upload →
+  publish → ingest → enrich cycle on the existing kit. The check
+  covers all three stuck shapes — zero sections, sections-without-
+  fields, sections-with-wrong-names — without firing on a partially-
+  populated kit where some writes already resolve. The new log line
+  reports the live field count so operators can see at a glance why
+  self-heal triggered.
+
+- 413dbec: `scai brand sync push`: surface the section/field mismatch when every write skips
+
+  When `apply`'s field-PATCH loop produces zero applieds and a
+  non-zero skipped count, the operator previously saw
+  `Applied 0; N skipped` with no way to discover _why_ — the most
+  common cause (a recipe section/field name that doesn't match the
+  live kit) was invisible.
+
+  The diagnostic log now lists the recipe targets that didn't
+  resolve, the live kit's section list, and every section/field
+  mapping the live kit actually exposes. It also points at
+  `scai brand sync pull --kit "<name>"` so the operator can capture
+  the live shape and reconcile their recipe in one step. Pure
+  observability — no behaviour change for kits that apply cleanly.
+
+- 413dbec: `scai brand sync push`: self-heal a pre-existing bare kit on re-push
+
+  Companion to the synthesize-stub-PDF feature. When `apply` finds an
+  existing brand kit by name and there are pending field writes, it now
+  checks whether the kit has any sections. A kit stuck in the bare
+  state (created without documents by older scai, or by a direct
+  `createBrandKit` call) would previously fail every field write
+  silently — the live kit's `listBrandKitSections` returned `[]`, so
+  `indexFields` returned an empty map and `index.get(...)` produced
+  `undefined` for every write, pushing each one into `skipped`. The
+  operator would see a green job that changed nothing.
+
+  `apply` now synthesizes a stub PDF and runs the
+  upload → publish → ingest → enrich → poll cycle against the existing
+  kit id via the new `enrichBrandKitWithDocuments` export. After
+  enrichment produces the canonical section set, the field-PATCH loop
+  finds targets and the values land. No tenant-side cleanup needed —
+  the next `scai brand sync push` of a stuck kit heals it.
+
+- 413dbec: `scai brand sync push`: synthesize a stub PDF when the recipe has section data but no source document
+
+  Sitecore's Brand Management API has no "create section" endpoint — sections only appear as a side effect of `EnrichSectionsPipeline` running over an uploaded document. A recipe declaring field values but no `documents[]` previously created a bare kit, found zero sections to write into, and reported "Applied 1 change; N skipped" — the live kit ended up blank.
+
+  `brandKitKind.apply` now detects this combination (no operator documents + field changes referencing sections) and synthesizes a minimal single-page PDF naming the declared sections. The stub flows through the same `seedBrandKit` create → upload → publish → ingest → enrich pipeline as a real document, producing the canonical section set; the recipe's actual field values then converge via `updateBrandKitField` PATCH calls immediately after.
+
+  The synthesis is hand-rolled (no new dependency) and emits a valid PDF 1.4 file under 1KB. Input strings are ASCII-coerced (em-dashes → `-`, smart quotes → `'`/`"`, etc.) so byte counts stay consistent with the Helvetica/WinAnsiEncoding font the PDF references.
+
+  Operators with a real brand-guidelines PDF should still declare it in `recipe.documents[]` — the synthesis only fires when no document is supplied. The synthesis path emits a distinguishing log line and tags the document `["scai-synthesized", "stub"]` so downstream filters can recognize it.
+
+  **Note:** the synthesis fires on initial kit creation. A pre-existing bare kit (one previously created without sections) won't auto-heal — delete it on the tenant and push fresh to trigger the new path.
+
 ## 0.2.2
 
 ### Patch Changes

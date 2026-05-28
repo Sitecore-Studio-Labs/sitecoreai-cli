@@ -53,3 +53,43 @@ export const extractScopes = (token: string): string[] => {
         : "";
   return raw.split(/\s+/).filter(Boolean);
 };
+
+/**
+ * Default safety margin: a token whose `exp` falls inside this window
+ * is treated as expired so a long-running API call doesn't 401/403
+ * mid-flight against a token that was technically valid at request
+ * start. 60s matches the publishing auth path's window, which was
+ * tuned for publish calls that can hold the connection for tens of
+ * seconds.
+ */
+export const DEFAULT_TOKEN_EXPIRY_MARGIN_S = 60;
+
+/**
+ * Returns true when the JWT's `exp` claim is within `marginSeconds`
+ * of `now`. Used to fail-closed on cached tokens that are about to
+ * expire so callers re-mint instead of handing a stale Bearer to the
+ * server.
+ *
+ * Returns `false` (treat as valid) when the token can't be decoded or
+ * has no parseable `exp` claim. The rationale: an undecodable token
+ * is a structural problem the caller should surface as the real
+ * server-side failure (401/403), not pre-block here on top of it. The
+ * publishing and brand cache paths both apply scope checks in
+ * addition to this expiry check, so an undecodable token still gets
+ * rejected by the scope gate.
+ */
+export const isTokenExpired = (
+  token: string,
+  marginSeconds: number = DEFAULT_TOKEN_EXPIRY_MARGIN_S
+): boolean => {
+  const payload = decodeJwtPayload(token);
+  if (!payload) {
+    return false;
+  }
+  const exp = typeof payload.exp === "number" ? payload.exp : Number(payload.exp);
+  if (!Number.isFinite(exp)) {
+    return false;
+  }
+  const nowS = Math.floor(Date.now() / 1000);
+  return exp - nowS <= marginSeconds;
+};

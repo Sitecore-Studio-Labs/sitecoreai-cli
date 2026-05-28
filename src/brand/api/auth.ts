@@ -1,8 +1,8 @@
 import { requestClientCredentialsToken } from "@/auth";
 import type { SitecoreApiClientOptions } from "@/auth";
 import { createScaiError } from "@/shared/errors";
-import { extractScopes } from "@/shared/jwt";
-import { getBrandToken, setBrandToken } from "@/shared/keychain";
+import { extractScopes, isTokenExpired } from "@/shared/jwt";
+import { clearBrandToken, getBrandToken, setBrandToken } from "@/shared/keychain";
 import type { BrandCredential } from "@/config/types";
 import { resolveBrandSecrets } from "../credential";
 
@@ -84,6 +84,11 @@ export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Prom
   //    server-side scope enforcement happens on the API call itself,
   //    and gating here would skip a perfectly usable token whenever
   //    the operation it's used for doesn't need the validated scope.
+  //    Expiry IS checked: Sitecore returns 403 "Token has expired"
+  //    (not 401) for stale Bearers, and `requestBrandApi`'s retry
+  //    path only triggers on 401, so a blind cache return would
+  //    surface as a hard BRAND_API_FAILED instead of transparently
+  //    re-minting.
   //
   //    NB: in a serverless context (no keychain) the cache lookup
   //    silently returns undefined via the keychain wrapper's
@@ -91,8 +96,11 @@ export const acquireBrandToken = async (options: AcquireBrandTokenOptions): Prom
   //    every invocation re-mints, which is correct: there is no
   //    persistent process to hold a cached token across invocations.
   const cached = await getBrandToken(orgId);
-  if (cached) {
+  if (cached && !isTokenExpired(cached)) {
     return cached;
+  }
+  if (cached) {
+    await clearBrandToken(orgId);
   }
 
   // 2. Fresh M2M mint via the AI APIs key. `resolveBrandSecrets`

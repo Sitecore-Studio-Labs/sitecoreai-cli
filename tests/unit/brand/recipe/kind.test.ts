@@ -461,6 +461,73 @@ describe("apply", () => {
     expect(brandApi.updateBrandKitField).toHaveBeenCalledOnce();
   });
 
+  it("self-heals AND surfaces a diagnostic when sections exist but no targets resolve post-enrichment", async () => {
+    // The "stuck kit" shape this covers: live kit has sections + fields,
+    // but their names don't match the recipe (so writes can't resolve).
+    // Self-heal fires (anyTargetReachable=false), enrichment runs, but
+    // post-enrich the names still mismatch — every write skips, and
+    // the diagnostic block names the recipe targets + live structure.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-mismatch", name: "Acme" }],
+    });
+    // Same response for both the initial probe (in self-heal block)
+    // and the post-enrich re-index — the live shape never converges
+    // with the recipe's section names.
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-legacy", name: "Legacy Section" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([
+      { id: "fld-legacy", name: "legacyField", type: "text" },
+    ]);
+    brandApi.enrichBrandKitWithDocuments.mockImplementation(
+      (args: {
+        onProgress?: (e: { elapsedSec: number; stage: string; message: string }) => void;
+      }) => {
+        // Drive onProgress so the kind's `[+Ns] stage: msg` log line runs.
+        args.onProgress?.({ elapsedSec: 60, stage: "upload", message: "uploading stub" });
+        args.onProgress?.({ elapsedSec: 120, stage: "enrich", message: "enriching" });
+        return Promise.resolve({
+          document: { id: "doc-stub" },
+          sections: [{ id: "sec-legacy", name: "Legacy Section" }],
+          elapsedSec: 120,
+        });
+      }
+    );
+
+    const infoSpy = ctx.logger?.info as ReturnType<typeof vi.fn>;
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "sections.Global Goals.contentMission",
+            summary: "contentMission",
+            after: "Inform every reader.",
+            meta: { stage: "field", section: "Global Goals", field: "contentMission" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      ctx
+    );
+
+    // Broadened self-heal trigger: live index non-empty but no targets reachable.
+    expect(brandApi.enrichBrandKitWithDocuments).toHaveBeenCalledOnce();
+    expect(brandApi.updateBrandKitField).not.toHaveBeenCalled();
+    expect(result.applied).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+
+    // Diagnostic block surfaces the mismatch: live sections, recipe
+    // targets, and the `pull` suggestion.
+    const infoCalls = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(infoCalls.some((m) => m.includes("Every field write skipped"))).toBe(true);
+    expect(infoCalls.some((m) => m.includes("Legacy Section"))).toBe(true);
+    expect(infoCalls.some((m) => m.includes("Global Goals / contentMission"))).toBe(true);
+    expect(infoCalls.some((m) => m.includes("scai brand sync pull"))).toBe(true);
+    // Per-section live-fields log lines (the loop over liveFieldsBySection).
+    expect(infoCalls.some((m) => /live: Legacy Section -> \[legacyField\]/.test(m))).toBe(true);
+  });
+
   it("throws INPUT_INVALID when no kit change exists and the kit is not found", async () => {
     brandApi.listBrandKits.mockResolvedValue({ totalCount: 0, data: [] });
 

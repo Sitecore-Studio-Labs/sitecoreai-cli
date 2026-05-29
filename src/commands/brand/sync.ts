@@ -34,12 +34,12 @@ interface SyncOptions extends CommonOptions {
   allowWrite?: boolean;
   prune?: boolean;
   /**
-   * Skip every Sitecore AI enrichment-triggering code path. Power-
-   * user flag — useful when iterating on field values against a kit
-   * that's already been seeded and you don't want to wait 5-15 min
-   * for the pipeline to re-run on a stub PDF.
+   * Commander negation pattern: declaring `--no-enrich` exposes the
+   * value under the positive key `enrich` (default `true`, set to
+   * `false` when `--no-enrich` is passed). Reading `options.noEnrich`
+   * would always be undefined — keep this typed as `enrich`.
    */
-  noEnrich?: boolean;
+  enrich?: boolean;
 }
 
 /** Slugify a kit name for a default recipe filename. */
@@ -57,7 +57,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     environmentName: options.environmentName ?? root.defaultEnvironment,
     configPath,
     logger,
-    ...(options.noEnrich ? { skipEnrichment: true } : {}),
+    ...(options.enrich === false ? { skipEnrichment: true } : {}),
   };
 };
 

@@ -417,14 +417,21 @@ export type RenderingDatasourceLocation = z.infer<typeof RenderingDatasourceLoca
  * Top-level datasource block on `ComponentTemplateRecipe`. Captures
  * everything the rendering needs to know about its datasource:
  *
- *   - **template**: optional reference to a separate
- *     `ContentTemplateRecipe`. When set, the compiler points the
- *     rendering's Datasource Template field at that template (its
- *     fields land under `Content Models/<group>/<name>`). When unset,
- *     the component template itself is the datasource template (legacy
- *     inline-`fields:` pattern).
+ *   - **template**: optional reference to a single
+ *     `ContentTemplateRecipe`. Shortcut for the common single-template
+ *     case; equivalent to `templates: [{handle}]` with one entry. When
+ *     unset (and `templates` is unset, and the recipe has no inline
+ *     `fields:`), the rendering has no Datasource Template at all.
+ *   - **templates**: multiple compatible datasource templates — the
+ *     "compatible-datasources" pattern. The compiler pipe-joins each
+ *     template's GUID into the rendering's `Datasource Template`
+ *     shared field, so the Pages picker surfaces items conforming to
+ *     *any* of the listed templates. Mutually exclusive with `template`.
  *   - **autoCreate**: toggles `IsAutoDatasourceRendering=true` in the
  *     rendering's `OtherProperties` URL-encoded blob. Default true.
+ *     With `templates`, default to `false` at the recipe level — the
+ *     compiler can't pick one template unambiguously, so the dropping
+ *     author should be prompted to choose via the datasource picker.
  *   - **openPropertiesAfterAdd**: opens the rendering parameters
  *     dialog right after the rendering is dropped on a page. Default
  *     false.
@@ -439,33 +446,60 @@ export type RenderingDatasourceLocation = z.infer<typeof RenderingDatasourceLoca
  * The compiler pipe-joins `locations` (resolved to paths) and `query`
  * (verbatim) into the rendering's `Datasource Location` field.
  */
-export const RecipeDatasourceSchema = z.object({
-  /** Reference to a separate `ContentTemplateRecipe`. */
-  template: z
-    .object({
-      handle: z.string().regex(HANDLE_PATTERN, {
-        message: "datasource.template.handle must match `<kebab-name>@<major>`",
-      }),
-    })
-    .optional(),
-  /** Sets `IsAutoDatasourceRendering` in `OtherProperties`. Default true. */
-  autoCreate: z.boolean().default(true),
-  /** Open the properties dialog after add. Default false. */
-  openPropertiesAfterAdd: z.boolean().default(false),
-  /**
-   * Semantic-scope locations that compile to a path-style Sitecore
-   * Source segment each. Empty when only `query` entries are needed.
-   */
-  locations: z.array(RenderingDatasourceLocationSchema).default([]),
-  /**
-   * Raw Sitecore Source segments — included verbatim in the joined
-   * `Datasource Location` field. Each entry should be a complete
-   * segment (e.g. `"query:$site/*[@@name='Data']/Custom"` or
-   * `"fast:/sitecore/content/...//*[@@templatename='Foo']"`). Empty
-   * when only `locations` entries are needed.
-   */
-  query: z.array(z.string().min(1)).default([]),
-});
+export const RecipeDatasourceSchema = z
+  .object({
+    /**
+     * Reference to a single `ContentTemplateRecipe`. Shortcut for the
+     * common case; equivalent to `templates: [{handle}]` with one
+     * entry. Mutually exclusive with `templates`.
+     */
+    template: z
+      .object({
+        handle: z.string().regex(HANDLE_PATTERN, {
+          message: "datasource.template.handle must match `<kebab-name>@<major>`",
+        }),
+      })
+      .optional(),
+    /**
+     * Multiple compatible datasource templates. Each resolves to its
+     * deterministic template GUID; the compiler pipe-joins them into
+     * the rendering's `Datasource Template` shared field. Pair with a
+     * React-side adapter that normalises whichever field shape the
+     * layout service delivers. Mutually exclusive with `template`.
+     */
+    templates: z
+      .array(
+        z.object({
+          handle: z.string().regex(HANDLE_PATTERN, {
+            message: "datasource.templates[].handle must match `<kebab-name>@<major>`",
+          }),
+        })
+      )
+      .min(1)
+      .optional(),
+    /** Sets `IsAutoDatasourceRendering` in `OtherProperties`. Default true. */
+    autoCreate: z.boolean().default(true),
+    /** Open the properties dialog after add. Default false. */
+    openPropertiesAfterAdd: z.boolean().default(false),
+    /**
+     * Semantic-scope locations that compile to a path-style Sitecore
+     * Source segment each. Empty when only `query` entries are needed.
+     */
+    locations: z.array(RenderingDatasourceLocationSchema).default([]),
+    /**
+     * Raw Sitecore Source segments — included verbatim in the joined
+     * `Datasource Location` field. Each entry should be a complete
+     * segment (e.g. `"query:$site/*[@@name='Data']/Custom"` or
+     * `"fast:/sitecore/content/...//*[@@templatename='Foo']"`). Empty
+     * when only `locations` entries are needed.
+     */
+    query: z.array(z.string().min(1)).default([]),
+  })
+  .refine((ds) => !(ds.template !== undefined && ds.templates !== undefined), {
+    message:
+      "Set either `datasource.template` (single) or `datasource.templates` (multi), not both — the compiler ignores `template` when `templates` is set, which silently drops author intent. Pick one form per recipe.",
+    path: ["templates"],
+  });
 
 export type RecipeDatasource = z.infer<typeof RecipeDatasourceSchema>;
 

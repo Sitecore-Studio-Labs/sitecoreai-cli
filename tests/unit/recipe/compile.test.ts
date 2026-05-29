@@ -865,6 +865,24 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       refKey: templateId(SITE, "shared-author@1"),
     });
   });
+
+  it("emits a ref-recipe-list when datasource.templates lists multiple compatible templates", () => {
+    const multiTemplate: Recipe = {
+      ...layoutRecipe,
+      handle: "multi-ds@1",
+      name: "multi-ds",
+      displayName: "Multi Datasource",
+      datasource: {
+        templates: [{ handle: "author@1" }, { handle: "avatar@1" }],
+      },
+    };
+    const ir = compileComponentTemplateRecipe(multiTemplate, CONTEXT);
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, "multi-ds@1"));
+    expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [templateId(SITE, "author@1"), templateId(SITE, "avatar@1")],
+    });
+  });
 });
 
 describe("compileRecipe — front-door dispatcher remaining kinds", () => {

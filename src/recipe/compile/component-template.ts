@@ -622,34 +622,44 @@ function emitRendering(
   const sectionName = resolveSectionName(recipe, context);
   const renderingParentPath = resolveRenderingParent(context, sectionName);
   const renderingPath = joinPath(renderingParentPath, recipe.name);
-  // Datasource template ref. Three cases:
-  //   1. Explicit `datasource.template` handle → reference the separate
-  //      ContentTemplateRecipe (compatible-data-source pattern).
-  //   2. Inline `fields:` (recipe has ≥ 1 field) → the component template
+  // Datasource template ref. Four cases:
+  //   1. Explicit `datasource.templates` array (≥ 1 handle) → multi-template
+  //      "compatible-datasources" pattern. Emit a `ref-recipe-list` so the
+  //      executor pipe-joins each template's GUID into the rendering's
+  //      Datasource Template shared field. The Pages picker then surfaces
+  //      items conforming to ANY of the listed templates.
+  //   2. Explicit `datasource.template` handle → reference the separate
+  //      ContentTemplateRecipe (single compatible-data-source).
+  //   3. Inline `fields:` (recipe has ≥ 1 field) → the component template
   //      IS the datasource template (legacy inline-fields pattern).
-  //   3. Neither — a pure-layout rendering (Container, ColumnSplitter,
+  //   4. Neither — a pure-layout rendering (Container, ColumnSplitter,
   //      RowSplitter, …). Emit no Datasource Template field at all so
   //      the rendering item's shared field stays empty. Sitecore Pages
   //      gates its "create or pick a datasource" prompt on this field
   //      being non-empty, so an empty value is what makes a layout-only
   //      rendering droppable without an authoring prompt.
   const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
-  const datasourceRefKey = recipe.datasource?.template
-    ? templateId(site, recipe.datasource.template.handle)
-    : hasInlineFields
-      ? templateId(site, recipe.handle)
-      : undefined;
+  const datasourceTemplates = recipe.datasource?.templates;
+  const datasourceField: FieldValue | undefined = datasourceTemplates?.length
+    ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+        kind: "ref-recipe-list",
+        refKeys: datasourceTemplates.map((t) => templateId(site, t.handle)),
+      })
+    : recipe.datasource?.template
+      ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+          kind: "ref-recipe",
+          refKey: templateId(site, recipe.datasource.template.handle),
+        })
+      : hasInlineFields
+        ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+            kind: "ref-recipe",
+            refKey: templateId(site, recipe.handle),
+          })
+        : undefined;
 
   const fields: FieldValue[] = [
     sharedField(RENDERING_FIELDS.COMPONENT_NAME, { kind: "string", value: recipe.name }),
-    ...(datasourceRefKey
-      ? [
-          sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-            kind: "ref-recipe",
-            refKey: datasourceRefKey,
-          }),
-        ]
-      : []),
+    ...(datasourceField ? [datasourceField] : []),
     sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
     versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
   ];

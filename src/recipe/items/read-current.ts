@@ -298,6 +298,20 @@ const shapeFromSitecoreType = (type: SitecoreFieldType): FieldShape => {
       return "reference";
     case "tags":
       return "reference";
+    case "Plugin":
+      // Marketplace plugin field. The stored value is a string (digest
+      // or JSON blob the plugin postMessages back via setValue), so
+      // round-trip as text. The plugin identity itself lives in the
+      // field's Source — recovered separately by source-detection logic.
+      return "text";
+    default: {
+      // Exhaustiveness check — if SitecoreFieldType grows a new
+      // member, TS will flag this assignment until a case is added
+      // above. Fallback to "text" at runtime so unknown values don't
+      // crash the read path.
+      const _exhaustive: never = type;
+      return "text" as FieldShape;
+    }
   }
 };
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  augmentSourceToFields,
   renderSourceFields,
   sourceFieldsNeedHandleResolution,
 } from "../../../src/recipe/schema/source-fields";
@@ -69,6 +70,26 @@ describe("renderSourceFields", () => {
     );
   });
 
+  it("sourcePlugin → plugin slug verbatim (Marketplace looks it up)", () => {
+    expect(renderSourceFields({ sourcePlugin: "sai/matrix-editor" }, throwResolver)).toBe(
+      "sai/matrix-editor"
+    );
+  });
+
+  it("sourcePlugin takes precedence over types/query/scope (paired with type: Plugin)", () => {
+    expect(
+      renderSourceFields(
+        {
+          sourcePlugin: "sai/icon-picker",
+          sourceTypes: ["a@1"],
+          sourceQuery: "$site/Data",
+          sourceScope: "/x",
+        },
+        throwResolver
+      )
+    ).toBe("sai/icon-picker");
+  });
+
   it("normalizes handle GUIDs to upper case (Sitecore convention)", () => {
     const out = renderSourceFields(
       { sourceTypes: ["a@1"] },
@@ -91,13 +112,47 @@ describe("sourceFieldsNeedHandleResolution", () => {
     expect(sourceFieldsNeedHandleResolution({ sourceTypes: [] })).toBe(false);
   });
 
-  it("false when only sourceQuery / sourceScope / sourceRaw is set", () => {
+  it("false when only sourceQuery / sourceScope / sourceRaw / sourcePlugin is set", () => {
     expect(sourceFieldsNeedHandleResolution({ sourceQuery: "$site/Data" })).toBe(false);
     expect(sourceFieldsNeedHandleResolution({ sourceScope: "/x" })).toBe(false);
     expect(sourceFieldsNeedHandleResolution({ sourceRaw: "/x" })).toBe(false);
+    expect(sourceFieldsNeedHandleResolution({ sourcePlugin: "sai/x" })).toBe(false);
   });
 
   it("false when nothing is set", () => {
     expect(sourceFieldsNeedHandleResolution({})).toBe(false);
+  });
+});
+
+describe("augmentSourceToFields", () => {
+  it("undefined → empty bag", () => {
+    expect(augmentSourceToFields(undefined)).toEqual({});
+  });
+
+  it("filter → spreads types/query/scope", () => {
+    expect(
+      augmentSourceToFields({
+        kind: "filter",
+        types: ["a@1"],
+        query: "$site/Data",
+        scope: "/x",
+      })
+    ).toEqual({
+      sourceTypes: ["a@1"],
+      sourceQuery: "$site/Data",
+      sourceScope: "/x",
+    });
+  });
+
+  it("raw → sourceRaw", () => {
+    expect(augmentSourceToFields({ kind: "raw", value: "/sitecore/content/Tags" })).toEqual({
+      sourceRaw: "/sitecore/content/Tags",
+    });
+  });
+
+  it("plugin → sourcePlugin", () => {
+    expect(augmentSourceToFields({ kind: "plugin", id: "sai/matrix-editor" })).toEqual({
+      sourcePlugin: "sai/matrix-editor",
+    });
   });
 });

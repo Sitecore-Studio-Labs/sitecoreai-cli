@@ -8,6 +8,8 @@
  *   sourceQuery   string     — where to look (Sitecore Query)
  *   sourceScope   string     — where to look (fixed content path)
  *   sourceRaw     string     — escape hatch (verbatim Source string)
+ *   sourcePlugin  string     — Marketplace plugin slug (paired with
+ *                              `sitecore.type: "Plugin"`)
  *
  * `renderSourceFields` composes them into the URL-encoded Source value
  * Sitecore expects. The combinations preserve longstanding Sitecore
@@ -19,9 +21,12 @@
  *   sourceQuery + types      → `DataSource=query:<query>&IncludeTemplatesForSelection=...`
  *   sourceScope + types      → `DataSource=<path>&IncludeTemplatesForSelection=...`
  *   sourceRaw                → verbatim, ignores everything else
+ *   sourcePlugin             → verbatim slug, ignores everything else
  *
  * Authors who need a Source form outside this surface (e.g. a bare
- * `/sitecore/content/Tags` Treelist source) use `sourceRaw`.
+ * `/sitecore/content/Tags` Treelist source) use `sourceRaw`. Authors
+ * mounting a Marketplace plugin use `sourcePlugin` paired with
+ * `type: "Plugin"`.
  */
 
 export interface SourceFields {
@@ -29,6 +34,7 @@ export interface SourceFields {
   sourceQuery?: string;
   sourceScope?: string;
   sourceRaw?: string;
+  sourcePlugin?: string;
 }
 
 const formatGuidCurly = (guid: string): string => `{${guid.toUpperCase()}}`;
@@ -47,6 +53,11 @@ export const renderSourceFields = (
 ): string | undefined => {
   if (fields.sourceRaw !== undefined) {
     return fields.sourceRaw;
+  }
+  if (fields.sourcePlugin !== undefined) {
+    // Marketplace plugin slug — the Marketplace shell resolves this
+    // against its installed-plugins catalog at render time.
+    return fields.sourcePlugin;
   }
 
   const types =
@@ -105,11 +116,15 @@ export const augmentSourceToFields = (
   source:
     | { kind: "filter"; types?: readonly string[]; query?: string; scope?: string }
     | { kind: "raw"; value: string }
+    | { kind: "plugin"; id: string }
     | undefined
 ): SourceFields => {
   if (!source) return {};
   if (source.kind === "raw") {
     return { sourceRaw: source.value };
+  }
+  if (source.kind === "plugin") {
+    return { sourcePlugin: source.id };
   }
   return {
     sourceTypes: source.types,

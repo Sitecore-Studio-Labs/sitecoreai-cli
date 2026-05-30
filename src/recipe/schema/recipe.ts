@@ -69,7 +69,7 @@ const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
 
 /**
  * The picker-scope source ("Sitecore's Source field") expressed as a
- * discriminated union over the two real modes:
+ * discriminated union over the three real modes:
  *
  *   - `filter` — composable structured fields. `types` is a picker
  *     filter restricting which recipe-defined templates appear; `query`
@@ -78,6 +78,10 @@ const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
  *   - `raw` — verbatim Source string, the escape hatch. Use when the
  *     structured surface doesn't fit (e.g. a bare path Treelist source
  *     like `/sitecore/content/Tags`).
+ *   - `plugin` — Sitecore Marketplace plugin slug. Paired with
+ *     `sitecore.type: "Plugin"`. The compiler emits the slug verbatim
+ *     into the field's `Source`; the Marketplace shell looks it up
+ *     against its installed-plugins catalog to mount the iframe.
  *
  * Previously the four fields were peers on `SitecoreFieldAugment` with
  * a `.refine` enforcing the mutex; the union makes the constraint
@@ -117,6 +121,15 @@ export const SitecoreFieldSourceSchema = z.discriminatedUnion("kind", [
         "Verbatim Sitecore Source string. Escape hatch for Source shapes that don't fit the `filter` mode (e.g. a bare path Treelist source like `/sitecore/content/Tags`)."
       ),
   }),
+  z.object({
+    kind: z.literal("plugin"),
+    id: z
+      .string()
+      .min(1)
+      .describe(
+        'Marketplace plugin slug, e.g. `sai/matrix-editor`. The compiler emits this verbatim into the Sitecore field\'s `Source` property; the Marketplace shell resolves it to a deployed iframe URL against its installed-plugins catalog at render time. Pair with `type: "Plugin"`.'
+      ),
+  }),
 ]);
 
 export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
@@ -126,8 +139,8 @@ export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
  * omitted.
  *
  * `source` carries the picker-scope shape as a discriminated union
- * (`filter` | `raw`) — see `SitecoreFieldSourceSchema`. Internal
- * scai code converts to a flat `SourceFields` bag via
+ * (`filter` | `raw` | `plugin`) — see `SitecoreFieldSourceSchema`.
+ * Internal scai code converts to a flat `SourceFields` bag via
  * `augmentSourceToFields()` before passing to `renderSourceFields()`.
  */
 /**

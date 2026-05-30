@@ -33,6 +33,7 @@ import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_ICON,
   FOLDER_ICON,
+  IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
   SECTION_DEFINITION_FIELDS,
   SITECORE_TEMPLATES,
@@ -129,6 +130,24 @@ export function compileComponentTemplateRecipe(
   const operations: Operation[] = [];
   const policy = defaultPolicyForRecipe(recipe.kind);
   const icon = DEFAULT_ICON;
+
+  // `dynamicPlaceholders: true` chains `_IDynamicPlaceholder` onto the
+  // params template's `__Base template`. When `recipe.parameters` points
+  // at an external `ParametersTemplateRecipe`, that template is owned by
+  // a separate recipe and may be shared across multiple components —
+  // mutating its base-template chain from this component's compile would
+  // silently change behavior for every other consumer. Reject the combo
+  // until `ParametersTemplateRecipe` grows its own `dynamicPlaceholder`
+  // flag (the right home for shared-template-scoped configuration).
+  if (recipe.parameters && recipe.dynamicPlaceholders) {
+    throw createScaiError(
+      `Recipe '${recipe.handle}' combines \`dynamicPlaceholders: true\` with an external parameters template (\`parameters: { handle: '${recipe.parameters.handle}' }\`).`,
+      "INPUT_INVALID",
+      {
+        hint: "Move the params inline on this recipe (use the top-level `params:` block instead of `parameters:`) so the synthesised parameters template can own the `_IDynamicPlaceholder` base. Mutating the shared external template from here would silently affect every other consumer.",
+      }
+    );
+  }
 
   const sectionName = resolveSectionName(recipe, context);
   if (sectionName) {
@@ -537,7 +556,18 @@ function emitParamsTemplate(
     // verified by tenant introspection of a working SXA Headless
     // component (LinkList) — without these the params dialog stays
     // empty in Pages even though the template + fields exist.
-    baseTemplates: [...SXA_HEADLESS_PARAMS_BASE_TEMPLATES],
+    //
+    // When the recipe declares `dynamicPlaceholders: true`, also chain
+    // SXA's `_IDynamicPlaceholder` interface template. That contributes
+    // the `DynamicPlaceholderID` field that Pages writes per-placement
+    // IDs to — both halves (this base AND the OtherProperties flag set
+    // in `emitRendering`) are required for nested placeholders to
+    // resolve end-to-end. Setting just one produces a silently-broken
+    // shape where the container ships out childless.
+    baseTemplates: [
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      ...(recipe.dynamicPlaceholders ? [IDYNAMIC_PLACEHOLDER_TEMPLATE_ID] : []),
+    ],
   } satisfies SetBaseTemplatesOp);
 
   const paramsSecRefKey = designParametersSectionId(site, recipe.handle, PARAMS_SECTION_NAME);

@@ -20,10 +20,12 @@ import {
   variantsFolderId,
 } from "../../../src/recipe/items/guids";
 import {
+  IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SXA_COMPONENT_BASE_TEMPLATES,
+  SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
@@ -882,6 +884,72 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       kind: "ref-recipe-list",
       refKeys: [templateId(SITE, "author@1"), templateId(SITE, "avatar@1")],
     });
+  });
+
+  // Both halves of dynamicPlaceholders: true — without the base
+  // template, Pages chrome has no DynamicPlaceholderID field to write
+  // per-placement IDs to, and nested children ship out under the
+  // wrong slot key. Regression coverage to keep both writes wired.
+  it("params template inherits _IDynamicPlaceholder when dynamicPlaceholders: true", () => {
+    const op = onlyOp(
+      ir.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, LAYOUT_HANDLE)
+    );
+    expect(op.baseTemplates).toEqual([
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
+    ]);
+  });
+
+  it("rendering item carries IsRenderingsWithDynamicPlaceholders=true in OtherProperties", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    const otherProps = findField(op.fields, RENDERING_FIELDS.OTHER_PROPERTIES);
+    expect(otherProps?.value).toEqual({
+      kind: "url-string-map",
+      entries: { IsRenderingsWithDynamicPlaceholders: "true" },
+    });
+  });
+
+  it("params template does NOT inherit _IDynamicPlaceholder when dynamicPlaceholders is false/absent", () => {
+    const noDynamic: Recipe = {
+      ...layoutRecipe,
+      handle: "no-dynamic@1",
+      name: "no-dynamic",
+      displayName: "No Dynamic",
+      dynamicPlaceholders: false,
+    };
+    const irNoDynamic = compileComponentTemplateRecipe(noDynamic, CONTEXT);
+    const op = onlyOp(
+      irNoDynamic.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, "no-dynamic@1")
+    );
+    expect(op.baseTemplates).toEqual([...SXA_HEADLESS_PARAMS_BASE_TEMPLATES]);
+    expect(op.baseTemplates).not.toContain(IDYNAMIC_PLACEHOLDER_TEMPLATE_ID);
+  });
+
+  // External params-template references are owned by a separate
+  // ParametersTemplateRecipe deployment. Mutating its base-template
+  // chain from a consuming component would silently affect every other
+  // consumer. Reject the combo until the params recipe grows its own
+  // dynamicPlaceholder flag (the right home for shared-template config).
+  it("throws INPUT_INVALID when dynamicPlaceholders is combined with an external parameters template", () => {
+    const externalRef: Recipe = {
+      ...layoutRecipe,
+      handle: "ext-ref@1",
+      name: "ext-ref",
+      displayName: "External Ref",
+      params: [],
+      parameters: { handle: "shared-params@1" },
+    };
+    expect(() => compileComponentTemplateRecipe(externalRef, CONTEXT)).toThrow(
+      /ext-ref@1.*dynamicPlaceholders.*external parameters template/i
+    );
   });
 });
 

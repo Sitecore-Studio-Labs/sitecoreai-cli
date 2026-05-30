@@ -157,28 +157,44 @@ export function compileComponentTemplateRecipe(
     ensureSectionFolder(operations, context, sectionName, emittedFolders);
   }
 
-  emitDatasourceTemplate(
-    operations,
-    {
-      handle: recipe.handle,
-      name: recipe.name,
-      displayName: recipe.displayName,
-      fields: recipe.fields,
-      insertOptions: recipe.insertOptions,
-      // Component templates always sit at the section root (or
-      // templatesRoot, for legacy callers).
-      parentPath: resolveComponentTemplateParent(context, sectionName),
-      // SXA Foundation bases (`_PerSiteStandardValues`,
-      // `_HorizonDatasourceGrouping`, `_PublishingGroupingTemplate`) —
-      // verified against live tenants on 2026-05-02. Without these the
-      // SXA editor doesn't recognise the item as a component and
-      // fields/standard-values won't surface in the Pages editor.
-      additionalBaseTemplates: SXA_COMPONENT_BASE_TEMPLATES,
-    },
-    context,
-    icon,
-    policy
-  );
+  // Pure-layout renderings (Container, ColumnSplitter, RowSplitter,
+  // SectionWrapper, …) declare no `fields:` and no `insertOptions`.
+  // They have no datasource — authors don't bind content to them, they
+  // just expose placeholders for children. Match the XM Cloud starter
+  // pattern by NOT emitting a phantom empty data template item for
+  // these. The rendering's `Datasource Template` shared field is
+  // already omitted for the same case (see below), so the template
+  // would be orphaned anyway. Skipping the emission keeps the
+  // templates tree honest — only renderings that need a datasource
+  // get one.
+  const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
+  const hasInsertOptions = (recipe.insertOptions?.length ?? 0) > 0;
+  const needsOwnDataTemplate = hasInlineFields || hasInsertOptions;
+  if (needsOwnDataTemplate) {
+    emitDatasourceTemplate(
+      operations,
+      {
+        handle: recipe.handle,
+        name: recipe.name,
+        displayName: recipe.displayName,
+        fields: recipe.fields,
+        insertOptions: recipe.insertOptions,
+        // Component templates always sit at the section root (or
+        // templatesRoot, for legacy callers).
+        parentPath: resolveComponentTemplateParent(context, sectionName),
+        // SXA Foundation bases (`_PerSiteStandardValues`,
+        // `_HorizonDatasourceGrouping`, `_PublishingGroupingTemplate`)
+        // — verified against live tenants on 2026-05-02. Without
+        // these the SXA editor doesn't recognise the item as a
+        // component and fields/standard-values won't surface in the
+        // Pages editor.
+        additionalBaseTemplates: SXA_COMPONENT_BASE_TEMPLATES,
+      },
+      context,
+      icon,
+      policy
+    );
+  }
 
   if (recipe.children) {
     emitComponentFolderTemplate(operations, recipe, context, icon, emittedFolders);
@@ -934,6 +950,18 @@ function emitRendering(
   }
   if (recipe.dynamicPlaceholders) {
     otherProperties.IsRenderingsWithDynamicPlaceholders = "true";
+    // Pair: tells SXA's layout-service serialiser that children inside
+    // this rendering's dynamic placeholders should inherit the
+    // rendering's datasource as their context (so child relative-
+    // datasource resolution works). Without it, children dropped into
+    // a Container / Section Wrapper / partial-design slot can fail to
+    // resolve their own datasource because the layout service ships
+    // no parent-context binding alongside the placeholder array.
+    // Pairs with the IDynamicPlaceholder base template + the
+    // Placeholders shared field — all three are required halves of
+    // the dynamic-placeholder chain on XM Cloud / SXA Headless
+    // starter renderings (Container et al carry this property).
+    otherProperties.UsePlaceholderDatasourceContext = "true";
   }
   Object.assign(otherProperties, recipe.otherProperties ?? {});
   fields.push(

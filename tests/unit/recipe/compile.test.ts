@@ -902,17 +902,51 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
     ]);
   });
 
-  it("rendering item carries IsRenderingsWithDynamicPlaceholders=true in OtherProperties", () => {
+  it("rendering item carries IsRenderingsWithDynamicPlaceholders=true + UsePlaceholderDatasourceContext=true in OtherProperties", () => {
     const op = onlyOp(
       ir.operations,
       "CreateItem",
       (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
     );
     const otherProps = findField(op.fields, RENDERING_FIELDS.OTHER_PROPERTIES);
+    // UsePlaceholderDatasourceContext rides with the dynamic-placeholder
+    // chain — without it children in the rendering's slots can lose
+    // their relative-datasource binding when the layout service
+    // serialises the placeholder map. Both halves match the SXA / XM
+    // Cloud starter Container rendering.
     expect(otherProps?.value).toEqual({
       kind: "url-string-map",
-      entries: { IsRenderingsWithDynamicPlaceholders: "true" },
+      entries: {
+        IsRenderingsWithDynamicPlaceholders: "true",
+        UsePlaceholderDatasourceContext: "true",
+      },
     });
+  });
+
+  // Pure-layout renderings (no fields, no insertOptions, no datasource)
+  // skip the data-template emission entirely. Matches the XM Cloud
+  // starter Container, which has only a Rendering item + Parameters
+  // Template — no data template in the templates tree.
+  it("does not emit a data template when the recipe declares no fields and no insertOptions", () => {
+    const dataTemplateOp = ir.operations.find(
+      (o) => o.op === "CreateItem" && o.id === templateId(SITE, LAYOUT_HANDLE)
+    );
+    expect(dataTemplateOp).toBeUndefined();
+  });
+
+  it("still emits a data template when the recipe declares insertOptions but no inline fields (child-items pattern)", () => {
+    const withChildren: Recipe = {
+      ...layoutRecipe,
+      handle: "with-children@1",
+      name: "with-children",
+      displayName: "With Children",
+      insertOptions: ["accordion-item@1"],
+    };
+    const irKids = compileComponentTemplateRecipe(withChildren, CONTEXT);
+    const dataTemplateOp = irKids.operations.find(
+      (o) => o.op === "CreateItem" && o.id === templateId(SITE, "with-children@1")
+    );
+    expect(dataTemplateOp).toBeDefined();
   });
 
   // The Placeholders shared field is what SXA reads to enumerate

@@ -11,7 +11,9 @@ import {
   sharedDataFolderTemplateId,
   siteDataFolderId,
   siteDataFolderStandardValuesId,
+  siteDataFolderStandardValuesIdForLocation,
   siteDataFolderTemplateId,
+  siteDataFolderTemplateIdForLocation,
   templateId,
   variantId,
   variantsFolderId,
@@ -419,9 +421,6 @@ function emitSiteDataFolderTemplate(
 
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
-  const folderTplRefKey = siteDataFolderTemplateId(site, recipe.handle);
-  if (emittedFolders.has(folderTplRefKey)) return;
-  emittedFolders.add(folderTplRefKey);
 
   const bucketRefKey = ensureComponentFoldersBucket(
     operations,
@@ -429,6 +428,95 @@ function emitSiteDataFolderTemplate(
     sectionName,
     emittedFolders
   );
+
+  // Split site-locations into two groups:
+  //   1. WITH allowedTemplates → emit a PER-LOCATION template + SV
+  //      with that location's allow-list (one template per subfolder).
+  //   2. WITHOUT allowedTemplates → fall through to the legacy
+  //      per-recipe template (single template, Insert Options =
+  //      recipe's own datasource template) — preserves existing
+  //      consumers that haven't adopted allowedTemplates yet.
+  const perLocationLocations = siteLocations.filter((l) => (l.allowedTemplates ?? []).length > 0);
+  const legacyLocations = siteLocations.filter((l) => (l.allowedTemplates ?? []).length === 0);
+
+  // -------- per-location templates (allowedTemplates set) --------
+  for (const location of perLocationLocations) {
+    const subfolder = location.subfolder as string;
+    if (context.sharedSubfolders?.has(subfolder)) continue;
+
+    const tplRefKey = siteDataFolderTemplateIdForLocation(site, recipe.handle, subfolder);
+    if (emittedFolders.has(tplRefKey)) continue;
+    emittedFolders.add(tplRefKey);
+
+    const tplName = `${recipe.name} ${subfolder} Data Folder`;
+    const tplPath = joinPath(resolveComponentFoldersBucketPath(context, sectionName), tplName);
+
+    operations.push({
+      op: "CreateItem",
+      policy,
+      label: `site-data-folder-template:${recipe.handle}:${subfolder}`,
+      id: tplRefKey,
+      path: tplPath,
+      parent: { kind: "ref-recipe", refKey: bucketRefKey },
+      templateOf: SITECORE_TEMPLATES.TEMPLATE,
+      name: tplName,
+      fields: [
+        sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
+          kind: "string",
+          value: `${recipe.displayName} ${subfolder} Data Folder`,
+        }),
+      ],
+    } satisfies CreateItemOp);
+
+    operations.push({
+      op: "SetBaseTemplates",
+      policy,
+      label: `site-data-folder-base-templates:${recipe.handle}:${subfolder}`,
+      itemRefKey: tplRefKey,
+      baseTemplates: [STANDARD_TEMPLATE_ID],
+    } satisfies SetBaseTemplatesOp);
+
+    const svRefKey = siteDataFolderStandardValuesIdForLocation(site, recipe.handle, subfolder);
+    const svPath = joinPath(tplPath, "__Standard Values");
+    operations.push({
+      op: "CreateItem",
+      policy,
+      label: `site-data-folder-standard-values:${recipe.handle}:${subfolder}`,
+      id: svRefKey,
+      path: svPath,
+      parent: { kind: "ref-recipe", refKey: tplRefKey },
+      templateOf: tplRefKey,
+      name: "__Standard Values",
+      fields: [],
+    } satisfies CreateItemOp);
+
+    operations.push({
+      op: "SetStandardValues",
+      policy,
+      label: `link-site-data-folder-standard-values:${recipe.handle}:${subfolder}`,
+      templateRefKey: tplRefKey,
+      standardValuesRefKey: svRefKey,
+    } satisfies SetStandardValuesOp);
+
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `site-data-folder-insert-options:${recipe.handle}:${subfolder}`,
+      itemRefKey: svRefKey,
+      fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+      value: {
+        kind: "ref-recipe-list",
+        refKeys: location.allowedTemplates!.map((t) => templateId(site, t.handle)),
+      },
+    } satisfies SetFieldOp);
+  }
+
+  // -------- legacy per-recipe template (no allowedTemplates) --------
+  if (legacyLocations.length === 0) return;
+  const folderTplRefKey = siteDataFolderTemplateId(site, recipe.handle);
+  if (emittedFolders.has(folderTplRefKey)) return;
+  emittedFolders.add(folderTplRefKey);
 
   const folderName = `${recipe.name} Data Folder`;
   const folderTplPath = joinPath(
@@ -454,7 +542,6 @@ function emitSiteDataFolderTemplate(
     ],
   } satisfies CreateItemOp);
 
-  // Folder templates inherit Standard Template (no custom fields).
   operations.push({
     op: "SetBaseTemplates",
     policy,
@@ -485,9 +572,6 @@ function emitSiteDataFolderTemplate(
     standardValuesRefKey: svRefKey,
   } satisfies SetStandardValuesOp);
 
-  // Single-template Insert Options for now (the recipe's own
-  // datasource template). Future-extensible to a list when the
-  // shared-subfolder coalescer lands.
   operations.push({
     op: "SetField",
     policy,
@@ -773,15 +857,23 @@ function emitRendering(
           const parentPath =
             intermediateSegments.length > 0 ? joinPath(base, intermediateSegments.join("/")) : base;
           const folderPath = joinPath(base, subfolderSegments.join("/"));
-          // Shared-subfolder coalescer signal: when this subfolder is
-          // populated by ≥2 recipes in the set, the folder ITEM
-          // conforms to the SHARED template (whose Insert Options is
-          // the union of all contributing recipes' datasource
-          // templates). Singletons keep using the per-recipe template.
+          // Template selection per subfolder:
+          //   1. Shared-subfolder coalescer (≥2 recipes target same
+          //      subfolder) → SHARED template (Insert Options =
+          //      union of contributing recipes' datasource templates).
+          //   2. Singleton WITH allowedTemplates on this location →
+          //      per-LOCATION template (Insert Options = this
+          //      location's `allowedTemplates`).
+          //   3. Singleton WITHOUT allowedTemplates → legacy per-recipe
+          //      template (Insert Options = recipe's own datasource
+          //      template). Preserves the original behavior for
+          //      consumers that haven't adopted allowedTemplates.
           const isShared = context.sharedSubfolders?.has(location.subfolder) === true;
           const folderTemplateOf = isShared
             ? sharedDataFolderTemplateId(site, location.subfolder)
-            : siteDataFolderTemplateId(site, recipe.handle);
+            : (location.allowedTemplates ?? []).length > 0
+              ? siteDataFolderTemplateIdForLocation(site, recipe.handle, location.subfolder)
+              : siteDataFolderTemplateId(site, recipe.handle);
           operations.push({
             op: "CreateItem",
             policy: "CreateOnly",

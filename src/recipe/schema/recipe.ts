@@ -412,6 +412,19 @@ export const RenderingDatasourceLocationSchema = z.discriminatedUnion("scope", [
     scope: z.literal("page"),
     /** Optional `Data` subfolder; absent = `./Data`. */
     subfolder: z.string().min(1).optional(),
+    /**
+     * Optional per-location insert-option scoping. When set, the
+     * subfolder's Insert Options field is constrained to the listed
+     * handles instead of inheriting the rendering's full datasource
+     * template set. Lets one rendering with multiple subfolders give
+     * each subfolder its own allow-list (e.g. avatar-block's
+     * page-Avatars accepts `avatar-block@1`, site-Authors accepts
+     * `author@1`).
+     */
+    allowedTemplates: z
+      .array(z.object({ handle: z.string().regex(HANDLE_PATTERN) }))
+      .min(1)
+      .optional(),
   }),
   z.object({
     scope: z.literal("site"),
@@ -421,6 +434,10 @@ export const RenderingDatasourceLocationSchema = z.discriminatedUnion("scope", [
      * materialised once per recipe-set.
      */
     subfolder: z.string().min(1).optional(),
+    allowedTemplates: z
+      .array(z.object({ handle: z.string().regex(HANDLE_PATTERN) }))
+      .min(1)
+      .optional(),
   }),
 ]);
 

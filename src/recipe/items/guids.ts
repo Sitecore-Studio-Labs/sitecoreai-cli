@@ -472,6 +472,33 @@ export const siteDataFolderStandardValuesId = (site: string, recipeHandle: strin
   uuidv5("__standard-values", siteDataFolderTemplateId(site, recipeHandle));
 
 /**
+ * Per-(recipe, subfolder) Data Folder template — used when a recipe
+ * declares site-scoped locations with DIFFERENT `allowedTemplates`
+ * lists (the avatar-block case: page-Avatars accepts `avatar-block@1`,
+ * site-Authors accepts `author@1`). One Insert Options list per
+ * subfolder can't fit on a single per-recipe template, so each
+ * location gets its own template + standard-values.
+ *
+ * Keyed by `(site, recipeHandle, subfolder)` to keep it distinct from
+ * the per-recipe `siteDataFolderTemplateId` (single uniform Insert
+ * Options) and the cross-recipe `sharedDataFolderTemplateId` (coalesces
+ * multiple recipes' contributions to one subfolder).
+ */
+export const siteDataFolderTemplateIdForLocation = (
+  site: string,
+  recipeHandle: string,
+  subfolder: string
+): string =>
+  uuidv5(`${site}::${recipeHandle}::${subfolder}::data-folder-template`, NAMESPACE_TEMPLATE);
+
+export const siteDataFolderStandardValuesIdForLocation = (
+  site: string,
+  recipeHandle: string,
+  subfolder: string
+): string =>
+  uuidv5("__standard-values", siteDataFolderTemplateIdForLocation(site, recipeHandle, subfolder));
+
+/**
  * SHARED Data Folder template — keyed on `(site, subfolder)` instead of
  * `(site, recipeHandle)`. Emitted by `compileRecipeSet` when two or
  * more recipes target the same site-scoped `subfolder` (the shared-

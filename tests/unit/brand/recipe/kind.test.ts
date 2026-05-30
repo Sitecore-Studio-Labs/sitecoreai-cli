@@ -548,8 +548,8 @@ describe("apply", () => {
           ],
         },
         { kind: "brand-kit", id: "Acme" },
-        noEnrichCtx,
-      ),
+        noEnrichCtx
+      )
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
     expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
     expect(brandApi.createBrandKit).not.toHaveBeenCalled();
@@ -590,7 +590,7 @@ describe("apply", () => {
         ],
       },
       { kind: "brand-kit", id: "Acme" },
-      noEnrichCtx,
+      noEnrichCtx
     );
 
     expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();

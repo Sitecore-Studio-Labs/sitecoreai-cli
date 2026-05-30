@@ -554,10 +554,88 @@ describe("buildStandardValuesFieldEntries", () => {
     expect(entries[0].value).toMatchObject({ kind: "string", value: "" });
   });
 
-  it("skips a reference-shape default (link / image are not string-expressible)", () => {
+  it("skips an image default (still not string-expressible)", () => {
     const entries = buildStandardValuesFieldEntries("default", "h@1", [
       field({ name: "Hero", shape: "image", default: "/some/path" }),
     ]);
+    expect(entries).toEqual([]);
+  });
+
+  it("encodes a general-link default with text|url as the Sitecore link XML payload", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Get started|https://example.com",
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Get started" linktype="external" url="https://example.com" />',
+    });
+  });
+
+  it("encodes a general-link default with no pipe as text + anchor URL", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Click here",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Click here" linktype="anchor" url="#" />',
+    });
+  });
+
+  it("encodes a general-link default with mailto: as linktype mailto", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Email us|mailto:hello@example.com",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Email us" linktype="mailto" url="mailto:hello@example.com" />',
+    });
+  });
+
+  it("escapes XML attribute special chars in general-link defaults", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: 'Read "A&B"|https://x?q=1&r=2',
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value:
+        '<link text="Read &quot;A&amp;B&quot;" linktype="external" url="https://x?q=1&amp;r=2" />',
+    });
+  });
+
+  it("skips a general-link default with empty raw string", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "",
+      }),
+    ]);
+    // Empty default → encoder returns undefined, but the upstream
+    // code in buildStandardValuesFieldEntries treats `default: ""`
+    // as "no default declared" before the encoder ever runs; either
+    // way the SV gets no entry for this field.
     expect(entries).toEqual([]);
   });
 

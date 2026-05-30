@@ -1295,9 +1295,20 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
     case "date":
     case "datetime":
       return { kind: "string", value: raw };
+    case "general-link": {
+      // Convention: pipe-separated `"<text>|<url>"`. Either half may
+      // be empty (`"Click|"` → text only, `"|https://x"` → url only).
+      // No pipe (`"Just text"`) is treated as text + anchor `#`. The
+      // encoded payload is the Sitecore link-field XML format that
+      // Standard Values stores natively. This gives recipe authors a
+      // way to seed `general-link` SVs so dropped renderings visualise
+      // immediately instead of rendering empty button shells.
+      const encoded = encodeGeneralLinkDefault(raw);
+      if (encoded == null) return undefined;
+      return { kind: "string", value: encoded };
+    }
     case "image":
     case "file":
-    case "general-link":
     case "droplink":
     case "treelist":
     case "treelist-with-search":
@@ -1306,6 +1317,40 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
       // still gets created without a default.
       return undefined;
   }
+}
+
+// Sitecore link field stores a small XML payload in the Standard Values
+// row. Attributes are XML-escaped. `linktype` mirrors what the platform
+// picks based on URL shape — only mailto/anchor warrant special types
+// here; relative paths and absolute URLs both use the `external` type
+// (Sitecore's runtime renders them the same; the link picker decides
+// internal vs external at author-time for items it can resolve).
+function encodeGeneralLinkDefault(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  const pipeIndex = trimmed.indexOf("|");
+  const text = pipeIndex === -1 ? trimmed : trimmed.slice(0, pipeIndex).trim();
+  const url = pipeIndex === -1 ? "#" : trimmed.slice(pipeIndex + 1).trim() || "#";
+  const linktype = url.startsWith("mailto:")
+    ? "mailto"
+    : url.startsWith("#")
+      ? "anchor"
+      : "external";
+  const attrs: Array<[string, string]> = [
+    ["text", text],
+    ["linktype", linktype],
+    ["url", url],
+  ];
+  return `<link ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
+}
+
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 /**

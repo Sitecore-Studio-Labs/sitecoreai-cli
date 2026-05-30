@@ -516,6 +516,22 @@ export const RENDERING_FIELDS = {
   PARAMETERS_TEMPLATE: "a77e8568-1ab3-44f1-a664-b7c37ec7810d",
   OPEN_PROPERTIES_AFTER_ADD: "7d8ae35f-9ed1-43b5-96a2-0a5f040d4e4e",
   OTHER_PROPERTIES: "e829c217-5e94-4306-9c48-2634b094fdc2",
+  /**
+   * "Placeholders" shared field. Pipe-separated list of placeholder
+   * keys this rendering exposes (e.g. `container-{*}|footer-{*}`).
+   * SXA Headless reads this field to know which slots a rendering
+   * declares; without it the layout service does NOT serialise any
+   * `placeholders` map for the rendering, and the headless SDK's
+   * `getPlaceholderRenderings` walks an empty object and warns
+   * `Placeholder '<slot>-1' was not found in the current rendering data`.
+   *
+   * Distinct from the Placeholder Settings items at
+   * `placeholderSettingsRoot` — those carry per-key allow-lists and
+   * icons for the editor toolbox. Both are needed: settings items so
+   * the toolbox shows the right insertable renderings, and this
+   * field so SXA enumerates the slots in the first place.
+   */
+  PLACEHOLDERS: "b687328e-ca12-414d-a78e-6b4e6dca38fa",
 } as const;
 
 /**

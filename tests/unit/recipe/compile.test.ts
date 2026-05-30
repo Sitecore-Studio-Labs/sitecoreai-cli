@@ -915,6 +915,67 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
     });
   });
 
+  // The Placeholders shared field is what SXA reads to enumerate
+  // slots on a rendering. Without it the layout service ships no
+  // `placeholders` map and the headless SDK warns
+  // `Placeholder '<slot>-1' was not found in the current rendering data`.
+  // The literal `{*}` token survives into the field value because the
+  // SDK's runtime substitution path expects exactly that template
+  // form (see `getDynamicPlaceholderPattern` in the Content SDK).
+  it("rendering item carries pipe-separated placeholder keys in the Placeholders field", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "string",
+      value: "container-{*}",
+    });
+  });
+
+  it("joins multiple placeholder keys with a pipe in the Placeholders field", () => {
+    const multiSlot: Recipe = {
+      ...layoutRecipe,
+      handle: "multi-slot@1",
+      name: "multi-slot",
+      displayName: "Multi Slot",
+      placeholders: [
+        { key: "header-start-{*}" },
+        { key: "header-nav-{*}" },
+        { key: "header-end-{*}" },
+      ],
+    };
+    const irMulti = compileComponentTemplateRecipe(multiSlot, CONTEXT);
+    const op = onlyOp(
+      irMulti.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "multi-slot@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "string",
+      value: "header-start-{*}|header-nav-{*}|header-end-{*}",
+    });
+  });
+
+  it("omits the Placeholders field when the recipe declares no placeholders", () => {
+    const noPlaceholders: Recipe = {
+      ...layoutRecipe,
+      handle: "no-placeholders@1",
+      name: "no-placeholders",
+      displayName: "No Placeholders",
+      dynamicPlaceholders: false,
+      placeholders: undefined,
+    };
+    const irNone = compileComponentTemplateRecipe(noPlaceholders, CONTEXT);
+    const op = onlyOp(
+      irNone.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "no-placeholders@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)).toBeUndefined();
+  });
+
   it("params template does NOT inherit _IDynamicPlaceholder when dynamicPlaceholders is false/absent", () => {
     const noDynamic: Recipe = {
       ...layoutRecipe,

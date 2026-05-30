@@ -608,6 +608,92 @@ describe("buildStandardValuesFieldEntries", () => {
     expect(entries).toEqual([]);
   });
 
+  it("encodes a file default with alt|src as the Sitecore file XML payload", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Document",
+        shape: "image",
+        sitecore: { type: "file" },
+        default: "Whitepaper|https://example.com/wp.pdf",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<file src="https://example.com/wp.pdf" alt="Whitepaper" />',
+    });
+  });
+
+  // Reference-shape defaults resolve recipe handles to their
+  // deterministic contentItemId GUIDs. The recipe set is responsible
+  // for materialising those content items in the same compile run; if
+  // the handle doesn't resolve, the SV write fails at apply time.
+  it("encodes a single-reference (Droplink) default as a ref-recipe pointing at the handle's contentItemId", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Author",
+        shape: "reference",
+        multiple: false,
+        sitecore: { type: "droplink" },
+        default: "author-jane@1",
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value.kind).toBe("ref-recipe");
+    if (entries[0].value.kind === "ref-recipe") {
+      // Deterministic — uuid5 of `default::author-jane@1` under the
+      // content-item namespace. Match a UUID shape rather than a hard
+      // GUID so the test stays passing if the namespace seed changes.
+      expect(entries[0].value.refKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
+  });
+
+  it("encodes a multi-reference (Treelist) default as a pipe-separated ref-recipe-list", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Authors",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist" },
+        default: "author-jane@1|author-bob@1|author-eve@1",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe-list");
+    if (entries[0].value.kind === "ref-recipe-list") {
+      expect(entries[0].value.refKeys).toHaveLength(3);
+      for (const refKey of entries[0].value.refKeys) {
+        expect(refKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+    }
+  });
+
+  it("skips a single-reference default when the trimmed handle is empty", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Author",
+        shape: "reference",
+        multiple: false,
+        sitecore: { type: "droplink" },
+        default: "   ",
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+
+  it("skips a multi-reference default when no handles parse out (e.g. only pipes/whitespace)", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Authors",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist" },
+        default: " | | ",
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+
   it("encodes a general-link default with text|url as the Sitecore link XML payload", () => {
     const entries = buildStandardValuesFieldEntries("default", "h@1", [
       field({

@@ -1,5 +1,6 @@
 import {
   componentFoldersBucketId,
+  contentItemId,
   contentModelsGroupFolderId,
   enumerationContainerSectionId,
   enumerationContainerValueFieldId,
@@ -1274,6 +1275,41 @@ function encodeStandardValueDefaultForField(
       refKey: enumValueId(enumerationFolderId(site, enumHandle), raw),
     };
   }
+  // Reference-shape fields (`shape: "reference"`): the default is one
+  // or more recipe handles pointing at content items. Resolve each
+  // handle to its deterministic `contentItemId(site, handle)` GUID and
+  // emit a `ref-recipe` (single) or `ref-recipe-list` (multi). The
+  // executor matches each refKey against the per-run captured-itemId
+  // map at apply time. If the referenced handle doesn't materialise as
+  // a content item in the same recipe set, the SV write fails at apply
+  // time — author error, not silently masked here (same contract as
+  // enum defaults above).
+  //
+  // Convention:
+  //   `multiple: false` (Droplink) — single handle string, e.g.
+  //     `default: "author-jane@1"`
+  //   `multiple: true`  (Treelist / Treelist-with-search) — pipe-
+  //     separated handles, e.g. `default: "author-jane@1|author-bob@1"`
+  if (field.shape === "reference") {
+    // `multiple` lives on FieldDefinition (Treelist) but not on
+    // DesignParameter — parameters templates don't model multi-list
+    // pickers in scai today. Safe in-check covers both shapes.
+    const isMulti = "multiple" in field && field.multiple === true;
+    if (isMulti) {
+      const handles = raw
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (handles.length === 0) return undefined;
+      return {
+        kind: "ref-recipe-list",
+        refKeys: handles.map((h) => contentItemId(site, h)),
+      };
+    }
+    const target = raw.trim();
+    if (target === "") return undefined;
+    return { kind: "ref-recipe", refKey: contentItemId(site, target) };
+  }
   return encodeStandardValueDefault(raw, resolveSitecoreType(field));
 }
 
@@ -1324,14 +1360,26 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
       if (encoded == null) return undefined;
       return { kind: "string", value: encoded };
     }
-    case "file":
+    case "file": {
+      // Same `<alt>|<src>` convention as image, but emits the
+      // file-field XML (`<file src="…" />`). Layout Service surfaces
+      // it as `{ src, ... }` in the file-field value. As with image,
+      // no `mediaid` form — recipes don't ship media items, so the
+      // external-URL `src` form is what we can express. Authors swap
+      // to a real media library item via the file picker.
+      const encoded = encodeFileDefault(raw);
+      if (encoded == null) return undefined;
+      return { kind: "string", value: encoded };
+    }
     case "droplink":
     case "treelist":
     case "treelist-with-search":
-      // Remaining reference shapes need GUID-bearing payloads that the
-      // simple `default: string` recipe surface can't express. Skip;
-      // the field still gets created without a default. Future work
-      // could resolve these against the recipe set's content recipes.
+      // Reference-shape defaults are encoded upstream in
+      // `encodeStandardValueDefaultForField` via the recipe-handle
+      // resolver (single → `ref-recipe`, multi → `ref-recipe-list`).
+      // Reaching this branch means the field declared `shape:
+      // "reference"` but the upstream branch didn't fire — defensive
+      // skip so a malformed recipe doesn't emit a broken default.
       return undefined;
   }
 }
@@ -1368,6 +1416,21 @@ function encodeGeneralLinkDefault(raw: string): string | undefined {
 // `{ src, alt }` in the image-field value. Empty raw returns
 // undefined so the SV entry is skipped entirely.
 function encodeImageDefault(raw: string): string | undefined {
+  return encodeMediaXmlDefault("image", raw);
+}
+
+// Same convention as image (`<alt>|<src>` or bare `<src>`); emits the
+// file-field XML form. Authors swap to a media-library item via the
+// file picker at placement time; seed src renders in the meantime.
+function encodeFileDefault(raw: string): string | undefined {
+  return encodeMediaXmlDefault("file", raw);
+}
+
+// Shared XML body for image + file fields. Sitecore's stored shape
+// for both is identical: `<image src="..." alt="..." />` vs
+// `<file src="..." alt="..." />`. The element name is the only
+// difference.
+function encodeMediaXmlDefault(element: "image" | "file", raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
   const pipeIndex = trimmed.indexOf("|");
@@ -1376,7 +1439,7 @@ function encodeImageDefault(raw: string): string | undefined {
   if (!src) return undefined;
   const attrs: Array<[string, string]> = [["src", src]];
   if (alt) attrs.push(["alt", alt]);
-  return `<image ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
+  return `<${element} ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
 }
 
 function escapeXmlAttr(value: string): string {

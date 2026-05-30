@@ -283,6 +283,46 @@ describe("buildFieldOp — sort order + storage axis", () => {
     expect(sortField?.value).toMatchObject({ value: 42 });
   });
 
+  it("adds sortOrderBase to the auto-assigned sort order", () => {
+    // Parameters templates pass `sortOrderBase: PARAMS_SORT_ORDER_BASE`
+    // (1000) so synthesised rendering parameters sort below the
+    // inherited base-template fields (RenderingIdentifier, Styles,
+    // GridParameters, etc., all in the low hundreds).
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ name: "Headline" }),
+      zeroBasedIndex: 0,
+      sortOrderBase: 1000,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 1100 });
+  });
+
+  it("sortOrderBase does not override an explicit sitecore.sortOrder", () => {
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ sitecore: { sortOrder: 50 } }),
+      zeroBasedIndex: 0,
+      sortOrderBase: 1000,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 50 });
+  });
+
   it("emits a Shared flag for shared-storage fields", () => {
     const ops = buildFieldOp({
       recipeHandle: "h@1",

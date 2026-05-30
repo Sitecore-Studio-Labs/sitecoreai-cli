@@ -269,6 +269,19 @@ export interface CompileContext {
 export const PARAMS_SECTION_NAME = "Parameters";
 export const DEFAULT_FIELDS_SECTION = "Content";
 
+/**
+ * Sort-order offset applied to synthesised rendering parameter fields
+ * (inline `params:` on a component template, and standalone
+ * `parameters-template` recipes). The SXA Headless params base templates
+ * ship `RenderingIdentifier`, `Styles`, `GridParameters`, etc. with
+ * `__Sortorder` values in the low hundreds; defaulting custom params to
+ * `100`/`200`/… interleaves them with those inherited fields in the
+ * Pages parameters dialog. Starting custom params at `1100` keeps them
+ * grouped below the inherited standards while leaving room for
+ * explicit `sitecore.sortOrder` overrides to slot anywhere.
+ */
+export const PARAMS_SORT_ORDER_BASE = 1000;
+
 export const COMPONENT_FOLDERS_BUCKET = "Component Folders";
 export const PRESENTATION_PARAMETERS_BUCKET = "Presentation Parameters";
 
@@ -1027,6 +1040,19 @@ export interface BuildFieldOpInput {
   labelPrefix: string;
   field: FieldDefinition | DesignParameter;
   zeroBasedIndex: number;
+  /**
+   * Offset added to the auto-assigned `(zeroBasedIndex + 1) * 100` when
+   * the field has no explicit `sitecore.sortOrder`. Default 0.
+   *
+   * Used by rendering parameters templates: the SXA Headless params base
+   * templates ship `RenderingIdentifier`, `Styles`, `GridParameters`, etc.
+   * at sortOrder values in the low hundreds. Inline `params:` would tie
+   * or interleave with those on the inherited fields' `__Sortorder`,
+   * making the Pages parameters dialog render custom params mixed in
+   * between `id` and `css styles`. Passing a high base (e.g. `1000`)
+   * pushes synthesised params cleanly below the inherited standards.
+   */
+  sortOrderBase?: number;
   policy: PushPolicy;
   /**
    * Site name the recipe set is being compiled under. Threaded through to
@@ -1078,11 +1104,12 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
     labelPrefix,
     field,
     zeroBasedIndex,
+    sortOrderBase = 0,
     policy,
     site,
     context,
   } = input;
-  const sortOrder = field.sitecore?.sortOrder ?? (zeroBasedIndex + 1) * 100;
+  const sortOrder = field.sitecore?.sortOrder ?? sortOrderBase + (zeroBasedIndex + 1) * 100;
   const sitecoreType = resolveSitecoreType(field);
   const fields: FieldValue[] = [
     sharedField(TEMPLATE_FIELD_FIELDS.TYPE, {

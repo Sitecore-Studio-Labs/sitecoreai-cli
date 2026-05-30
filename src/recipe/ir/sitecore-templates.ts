@@ -517,8 +517,10 @@ export const RENDERING_FIELDS = {
   OPEN_PROPERTIES_AFTER_ADD: "7d8ae35f-9ed1-43b5-96a2-0a5f040d4e4e",
   OTHER_PROPERTIES: "e829c217-5e94-4306-9c48-2634b094fdc2",
   /**
-   * "Placeholders" shared field. Pipe-separated list of placeholder
-   * keys this rendering exposes (e.g. `container-{*}|footer-{*}`).
+   * "Placeholder" shared field — singular — on the SXA Headless
+   * Json Rendering template. Pipe-separated list of placeholder keys
+   * this rendering exposes (e.g. `container-{*}|footer-{*}`).
+   *
    * SXA Headless reads this field to know which slots a rendering
    * declares; without it the layout service does NOT serialise any
    * `placeholders` map for the rendering, and the headless SDK's
@@ -530,8 +532,18 @@ export const RENDERING_FIELDS = {
    * icons for the editor toolbox. Both are needed: settings items so
    * the toolbox shows the right insertable renderings, and this
    * field so SXA enumerates the slots in the first place.
+   *
+   * Sandbox-verified 2026-05-31 by introspecting the
+   * `/sitecore/templates/Foundation/JavaScript Services/Json Rendering`
+   * template (itemId 04646a89-996f-4ee7-878a-ffdbf1f0ef0d) on the
+   * agents tenant. Note the singular name — an earlier guess used
+   * the plural CMS-shaped "Placeholders" field with GUID
+   * `b687328e-ca12-414d-a78e-6b4e6dca38fa`, which Authoring GraphQL
+   * rejects as "field not found" because the Headless Json Rendering
+   * template doesn't inherit the standard System/Layout/Rendering's
+   * plural variant.
    */
-  PLACEHOLDERS: "b687328e-ca12-414d-a78e-6b4e6dca38fa",
+  PLACEHOLDER: "592a1ce7-abe0-4986-9783-0a34f3961dc0",
 } as const;
 
 /**

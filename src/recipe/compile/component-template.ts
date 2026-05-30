@@ -971,11 +971,11 @@ function emitRendering(
     })
   );
 
-  // Placeholders field — pipe-separated list of placeholder keys this
-  // rendering exposes. SXA Headless reads this to enumerate slots in
-  // the layout-service output; without it the layout service ships no
-  // `placeholders` map for the rendering, no children resolve, and
-  // the headless SDK warns
+  // Placeholder (singular) shared field on the Json Rendering template
+  // — pipe-separated list of placeholder keys this rendering exposes.
+  // SXA Headless reads this to enumerate slots in the layout-service
+  // output; without it the layout service ships no `placeholders` map
+  // for the rendering, no children resolve, and the headless SDK warns
   // `Placeholder '<slot>-1' was not found in the current rendering data`.
   // Each recipe slot's `key` is written verbatim so dynamic-placeholder
   // tokens (`{*}`) survive into the field value — the SDK's runtime
@@ -983,7 +983,7 @@ function emitRendering(
   if (recipe.placeholders?.length) {
     const placeholdersValue = recipe.placeholders.map((slot) => slot.key).join("|");
     fields.push(
-      sharedField(RENDERING_FIELDS.PLACEHOLDERS, {
+      sharedField(RENDERING_FIELDS.PLACEHOLDER, {
         kind: "string",
         value: placeholdersValue,
       })

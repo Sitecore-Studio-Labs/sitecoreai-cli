@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
 `recipe`: add `Plugin` Sitecore field type + `plugin` source variant for Marketplace custom-field apps

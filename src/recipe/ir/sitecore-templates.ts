@@ -285,6 +285,36 @@ export const SXA_HEADLESS_PARAMS_BASE_TEMPLATES = [
 ] as const;
 
 /**
+ * SXA `_IDynamicPlaceholder` interface template — base-template extension
+ * for rendering parameters templates that need to support nested dynamic
+ * placeholders. Contributes a `DynamicPlaceholderID` field; the Pages
+ * chrome auto-populates this field with a per-placement integer when an
+ * author drops the rendering, and the layout service emits the resolved
+ * value as the `DynamicPlaceholderId` rendering parameter. The headless
+ * SDK uses that parameter to resolve concrete `<slot>-<id>` placeholder
+ * keys against the `<slot>-{*}` template defined on the rendering.
+ *
+ * Without this base template, the parameters template has no
+ * `DynamicPlaceholderID` field, the chrome has nowhere to write the ID,
+ * and nested children either fail to bind in Pages or persist against
+ * the wrong slot key — symptom is a container rendered childless in
+ * layout service with the SDK warning
+ * `Placeholder '<slot>-1' was not found in the current rendering data`.
+ *
+ * Setting `IsRenderingsWithDynamicPlaceholders=true` in the rendering's
+ * `OtherProperties` is necessary-but-not-sufficient. Both halves are
+ * required; both are emitted by the `dynamicPlaceholders: true` flag on
+ * `ComponentTemplateRecipe`.
+ *
+ * Path: `/sitecore/templates/Foundation/Experience Accelerator/Dynamic Placeholders/Rendering Parameters/IDynamicPlaceholder`.
+ * Captured 2026-05-30 by introspecting the tenant via
+ * `_recon-page-template.cjs item <path>` — Foundation template, GUID is
+ * stable across tenants (same identity model as the other SXA bases in
+ * this module).
+ */
+export const IDYNAMIC_PLACEHOLDER_TEMPLATE_ID = "5c74e985-e055-43ff-b28c-db6c6a6450a2";
+
+/**
  * SXA Headless page base templates — what a recipe-emitted page template
  * must inherit so XM Cloud Pages recognises items conforming to it as
  * authorable pages: they pick up the layout/presentation fields, the

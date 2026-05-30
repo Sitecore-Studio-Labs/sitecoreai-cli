@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
 `recipe`: support multi-template datasources (compatible-datasources pattern)

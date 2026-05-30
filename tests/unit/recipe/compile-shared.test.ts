@@ -554,9 +554,56 @@ describe("buildStandardValuesFieldEntries", () => {
     expect(entries[0].value).toMatchObject({ kind: "string", value: "" });
   });
 
-  it("skips an image default (still not string-expressible)", () => {
+  it("encodes an image default with alt|src as the Sitecore image XML payload", () => {
     const entries = buildStandardValuesFieldEntries("default", "h@1", [
-      field({ name: "Hero", shape: "image", default: "/some/path" }),
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "Hero placeholder|https://picsum.photos/seed/hero/1200/600",
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://picsum.photos/seed/hero/1200/600" alt="Hero placeholder" />',
+    });
+  });
+
+  it("encodes an image default with just a src (no pipe) as src-only image XML", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "https://picsum.photos/seed/x/800/600",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://picsum.photos/seed/x/800/600" />',
+    });
+  });
+
+  it("escapes XML attribute special chars in image defaults", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: 'Quotes "&" things|https://x?q=a&r=b',
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://x?q=a&amp;r=b" alt="Quotes &quot;&amp;&quot; things" />',
+    });
+  });
+
+  it("skips an image default with no src (e.g. alt-only)", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "alt only|",
+      }),
     ]);
     expect(entries).toEqual([]);
   });

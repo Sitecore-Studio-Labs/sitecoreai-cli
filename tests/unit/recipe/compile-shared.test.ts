@@ -305,7 +305,13 @@ describe("buildFieldOp — sort order + storage axis", () => {
     expect(sortField?.value).toMatchObject({ value: 1100 });
   });
 
-  it("sortOrderBase does not override an explicit sitecore.sortOrder", () => {
+  it("sortOrderBase offsets an explicit sitecore.sortOrder (relative-to-base semantics)", () => {
+    // Recipes were authored with sortOrder values like 100, 200, 300
+    // when the params base was 0; lifting params to base=1000 needs
+    // those explicit values to also lift, otherwise they collide with
+    // SXA's inherited low-hundreds fields. Treat explicit sortOrder as
+    // RELATIVE to the base, so `{ sortOrderBase: 1000, sortOrder: 50 }`
+    // → 1050 on the rendering-parameters template.
     const ops = buildFieldOp({
       recipeHandle: "h@1",
       fieldRefKey: "fk",
@@ -315,6 +321,25 @@ describe("buildFieldOp — sort order + storage axis", () => {
       field: field({ sitecore: { sortOrder: 50 } }),
       zeroBasedIndex: 0,
       sortOrderBase: 1000,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 1050 });
+  });
+
+  it("explicit sitecore.sortOrder on a base=0 field group is unchanged", () => {
+    // Datasource fields (and any other group keeping the default
+    // sortOrderBase=0) keep authored sortOrder values verbatim.
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ sitecore: { sortOrder: 50 } }),
+      zeroBasedIndex: 0,
       policy: "CreateOnly",
       site: "default",
     });

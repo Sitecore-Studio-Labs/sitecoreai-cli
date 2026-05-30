@@ -1109,7 +1109,19 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
     site,
     context,
   } = input;
-  const sortOrder = field.sitecore?.sortOrder ?? sortOrderBase + (zeroBasedIndex + 1) * 100;
+  // Explicit `sitecore.sortOrder` values from the recipe are treated as
+  // RELATIVE to the field group's base so existing recipes (which were
+  // authored with `sortOrder: 100, 200, 300, ...`) continue to make
+  // sense — for params, sortOrderBase=PARAMS_SORT_ORDER_BASE (1000)
+  // lifts them above SXA's inherited low-hundreds fields. For
+  // datasource fields, sortOrderBase=0 so explicit values are unchanged.
+  // Auto-assigned values (no explicit sortOrder) get the same base +
+  // 100-step increment.
+  const explicitSortOrder = field.sitecore?.sortOrder;
+  const sortOrder =
+    explicitSortOrder != null
+      ? sortOrderBase + explicitSortOrder
+      : sortOrderBase + (zeroBasedIndex + 1) * 100;
   const sitecoreType = resolveSitecoreType(field);
   const fields: FieldValue[] = [
     sharedField(TEMPLATE_FIELD_FIELDS.TYPE, {

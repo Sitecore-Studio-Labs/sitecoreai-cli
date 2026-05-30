@@ -514,6 +514,59 @@ describe("buildFieldOp — sort order + storage axis", () => {
       created.fields.some((f) => f.value.kind === "string" && f.value.value === "/enums/Color")
     ).toBe(true);
   });
+
+  // reference + enumHandle = multi-pick Treelist sourced from a shared
+  // enum. Source uses the combined `DataSource=<path>&IncludeTemplatesForSelection=<GUID>`
+  // form so the picker scopes to the enum folder AND restricts picks
+  // to enum value items (preventing the folder item or stray siblings
+  // from being selectable). Path resolves the same way as the
+  // enum-shape Droplink branch.
+  it("emits combined DataSource + IncludeTemplatesForSelection for a reference field with enumHandle", () => {
+    const enumCtx: CompileContext = {
+      ...baseContext,
+      enumerationsRoot: "/enums",
+      enumsByHandle: new Map<string, EnumerationRecipe>([
+        [
+          "social-platform@1",
+          {
+            kind: "enumeration",
+            schemaVersion: "1",
+            handle: "social-platform@1",
+            name: "SocialPlatform",
+            values: [{ name: "facebook" }, { name: "x" }],
+          } as EnumerationRecipe,
+        ],
+      ]),
+    };
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Platforms",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({
+        name: "Platforms",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist", enumHandle: "social-platform@1" },
+      }),
+      zeroBasedIndex: 0,
+      policy: "CreateOnly",
+      site: "default",
+      context: enumCtx,
+    });
+    const created = ops[0] as CreateItemOp;
+    const source = created.fields.find(
+      (f) =>
+        f.value.kind === "string" && f.value.value.startsWith("DataSource=/enums/SocialPlatform")
+    );
+    expect(source).toBeDefined();
+    if (source?.value.kind === "string") {
+      expect(source.value.value).toMatch(
+        /^DataSource=\/enums\/SocialPlatform&IncludeTemplatesForSelection=\{[0-9A-F-]{36}\}$/
+      );
+    }
+  });
 });
 
 describe("buildStandardValuesFieldEntries", () => {
@@ -692,6 +745,57 @@ describe("buildStandardValuesFieldEntries", () => {
       }),
     ]);
     expect(entries).toEqual([]);
+  });
+
+  // Reference + enumHandle = pick value items from a shared enum (multi
+  // via Treelist or single via Droplink-on-reference). Defaults resolve
+  // to enumValueId rather than contentItemId so the SV writes point at
+  // the enum's value-item folder, not a content-item GUID that doesn't
+  // exist. Same author-error contract as the enum-shape SV.
+  it("encodes a multi-reference default with enumHandle as enum-value ref-recipe-list", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Platforms",
+        shape: "reference",
+        multiple: true,
+        sitecore: {
+          type: "treelist",
+          enumHandle: "social-platform@1",
+        },
+        default: "facebook|x|linkedin",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe-list");
+    if (entries[0].value.kind === "ref-recipe-list") {
+      expect(entries[0].value.refKeys).toHaveLength(3);
+      // Should differ from the plain (no-enumHandle) contentItemId
+      // version — derived against enumValueId(enumerationFolderId(...))
+      // instead of contentItemId(site, handle). Just shape-check.
+      for (const refKey of entries[0].value.refKeys) {
+        expect(refKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+    }
+  });
+
+  it("encodes a single-reference default with enumHandle as a single enum-value ref-recipe", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Platform",
+        shape: "reference",
+        multiple: false,
+        sitecore: {
+          type: "droplink",
+          enumHandle: "social-platform@1",
+        },
+        default: "x",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe");
+    if (entries[0].value.kind === "ref-recipe") {
+      expect(entries[0].value.refKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
   });
 
   it("encodes a general-link default with text|url as the Sitecore link XML payload", () => {

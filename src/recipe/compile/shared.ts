@@ -1295,6 +1295,28 @@ function encodeStandardValueDefaultForField(
     // DesignParameter — parameters templates don't model multi-list
     // pickers in scai today. Safe in-check covers both shapes.
     const isMulti = "multiple" in field && field.multiple === true;
+    // enumHandle on a reference field = pick from a shared enum's
+    // value items. Each pipe-separated token maps to an enum value
+    // *name*; resolve to `enumValueId` instead of `contentItemId` so
+    // the SV write points at the right value items under the enum
+    // folder. Same contract as enum-shape SV defaults — author error
+    // (referencing a value that doesn't exist on the enum) fails at
+    // apply time with the standard captured-itemId error.
+    if (field.sitecore?.enumHandle) {
+      const enumFolder = enumerationFolderId(site, field.sitecore.enumHandle);
+      const tokens = raw
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (tokens.length === 0) return undefined;
+      if (isMulti) {
+        return {
+          kind: "ref-recipe-list",
+          refKeys: tokens.map((t) => enumValueId(enumFolder, t)),
+        };
+      }
+      return { kind: "ref-recipe", refKey: enumValueId(enumFolder, tokens[0]) };
+    }
     if (isMulti) {
       const handles = raw
         .split("|")
@@ -1512,6 +1534,33 @@ function resolveFieldSource(
     if (rendered !== undefined) {
       return { kind: "string", value: rendered };
     }
+  }
+  // Reference-shape + enumHandle = multi-pick Treelist sourced from a
+  // shared enum. SXA Treelist's Source supports the combined form
+  // `DataSource=<path>&IncludeTemplatesForSelection=<GUID>` so the
+  // picker scopes to the enum's folder AND restricts pickable items
+  // to enum value items (preventing the folder item itself or
+  // accidentally-dropped siblings from showing up). Single-pick
+  // reference (Droplink) follows the same shape but with one URL
+  // attribute set instead of the combo — Sitecore reads the path the
+  // same way.
+  if (field.shape === "reference" && sc?.enumHandle) {
+    if (!context) {
+      throw createScaiError(
+        `Field '${field.name}' on recipe '${recipeHandle}' uses sitecore.enumHandle='${sc.enumHandle}' on a reference field but the field-op builder was invoked without a CompileContext.`,
+        "INPUT_INVALID",
+        {
+          hint: "Pass `context` into `buildFieldOp` so the enum's tenant path can be resolved from `enumsByHandle` + `enumerationsRoot`.",
+        }
+      );
+    }
+    const enumPath = resolveEnumFolderPath(context, sc.enumHandle, recipeHandle);
+    const site = siteOf(context);
+    const valueTemplateId = enumerationValueTemplateId(site);
+    return {
+      kind: "string",
+      value: `DataSource=${enumPath}&IncludeTemplatesForSelection={${valueTemplateId.toUpperCase()}}`,
+    };
   }
   if (field.shape === "enum") {
     // Droplist override on an enum field needs the inline values

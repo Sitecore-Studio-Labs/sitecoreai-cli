@@ -6,6 +6,7 @@ import {
   designParametersSectionId,
   designParametersStandardValuesId,
   designParametersTemplateId,
+  placeholderSettingsId,
   renderingId,
   sectionDefinitionId,
   sharedDataFolderTemplateId,
@@ -971,21 +972,32 @@ function emitRendering(
     })
   );
 
-  // Placeholder (singular) shared field on the Json Rendering template
-  // — pipe-separated list of placeholder keys this rendering exposes.
-  // SXA Headless reads this to enumerate slots in the layout-service
-  // output; without it the layout service ships no `placeholders` map
-  // for the rendering, no children resolve, and the headless SDK warns
-  // `Placeholder '<slot>-1' was not found in the current rendering data`.
-  // Each recipe slot's `key` is written verbatim so dynamic-placeholder
-  // tokens (`{*}`) survive into the field value — the SDK's runtime
-  // substitution path expects exactly that template-shaped string.
+  // Placeholders (plural) Treelist field on the SXA Headless rendering
+  // chain — pipe-separated `{GUID}` refs, each pointing at one of the
+  // Placeholder Settings items emitted alongside this push.
+  //
+  // SXA Headless reads each referenced settings item to recover the
+  // slot's `Placeholder Key` (e.g. `container-{*}`) and emit a
+  // `placeholders` map in the layout-service response. The starter-kit
+  // Container / Column Splitter / Row Splitter all wire this field the
+  // same way: pipe-joined GUIDs of the matching Placeholder Settings
+  // items at `placeholderSettingsRoot`. Without it the layout service
+  // ships no `placeholders` array for the rendering and the headless
+  // SDK warns `Placeholder '<slot>-1' was not found in the current
+  // rendering data`. Two earlier scai attempts wrote string keys to a
+  // different field; the runtime ignores those — only this Treelist
+  // wires the slots up.
+  //
+  // The Placeholder Settings items are emitted by
+  // `buildPlaceholderSettingsAggregate` in compile.ts under the same
+  // `(site, key)` namespace as `placeholderSettingsId(site, key)` here,
+  // so the refKeys resolve to real itemIds by the time the executor
+  // runs the SetField — no separate dependency wiring needed.
   if (recipe.placeholders?.length) {
-    const placeholdersValue = recipe.placeholders.map((slot) => slot.key).join("|");
     fields.push(
-      sharedField(RENDERING_FIELDS.PLACEHOLDER, {
-        kind: "string",
-        value: placeholdersValue,
+      sharedField(RENDERING_FIELDS.PLACEHOLDERS, {
+        kind: "ref-recipe-list",
+        refKeys: recipe.placeholders.map((slot) => placeholderSettingsId(site, slot.key)),
       })
     );
   }

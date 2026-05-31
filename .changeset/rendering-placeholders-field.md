@@ -2,60 +2,59 @@
 "@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
-`recipe`: write `Placeholder` shared field on Rendering items
+`recipe`: wire rendering Placeholders Treelist to the Placeholder Settings items it creates
 
-`ComponentTemplateRecipe`'s `placeholders: [...]` block previously only
-emitted `Placeholder Settings` items at `placeholderSettingsRoot` —
-which carry per-key allow-lists and editor-toolbox metadata. It never
-wrote the placeholder keys back to the Rendering item's own
-`Placeholder` shared field on the SXA Headless `Json Rendering`
-template (singular — not the CMS-shaped `Placeholders` plural variant
-on `System/Layout/Rendering`, which Headless renderings don't inherit).
-
-That field is what SXA Headless reads to enumerate the slots on a
-rendering. Without it the layout service emits no `placeholders` map
-for the rendering, and the headless SDK's `getPlaceholderRenderings`
-walks an empty object and warns
+`ComponentTemplateRecipe`'s `placeholders: [...]` block previously
+only emitted `Placeholder Settings` items at `placeholderSettingsRoot`
+— which carry per-key allow-lists and editor-toolbox metadata. The
+matching wire on the Rendering item that joins those settings items
+to the rendering was missing, so the layout service shipped no
+`placeholders` array for the rendering, child renderings never
+resolved, and the headless SDK warned
 
     Placeholder '<slot>-1' was not found in the current rendering data
 
 even when the recipe correctly set `dynamicPlaceholders: true`,
-chained the `_IDynamicPlaceholder` base template, and registered the
-slot's Placeholder Settings item. The two earlier fixes were
-necessary-but-not-sufficient — this third write completes the chain.
+chained the `_IDynamicPlaceholder` base template, and emitted every
+Placeholder Settings item the slot needed.
 
-`emitRendering` now writes each recipe-declared `slot.key` verbatim
-(pipe-joined for multi-slot renderings) into the singular
-`Placeholder` shared field at
-`592a1ce7-abe0-4986-9783-0a34f3961dc0` (sandbox-verified by
-introspecting the `Json Rendering` template at
-`/sitecore/templates/Foundation/JavaScript Services/Json Rendering`
-on the agents tenant). The literal `{*}` token survives into the
-field value because the SDK's runtime substitution path expects
-exactly that template form (`getDynamicPlaceholderPattern` builds
-`/^<prefix>-\d+$/` from the `{*}`-bearing key).
+`emitRendering` now writes the **Placeholders** (plural) Treelist
+shared field at `069a8361-b1cd-437c-8c32-a3be78941446` — the SXA
+Headless rendering-chain field, mixed in via
+`/sitecore/templates/System/Layout/Sections/Rendering Options/Layout Service/Placeholders`.
+Value is a `ref-recipe-list` of GUIDs, one per declared slot, each
+pointing at the matching Placeholder Settings item already emitted
+by `buildPlaceholderSettingsAggregate`:
 
 ```ts
-// Single slot
-{
-  placeholders: [{ key: "container-{*}" }],
-}
-// → Placeholder shared field = "container-{*}"
-
-// Multi-slot
 {
   placeholders: [
-    { key: "header-start-{*}" },
-    { key: "header-nav-{*}" },
-    { key: "header-end-{*}" },
+    { key: "container-{*}" },
+    { key: "footer-{*}" },
   ],
 }
-// → Placeholder shared field = "header-start-{*}|header-nav-{*}|header-end-{*}"
+// → Placeholders Treelist refs:
+//   [
+//     placeholderSettingsId(site, "container-{*}"),
+//     placeholderSettingsId(site, "footer-{*}"),
+//   ]
 ```
 
-> An unreleased first attempt (commit `885885c`) wrote against a
-> guessed GUID for the CMS-shaped `Placeholders` plural variant
-> (`b687328e-ca12-414d-a78e-6b4e6dca38fa`); Authoring GraphQL
-> rejected every rendering upsert with "Cannot find a field with the
-> name b687328e-...". Caught + fixed before any release shipped
-> (commit `84fa785`).
+The starter-kit `Container`, `Column Splitter`, `Row Splitter`, etc.
+all wire their slots through this exact field — the SXA Headless
+runtime dereferences each ref to read the `Placeholder Key` (the
+`container-{*}` template-shaped string) before emitting the
+`placeholders` map. The literal `{*}` token lives on the settings
+item, not on the rendering field, which is why earlier attempts at
+writing pipe-joined raw key strings to the rendering had no effect:
+the runtime never reads the rendering for keys.
+
+> Two unreleased earlier attempts at this fix targeted the wrong
+> field entirely — commit `885885c` wrote pipe-joined keys to the
+> standard CMS Layout's plural "Placeholders" (b687328e-...) which
+> the Headless Json Rendering template doesn't inherit (Authoring
+> GraphQL rejected the upsert outright); commit `84fa785` switched
+> to the Json Rendering template's singular "Placeholder" field
+> (592a1ce7-...) which Authoring accepts but the layout service
+> ignores. Caught + corrected (this changeset / commit) before any
+> release shipped: still 0.2.5 on `latest` after publishing.

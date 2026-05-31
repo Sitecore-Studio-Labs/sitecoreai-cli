@@ -12,6 +12,7 @@ import {
   designParameterFieldId,
   designParametersSectionId,
   designParametersTemplateId,
+  placeholderSettingsId,
   renderingId,
   sectionId,
   standardValuesId,
@@ -949,27 +950,28 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
     expect(dataTemplateOp).toBeDefined();
   });
 
-  // The Placeholder (singular) shared field on the Json Rendering
-  // template is what SXA reads to enumerate slots on a rendering.
-  // Without it the layout service ships no `placeholders` map and
-  // the headless SDK warns `Placeholder '<slot>-1' was not found in
-  // the current rendering data`. The literal `{*}` token survives
-  // into the field value because the SDK's runtime substitution path
-  // expects exactly that template form (see `getDynamicPlaceholderPattern`
-  // in the Content SDK).
-  it("rendering item carries pipe-separated placeholder keys in the Placeholder field", () => {
+  // The Placeholders (plural) Treelist field on the SXA Headless
+  // rendering chain is what the layout service reads to enumerate slots
+  // on a rendering. The value is a list of refs to the matching
+  // Placeholder Settings items — NOT a free-form string of keys. Each
+  // referenced settings item carries the slot's `Placeholder Key`
+  // (e.g. `container-{*}`) that the runtime substitutes. Without this
+  // field the layout service ships no `placeholders` array and the
+  // headless SDK warns `Placeholder '<slot>-1' was not found in the
+  // current rendering data`.
+  it("rendering item references the Placeholder Settings items in the Placeholders Treelist", () => {
     const op = onlyOp(
       ir.operations,
       "CreateItem",
       (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
     );
-    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDER)?.value).toEqual({
-      kind: "string",
-      value: "container-{*}",
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [placeholderSettingsId(SITE, "container-{*}")],
     });
   });
 
-  it("joins multiple placeholder keys with a pipe in the Placeholder field", () => {
+  it("joins multiple placeholder refs in declaration order in the Placeholders Treelist", () => {
     const multiSlot: Recipe = {
       ...layoutRecipe,
       handle: "multi-slot@1",
@@ -987,13 +989,17 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       "CreateItem",
       (o) => o.id === renderingId(SITE, "multi-slot@1")
     );
-    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDER)?.value).toEqual({
-      kind: "string",
-      value: "header-start-{*}|header-nav-{*}|header-end-{*}",
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [
+        placeholderSettingsId(SITE, "header-start-{*}"),
+        placeholderSettingsId(SITE, "header-nav-{*}"),
+        placeholderSettingsId(SITE, "header-end-{*}"),
+      ],
     });
   });
 
-  it("omits the Placeholder field when the recipe declares no placeholders", () => {
+  it("omits the Placeholders field when the recipe declares no placeholders", () => {
     const noPlaceholders: Recipe = {
       ...layoutRecipe,
       handle: "no-placeholders@1",
@@ -1008,7 +1014,7 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       "CreateItem",
       (o) => o.id === renderingId(SITE, "no-placeholders@1")
     );
-    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDER)).toBeUndefined();
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)).toBeUndefined();
   });
 
   it("params template does NOT inherit _IDynamicPlaceholder when dynamicPlaceholders is false/absent", () => {

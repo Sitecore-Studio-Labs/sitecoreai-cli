@@ -517,33 +517,42 @@ export const RENDERING_FIELDS = {
   OPEN_PROPERTIES_AFTER_ADD: "7d8ae35f-9ed1-43b5-96a2-0a5f040d4e4e",
   OTHER_PROPERTIES: "e829c217-5e94-4306-9c48-2634b094fdc2",
   /**
-   * "Placeholder" shared field — singular — on the SXA Headless
-   * Json Rendering template. Pipe-separated list of placeholder keys
-   * this rendering exposes (e.g. `container-{*}|footer-{*}`).
+   * "Placeholders" (PLURAL) Treelist field on the SXA Headless rendering
+   * chain. Pipe-separated list of `{GUID}` references — each GUID points
+   * at a Placeholder Settings item under `placeholderSettingsRoot`.
    *
-   * SXA Headless reads this field to know which slots a rendering
-   * declares; without it the layout service does NOT serialise any
-   * `placeholders` map for the rendering, and the headless SDK's
-   * `getPlaceholderRenderings` walks an empty object and warns
+   * Defined on `/sitecore/templates/System/Layout/Sections/Rendering Options/Layout Service/Placeholders`,
+   * mixed into the SXA Headless rendering template via the
+   * `Layout Service` section. The starter-kit `Container`,
+   * `Column Splitter`, `Row Splitter` et al all populate this exact
+   * field (e.g. Container's value is `{97CBC3BC-...-A5}` pointing at
+   * the matching `/Placeholder Settings/.../Container` item).
+   *
+   * The layout service reads each referenced settings item to recover
+   * the slot's `Placeholder Key` (e.g. `container-{*}`) and emit the
+   * `placeholders` map in the layout-service response. Without this
+   * field populated the layout service ships no `placeholders` array
+   * for the rendering, no child renderings resolve, and the headless
+   * SDK's `getPlaceholderRenderings` walks an empty object and warns
    * `Placeholder '<slot>-1' was not found in the current rendering data`.
    *
-   * Distinct from the Placeholder Settings items at
-   * `placeholderSettingsRoot` — those carry per-key allow-lists and
-   * icons for the editor toolbox. Both are needed: settings items so
-   * the toolbox shows the right insertable renderings, and this
-   * field so SXA enumerates the slots in the first place.
-   *
-   * Sandbox-verified 2026-05-31 by introspecting the
+   * Distinct from (a) the legacy singular "Placeholder" field on
    * `/sitecore/templates/Foundation/JavaScript Services/Json Rendering`
-   * template (itemId 04646a89-996f-4ee7-878a-ffdbf1f0ef0d) on the
-   * agents tenant. Note the singular name — an earlier guess used
-   * the plural CMS-shaped "Placeholders" field with GUID
-   * `b687328e-ca12-414d-a78e-6b4e6dca38fa`, which Authoring GraphQL
-   * rejects as "field not found" because the Headless Json Rendering
-   * template doesn't inherit the standard System/Layout/Rendering's
-   * plural variant.
+   * (`592a1ce7-abe0-4986-9783-0a34f3961dc0`) — a free-form string that
+   * the CMS-shaped Layout reads but SXA Headless does not; and (b)
+   * the CMS "Placeholders" plural on `System/Layout/Renderings/Rendering`
+   * (`b687328e-ca12-414d-a78e-6b4e6dca38fa`) which the Headless
+   * Json Rendering template doesn't inherit at all. Two earlier scai
+   * fixes tried each of these GUIDs in turn; the field reaching SXA's
+   * runtime is THIS one.
+   *
+   * Sandbox-verified 2026-05-31 by introspecting the live agents
+   * tenant: `/sitecore/layout/Renderings/Feature/JSS Experience Accelerator/Page Structure/Container`
+   * carries the value `{97CBC3BC-B376-47AA-9238-240672E912A5}` in
+   * its "Placeholders" field, which resolves to
+   * `/sitecore/layout/Placeholder Settings/Feature/JSS Experience Accelerator/Page Structure/Container`.
    */
-  PLACEHOLDER: "592a1ce7-abe0-4986-9783-0a34f3961dc0",
+  PLACEHOLDERS: "069a8361-b1cd-437c-8c32-a3be78941446",
 } as const;
 
 /**

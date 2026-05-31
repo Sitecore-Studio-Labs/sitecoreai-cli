@@ -465,7 +465,18 @@ function emitSiteDataFolderTemplate(
     if (emittedFolders.has(tplRefKey)) continue;
     emittedFolders.add(tplRefKey);
 
-    const tplName = `${recipe.name} ${subfolder} Data Folder`;
+    // Per-location data-folder templates live FLAT in the recipe's
+    // Component Folders bucket — they don't mirror the subfolder
+    // hierarchy because they're TEMPLATES (not content). The full
+    // subfolder still needs to appear in the name to disambiguate
+    // when one recipe declares multiple subfolders (`a/x` vs `a/y`
+    // would otherwise collide). Sitecore's InvalidItemNameChars
+    // setting rejects `/` in item names, so collapse to ` - `
+    // (preserves both segments for legibility). Display name keeps
+    // the original `/` — only the item name and path segment are
+    // restricted.
+    const tplNameSubfolder = subfolder.replace(/\//g, " - ");
+    const tplName = `${recipe.name} ${tplNameSubfolder} Data Folder`;
     const tplPath = joinPath(resolveComponentFoldersBucketPath(context, sectionName), tplName);
 
     operations.push({

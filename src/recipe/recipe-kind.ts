@@ -65,7 +65,7 @@ const resolveContext = (
   context: CompileContext;
   envName: string;
 } => {
-  const { envName, environment, timeoutMs } = resolveEnvironment({
+  const { envName, environment, root, timeoutMs } = resolveEnvironment({
     config: ctx.configPath,
     environmentName: ctx.environmentName,
   });
@@ -89,6 +89,7 @@ const resolveContext = (
     pageTemplatesRoot: environment.pageTemplatesRoot,
     placeholderSettingsRoot: environment.placeholderSettingsRoot,
     pagesRoot: environment.pagesRoot,
+    marketplacePluginOverrides: root.marketplacePluginOverrides,
   };
   return { client, context, envName };
 };

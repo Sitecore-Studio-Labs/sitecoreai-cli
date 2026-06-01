@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyMarketplacePluginOverride,
   augmentSourceToFields,
   renderSourceFields,
   sourceFieldsNeedHandleResolution,
@@ -159,6 +160,53 @@ describe("augmentSourceToFields", () => {
       })
     ).toEqual({
       sourcePlugin: "132e9379-0e85-4840-8d1f-f3e4b9e32553",
+    });
+  });
+});
+
+describe("applyMarketplacePluginOverride", () => {
+  const officialDefault = "132e9379-0e85-4840-8d1f-f3e4b9e32553";
+  const overrideId = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb";
+
+  it("undefined source → passes through", () => {
+    expect(applyMarketplacePluginOverride(undefined, { foo: "x" })).toBeUndefined();
+  });
+
+  it("undefined overrides → passes through", () => {
+    const source = {
+      kind: "plugin",
+      id: "sai/matrix-editor",
+      defaultAppId: officialDefault,
+    } as const;
+    expect(applyMarketplacePluginOverride(source, undefined)).toBe(source);
+  });
+
+  it("non-plugin source → passes through", () => {
+    const source = { kind: "raw", value: "/sitecore/content/Tags" } as const;
+    expect(applyMarketplacePluginOverride(source, { "sai/matrix-editor": overrideId })).toBe(
+      source
+    );
+  });
+
+  it("plugin source with no matching override → passes through (identity preserved)", () => {
+    const source = {
+      kind: "plugin",
+      id: "sai/matrix-editor",
+      defaultAppId: officialDefault,
+    } as const;
+    expect(applyMarketplacePluginOverride(source, { "sai/other": overrideId })).toBe(source);
+  });
+
+  it("plugin source with matching override → swaps defaultAppId", () => {
+    const source = {
+      kind: "plugin",
+      id: "sai/matrix-editor",
+      defaultAppId: officialDefault,
+    } as const;
+    expect(applyMarketplacePluginOverride(source, { "sai/matrix-editor": overrideId })).toEqual({
+      kind: "plugin",
+      id: "sai/matrix-editor",
+      defaultAppId: overrideId,
     });
   });
 });

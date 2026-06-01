@@ -50,6 +50,7 @@ import {
   sitecoreFieldTypeLabel,
 } from "../schema/field-types";
 import {
+  applyMarketplacePluginOverride,
   augmentSourceToFields,
   renderSourceFields,
   sourceFieldsNeedHandleResolution,
@@ -265,6 +266,18 @@ export interface CompileContext {
    * the set but this is unset.
    */
   pagesRoot?: string;
+  /**
+   * Per-org overrides for marketplace plugin `app_id` UUIDs, keyed by
+   * `plugin_key` — the recipe-side `source.id` on a `kind: "plugin"`
+   * source. When a recipe's plugin reference has a matching entry, the
+   * compiler swaps the recipe-side `defaultAppId` for the override
+   * value before emitting the Sitecore Source field. Populated from
+   * `RootConfiguration.marketplacePluginOverrides` (which the
+   * orchestrator writes into `sitecoreai.cli.json` at recipe-sync
+   * preflight). Absent/empty means every plugin source emits its
+   * recipe-author `defaultAppId`.
+   */
+  marketplacePluginOverrides?: Record<string, string>;
 }
 
 export const PARAMS_SECTION_NAME = "Parameters";
@@ -1516,7 +1529,11 @@ function resolveFieldSource(
 ): RefValue | undefined {
   const sc = field.sitecore;
   if (sc) {
-    const fields = augmentSourceToFields(sc.source);
+    const effectiveSource = applyMarketplacePluginOverride(
+      sc.source,
+      context?.marketplacePluginOverrides
+    );
+    const fields = augmentSourceToFields(effectiveSource);
     if (sourceFieldsNeedHandleResolution(fields)) {
       // `types` is non-empty here because `sourceFieldsNeedHandleResolution`
       // returned true; the cast is to satisfy the IR's `.min(1)` constraint.

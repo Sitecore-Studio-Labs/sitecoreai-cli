@@ -129,9 +129,10 @@ export const augmentSourceToFields = (
     return { sourceRaw: source.value };
   }
   if (source.kind === "plugin") {
-    // sourcePlugin carries the resolved app_id UUID — the orchestrator
-    // substitutes any per-org override into `defaultAppId` before scai
-    // sees the recipe, so this value is already the final id to emit.
+    // sourcePlugin carries the resolved app_id UUID. The caller is
+    // expected to have already applied any per-org override via
+    // `applyMarketplacePluginOverride` so this value is the final id
+    // to emit into Sitecore's Source field.
     return { sourcePlugin: source.defaultAppId };
   }
   return {
@@ -139,4 +140,36 @@ export const augmentSourceToFields = (
     sourceQuery: source.query,
     sourceScope: source.scope,
   };
+};
+
+/**
+ * Apply the per-org marketplace plugin override map to a source. When
+ * the source is a `plugin` reference and its `id` (the recipe-side
+ * `plugin_key`) is in `overrides`, swap the `defaultAppId` UUID for the
+ * override value. Non-plugin sources pass through unchanged, as do
+ * plugin sources with no matching override entry. Returns the original
+ * source object identity when no substitution applies so callers can
+ * cheaply check for "did it change?".
+ *
+ * The override map is supplied by the orchestrator at recipe-sync
+ * preflight (from `internal.marketplace_plugin_overrides`) and read out
+ * of `sitecoreai.cli.json`'s top-level `marketplacePluginOverrides`
+ * field. Recipes that ship `defaultAppId` from the recipe author remain
+ * valid when no overrides apply — they just emit the recipe-author's
+ * UUID verbatim.
+ */
+export const applyMarketplacePluginOverride = <
+  T extends
+    | { kind: "filter"; types?: readonly string[]; query?: string; scope?: string }
+    | { kind: "raw"; value: string }
+    | { kind: "plugin"; id: string; defaultAppId: string }
+    | undefined,
+>(
+  source: T,
+  overrides: Record<string, string> | undefined
+): T => {
+  if (!source || source.kind !== "plugin" || !overrides) return source;
+  const override = overrides[source.id];
+  if (!override) return source;
+  return { ...source, defaultAppId: override } as T;
 };

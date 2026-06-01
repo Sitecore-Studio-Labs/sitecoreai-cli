@@ -207,6 +207,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
   const irs: { ir: OperationIr }[] = [

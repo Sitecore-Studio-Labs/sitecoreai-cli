@@ -419,6 +419,20 @@ export type RootConfiguration = {
    * Defaults to `["recipes/**\/*.recipe.ts"]` if unset.
    */
   recipes: string[];
+  /**
+   * Per-org overrides for marketplace plugin `app_id` UUIDs, keyed by
+   * `plugin_key`. When a recipe has `source: { kind: "plugin", id, defaultAppId }`,
+   * the compiler substitutes `marketplacePluginOverrides[id]` for
+   * `defaultAppId` when present, so the Source field emitted into
+   * Sitecore reflects the customer's installed marketplace app (typically
+   * a fork or private publish) instead of the recipe author's default.
+   *
+   * The orchestrator populates this map at recipe-sync preflight from
+   * `internal.marketplace_plugin_overrides` and writes it as a top-level
+   * field of `sitecoreai.cli.json`. Empty/absent means every plugin
+   * source uses the recipe-side `defaultAppId`.
+   */
+  marketplacePluginOverrides: Record<string, string>;
 };
 
 export type RootConfigurationFile = {
@@ -451,6 +465,8 @@ export type RootConfigurationFile = {
   orgClients?: Record<string, AutomationClientMetadata>;
   /** Globs locating recipe files. See `RootConfiguration.recipes`. */
   recipes?: string[];
+  /** Per-org marketplace plugin overrides. See `RootConfiguration.marketplacePluginOverrides`. */
+  marketplacePluginOverrides?: Record<string, string>;
   [key: string]: unknown;
 };
 

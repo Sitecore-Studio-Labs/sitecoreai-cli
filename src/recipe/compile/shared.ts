@@ -1536,14 +1536,21 @@ function resolveFieldSource(
     }
   }
   // Reference-shape + enumHandle = multi-pick Treelist sourced from a
-  // shared enum. SXA Treelist's Source supports the combined form
+  // shared enum. Earlier iterations emitted the combined form
   // `DataSource=<path>&IncludeTemplatesForSelection=<GUID>` so the
-  // picker scopes to the enum's folder AND restricts pickable items
-  // to enum value items (preventing the folder item itself or
-  // accidentally-dropped siblings from showing up). Single-pick
-  // reference (Droplink) follows the same shape but with one URL
-  // attribute set instead of the combo — Sitecore reads the path the
-  // same way.
+  // picker would scope to the enum's folder AND restrict pickable
+  // items to the enum value template — but Sitecore Pages's Treelist
+  // chrome rejected every enum-value pick under that filter, leaving
+  // authors with "the source's filter doesn't allow those options"
+  // and no way to select platforms. The filter isn't load-bearing in
+  // practice: scai deliberately doesn't emit per-folder
+  // `__Standard Values` items inside enum folders (see the comment
+  // in `compileEnumerationRecipe`), so the enum folder's children
+  // are exactly the value items the picker should surface. Dropping
+  // the template filter keeps the picker working in Pages and only
+  // matters for tenants where an author manually drops stray content
+  // under an enum folder (rare and recoverable). Single-pick
+  // reference (Droplink) follows the same plain-`DataSource=` shape.
   if (field.shape === "reference" && sc?.enumHandle) {
     if (!context) {
       throw createScaiError(
@@ -1555,11 +1562,9 @@ function resolveFieldSource(
       );
     }
     const enumPath = resolveEnumFolderPath(context, sc.enumHandle, recipeHandle);
-    const site = siteOf(context);
-    const valueTemplateId = enumerationValueTemplateId(site);
     return {
       kind: "string",
-      value: `DataSource=${enumPath}&IncludeTemplatesForSelection={${valueTemplateId.toUpperCase()}}`,
+      value: `DataSource=${enumPath}`,
     };
   }
   if (field.shape === "enum") {

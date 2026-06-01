@@ -140,6 +140,44 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
         fields: [],
       } satisfies CreateItemOp);
 
+      // Insert Options (`__Masters`) on the Data folder — the union of
+      // datasource templates across EVERY rendering on the page (not just
+      // scoped ones). Authors who turn off the rendering's `autoCreate`
+      // — or who want to add an extra datasource later — see the right
+      // set in the right-click → Insert menu. Without this, the Data
+      // folder lands as a plain folder with no Insert Options, so the
+      // menu is empty and authors have to use Raw API / hand-edit to
+      // create a new datasource item.
+      //
+      // Resolution mirrors the per-slot `templateOf` path below + the
+      // `RecipeDatasource` `templates[]` shape:
+      //   1. component.datasource.templates[]  → all listed handles
+      //   2. component.datasource.template     → single handle
+      //   3. inline-`fields:` pattern          → component template itself
+      // Deduped across placements so the same template GUID appears once.
+      const insertOptionHandles = collectPageDataInsertOptions(recipe, context);
+      if (insertOptionHandles.length > 0) {
+        operations.push({
+          op: "SetField",
+          policy: "CreateOnly",
+          label: `page-data-folder-insert-options:${recipe.handle}`,
+          itemRefKey: dataFolderRefKey,
+          fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+          value: {
+            kind: "ref-recipe-list",
+            refKeys: insertOptionHandles.map((handle) => templateId(site, handle)),
+            // Standalone compile (no componentsByHandle) falls back to
+            // resolving via the component handles themselves — those
+            // refKeys land in the captured-itemId map when the
+            // referenced templates' CreateItem ops run. In a single-
+            // recipe push the referenced templates aren't part of the
+            // set; tolerate so the data folder still gets created with
+            // whatever Insert Options DID resolve.
+            tolerateMissing: true,
+          },
+        } satisfies SetFieldOp);
+      }
+
       for (const [slot, componentHandle] of scopedSlots) {
         // Resolve the component's datasource template; fall back to the
         // component template itself (the inline-`fields:` pattern, and
@@ -218,3 +256,52 @@ const STANDARD_FIELD_REFKEY_NAMESPACE = uuidv5(
 );
 const deriveStandardFieldId = (parentRefKey: string, fieldName: string): string =>
   uuidv5(`${parentRefKey}:${fieldName}`, STANDARD_FIELD_REFKEY_NAMESPACE);
+
+/**
+ * Collect the deduped set of datasource template handles authors might
+ * want to insert under a page's `Data` folder.
+ *
+ * Walks every placement on the page (not just scoped ones) and resolves
+ * each component's datasource template handle via the same precedence as
+ * the per-slot `templateOf`:
+ *   1. `component.datasource.templates[]` — the compatible-datasources
+ *      pattern; ALL listed handles contribute.
+ *   2. `component.datasource.template` — single handle.
+ *   3. Else (inline-`fields:` pattern, OR standalone compile with no
+ *      `componentsByHandle` available) — the component template itself.
+ *
+ * Returns the union of handles in first-seen order, deduped. Result is
+ * `[]` when no placements exist or every placement resolves to a
+ * component the standalone compile can't see AND has no fallback
+ * handle (which is structurally impossible — fallback is `componentHandle`
+ * itself, always non-empty per `ComponentPlacementSchema`).
+ */
+const collectPageDataInsertOptions = (
+  recipe: PageRecipe,
+  context: CompileContext
+): readonly string[] => {
+  if (!recipe.layout) return [];
+  const seen = new Set<string>();
+  const handles: string[] = [];
+  for (const placements of Object.values(recipe.layout.placeholders)) {
+    for (const placement of placements) {
+      const component = context.componentsByHandle?.get(placement.componentHandle);
+      const candidateHandles: string[] = component?.datasource?.templates?.length
+        ? component.datasource.templates.map((t) => t.handle)
+        : component?.datasource?.template
+          ? [component.datasource.template.handle]
+          : // Fallback covers two cases: (1) inline-`fields:` pattern where
+            // the component template IS the datasource template; (2) standalone
+            // compile (no `componentsByHandle`) where we can't see the
+            // component's `datasource` block at all. In both cases the
+            // component handle resolves to the right templateId.
+            [placement.componentHandle];
+      for (const handle of candidateHandles) {
+        if (seen.has(handle)) continue;
+        seen.add(handle);
+        handles.push(handle);
+      }
+    }
+  }
+  return handles;
+};

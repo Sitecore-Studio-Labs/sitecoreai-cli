@@ -331,9 +331,40 @@ export const PlaceholderDefinitionSchema = z.object({
    * restriction (the union is then driven entirely by `placedIn`).
    */
   allowedComponents: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
+  /**
+   * Alias of `allowedComponents`. The registry-side recipe schema
+   * names this field `allowedRenderingHandles` (the handles ARE
+   * rendering handles, so the name is more descriptive); scai's
+   * canonical name stayed `allowedComponents` for historical
+   * reasons. Accept both at the schema layer so recipes authored
+   * against either name compile — the compiler normalises them via
+   * `resolveAllowedHandles` below.
+   */
+  allowedRenderingHandles: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
 });
 
 export type PlaceholderDefinition = z.infer<typeof PlaceholderDefinitionSchema>;
+
+/**
+ * Normalise the two-name surface (`allowedComponents` /
+ * `allowedRenderingHandles`) into a single ordered list. Either may be
+ * set; if both are set their union is returned (de-duped, source
+ * order). Use everywhere the compiler reads the slot-side allowed
+ * list so the rename stays a no-op for downstream code.
+ */
+export const resolveAllowedHandles = (slot: PlaceholderDefinition): readonly string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const handle of [
+    ...(slot.allowedComponents ?? []),
+    ...(slot.allowedRenderingHandles ?? []),
+  ]) {
+    if (seen.has(handle)) continue;
+    seen.add(handle);
+    out.push(handle);
+  }
+  return out;
+};
 
 /**
  * A standalone placeholder — the hybrid model's site-chrome half. Slots

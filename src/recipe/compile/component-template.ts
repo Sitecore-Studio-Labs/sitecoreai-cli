@@ -1,7 +1,6 @@
 import {
   componentFolderStandardValuesId,
   componentFolderTemplateId,
-  headlessVariantsSectionFolderId,
   designParameterFieldId,
   designParametersSectionId,
   designParametersStandardValuesId,
@@ -35,7 +34,6 @@ import { defaultPolicyForRecipe } from "../runtime/policy";
 import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_ICON,
-  FOLDER_ICON,
   IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
   SECTION_DEFINITION_FIELDS,
@@ -1073,40 +1071,33 @@ function emitVariants(
   const root = context.headlessVariantsRoot;
   const site = siteOf(context);
 
-  // Section grouping under the Headless Variants root. Idempotent —
-  // multiple recipes sharing the same section emit one folder. Distinct
-  // dedup key from the templates-side / renderings-side section folders
-  // (different tree, different identity).
-  let perRenderingParentPath: string;
-  let perRenderingParentRef: CreateItemOp["parent"];
-  const sectionName = resolveSectionName(recipe, context);
-  if (sectionName) {
-    const sectionRefKey = headlessVariantsSectionFolderId(site, sectionName);
-    const sectionPath = joinPath(root, sectionName);
-    if (!emittedFolders.has(sectionRefKey)) {
-      emittedFolders.add(sectionRefKey);
-      operations.push({
-        op: "CreateItem",
-        policy: "CreateOnly",
-        label: `headless-variants-section-folder:${site}:${sectionName}`,
-        id: sectionRefKey,
-        path: sectionPath,
-        parent: { kind: "ref-path", value: root },
-        templateOf: SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING,
-        name: sectionName,
-        fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
-      } satisfies CreateItemOp);
-    }
-    perRenderingParentPath = sectionPath;
-    perRenderingParentRef = { kind: "ref-recipe", refKey: sectionRefKey };
-  } else {
-    perRenderingParentPath = root;
-    perRenderingParentRef = { kind: "ref-path", value: root };
-  }
+  // Per-rendering folder lives DIRECTLY under the Headless Variants
+  // root — no section-grouping intermediate.
+  //
+  // SXA Headless Pages chrome walks exactly two levels under
+  // `<site>/Presentation/Headless Variants`: <Rendering>/<Variant>.
+  // Verified against a working tenant 2026-05-31: the chrome enumerates
+  // variants by finding `HEADLESS_VARIANTS` items as DIRECT children
+  // of the headless-variants root, then enumerates each one's
+  // `VARIANT_DEFINITION` children. The recon found scai-pushed renderings
+  // wrapped in an extra `HEADLESS_VARIANTS_GROUPING` section folder
+  // (`root/ui/accordion-block/Default` vs the expected
+  // `root/accordion-block/Default`); the chrome stopped at the
+  // grouping folder and never saw the rendering's variants. Section
+  // grouping IS correct on the templates + renderings trees (Sitecore
+  // organises by section there) but the Headless Variants tree is flat.
+  //
+  // `_unusedEmittedFolders` retained so cross-recipe dedup interfaces
+  // stay compatible with callers; section folders just don't go in.
+  const _unusedEmittedFolders = emittedFolders;
+  const perRenderingParentPath = root;
+  const perRenderingParentRef: CreateItemOp["parent"] = {
+    kind: "ref-path",
+    value: root,
+  };
 
-  // Per-rendering grouping — one folder per recipe under the section
-  // (or under the root, when section-less). Always unique per recipe;
-  // no cross-recipe dedup needed.
+  // Per-rendering folder under the headless variants root. Always
+  // unique per recipe; no cross-recipe dedup needed.
   const folderRefKey = variantsFolderId(site, recipe.handle);
   const folderPath = joinPath(perRenderingParentPath, recipe.name);
   operations.push({

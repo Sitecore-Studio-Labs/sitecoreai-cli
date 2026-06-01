@@ -37,7 +37,7 @@ import {
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
 } from "./ir/sitecore-templates";
-import { type Recipe, RecipeSchema } from "./schema/recipe";
+import { type Recipe, RecipeSchema, resolveAllowedHandles } from "./schema/recipe";
 import { encodeTemplatesMapping } from "./layout/templates-mapping";
 
 import { compileComponentSectionRecipe } from "./compile/component-section";
@@ -806,7 +806,15 @@ const buildPlaceholderSettingsAggregate = (
           decl.displayName = slot.displayName;
         }
         if (slot.folder && decl.folder === undefined) decl.folder = slot.folder;
-        for (const handle of slot.allowedComponents ?? []) decl.allowed.add(handle);
+        // Slot-side allow list. Accept both `allowedComponents` (scai's
+        // historical name) and `allowedRenderingHandles` (the
+        // registry-side alias) — see resolveAllowedHandles in
+        // schema/recipe.ts. Earlier the compiler only read
+        // `allowedComponents`, so recipes authored with
+        // `allowedRenderingHandles` silently dropped their restriction
+        // on the Sitecore side (e.g. accordion-block's Headless
+        // placeholder accepting any rendering).
+        for (const handle of resolveAllowedHandles(slot)) decl.allowed.add(handle);
       }
     }
   }

@@ -516,12 +516,15 @@ describe("buildFieldOp — sort order + storage axis", () => {
   });
 
   // reference + enumHandle = multi-pick Treelist sourced from a shared
-  // enum. Source uses the combined `DataSource=<path>&IncludeTemplatesForSelection=<GUID>`
-  // form so the picker scopes to the enum folder AND restricts picks
-  // to enum value items (preventing the folder item or stray siblings
-  // from being selectable). Path resolves the same way as the
-  // enum-shape Droplink branch.
-  it("emits combined DataSource + IncludeTemplatesForSelection for a reference field with enumHandle", () => {
+  // enum. Source emits a plain `DataSource=<path>` — earlier iterations
+  // appended `&IncludeTemplatesForSelection=<GUID>` to restrict the
+  // picker to enum value items, but Sitecore Pages's Treelist chrome
+  // rejected every pick under that filter (the picker reported "the
+  // source's filter doesn't allow those options" with no recovery
+  // path). The filter wasn't load-bearing — scai doesn't emit stray
+  // children inside enum folders, so the folder's children are
+  // exactly the value items the picker should surface.
+  it("emits DataSource pointing at the enum folder for a reference field with enumHandle (no IncludeTemplatesForSelection)", () => {
     const enumCtx: CompileContext = {
       ...baseContext,
       enumerationsRoot: "/enums",
@@ -562,9 +565,10 @@ describe("buildFieldOp — sort order + storage axis", () => {
     );
     expect(source).toBeDefined();
     if (source?.value.kind === "string") {
-      expect(source.value.value).toMatch(
-        /^DataSource=\/enums\/SocialPlatform&IncludeTemplatesForSelection=\{[0-9A-F-]{36}\}$/
-      );
+      expect(source.value.value).toBe("DataSource=/enums/SocialPlatform");
+      // Regression guard: never re-introduce the IncludeTemplatesForSelection
+      // suffix on this branch — Pages rejects it.
+      expect(source.value.value).not.toMatch(/IncludeTemplatesForSelection/);
     }
   });
 });

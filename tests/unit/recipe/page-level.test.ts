@@ -34,6 +34,7 @@ import {
   STANDARD_TEMPLATE_ID,
   SXA_HEADLESS_PAGE_BASE_TEMPLATES,
   SXA_JSON_LAYOUT_ID,
+  SYSTEM_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
 import {
   type ComponentTemplateRecipe,
@@ -291,6 +292,127 @@ describe("compilePageRecipe", () => {
     const pageIr = irs.find((ir) => ir.recipeHandle === "ds-page@1")!;
     const ds = findCreate(pageIr.operations, "page-datasource:ds-page@1:WidgetData");
     expect(ds.templateOf).toBe(templateId("default", "widget-data@1"));
+  });
+
+  it("stamps the page Data folder with Insert Options drawn from EVERY placement's datasource template", () => {
+    // Single-template component (inline-fields fallback), single-template
+    // via `datasource.template`, and multi-template via `datasource.templates`
+    // all need to appear in the Data folder's `__Masters` — authors who
+    // turn off autoCreate on any rendering, or want to add a datasource
+    // later, see the right Insert Options in the right-click menu.
+    const inlineComponent = component("inline-block@1"); // no datasource block → fallback to handle itself
+    const refComponent: ComponentTemplateRecipe = {
+      ...component("widget@1"),
+      datasource: {
+        template: { handle: "widget-data@1" },
+        autoCreate: true,
+        openPropertiesAfterAdd: false,
+        locations: [],
+        query: [],
+      },
+    };
+    const multiComponent: ComponentTemplateRecipe = {
+      ...component("avatar-block@1"),
+      datasource: {
+        templates: [{ handle: "avatar-block@1" }, { handle: "author@1" }],
+        autoCreate: false,
+        openPropertiesAfterAdd: false,
+        locations: [],
+        query: [],
+      },
+    };
+    const page = {
+      ...homePage,
+      handle: "multi-ds-page@1",
+      name: "MultiDsPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "inline-block@1",
+              datasourceRef: { kind: "scoped", slot: "Inline" },
+            },
+            {
+              componentHandle: "widget@1",
+              datasourceRef: { kind: "scoped", slot: "Widget" },
+            },
+            // Second placement of the same component — Insert Options
+            // should NOT duplicate templates across placements.
+            {
+              componentHandle: "widget@1",
+              datasourceRef: { kind: "scoped", slot: "Widget2" },
+            },
+            {
+              componentHandle: "avatar-block@1",
+              datasourceRef: { kind: "scoped", slot: "Avatar" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const irs = compileRecipeSet(
+      [articlePage, inlineComponent, refComponent, multiComponent, page],
+      CONTEXT
+    );
+    const pageIr = irs.find((ir) => ir.recipeHandle === "multi-ds-page@1")!;
+    const insert = findSetField(
+      pageIr.operations,
+      "page-data-folder-insert-options:multi-ds-page@1"
+    );
+    expect(insert.itemRefKey).toBe(datasourceId(pageItemId("default", "multi-ds-page@1"), "Data"));
+    expect(insert.fieldId).toBe(SYSTEM_FIELDS.INSERT_OPTIONS);
+    if (insert.value.kind !== "ref-recipe-list") {
+      throw new Error(`expected ref-recipe-list, got ${insert.value.kind}`);
+    }
+    expect(insert.value.refKeys).toEqual([
+      templateId("default", "inline-block@1"),
+      templateId("default", "widget-data@1"),
+      templateId("default", "avatar-block@1"),
+      templateId("default", "author@1"),
+    ]);
+  });
+
+  it("omits the Data folder Insert Options write when no scoped slots exist (no Data folder to stamp)", () => {
+    // homePage has only `datasourceRef: { kind: "none" }`, so no Data
+    // folder is created. The Insert Options SetField rides with the
+    // folder — both are absent.
+    expect(ir.operations.find((op) => op.label === "page-data-folder:home@1")).toBeUndefined();
+    expect(
+      ir.operations.find((op) => op.label === "page-data-folder-insert-options:home@1")
+    ).toBeUndefined();
+  });
+
+  it("standalone compile (no componentsByHandle) falls back to component handle for Insert Options", () => {
+    // Without `componentsByHandle`, the compiler can't see datasource.templates[];
+    // each placement's componentHandle is the best fallback (matches
+    // the existing per-slot templateOf fallback). `tolerateMissing: true`
+    // keeps the SetField alive even when those refKeys aren't in the
+    // captured-itemId map for this single-recipe push.
+    const scopedPage = {
+      ...homePage,
+      handle: "standalone-scoped@1",
+      name: "StandaloneScoped",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "alpha-block@1",
+              datasourceRef: { kind: "scoped", slot: "Hero" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const standaloneIr = compilePageRecipe(scopedPage, CONTEXT);
+    const insert = findSetField(
+      standaloneIr.operations,
+      "page-data-folder-insert-options:standalone-scoped@1"
+    );
+    if (insert.value.kind !== "ref-recipe-list") {
+      throw new Error(`expected ref-recipe-list, got ${insert.value.kind}`);
+    }
+    expect(insert.value.refKeys).toEqual([templateId("default", "alpha-block@1")]);
+    expect(insert.value.tolerateMissing).toBe(true);
   });
 });
 

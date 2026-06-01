@@ -1,5 +1,6 @@
 import { createScaiError } from "@/shared/errors";
 import type { Recipe, SitecoreFieldAugment } from "./schema/recipe";
+import { resolveAllowedHandles } from "./schema/recipe";
 
 /**
  * The picker-scope handles to validate on a `SitecoreFieldAugment`.
@@ -296,7 +297,10 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
     } else if (recipe.kind === "component-template") {
       for (const slot of recipe.placeholders ?? []) {
         const set = declarePlaceholder(slot.key, recipe.handle);
-        for (const handle of slot.allowedComponents ?? []) set.add(handle);
+        // Accept both `allowedComponents` (scai's historical name) and
+        // `allowedRenderingHandles` (the registry-side alias) — see
+        // resolveAllowedHandles in schema/recipe.ts.
+        for (const handle of resolveAllowedHandles(slot)) set.add(handle);
       }
     }
   }
@@ -394,10 +398,14 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
           checkRef(recipe.handle, `availableIn.${idx}`, handle, SECTION_DEFINITION_KINDS);
         });
         (recipe.placeholders ?? []).forEach((slot, idx) => {
-          slot.allowedComponents?.forEach((handle, aIdx) => {
+          // Both `allowedComponents` and the registry-side alias
+          // `allowedRenderingHandles` flow through
+          // `resolveAllowedHandles`; reference-check the merged set
+          // so handles authored under either name still validate.
+          resolveAllowedHandles(slot).forEach((handle, aIdx) => {
             checkRef(
               recipe.handle,
-              `placeholders.${idx}.allowedComponents.${aIdx}`,
+              `placeholders.${idx}.allowedRenderingHandles.${aIdx}`,
               handle,
               COMPONENT_TEMPLATE_KINDS
             );

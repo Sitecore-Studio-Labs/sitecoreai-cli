@@ -285,6 +285,87 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   });
 });
 
+describe("compileRecipeSet — Headless Variants tree layout (regression)", () => {
+  // SXA Headless Pages chrome enumerates variants by finding
+  // HEADLESS_VARIANTS items as DIRECT children of
+  // `<site>/Presentation/Headless Variants` (depth 1), then enumerating
+  // each one's VARIANT_DEFINITION children (depth 2). Before the
+  // 2026-05-31 fix, scai wrapped each rendering's variants folder in
+  // an extra HEADLESS_VARIANTS_GROUPING section folder when the recipe
+  // declared a section — pushing the variants to depth 3 where the
+  // chrome couldn't see them. Verified against a working tenant
+  // 2026-05-31.
+  const SECTION_RECIPE: Recipe = {
+    kind: "component-section",
+    schemaVersion: "1",
+    handle: "ui-section@1",
+    name: "UI",
+    displayName: "UI Components",
+    sortOrder: 10,
+  };
+  const RECIPE_WITH_SECTION: Recipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "promo-block@1",
+    name: "PromoBlock",
+    displayName: "Promo Block",
+    section: { handle: "ui-section@1" },
+    fields: [{ name: "Heading", shape: "text" }],
+    variants: [{ name: "Default" }, { name: "Centered" }],
+  };
+
+  // compileRecipeSet returns one IR per recipe; pick the template
+  // recipe's IR by handle.
+  const compileSet = () => {
+    const irs = compileRecipeSet([SECTION_RECIPE, RECIPE_WITH_SECTION], CONTEXT);
+    const template = irs.find((ir) => ir.recipeHandle === "promo-block@1");
+    if (!template) {
+      throw new Error("template IR missing from compileRecipeSet output");
+    }
+    return template;
+  };
+
+  it("does NOT emit a HEADLESS_VARIANTS_GROUPING folder under the headless variants root even when the recipe has a section", () => {
+    const ir = compileSet();
+    const groupingFolders = ir.operations.filter(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" &&
+        op.templateOf === SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING &&
+        typeof op.path === "string" &&
+        op.path.startsWith(CONTEXT.headlessVariantsRoot)
+    );
+    expect(groupingFolders).toHaveLength(0);
+  });
+
+  it("per-rendering folder is parented directly at the headless variants root regardless of recipe.section", () => {
+    const ir = compileSet();
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === variantsFolderId(SITE, "promo-block@1")
+    );
+    expect(op.parent).toEqual({
+      kind: "ref-path",
+      value: CONTEXT.headlessVariantsRoot,
+    });
+    expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/PromoBlock`);
+    expect(op.templateOf).toBe(SITECORE_TEMPLATES.HEADLESS_VARIANTS);
+  });
+
+  it("variants land at root/<Rendering>/<Variant> (depth 2 under the Headless Variants root)", () => {
+    const ir = compileSet();
+    for (const name of ["Default", "Centered"]) {
+      const op = onlyOp(
+        ir.operations,
+        "CreateItem",
+        (o) => o.id === variantId(SITE, "promo-block@1", name)
+      );
+      expect(op.templateOf).toBe(SITECORE_TEMPLATES.VARIANT_DEFINITION);
+      expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/PromoBlock/${name}`);
+    }
+  });
+});
+
 describe("compileComponentTemplateRecipe — section grouping", () => {
   it("groups fields by sitecore.section in first-occurrence order", () => {
     const ir = compileComponentTemplateRecipe(

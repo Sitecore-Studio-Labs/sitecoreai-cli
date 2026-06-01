@@ -856,7 +856,7 @@ describe("validateRecipeSet — component-template extra references", () => {
     });
   });
 
-  it("flags an unresolved inline placeholder slot allowedComponents handle", () => {
+  it("flags an unresolved inline placeholder slot allowed-handle (under the canonical `allowedRenderingHandles` field name)", () => {
     const component: Recipe = {
       kind: "component-template",
       schemaVersion: "1",
@@ -869,9 +869,34 @@ describe("validateRecipeSet — component-template extra references", () => {
       placeholders: [{ key: "/inner", allowedComponents: ["ghost-component@1"] }],
     };
     const result = validateRecipeSet([component]);
+    // Field name normalised to `allowedRenderingHandles` so the error
+    // message points at the canonical surface, even when authors used
+    // the historical `allowedComponents` alias on the slot.
     expect(result.unresolvedHandles).toContainEqual({
       fromRecipe: "container@1",
-      fromField: "placeholders.0.allowedComponents.0",
+      fromField: "placeholders.0.allowedRenderingHandles.0",
+      handle: "ghost-component@1",
+      expectedKinds: ["component-template"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags the same unresolved handle whether it's authored as `allowedComponents` or `allowedRenderingHandles`", () => {
+    const component: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "container@1",
+      name: "Container",
+      displayName: "Container",
+      fields: [],
+      variants: [],
+      params: [],
+      placeholders: [{ key: "/inner", allowedRenderingHandles: ["ghost-component@1"] }],
+    };
+    const result = validateRecipeSet([component]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: "container@1",
+      fromField: "placeholders.0.allowedRenderingHandles.0",
       handle: "ghost-component@1",
       expectedKinds: ["component-template"],
       actualKind: undefined,

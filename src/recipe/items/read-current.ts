@@ -9,19 +9,22 @@
  *
  * ## Scope
  *
- * Nine recipe kinds reverse-project here — those whose item layout is
+ * Ten recipe kinds reverse-project here — those whose item layout is
  * stable and recoverable from the content tree alone:
  *
- *   1. `component-section`  — a Template Folder directly under componentsRoot
- *   2. `component-template` — a Template with a matching rendering item
- *   3. `content-template`   — a Template under contentModelsRoot, no rendering
- *   4. `page-template`      — a Template carrying the SXA page base set
- *   5. `enumeration`        — an Enumeration container under enumerationsRoot
- *   6. `partial-design`     — an SXA Partial Design item under partialDesignsRoot
- *   7. `page-design`        — an SXA Page Design item under pageDesignsRoot
- *   8. `page`               — a page item under pagesRoot
- *   9. `placeholder`        — a Placeholder Settings item under
- *                             placeholderSettingsRoot
+ *   1.  `component-section`  — a Template Folder directly under componentsRoot
+ *   2.  `component-template` — a Template with a matching rendering item
+ *   3.  `content-template`   — a Template under contentModelsRoot, no rendering
+ *   4.  `page-template`      — a Template carrying the SXA page base set
+ *   5.  `enumeration`        — an Enumeration container under enumerationsRoot
+ *   6.  `partial-design`     — an SXA Partial Design item under partialDesignsRoot
+ *   7.  `page-design`        — an SXA Page Design item under pageDesignsRoot
+ *   8.  `page`               — a page item under pagesRoot
+ *   9.  `placeholder`        — a Placeholder Settings item under
+ *                              placeholderSettingsRoot
+ *   10. `content-item`       — a concrete item under contentItemsRoot whose
+ *                              template resolves to a known content/component
+ *                              template
  *
  * Kinds 6–9 are the layout-bearing (and layout-adjacent) kinds: their
  * fidelity hinges on parsing Sitecore layout XML back into the recipe
@@ -30,10 +33,16 @@
  * datasources; `readCurrent` builds a GUID→handle index off the
  * `Scai Handle` marker (see `buildGuidHandleIndex`) and resolves them.
  *
+ * Kind 10 is the content-bearing kind: per-(language, version) field
+ * decoding via a template-field-shape map. Multi-language fan-out uses
+ * `getTenantLanguages` + `getItemPerLanguageBatch` so an L-language read
+ * is one round trip, not L. Per-(language, version) historic capture
+ * follows via `getItemAtVersionsBatch` — same one-round-trip shape.
+ *
  * Items under the configured roots that match none of these patterns are
  * silently skipped — not an error. The remaining kinds (site, workflow,
- * content-item, webhook-authorization, …) live in trees this walk doesn't
- * visit; `readCurrent` just doesn't produce them.
+ * webhook-authorization, …) live in trees this walk doesn't visit;
+ * `readCurrent` just doesn't produce them.
  *
  * ## Fidelity — this projection is LOSSY by design
  *
@@ -78,7 +87,11 @@ import type {
   ComponentPlacement,
   ComponentSectionRecipe,
   ComponentTemplateRecipe,
+  ContentFieldValue,
+  ContentItemRecipe,
   ContentTemplateRecipe,
+  ContentTranslation,
+  ContentVersion,
   EnumerationRecipe,
   FieldDefinition,
   Layout,
@@ -90,6 +103,7 @@ import type {
   Recipe,
   SitecoreFieldAugment,
 } from "../schema/recipe";
+import { HANDLE_PATTERN } from "../schema/recipe";
 import type { FieldShape, SitecoreFieldType } from "../schema/field-types";
 import { sitecoreFieldTypeLabel } from "../schema/field-types";
 
@@ -120,6 +134,12 @@ export interface ReadCurrentRoots {
   pagesRoot?: string;
   /** Placeholder Settings root. Placeholder Settings items live under it. */
   placeholderSettingsRoot?: string;
+  /**
+   * Content Items root. Concrete content-item items (the targets of `kind:
+   * "shared"` datasource placements — site-logo, primary-nav, etc.) live
+   * directly under it.
+   */
+  contentItemsRoot?: string;
 }
 
 /**
@@ -202,9 +222,37 @@ const handleFromName = (name: string): string => {
  *
  * See `marker.ts` and docs/recipe-sync-architecture.md, "Recipe identity".
  */
+/**
+ * Recovery rule:
+ *   1. Tenant-stamped `Scai Handle` marker (preferred, but TRUSTED ONLY
+ *      IF SHAPE-VALID — see security note below).
+ *   2. Synthesise from the item name (fallback for unmarked items).
+ *
+ * SECURITY: the `Scai Handle` field is tenant-controlled — any author
+ * with write access to the item can set it to an arbitrary string.
+ * Downstream consumers (`writeRecipeJson`, `FileBaselineStorage.locator`)
+ * fold the handle into a filesystem path via `slugifyHandle`, which only
+ * replaces `@` with `_v` — it does NOT strip path separators or `..`
+ * segments. A malicious handle like `"../../tmp/pwn@1"` would resolve
+ * outside the operator's output directory.
+ *
+ * Defence: validate the marker against `HANDLE_PATTERN`
+ * (`/^[a-z][a-z0-9-]*@[0-9]+$/`) before trusting it. The pattern
+ * forbids `/`, `\`, `.`, leading dot, uppercase — so a tampered marker
+ * is rejected and we fall back to `handleFromName`, which builds a
+ * deterministic kebab handle from the item's Sitecore name (also
+ * subject to Sitecore's own item-naming rules; safe).
+ */
 const handleOf = (item: RemoteItem): string => {
   const marked = fieldValueByName(item, SCAI_HANDLE_FIELD_NAME);
-  if (marked !== undefined && marked.trim() !== "") return marked.trim();
+  if (marked !== undefined) {
+    const trimmed = marked.trim();
+    if (trimmed !== "" && HANDLE_PATTERN.test(trimmed)) return trimmed;
+    // Malformed marker — silently fall back. Logging is intentionally
+    // omitted to keep the read path quiet on noisy tenants; the
+    // resulting handle differs from the marker's intent, but that's
+    // strictly safer than honouring an attacker-controlled string.
+  }
   return handleFromName(item.name);
 };
 
@@ -420,7 +468,7 @@ const fieldsOfTemplate = async (
  *    the section is its own recipe with its own handle; the caller resolves
  *    that section's handle (marker-aware) and threads it in here. When the
  *    component sits flat under a root, `section` is omitted.
- *  - `variants`, `params`, `datasource`, `insertOptions`, `availableIn`,
+ *  - `variants`, `params`, `datasource`, `insertOptions`,
  *    `placedIn`, `placeholders`, `children`, `parameters`, `dynamicPlaceholders`,
  *    `otherProperties` — these live in separate trees (Headless Variants,
  *    Presentation Parameters, Available Renderings, Placeholder Settings) or
@@ -943,6 +991,10 @@ const buildGuidHandleIndex = async (
   }
   await indexMarkersUnder(roots.partialDesignsRoot, client, index);
   await indexMarkersUnder(roots.pagesRoot, client, index);
+  // Content items reference each other (single-element `refs[]` on a
+  // Droplink, Treelist Source pickers, link-internal targets) by GUID;
+  // index the content-items tree so the cross-CI references resolve.
+  await indexMarkersUnder(roots.contentItemsRoot, client, index);
   return index;
 };
 
@@ -1143,11 +1195,20 @@ const pageDesignFromItem = (
 };
 
 /**
- * Reverse-project one page item into a `PageRecipe`.
+ * Reverse-project one page item into a `PageRecipe` — same per-(language,
+ * version) fan-out pattern as `contentItemFromItem`, adapted for pages.
  *
- * Faithful: `name`, `displayName`, `description`, and `layout` — parsed
- * from the page item's `__Final Renderings` (canonical wire form) and
- * resolved against the marker index.
+ * Mode selection mirrors `ContentItemRecipe`:
+ *  - **Simple**: every populated language has exactly one version. The
+ *    default-language fields become `recipe.fields`; other populated
+ *    languages become `recipe.translations`. The item-level `layout`
+ *    captures `__Final Renderings` from the default-language v1 (the
+ *    simple-mode wire-shape contract has each translation sharing the
+ *    same layout — only story mode encodes per-language layouts).
+ *  - **Story**: any populated language has > 1 version. Every (language,
+ *    version) cell projects to a `versions[lang][n]` entry carrying its
+ *    own fields + per-version layout. Item-level `layout` is forbidden
+ *    in story mode (the compile-side XOR also enforces this).
  *
  * `template`: RECOVERED via the marker index — the page item conforms to
  * a page template, and its `templateId` resolves to that template's
@@ -1163,22 +1224,178 @@ const pageDesignFromItem = (
  * same as a shared one, so it reverse-projects as `kind: "shared"` — an
  * accepted v1 lossiness (the datasource still resolves to the right item).
  *
- * LOSSY / omitted: `handle` is the `Scai Handle` marker or synthesised.
- * `fields` (the page's own field values) and `workflow` are NOT
- * reverse-projected — page field values would need the page template's
- * field shapes to decode each stored value back to a typed
- * `ContentFieldValue`, the same cross-template decode `ContentItemRecipe`
- * reverse-projection (also out of scope) would need. `fields` is left at
- * its schema default `{}`.
+ * LOSSY / omitted:
+ *  - `handle` is the `Scai Handle` marker or synthesised.
+ *  - `workflow` is not recovered (no workflow→handle index).
+ *  - `versions[].workflowState` / `versions[].variants` follow the same
+ *    handle-resolution gap and are omitted.
+ *  - `link-internal` fields whose target GUID has no marker drop.
  */
-const pageFromItem = (
+const pageFromItem = async (
+  item: RemoteItem,
+  templateHandle: string,
+  client: AuthoringApiClient,
+  guidIndex: GuidHandleIndex,
+  templateShapeCache: Map<string, TemplateFieldShapes>,
+  tenantLanguages: readonly string[]
+): Promise<PageRecipe | null> => {
+  if (tenantLanguages.length === 0) {
+    // Defensive — when getTenantLanguages's fallback is empty, leave the
+    // historic single-language projection in place.
+    return pageFromItemLegacy(item, templateHandle, guidIndex);
+  }
+
+  const shapes = await getTemplateFieldShapes(item.templateId, client, templateShapeCache);
+
+  // Pass 1 — per-language latest-version read.
+  const perLang = await client.getItemPerLanguageBatch({ itemId: item.itemId }, tenantLanguages);
+  const populated = perLang.filter((row) => row.item !== null && row.versions.length > 0);
+  if (populated.length === 0) {
+    // Item has no language version — fall back to the legacy projection
+    // (the item still has shared fields + maybe a layout we can read).
+    return pageFromItemLegacy(item, templateHandle, guidIndex);
+  }
+
+  // Pass 2 — historic per-(lang, version) reads when any language has > 1
+  // version. Skipped entirely when every populated language is single-version.
+  const historicRequests: Array<{ language: string; version: number }> = [];
+  for (const row of populated) {
+    for (const v of row.versions) {
+      if (v < row.versions[row.versions.length - 1]) {
+        historicRequests.push({ language: row.language, version: v });
+      }
+    }
+  }
+  const historic =
+    historicRequests.length > 0
+      ? await client.getItemAtVersionsBatch({ itemId: item.itemId }, historicRequests)
+      : [];
+  const historicByLangVer = new Map<string, RemoteItem>();
+  for (let i = 0; i < historicRequests.length; i += 1) {
+    const snap = historic[i];
+    if (snap)
+      historicByLangVer.set(`${historicRequests[i].language}|${historicRequests[i].version}`, snap);
+  }
+
+  const decodeVersionedFields = (snapshot: RemoteItem): Record<string, ContentFieldValue> => {
+    const out: Record<string, ContentFieldValue> = {};
+    for (const f of authorableFieldsOf(snapshot)) {
+      if (f.language === undefined && f.version === undefined) continue;
+      if (f.name === undefined) continue;
+      const info = shapes.get(f.name.toLowerCase());
+      if (info === undefined) continue;
+      if (info.storage === "shared") continue;
+      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+      if (decoded !== null) out[f.name] = decoded;
+    }
+    return out;
+  };
+
+  const sharedFields: Record<string, ContentFieldValue> = {};
+  for (const row of populated) {
+    if (!row.item) continue;
+    for (const f of authorableFieldsOf(row.item)) {
+      if (f.language !== undefined || f.version !== undefined) continue;
+      if (f.name === undefined || f.name in sharedFields) continue;
+      const info = shapes.get(f.name.toLowerCase());
+      if (info === undefined || info.storage !== "shared") continue;
+      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+      if (decoded !== null) sharedFields[f.name] = decoded;
+    }
+  }
+
+  const layoutOfSnapshot = (snapshot: RemoteItem): Layout | undefined => {
+    const xml = finalLayoutXmlOf(snapshot);
+    if (xml === "") return undefined;
+    const layout = layoutFromXml(xml, guidIndex);
+    return Object.keys(layout.placeholders).length === 0 ? undefined : layout;
+  };
+
+  const dateOfSnapshot = (snapshot: RemoteItem): string | undefined => {
+    const raw = fieldValueByName(snapshot, "__Created");
+    if (raw === undefined || raw === "") return undefined;
+    return decodeSitecoreDateToIso(raw, "datetime");
+  };
+
+  // Mode decision: story when any populated language has > 1 version.
+  // Unlike content items, pages' simple mode CAN carry an item-level
+  // layout (the schema supports it), so a single-version multi-language
+  // page with a layout still round-trips as simple mode.
+  const isStory = populated.some((row) => row.versions.length > 1);
+
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const description = fieldValueByName(item, "__Long description");
+
+  const base: PageRecipe = {
+    kind: "page",
+    schemaVersion: "1",
+    handle: handleOf(item),
+    name: item.name,
+    displayName,
+    template: templateHandle,
+    fields: {},
+  };
+  if (description !== undefined && description !== "") base.description = description;
+  if (Object.keys(sharedFields).length > 0) base.shared = sharedFields;
+
+  if (!isStory) {
+    // Simple mode — default-language fields + translations for other langs.
+    const DEFAULT_LANG = "en";
+    const primaryRow = populated.find((row) => row.language === DEFAULT_LANG) ?? populated[0];
+    const primaryLang = primaryRow.language;
+    if (primaryRow.item) {
+      base.fields = decodeVersionedFields(primaryRow.item);
+      const primaryLayout = layoutOfSnapshot(primaryRow.item);
+      if (primaryLayout !== undefined) base.layout = primaryLayout;
+    }
+    const translations: Record<string, ContentTranslation> = {};
+    for (const row of populated) {
+      if (row.language === primaryLang) continue;
+      if (!row.item) continue;
+      const fields = decodeVersionedFields(row.item);
+      if (Object.keys(fields).length > 0) translations[row.language] = { fields };
+    }
+    if (Object.keys(translations).length > 0) base.translations = translations;
+    return base;
+  }
+
+  // Story mode — every (lang, version) cell becomes a ContentVersion entry.
+  // `fields` stays empty per the simple-vs-story XOR; per-version layouts
+  // are the only place layout lives.
+  const versions: Record<string, ContentVersion[]> = {};
+  for (const row of populated) {
+    const entries: ContentVersion[] = [];
+    for (const v of row.versions) {
+      const isLatest = v === row.versions[row.versions.length - 1];
+      const snapshot = isLatest ? row.item : historicByLangVer.get(`${row.language}|${v}`);
+      if (!snapshot) continue;
+      const entry: ContentVersion = { version: v, fields: decodeVersionedFields(snapshot) };
+      const date = dateOfSnapshot(snapshot);
+      if (date !== undefined) entry.date = date;
+      const layout = layoutOfSnapshot(snapshot);
+      if (layout !== undefined) entry.layout = layout;
+      entries.push(entry);
+    }
+    if (entries.length > 0) versions[row.language] = entries;
+  }
+  if (Object.keys(versions).length > 0) base.versions = versions;
+  return base;
+};
+
+/**
+ * Single-language fallback for the rare path where multi-language fan-out
+ * yields nothing (zero populated languages — degenerate item) or the
+ * tenant-language fetch returned an empty set. Keeps the historic
+ * single-language behaviour (`__Final Renderings` decoded from the item's
+ * default fields) so the recipe still has a layout to round-trip.
+ */
+const pageFromItemLegacy = (
   item: RemoteItem,
   templateHandle: string,
   guidIndex: GuidHandleIndex
 ): PageRecipe => {
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
-
   const recipe: PageRecipe = {
     kind: "page",
     schemaVersion: "1",
@@ -1189,7 +1406,6 @@ const pageFromItem = (
     fields: {},
   };
   if (description !== undefined && description !== "") recipe.description = description;
-
   const layout = layoutFromXml(finalLayoutXmlOf(item), guidIndex);
   if (Object.keys(layout.placeholders).length > 0) recipe.layout = layout;
   return recipe;
@@ -1348,7 +1564,9 @@ const walkPageDesignsTree = async (
 const walkPagesTree = async (
   rootPath: string,
   client: AuthoringApiClient,
-  guidIndex: GuidHandleIndex
+  guidIndex: GuidHandleIndex,
+  templateShapeCache: Map<string, TemplateFieldShapes>,
+  tenantLanguages: readonly string[]
 ): Promise<Recipe[]> => {
   const recipes: Recipe[] = [];
   const root = rootPath ? await client.getItem({ path: rootPath }) : null;
@@ -1364,7 +1582,15 @@ const walkPagesTree = async (
         // unrecoverable, so the page can't reverse-project. Skip.
         continue;
       }
-      recipes.push(pageFromItem(child, templateHandle, guidIndex));
+      const recipe = await pageFromItem(
+        child,
+        templateHandle,
+        client,
+        guidIndex,
+        templateShapeCache,
+        tenantLanguages
+      );
+      if (recipe) recipes.push(recipe);
       await visit(child);
     }
   };
@@ -1413,9 +1639,550 @@ const walkPlaceholderSettingsTree = async (
   return recipes;
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// Content items — kind 10, content-bearing rather than layout-bearing
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Decode a Sitecore wire-format datetime (`yyyyMMddTHHmmssZ`) back to an
+ * ISO 8601 string. Inverse of `toSitecoreDate` in `compile/content-item.ts`:
+ * `kind: "date"` returns `YYYY-MM-DD`, `"datetime"` returns
+ * `YYYY-MM-DDTHH:mm:ssZ`. Returns `undefined` when the wire string doesn't
+ * match the expected shape — the caller drops the field rather than fabricate.
+ */
+const decodeSitecoreDateToIso = (wire: string, kind: "date" | "datetime"): string | undefined => {
+  const m = wire.trim().match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
+  if (!m) return undefined;
+  const [, yyyy, MM, dd, HH, mm, ss] = m;
+  if (kind === "date") return `${yyyy}-${MM}-${dd}`;
+  return `${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}Z`;
+};
+
+/** Inverse of the `escapeXmlAttr` the compiler uses on XML attribute values. */
+const unescapeXmlAttr = (s: string): string =>
+  s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");
+
+const matchAttr = (xml: string, name: string): string | undefined => {
+  const re = new RegExp(`${name}="([^"]*)"`);
+  const m = re.exec(xml);
+  return m ? unescapeXmlAttr(m[1]) : undefined;
+};
+
+/**
+ * Decode an `<image mediapath="…" alt="…" width="…" height="…" />` blob
+ * into the image-shape `ContentFieldValue` payload. Returns `undefined`
+ * when the blob is not a recognisable image element (caller drops the
+ * field) — `mediapath` is the load-bearing attribute.
+ */
+const decodeImageXml = (
+  xml: string
+): { mediaPath: string; alt?: string; width?: number; height?: number } | undefined => {
+  const trimmed = xml.trim();
+  if (!trimmed.startsWith("<image")) return undefined;
+  const mediaPath = matchAttr(trimmed, "mediapath");
+  if (mediaPath === undefined || mediaPath === "") return undefined;
+  const out: { mediaPath: string; alt?: string; width?: number; height?: number } = { mediaPath };
+  const alt = matchAttr(trimmed, "alt");
+  if (alt !== undefined) out.alt = alt;
+  const widthRaw = matchAttr(trimmed, "width");
+  if (widthRaw !== undefined) {
+    const n = Number.parseInt(widthRaw, 10);
+    if (Number.isFinite(n) && n > 0) out.width = n;
+  }
+  const heightRaw = matchAttr(trimmed, "height");
+  if (heightRaw !== undefined) {
+    const n = Number.parseInt(heightRaw, 10);
+    if (Number.isFinite(n) && n > 0) out.height = n;
+  }
+  return out;
+};
+
+/**
+ * Decode an external General-Link XML blob into the link-external-shape
+ * payload. Returns `undefined` when the blob is not a `linktype="external"`
+ * `<link>` element (caller branches to link-internal or drops the field).
+ */
+const decodeExternalLinkXml = (
+  xml: string
+): { href: string; text?: string; target?: string; title?: string } | undefined => {
+  const trimmed = xml.trim();
+  if (!trimmed.startsWith("<link")) return undefined;
+  const linktype = matchAttr(trimmed, "linktype");
+  if (linktype !== "external") return undefined;
+  const url = matchAttr(trimmed, "url");
+  if (url === undefined || url === "") return undefined;
+  const out: { href: string; text?: string; target?: string; title?: string } = { href: url };
+  const text = matchAttr(trimmed, "text");
+  if (text !== undefined) out.text = text;
+  const target = matchAttr(trimmed, "target");
+  if (target !== undefined) out.target = target;
+  const title = matchAttr(trimmed, "title");
+  if (title !== undefined) out.title = title;
+  return out;
+};
+
+/**
+ * Decode an internal General-Link XML blob — `linktype="internal"` with an
+ * `id="{guid}"` pointing at the target item. Returns `undefined` when the
+ * blob is not an internal link or the target GUID has no marker (handle
+ * unrecoverable — caller drops the field rather than fabricate).
+ */
+const decodeInternalLinkXml = (
+  xml: string,
+  guidIndex: GuidHandleIndex
+): { ref: string; text?: string; target?: string } | undefined => {
+  const trimmed = xml.trim();
+  if (!trimmed.startsWith("<link")) return undefined;
+  const linktype = matchAttr(trimmed, "linktype");
+  if (linktype !== "internal") return undefined;
+  const idRaw = matchAttr(trimmed, "id");
+  if (idRaw === undefined || idRaw === "") return undefined;
+  const ref = guidIndex.get(normalizeGuid(idRaw));
+  if (ref === undefined) return undefined;
+  const out: { ref: string; text?: string; target?: string } = { ref };
+  const text = matchAttr(trimmed, "text");
+  if (text !== undefined) out.text = text;
+  const target = matchAttr(trimmed, "target");
+  if (target !== undefined) out.target = target;
+  return out;
+};
+
+/**
+ * Decode one raw Sitecore field value back to a typed `ContentFieldValue`
+ * dispatched by the field's declared abstract `FieldShape`. Returns `null`
+ * when the value isn't decodable under that shape (empty / malformed /
+ * handle unrecoverable) — the caller drops the field rather than emit a
+ * shape-violating value.
+ *
+ * The `FieldShape` taxonomy has `"link"` (the abstract data shape). The
+ * recipe `ContentFieldValue` discriminates `"link-external"` vs
+ * `"link-internal"` at the value level — this decoder picks the right
+ * branch by inspecting the XML's `linktype`. An internal link whose GUID
+ * has no marker resolves to `null` and is dropped (no fabricated handle).
+ */
+const decodeContentFieldValue = (
+  raw: string,
+  shape: FieldShape,
+  guidIndex: GuidHandleIndex
+): ContentFieldValue | null => {
+  switch (shape) {
+    case "text":
+    case "richText":
+      return { shape, value: raw };
+    case "enum":
+      return raw === "" ? null : { shape: "enum", value: raw };
+    case "boolean":
+      return { shape: "boolean", value: raw === "1" };
+    case "number": {
+      const n = Number.parseFloat(raw);
+      return Number.isFinite(n) ? { shape: "number", value: n } : null;
+    }
+    case "integer": {
+      const n = Number.parseInt(raw, 10);
+      return Number.isFinite(n) ? { shape: "integer", value: n } : null;
+    }
+    case "date": {
+      const iso = decodeSitecoreDateToIso(raw, "date");
+      return iso === undefined ? null : { shape: "date", value: iso };
+    }
+    case "datetime": {
+      const iso = decodeSitecoreDateToIso(raw, "datetime");
+      return iso === undefined ? null : { shape: "datetime", value: iso };
+    }
+    case "image": {
+      const img = decodeImageXml(raw);
+      return img === undefined ? null : { shape: "image", ...img };
+    }
+    case "link": {
+      const ext = decodeExternalLinkXml(raw);
+      if (ext !== undefined) return { shape: "link-external", ...ext };
+      const internal = decodeInternalLinkXml(raw, guidIndex);
+      if (internal !== undefined) return { shape: "link-internal", ...internal };
+      return null;
+    }
+    case "reference": {
+      const refs: string[] = [];
+      for (const guid of raw.split("|")) {
+        const norm = normalizeGuid(guid);
+        if (!norm) continue;
+        const handle = guidIndex.get(norm);
+        if (handle !== undefined) refs.push(handle);
+      }
+      return refs.length > 0 ? { shape: "reference", refs } : null;
+    }
+  }
+};
+
+/**
+ * Per-field decoder metadata: the abstract shape and the storage axis the
+ * template declares. The walker uses `storage` to bucket field values into
+ * `shared` vs. per-(language, version) cells before round-tripping.
+ */
+interface TemplateFieldInfo {
+  shape: FieldShape;
+  storage: "shared" | "unversioned" | "versioned";
+}
+/** `lowercase(fieldName) → TemplateFieldInfo` for one Sitecore template. */
+type TemplateFieldShapes = Map<string, TemplateFieldInfo>;
+
+/**
+ * Walk a template item's sections + fields and return a
+ * `lowercase(fieldName) → {shape, storage}` map — every field the template
+ * declares, plus every field its base templates declare (recursively).
+ *
+ * The cache short-circuits repeat walks: a content item references its
+ * template by GUID, and many items typically share a template, so the
+ * per-(`templateGuid`) lookup pays the walk cost once per template.
+ *
+ * Returns an empty map when the template item can't be loaded — the caller
+ * then falls back to inferring per-field shapes from the wire value, which
+ * may drop ambiguous fields rather than guess.
+ */
+const getTemplateFieldShapes = async (
+  templateGuid: string,
+  client: AuthoringApiClient,
+  cache: Map<string, TemplateFieldShapes>
+): Promise<TemplateFieldShapes> => {
+  const key = normalizeGuid(templateGuid);
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  // Mark as in-flight to short-circuit base-template cycles (Sitecore
+  // doesn't allow them in valid trees, but defensive coding).
+  const shapes: TemplateFieldShapes = new Map();
+  cache.set(key, shapes);
+
+  const templateItem = await client.getItem({ itemId: templateGuid });
+  if (!templateItem) return shapes;
+
+  // Recurse into base templates first — local fields override inherited
+  // fields when both declare the same name (last-write-wins via Map.set).
+  const basesRaw = fieldValue(templateItem, SYSTEM_FIELDS.BASE_TEMPLATE, "__Base template");
+  if (basesRaw !== undefined && basesRaw.trim() !== "") {
+    for (const baseGuid of basesRaw.split("|")) {
+      const norm = normalizeGuid(baseGuid);
+      if (!norm || norm === key) continue;
+      const baseShapes = await getTemplateFieldShapes(baseGuid, client, cache);
+      for (const [name, info] of baseShapes) shapes.set(name, info);
+    }
+  }
+
+  const sections = (await client.getChildren({ itemId: templateItem.itemId })).filter((c) =>
+    conformsTo(c, SITECORE_TEMPLATES.TEMPLATE_SECTION)
+  );
+  for (const section of sections) {
+    const fields = (await client.getChildren({ itemId: section.itemId })).filter((c) =>
+      conformsTo(c, SITECORE_TEMPLATES.TEMPLATE_FIELD)
+    );
+    for (const fieldItem of fields) {
+      const typeLabel = fieldValue(fieldItem, TEMPLATE_FIELD_FIELDS.TYPE, "Type");
+      const sitecoreType = typeLabel ? sitecoreTypeFromLabel(typeLabel) : undefined;
+      const shape: FieldShape = sitecoreType ? shapeFromSitecoreType(sitecoreType) : "text";
+      const storage: TemplateFieldInfo["storage"] =
+        fieldValue(fieldItem, TEMPLATE_FIELD_FIELDS.SHARED, "Shared") === "1"
+          ? "shared"
+          : fieldValue(fieldItem, TEMPLATE_FIELD_FIELDS.UNVERSIONED, "Unversioned") === "1"
+            ? "unversioned"
+            : "versioned";
+      shapes.set(fieldItem.name.toLowerCase(), { shape, storage });
+    }
+  }
+  return shapes;
+};
+
+/**
+ * Field names the recipe schema doesn't model on content-item fields:
+ * system fields (anything starting with `__`), the SCAI Handle marker
+ * itself, and the standard-template fields the executor sets implicitly.
+ * The compiler omits them from the recipe surface, so the read-back must
+ * filter them out too — otherwise round-trip diffs flag them as drift.
+ */
+const isItemAuthorableField = (name: string | undefined): boolean => {
+  if (name === undefined) return false;
+  if (name.startsWith("__")) return false;
+  if (name === SCAI_HANDLE_FIELD_NAME) return false;
+  return true;
+};
+
+/** True for any field the recipe surface considers authorable. */
+const authorableFieldsOf = (item: RemoteItem): RemoteItem["fields"] =>
+  item.fields.filter((f) => isItemAuthorableField(f.name));
+
+/**
+ * Reverse-project one concrete content-item into a `ContentItemRecipe` —
+ * fanning per-language reads (`getItemPerLanguageBatch`) and historic
+ * per-(language, version) reads (`getItemAtVersionsBatch`) into a single
+ * round trip each via aliased GraphQL.
+ *
+ * Mode selection — simple vs. story — follows the schema's `XOR`:
+ *  - **Simple**: every populated language has exactly one version AND no
+ *    per-version metadata is captured (no `__Final Renderings` to recover
+ *    layout from). The default language becomes `fields`; any other
+ *    populated language becomes one `translations[lang]` entry.
+ *  - **Story**: any populated language has versions > 1, OR any version
+ *    carries a non-empty layout. Every (language, version) cell projects
+ *    to one `versions[lang][n]` entry; metadata-only (no field values, no
+ *    layout) versions still emit so the version stack round-trips.
+ *
+ * `storage: shared` fields (Sitecore fields with no language/version
+ * tag) round-trip to `shared`. The compiler emits these the same way in
+ * both modes, so simple and story recipes both carry them.
+ *
+ * Returns `null` when the item carries no template handle (`templateHandle`
+ * resolved to undefined upstream) or no authorable field values in any
+ * language — a content-item-shaped item with no content is not a
+ * reverse-projectable recipe.
+ *
+ * LOSSY / omitted:
+ *  - `workflow` is not recovered. The item's `__Workflow` field stores a
+ *    GUID; we have no workflow→handle index (workflow recipes aren't
+ *    reverse-projected), so the handle is unrecoverable.
+ *  - `versions[].workflowState` and `versions[].variants` follow the
+ *    same handle-resolution gap and are omitted.
+ *  - `link-internal` fields whose target GUID carries no marker drop
+ *    rather than synthesise a handle (`decodeContentFieldValue` returns
+ *    `null`); the value is omitted from the recipe.
+ *  - `image.mediaPath` round-trips verbatim — there is no media-item
+ *    handle resolution (the media library is opaque to scai).
+ */
+const contentItemFromItem = async (
+  item: RemoteItem,
+  templateHandle: string,
+  client: AuthoringApiClient,
+  guidIndex: GuidHandleIndex,
+  templateShapeCache: Map<string, TemplateFieldShapes>,
+  tenantLanguages: readonly string[]
+): Promise<ContentItemRecipe | null> => {
+  if (tenantLanguages.length === 0) return null;
+
+  const shapes = await getTemplateFieldShapes(item.templateId, client, templateShapeCache);
+
+  // Pass 1 — per-language latest-version read. One round trip total.
+  const perLang = await client.getItemPerLanguageBatch({ itemId: item.itemId }, tenantLanguages);
+  const populated = perLang.filter((row) => row.item !== null && row.versions.length > 0);
+  if (populated.length === 0) return null;
+
+  // Pass 2 — historic versions (any populated language with versions > 1).
+  // Skip pass 2 entirely when every language is single-version.
+  const historicRequests: Array<{ language: string; version: number }> = [];
+  for (const row of populated) {
+    for (const v of row.versions) {
+      // The latest version came back in pass 1; only fetch the ones below it.
+      if (v < row.versions[row.versions.length - 1]) {
+        historicRequests.push({ language: row.language, version: v });
+      }
+    }
+  }
+  const historic =
+    historicRequests.length > 0
+      ? await client.getItemAtVersionsBatch({ itemId: item.itemId }, historicRequests)
+      : [];
+  // (language, version) → RemoteItem snapshot for historic versions.
+  const historicByLangVer = new Map<string, RemoteItem>();
+  for (let i = 0; i < historicRequests.length; i += 1) {
+    const snap = historic[i];
+    if (snap)
+      historicByLangVer.set(`${historicRequests[i].language}|${historicRequests[i].version}`, snap);
+  }
+
+  /**
+   * Decode the per-(lang, version) authorable field values for one snapshot
+   * into the recipe's `{ fieldName → ContentFieldValue }` shape. Fields whose
+   * name doesn't resolve to a known shape (template hasn't been walked, or
+   * a non-template field) are skipped — we'd be guessing the shape.
+   */
+  const decodeVersionedFields = (snapshot: RemoteItem): Record<string, ContentFieldValue> => {
+    const out: Record<string, ContentFieldValue> = {};
+    for (const f of authorableFieldsOf(snapshot)) {
+      // Versioned-bucket fields only: shared values surface separately
+      // (they're already split by storage on the template-shape map).
+      if (f.language === undefined && f.version === undefined) continue;
+      if (f.name === undefined) continue;
+      const info = shapes.get(f.name.toLowerCase());
+      if (info === undefined) continue;
+      if (info.storage === "shared") continue;
+      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+      if (decoded !== null) out[f.name] = decoded;
+    }
+    return out;
+  };
+
+  /**
+   * Decode the item-level `storage: shared` fields. Aggregated across pass 1's
+   * results — shared values are language-agnostic, so the first occurrence
+   * wins. (`storage: unversioned` is treated as `versioned` from the recipe's
+   * perspective: it lives per-language and round-trips as a translation/version
+   * field, not a shared one.)
+   */
+  const sharedFields: Record<string, ContentFieldValue> = {};
+  for (const row of populated) {
+    const snapshot = row.item;
+    if (!snapshot) continue;
+    for (const f of authorableFieldsOf(snapshot)) {
+      if (f.language !== undefined || f.version !== undefined) continue;
+      if (f.name === undefined || f.name in sharedFields) continue;
+      const info = shapes.get(f.name.toLowerCase());
+      if (info === undefined || info.storage !== "shared") continue;
+      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+      if (decoded !== null) sharedFields[f.name] = decoded;
+    }
+  }
+
+  /** Read the per-version `__Final Renderings` layout XML and decode to a Layout. */
+  const layoutOfSnapshot = (snapshot: RemoteItem): Layout | undefined => {
+    const xml = finalLayoutXmlOf(snapshot);
+    if (xml === "") return undefined;
+    const layout = layoutFromXml(xml, guidIndex);
+    return Object.keys(layout.placeholders).length === 0 ? undefined : layout;
+  };
+
+  /** Read the per-version `__Created` date and decode to ISO datetime. */
+  const dateOfSnapshot = (snapshot: RemoteItem): string | undefined => {
+    const raw = fieldValueByName(snapshot, "__Created");
+    if (raw === undefined || raw === "") return undefined;
+    return decodeSitecoreDateToIso(raw, "datetime");
+  };
+
+  // Mode decision: story when any language carries >1 version OR any version
+  // carries a layout (the simple-mode wire shape doesn't encode item-level
+  // layout, so layout-bearing CIs MUST round-trip as story).
+  const anyMultiVersion = populated.some((row) => row.versions.length > 1);
+  const anyLayout = (() => {
+    for (const row of populated) {
+      if (row.item && layoutOfSnapshot(row.item) !== undefined) return true;
+    }
+    for (const snapshot of historicByLangVer.values()) {
+      if (layoutOfSnapshot(snapshot) !== undefined) return true;
+    }
+    return false;
+  })();
+  const isStory = anyMultiVersion || anyLayout;
+
+  const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
+  const description = fieldValueByName(item, "__Long description");
+
+  const base: ContentItemRecipe = {
+    kind: "content-item",
+    schemaVersion: "1",
+    handle: handleOf(item),
+    name: item.name,
+    displayName,
+    templateType: templateHandle,
+    // Filled below per mode — Zod schemas default `fields` to `{}` even when
+    // a `versions` story takes over, so the field is always present.
+    fields: {},
+  };
+  if (description !== undefined && description !== "") base.description = description;
+  if (Object.keys(sharedFields).length > 0) base.shared = sharedFields;
+
+  if (!isStory) {
+    // Simple mode: default-language fields, other languages → translations.
+    const DEFAULT_LANG = "en";
+    const defaultRow = populated.find((row) => row.language === DEFAULT_LANG);
+    if (defaultRow?.item) {
+      base.fields = decodeVersionedFields(defaultRow.item);
+    } else {
+      // No `en` populated — promote the first populated language as the
+      // primary so `fields` carries content; the recipe schema requires
+      // `fields` as a `Record` (defaulting to `{}` is legal but degrades
+      // round-trip). The translations branch then skips that promoted lang.
+      const first = populated[0];
+      if (first.item) base.fields = decodeVersionedFields(first.item);
+    }
+    const primaryLang = populated.some((r) => r.language === DEFAULT_LANG)
+      ? DEFAULT_LANG
+      : populated[0].language;
+    const translations: Record<string, ContentTranslation> = {};
+    for (const row of populated) {
+      if (row.language === primaryLang) continue;
+      if (!row.item) continue;
+      const fields = decodeVersionedFields(row.item);
+      if (Object.keys(fields).length > 0) translations[row.language] = { fields };
+    }
+    if (Object.keys(translations).length > 0) base.translations = translations;
+    return base;
+  }
+
+  // Story mode: every (language, version) cell projects to a ContentVersion.
+  // The schema requires `fields` (always present) — leave as `{}` and put all
+  // content under `versions`.
+  const versions: Record<string, ContentVersion[]> = {};
+  for (const row of populated) {
+    const entries: ContentVersion[] = [];
+    for (const v of row.versions) {
+      const isLatest = v === row.versions[row.versions.length - 1];
+      const snapshot = isLatest ? row.item : historicByLangVer.get(`${row.language}|${v}`);
+      if (!snapshot) continue;
+      const entry: ContentVersion = { version: v, fields: decodeVersionedFields(snapshot) };
+      const date = dateOfSnapshot(snapshot);
+      if (date !== undefined) entry.date = date;
+      const layout = layoutOfSnapshot(snapshot);
+      if (layout !== undefined) entry.layout = layout;
+      entries.push(entry);
+    }
+    if (entries.length > 0) versions[row.language] = entries;
+  }
+  if (Object.keys(versions).length > 0) base.versions = versions;
+  return base;
+};
+
+/**
+ * Walk the content-items root recursively, reverse-projecting every item
+ * whose template GUID resolves through the marker index into a
+ * `ContentItemRecipe`. Items whose template carries no marker (genuinely
+ * OOTB, or authored outside scai) are silently skipped — there is no
+ * `templateType` handle to emit.
+ *
+ * Recurses into nested folders (a content-items bucket commonly has
+ * grouping sub-folders authors create); `__Standard Values` children are
+ * skipped. The walk surfaces `ContentItemRecipe`s in tree order.
+ */
+const walkContentItemsTree = async (
+  rootPath: string,
+  client: AuthoringApiClient,
+  guidIndex: GuidHandleIndex,
+  templateShapeCache: Map<string, TemplateFieldShapes>,
+  tenantLanguages: readonly string[]
+): Promise<Recipe[]> => {
+  const recipes: Recipe[] = [];
+  const root = rootPath ? await client.getItem({ path: rootPath }) : null;
+  if (!root) return recipes;
+
+  const visit = async (parent: RemoteItem): Promise<void> => {
+    const children = (await client.getChildren({ itemId: parent.itemId }))
+      .filter((c) => c.name !== "__Standard Values")
+      .sort(byTreeOrder);
+    for (const child of children) {
+      const templateHandle = guidIndex.get(normalizeGuid(child.templateId));
+      if (templateHandle !== undefined) {
+        const recipe = await contentItemFromItem(
+          child,
+          templateHandle,
+          client,
+          guidIndex,
+          templateShapeCache,
+          tenantLanguages
+        );
+        if (recipe) recipes.push(recipe);
+        // Fall through — a content item can carry child folders (e.g.,
+        // a story's Data slots). Descend so nested content items reverse-
+        // project too.
+      }
+      await visit(child);
+    }
+  };
+  await visit(root);
+  return recipes;
+};
+
 /**
  * Reverse-project every in-scope subtree under the configured roots into a
- * `Recipe[]` — all nine reverse-projectable kinds (see the module JSDoc).
+ * `Recipe[]` — all ten reverse-projectable kinds (see the module JSDoc).
  *
  * Order of work: the templates trees and enumerations first, then the
  * layout-bearing kinds. The layout-bearing walkers share a GUID→handle
@@ -1446,6 +2213,7 @@ export const readCurrentRecipes = async (
     roots.pageDesignsRoot,
     roots.pagesRoot,
     roots.placeholderSettingsRoot,
+    roots.contentItemsRoot,
   ].some(isSet);
   if (!anyRootSet) {
     // No roots at all — the environment has no recipe-projectable surface.
@@ -1501,14 +2269,16 @@ export const readCurrentRecipes = async (
   // Layout-bearing kinds (partial-design, page-design, page) reference
   // renderings + datasources by GUID inside their layout XML; placeholder
   // `Allowed Controls` does too. Build the GUID→handle marker index once
-  // before reverse-projecting any of them. Skip the (potentially large)
-  // index walk entirely when no layout-bearing root is configured.
-  const hasLayoutRoot =
+  // before reverse-projecting any of them. Content items share the same
+  // index for `reference` / `link-internal` resolution. Skip the
+  // (potentially large) index walk entirely when no root needs it.
+  const needsGuidIndex =
     isSet(roots.partialDesignsRoot) ||
     isSet(roots.pageDesignsRoot) ||
     isSet(roots.pagesRoot) ||
-    isSet(roots.placeholderSettingsRoot);
-  if (hasLayoutRoot) {
+    isSet(roots.placeholderSettingsRoot) ||
+    isSet(roots.contentItemsRoot);
+  if (needsGuidIndex) {
     const guidIndex = await buildGuidHandleIndex(roots, client);
     if (roots.partialDesignsRoot) {
       recipes.push(...(await walkPartialDesignsTree(roots.partialDesignsRoot, client, guidIndex)));
@@ -1516,12 +2286,39 @@ export const readCurrentRecipes = async (
     if (roots.pageDesignsRoot) {
       recipes.push(...(await walkPageDesignsTree(roots.pageDesignsRoot, client, guidIndex)));
     }
+    // Pages and content items both use the per-(lang, version) fan-out;
+    // share one tenant-language fetch + one template-shape cache across them.
+    // Best-effort tenant-language fetch: the client falls back to `["en"]`
+    // when the Authoring schema doesn't expose the query (see
+    // `getTenantLanguages` JSDoc).
+    const needsMultiLangFetch = isSet(roots.pagesRoot) || isSet(roots.contentItemsRoot);
+    const tenantLanguages = needsMultiLangFetch ? await client.getTenantLanguages() : [];
+    const templateShapeCache = new Map<string, TemplateFieldShapes>();
     if (roots.pagesRoot) {
-      recipes.push(...(await walkPagesTree(roots.pagesRoot, client, guidIndex)));
+      recipes.push(
+        ...(await walkPagesTree(
+          roots.pagesRoot,
+          client,
+          guidIndex,
+          templateShapeCache,
+          tenantLanguages
+        ))
+      );
     }
     if (roots.placeholderSettingsRoot) {
       recipes.push(
         ...(await walkPlaceholderSettingsTree(roots.placeholderSettingsRoot, client, guidIndex))
+      );
+    }
+    if (roots.contentItemsRoot) {
+      recipes.push(
+        ...(await walkContentItemsTree(
+          roots.contentItemsRoot,
+          client,
+          guidIndex,
+          templateShapeCache,
+          tenantLanguages
+        ))
       );
     }
   }

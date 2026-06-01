@@ -571,23 +571,6 @@ export const DICTIONARY_ENTRY_FIELDS = {
   PHRASE: "580c75a8-c01a-4580-83cb-987776ceb3af",
 } as const;
 
-/**
- * Available Rendering Section Definition template fields. The
- * `AVAILABLE_RENDERINGS` field is the multi-list that gates which
- * renderings show up in the section's group inside the Pages
- * "Toolbox" experience. Recipe `availableIn` bindings emit
- * `AppendToMultiList` ops against this field.
- *
- * TODO (sandbox-verify): the GUID below is a placeholder until we
- * inspect an XM Cloud Headless tenant. The executor matches by
- * `fieldName` ("Available Renderings") when the IR carries one, so
- * the placeholder GUID is only load-bearing for ref-encoding round-
- * trip; mismatches are tolerated. Update once verified.
- */
-export const SECTION_DEFINITION_FIELDS = {
-  AVAILABLE_RENDERINGS: "f56cab12-7f96-4a90-b0fa-e3b6f70b14db",
-} as const;
-
 export const DEFAULT_LANGUAGE = "en";
 export const DEFAULT_VERSION = 1;
 

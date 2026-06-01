@@ -358,3 +358,13 @@ export const layoutXmlEquivalent = (a: string, b: string): boolean => {
     return false;
   }
 };
+
+/**
+ * Variant of `layoutXmlEquivalent` that takes pre-parsed layouts —
+ * use it when the caller already parsed both sides (the planner's
+ * `computeFieldDrift` parses once for the equivalence check AND
+ * once-per-side for hashing — passing the pre-parsed values dedupes
+ * the regex-driven parse work on the hot path).
+ */
+export const layoutXmlEquivalentFromParsed = (a: ParsedLayout, b: ParsedLayout): boolean =>
+  canonicalLayout(a) === canonicalLayout(b);

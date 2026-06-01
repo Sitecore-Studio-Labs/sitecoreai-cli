@@ -203,14 +203,16 @@ describe("compilePageRecipe", () => {
   });
 
   it("emits a versioned SetField per page field value", () => {
-    const field = findSetField(ir.operations, "page-field:home@1:MetaTitle");
+    // Labels carry the (lang.version) tag — default-language fields use
+    // the `en` tag to match the multi-language emit shape.
+    const field = findSetField(ir.operations, "page-field:home@1:en:MetaTitle");
     expect(field.fieldName).toBe("MetaTitle");
     expect(field.version).toBe(1);
     expect(field.value).toEqual({ kind: "string", value: "Welcome" });
   });
 
   it("writes the page layout to __Final Renderings (versioned)", () => {
-    const layout = findSetField(ir.operations, "page-layout:home@1");
+    const layout = findSetField(ir.operations, "page-layout:home@1:en");
     expect(layout.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
     expect(layout.version).toBe(1);
     if (layout.value.kind !== "string") throw new Error("expected string layout");
@@ -255,7 +257,7 @@ describe("compilePageRecipe", () => {
 
     // The layout `ds` resolves to the materialised item — not a `local:`
     // sentinel.
-    const layout = findSetField(scopedIr.operations, "page-layout:scoped@1");
+    const layout = findSetField(scopedIr.operations, "page-layout:scoped@1:en");
     if (layout.value.kind !== "string") throw new Error("expected string layout");
     expect(layout.value.value).toContain(
       `ds="{${datasourceId(pageRef, "HeroContent").toUpperCase()}}"`
@@ -677,5 +679,85 @@ describe("example recipes — page-level kinds", () => {
     expect(() => PageRecipeSchema.parse(siteHomeRecipe)).not.toThrow();
     const ir = compilePageRecipe(PageRecipeSchema.parse(siteHomeRecipe), CONTEXT);
     expect(ir.operations.length).toBeGreaterThan(0);
+  });
+});
+
+describe("compilePageRecipe — multi-language (translations)", () => {
+  it("emits AddItemVersion per translation lang + per-(lang,1) SetField", () => {
+    const page = {
+      ...homePage,
+      translations: {
+        fr: { fields: { MetaTitle: { shape: "text", value: "Bienvenue" } as const } },
+      },
+    } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+    // AddItemVersion for fr@1 (en@1 comes from the CreateItem).
+    const addVersion = ir.operations.find(
+      (op): op is Extract<Operation, { op: "AddItemVersion" }> =>
+        op.op === "AddItemVersion" && (op as { language: string }).language === "fr"
+    );
+    expect(addVersion).toBeDefined();
+    expect(addVersion!.version).toBe(1);
+    // SetField for the French Title at fr,v1.
+    const frTitle = findSetField(ir.operations, "page-field:home@1:fr:MetaTitle");
+    expect(frTitle.language).toBe("fr");
+    expect(frTitle.version).toBe(1);
+    expect(frTitle.value).toEqual({ kind: "string", value: "Bienvenue" });
+    // Item-level layout writes to every language's __Final Renderings.
+    const enLayout = findSetField(ir.operations, "page-layout:home@1:en");
+    const frLayout = findSetField(ir.operations, "page-layout:home@1:fr");
+    expect(enLayout.language).toBe("en");
+    expect(frLayout.language).toBe("fr");
+  });
+});
+
+describe("compilePageRecipe — story mode (versions)", () => {
+  const storyPage = {
+    kind: "page",
+    schemaVersion: "1",
+    handle: "story@1",
+    name: "Story",
+    displayName: "Story",
+    template: "article-page@1",
+    versions: {
+      en: [
+        { version: 1, fields: { MetaTitle: { shape: "text", value: "v1 draft" } as const } },
+        { version: 2, fields: { MetaTitle: { shape: "text", value: "v2 final" } as const } },
+      ],
+    },
+  } satisfies PageRecipe;
+
+  it("emits AddItemVersion per (lang, version) cell except en/v1", () => {
+    const ir = compilePageRecipe(storyPage, CONTEXT);
+    const addVersions = ir.operations.filter(
+      (op): op is Extract<Operation, { op: "AddItemVersion" }> => op.op === "AddItemVersion"
+    );
+    // en/v1 already exists via CreateItem; only en/v2 needs AddItemVersion.
+    expect(addVersions).toHaveLength(1);
+    expect(addVersions[0]).toMatchObject({ language: "en", version: 2 });
+    // SetFields at both versions.
+    const v1 = findSetField(ir.operations, "page-field:story@1:en.v1:MetaTitle");
+    const v2 = findSetField(ir.operations, "page-field:story@1:en.v2:MetaTitle");
+    expect(v1.version).toBe(1);
+    expect(v2.version).toBe(2);
+    expect(v2.value).toEqual({ kind: "string", value: "v2 final" });
+  });
+
+  it("rejects fields/translations alongside versions (XOR)", () => {
+    const broken = {
+      ...storyPage,
+      fields: { MetaTitle: { shape: "text" as const, value: "stray" } },
+    } satisfies PageRecipe;
+    expect(() => compilePageRecipe(broken, CONTEXT)).toThrowError(/either simple .* or a story/);
+  });
+
+  it("rejects item-level layout in story mode", () => {
+    const broken = {
+      ...storyPage,
+      layout: { placeholders: {} },
+    } satisfies PageRecipe;
+    expect(() => compilePageRecipe(broken, CONTEXT)).toThrowError(
+      /item-level 'layout' is not allowed in story mode/
+    );
   });
 });

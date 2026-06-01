@@ -5,7 +5,6 @@ import {
   compileContentTemplateRecipe,
   compileDesignParametersTemplateRecipe,
   compileRecipeSet,
-  compileSectionDefinitionRecipe,
 } from "../../../src/recipe/compile";
 import {
   componentFolderStandardValuesId,
@@ -16,26 +15,16 @@ import {
   presentationDesignParametersBucketId,
   renderingId,
   renderingsSectionFolderId,
-  sectionDefinitionId,
   sectionFolderId,
   templateId,
 } from "../../../src/recipe/items/guids";
-import type {
-  AppendToMultiListOp,
-  CreateItemOp,
-  Operation,
-  SetFieldOp,
-} from "../../../src/recipe/ir/operations";
-import {
-  SECTION_DEFINITION_FIELDS,
-  SITECORE_TEMPLATES,
-} from "../../../src/recipe/ir/sitecore-templates";
+import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
+import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
 import {
   ComponentTemplateRecipeSchema,
   ContentTemplateRecipeSchema,
   DesignParametersTemplateRecipeSchema,
   RecipeSchema,
-  SectionDefinitionRecipeSchema,
   type ComponentSectionRecipe,
   type ComponentTemplateRecipe,
 } from "../../../src/recipe/schema/recipe";
@@ -80,14 +69,13 @@ const minimalComponentRecipe = (
 });
 
 describe("ComponentTemplateRecipe schema — new fields", () => {
-  it("accepts `section`, `datasource`, `parameters`, `children`, `availableIn`", () => {
+  it("accepts `section`, `datasource`, `parameters`, `children`", () => {
     const result = ComponentTemplateRecipeSchema.safeParse({
       ...minimalComponentRecipe(),
       section: { handle: "ui-section@1" },
       datasource: { template: { handle: "accordion-content@1" } },
       parameters: { handle: "accordion-params@1" },
       children: { allowedHandles: ["accordion-item@1"] },
-      availableIn: ["showcase-section@1"],
     });
     expect(result.success).toBe(true);
   });
@@ -184,32 +172,8 @@ describe("DesignParametersTemplateRecipe schema", () => {
   });
 });
 
-describe("SectionDefinitionRecipe schema", () => {
-  it("accepts a section-definition recipe with sitePath", () => {
-    const result = SectionDefinitionRecipeSchema.safeParse({
-      kind: "section-definition",
-      schemaVersion: "1",
-      handle: "showcase-section@1",
-      name: "Showcase",
-      sitePath:
-        "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings/Showcase",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects missing sitePath", () => {
-    const result = SectionDefinitionRecipeSchema.safeParse({
-      kind: "section-definition",
-      schemaVersion: "1",
-      handle: "showcase-section@1",
-      name: "Showcase",
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe("Recipe discriminated union — new kinds", () => {
-  it("RecipeSchema accepts parameters-template and section-definition", () => {
+describe("Recipe discriminated union — parameters-template kind", () => {
+  it("RecipeSchema accepts parameters-template", () => {
     expect(
       RecipeSchema.safeParse({
         kind: "design-parameters-template",
@@ -219,16 +183,6 @@ describe("Recipe discriminated union — new kinds", () => {
         displayName: "P",
         section: { handle: "ui-section@1" },
         params: [],
-      }).success
-    ).toBe(true);
-
-    expect(
-      RecipeSchema.safeParse({
-        kind: "section-definition",
-        schemaVersion: "1",
-        handle: "s@1",
-        name: "S",
-        sitePath: "/sitecore/content/Section",
       }).success
     ).toBe(true);
   });
@@ -509,49 +463,6 @@ describe("ContentTemplateRecipe — group-based path emission", () => {
   });
 });
 
-describe("AppendToMultiList op — availableIn binding", () => {
-  it("emits one AppendToMultiList per availableIn entry", () => {
-    const recipe = minimalComponentRecipe({
-      section: { handle: UI_SECTION_RECIPE.handle },
-      availableIn: ["showcase-section@1", "primitives-section@1"],
-    });
-    const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
-    const appendOps = ir.operations.filter(
-      (op): op is AppendToMultiListOp => op.op === "AppendToMultiList"
-    );
-    expect(appendOps).toHaveLength(2);
-
-    const showcaseOp = appendOps.find(
-      (op) => op.itemRefKey === sectionDefinitionId("showcase-section@1")
-    );
-    expect(showcaseOp).toBeDefined();
-    expect(showcaseOp!.fieldId).toBe(SECTION_DEFINITION_FIELDS.AVAILABLE_RENDERINGS);
-    expect(showcaseOp!.fieldName).toBe("Available Renderings");
-    expect(showcaseOp!.appendPolicy).toBe("merge-unique");
-    expect(showcaseOp!.values).toEqual([
-      { kind: "ref-recipe", refKey: renderingId(SITE, recipe.handle) },
-    ]);
-  });
-});
-
-describe("compileSectionDefinitionRecipe — empty IR (cross-recipe ref only)", () => {
-  it("returns no operations — the section definition is tenant-pre-existing", () => {
-    const ir = compileSectionDefinitionRecipe(
-      {
-        kind: "section-definition",
-        schemaVersion: "1",
-        handle: "showcase-section@1",
-        name: "Showcase",
-        sitePath:
-          "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings/Showcase",
-      },
-      CONTEXT
-    );
-    expect(ir.operations).toHaveLength(0);
-    expect(ir.recipeHandle).toBe("showcase-section@1");
-  });
-});
-
 describe("compileRecipeSet — folder dedup across recipes in the same section", () => {
   it("emits each section / Component Folders / Presentation Parameters bucket once per set", () => {
     const irs = compileRecipeSet(
@@ -609,12 +520,6 @@ describe("Deterministic GUID extensions", () => {
     );
     expect(componentFolderTemplateId(SITE, "accordion-block@1")).toBe(
       componentFolderTemplateId(SITE, "accordion-block@1")
-    );
-  });
-
-  it("sectionDefinitionId(handle) is stable for a given handle", () => {
-    expect(sectionDefinitionId("showcase-section@1")).toBe(
-      sectionDefinitionId("showcase-section@1")
     );
   });
 

@@ -562,23 +562,6 @@ describe("compileRecipeSet — Available Renderings aggregate", () => {
 });
 
 describe("compileRecipe — front-door dispatcher", () => {
-  it("dispatches a section-definition recipe", () => {
-    const sectionDef: Recipe = {
-      kind: "section-definition",
-      schemaVersion: "1",
-      handle: "hero-section@1",
-      name: "HeroSection",
-      displayName: "Hero Section",
-      sitePath: "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings/Hero",
-    };
-    // A standalone section-definition is a resolution target — it emits
-    // no ops itself (AppendToMultiList ops only fire when referenced),
-    // but the dispatcher must still route it to the right compiler.
-    const ir = compileRecipe(sectionDef, CONTEXT);
-    expect(ir.recipeHandle).toBe("hero-section@1");
-    expect(ir.schemaVersion).toBe("1");
-  });
-
   it("dispatches a placeholder recipe", () => {
     const placeholder: Recipe = {
       kind: "placeholder",

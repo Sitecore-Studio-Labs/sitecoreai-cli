@@ -9,6 +9,8 @@ import {
   placeholderSettingsFolderId,
   placeholderSettingsId,
   renderingId,
+  renderingsSectionFolderId,
+  sectionFolderId,
   sharedDataFolderStandardValuesId,
   sharedDataFolderTemplateId,
   siteDataFolderTemplateId,
@@ -20,6 +22,7 @@ import {
   type Operation,
   type OperationIr,
   OperationIrSchema,
+  type PruneChildrenOp,
   type SetBaseTemplatesOp,
   type SetFieldOp,
   type SetStandardValuesOp,
@@ -44,7 +47,6 @@ import { compileComponentSectionRecipe } from "./compile/component-section";
 import { compileComponentTemplateRecipe } from "./compile/component-template";
 import { compileContentTemplateRecipe } from "./compile/content-template";
 import { compileDesignParametersTemplateRecipe } from "./compile/design-parameters-template";
-import { compileSectionDefinitionRecipe } from "./compile/section-definition";
 import { compilePartialDesignRecipe } from "./compile/partial-design";
 import { compilePageDesignRecipe } from "./compile/page-design";
 import { compilePageTemplateRecipe } from "./compile/page-template";
@@ -72,7 +74,6 @@ export {
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
   compileDesignParametersTemplateRecipe,
-  compileSectionDefinitionRecipe,
   compilePartialDesignRecipe,
   compilePageDesignRecipe,
   compilePageTemplateRecipe,
@@ -161,6 +162,39 @@ export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
 export const PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE = "__placeholder-settings__";
 
 /**
+ * Stable handle for the synthetic IR that materialises subtree-level
+ * ownership for `ComponentSectionRecipe`s whose `ownership.mode` is
+ * `"exclusive"`. Per exclusively-owned section the aggregate emits
+ * `PruneChildren` ops for BOTH:
+ *
+ *   - The RENDERINGS section folder (`<renderingsRoot>/<section.name>`)
+ *     — prunes any rendering item the recipe set didn't produce.
+ *     `templateFilter: [RENDERING]` ensures only items conforming to
+ *     SXA Rendering get pruned — co-located non-rendering items stay.
+ *
+ *   - The TEMPLATES section folder (`<componentsRoot>/<section.name>`)
+ *     — prunes any component-template item the recipe set didn't
+ *     produce. `templateFilter: [TEMPLATE]` restricts the prune to
+ *     items conforming to the SXA Template meta-template, so the
+ *     "Component Folders" and "Presentation Parameters" bucket folders
+ *     (`templateOf: TEMPLATE_FOLDER`) are skipped — those are
+ *     compiler-managed scaffolding, not author-facing content.
+ *
+ * NOT pruned by this aggregate: the SXA Headless Variants tree. SXA
+ * stores per-rendering variant folders FLAT under
+ * `<headlessVariantsRoot>/<RenderingName>`, not under a per-section
+ * subfolder — so a section-scoped ownership declaration can't safely
+ * address them (it would have to reach across sections). A site-level
+ * variants ownership concept could land later; until then, orphan
+ * variant folders for retired renderings stay put and need manual
+ * cleanup or a hand-authored PruneChildren op.
+ *
+ * Same `__…__` compiler-synthesized convention as the other aggregate
+ * handles in this file.
+ */
+export const COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE = "__component-section-ownership__";
+
+/**
  * Cross-recipe apply-ordering rank, by recipe kind. `compileRecipeSet`
  * stably sorts per-recipe IRs by this rank so every recipe is applied
  * after the definitions it references:
@@ -184,7 +218,6 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   "content-template": 0,
   "page-template": 0,
   "design-parameters-template": 0,
-  "section-definition": 0,
   enumeration: 0,
   workflow: 0,
   "webhook-authorization": 0,
@@ -322,6 +355,114 @@ const buildAvailableRenderingsAggregate = (
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
+    operations,
+  });
+};
+
+/**
+ * Build the synthetic IR that materialises subtree ownership for
+ * `ComponentSectionRecipe`s whose `ownership.mode` is `"exclusive"`.
+ * Per exclusively-owned section, emits TWO `PruneChildren` ops — one
+ * targeting the renderings folder (`<renderingsRoot>/<section.name>`),
+ * one targeting the templates section folder
+ * (`<componentsRoot>/<section.name>`). Both carry `allowedHandles`
+ * listing the recipe set's contributions and a `templateFilter`
+ * scoping the prune to actual rendering / template items so co-located
+ * bucket folders ("Component Folders", "Presentation Parameters") stay
+ * untouched.
+ *
+ * The op's `mode` defaults to the section's `ownership.pruneMode`
+ * (`"warn"` by default — rehearsal-first). The operator still needs to
+ * pass `--allow-prune` for `"delete"`-mode ops to actually fire.
+ *
+ * Multi-list ownership (the Available Renderings field) is folded into
+ * the existing `buildAvailableRenderingsAggregate`, which uses
+ * SetField (full-replace semantics) — so an exclusive ComponentSection
+ * gets full ownership of BOTH the subtree AND the multi-list from a
+ * single declaration. Authors don't have to coordinate two recipes.
+ *
+ * Returns `null` when no ComponentSection declares exclusive ownership.
+ */
+const buildComponentSectionSubtreeOwnershipAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext
+): OperationIr | null => {
+  const site = siteOf(context);
+
+  const exclusiveSections = new Map<string, import("./schema/recipe").ComponentSectionRecipe>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-section") continue;
+    if (recipe.ownership?.mode !== "exclusive") continue;
+    exclusiveSections.set(recipe.handle, recipe);
+  }
+  if (exclusiveSections.size === 0) return null;
+
+  // Gather component recipes per exclusive section (matching via the
+  // component's `section.handle`). These contribute the `allowedHandles`
+  // for the section's renderings folder prune.
+  const sectionToRenderings = new Map<string, string[]>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-template") continue;
+    if (!recipe.section) continue;
+    if (!exclusiveSections.has(recipe.section.handle)) continue;
+    const list = sectionToRenderings.get(recipe.section.handle) ?? [];
+    list.push(recipe.handle);
+    sectionToRenderings.set(recipe.section.handle, list);
+  }
+
+  const operations: Operation[] = [];
+  for (const [sectionHandle, section] of exclusiveSections) {
+    const componentHandles = (sectionToRenderings.get(sectionHandle) ?? []).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    const mode = section.ownership?.pruneMode ?? "warn";
+
+    // Renderings folder prune. The section folder is created by
+    // `compileComponentSectionRecipe` (rank 0) before this aggregate
+    // runs, so the refKey is in the captured map by the time the
+    // PruneChildren lands. No latePath needed.
+    operations.push({
+      op: "PruneChildren",
+      policy: policyFor("composition-structure"),
+      label: `prune:renderings-section:${site}:${section.name}`,
+      parentRefKey: renderingsSectionFolderId(site, section.name),
+      allowedHandles: componentHandles.map((handle) => ({
+        kind: "ref-recipe" as const,
+        refKey: renderingId(site, handle),
+      })),
+      // Limit to the SXA Rendering template so co-located non-rendering
+      // items (any future scaffolding under the folder) stay put.
+      templateFilter: [SITECORE_TEMPLATES.RENDERING],
+      mode,
+    } satisfies PruneChildrenOp);
+
+    // Templates section folder prune. Component template items live as
+    // direct children of `<componentsRoot>/<section.name>/`, alongside
+    // bucket folders ("Component Folders", "Presentation Parameters")
+    // that conform to `TEMPLATE_FOLDER` rather than `TEMPLATE`. The
+    // template filter restricts the prune to actual component-template
+    // items so the buckets stay untouched — wiping them would orphan
+    // the per-component datasource folder templates and presentation-
+    // parameter templates that live inside.
+    operations.push({
+      op: "PruneChildren",
+      policy: policyFor("composition-structure"),
+      label: `prune:templates-section:${site}:${section.name}`,
+      parentRefKey: sectionFolderId(site, section.name),
+      allowedHandles: componentHandles.map((handle) => ({
+        kind: "ref-recipe" as const,
+        refKey: templateId(site, handle),
+      })),
+      templateFilter: [SITECORE_TEMPLATES.TEMPLATE],
+      mode,
+    } satisfies PruneChildrenOp);
+  }
+
+  if (operations.length === 0) return null;
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
     operations,
   });
 };
@@ -1157,6 +1298,49 @@ export function compileRecipeSet(
     irs.push(placeholderSettings);
   }
 
+  // Subtree ownership aggregate — emits PruneChildren ops for sections
+  // whose ComponentSectionRecipe declares ownership.children: "exclusive".
+  // MUST run LAST so every rendering CreateItem op has landed and the
+  // captured-itemId map is fully seeded; the planner reads live children
+  // of each section folder and computes (children - allowedHandles) at
+  // apply time, so any rendering the recipe set didn't produce is on the
+  // prune candidate list.
+  const componentSectionOwnership = buildComponentSectionSubtreeOwnershipAggregate(
+    recipes,
+    context
+  );
+  if (componentSectionOwnership) {
+    irs.push(componentSectionOwnership);
+  }
+
+  // Invariant guard: any IR that emits a PruneChildren op MUST be
+  // followed only by IRs that don't create items. Pruning happens last
+  // (after the captured-itemId map is fully seeded by every CreateItem
+  // in the recipe set); a future aggregate appended below the prune
+  // emitter that introduces new CreateItems would corrupt the prune
+  // candidate list — the planner reads live children at apply time and
+  // would prune items the same push was about to create.
+  //
+  // This catches the regression at compile time, before any wire call.
+  let firstPruneIrIndex = -1;
+  for (let i = 0; i < irs.length; i += 1) {
+    if (irs[i].operations.some((op) => op.op === "PruneChildren")) {
+      firstPruneIrIndex = i;
+      break;
+    }
+  }
+  if (firstPruneIrIndex >= 0) {
+    for (let i = firstPruneIrIndex + 1; i < irs.length; i += 1) {
+      const offending = irs[i].operations.find((op) => op.op === "CreateItem");
+      if (offending) {
+        throw createScaiError(
+          `Aggregate ordering invariant violated: IR '${irs[i].recipeHandle}' emits a CreateItem after the prune-emitting IR '${irs[firstPruneIrIndex].recipeHandle}' (offending op label: '${offending.label}'). PruneChildren must run LAST in compileRecipeSet — anything that creates items must appear before the prune aggregate.`,
+          "UNKNOWN"
+        );
+      }
+    }
+  }
+
   return irs;
 }
 
@@ -1180,8 +1364,6 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compilePlaceholderRecipe(recipe, context);
     case "design-parameters-template":
       return compileDesignParametersTemplateRecipe(recipe, context);
-    case "section-definition":
-      return compileSectionDefinitionRecipe(recipe, context);
     case "partial-design":
       return compilePartialDesignRecipe(recipe, context);
     case "page-design":

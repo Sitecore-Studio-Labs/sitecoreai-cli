@@ -7,7 +7,6 @@ import {
   designParametersTemplateId,
   placeholderSettingsId,
   renderingId,
-  sectionDefinitionId,
   sharedDataFolderTemplateId,
   siteDataFolderId,
   siteDataFolderStandardValuesId,
@@ -19,7 +18,6 @@ import {
   variantsFolderId,
 } from "../items/guids";
 import {
-  type AppendToMultiListOp,
   type CreateItemOp,
   type FieldValue,
   type Operation,
@@ -36,7 +34,6 @@ import {
   DEFAULT_ICON,
   IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
-  SECTION_DEFINITION_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SXA_COMPONENT_BASE_TEMPLATES,
@@ -65,19 +62,6 @@ import {
   versionedField,
   type CompileContext,
 } from "./shared";
-
-/**
- * SXA Section Definition's "Available Renderings" multi-list field —
- * the lookup key the executor uses to read/append values when
- * applying `AppendToMultiList` ops emitted from `availableIn`.
- *
- * The GUID is a placeholder until sandbox introspection lands; the
- * executor matches by `fieldName` when the IR carries one (recipe-
- * authored fields share this property), so the placeholder is
- * tolerated for now.
- */
-const AVAILABLE_RENDERINGS_FIELD_ID = SECTION_DEFINITION_FIELDS.AVAILABLE_RENDERINGS;
-const AVAILABLE_RENDERINGS_FIELD_NAME = "Available Renderings";
 
 /**
  * Resolve `recipe.section?.handle` to the section's `name` via the
@@ -114,8 +98,6 @@ const resolveSectionName = (
  *     - Renderings-side section folder (CreateOnly) at
  *       `<renderingsRoot>/ui`, then rendering at
  *       `<renderingsRoot>/ui/<Component>`
- *     - For each handle in `availableIn`, an `AppendToMultiList` op
- *       against the section definition's Available Renderings field
  *
  *   Without `section` (legacy back-compat):
  *     - Flat layout — template at `<templatesRoot>/<Component>`,
@@ -241,41 +223,11 @@ export function compileComponentTemplateRecipe(
     emitVariants(operations, recipe, context, icon, policy, emittedFolders);
   }
 
-  if (recipe.availableIn && recipe.availableIn.length > 0) {
-    emitAvailableInBindings(operations, recipe, policy, siteOf(context));
-  }
-
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: recipe.handle,
     operations,
   });
-}
-
-/**
- * Emit `AppendToMultiList` ops binding this rendering's GUID into the
- * `Available Renderings` field of each section definition listed in
- * `recipe.availableIn`. Idempotent under `merge-unique` policy.
- */
-function emitAvailableInBindings(
-  operations: Operation[],
-  recipe: ComponentTemplateRecipe,
-  policy: PushPolicy,
-  site: string
-): void {
-  const availableIn = recipe.availableIn ?? [];
-  for (const sectionDefinitionHandle of availableIn) {
-    operations.push({
-      op: "AppendToMultiList",
-      policy,
-      label: `available-in:${recipe.handle}->${sectionDefinitionHandle}`,
-      itemRefKey: sectionDefinitionId(sectionDefinitionHandle),
-      fieldId: AVAILABLE_RENDERINGS_FIELD_ID,
-      fieldName: AVAILABLE_RENDERINGS_FIELD_NAME,
-      values: [{ kind: "ref-recipe", refKey: renderingId(site, recipe.handle) }],
-      appendPolicy: "merge-unique",
-    } satisfies AppendToMultiListOp);
-  }
 }
 
 /**

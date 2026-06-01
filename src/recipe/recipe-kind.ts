@@ -99,6 +99,9 @@ const resolveContext = (
  * `RecipeChange` (the sync engine's element-level change):
  *
  *   create → create   update → update   skip → noop
+ *   prune  → delete when the prune would actually fire (mode "delete")
+ *            or noop when it's a rehearsal-mode warn — the summary still
+ *            surfaces the prune list either way.
  *   error  → noop, but never silently dropped: the `summary` is
  *            `ERROR`-prefixed and the reason is carried in `meta.error`
  *            so callers can surface the failure.
@@ -114,6 +117,33 @@ const actionToChange = (recipeHandle: string, action: PlannedAction): RecipeChan
       meta: {
         operation: action.operation.op,
         error: action.reason ?? "unknown error",
+      },
+    };
+  }
+  if (action.status === "prune") {
+    const willDelete =
+      action.mutation?.kind === "pruneChildren" && action.mutation.mode === "delete";
+    return {
+      kind: willDelete ? "delete" : "noop",
+      path,
+      summary: `${label}${action.reason ? ` — ${action.reason}` : ""}`,
+      ...(action.prunedItems &&
+        action.prunedItems.length > 0 && { meta: { prunedItems: action.prunedItems } }),
+    };
+  }
+  if (action.status === "conflict") {
+    // Three-way merge conflict: surface as noop (no write happened) with
+    // CONFLICT-prefixed summary + diff so consumers see the per-field
+    // breakdown. The push task is what blocks apply on conflicts (via
+    // the summary.conflict count); engine consumers see the noop +
+    // CONFLICT prefix and can route to their own resolution surface.
+    return {
+      kind: "noop",
+      path,
+      summary: `CONFLICT ${label}${action.reason ? ` — ${action.reason}` : ""}`,
+      meta: {
+        conflict: true,
+        ...(action.diff && action.diff.length > 0 ? { diff: action.diff } : {}),
       },
     };
   }
@@ -157,7 +187,17 @@ const plan = async (desired: Recipe[], _ref: KindRef, ctx: SyncContext): Promise
   const irs = compileRecipeSet(desired, context).map(injectHandleMarker);
   const results: ExecutionResult[] = [];
   for (const ir of irs) {
-    results.push(await executeIr(ir, client, { mode: "plan", signal: ctx.signal }));
+    results.push(
+      await executeIr(ir, client, {
+        mode: "plan",
+        signal: ctx.signal,
+        // Forward snapshot-languages so plan-mode output matches what
+        // apply will actually capture. Operators using sync via MCP /
+        // orchestrator gate consent + language choice on SyncContext
+        // rather than CLI flags.
+        snapshotLanguages: ctx.snapshotLanguages,
+      })
+    );
   }
   const payload: RecipeKindPayload = { irs };
   return { changes: resultsToChanges(irs, results), payload };
@@ -189,7 +229,19 @@ const apply = async (
   const { client } = resolveContext(ctx);
   const results: ExecutionResult[] = [];
   for (const ir of payload.irs) {
-    results.push(await executeIr(ir, client, { mode: "apply", signal: ctx.signal }));
+    results.push(
+      await executeIr(ir, client, {
+        mode: "apply",
+        signal: ctx.signal,
+        // Forward operator consent so sync-engine driven pushes can
+        // execute delete-mode PruneChildren. Without this, every
+        // recipe-set containing a `mode: "delete"` PruneChildren
+        // would throw POLICY_DENIED unconditionally through the sync
+        // engine — CLI-only feature otherwise.
+        allowPrune: ctx.allowPrune,
+        snapshotLanguages: ctx.snapshotLanguages,
+      })
+    );
   }
   const changes = resultsToChanges(payload.irs, results);
   return {
@@ -244,6 +296,9 @@ const readCurrent = async (_ref: KindRef, ctx: SyncContext): Promise<Recipe[] | 
     ...(context.pagesRoot !== undefined && { pagesRoot: context.pagesRoot }),
     ...(context.placeholderSettingsRoot !== undefined && {
       placeholderSettingsRoot: context.placeholderSettingsRoot,
+    }),
+    ...(context.contentItemsRoot !== undefined && {
+      contentItemsRoot: context.contentItemsRoot,
     }),
   };
   return readCurrentRecipes(roots, client);

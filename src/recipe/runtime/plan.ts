@@ -1,3 +1,4 @@
+import { createScaiError } from "@/shared/errors";
 import type {
   AddItemVersionOp,
   AppendToMultiListOp,
@@ -6,6 +7,7 @@ import type {
   FieldValue,
   Operation,
   OperationIr,
+  PruneChildrenOp,
   PushPolicy,
   RefValue,
   SetBaseTemplatesOp,
@@ -15,8 +17,13 @@ import type {
 import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { SCAI_HANDLE_FIELD_NAME } from "../items/marker";
 import { templatePathRefKey } from "../items/guids";
-import { renderRefValue, resolveRecipeRefs } from "../api/ref-encoding";
-import { layoutXmlEquivalent } from "../layout/parse";
+import { dashifyGuid, renderRefValue, resolveRecipeRefs } from "../api/ref-encoding";
+import {
+  layoutXmlEquivalent,
+  layoutXmlEquivalentFromParsed,
+  parseLayoutXml,
+  type ParsedLayout,
+} from "../layout/parse";
 import type {
   AuthoringApiClient,
   CreateItemInput,
@@ -26,6 +33,7 @@ import type {
   UpdateItemInput,
 } from "../api/client";
 import type { NewSiteInput, SitesApiClient } from "../api/sites-client";
+import { hashFieldValueForBaseline, type BaselineIndex } from "./baseline";
 
 /**
  * `scai provision recipe plan` and `scai provision recipe push` share this read-then-diff path:
@@ -51,9 +59,93 @@ export interface FieldDiffEntry {
   after: string;
   language?: string;
   version?: number;
+  /**
+   * Three-way merge classification for this field (only set when a
+   * baseline is loaded — see `PlanOptions.baselineIndex`):
+   *
+   *   - "first-push" — no baseline entry; planner can't classify.
+   *   - "recipe-change" — tenant matches baseline; recipe-wins is safe.
+   *   - "cms-edit" — tenant differs from baseline, recipe matches baseline;
+   *                  author edited via the Sitecore UI after the last push.
+   *   - "conflict" — tenant differs from baseline AND recipe differs from
+   *                  baseline; both sides moved.
+   *
+   * `undefined` when the planner ran without a baseline (legacy two-way
+   * diff, current default until operators opt in).
+   */
+  classification?: "first-push" | "recipe-change" | "cms-edit" | "conflict";
 }
 
-type ActionStatus = "create" | "update" | "skip" | "error";
+/**
+ * `"conflict"` is the new three-way-merge status: tenant disagrees with
+ * recipe AND with baseline (both sides moved since last apply). The
+ * `--conflict-policy` flag governs whether conflicts become `error`
+ * (default), `update` (recipe-wins clobber), or `skip` (cms-wins preserve).
+ */
+type ActionStatus = "create" | "update" | "skip" | "error" | "prune" | "conflict";
+
+/**
+ * Recursive snapshot of a pruned item, captured at plan time so the
+ * rollback module can recreate the subtree via `createItem` +
+ * `addItemVersion` + `updateItem` if the surrounding push aborts.
+ *
+ * Tree shape: `children` is itself `PrunedItemSnapshot[]`, populated by
+ * a depth-first walk of `getChildren` in `planPruneChildren`. Restoration
+ * is depth-first as well — the parent's freshly-assigned itemId becomes
+ * each child's parent on its inverse `createItem` call.
+ *
+ * Field shape splits shared from versioned:
+ *  - `sharedFields` — fields with no `language` and no `version`; apply
+ *    to every (language, version) of the item.
+ *  - `versions` — one entry per (language, version) the item has at
+ *    snapshot time, carrying that version's versioned-field values.
+ *
+ * Multi-language and multi-version are both captured: planPruneChildren
+ * iterates each language in the operator-configured `snapshotLanguages`
+ * list, enumerates that language's version stack via `getItemVersions`,
+ * then per-version reads the item's fields via
+ * `getItem(selector, { language, version })`. The cost scales as
+ * O(N_pruned * L_languages * V_versions) getItem calls.
+ *
+ * Remaining lossy bound: **itemIds change on recreation.** Sitecore
+ * assigns itemIds server-side on `createItem` and the Authoring API has
+ * no input for preserving the original GUID. Inbound references to the
+ * old GUID stay broken. Truly GUID-preserving rollback would need the
+ * Content Serialization API, which scai does not adopt.
+ */
+export interface PrunedItemSnapshot {
+  itemId: string;
+  path: string;
+  templateId: string;
+  name: string;
+  parentId: string;
+  /**
+   * Fields with no language/version — apply to every version of the
+   * item. Captured once (deduped across the per-version reads).
+   */
+  sharedFields: RemoteFieldValue[];
+  /**
+   * Per-(language, version) versioned field snapshots. Ordered by
+   * (language order from snapshotLanguages, then version ascending).
+   * The first entry's language is used as the inverse `createItem`'s
+   * `language` parameter.
+   *
+   * Versioned fields here include the field's own `language` and
+   * `version` so the inverse path can write them via `updateItem`
+   * scoped to the matching (language, version).
+   */
+  versions: Array<{
+    language: string;
+    version: number;
+    fields: RemoteFieldValue[];
+  }>;
+  /**
+   * Depth-first snapshot of this item's descendants. Empty when the
+   * item is a leaf at snapshot time. The depth of the snapshot tree
+   * matches the depth of the live subtree under the prune target.
+   */
+  children: PrunedItemSnapshot[];
+}
 
 export interface PlannedAction {
   index: number;
@@ -84,7 +176,59 @@ export interface PlannedAction {
         language: string;
         /** How many versions to add to reach the op's declared `version`. */
         addCount: number;
+      }
+    | {
+        kind: "pruneChildren";
+        /**
+         * Sitecore itemIds the apply phase would delete when `mode` is
+         * `"delete"` and the operator passed `--allow-prune`. Always
+         * populated (possibly empty in degenerate cases — those should
+         * status `skip`, not surface here).
+         */
+        itemIds: string[];
+        /**
+         * `"warn"` — apply skips the actual delete and the prune list
+         * surfaces in the log for rehearsal. `"delete"` — apply removes
+         * the items (gated additionally by `--allow-prune` at the
+         * executor layer; the IR-level mode and the CLI flag are
+         * independent consent layers).
+         */
+        mode: "warn" | "delete";
       };
+  /**
+   * Per-child plan-display data for PruneChildren actions — the path and
+   * template of each item the prune would (or did) remove. Used by the
+   * `recipe plan` renderer so operators see exactly which items are at
+   * risk before they pass `--allow-prune`.
+   *
+   * Also carries the full pre-delete snapshot used by the rollback
+   * module to recreate items via `createItem` + `addItemVersion` +
+   * `updateItem` if the surrounding push aborts. Each entry is a
+   * recursive tree node (`children` is itself `PrunedItemSnapshot[]`)
+   * so a pruned subtree restores depth-first — direct children of the
+   * prune target, AND their descendants, are all snapshotted at plan
+   * time. Each node captures the full (language, version) field grid
+   * for every language in the push's `snapshotLanguages` config (each
+   * language → all numbered versions → fields per version).
+   *
+   * The single remaining lossy bound is bounded by the Authoring API
+   * surface scai uses:
+   *  - **itemIds are fresh on recreation.** Sitecore assigns itemIds
+   *    server-side on `createItem`; the API has no input for preserving
+   *    the original GUID. Inbound references (multi-list values, layout
+   *    `<r id />` GUIDs, link fields) that pointed at the old GUID stay
+   *    broken after restoration. Truly GUID-preserving rollback would
+   *    need the Content Serialization API (a separate REST surface
+   *    scai does not adopt).
+   */
+  prunedItems?: PrunedItemSnapshot[];
+  /**
+   * Per-multi-list plan-display data for AppendToMultiList actions whose
+   * `appendPolicy` is `"replace"`. Empty arrays when nothing changed.
+   * `merge-unique` ops do not populate this — `diff` already captures
+   * the before/after pipe-list.
+   */
+  replacedListValues?: { added: string[]; removed: string[] };
   /**
    * Pre-mutation remote state captured during plan-time read. `null` means
    * the target item did not exist at plan time. Used by rollback to
@@ -98,6 +242,22 @@ export interface PlanSummary {
   update: number;
   skip: number;
   error: number;
+  /**
+   * Count of PruneChildren actions that emitted a non-empty delete list.
+   * Independent of mode — both `"warn"` (rehearsal) and `"delete"`
+   * (executable) contribute, because both surface a prune list the
+   * operator must reckon with before the next push.
+   */
+  prune: number;
+  /**
+   * Count of actions blocked by three-way merge conflict detection —
+   * the recipe would clobber an author edit (and `--conflict-policy`
+   * was the default `error`). Non-zero means apply is blocked for at
+   * least one op in the recipe; the operator must reconcile or pick a
+   * non-default policy. Always 0 when the planner ran without a
+   * baseline.
+   */
+  conflict: number;
 }
 
 export interface Plan {
@@ -141,6 +301,55 @@ export interface PlanOptions {
    * already made earlier in the push.
    */
   pathItemIdCache?: Map<string, string>;
+  /**
+   * Operator override for which languages prune-rollback snapshots
+   * capture per-(language, version) fields in. The first entry is
+   * treated as the "default language" used by the rollback path's
+   * inverse `createItem`.
+   *
+   * When **unset (undefined)**, the planner auto-discovers the tenant's
+   * configured language set via `client.getTenantLanguages` (queries
+   * the GraphQL root `languages { nodes { name } }` connection). The
+   * XM Cloud Authoring schema doesn't expose item-level `Item.languages`
+   * — the planner enumerates tenant languages and probes each per item
+   * via `getItemVersions` to filter out the ones the item isn't
+   * authored in. Schema unsupported / network failure → safely falls
+   * back to `["en"]` (the client's catch block).
+   *
+   * When **explicitly set** (even to a single-language array), skips
+   * auto-discovery and uses exactly the provided list — gives
+   * operators a way to bound snapshot cost on tenants where discovery
+   * would return languages they don't care to back up.
+   */
+  snapshotLanguages?: readonly string[];
+  /**
+   * Three-way merge baseline — the previous successful push's
+   * per-field value hashes. When provided, `computeFieldDrift`
+   * classifies each drift entry as `recipe-change`, `cms-edit`, or
+   * `conflict` (see `FieldDiffEntry.classification`); ops whose desired
+   * field write would clobber a `cms-edit` or `conflict` field route to
+   * the new `"conflict"` status instead of `"update"`.
+   *
+   * Pass `undefined` (the default) or `indexBaseline(null)` for legacy
+   * two-way-diff behaviour: every divergence is recipe-wins, no
+   * conflict surface.
+   */
+  baselineIndex?: BaselineIndex;
+  /**
+   * How `"conflict"` actions resolve when downgraded to a concrete
+   * mutation status:
+   *
+   *   - `"error"` (default) — keep status `"conflict"`. The executor
+   *     refuses to apply; the operator must reconcile manually.
+   *   - `"recipe-wins"` — downgrade to `"update"`, clobbering the
+   *     author's edit. Matches the legacy two-way behaviour.
+   *   - `"cms-wins"` — downgrade to `"skip"`, preserving the author's
+   *     edit and dropping the recipe-side change for this push.
+   *
+   * The flag only matters when a baseline is loaded. Without one, every
+   * drift surfaces as `"update"` regardless of policy.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 const lookupField = (
@@ -201,10 +410,47 @@ const toUpdateItemInput = (itemId: string, fields: FieldValue[]): UpdateItemInpu
   return input;
 };
 
+/**
+ * Classify a single drift entry against the baseline (three-way merge).
+ * Returns `undefined` when no baseline is loaded — the caller leaves
+ * `FieldDiffEntry.classification` unset and the legacy recipe-wins
+ * behaviour applies.
+ *
+ * Layout fields (`__Renderings` / `__Final Renderings`) classify the
+ * same way as plain fields — the baseline hash for them uses
+ * `hashFieldValueForBaseline`, which parses the XML through
+ * `parseLayoutXml` and serialises to a deterministic JSON form before
+ * hashing. That collapses canonical vs SXA-delta wire form differences
+ * so push + read round-trip cleanly. `layoutXmlEquivalent` still
+ * handles the "before/after" raw-XML structural compare for the diff
+ * `before`/`after` strings.
+ */
+const classifyAgainstBaseline = (
+  itemRefKey: string | undefined,
+  fieldId: string,
+  fieldName: string | undefined,
+  language: string | undefined,
+  version: number | undefined,
+  recipeHash: string,
+  tenantHash: string,
+  baselineIndex: BaselineIndex | undefined
+): FieldDiffEntry["classification"] | undefined => {
+  if (!baselineIndex || itemRefKey === undefined) return undefined;
+  const baselineHash = baselineIndex.lookup(itemRefKey, fieldId, fieldName, language, version);
+  if (baselineHash === undefined) return "first-push";
+  const tenantMatchesBaseline = baselineHash === tenantHash;
+  const recipeMatchesBaseline = baselineHash === recipeHash;
+  if (tenantMatchesBaseline) return "recipe-change";
+  if (recipeMatchesBaseline) return "cms-edit";
+  return "conflict";
+};
+
 const computeFieldDrift = (
   desired: FieldValue[],
   remote: RemoteItem,
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  itemRefKey?: string,
+  baselineIndex?: BaselineIndex
 ): FieldDiffEntry[] => {
   const drift: FieldDiffEntry[] = [];
   for (const field of desired) {
@@ -224,6 +470,22 @@ const computeFieldDrift = (
         after: want,
         language: field.language,
         version: field.version,
+        ...(baselineIndex && itemRefKey !== undefined
+          ? {
+              classification: classifyAgainstBaseline(
+                itemRefKey,
+                field.fieldId,
+                field.fieldName,
+                field.language,
+                field.version,
+                hashFieldValueForBaseline(field.fieldId, want),
+                // No tenant value → distinct from any hash → forces
+                // recipe-change vs first-push purely on baseline presence.
+                "",
+                baselineIndex
+              ),
+            }
+          : {}),
       });
       continue;
     }
@@ -232,21 +494,116 @@ const computeFieldDrift = (
     // SXA delta, plus baseline `<p:da>` directives). A raw string
     // compare would report a phantom update on every re-push, so diff
     // them structurally — same placements ⇒ no drift.
+    //
+    // Performance: parse each side ONCE per drift, then reuse the
+    // parsed values for both the equivalence check AND the canonical
+    // hash. Without dedup the drift path parses each value twice
+    // (once in `layoutXmlEquivalent`, once in
+    // `hashFieldValueForBaseline → canonicaliseLayoutXml`); for
+    // multi-lang/multi-version Pages with many layout cells that 4×
+    // parse cost compounded.
     const isLayoutField =
       field.fieldId === LAYOUT_FIELDS.RENDERINGS ||
       field.fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS;
-    const equal = isLayoutField ? layoutXmlEquivalent(found.value, want) : found.value === want;
+    let wantParsed: ParsedLayout | undefined;
+    let foundParsed: ParsedLayout | undefined;
+    if (isLayoutField) {
+      try {
+        wantParsed = parseLayoutXml(want);
+        foundParsed = parseLayoutXml(found.value);
+      } catch {
+        // One side failed to parse — fall back to the slower path,
+        // which itself catches + degrades to string equality.
+      }
+    }
+    const equal = isLayoutField
+      ? wantParsed && foundParsed
+        ? layoutXmlEquivalentFromParsed(wantParsed, foundParsed)
+        : layoutXmlEquivalent(found.value, want)
+      : found.value === want;
     if (!equal) {
+      const classification = classifyAgainstBaseline(
+        itemRefKey,
+        field.fieldId,
+        field.fieldName,
+        field.language,
+        field.version,
+        hashFieldValueForBaseline(field.fieldId, want, wantParsed),
+        hashFieldValueForBaseline(field.fieldId, found.value, foundParsed),
+        baselineIndex
+      );
       drift.push({
         fieldId: field.fieldId,
         before: found.value,
         after: want,
         language: field.language,
         version: field.version,
+        ...(classification !== undefined && { classification }),
       });
     }
   }
   return drift;
+};
+
+/**
+ * Reduce a drift array (with optional baseline classifications) to a
+ * resolved status under the given conflict policy.
+ *
+ *   - No drift → `null` (caller emits the existing `"skip"` action).
+ *   - No baseline → legacy `"update"` regardless of policy.
+ *   - All drift is `recipe-change` or `first-push` → safe `"update"`.
+ *   - Any drift is `conflict` → applies the policy:
+ *       error → `"conflict"`; recipe-wins → `"update"`; cms-wins → `"skip"`.
+ *   - Otherwise drift contains `cms-edit` (but no `conflict`):
+ *       error → `"conflict"`; recipe-wins → `"update"`; cms-wins → `"skip"`.
+ *     `cms-edit` flips to `"conflict"` under default policy because
+ *     applying the recipe value WOULD overwrite the author's edit —
+ *     even though the recipe value matches the baseline. (The recipe
+ *     didn't change, but the tenant did; the operator should know.)
+ *
+ * The caller still owns mutation construction; this helper is purely
+ * the status reducer.
+ */
+const resolveConflictStatus = (
+  drift: FieldDiffEntry[],
+  conflictPolicy: PlanOptions["conflictPolicy"]
+): { status: "update" | "conflict" | "skip"; reason?: string } => {
+  const classifications = drift
+    .map((d) => d.classification)
+    .filter((c): c is NonNullable<FieldDiffEntry["classification"]> => c !== undefined);
+  if (classifications.length === 0) {
+    // No baseline classifications → legacy behaviour: every drift is
+    // recipe-wins update.
+    return { status: "update" };
+  }
+  const hasConflict = classifications.includes("conflict");
+  const hasCmsEdit = classifications.includes("cms-edit");
+  if (!hasConflict && !hasCmsEdit) {
+    return { status: "update" };
+  }
+  const policy = conflictPolicy ?? "error";
+  if (policy === "recipe-wins") {
+    return {
+      status: "update",
+      reason: hasConflict
+        ? "conflict resolved as recipe-wins (clobbering author edit AND recipe change)"
+        : "cms-edit overridden as recipe-wins (clobbering author edit)",
+    };
+  }
+  if (policy === "cms-wins") {
+    return {
+      status: "skip",
+      reason: hasConflict
+        ? "conflict resolved as cms-wins (preserving author edit; recipe change dropped)"
+        : "cms-edit preserved as cms-wins (recipe value matches baseline; tenant ahead)",
+    };
+  }
+  return {
+    status: "conflict",
+    reason: hasConflict
+      ? "conflict: tenant and recipe both diverged from baseline — pass --conflict-policy=recipe-wins or =cms-wins to resolve"
+      : "cms-edit: author edited tenant after last push; recipe would clobber. Pass --conflict-policy=recipe-wins or =cms-wins to resolve",
+  };
 };
 
 /**
@@ -369,7 +726,9 @@ const planCreateItem = (
   op: CreateItemOp,
   remote: RemoteItem | null,
   index: number,
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  baselineIndex?: BaselineIndex,
+  conflictPolicy?: PlanOptions["conflictPolicy"]
 ): PlannedAction => {
   if (!remote) {
     const parent = resolveCreateItemParent(op, capturedItemIds);
@@ -438,7 +797,7 @@ const planCreateItem = (
       reason: "Item already exists and policy is CreateOnly.",
     };
   }
-  const drift = computeFieldDrift(op.fields, remote, capturedItemIds);
+  const drift = computeFieldDrift(op.fields, remote, capturedItemIds, op.id, baselineIndex);
   if (drift.length === 0) {
     return {
       index,
@@ -454,11 +813,31 @@ const planCreateItem = (
     op.fields.filter((f) => driftedSet.has(`${f.fieldId}:${f.language ?? ""}:${f.version ?? ""}`)),
     capturedItemIds
   );
+  const resolved = resolveConflictStatus(drift, conflictPolicy);
+  if (resolved.status === "skip") {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: resolved.reason ?? "Conflict resolved as cms-wins.",
+      diff: drift,
+    };
+  }
+  if (resolved.status === "conflict") {
+    return {
+      index,
+      operation: op,
+      status: "conflict",
+      reason: resolved.reason,
+      diff: drift,
+    };
+  }
   return {
     index,
     operation: op,
     status: "update",
     diff: drift,
+    ...(resolved.reason && { reason: resolved.reason }),
     mutation: {
       kind: "updateItem",
       input: toUpdateItemInput(remote.itemId, fieldsToSet),
@@ -473,7 +852,9 @@ const planUpdateOp = (
   desiredFields: FieldValue[],
   policy: PushPolicy,
   remote: RemoteItem | null,
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  baselineIndex?: BaselineIndex,
+  conflictPolicy?: PlanOptions["conflictPolicy"]
 ): PlannedAction => {
   if (!remote) {
     return {
@@ -483,7 +864,13 @@ const planUpdateOp = (
       reason: `Target item (refKey ${itemRefKey}) not yet captured/created.`,
     };
   }
-  const drift = computeFieldDrift(desiredFields, remote, capturedItemIds);
+  const drift = computeFieldDrift(
+    desiredFields,
+    remote,
+    capturedItemIds,
+    itemRefKey,
+    baselineIndex
+  );
   if (drift.length === 0) {
     return {
       index,
@@ -503,11 +890,31 @@ const planUpdateOp = (
       };
     }
   }
+  const resolved = resolveConflictStatus(drift, conflictPolicy);
+  if (resolved.status === "skip") {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: resolved.reason ?? "Conflict resolved as cms-wins.",
+      diff: drift,
+    };
+  }
+  if (resolved.status === "conflict") {
+    return {
+      index,
+      operation: op,
+      status: "conflict",
+      reason: resolved.reason,
+      diff: drift,
+    };
+  }
   return {
     index,
     operation: op,
     status: "update",
     diff: drift,
+    ...(resolved.reason && { reason: resolved.reason }),
     mutation: {
       kind: "updateItem",
       input: toUpdateItemInput(remote.itemId, resolveAll(desiredFields, capturedItemIds)),
@@ -562,6 +969,12 @@ const lookupSelector = (
     refKey = op.itemRefKey;
   } else if (op.op === "SetStandardValues") {
     refKey = op.templateRefKey;
+  } else if (op.op === "PruneChildren") {
+    // PruneChildren targets the parent container, not a field on it.
+    // The planner only needs the parent's itemId so it can call
+    // getChildren — there's no remote-state diff to read on the parent
+    // itself, so the dispatch loop's later getItem call is incidental.
+    refKey = op.parentRefKey;
   } else {
     // AppendToMultiList / AddItemVersion — target item keyed by itemRefKey.
     refKey = op.itemRefKey;
@@ -592,7 +1005,20 @@ export const buildAction = async (
   client: AuthoringApiClient,
   capturedItemIds: Map<string, string>,
   sitesClient?: SitesApiClient,
-  pathSnapshotCache?: Map<string, RemoteItem | null>
+  pathSnapshotCache?: Map<string, RemoteItem | null>,
+  /**
+   * Operator override for prune-rollback snapshot languages. Forwarded
+   * to `planPruneChildren`. Leave undefined to let the planner
+   * auto-discover via `client.getTenantLanguages` once per push.
+   */
+  snapshotLanguages?: readonly string[],
+  /**
+   * Three-way merge baseline + conflict policy. Forwarded to
+   * `planCreateItem` / `planUpdateOp` so per-field drift classifies as
+   * `recipe-change` / `cms-edit` / `conflict` and routes per the policy.
+   */
+  baselineIndex?: BaselineIndex,
+  conflictPolicy?: PlanOptions["conflictPolicy"]
 ): Promise<PlannedAction> => {
   const cachedReadByPath = async (path: string): Promise<RemoteItem | null> => {
     if (pathSnapshotCache?.has(path)) {
@@ -618,6 +1044,15 @@ export const buildAction = async (
     const lateRemote = await cachedReadByPath(op.latePath);
     if (lateRemote) {
       capturedItemIds.set(op.itemRefKey, lateRemote.itemId);
+    }
+  }
+  // PruneChildren resolves its parent the same way — the container is
+  // typically pre-existing tenant scaffolding the recipe doesn't itself
+  // create (e.g. a Section folder, a Renderings folder).
+  if (op.op === "PruneChildren" && op.latePath && !capturedItemIds.has(op.parentRefKey)) {
+    const lateRemote = await cachedReadByPath(op.latePath);
+    if (lateRemote) {
+      capturedItemIds.set(op.parentRefKey, lateRemote.itemId);
     }
   }
 
@@ -691,7 +1126,7 @@ export const buildAction = async (
   const action = await (async (): Promise<PlannedAction> => {
     switch (op.op) {
       case "CreateItem":
-        return planCreateItem(op, remote, index, capturedItemIds);
+        return planCreateItem(op, remote, index, capturedItemIds, baselineIndex, conflictPolicy);
       case "SetField":
         return planUpdateOp(
           index,
@@ -700,7 +1135,9 @@ export const buildAction = async (
           setFieldDesired(op),
           op.policy,
           remote,
-          capturedItemIds
+          capturedItemIds,
+          baselineIndex,
+          conflictPolicy
         );
       case "SetBaseTemplates":
         return planUpdateOp(
@@ -710,7 +1147,9 @@ export const buildAction = async (
           setBaseTemplatesDesired(op),
           op.policy,
           remote,
-          capturedItemIds
+          capturedItemIds,
+          baselineIndex,
+          conflictPolicy
         );
       case "SetStandardValues":
         return planUpdateOp(
@@ -720,7 +1159,9 @@ export const buildAction = async (
           setStandardValuesDesired(op),
           op.policy,
           remote,
-          capturedItemIds
+          capturedItemIds,
+          baselineIndex,
+          conflictPolicy
         );
       case "CreateSiteFromTemplate":
         return planCreateSite(index, op, capturedItemIds, sitesClient);
@@ -728,6 +1169,8 @@ export const buildAction = async (
         return planAppendToMultiList(index, op, remote, capturedItemIds);
       case "AddItemVersion":
         return planAddItemVersion(index, op, remote, client);
+      case "PruneChildren":
+        return planPruneChildren(index, op, capturedItemIds, client, snapshotLanguages);
     }
   })();
   return { ...action, snapshot: remote };
@@ -802,6 +1245,48 @@ const planAppendToMultiList = (
   });
   const existing = parseMultiList(found?.value ?? null);
   const existingSet = new Set(existing);
+  const desiredSet = new Set(desired);
+
+  if (op.appendPolicy === "replace") {
+    // Exclusive ownership: the recipe set's `values` IS the full list.
+    // Anything in existing but not in desired gets removed; anything in
+    // desired but not in existing gets added. Order in the wire format
+    // follows desired (recipe-driven order) — Sitecore multi-lists are
+    // semantically unordered.
+    const added = desired.filter((g) => !existingSet.has(g));
+    const removed = existing.filter((g) => !desiredSet.has(g));
+    if (added.length === 0 && removed.length === 0) {
+      return {
+        index,
+        operation: op,
+        status: "skip",
+        reason: "Multi-list already matches desired set (replace policy).",
+        replacedListValues: { added: [], removed: [] },
+      };
+    }
+    const updatedField: FieldValue = {
+      fieldId: op.fieldId,
+      ...(op.fieldName !== undefined && { fieldName: op.fieldName }),
+      value: { kind: "string", value: formatMultiList(desired) },
+    };
+    return {
+      index,
+      operation: op,
+      status: "update",
+      diff: [
+        {
+          fieldId: op.fieldId,
+          before: found?.value ?? null,
+          after: formatMultiList(desired),
+        },
+      ],
+      mutation: {
+        kind: "updateItem",
+        input: toUpdateItemInput(remote.itemId, [updatedField]),
+      },
+      replacedListValues: { added, removed },
+    };
+  }
 
   const additions = desired.filter((g) => !existingSet.has(g));
   if (additions.length === 0) {
@@ -834,6 +1319,267 @@ const planAppendToMultiList = (
     mutation: {
       kind: "updateItem",
       input: toUpdateItemInput(remote.itemId, [updatedField]),
+    },
+  };
+};
+
+/**
+ * Plan a `PruneChildren` op. Reads the parent's live children, computes
+ * the set difference against `allowedHandles` (resolving recipe refs
+ * first), and emits a `pruneChildren` mutation listing the itemIds that
+ * would be removed.
+ *
+ * The op's `mode` and the executor's `--allow-prune` are independent
+ * consent layers: the planner emits the same prune list either way, and
+ * the executor decides whether to actually delete based on the
+ * combination. This keeps the plan output honest under `--what-if` —
+ * authors see the full prune list before either gate flips.
+ *
+ * Idempotence: when nothing under the parent is unaccounted for, the
+ * action is `skip` so a re-push is a no-op once convergence is reached.
+ */
+const planPruneChildren = async (
+  index: number,
+  op: PruneChildrenOp,
+  capturedItemIds: ReadonlyMap<string, string>,
+  client: AuthoringApiClient,
+  /**
+   * Operator override for languages to capture per-(language, version)
+   * field snapshots in. When `undefined`, planPruneChildren auto-
+   * discovers the tenant's language set via `client.getTenantLanguages`
+   * (one wire call per op, cached on the client for the run). When
+   * explicitly set (even to `["en"]`), skips auto-discovery and uses
+   * exactly the provided list — gives operators a way to bound
+   * snapshot cost on tenants where discovery would return languages
+   * they don't care to back up.
+   */
+  snapshotLanguages?: readonly string[]
+): Promise<PlannedAction> => {
+  const parentItemId = capturedItemIds.get(op.parentRefKey);
+  if (!parentItemId) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Parent (refKey ${op.parentRefKey}) not yet captured/created — prune skipped this push.`,
+    };
+  }
+
+  // Resolve every allowed entry to a concrete itemId. ref-recipe entries
+  // not yet captured (e.g. the corresponding CreateItem hasn't run in
+  // plan-mode preview) are dropped from the allowlist with a warning —
+  // they would NOT cause a real prune at apply time because the executor
+  // interleaves plan/apply, so this branch is only reachable during
+  // plan-only previews against an empty tenant.
+  // Normalize GUIDs via `dashifyGuid` on both sides of every comparison —
+  // Sitecore's Authoring API returns templateId/itemId WITHOUT dashes
+  // (e.g. `0437fee244c946a6abe928858d9fee8c`) while scai's
+  // `SITECORE_TEMPLATES.*` constants and recipe-author hand-written
+  // `ref-guid` entries are in canonical dashed form
+  // (`0437fee2-44c9-46a6-abe9-28858d9fee8c`). Caught live against
+  // TestDemo 2026-06-02: a `templateFilter: [TEMPLATE_FOLDER]` against
+  // children Sitecore returned with undashed templateIds was excluding
+  // every orphan, silently turning the prune into a skip.
+  // `dashifyGuid` is idempotent — works on either form.
+  const allowedSet = new Set<string>();
+  const unresolved: string[] = [];
+  for (const entry of op.allowedHandles) {
+    if (entry.kind === "ref-guid") {
+      allowedSet.add(dashifyGuid(entry.value));
+      continue;
+    }
+    const itemId = capturedItemIds.get(entry.refKey);
+    if (itemId) {
+      allowedSet.add(dashifyGuid(itemId));
+    } else {
+      unresolved.push(entry.refKey);
+    }
+  }
+
+  const children = await client.getChildren({ itemId: parentItemId });
+  const templateAllow = op.templateFilter
+    ? new Set(op.templateFilter.map((g) => dashifyGuid(g)))
+    : null;
+
+  const toPrune = children.filter((child) => {
+    if (allowedSet.has(dashifyGuid(child.itemId))) return false;
+    if (templateAllow && !templateAllow.has(dashifyGuid(child.templateId))) return false;
+    return true;
+  });
+
+  if (toPrune.length === 0) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason:
+        unresolved.length > 0
+          ? `No prune candidates (plan-mode preview: ${unresolved.length} allowedHandles not yet captured).`
+          : "All children under parent are in allowedHandles (or filtered out by templateFilter).",
+    };
+  }
+
+  const itemIds = toPrune.map((c) => c.itemId);
+
+  // Recursive snapshot: walk each top-level prune candidate's subtree
+  // depth-first so rollback can restore not just the candidates but
+  // their descendants too. Each level costs one getChildren call PLUS
+  // one getItem per (language, version) for the per-version field
+  // capture. Cost scales as O(subtree-size * L * V) — bounded by what
+  // an exclusive ownership declaration's prune set actually contains.
+  // Resolve the language set ONCE for this prune op:
+  //  - When the operator passed an explicit `snapshotLanguages`, honor
+  //    it exactly (skip auto-discovery, bound the cost).
+  //  - Otherwise auto-discover via `client.getTenantLanguages` — the
+  //    XM Cloud Authoring schema exposes a tenant-level `languages`
+  //    connection (verified 2026-06-01 via scripts/_recon-item-languages.ts).
+  //    `Item.languages` does NOT exist on that schema, so item-level
+  //    discovery isn't possible; the planner instead enumerates every
+  //    tenant language and then per-item per-language probes via
+  //    `getItemVersions` filter out the ones the item isn't actually
+  //    authored in.
+  //  - The real client caches the tenant-languages result for its
+  //    lifetime, and falls back to `["en"]` on any failure (schema
+  //    doesn't expose `languages`, network error, etc.).
+  const candidateLanguages: readonly string[] =
+    snapshotLanguages ?? (await client.getTenantLanguages());
+
+  const snapshot = async (item: RemoteItem): Promise<PrunedItemSnapshot> => {
+    const languagesForItem = candidateLanguages;
+    // Capture per-(language, version) field snapshots in TWO round trips
+    // (down from the previous L sequential getItemVersions + V_actual
+    // sequential getItem):
+    //
+    //   Pass 1: getItemPerLanguageBatch — one aliased GraphQL query
+    //     returns every requested language's version stack PLUS the
+    //     latest-version fields. For tenants with single-version-per-
+    //     language content this is the only round trip needed.
+    //
+    //   Pass 2: getItemAtVersionsBatch — only fires when at least one
+    //     language has multiple versions. One aliased query collects
+    //     fields for every (language, version) tuple NOT already
+    //     covered by pass 1's latest-fields.
+    //
+    // Worst case (3 languages × 3 versions each): 2 round trips per
+    // item, down from 12 (3 getItemVersions + 9 getItem). Best case
+    // (1 lang, 1 version): 1 round trip, down from 2.
+    const sharedFieldsById = new Map<string, RemoteFieldValue>();
+    const versions: PrunedItemSnapshot["versions"] = [];
+    // Read failures here are NOT caught silently. The previous
+    // implementation fell back to `[]` and synthesized a snapshot from
+    // the parent `getChildren` response — but those fields are only the
+    // default-language latest version, which the rollback path would
+    // then have stuffed into whichever language slot the fallback chose.
+    // That's silent rollback-state corruption: the operator sees a
+    // clean snapshot at plan time and a wrong-fields restoration after
+    // an apply abort. Propagating the error errs the prune action and
+    // surfaces the failure in the plan output.
+    const perLang = await client.getItemPerLanguageBatch({ itemId: item.itemId }, languagesForItem);
+
+    // Index pass-1 results by (language, latestVersion) so we can pull
+    // their fields without a pass-2 read.
+    const latestByKey = new Map<string, RemoteItem>();
+    const tuplesNeedingPass2: Array<{ language: string; version: number }> = [];
+    for (const entry of perLang) {
+      if (entry.versions.length === 0 || !entry.item) continue;
+      const latest = entry.versions[entry.versions.length - 1];
+      latestByKey.set(`${entry.language}@${latest}`, entry.item);
+      for (const v of entry.versions) {
+        if (v !== latest) tuplesNeedingPass2.push({ language: entry.language, version: v });
+      }
+    }
+
+    // Same propagate-don't-swallow rule for pass 2 reads.
+    const pass2 =
+      tuplesNeedingPass2.length > 0
+        ? await client.getItemAtVersionsBatch({ itemId: item.itemId }, tuplesNeedingPass2)
+        : [];
+
+    // Collect each (language, version) tuple's fields, deduping shared
+    // fields across reads. Order matches `perLang` traversal so the
+    // first language's v1 ends up first in `versions` — which the
+    // inverse-mutation builder relies on for picking the default
+    // createItem language.
+    const collectFromItem = (
+      language: string,
+      version: number,
+      remote: RemoteItem | null
+    ): void => {
+      if (!remote) return;
+      const versionedFields: RemoteFieldValue[] = [];
+      for (const f of remote.fields) {
+        const isShared = f.language === undefined && f.version === undefined;
+        if (isShared) {
+          if (!sharedFieldsById.has(f.fieldId)) sharedFieldsById.set(f.fieldId, f);
+          continue;
+        }
+        versionedFields.push(f);
+      }
+      versions.push({ language, version, fields: versionedFields });
+    };
+
+    let pass2Cursor = 0;
+    for (const entry of perLang) {
+      if (entry.versions.length === 0) continue;
+      const latest = entry.versions[entry.versions.length - 1];
+      for (const v of entry.versions) {
+        if (v === latest) {
+          collectFromItem(entry.language, v, latestByKey.get(`${entry.language}@${v}`) ?? null);
+        } else {
+          collectFromItem(entry.language, v, pass2[pass2Cursor] ?? null);
+          pass2Cursor += 1;
+        }
+      }
+    }
+    // If NO requested language returned any versions, the item exists
+    // at the lookup level but has zero authored content under
+    // `languagesForItem`. Two scenarios:
+    //   - Operator set `snapshotLanguages` explicitly to a list that
+    //     doesn't include the item's actual languages. Operator config
+    //     mismatch — fail loudly so they know to widen the list.
+    //   - Auto-discovery via getTenantLanguages returned a set that
+    //     somehow doesn't intersect with the item's languages. Tenant
+    //     inconsistency — fail loudly rather than silently picking a
+    //     wrong language and stuffing parent-getChildren fields into
+    //     the wrong slot at rollback time.
+    if (versions.length === 0) {
+      throw createScaiError(
+        `PruneChildren snapshot: item '${item.path}' (${item.itemId}) has no versions in any of [${languagesForItem.join(", ")}]. ` +
+          (snapshotLanguages
+            ? "Widen --snapshot-languages to include this item's actual language(s), or exclude it from the prune."
+            : "Auto-discovery returned tenant languages that don't cover this item — explicit --snapshot-languages may be needed."),
+        "INPUT_INVALID"
+      );
+    }
+
+    const childItems = await client.getChildren({ itemId: item.itemId });
+    const children = await Promise.all(childItems.map((c) => snapshot(c)));
+    return {
+      itemId: item.itemId,
+      path: item.path,
+      templateId: item.templateId,
+      name: item.name,
+      parentId: item.parentId,
+      sharedFields: Array.from(sharedFieldsById.values()),
+      versions,
+      children,
+    };
+  };
+  const prunedItems = await Promise.all(toPrune.map((c) => snapshot(c)));
+
+  return {
+    index,
+    operation: op,
+    status: "prune",
+    reason:
+      op.mode === "warn"
+        ? "Rehearsal: apply will surface this prune list but skip the actual delete."
+        : `Apply will delete ${itemIds.length} item${itemIds.length === 1 ? "" : "s"} (subject to --allow-prune).`,
+    prunedItems,
+    mutation: {
+      kind: "pruneChildren",
+      itemIds,
+      mode: op.mode,
     },
   };
 };
@@ -973,7 +1719,7 @@ export const buildPlan = async (
   options: PlanOptions = {}
 ): Promise<Plan> => {
   const actions: PlannedAction[] = [];
-  const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0 };
+  const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0, prune: 0, conflict: 0 };
   const capturedItemIds = options.capturedItemIds ?? new Map<string, string>();
 
   for (let index = 0; index < ir.operations.length; index += 1) {
@@ -987,7 +1733,10 @@ export const buildPlan = async (
         client,
         capturedItemIds,
         options.sitesClient,
-        options.pathSnapshotCache
+        options.pathSnapshotCache,
+        options.snapshotLanguages,
+        options.baselineIndex,
+        options.conflictPolicy
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

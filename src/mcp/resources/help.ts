@@ -149,7 +149,6 @@ Op IR that the planner diffs against the live tenant.
 - \`content-template\` — Content template with field shapes.
 - \`content-item\` — Content item under \`contentItemsRoot\`.
 - \`design-parameters-template\` — Presentation parameter template.
-- \`section-definition\` — Section grouping for a template.
 - \`partial-design\` — Partial design composition.
 - \`page-design\` — Page design composition.
 - \`site-template\` — Site template (dictionaries + taxonomies).

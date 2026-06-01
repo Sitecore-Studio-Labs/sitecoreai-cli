@@ -88,7 +88,6 @@ const PAGE_TEMPLATE_KINDS: readonly RecipeKind[] = ["page-template"];
 const PAGE_KINDS: readonly RecipeKind[] = ["page"];
 const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
 const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["design-parameters-template"];
-const SECTION_DEFINITION_KINDS: readonly RecipeKind[] = ["section-definition"];
 const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
 const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
 const SITE_TEMPLATE_KINDS: readonly RecipeKind[] = ["site-template"];
@@ -100,7 +99,6 @@ const ANY_KINDS: readonly RecipeKind[] = [
   "page",
   "placeholder",
   "design-parameters-template",
-  "section-definition",
   "partial-design",
   "page-design",
 ];
@@ -394,9 +392,6 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         recipe.children?.allowedHandles.forEach((handle, idx) => {
           checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);
         });
-        recipe.availableIn?.forEach((handle, idx) => {
-          checkRef(recipe.handle, `availableIn.${idx}`, handle, SECTION_DEFINITION_KINDS);
-        });
         (recipe.placeholders ?? []).forEach((slot, idx) => {
           // Both `allowedComponents` and the registry-side alias
           // `allowedRenderingHandles` flow through
@@ -423,10 +418,6 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
             );
           });
         });
-        break;
-      case "section-definition":
-        // Section definitions don't carry cross-recipe references — they
-        // ARE the resolution target for `availableIn`.
         break;
       case "content-template":
         recipe.fields.forEach((field, idx) => {

@@ -1335,3 +1335,223 @@ describe("createAuthoringClient — createItem input + parent resolution branche
     expect(result.itemId).toBe("twin-id-aaaaaaaaaaaaaaaaaaaa");
   });
 });
+
+describe("createAuthoringClient — getTenantLanguages (audit gap #12)", () => {
+  it("queries `languages { nodes { name } }` and returns the list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: {
+          languages: { nodes: [{ name: "en" }, { name: "fr" }, { name: "ar-SA" }] },
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const langs = await client.getTenantLanguages();
+    expect(langs).toEqual(["en", "fr", "ar-SA"]);
+    // Query body assertion.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.query).toMatch(/languages\s*\{\s*nodes\s*\{\s*name\s*\}\s*\}/);
+  });
+
+  it("falls back to ['en'] when the schema doesn't expose `languages` (gracefully catches the GraphQL error)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        errors: [{ message: "Cannot query field 'languages' on type 'Query'." }],
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    // Real client's catch block is the audit-gap target — assert the
+    // safety net default fires.
+    const langs = await client.getTenantLanguages();
+    expect(langs).toEqual(["en"]);
+  });
+
+  it("returns ['en'] when the connection is empty (no languages configured)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ data: { languages: { nodes: [] } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const langs = await client.getTenantLanguages();
+    expect(langs).toEqual(["en"]);
+  });
+
+  it("caches the result — second call does NOT re-hit fetch", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({ data: { languages: { nodes: [{ name: "en" }, { name: "fr" }] } } })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    await client.getTenantLanguages();
+    await client.getTenantLanguages();
+    await client.getTenantLanguages();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("prepends 'en' when discovery returns languages without it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({ data: { languages: { nodes: [{ name: "fr" }, { name: "de" }] } } })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const langs = await client.getTenantLanguages();
+    // Safety net: 'en' is the inverse createItem default; always there.
+    expect(langs[0]).toBe("en");
+    expect(langs).toContain("fr");
+    expect(langs).toContain("de");
+  });
+});
+
+describe("createAuthoringClient — getItemPerLanguageBatch (audit gap #13)", () => {
+  it("emits a single aliased query with one `langN` alias per requested language", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: {
+          lang0: {
+            itemId: "11111111-1111-1111-1111-111111111111",
+            name: "Item",
+            path: "/sitecore/x",
+            parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+            template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+            fields: { nodes: [] },
+            versions: [{ version: 1 }],
+          },
+          lang1: null,
+          lang2: null,
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemPerLanguageBatch(
+      { itemId: "11111111-1111-1111-1111-111111111111" },
+      ["en", "fr", "de"]
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    // Three aliases produced from three input languages.
+    expect(body.query).toMatch(/lang0:\s*item\(where:\s*\{[^}]*language:\s*\$lang0[^}]*\}/);
+    expect(body.query).toMatch(/lang1:\s*item\(where:\s*\{[^}]*language:\s*\$lang1[^}]*\}/);
+    expect(body.query).toMatch(/lang2:\s*item\(where:\s*\{[^}]*language:\s*\$lang2[^}]*\}/);
+    // Variables are bound positionally.
+    expect(body.variables).toMatchObject({
+      itemId: "11111111-1111-1111-1111-111111111111",
+      lang0: "en",
+      lang1: "fr",
+      lang2: "de",
+    });
+    // Response mapping: en → has item; fr + de → null.
+    expect(result).toHaveLength(3);
+    expect(result[0].language).toBe("en");
+    expect(result[0].item?.name).toBe("Item");
+    expect(result[1].item).toBeNull();
+    expect(result[2].item).toBeNull();
+  });
+
+  it("returns empty array (no wire call) when languages list is empty", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemPerLanguageBatch({ itemId: "x" }, []);
+    expect(result).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("createAuthoringClient — getItemAtVersionsBatch (audit gap #13)", () => {
+  it("emits a single aliased query with one `rN` alias per (language, version) tuple", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: {
+          r0: {
+            itemId: "11111111-1111-1111-1111-111111111111",
+            name: "X",
+            path: "/x",
+            parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+            template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+            fields: { nodes: [] },
+          },
+          r1: null,
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemAtVersionsBatch(
+      { itemId: "11111111-1111-1111-1111-111111111111" },
+      [
+        { language: "en", version: 1 },
+        { language: "fr", version: 2 },
+      ]
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.query).toMatch(
+      /r0:\s*item\(where:\s*\{[^}]*language:\s*\$lang0,\s*version:\s*\$ver0/
+    );
+    expect(body.query).toMatch(
+      /r1:\s*item\(where:\s*\{[^}]*language:\s*\$lang1,\s*version:\s*\$ver1/
+    );
+    expect(body.variables).toMatchObject({
+      itemId: "11111111-1111-1111-1111-111111111111",
+      lang0: "en",
+      ver0: 1,
+      lang1: "fr",
+      ver1: 2,
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0]?.name).toBe("X");
+    expect(result[1]).toBeNull();
+  });
+
+  it("returns empty array (no wire call) when requests list is empty", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemAtVersionsBatch({ itemId: "x" }, []);
+    expect(result).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("toRemoteItem null-fields guard handles items with no version in the requested language (audit gap #5 regression)", async () => {
+    // Live API returns the item with `fields: null` when no version
+    // exists in (lang, ver). The universal toRemoteItem guard returns
+    // an empty fields array instead of throwing.
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        data: {
+          r0: {
+            itemId: "11111111-1111-1111-1111-111111111111",
+            name: "EmptyLang",
+            path: "/x",
+            parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+            template: { templateId: "ab86861a-6030-46c5-b394-e8f99e8b87db" },
+            fields: null,
+          },
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.getItemAtVersionsBatch({ itemId: "x" }, [
+      { language: "ar-SA", version: 1 },
+    ]);
+    expect(result[0]?.fields).toEqual([]);
+  });
+});

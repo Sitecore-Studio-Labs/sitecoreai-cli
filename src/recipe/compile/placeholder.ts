@@ -18,8 +18,8 @@ import { type CompileContext } from "./shared";
  * Controls)` per unique placeholder key. This per-recipe compiler
  * returns an empty IR; use `compileRecipeSet`.
  *
- * Same pattern as `compileSectionDefinitionRecipe`. The recipe is still
- * parsed here so authors get schema feedback on a single-recipe compile.
+ * The recipe is still parsed here so authors get schema feedback on a
+ * single-recipe compile.
  */
 export function compilePlaceholderRecipe(
   input: PlaceholderRecipe,

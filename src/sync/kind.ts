@@ -53,6 +53,25 @@ export interface SyncContext {
    * comparable side effects.
    */
   skipEnrichment?: boolean;
+  /**
+   * Operator consent to delete items via `PruneChildren` ops with
+   * `mode: "delete"` — same shape as `--allow-prune` on `scai recipe
+   * push`. Without it, the `recipe` kind's `apply` throws
+   * `POLICY_DENIED` on any delete-mode prune in the compiled IR set.
+   *
+   * Only consumed by the `recipe` kind today; other kinds ignore.
+   */
+  allowPrune?: boolean;
+  /**
+   * Operator override for prune-rollback snapshot languages. Mirrors
+   * the `--snapshot-languages` shape on `scai recipe push`. Forwarded
+   * to `executeIr` so the snapshot pass captures the operator-named
+   * languages instead of auto-discovering. Undefined → auto-discover
+   * via the Authoring API's tenant `languages` query.
+   *
+   * Only consumed by the `recipe` kind today; other kinds ignore.
+   */
+  snapshotLanguages?: readonly string[];
 }
 
 /** Outcome of applying a plan. */

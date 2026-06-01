@@ -348,7 +348,6 @@ describe("validateRecipeSet — unresolved handles", () => {
         "page",
         "placeholder",
         "design-parameters-template",
-        "section-definition",
         "partial-design",
         "page-design",
       ],
@@ -830,28 +829,6 @@ describe("validateRecipeSet — component-template extra references", () => {
       fromField: "datasource.template.handle",
       handle: "missing-template@1",
       expectedKinds: ["content-template"],
-      actualKind: undefined,
-    });
-  });
-
-  it("flags an unresolved availableIn section-definition handle", () => {
-    const component: Recipe = {
-      kind: "component-template",
-      schemaVersion: "1",
-      handle: "card@1",
-      name: "Card",
-      displayName: "Card",
-      fields: [],
-      variants: [],
-      params: [],
-      availableIn: ["missing-section@1"],
-    };
-    const result = validateRecipeSet([component]);
-    expect(result.unresolvedHandles).toContainEqual({
-      fromRecipe: "card@1",
-      fromField: "availableIn.0",
-      handle: "missing-section@1",
-      expectedKinds: ["section-definition"],
       actualKind: undefined,
     });
   });

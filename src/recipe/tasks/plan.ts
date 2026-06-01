@@ -21,7 +21,11 @@ export const runRecipePlan = async (options: RecipePlanOptions): Promise<Plan> =
   }
   const ir = await loadIr(options.input);
 
-  const plan = await buildPlan(ir, tenant.client);
+  const plan = await buildPlan(ir, tenant.client, {
+    // Honor the operator's --snapshot-languages on `recipe plan` too;
+    // matches the threading in `recipe push --what-if`.
+    snapshotLanguages: options.snapshotLanguages,
+  });
 
   const inputPath = options.input;
   const outputPath =
@@ -43,6 +47,14 @@ export const runRecipePlan = async (options: RecipePlanOptions): Promise<Plan> =
         status: action.status,
         reason: action.reason,
         diff: action.diff,
+        // Surface prune + multi-list-replace details in the JSON output
+        // too — orchestrator / CI consumers parse this; they need the
+        // full prune list to gate on (e.g. block a deploy if N items
+        // would be removed).
+        ...(action.prunedItems && action.prunedItems.length > 0
+          ? { prunedItems: action.prunedItems }
+          : {}),
+        ...(action.replacedListValues ? { replacedListValues: action.replacedListValues } : {}),
       })),
     });
     return plan;
@@ -52,12 +64,22 @@ export const runRecipePlan = async (options: RecipePlanOptions): Promise<Plan> =
   for (const action of plan.actions) {
     const tag = formatActionTag(action.status);
     logger.info(`  ${tag} ${action.operation.label}${action.reason ? ` — ${action.reason}` : ""}`);
+    if (action.prunedItems && action.prunedItems.length > 0) {
+      for (const pruned of action.prunedItems) {
+        logger.info(`      - ${pruned.path}  (template ${pruned.templateId})`, "yellow");
+      }
+    }
+    if (action.replacedListValues) {
+      for (const guid of action.replacedListValues.added) logger.info(`      + ${guid}`, "green");
+      for (const guid of action.replacedListValues.removed)
+        logger.info(`      - ${guid}`, "yellow");
+    }
   }
   logger.info(
     `  Summary: ${plan.summary.create} create / ${plan.summary.update} update / ${plan.summary.skip} skip${
-      plan.summary.error ? ` / ${plan.summary.error} error` : ""
-    }`,
-    plan.summary.error ? "yellow" : "green"
+      plan.summary.prune ? ` / ${plan.summary.prune} prune` : ""
+    }${plan.summary.error ? ` / ${plan.summary.error} error` : ""}`,
+    plan.summary.error ? "yellow" : plan.summary.prune ? "yellow" : "green"
   );
   logger.info(`  Plan written to ${outputPath}`);
   return plan;
@@ -73,5 +95,9 @@ const formatActionTag = (status: Plan["actions"][number]["status"]): string => {
       return "[ ]";
     case "error":
       return "[!]";
+    case "prune":
+      return "[-]";
+    case "conflict":
+      return "[?]";
   }
 };

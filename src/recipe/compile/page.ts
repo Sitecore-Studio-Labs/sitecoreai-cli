@@ -8,8 +8,10 @@ import {
   renderingId,
   templateId,
   workflowId,
+  workflowStateId,
 } from "../items/guids";
 import {
+  type AddItemVersionOp,
   type CreateItemOp,
   type Operation,
   type OperationIr,
@@ -26,7 +28,12 @@ import {
   SITECORE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
-import { type PageRecipe, PageRecipeSchema } from "../schema/recipe";
+import {
+  type ContentFieldValue,
+  type Layout,
+  type PageRecipe,
+  PageRecipeSchema,
+} from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
@@ -35,19 +42,31 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * Compile a `PageRecipe` to an Operation IR.
  *
  * A page is a concrete content-tree item conforming to a page template.
- * Emits:
+ * Mirrors `compileContentItemRecipe`'s mode model:
+ *
+ *  - **simple** (`fields` [+ `translations`]) — `SetField`s for the
+ *    primary language at version 1; per translation language, an
+ *    `AddItemVersion` that materialises the language version, plus its
+ *    `SetField`s. Item-level `layout` is written to every language's
+ *    `__Final Renderings` so each language version sees the same layout.
+ *  - **story** (`versions`) — per (language, numbered version): an
+ *    `AddItemVersion` (except the default-language v1 the `CreateItem`
+ *    already made) and that version's `SetField`s + per-version layout
+ *    (`__Final Renderings`). Item-level `layout` is forbidden in story
+ *    mode — the version-level layout is the only place layout can live.
+ *
+ * `storage: shared` fields (recipe.shared) are emitted with no
+ * language/version. The two modes are mutually exclusive — `versions`
+ * alongside `fields`/`translations` is rejected (`INPUT_INVALID`).
+ *
+ * Other ops in canonical order:
  *   1. `CreateItem` for the page item under `pagesRoot`, with
  *      `templateOf` pointing at the `PageTemplateRecipe`'s template.
- *   2. One `SetField` per `fields` entry — page-template field values,
- *      encoded the same way `compileContentItemRecipe` encodes them.
- *   3. A `CreateItem` for `<page>/Data` and one per `scoped` placement —
+ *   2. `CreateItem` for `<page>/Data` and one per `scoped` placement —
  *      page-local datasource items conforming to the placed component's
- *      datasource template (see the layout block).
- *   4. `SetField(__Final Renderings)` — the page's own layout (when
- *      `layout` is declared), in canonical wire form. `scoped`
- *      placements resolve to the `<page>/Data/<slot>` GUIDs; `shared`
- *      points at a `ContentItemRecipe`; `none` is config-driven.
- *   5. `SetField(__Workflow)` — when `workflow` is set.
+ *      datasource template. The scoped slot set is collected from
+ *      every layout the recipe declares (item-level + per-version).
+ *   3. `SetField(__Workflow)` — when `workflow` is set.
  *
  * Policy is `CreateOnly` (the `page-item` purpose): the registry seeds
  * the page, authors own it thereafter, and a re-push never overwrites
@@ -65,13 +84,29 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     );
   }
 
-  const operations: Operation[] = [];
+  // Simple (fields/translations) XOR story (versions) — never both. Zod
+  // can't carry a refine on a discriminated-union member, so the compiler
+  // enforces it.
+  const isStory = recipe.versions !== undefined;
+  if (isStory && (recipe.translations !== undefined || Object.keys(recipe.fields).length > 0)) {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': a recipe is either simple (fields/translations) or a story (versions), not both.`,
+      "INPUT_INVALID"
+    );
+  }
+  if (isStory && recipe.layout !== undefined) {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': item-level 'layout' is not allowed in story mode — declare layout on each versions[lang][n].layout entry instead.`,
+      "INPUT_INVALID"
+    );
+  }
+
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
   const itemRefKey = pageItemId(site, recipe.handle);
   const itemPath = joinPath(context.pagesRoot, recipe.name);
 
-  operations.push({
+  const createItem: CreateItemOp = {
     op: "CreateItem",
     policy,
     label: `page:${recipe.handle}`,
@@ -87,121 +122,51 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
       versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
     ],
-  } satisfies CreateItemOp);
+  };
 
-  // Page field values — keyed by field name on the page template.
-  for (const [fieldName, fieldValue] of Object.entries(recipe.fields)) {
-    const value = encodeContentFieldValue(fieldValue, recipe.handle, site);
-    if (value === null) continue;
-    operations.push({
-      op: "SetField",
-      policy,
-      label: `page-field:${recipe.handle}:${fieldName}`,
-      itemRefKey,
-      // Recipe-created field — Sitecore assigns its own GUID, so this
-      // is an IR-internal refKey; the mutation resolves via `fieldName`.
-      fieldId: fieldId(site, recipe.template, fieldName),
-      fieldName,
-      language: DEFAULT_LANGUAGE,
-      version: DEFAULT_VERSION,
-      value,
-    } satisfies SetFieldOp);
-  }
+  // AddItemVersion ops are emitted before SetFields so every per-version
+  // SetField lands on a version that already exists.
+  const versionOps: Operation[] = [];
+  const fieldOps: Operation[] = [];
 
-  // Page-local layout → `__Final Renderings` (versioned — per-language
-  // final layout).
-  if (recipe.layout && Object.keys(recipe.layout.placeholders).length > 0) {
-    // Scoped placements materialise page-local datasource items under
-    // `<page>/Data`. Each conforms to the placed component's datasource
-    // template — a separate `ContentTemplateRecipe` when the component
-    // declares one, else the component template itself.
-    const scopedSlots = new Map<string, string>();
-    for (const placements of Object.values(recipe.layout.placeholders)) {
-      for (const placement of placements) {
-        if (placement.datasourceRef?.kind === "scoped") {
-          scopedSlots.set(placement.datasourceRef.slot, placement.componentHandle);
-        }
-      }
+  /** Emit one SetField per field value at the given (language, version). */
+  const emitFields = (
+    fields: Record<string, ContentFieldValue>,
+    language: string | undefined,
+    version: number | undefined,
+    labelTag: string
+  ): void => {
+    for (const [fieldName, fieldValue] of Object.entries(fields)) {
+      const value = encodeContentFieldValue(fieldValue, recipe.handle, site);
+      if (value === null) continue;
+      fieldOps.push({
+        op: "SetField",
+        policy,
+        label: `page-field:${recipe.handle}:${labelTag}:${fieldName}`,
+        itemRefKey,
+        // Recipe-created field — Sitecore assigns its own GUID, so this
+        // is an IR-internal refKey; the mutation resolves via `fieldName`.
+        fieldId: fieldId(site, recipe.template, fieldName),
+        fieldName,
+        ...(language !== undefined && { language }),
+        ...(version !== undefined && { version }),
+        value,
+      } satisfies SetFieldOp);
     }
+  };
 
-    if (scopedSlots.size > 0) {
-      // The `<page>/Data` folder — materialised once, CreateOnly.
-      const dataFolderRefKey = datasourceId(itemRefKey, "Data");
-      const dataFolderPath = joinPath(itemPath, "Data");
-      operations.push({
-        op: "CreateItem",
-        policy: "CreateOnly",
-        label: `page-data-folder:${recipe.handle}`,
-        id: dataFolderRefKey,
-        path: dataFolderPath,
-        parent: { kind: "ref-recipe", refKey: itemRefKey },
-        templateOf: SITECORE_TEMPLATES.FOLDER,
-        name: "Data",
-        fields: [],
-      } satisfies CreateItemOp);
-
-      // Insert Options (`__Masters`) on the Data folder — the union of
-      // datasource templates across EVERY rendering on the page (not just
-      // scoped ones). Authors who turn off the rendering's `autoCreate`
-      // — or who want to add an extra datasource later — see the right
-      // set in the right-click → Insert menu. Without this, the Data
-      // folder lands as a plain folder with no Insert Options, so the
-      // menu is empty and authors have to use Raw API / hand-edit to
-      // create a new datasource item.
-      //
-      // Resolution mirrors the per-slot `templateOf` path below + the
-      // `RecipeDatasource` `templates[]` shape:
-      //   1. component.datasource.templates[]  → all listed handles
-      //   2. component.datasource.template     → single handle
-      //   3. inline-`fields:` pattern          → component template itself
-      // Deduped across placements so the same template GUID appears once.
-      const insertOptionHandles = collectPageDataInsertOptions(recipe, context);
-      if (insertOptionHandles.length > 0) {
-        operations.push({
-          op: "SetField",
-          policy: "CreateOnly",
-          label: `page-data-folder-insert-options:${recipe.handle}`,
-          itemRefKey: dataFolderRefKey,
-          fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
-          value: {
-            kind: "ref-recipe-list",
-            refKeys: insertOptionHandles.map((handle) => templateId(site, handle)),
-            // Standalone compile (no componentsByHandle) falls back to
-            // resolving via the component handles themselves — those
-            // refKeys land in the captured-itemId map when the
-            // referenced templates' CreateItem ops run. In a single-
-            // recipe push the referenced templates aren't part of the
-            // set; tolerate so the data folder still gets created with
-            // whatever Insert Options DID resolve.
-            tolerateMissing: true,
-          },
-        } satisfies SetFieldOp);
-      }
-
-      for (const [slot, componentHandle] of scopedSlots) {
-        // Resolve the component's datasource template; fall back to the
-        // component template itself (the inline-`fields:` pattern, and
-        // the only option for a standalone single-recipe compile).
-        const component = context.componentsByHandle?.get(componentHandle);
-        const datasourceTemplateHandle = component?.datasource?.template?.handle ?? componentHandle;
-        operations.push({
-          op: "CreateItem",
-          policy,
-          label: `page-datasource:${recipe.handle}:${slot}`,
-          id: datasourceId(itemRefKey, slot),
-          path: joinPath(dataFolderPath, slot),
-          parent: { kind: "ref-recipe", refKey: dataFolderRefKey },
-          templateOf: templateId(site, datasourceTemplateHandle),
-          name: slot,
-          fields: [
-            sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
-            versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: slot }),
-          ],
-        } satisfies CreateItemOp);
-      }
-    }
-
-    const layoutXml = emitLayoutXml(recipe.layout, {
+  /**
+   * Emit a `__Final Renderings` SetField for the given (language, version)
+   * cell. No-op when the layout has no placements after compile (keeps
+   * round-trips clean — an empty layout doesn't write the field).
+   */
+  const emitLayout = (
+    layout: Layout,
+    language: string,
+    version: number,
+    labelTag: string
+  ): void => {
+    const layoutXml = emitLayoutXml(layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
       renderingIdFor: (handle) => renderingId(site, handle),
@@ -212,19 +177,210 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       scopedDatasourceIdFor: (slot) => datasourceId(itemRefKey, slot),
       mode: "canonical",
     });
-    if (layoutXml.length > 0) {
-      operations.push({
-        op: "SetField",
+    if (layoutXml.length === 0) return;
+    fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `page-layout:${recipe.handle}:${labelTag}`,
+      itemRefKey,
+      fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
+      language,
+      version,
+      value: { kind: "string", value: layoutXml },
+    } satisfies SetFieldOp);
+  };
+
+  // Item-level `storage: shared` fields — one value, no language/version.
+  // Mirrors `compileContentItemRecipe`.
+  emitFields(recipe.shared ?? {}, undefined, undefined, "shared");
+
+  // Scoped-slot collection runs across EVERY layout the recipe declares
+  // (item-level + every per-version). The scoped Data folder + slot items
+  // are materialised once — they're shared structure across (lang, version)
+  // cells, not per-cell.
+  const scopedSlots = collectScopedSlots(recipe);
+  const dataFolderRefKey = datasourceId(itemRefKey, "Data");
+
+  if (isStory) {
+    for (const [language, entries] of Object.entries(recipe.versions ?? {})) {
+      for (const entry of [...entries].sort((a, b) => a.version - b.version)) {
+        if ((entry.variants?.length ?? 0) > 0) {
+          throw createScaiError(
+            `PageRecipe '${recipe.handle}': per-version personalization variants are not yet compiled.`,
+            "INPUT_INVALID",
+            {
+              hint: "Author per-version fields, workflowState, date and layout for now.",
+            }
+          );
+        }
+        // `CreateItem` already made the default-language version 1; every
+        // other (language, version) cell needs an explicit AddItemVersion.
+        if (!(language === DEFAULT_LANGUAGE && entry.version === DEFAULT_VERSION)) {
+          versionOps.push({
+            op: "AddItemVersion",
+            policy,
+            label: `page-version:${recipe.handle}:${language}:${entry.version}`,
+            itemRefKey,
+            language,
+            version: entry.version,
+          } satisfies AddItemVersionOp);
+        }
+        const versionTag = `${language}.v${entry.version}`;
+        emitFields(entry.fields, language, entry.version, versionTag);
+        // The version's `__Workflow state` — resolved against the item's
+        // workflow (a workflow state can't exist without a workflow).
+        if (entry.workflowState !== undefined) {
+          if (!recipe.workflow) {
+            throw createScaiError(
+              `PageRecipe '${recipe.handle}': version ${versionTag} sets workflowState ` +
+                `'${entry.workflowState}' but the recipe has no \`workflow\`.`,
+              "INPUT_INVALID",
+              {
+                hint: "Set the item-level `workflow` (a WorkflowRecipe handle) so the state resolves.",
+              }
+            );
+          }
+          fieldOps.push({
+            op: "SetField",
+            policy,
+            label: `page-workflow-state:${recipe.handle}:${versionTag}`,
+            itemRefKey,
+            fieldId: deriveStandardFieldId(itemRefKey, "__Workflow state"),
+            fieldName: "__Workflow state",
+            language,
+            version: entry.version,
+            value: {
+              kind: "ref-recipe",
+              refKey: workflowStateId(recipe.workflow, entry.workflowState),
+            },
+          } satisfies SetFieldOp);
+        }
+        if (entry.date !== undefined) {
+          fieldOps.push({
+            op: "SetField",
+            policy,
+            label: `page-version-date:${recipe.handle}:${versionTag}`,
+            itemRefKey,
+            fieldId: deriveStandardFieldId(itemRefKey, "__Created"),
+            fieldName: "__Created",
+            language,
+            version: entry.version,
+            value: { kind: "string", value: toSitecoreDate(entry.date, "datetime") },
+          } satisfies SetFieldOp);
+        }
+        if (entry.layout !== undefined) {
+          emitLayout(entry.layout, language, entry.version, versionTag);
+        }
+      }
+    }
+  } else {
+    // Simple mode — primary language at version 1, then a version per
+    // translation language. The item-level `layout` lands on every
+    // language's `__Final Renderings`.
+    emitFields(recipe.fields, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+    if (recipe.layout !== undefined) {
+      emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+    }
+    for (const [language, translation] of Object.entries(recipe.translations ?? {})) {
+      versionOps.push({
+        op: "AddItemVersion",
         policy,
-        label: `page-layout:${recipe.handle}`,
+        label: `page-version:${recipe.handle}:${language}:${DEFAULT_VERSION}`,
         itemRefKey,
-        fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
-        language: DEFAULT_LANGUAGE,
+        language,
         version: DEFAULT_VERSION,
-        value: { kind: "string", value: layoutXml },
-      } satisfies SetFieldOp);
+      } satisfies AddItemVersionOp);
+      emitFields(translation.fields, language, DEFAULT_VERSION, language);
+      // The translation's layout defaults to the item-level layout — the
+      // simple-mode contract is that every language sees the same layout
+      // (per-language layout is what story mode is for).
+      if (recipe.layout !== undefined) {
+        emitLayout(recipe.layout, language, DEFAULT_VERSION, language);
+      }
     }
   }
+
+  // Compose: CreateItem → AddItemVersion…s → Data folder + scoped
+  // slots → SetFields → workflow. Scoped infrastructure has to land
+  // BEFORE the layout SetFields so the captured-itemId map carries
+  // the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor` resolves.
+  const operations: Operation[] = [createItem];
+  operations.push(...versionOps);
+  if (scopedSlots.size > 0) {
+    const dataFolderPath = joinPath(itemPath, "Data");
+    operations.push({
+      op: "CreateItem",
+      policy: "CreateOnly",
+      label: `page-data-folder:${recipe.handle}`,
+      id: dataFolderRefKey,
+      path: dataFolderPath,
+      parent: { kind: "ref-recipe", refKey: itemRefKey },
+      templateOf: SITECORE_TEMPLATES.FOLDER,
+      name: "Data",
+      fields: [],
+    } satisfies CreateItemOp);
+
+    // Insert Options (`__Masters`) on the Data folder — the union of
+    // datasource templates across EVERY rendering on the page (not just
+    // scoped ones). Authors who turn off the rendering's `autoCreate`
+    // — or who want to add an extra datasource later — see the right
+    // set in the right-click → Insert menu. Without this, the Data
+    // folder lands as a plain folder with no Insert Options, so the
+    // menu is empty and authors have to use Raw API / hand-edit to
+    // create a new datasource item.
+    //
+    // Resolution mirrors the per-slot `templateOf` path below + the
+    // `RecipeDatasource` `templates[]` shape:
+    //   1. component.datasource.templates[]  → all listed handles
+    //   2. component.datasource.template     → single handle
+    //   3. inline-`fields:` pattern          → component template itself
+    // Deduped across placements so the same template GUID appears once.
+    const insertOptionHandles = collectPageDataInsertOptions(recipe, context);
+    if (insertOptionHandles.length > 0) {
+      operations.push({
+        op: "SetField",
+        policy: "CreateOnly",
+        label: `page-data-folder-insert-options:${recipe.handle}`,
+        itemRefKey: dataFolderRefKey,
+        fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+        value: {
+          kind: "ref-recipe-list",
+          refKeys: insertOptionHandles.map((handle) => templateId(site, handle)),
+          // Standalone compile (no componentsByHandle) falls back to
+          // resolving via the component handles themselves — those
+          // refKeys land in the captured-itemId map when the
+          // referenced templates' CreateItem ops run. In a single-
+          // recipe push the referenced templates aren't part of the
+          // set; tolerate so the data folder still gets created with
+          // whatever Insert Options DID resolve.
+          tolerateMissing: true,
+        },
+      } satisfies SetFieldOp);
+    }
+
+    for (const [slot, componentHandle] of scopedSlots) {
+      // Resolve the component's datasource template; fall back to the
+      // component template itself (the inline-`fields:` pattern, and
+      // the only option for a standalone single-recipe compile).
+      const component = context.componentsByHandle?.get(componentHandle);
+      const datasourceTemplateHandle = component?.datasource?.template?.handle ?? componentHandle;
+      operations.push({
+        op: "CreateItem",
+        policy,
+        label: `page-datasource:${recipe.handle}:${slot}`,
+        id: datasourceId(itemRefKey, slot),
+        path: joinPath(dataFolderPath, slot),
+        parent: { kind: "ref-recipe", refKey: dataFolderRefKey },
+        templateOf: templateId(site, datasourceTemplateHandle),
+        name: slot,
+        fields: [
+          sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
+          versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: slot }),
+        ],
+      } satisfies CreateItemOp);
+    }
+  }
+  operations.push(...fieldOps);
 
   if (recipe.workflow) {
     operations.push({
@@ -244,6 +400,68 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     operations,
   });
 }
+
+/**
+ * Format a recipe `date` (ISO `YYYY-MM-DD`) or `datetime` (ISO 8601 with
+ * timezone) into Sitecore's stored format `yyyyMMddTHHmmssZ`. Mirrors
+ * `toSitecoreDate` in `compile/content-item.ts` — declared separately to
+ * keep the modules independent.
+ */
+const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    throw createScaiError(
+      `ContentFieldValue ${kind}: '${iso}' is not a valid ISO date`,
+      "INPUT_INVALID"
+    );
+  }
+  if (kind === "date") {
+    const isoDateOnly = iso.includes("T") ? iso.slice(0, 10) : iso;
+    return `${isoDateOnly.replace(/-/g, "")}T000000Z`;
+  }
+  const yyyy = parsed.getUTCFullYear().toString().padStart(4, "0");
+  const MM = (parsed.getUTCMonth() + 1).toString().padStart(2, "0");
+  const dd = parsed.getUTCDate().toString().padStart(2, "0");
+  const HH = parsed.getUTCHours().toString().padStart(2, "0");
+  const mm = parsed.getUTCMinutes().toString().padStart(2, "0");
+  const ss = parsed.getUTCSeconds().toString().padStart(2, "0");
+  return `${yyyy}${MM}${dd}T${HH}${mm}${ss}Z`;
+};
+
+/**
+ * Collect the deduped `<slot, componentHandle>` map across every layout
+ * the recipe declares — item-level `layout` plus each `versions[lang][n]
+ * .layout` cell. Order is first-seen for stable IR output.
+ *
+ * Scoped placements materialise page-local datasource items under
+ * `<page>/Data/<slot>`. The slot items themselves are shared structure
+ * (one Sitecore item per slot, regardless of how many `(lang, version)`
+ * cells reference it), so this collection is union-of-layouts.
+ */
+const collectScopedSlots = (recipe: PageRecipe): Map<string, string> => {
+  const slots = new Map<string, string>();
+  const addFrom = (layout: Layout): void => {
+    for (const placements of Object.values(layout.placeholders)) {
+      for (const placement of placements) {
+        if (
+          placement.datasourceRef?.kind === "scoped" &&
+          !slots.has(placement.datasourceRef.slot)
+        ) {
+          slots.set(placement.datasourceRef.slot, placement.componentHandle);
+        }
+      }
+    }
+  };
+  if (recipe.layout) addFrom(recipe.layout);
+  if (recipe.versions) {
+    for (const entries of Object.values(recipe.versions)) {
+      for (const entry of entries) {
+        if (entry.layout) addFrom(entry.layout);
+      }
+    }
+  }
+  return slots;
+};
 
 /**
  * Stable refKey for a Sitecore standard field on `itemRefKey`. Same

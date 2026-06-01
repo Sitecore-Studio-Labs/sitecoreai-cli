@@ -33,8 +33,15 @@ export interface RollbackStepLog {
   index: number;
   label: string;
   status: "success" | "failed" | "skip";
-  inverse?: "deleteItem" | "updateItem";
+  inverse?: "deleteItem" | "updateItem" | "restoreItems";
   itemId?: string;
+  /**
+   * Count of items the rollback step restored — populated only when
+   * `inverse === "restoreItems"`. Operators auditing a half-rolled-back
+   * push see how many of the previously-pruned items came back (the
+   * difference from the original prune count flags partial restoration).
+   */
+  restoredCount?: number;
   reason?: string;
   error?: string;
 }
@@ -114,6 +121,7 @@ export const createRollbackLogger = (
         status: entry.status,
         inverse: entry.inverse,
         itemId: entry.itemId,
+        restoredCount: entry.restoredCount,
         reason: sanitize(entry.reason),
         error: sanitize(entry.error),
       }),

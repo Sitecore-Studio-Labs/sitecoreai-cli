@@ -578,19 +578,6 @@ export const enumerationsFolderTemplateStandardValuesId = (site: string): string
   uuidv5(`${site}::enumerations-folder-template-standard-values`, NAMESPACE_TEMPLATE);
 
 /**
- * Deterministic refKey for a `SectionDefinitionRecipe` — the SXA
- * Available Rendering Section Definition item the registry's
- * `availableIn` bindings target. The section definition is typically
- * pre-existing on the tenant; the GUID is used as the cross-recipe
- * refKey so `AppendToMultiList` ops can resolve via the executor's
- * captured-itemId map.
- */
-export const NAMESPACE_SECTION_DEFINITION = uuidv5("section-definition", NAMESPACE_ROOT);
-
-export const sectionDefinitionId = (handle: string): string =>
-  uuidv5(handle, NAMESPACE_SECTION_DEFINITION);
-
-/**
  * Placeholder Settings item identity.
  *
  * A Placeholder Settings item is the gate for "what renderings can be

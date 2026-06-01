@@ -44,6 +44,7 @@ import { sitecoreFieldTypeLabel } from "../../../src/recipe/schema/field-types";
 import type {
   ComponentSectionRecipe,
   ComponentTemplateRecipe,
+  ContentItemRecipe,
   ContentTemplateRecipe,
   EnumerationRecipe,
   PageDesignRecipe,
@@ -57,17 +58,60 @@ import type {
 // In-memory AuthoringApiClient over a flat RemoteItem list.
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * Optional per-item language→version-count map for content-item fixtures.
+ * Drives the in-memory client's `getItemPerLanguageBatch` and
+ * `getItemAtVersionsBatch` responses so multi-language / story-mode
+ * round-trip tests don't need a separate mock harness.
+ */
+type ItemVersions = Map<string /* itemId */, Map<string /* language */, number /* count */>>;
+
+interface MakeClientOptions {
+  /** Per-(itemId, language) version count. Languages absent here → 0. */
+  versionsByItem?: ItemVersions;
+  /** Languages `getTenantLanguages` returns. Default `["en"]`. */
+  tenantLanguages?: readonly string[];
+}
+
 /** Build a read-only `AuthoringApiClient` backed by `items` (parentId-linked). */
-const makeClient = (items: RemoteItem[]): AuthoringApiClient => {
+const makeClient = (items: RemoteItem[], options: MakeClientOptions = {}): AuthoringApiClient => {
   const byId = new Map(items.map((i) => [i.itemId, i]));
   const byPath = new Map(items.map((i) => [i.path, i]));
+  const versionsByItem = options.versionsByItem ?? new Map();
+  const tenantLanguages = [...(options.tenantLanguages ?? ["en"])];
   const resolve = (selector: ItemSelector): RemoteItem | null => {
     if (selector.itemId) return byId.get(selector.itemId) ?? null;
     if (selector.path) return byPath.get(selector.path) ?? null;
     return null;
   };
+  /**
+   * Filter an item's stored fields to those visible at (language?, version?) —
+   * shared fields (no lang, no version) always pass, others must match.
+   * Mirrors the Authoring API's per-(language, version) where-clause
+   * semantics and matches `MockAuthoringClient.getItem`.
+   */
+  const filterByLangVer = (
+    item: RemoteItem,
+    lang: string | undefined,
+    ver: number | undefined
+  ): RemoteItem => {
+    if (lang === undefined && ver === undefined) return item;
+    const fields = item.fields.filter((field) => {
+      const isShared = field.language === undefined && field.version === undefined;
+      if (isShared) return true;
+      if (lang !== undefined && field.language !== undefined && field.language !== lang)
+        return false;
+      if (ver !== undefined && field.version !== undefined && field.version !== ver) return false;
+      return true;
+    });
+    return { ...item, fields };
+  };
   return {
-    getItem: async (selector) => resolve(selector),
+    getItem: async (selector, options) => {
+      const item = resolve(selector);
+      if (!item) return null;
+      return filterByLangVer(item, options?.language, options?.version);
+    },
     getItemsByPaths: async (paths) => new Map(paths.map((p) => [p, byPath.get(p) ?? null])),
     getChildren: async (selector) => {
       const parent = resolve(selector);
@@ -83,10 +127,40 @@ const makeClient = (items: RemoteItem[]): AuthoringApiClient => {
     deleteItem: async () => {
       throw new Error("read-only test client: deleteItem must not be called");
     },
+    moveItem: async () => {
+      throw new Error("read-only test client: moveItem must not be called");
+    },
     addItemVersion: async () => {
       throw new Error("read-only test client: addItemVersion must not be called");
     },
-    getItemVersions: async () => [],
+    getItemVersions: async (selector, language) => {
+      const item = resolve(selector);
+      if (!item) return [];
+      const count = versionsByItem.get(item.itemId)?.get(language) ?? 0;
+      return Array.from({ length: count }, (_, i) => i + 1);
+    },
+    getItemPerLanguageBatch: async (selector, languages) => {
+      if (languages.length === 0) return [];
+      const item = resolve(selector);
+      if (!item) return languages.map((language) => ({ language, versions: [], item: null }));
+      return languages.map((language) => {
+        const count = versionsByItem.get(item.itemId)?.get(language) ?? 0;
+        if (count === 0) return { language, versions: [], item: null };
+        const versions = Array.from({ length: count }, (_, i) => i + 1);
+        return { language, versions, item: filterByLangVer(item, language, count) };
+      });
+    },
+    getItemAtVersionsBatch: async (selector, requests) => {
+      if (requests.length === 0) return [];
+      const item = resolve(selector);
+      if (!item) return requests.map(() => null);
+      return requests.map(({ language, version }) => {
+        const count = versionsByItem.get(item.itemId)?.get(language) ?? 0;
+        if (version > count) return null;
+        return filterByLangVer(item, language, version);
+      });
+    },
+    getTenantLanguages: async () => [...tenantLanguages],
   };
 };
 
@@ -2802,5 +2876,873 @@ describe("readCurrentRecipes — rendering folder recursion", () => {
     expect(recipes!.some((r) => r.kind === "component-template" && r.name === "WidgetBox")).toBe(
       true
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// content-item — per-(language, version) reverse-projection
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — content-item simple mode", () => {
+  /**
+   * Build a minimal templates tree (one content-template with two fields)
+   * plus the content-items tree the test populates. Returns the wired
+   * fixtures so each test can populate item field values + version maps.
+   */
+  const buildContentItemFixture = (
+    contentItemsRoot = "/sitecore/content/demo/Data",
+    contentModelsRoot = "/sitecore/templates/Project/demo/Content Models"
+  ) => {
+    idSeq = 0;
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "NavLink",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/NavLink`,
+      fields: [
+        f(SYSTEM_FIELDS.DISPLAY_NAME, "Nav Link", "__Display name"),
+        f(SCAI_HANDLE_FIELD_NAME, "nav-link@1", SCAI_HANDLE_FIELD_NAME),
+      ],
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/NavLink/Content`,
+    });
+    const labelField = item({
+      name: "Label",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${contentModelsRoot}/NavLink/Content/Label`,
+      fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("single-line-text"), "Type")],
+    });
+    const enabledField = item({
+      name: "Enabled",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${contentModelsRoot}/NavLink/Content/Enabled`,
+      // `Shared: 1` → recipe `shared` bucket on round-trip.
+      fields: [
+        f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("checkbox"), "Type"),
+        f(TEMPLATE_FIELD_FIELDS.SHARED, "1", "Shared"),
+      ],
+    });
+
+    const ciRoot = item({
+      name: "Data",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentItemsRoot,
+    });
+
+    return {
+      contentItemsRoot,
+      contentModelsRoot,
+      cmRoot,
+      template,
+      section,
+      labelField,
+      enabledField,
+      ciRoot,
+    };
+  };
+
+  it("reverse-projects a single-language item into simple-mode fields", async () => {
+    const fx = buildContentItemFixture();
+    const navItem = item({
+      name: "primary-cta",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/primary-cta`,
+      fields: [
+        // Authorable versioned field — Label at (en, 1).
+        {
+          fieldId: "00000000-0000-0000-0000-000000000001",
+          name: "Label",
+          value: "Sign up",
+          language: "en",
+          version: 1,
+        },
+        // Authorable shared field — Enabled (no lang, no version).
+        { fieldId: "00000000-0000-0000-0000-000000000002", name: "Enabled", value: "1" },
+        // System fields the recipe surface ignores on reverse-projection.
+        {
+          fieldId: SYSTEM_FIELDS.DISPLAY_NAME,
+          name: "__Display name",
+          value: "Primary CTA",
+          language: "en",
+          version: 1,
+        },
+      ],
+    });
+
+    const versionsByItem: ItemVersions = new Map([[navItem.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.labelField, fx.enabledField, fx.ciRoot, navItem],
+      { versionsByItem }
+    );
+    const roots: ReadCurrentRoots = {
+      templatesRoot: fx.contentModelsRoot,
+      renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+      contentModelsRoot: fx.contentModelsRoot,
+      contentItemsRoot: fx.contentItemsRoot,
+    };
+    const recipes = await readCurrentRecipes(roots, client);
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci).toBeDefined();
+    expect(ci!.handle).toBe("primary-cta@1");
+    expect(ci!.name).toBe("primary-cta");
+    expect(ci!.displayName).toBe("Primary CTA");
+    // Template handle resolves via the SCAI Handle marker on the template item.
+    expect(ci!.templateType).toBe("nav-link@1");
+    // Simple-mode: `fields` carries the en/v1 versioned value, decoded per shape.
+    expect(ci!.fields).toEqual({ Label: { shape: "text", value: "Sign up" } });
+    // Shared bucket carries the storage:shared field, decoded per shape.
+    expect(ci!.shared).toEqual({ Enabled: { shape: "boolean", value: true } });
+    // No `translations` (single language) and no `versions` (single version).
+    expect(ci!.translations).toBeUndefined();
+    expect(ci!.versions).toBeUndefined();
+  });
+
+  it("reverse-projects a multi-language item into fields + translations", async () => {
+    const fx = buildContentItemFixture();
+    const navItem = item({
+      name: "primary-cta",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/primary-cta`,
+      fields: [
+        // Same Label field in two languages — both at version 1 (simple mode).
+        { fieldId: "f1", name: "Label", value: "Sign up", language: "en", version: 1 },
+        { fieldId: "f1", name: "Label", value: "S'inscrire", language: "fr", version: 1 },
+        // Shared field — no lang, no version.
+        { fieldId: "f2", name: "Enabled", value: "1" },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([
+      [
+        navItem.itemId,
+        new Map([
+          ["en", 1],
+          ["fr", 1],
+        ]),
+      ],
+    ]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.labelField, fx.enabledField, fx.ciRoot, navItem],
+      { versionsByItem, tenantLanguages: ["en", "fr"] }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci).toBeDefined();
+    // Default language (`en`) becomes `fields`; other populated languages
+    // become `translations`. Shared field rides outside both.
+    expect(ci!.fields).toEqual({ Label: { shape: "text", value: "Sign up" } });
+    expect(ci!.translations).toEqual({
+      fr: { fields: { Label: { shape: "text", value: "S'inscrire" } } },
+    });
+    expect(ci!.shared).toEqual({ Enabled: { shape: "boolean", value: true } });
+    // No `versions` — single version per language stays simple-mode.
+    expect(ci!.versions).toBeUndefined();
+  });
+
+  it("skips languages absent on the item — only populated languages round-trip", async () => {
+    const fx = buildContentItemFixture();
+    const navItem = item({
+      name: "primary-cta",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/primary-cta`,
+      fields: [{ fieldId: "f1", name: "Label", value: "Sign up", language: "en", version: 1 }],
+    });
+    // Tenant has en + fr + de configured, but the item is only populated in en.
+    const versionsByItem: ItemVersions = new Map([[navItem.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.labelField, fx.enabledField, fx.ciRoot, navItem],
+      { versionsByItem, tenantLanguages: ["en", "fr", "de"] }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci).toBeDefined();
+    expect(ci!.translations).toBeUndefined();
+    expect(ci!.fields).toEqual({ Label: { shape: "text", value: "Sign up" } });
+  });
+
+  it("ignores system fields and the SCAI Handle marker on the item", async () => {
+    const fx = buildContentItemFixture();
+    const navItem = item({
+      name: "primary-cta",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/primary-cta`,
+      fields: [
+        { fieldId: "f1", name: "Label", value: "Sign up", language: "en", version: 1 },
+        // SCAI marker + every `__`-prefixed system field must NOT appear in
+        // the recipe's `fields` map — they're not authorable.
+        f(SYSTEM_FIELDS.ICON, "office/32x32/elements3.png", "__Icon"),
+        { fieldId: "00", name: SCAI_HANDLE_FIELD_NAME, value: "primary-cta@1" },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[navItem.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.labelField, fx.enabledField, fx.ciRoot, navItem],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(Object.keys(ci!.fields)).toEqual(["Label"]);
+    expect(ci!.shared).toBeUndefined();
+    // Marker drove the handle — recipe-identity travels through the marker.
+    expect(ci!.handle).toBe("primary-cta@1");
+  });
+});
+
+describe("readCurrentRecipes — content-item story mode", () => {
+  const buildStoryFixture = () => {
+    idSeq = 0;
+    const contentItemsRoot = "/sitecore/content/demo/Data";
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "Article",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Article`,
+      fields: [f(SCAI_HANDLE_FIELD_NAME, "article@1", SCAI_HANDLE_FIELD_NAME)],
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/Article/Content`,
+    });
+    const bodyField = item({
+      name: "Body",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${contentModelsRoot}/Article/Content/Body`,
+      fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("rich-text"), "Type")],
+    });
+    const ciRoot = item({
+      name: "Data",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentItemsRoot,
+    });
+    return { contentItemsRoot, contentModelsRoot, cmRoot, template, section, bodyField, ciRoot };
+  };
+
+  it("multi-version language forces story mode and emits every numbered version", async () => {
+    const fx = buildStoryFixture();
+    const article = item({
+      name: "intro",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/intro`,
+      fields: [
+        { fieldId: "f1", name: "Body", value: "<p>v1 draft</p>", language: "en", version: 1 },
+        { fieldId: "f1", name: "Body", value: "<p>v2 final</p>", language: "en", version: 2 },
+        { fieldId: "f1", name: "Body", value: "<p>v3 revised</p>", language: "en", version: 3 },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[article.itemId, new Map([["en", 3]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.bodyField, fx.ciRoot, article],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci).toBeDefined();
+    // Story mode: `fields` empty, `versions[en]` is the full numbered stack.
+    expect(ci!.fields).toEqual({});
+    expect(ci!.translations).toBeUndefined();
+    expect(ci!.versions?.en).toHaveLength(3);
+    expect(ci!.versions?.en[0]).toMatchObject({
+      version: 1,
+      fields: { Body: { shape: "richText", value: "<p>v1 draft</p>" } },
+    });
+    expect(ci!.versions?.en[2]).toMatchObject({
+      version: 3,
+      fields: { Body: { shape: "richText", value: "<p>v3 revised</p>" } },
+    });
+  });
+
+  it("multi-language + multi-version round-trips both axes under story mode", async () => {
+    const fx = buildStoryFixture();
+    const article = item({
+      name: "intro",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/intro`,
+      fields: [
+        { fieldId: "f1", name: "Body", value: "<p>en v1</p>", language: "en", version: 1 },
+        { fieldId: "f1", name: "Body", value: "<p>en v2</p>", language: "en", version: 2 },
+        { fieldId: "f1", name: "Body", value: "<p>fr v1</p>", language: "fr", version: 1 },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([
+      [
+        article.itemId,
+        new Map([
+          ["en", 2],
+          ["fr", 1],
+        ]),
+      ],
+    ]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, fx.bodyField, fx.ciRoot, article],
+      { versionsByItem, tenantLanguages: ["en", "fr"] }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci).toBeDefined();
+    // Both languages live under `versions`; fr's single version still
+    // surfaces as a one-entry array under story mode.
+    expect(Object.keys(ci!.versions!).sort()).toEqual(["en", "fr"]);
+    expect(ci!.versions!.en).toHaveLength(2);
+    expect(ci!.versions!.fr).toHaveLength(1);
+    expect(ci!.versions!.fr[0]).toMatchObject({
+      version: 1,
+      fields: { Body: { shape: "richText", value: "<p>fr v1</p>" } },
+    });
+  });
+});
+
+describe("readCurrentRecipes — content-item field-shape decoding", () => {
+  const buildShapesFixture = () => {
+    idSeq = 0;
+    const contentItemsRoot = "/sitecore/content/demo/Data";
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "Hero",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Hero`,
+      fields: [f(SCAI_HANDLE_FIELD_NAME, "hero@1", SCAI_HANDLE_FIELD_NAME)],
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: template.itemId,
+      path: `${contentModelsRoot}/Hero/Content`,
+    });
+    const fieldItems = [
+      { name: "Title", type: "single-line-text" as const },
+      { name: "Count", type: "integer" as const },
+      { name: "Active", type: "checkbox" as const },
+      { name: "Launch", type: "date" as const },
+      { name: "Photo", type: "image" as const },
+      { name: "ExternalLink", type: "general-link" as const },
+    ].map((spec) =>
+      item({
+        name: spec.name,
+        templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+        parentId: section.itemId,
+        path: `${contentModelsRoot}/Hero/Content/${spec.name}`,
+        fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel(spec.type), "Type")],
+      })
+    );
+    const ciRoot = item({
+      name: "Data",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentItemsRoot,
+    });
+    return { contentItemsRoot, contentModelsRoot, cmRoot, template, section, fieldItems, ciRoot };
+  };
+
+  it("decodes integer, boolean, date, image, and external-link shapes from wire", async () => {
+    const fx = buildShapesFixture();
+    const hero = item({
+      name: "homepage-hero",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/homepage-hero`,
+      fields: [
+        { fieldId: "f-title", name: "Title", value: "Welcome", language: "en", version: 1 },
+        { fieldId: "f-count", name: "Count", value: "42", language: "en", version: 1 },
+        { fieldId: "f-active", name: "Active", value: "1", language: "en", version: 1 },
+        // Sitecore wire format: yyyyMMddTHHmmssZ.
+        {
+          fieldId: "f-launch",
+          name: "Launch",
+          value: "20260601T000000Z",
+          language: "en",
+          version: 1,
+        },
+        {
+          fieldId: "f-photo",
+          name: "Photo",
+          value:
+            '<image mediapath="/sitecore/media library/Hero.jpg" alt="Hero" width="1920" height="1080" />',
+          language: "en",
+          version: 1,
+        },
+        {
+          fieldId: "f-link",
+          name: "ExternalLink",
+          value:
+            '<link linktype="external" url="https://example.com/" text="Learn more" target="_blank" />',
+          language: "en",
+          version: 1,
+        },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[hero.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, ...fx.fieldItems, fx.ciRoot, hero],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci!.fields).toEqual({
+      Title: { shape: "text", value: "Welcome" },
+      Count: { shape: "integer", value: 42 },
+      Active: { shape: "boolean", value: true },
+      Launch: { shape: "date", value: "2026-06-01" },
+      Photo: {
+        shape: "image",
+        mediaPath: "/sitecore/media library/Hero.jpg",
+        alt: "Hero",
+        width: 1920,
+        height: 1080,
+      },
+      ExternalLink: {
+        shape: "link-external",
+        href: "https://example.com/",
+        text: "Learn more",
+        target: "_blank",
+      },
+    });
+  });
+
+  it("drops malformed wire values rather than fabricate (image without mediapath)", async () => {
+    const fx = buildShapesFixture();
+    const hero = item({
+      name: "homepage-hero",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/homepage-hero`,
+      fields: [
+        { fieldId: "f-title", name: "Title", value: "ok", language: "en", version: 1 },
+        // Image XML missing the mandatory `mediapath` attribute → decoder
+        // returns null and the field is dropped from the recipe rather than
+        // fabricated as `mediaPath: ""` (the schema's min(1) would reject).
+        {
+          fieldId: "f-photo",
+          name: "Photo",
+          value: '<image alt="oops" />',
+          language: "en",
+          version: 1,
+        },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[hero.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, ...fx.fieldItems, fx.ciRoot, hero],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(Object.keys(ci!.fields)).toEqual(["Title"]);
+  });
+});
+
+describe("readCurrentRecipes — content-item skip conditions", () => {
+  it("skips an item whose template GUID carries no marker (templateType unrecoverable)", async () => {
+    idSeq = 0;
+    const contentItemsRoot = "/sitecore/content/demo/Data";
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    // Template has NO SCAI Handle marker — templateType won't resolve.
+    const template = item({
+      name: "Unmarked",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/Unmarked`,
+    });
+    const ciRoot = item({
+      name: "Data",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentItemsRoot,
+    });
+    const orphan = item({
+      name: "orphan",
+      templateId: template.itemId,
+      parentId: ciRoot.itemId,
+      path: `${contentItemsRoot}/orphan`,
+      fields: [{ fieldId: "f1", name: "Whatever", value: "data", language: "en", version: 1 }],
+    });
+    const client = makeClient([cmRoot, template, ciRoot, orphan], {
+      versionsByItem: new Map([[orphan.itemId, new Map([["en", 1]])]]),
+    });
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot,
+        contentItemsRoot,
+      },
+      client
+    );
+    expect(recipes!.some((r) => r.kind === "content-item")).toBe(false);
+  });
+
+  it("clears the no-roots gate via contentItemsRoot alone", async () => {
+    // contentItemsRoot alone is enough to clear the "no roots" gate.
+    const result = await readCurrentRecipes(
+      { templatesRoot: "", renderingsRoot: "", contentItemsRoot: "/sitecore/content/demo/Data" },
+      makeClient([])
+    );
+    expect(result).not.toBeNull();
+    expect(result).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PageRecipe multi-lang + multi-version reverse-projection
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("readCurrentRecipes — page multi-language", () => {
+  /**
+   * Page template + its fields + the pagesRoot. The page template
+   * carries the SCAI Handle marker so reverse-projection can resolve the
+   * `template` reference.
+   */
+  const buildPageFixture = () => {
+    idSeq = 0;
+    const pageTemplatesRoot = "/sitecore/templates/Project/demo";
+    const pagesRoot = "/sitecore/content/demo/Home";
+    const ptRoot = item({
+      name: "demo",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: pageTemplatesRoot,
+    });
+    const pageTpl = item({
+      name: "ArticlePage",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: ptRoot.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage`,
+      fields: [
+        f(SCAI_HANDLE_FIELD_NAME, "article-page@1", SCAI_HANDLE_FIELD_NAME),
+        f(
+          SYSTEM_FIELDS.BASE_TEMPLATE,
+          SXA_HEADLESS_PAGE_BASE_TEMPLATES.join("|"),
+          "__Base template"
+        ),
+      ],
+    });
+    const section = item({
+      name: "Content",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_SECTION,
+      parentId: pageTpl.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage/Content`,
+    });
+    const titleField = item({
+      name: "Title",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FIELD,
+      parentId: section.itemId,
+      path: `${pageTemplatesRoot}/ArticlePage/Content/Title`,
+      fields: [f(TEMPLATE_FIELD_FIELDS.TYPE, sitecoreFieldTypeLabel("single-line-text"), "Type")],
+    });
+    const pagesRootItem = item({
+      name: "Home",
+      templateId: SITECORE_TEMPLATES.FOLDER,
+      parentId: ROOT_PARENT,
+      path: pagesRoot,
+    });
+    return {
+      pageTemplatesRoot,
+      pagesRoot,
+      ptRoot,
+      pageTpl,
+      section,
+      titleField,
+      pagesRootItem,
+    };
+  };
+
+  it("multi-language page round-trips as fields + translations under simple mode", async () => {
+    const fx = buildPageFixture();
+    const pageItem = item({
+      name: "About",
+      templateId: fx.pageTpl.itemId,
+      parentId: fx.pagesRootItem.itemId,
+      path: `${fx.pagesRoot}/About`,
+      fields: [
+        { fieldId: "f1", name: "Title", value: "About us", language: "en", version: 1 },
+        { fieldId: "f1", name: "Title", value: "À propos", language: "fr", version: 1 },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([
+      [
+        pageItem.itemId,
+        new Map([
+          ["en", 1],
+          ["fr", 1],
+        ]),
+      ],
+    ]);
+    const client = makeClient(
+      [fx.ptRoot, fx.pageTpl, fx.section, fx.titleField, fx.pagesRootItem, pageItem],
+      { versionsByItem, tenantLanguages: ["en", "fr"] }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.pageTemplatesRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        pageTemplatesRoot: fx.pageTemplatesRoot,
+        pagesRoot: fx.pagesRoot,
+      },
+      client
+    );
+    const page = recipes!.find((r): r is PageRecipe => r.kind === "page");
+    expect(page).toBeDefined();
+    expect(page!.template).toBe("article-page@1");
+    expect(page!.fields).toEqual({ Title: { shape: "text", value: "About us" } });
+    expect(page!.translations).toEqual({
+      fr: { fields: { Title: { shape: "text", value: "À propos" } } },
+    });
+    expect(page!.versions).toBeUndefined();
+  });
+
+  it("multi-version page forces story mode and captures every numbered version", async () => {
+    const fx = buildPageFixture();
+    const pageItem = item({
+      name: "About",
+      templateId: fx.pageTpl.itemId,
+      parentId: fx.pagesRootItem.itemId,
+      path: `${fx.pagesRoot}/About`,
+      fields: [
+        { fieldId: "f1", name: "Title", value: "v1 draft", language: "en", version: 1 },
+        { fieldId: "f1", name: "Title", value: "v2 final", language: "en", version: 2 },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[pageItem.itemId, new Map([["en", 2]])]]);
+    const client = makeClient(
+      [fx.ptRoot, fx.pageTpl, fx.section, fx.titleField, fx.pagesRootItem, pageItem],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.pageTemplatesRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        pageTemplatesRoot: fx.pageTemplatesRoot,
+        pagesRoot: fx.pagesRoot,
+      },
+      client
+    );
+    const page = recipes!.find((r): r is PageRecipe => r.kind === "page");
+    expect(page).toBeDefined();
+    // Story mode: `fields` empty, every (en, v1..v2) cell under `versions`.
+    expect(page!.fields).toEqual({});
+    expect(page!.translations).toBeUndefined();
+    expect(page!.versions?.en).toHaveLength(2);
+    expect(page!.versions?.en[0]).toMatchObject({
+      version: 1,
+      fields: { Title: { shape: "text", value: "v1 draft" } },
+    });
+    expect(page!.versions?.en[1]).toMatchObject({
+      version: 2,
+      fields: { Title: { shape: "text", value: "v2 final" } },
+    });
+  });
+
+  it("single-language page with layout stays simple-mode and carries item-level layout", async () => {
+    const fx = buildPageFixture();
+    // A trivial __Final Renderings XML the decoder can recover as an
+    // empty Layout. The placement-resolution depth isn't what this test
+    // checks — it's that the page falls into simple-mode with a layout.
+    const pageItem = item({
+      name: "Home",
+      templateId: fx.pageTpl.itemId,
+      parentId: fx.pagesRootItem.itemId,
+      path: `${fx.pagesRoot}/Home`,
+      fields: [{ fieldId: "f1", name: "Title", value: "Home", language: "en", version: 1 }],
+    });
+    const versionsByItem: ItemVersions = new Map([[pageItem.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.ptRoot, fx.pageTpl, fx.section, fx.titleField, fx.pagesRootItem, pageItem],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.pageTemplatesRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        pageTemplatesRoot: fx.pageTemplatesRoot,
+        pagesRoot: fx.pagesRoot,
+      },
+      client
+    );
+    const page = recipes!.find((r): r is PageRecipe => r.kind === "page");
+    expect(page).toBeDefined();
+    expect(page!.versions).toBeUndefined();
+    expect(page!.translations).toBeUndefined();
+    // No layout XML in this fixture → no `layout` in the recipe.
+    expect(page!.layout).toBeUndefined();
+    expect(page!.fields).toEqual({ Title: { shape: "text", value: "Home" } });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Security regression: handleOf validates the tenant-stamped marker
+// against HANDLE_PATTERN. Without this, a malicious author could write
+// `'../../tmp/pwn@1'` to the Scai Handle field and pull's writeRecipeJson
+// would resolve the file path outside the operator's outDir.
+// Audit H-1 fix (commit dd3defe).
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("handleOf — tenant Scai Handle marker security validation", () => {
+  /**
+   * Helper: project one content-template recipe and return its handle.
+   * The recipe's handle is what `slugifyHandle` would fold into a file
+   * path downstream, so this is the boundary where validation lives.
+   */
+  const projectHandle = async (markerValue: string | undefined): Promise<string | undefined> => {
+    idSeq = 0;
+    const contentModelsRoot = "/sitecore/templates/Project/demo/Content Models";
+    const cmRoot = item({
+      name: "Content Models",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      parentId: ROOT_PARENT,
+      path: contentModelsRoot,
+    });
+    const template = item({
+      name: "ArticleSnippet",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: cmRoot.itemId,
+      path: `${contentModelsRoot}/ArticleSnippet`,
+      fields:
+        markerValue !== undefined
+          ? [f(SCAI_HANDLE_FIELD_NAME, markerValue, SCAI_HANDLE_FIELD_NAME)]
+          : [],
+    });
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot,
+      },
+      makeClient([cmRoot, template])
+    );
+    return recipes?.find((r): r is ContentTemplateRecipe => r.kind === "content-template")?.handle;
+  };
+
+  it("trusts a well-formed marker that matches HANDLE_PATTERN", async () => {
+    // sanity-check: a valid marker survives + drives the handle.
+    expect(await projectHandle("article-snippet@1")).toBe("article-snippet@1");
+  });
+
+  it("rejects a marker containing parent-directory traversal", async () => {
+    // The attack vector: malicious tenant author writes '../../tmp/pwn@1'
+    // to the Scai Handle field. handleOf MUST NOT trust it; falls back
+    // to handleFromName which builds a deterministic kebab handle from
+    // the Sitecore item name (subject to Sitecore's own naming rules).
+    const handle = await projectHandle("../../tmp/pwn@1");
+    expect(handle).toBe("article-snippet@1");
+    expect(handle).not.toContain("..");
+    expect(handle).not.toContain("/");
+  });
+
+  it("rejects markers with path separators (forward + back slash)", async () => {
+    expect(await projectHandle("foo/bar@1")).toBe("article-snippet@1");
+    expect(await projectHandle("foo\\bar@1")).toBe("article-snippet@1");
+  });
+
+  it("rejects markers with leading dot, uppercase, or missing @-version", async () => {
+    expect(await projectHandle(".hidden@1")).toBe("article-snippet@1");
+    expect(await projectHandle("UPPER@1")).toBe("article-snippet@1");
+    expect(await projectHandle("no-version")).toBe("article-snippet@1");
+    // Empty string falls back to handleFromName, same path.
+    expect(await projectHandle("")).toBe("article-snippet@1");
+  });
+
+  it("falls back cleanly when the marker is absent (unmarked tenant item)", async () => {
+    expect(await projectHandle(undefined)).toBe("article-snippet@1");
+  });
+
+  it("trims whitespace before validating (legitimate markers with surrounding whitespace work)", async () => {
+    expect(await projectHandle("  article-snippet@1  ")).toBe("article-snippet@1");
   });
 });

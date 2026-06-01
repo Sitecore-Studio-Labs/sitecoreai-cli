@@ -35,7 +35,6 @@ export {
   RecipeDatasourceSchema,
   RenderingDatasourceLocationSchema,
   RenderingVariantDefinitionSchema,
-  SectionDefinitionRecipeSchema,
   SitecoreFieldAugmentSchema,
   type ComponentPlacement,
   type ComponentTemplateRecipe,
@@ -54,7 +53,6 @@ export {
   type RecipeDatasource,
   type RenderingDatasourceLocation,
   type RenderingVariantDefinition,
-  type SectionDefinitionRecipe,
   type SitecoreFieldAugment,
 } from "./schema/recipe";
 
@@ -82,7 +80,6 @@ export {
   compileDesignParametersTemplateRecipe,
   compileRecipe,
   compileRecipeSet,
-  compileSectionDefinitionRecipe,
   PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   type CompileContext,
@@ -103,7 +100,6 @@ export {
   NAMESPACE_PROJECT,
   NAMESPACE_RENDERING,
   NAMESPACE_ROOT,
-  NAMESPACE_SECTION_DEFINITION,
   NAMESPACE_SITE_BRANCH,
   NAMESPACE_TEMPLATE,
   PAGE_DESIGNS_ROOT_REF_KEY,
@@ -125,7 +121,6 @@ export {
   presentationDesignParametersBucketId,
   renderingId,
   renderingsSectionFolderId,
-  sectionDefinitionId,
   sectionFolderId,
   sectionId,
   siteBranchId,
@@ -168,7 +163,6 @@ export {
   DEFAULT_VERSION,
   LAYOUT_FIELDS,
   RENDERING_FIELDS,
-  SECTION_DEFINITION_FIELDS,
   SITE_FIELDS,
   SITE_TEMPLATE_FIELDS,
   SITECORE_TEMPLATES,
@@ -195,6 +189,44 @@ export type {
   ExecutionMode,
   ExecutionResult,
 } from "./runtime/execute";
+
+// Three-way merge baseline (0.3+) — the BaselineStorage interface lets
+// remote backends (orchestrator-hosted, in-memory) plug in without
+// changing push/pull entry points. FileBaselineStorage is the default
+// (writes under <configDir>/.scai/baseline/). The schema types are
+// exported so custom storage impls can validate + produce baselines
+// shape-compatible with what scai's planner reads.
+//
+// Merge helpers (classifyMergeStatus, mergeContentValueRecipe, etc.)
+// stay internal — the CLI is the public consumer of the merge logic;
+// programmatic consumers reach for `buildPlan` + `executeIr` directly.
+// See docs/bidirectional-sync.md for the operator walkthrough.
+export {
+  BaselineFieldEntrySchema,
+  BaselineSchema,
+  FileBaselineStorage,
+  baselineFilePath,
+  canonicaliseLayoutXml,
+  hashFieldValue,
+  hashFieldValueForBaseline,
+  indexBaseline,
+  isLayoutFieldId,
+  loadBaseline,
+  writeBaseline,
+} from "./runtime/baseline";
+export type {
+  Baseline,
+  BaselineFieldEntry,
+  BaselineIndex,
+  BaselineStorage,
+} from "./runtime/baseline";
+
+// Merge plan schema (0.3+) — the JSON document `scai recipe pull
+// --write-plan` emits + `--apply-plan` consumes. Operators hand-edit
+// this file to pick per-field winners; programmatic consumers can
+// produce / validate via the exported Zod schemas.
+export { MergePlanFieldSchema, MergePlanRecipeSchema, MergePlanSchema } from "./tasks/pull";
+export type { MergePlan, MergePlanField, MergePlanRecipe } from "./tasks/pull";
 
 // Authoring API client seam (interface — bring your own implementation,
 // OR use `createAuthoringClient` below for scai's production client).

@@ -347,6 +347,16 @@ numbered version of each language, projected back into _simple mode_. A
 version stack is `serialization`'s job. This is consistent with `readCurrent`
 already being a documented best-effort projection.
 
+**Bidirectional sync (0.3+):** `readCurrent` is now the read half of a
+three-way merge — `recipe push` writes a per-(env, recipe) baseline
+file after each successful apply, and `recipe pull --against <recipes>`
+compares disk + tenant + baseline to classify per-field drift as
+`recipe-change` / `cms-edit` / `conflict` (push side) or `disk-ahead`
+/ `tenant-edited` / `conflict` (pull side). See
+[`docs/bidirectional-sync.md`](./bidirectional-sync.md) for the full
+walkthrough including `--conflict-policy` / `--write-plan` /
+`--apply-plan` and the `BaselineStorage` interface for remote backends.
+
 ### Decisions
 
 - Two mutually-exclusive authoring modes: **simple** (`fields` +

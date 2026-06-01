@@ -198,6 +198,398 @@ describe("inverseOf — applied updateItem reverts each touched field", () => {
   });
 });
 
+describe("inverseOf — pruneChildren restoration", () => {
+  const PARENT_ITEM_ID = "deadbeef-0000-0000-0000-000000000001";
+  const PRUNED_ITEM_ID_A = "deadbeef-0000-0000-0000-00000000000a";
+  const PRUNED_ITEM_ID_B = "deadbeef-0000-0000-0000-00000000000b";
+
+  const pruneAction = (
+    mode: "warn" | "delete",
+    itemIds: string[],
+    versionsByLang: Record<string, number> = { en: 1 }
+  ): PlannedAction => ({
+    index: 0,
+    operation: {
+      op: "PruneChildren",
+      policy: "CreateAndUpdate",
+      label: "prune:test",
+      parentRefKey: "11111111-1111-1111-1111-111111111111",
+      allowedHandles: [],
+      mode,
+    },
+    status: "prune",
+    mutation: { kind: "pruneChildren", itemIds, mode },
+    prunedItems: itemIds.map((id, i) => {
+      const versions: Array<{
+        language: string;
+        version: number;
+        fields: {
+          fieldId: string;
+          name?: string;
+          language: string;
+          version: number;
+          value: string;
+        }[];
+      }> = [];
+      for (const [lang, count] of Object.entries(versionsByLang)) {
+        for (let v = 1; v <= count; v += 1) {
+          versions.push({
+            language: lang,
+            version: v,
+            fields: [
+              {
+                fieldId: "fff00000-0000-0000-0000-000000000002",
+                name: "Body",
+                language: lang,
+                version: v,
+                value: `body-text-${lang}-v${v}`,
+              },
+            ],
+          });
+        }
+      }
+      return {
+        itemId: id,
+        path: `/sitecore/.../Orphan${i}`,
+        templateId: "77777777-7777-7777-7777-777777777777",
+        name: `Orphan${i}`,
+        parentId: PARENT_ITEM_ID,
+        sharedFields: [{ fieldId: "fff00000-0000-0000-0000-000000000001", value: "title-value" }],
+        versions,
+        children: [],
+      };
+    }),
+    snapshot: null,
+  });
+
+  it("returns null for warn-mode prunes (apply skipped, nothing to undo)", () => {
+    const action = pruneAction("warn", [PRUNED_ITEM_ID_A]);
+    expect(inverseOf(action, new Map())).toBeNull();
+  });
+
+  it("returns null when prunedItems is empty (skip status emitted before delete ran)", () => {
+    const action = pruneAction("delete", []);
+    expect(inverseOf(action, new Map())).toBeNull();
+  });
+
+  it("returns a restoreItems inverse with shared + (defaultLang, v1) fields in initialFields", () => {
+    const action = pruneAction("delete", [PRUNED_ITEM_ID_A, PRUNED_ITEM_ID_B]);
+    const inverse = inverseOf(action, new Map());
+    if (!inverse || inverse.kind !== "restoreItems") throw new Error("expected restoreItems");
+    expect(inverse.trees).toHaveLength(2);
+    const t0 = inverse.trees[0];
+    expect(t0.parent).toBe(PARENT_ITEM_ID);
+    expect(t0.name).toBe("Orphan0");
+    expect(t0.templateId).toBe("77777777-7777-7777-7777-777777777777");
+    expect(t0.defaultLanguage).toBe("en");
+    expect(t0.extraVersions).toEqual([]); // only en v1 → nothing extra
+    expect(t0.children).toEqual([]);
+    // initialFields = shared (title) + (en, v1) versioned (Body).
+    expect(t0.initialFields).toEqual([
+      {
+        fieldId: "fff00000-0000-0000-0000-000000000001",
+        value: { kind: "string", value: "title-value" },
+      },
+      {
+        fieldId: "fff00000-0000-0000-0000-000000000002",
+        fieldName: "Body",
+        language: "en",
+        version: 1,
+        value: { kind: "string", value: "body-text-en-v1" },
+      },
+    ]);
+  });
+
+  it("splits multi-version into initialFields (v1) + extraVersions (v2+)", () => {
+    const action = pruneAction("delete", [PRUNED_ITEM_ID_A], { en: 3 });
+    const inverse = inverseOf(action, new Map());
+    if (!inverse || inverse.kind !== "restoreItems") throw new Error("expected restoreItems");
+    const t = inverse.trees[0];
+    expect(t.defaultLanguage).toBe("en");
+    expect(t.extraVersions.map((v) => `${v.language}-v${v.version}`)).toEqual(["en-v2", "en-v3"]);
+    expect(t.extraVersions[0].fields[0].value).toEqual({
+      kind: "string",
+      value: "body-text-en-v2",
+    });
+  });
+
+  it("splits multi-language: defaultLanguage is the first snapshot language, others land in extraVersions", () => {
+    const action = pruneAction("delete", [PRUNED_ITEM_ID_A], { en: 2, fr: 2 });
+    const inverse = inverseOf(action, new Map());
+    if (!inverse || inverse.kind !== "restoreItems") throw new Error("expected restoreItems");
+    const t = inverse.trees[0];
+    expect(t.defaultLanguage).toBe("en");
+    // (en, 1) is in initialFields; everything else in extraVersions.
+    expect(t.extraVersions.map((v) => `${v.language}-v${v.version}`)).toEqual([
+      "en-v2",
+      "fr-v1",
+      "fr-v2",
+    ]);
+  });
+});
+
+describe("rollback — restoreItems executes createItem per snapshot", () => {
+  const PARENT_PATH = "/sitecore/content/test/Renderings/Showcase";
+  const PARENT_ITEM_ID = "abcabcab-0000-0000-0000-000000000001";
+
+  const seedParent = (client: MockAuthoringClient): void => {
+    client.preload({
+      itemId: PARENT_ITEM_ID,
+      templateId: "55555555-5555-5555-5555-555555555555",
+      parentId: "00000000-0000-0000-0000-000000000000",
+      name: "Showcase",
+      path: PARENT_PATH,
+      fields: [],
+    });
+  };
+
+  type SnapshotSpec = {
+    name: string;
+    versions?: number;
+    languages?: Record<string, number>;
+    children?: SnapshotSpec[];
+  };
+  const makeSnapshot = (s: SnapshotSpec, i: number, parentId: string) => {
+    // Build per-(language, version) snapshot. Two input shapes:
+    // - `versions: N` → en, v1..N (the most common test setup)
+    // - `languages: { en: 2, fr: 1 }` → fully-specified
+    const langs = s.languages ?? { en: s.versions ?? 1 };
+    const versions: Array<{
+      language: string;
+      version: number;
+      fields: Array<{
+        fieldId: string;
+        name?: string;
+        language: string;
+        version: number;
+        value: string;
+      }>;
+    }> = [];
+    for (const [lang, count] of Object.entries(langs)) {
+      for (let v = 1; v <= count; v += 1) {
+        versions.push({
+          language: lang,
+          version: v,
+          fields: [
+            {
+              fieldId: "fff00000-0000-0000-0000-000000000002",
+              name: "Body",
+              language: lang,
+              version: v,
+              value: `${s.name}-${lang}-v${v}`,
+            },
+          ],
+        });
+      }
+    }
+    return {
+      itemId: `dddddddd-0000-${i}000-0000-000000000000`,
+      path: `${PARENT_PATH}/${s.name}`,
+      templateId: "77777777-7777-7777-7777-777777777777",
+      name: s.name,
+      parentId,
+      sharedFields: [
+        { fieldId: "fff00000-0000-0000-0000-000000000001", value: `shared-${s.name}` },
+      ],
+      versions,
+      children: (s.children ?? []).map((c, j) => makeSnapshot(c, j, "")),
+    };
+  };
+  const pruneAction = (snapshots: SnapshotSpec[]): PlannedAction => ({
+    index: 0,
+    operation: {
+      op: "PruneChildren",
+      policy: "CreateAndUpdate",
+      label: "prune:test",
+      parentRefKey: "11111111-1111-1111-1111-111111111111",
+      allowedHandles: [],
+      mode: "delete",
+    },
+    status: "prune",
+    mutation: {
+      kind: "pruneChildren",
+      itemIds: snapshots.map((_, i) => `dddddddd-0000-${i}000-0000-000000000000`),
+      mode: "delete",
+    },
+    prunedItems: snapshots.map((s, i) => makeSnapshot(s, i, PARENT_ITEM_ID)),
+    snapshot: null,
+  });
+
+  it("re-creates each pruned item under its prior parent via createItem", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    const action = pruneAction([{ name: "Orphan-A" }, { name: "Orphan-B" }]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.rolledBack).toBe(1);
+    expect(result.errors).toHaveLength(0);
+    expect(client.creates).toHaveLength(2);
+    expect(client.creates.map((c) => c.name).sort()).toEqual(["Orphan-A", "Orphan-B"]);
+    // The restored items live on the mock under the same parent, with
+    // their snapshot fields — confirms the round-trip through the
+    // CreateItemInput shape.
+    const restored = Array.from(client.itemsByPath.values()).filter(
+      (i) => i.parentId.toLowerCase() === PARENT_ITEM_ID.toLowerCase()
+    );
+    expect(restored.map((i) => i.name).sort()).toEqual(["Orphan-A", "Orphan-B"]);
+  });
+
+  it("per-item createItem failures are aggregated but other items still restore", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    // Configure the mock to throw on the second item's createItem call.
+    client.throwOn = {
+      method: "createItem",
+      match: "Orphan-B",
+      message: "simulated parent-missing failure",
+    };
+    const action = pruneAction([{ name: "Orphan-A" }, { name: "Orphan-B" }]);
+
+    const result = await rollback([action], client, new Map());
+
+    // Step failed overall (because one item failed), but Orphan-A's
+    // createItem still ran. Best-effort restoration.
+    expect(result.rolledBack).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].error).toMatch(/Restored 1 of 2/);
+    expect(result.errors[0].error).toMatch(/Orphan-B/);
+    expect(client.creates.some((c) => c.name === "Orphan-A")).toBe(true);
+  });
+
+  it("recursively restores a subtree depth-first under the original parent", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    // Two top-level items, one with two children, one of those grandchildren.
+    const action = pruneAction([
+      {
+        name: "Orphan-Folder",
+        children: [
+          {
+            name: "Orphan-Sub-A",
+            children: [{ name: "Orphan-Leaf" }],
+          },
+          { name: "Orphan-Sub-B" },
+        ],
+      },
+      { name: "Orphan-B" },
+    ]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.rolledBack).toBe(1);
+    // Four creates total: Orphan-Folder, Orphan-Sub-A, Orphan-Leaf, Orphan-Sub-B, Orphan-B = 5.
+    expect(client.creates).toHaveLength(5);
+    // Top-level items land directly under the original parent.
+    const topLevel = client.creates.filter((c) => c.parent === PARENT_ITEM_ID);
+    expect(topLevel.map((c) => c.name).sort()).toEqual(["Orphan-B", "Orphan-Folder"]);
+    // Each level's createItem.parent matches the previous level's restored
+    // itemId — depth-first chaining works.
+    const folderRestored = Array.from(client.itemsByPath.values()).find(
+      (i) => i.name === "Orphan-Folder"
+    );
+    expect(folderRestored).toBeDefined();
+    const subARestored = Array.from(client.itemsByPath.values()).find(
+      (i) => i.name === "Orphan-Sub-A"
+    );
+    expect(subARestored?.parentId).toBe(folderRestored?.itemId);
+    const leafRestored = Array.from(client.itemsByPath.values()).find(
+      (i) => i.name === "Orphan-Leaf"
+    );
+    expect(leafRestored?.parentId).toBe(subARestored?.itemId);
+  });
+
+  it("a failed root cascades — descendants of the failed node are skipped, sibling subtrees still run", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    client.throwOn = {
+      method: "createItem",
+      match: "Orphan-Folder",
+      message: "simulated root-create failure",
+    };
+    const action = pruneAction([
+      {
+        name: "Orphan-Folder",
+        children: [{ name: "Orphan-Sub" }, { name: "Orphan-Sub-2" }],
+      },
+      { name: "Orphan-B" },
+    ]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.errors).toHaveLength(1);
+    // 4 total nodes (Orphan-Folder + 2 children + Orphan-B), 1 restored
+    // (Orphan-B), 1 failed (Orphan-Folder), 2 cascaded skips (children).
+    expect(result.errors[0].error).toMatch(/Restored 1 of 4/);
+    expect(result.errors[0].error).toMatch(/2 cascaded skips/);
+    expect(client.creates.some((c) => c.name === "Orphan-B")).toBe(true);
+    expect(client.creates.some((c) => c.name === "Orphan-Sub")).toBe(false);
+  });
+
+  it("addItemVersion + updateItem chain materialises the full per-version field grid", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    // Item with 3 en versions; createItem makes v1, then 2 addItemVersion
+    // calls bring count to 3 plus 2 updateItem calls populate v2/v3.
+    const action = pruneAction([{ name: "Orphan-Versioned", versions: 3 }]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.rolledBack).toBe(1);
+    expect(client.creates).toHaveLength(1);
+    expect(client.versionAdds).toHaveLength(2);
+    // updateItem called once per extraVersion entry (v2, v3) with the
+    // snapshotted field values for that version.
+    expect(client.updates).toHaveLength(2);
+    expect(client.updates[0].version).toBe(2);
+    expect(client.updates[1].version).toBe(3);
+    const v2Body = client.updates[0].fields.find((f) => f.fieldName === "Body");
+    expect(v2Body?.value).toEqual({ kind: "string", value: "Orphan-Versioned-en-v2" });
+  });
+
+  it("restores multiple languages — non-default lang gets addItemVersion chain from 0 + per-version updateItem", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    // en v1/v2 + fr v1/v2: createItem makes en v1, then bring en to v2,
+    // then create fr v1+v2.
+    const action = pruneAction([{ name: "Orphan-MultiLang", languages: { en: 2, fr: 2 } }]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.rolledBack).toBe(1);
+    expect(client.creates).toHaveLength(1);
+    expect(client.creates[0].language).toBe("en");
+    // 3 addItemVersion calls: en→v2 (one call), fr→v1 (one), fr→v2 (one).
+    expect(client.versionAdds).toHaveLength(3);
+    expect(client.versionAdds.filter((v) => v.language === "en")).toHaveLength(1);
+    expect(client.versionAdds.filter((v) => v.language === "fr")).toHaveLength(2);
+    // 3 updateItem calls — one per extraVersion (en-v2, fr-v1, fr-v2).
+    expect(client.updates).toHaveLength(3);
+    const byLangVersion = client.updates.map((u) => `${u.language}-v${u.version}`);
+    expect(byLangVersion).toEqual(["en-v2", "fr-v1", "fr-v2"]);
+    // Field values round-trip per (language, version).
+    const frV1Body = client.updates
+      .find((u) => u.language === "fr" && u.version === 1)
+      ?.fields.find((f) => f.fieldName === "Body");
+    expect(frV1Body?.value).toEqual({ kind: "string", value: "Orphan-MultiLang-fr-v1" });
+  });
+
+  it("no addItemVersion/updateItem calls when the snapshot is single-language single-version", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    const action = pruneAction([{ name: "Orphan-Single", versions: 1 }]);
+
+    const result = await rollback([action], client, new Map());
+
+    expect(result.errors).toHaveLength(0);
+    expect(client.versionAdds).toHaveLength(0);
+    expect(client.updates).toHaveLength(0);
+  });
+});
+
 describe("inverseOf — actions without a forward mutation have no inverse", () => {
   it("returns null for skipped actions", () => {
     const op: CreateItemOp = {
@@ -369,6 +761,111 @@ describe("rollback — disk audit log", () => {
     // Successful deletes get the captured itemId for replay.
     expect(lines[0].itemId).toBe(captured.get(applied[2].operation.id));
     expect(lines[2].itemId).toBe(captured.get(applied[0].operation.id));
+  });
+});
+
+describe("executeIr — PruneChildren end-to-end (audit gap #10 + #14)", () => {
+  // Audit found no test that exercises a prune through the actual executor
+  // (only through inverseOf + rollback() directly). These two cover the
+  // executor-side dispatch + the POLICY_DENIED gate.
+
+  const PARENT_PATH = "/sitecore/content/test/Renderings/Section";
+  const PARENT_ITEM_ID = "11111111-aaaa-aaaa-aaaa-000000000001";
+  const KEEP_ITEM_ID = "11111111-aaaa-aaaa-aaaa-00000000000a";
+  const ORPHAN_ITEM_ID = "11111111-aaaa-aaaa-aaaa-00000000000b";
+  const ALLOWED_REF_KEY = "11111111-bbbb-bbbb-bbbb-00000000000a";
+
+  const seedTree = (client: MockAuthoringClient): void => {
+    client.preload({
+      itemId: PARENT_ITEM_ID,
+      templateId: "00000000-0000-0000-0000-000000000fff",
+      parentId: "00000000-0000-0000-0000-000000000000",
+      name: "Section",
+      path: PARENT_PATH,
+      fields: [],
+    });
+    client.preload({
+      itemId: KEEP_ITEM_ID,
+      templateId: "00000000-0000-0000-0000-000000000abc",
+      parentId: PARENT_ITEM_ID,
+      name: "Keep",
+      path: `${PARENT_PATH}/Keep`,
+      fields: [],
+    });
+    client.preload({
+      itemId: ORPHAN_ITEM_ID,
+      templateId: "00000000-0000-0000-0000-000000000abc",
+      parentId: PARENT_ITEM_ID,
+      name: "Orphan",
+      path: `${PARENT_PATH}/Orphan`,
+      fields: [],
+    });
+  };
+
+  const pruneIr = (mode: "warn" | "delete") => ({
+    schemaVersion: "1" as const,
+    recipeHandle: "test-prune",
+    operations: [
+      {
+        op: "PruneChildren" as const,
+        policy: "CreateAndUpdate" as const,
+        label: "prune:test",
+        parentRefKey: "22222222-2222-2222-2222-222222222222",
+        latePath: PARENT_PATH,
+        allowedHandles: [{ kind: "ref-recipe" as const, refKey: ALLOWED_REF_KEY }],
+        mode,
+      },
+    ],
+  });
+
+  it("delete-mode prune throws POLICY_DENIED through executeIr when allowPrune is unset", async () => {
+    const client = new MockAuthoringClient();
+    seedTree(client);
+
+    const result = await executeIr(pruneIr("delete"), client, {
+      mode: "apply",
+      // allowPrune NOT set → executor must refuse.
+      crossRecipeRefs: new Map([[ALLOWED_REF_KEY, `${PARENT_PATH}/Keep`]]),
+    });
+
+    // The action lands as `prune` status (planner ran fine), but the
+    // dispatch hits the gate and the executor's apply errors. The
+    // executeIr loop catches the dispatch error and triggers rollback.
+    expect(result.aborted).toBe(true);
+    // No items were actually deleted from the mock.
+    expect(client.peek({ itemId: ORPHAN_ITEM_ID })).toBeDefined();
+    expect(client.peek({ itemId: KEEP_ITEM_ID })).toBeDefined();
+  });
+
+  it("delete-mode prune + allowPrune deletes orphans through executeIr; rollback restores via the executor path", async () => {
+    const client = new MockAuthoringClient();
+    seedTree(client);
+
+    // First: apply succeeds, orphan is deleted.
+    const okResult = await executeIr(pruneIr("delete"), client, {
+      mode: "apply",
+      allowPrune: true,
+      crossRecipeRefs: new Map([[ALLOWED_REF_KEY, `${PARENT_PATH}/Keep`]]),
+    });
+
+    expect(okResult.aborted).toBe(false);
+    expect(client.peek({ itemId: ORPHAN_ITEM_ID })).toBeUndefined();
+    expect(client.peek({ itemId: KEEP_ITEM_ID })).toBeDefined();
+  });
+
+  it("warn-mode prune dispatches a no-op apply through executeIr (no deletes)", async () => {
+    const client = new MockAuthoringClient();
+    seedTree(client);
+
+    const result = await executeIr(pruneIr("warn"), client, {
+      mode: "apply",
+      crossRecipeRefs: new Map([[ALLOWED_REF_KEY, `${PARENT_PATH}/Keep`]]),
+    });
+
+    expect(result.aborted).toBe(false);
+    // Both kept AND orphan still present — warn skips the delete.
+    expect(client.peek({ itemId: ORPHAN_ITEM_ID })).toBeDefined();
+    expect(client.peek({ itemId: KEEP_ITEM_ID })).toBeDefined();
   });
 });
 

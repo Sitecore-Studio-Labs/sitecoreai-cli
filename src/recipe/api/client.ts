@@ -121,6 +121,30 @@ export interface AddItemVersionResult {
 export interface GetItemOptions {
   /** Languages to fetch versioned fields for. Default: `["en"]`. */
   languages?: string[];
+  /**
+   * Single-language fetch. When set, the GraphQL `where` clause is
+   * `{ itemId | path, language }` so the returned `RemoteItem.fields`
+   * contains the versioned fields at THIS language's latest version
+   * (and `version` is also set), plus the item's shared fields.
+   *
+   * `language` and `languages` are independent: `language` produces
+   * one read; `languages` is the legacy list-based hint (unused by
+   * the implementation today). Prefer `language` for per-language
+   * snapshot capture in the prune-restore path.
+   */
+  language?: string;
+  /**
+   * Single-version fetch. Pairs with `language` to read the fields at a
+   * specific numbered version (`where: { itemId|path, language, version }`).
+   * Requires `language` to also be set — without a language the version
+   * is ambiguous.
+   *
+   * Used by `planPruneChildren`'s snapshot pass to capture each
+   * (language, version) tuple's fields, so the rollback restore path can
+   * reconstruct the full version stack via `addItemVersion` +
+   * `updateItem` per version.
+   */
+  version?: number;
 }
 
 export interface AuthoringApiClient {
@@ -180,4 +204,61 @@ export interface AuthoringApiClient {
    * the target version already exists).
    */
   getItemVersions(selector: ItemSelector, language: string): Promise<number[]>;
+  /**
+   * One-shot batched per-language read for a single item. Returns each
+   * requested language's latest-version `RemoteItem` plus that
+   * language's version stack via a single aliased GraphQL query —
+   * collapses what would otherwise be L sequential `getItemVersions`
+   * calls (plus L `getItem` calls for the latest fields) into one
+   * round trip.
+   *
+   * Used by the prune-rollback snapshot pass: pass 1 calls this to
+   * discover which versions exist per language and to capture the
+   * latest version's fields in one go. Pass 2 (`getItemAtVersionsBatch`)
+   * follows only when historic versions need filling in.
+   *
+   * Languages absent on the item (no versions in that language) are
+   * returned with `item: null` and `versions: []`. The caller can skip
+   * those without an extra wire call.
+   */
+  getItemPerLanguageBatch(
+    selector: ItemSelector,
+    languages: readonly string[]
+  ): Promise<Array<{ language: string; versions: number[]; item: RemoteItem | null }>>;
+  /**
+   * One-shot batched per-(language, version) read for a single item.
+   * One aliased GraphQL query returns the item's fields at each
+   * requested (language, version) tuple — used by the prune-rollback
+   * snapshot pass to capture historic version fields after pass 1
+   * identifies which versions exist.
+   *
+   * Tuples that don't exist on the item return `null` in their slot;
+   * order matches the input.
+   */
+  getItemAtVersionsBatch(
+    selector: ItemSelector,
+    requests: ReadonlyArray<{ language: string; version: number }>
+  ): Promise<Array<RemoteItem | null>>;
+  /**
+   * Every language ISO code configured on the tenant (the connection
+   * the GraphQL schema exposes as the root `languages { nodes { name } }`
+   * query). Used by the prune-rollback snapshot pass as the upper bound
+   * for which languages an item COULD have versions in — the planner
+   * then probes each via `getItemPerLanguageBatch` and snapshots
+   * whichever the item actually has.
+   *
+   * Item-level language discovery is intentionally NOT in the
+   * interface: the XM Cloud Authoring schema doesn't expose
+   * `Item.languages` (verified via recon against TestDemo, RegistryCM
+   * 2026-06-01), so all auto-discovery has to start from the tenant
+   * set. See `scripts/_recon-item-languages.ts` for the schema probe
+   * results.
+   *
+   * Best-effort: returns `["en"]` when the call fails (schema doesn't
+   * expose the field, the call errors, or the result is empty). The
+   * implementation caches the result for the client's lifetime — the
+   * tenant's language set changes rarely enough that a per-push read
+   * is the right granularity.
+   */
+  getTenantLanguages(): Promise<string[]>;
 }

@@ -55,8 +55,10 @@ export const SITECORE_FIELD_TYPES = [
   "lookup",
   "tags",
   // Sitecore Marketplace custom field. Mounts the plugin identified by
-  // `sitecore.source: { kind: "plugin", id: "<marketplace-slug>" }` as
-  // an iframe inside the editor. The field's stored value is whatever
+  // `sitecore.source: { kind: "plugin", id: "<plugin_key>", defaultAppId: "<UUID>" }`
+  // — the orchestrator resolves the effective app_id (override or default)
+  // and substitutes it into defaultAppId before scai emits the Source. The
+  // field's stored value is whatever
   // the plugin postMessages back via `client.setValue()` — typically a
   // JSON descriptor or a digest of derived state. Opt-in only: no
   // `shape → Plugin` default exists in `defaultSitecoreFieldType`.

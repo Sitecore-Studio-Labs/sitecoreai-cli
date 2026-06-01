@@ -127,7 +127,14 @@ export const SitecoreFieldSourceSchema = z.discriminatedUnion("kind", [
       .string()
       .min(1)
       .describe(
-        'Marketplace plugin slug, e.g. `sai/matrix-editor`. The compiler emits this verbatim into the Sitecore field\'s `Source` property; the Marketplace shell resolves it to a deployed iframe URL against its installed-plugins catalog at render time. Pair with `type: "Plugin"`.'
+        "Stable logical key identifying the marketplace plugin (e.g. `sai/matrix-editor`). Recipe-side handle; the orchestrator's recipe-sync resolver maps it to a per-org `app_id` UUID and substitutes that into `defaultAppId` before scai consumes the recipe. scai's compiler emits the substituted UUID — not this key — into the Sitecore field's `Source`."
+      ),
+    defaultAppId: z
+      .string()
+      .min(1)
+      .max(256)
+      .describe(
+        "UUID of the recipe author's published marketplace app (the value Sitecore returns via the Marketplace SDK's `application.context.id`). Used by the resolver unless the org has a per-org override in `internal.marketplace_plugin_overrides`."
       ),
   }),
 ]);

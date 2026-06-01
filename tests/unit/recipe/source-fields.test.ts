@@ -150,9 +150,15 @@ describe("augmentSourceToFields", () => {
     });
   });
 
-  it("plugin → sourcePlugin", () => {
-    expect(augmentSourceToFields({ kind: "plugin", id: "sai/matrix-editor" })).toEqual({
-      sourcePlugin: "sai/matrix-editor",
+  it("plugin → sourcePlugin emits the resolved defaultAppId UUID, not the id slug", () => {
+    expect(
+      augmentSourceToFields({
+        kind: "plugin",
+        id: "sai/matrix-editor",
+        defaultAppId: "132e9379-0e85-4840-8d1f-f3e4b9e32553",
+      })
+    ).toEqual({
+      sourcePlugin: "132e9379-0e85-4840-8d1f-f3e4b9e32553",
     });
   });
 });

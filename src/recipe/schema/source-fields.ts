@@ -8,7 +8,10 @@
  *   sourceQuery   string     — where to look (Sitecore Query)
  *   sourceScope   string     — where to look (fixed content path)
  *   sourceRaw     string     — escape hatch (verbatim Source string)
- *   sourcePlugin  string     — Marketplace plugin slug (paired with
+ *   sourcePlugin  string     — Marketplace plugin app_id UUID (the
+ *                              resolved value of `source.defaultAppId`
+ *                              after the orchestrator applies any
+ *                              per-org override; paired with
  *                              `sitecore.type: "Plugin"`)
  *
  * `renderSourceFields` composes them into the URL-encoded Source value
@@ -21,12 +24,14 @@
  *   sourceQuery + types      → `DataSource=query:<query>&IncludeTemplatesForSelection=...`
  *   sourceScope + types      → `DataSource=<path>&IncludeTemplatesForSelection=...`
  *   sourceRaw                → verbatim, ignores everything else
- *   sourcePlugin             → verbatim slug, ignores everything else
+ *   sourcePlugin             → verbatim UUID, ignores everything else
  *
  * Authors who need a Source form outside this surface (e.g. a bare
  * `/sitecore/content/Tags` Treelist source) use `sourceRaw`. Authors
- * mounting a Marketplace plugin use `sourcePlugin` paired with
- * `type: "Plugin"`.
+ * mounting a Marketplace plugin use `source: { kind: "plugin", id, defaultAppId }`
+ * paired with `type: "Plugin"`; the orchestrator pre-resolves the
+ * effective app_id (override or default) and inlines it as `defaultAppId`
+ * before scai sees the recipe.
  */
 
 export interface SourceFields {
@@ -55,8 +60,8 @@ export const renderSourceFields = (
     return fields.sourceRaw;
   }
   if (fields.sourcePlugin !== undefined) {
-    // Marketplace plugin slug — the Marketplace shell resolves this
-    // against its installed-plugins catalog at render time.
+    // Marketplace plugin app_id UUID — the Marketplace shell looks up
+    // the deployed iframe URL by this id at render time.
     return fields.sourcePlugin;
   }
 
@@ -116,7 +121,7 @@ export const augmentSourceToFields = (
   source:
     | { kind: "filter"; types?: readonly string[]; query?: string; scope?: string }
     | { kind: "raw"; value: string }
-    | { kind: "plugin"; id: string }
+    | { kind: "plugin"; id: string; defaultAppId: string }
     | undefined
 ): SourceFields => {
   if (!source) return {};
@@ -124,7 +129,10 @@ export const augmentSourceToFields = (
     return { sourceRaw: source.value };
   }
   if (source.kind === "plugin") {
-    return { sourcePlugin: source.id };
+    // sourcePlugin carries the resolved app_id UUID — the orchestrator
+    // substitutes any per-org override into `defaultAppId` before scai
+    // sees the recipe, so this value is already the final id to emit.
+    return { sourcePlugin: source.defaultAppId };
   }
   return {
     sourceTypes: source.types,

@@ -57,17 +57,23 @@ export const hashCampaignCells = (recipe: CampaignRecipe): Record<string, string
   for (const deliverable of recipe.deliverables) {
     cells[deliverableCellPath(deliverable.name, "status")] = hashJsonValue(deliverable.status);
     cells[deliverableCellPath(deliverable.name, "dueDate")] = hashJsonValue(deliverable.dueDate);
-    cells[deliverableCellPath(deliverable.name, "funnelStage")] = hashJsonValue(deliverable.funnelStage);
+    cells[deliverableCellPath(deliverable.name, "funnelStage")] = hashJsonValue(
+      deliverable.funnelStage
+    );
     cells[deliverableCellPath(deliverable.name, "funnelTactics")] = hashJsonValue(
       deliverable.funnelTactics ?? []
     );
-    cells[deliverableCellPath(deliverable.name, "labels")] = hashJsonValue(deliverable.labels ?? []);
+    cells[deliverableCellPath(deliverable.name, "labels")] = hashJsonValue(
+      deliverable.labels ?? []
+    );
 
     for (const task of deliverable.tasks ?? []) {
       cells[taskCellPath(deliverable.name, task.name, "status")] = hashJsonValue(task.status);
       cells[taskCellPath(deliverable.name, task.name, "dueDate")] = hashJsonValue(task.dueDate);
       cells[taskCellPath(deliverable.name, task.name, "priority")] = hashJsonValue(task.priority);
-      cells[taskCellPath(deliverable.name, task.name, "description")] = hashJsonValue(task.description);
+      cells[taskCellPath(deliverable.name, task.name, "description")] = hashJsonValue(
+        task.description
+      );
       cells[taskCellPath(deliverable.name, task.name, "assignee")] = hashJsonValue(task.assignee);
       cells[taskCellPath(deliverable.name, task.name, "labels")] = hashJsonValue(task.labels ?? []);
     }

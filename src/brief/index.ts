@@ -98,7 +98,4 @@ export {
 // the deeper `./recipe/instance-kind` path which package.json doesn't
 // expose.
 export { briefTypeKind, briefInstanceKind } from "./recipe";
-export type {
-  BriefTypeRecipe,
-  BriefInstanceRecipe,
-} from "./recipe";
+export type { BriefTypeRecipe, BriefInstanceRecipe } from "./recipe";

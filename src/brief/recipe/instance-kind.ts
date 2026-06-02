@@ -282,9 +282,10 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // any cell classified as `cms-edit` / `conflict` and the policy is
   // `"error"`. Refuse to write — operator must resolve before retry.
   if (instanceChange.meta?.policyError === true) {
-    const errors = (instanceChange.meta?.policyErrors as
-      | Array<{ path: string; classification: string }>
-      | undefined) ?? [];
+    const errors =
+      (instanceChange.meta?.policyErrors as
+        | Array<{ path: string; classification: string }>
+        | undefined) ?? [];
     throw createScaiError(
       `Brief "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
       "POLICY_DENIED",

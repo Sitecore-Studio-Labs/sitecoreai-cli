@@ -129,9 +129,10 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // exists this run — on the first carrier change.
   const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
   if (policyErrorChange) {
-    const errors = (policyErrorChange.meta?.policyErrors as
-      | Array<{ path: string; classification: string }>
-      | undefined) ?? [];
+    const errors =
+      (policyErrorChange.meta?.policyErrors as
+        | Array<{ path: string; classification: string }>
+        | undefined) ?? [];
     throw createScaiError(
       `Campaign "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
       "POLICY_DENIED",
@@ -279,12 +280,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         payload,
       };
       try {
-        await ctx.baselineStorage.write(
-          CAMPAIGN_KIND_NAME,
-          ctx.environmentName,
-          ref.id,
-          baseline
-        );
+        await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, ref.id, baseline);
       } catch (err) {
         ctx.logger?.error?.(
           `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
@@ -345,12 +341,7 @@ const plan = async (
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const classifications = classifyCampaignCells(desired, current, baselinePayload);
-  const { merged, policyErrors } = mergeCampaignByPolicy(
-    desired,
-    current,
-    classifications,
-    policy
-  );
+  const { merged, policyErrors } = mergeCampaignByPolicy(desired, current, classifications, policy);
 
   const basePlan = diffCampaign(merged, current);
 

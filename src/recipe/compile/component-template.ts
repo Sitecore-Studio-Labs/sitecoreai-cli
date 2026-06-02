@@ -125,9 +125,7 @@ export function compileComponentTemplateRecipe(
   // template inheritance. Rendering's `Parameters Template` field
   // points at the wrapper instead of the external directly (see
   // `paramsRefKey` resolution further down).
-  const needsDynamicPlaceholderWrapper = Boolean(
-    recipe.parameters && recipe.dynamicPlaceholders
-  );
+  const needsDynamicPlaceholderWrapper = Boolean(recipe.parameters && recipe.dynamicPlaceholders);
 
   const sectionName = resolveSectionName(recipe, context);
   if (sectionName) {

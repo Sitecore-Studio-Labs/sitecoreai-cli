@@ -38,19 +38,16 @@ const ENV_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 export class HttpBaselineStorage implements BaselineStorage {
   constructor(
     readonly endpointUrl: string,
-    readonly authToken: string,
+    readonly authToken: string
   ) {
     if (!endpointUrl) {
       throw createScaiError(
         "HttpBaselineStorage requires a non-empty endpointUrl.",
-        "INPUT_INVALID",
+        "INPUT_INVALID"
       );
     }
     if (!authToken) {
-      throw createScaiError(
-        "HttpBaselineStorage requires a non-empty authToken.",
-        "INPUT_INVALID",
-      );
+      throw createScaiError("HttpBaselineStorage requires a non-empty authToken.", "INPUT_INVALID");
     }
   }
 
@@ -58,18 +55,16 @@ export class HttpBaselineStorage implements BaselineStorage {
     if (!KIND_PATTERN.test(kind)) {
       throw createScaiError(
         `Invalid baseline kind "${kind}" — expected lower-kebab slug.`,
-        "INPUT_INVALID",
+        "INPUT_INVALID"
       );
     }
     if (!ENV_PATTERN.test(envName)) {
       throw createScaiError(
         `Invalid baseline env "${envName}" — must start with a letter and contain only alphanumeric / _ . -.`,
-        "INPUT_INVALID",
+        "INPUT_INVALID"
       );
     }
-    const base = this.endpointUrl.endsWith("/")
-      ? this.endpointUrl.slice(0, -1)
-      : this.endpointUrl;
+    const base = this.endpointUrl.endsWith("/") ? this.endpointUrl.slice(0, -1) : this.endpointUrl;
     return `${base}/${encodeURIComponent(kind)}/${encodeURIComponent(envName)}/${HANDLE_SEGMENT_ENCODE(recipeHandle)}`;
   }
 
@@ -87,7 +82,7 @@ export class HttpBaselineStorage implements BaselineStorage {
   async load<TPayload = unknown>(
     kind: string,
     envName: string,
-    recipeHandle: string,
+    recipeHandle: string
   ): Promise<Baseline<TPayload> | null> {
     const url = this.buildUrl(kind, envName, recipeHandle);
     let response: Response;
@@ -96,21 +91,21 @@ export class HttpBaselineStorage implements BaselineStorage {
     } catch (err) {
       throw createScaiError(
         `Baseline GET ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
-        "NETWORK",
+        "NETWORK"
       );
     }
     if (response.status === 404) return null;
     if (response.status === 401 || response.status === 403) {
       throw createScaiError(
         `Baseline GET ${url} unauthorized (${response.status}). Token scope likely mismatched or expired.`,
-        "AUTH_DENIED",
+        "AUTH_DENIED"
       );
     }
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw createScaiError(
         `Baseline GET ${url} returned ${response.status}: ${body.slice(0, 240)}`,
-        "DEPLOY_FAILED",
+        "DEPLOY_FAILED"
       );
     }
     const json = (await response.json()) as Baseline<TPayload>;
@@ -121,7 +116,7 @@ export class HttpBaselineStorage implements BaselineStorage {
     kind: string,
     envName: string,
     recipeHandle: string,
-    baseline: Baseline<TPayload>,
+    baseline: Baseline<TPayload>
   ): Promise<string> {
     const url = this.buildUrl(kind, envName, recipeHandle);
     let response: Response;
@@ -134,20 +129,20 @@ export class HttpBaselineStorage implements BaselineStorage {
     } catch (err) {
       throw createScaiError(
         `Baseline PUT ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
-        "NETWORK",
+        "NETWORK"
       );
     }
     if (response.status === 401 || response.status === 403) {
       throw createScaiError(
         `Baseline PUT ${url} unauthorized (${response.status}).`,
-        "AUTH_DENIED",
+        "AUTH_DENIED"
       );
     }
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw createScaiError(
         `Baseline PUT ${url} returned ${response.status}: ${body.slice(0, 240)}`,
-        "DEPLOY_FAILED",
+        "DEPLOY_FAILED"
       );
     }
     return url;
@@ -170,9 +165,7 @@ export const SYNC_BASELINE_ENV_VARS = {
  * the remote storage when the orchestrator drives them; operator
  * invocations from a terminal fall through to local file storage.
  */
-export const resolveHttpBaselineStorageFromEnv = ():
-  | HttpBaselineStorage
-  | undefined => {
+export const resolveHttpBaselineStorageFromEnv = (): HttpBaselineStorage | undefined => {
   const url = process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL];
   const token = process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN];
   if (!url || !token) return undefined;

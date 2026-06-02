@@ -28,8 +28,7 @@ export interface BrandBaselinePayload {
 export type BrandBaseline = Baseline<BrandBaselinePayload>;
 
 const kitCellPath = (element: "description" | "industry"): string => `kit.${element}`;
-const fieldCellPath = (section: string, field: string): string =>
-  `sections.${section}.${field}`;
+const fieldCellPath = (section: string, field: string): string => `sections.${section}.${field}`;
 
 /**
  * Walk a brand-kit recipe and emit per-cell hashes. `documents` is
@@ -137,10 +136,7 @@ export const mergeBrandByPolicy = (
     const desiredFields = desired.sections[section];
     if (!desiredFields) continue; // Recipe doesn't declare this section.
     const currentFields = current.sections[section] ?? {};
-    const fieldNames = new Set([
-      ...Object.keys(desiredFields),
-      ...Object.keys(currentFields),
-    ]);
+    const fieldNames = new Set([...Object.keys(desiredFields), ...Object.keys(currentFields)]);
     const mergedFields: Record<string, BrandFieldValue> = {};
     for (const field of fieldNames) {
       const inDesired = Object.prototype.hasOwnProperty.call(desiredFields, field);

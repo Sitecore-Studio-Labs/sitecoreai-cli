@@ -19,12 +19,7 @@
 import { classifyHashes, hashJsonValue, type Baseline, type FieldClassification } from "@/sync";
 import type { BriefInstanceRecipe } from "./instance-schema";
 
-const TOP_LEVEL_ELEMENTS = [
-  "briefTypeName",
-  "locale",
-  "status",
-  "isTemplate",
-] as const;
+const TOP_LEVEL_ELEMENTS = ["briefTypeName", "locale", "status", "isTemplate"] as const;
 
 type TopLevelKey = (typeof TOP_LEVEL_ELEMENTS)[number];
 
@@ -49,9 +44,7 @@ export interface BriefBaselinePayload {
 export type BriefBaseline = Baseline<BriefBaselinePayload>;
 
 /** Construct a baseline payload from a successfully applied recipe. */
-export const captureBriefBaselinePayload = (
-  recipe: BriefInstanceRecipe
-): BriefBaselinePayload => ({
+export const captureBriefBaselinePayload = (recipe: BriefInstanceRecipe): BriefBaselinePayload => ({
   schemaVersion: "1",
   elements: {
     briefTypeName: hashBriefValue(recipe.briefTypeName),

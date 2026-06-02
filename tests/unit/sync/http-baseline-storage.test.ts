@@ -31,11 +31,7 @@ const sampleBaseline: Baseline<BriefBaselinePayload> = {
 describe("HttpBaselineStorage.locator", () => {
   it("URL-encodes kind / env / handle into the endpoint path", () => {
     const storage = new HttpBaselineStorage(BASE, TOKEN);
-    const url = storage.locator(
-      "brief",
-      "story-sync",
-      "Q3 Launch [story:abc/quarterly]",
-    );
+    const url = storage.locator("brief", "story-sync", "Q3 Launch [story:abc/quarterly]");
     expect(url.startsWith(BASE)).toBe(true);
     // `[` and `]` and `:` ride through with encodeURIComponent.
     expect(url).toContain("/brief/story-sync/");
@@ -74,7 +70,7 @@ describe("HttpBaselineStorage.load", () => {
       new Response(JSON.stringify(sampleBaseline), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
+      })
     );
     const storage = new HttpBaselineStorage(BASE, TOKEN);
     const result = await storage.load("brief", "story-sync", "abc");
@@ -88,50 +84,38 @@ describe("HttpBaselineStorage.load", () => {
   });
 
   it("returns null on 404 (first-push)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("{}", { status: 404 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 404 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
     const result = await storage.load("brief", "story-sync", "abc");
     expect(result).toBeNull();
   });
 
   it("throws AUTH_DENIED on 401", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("expired", { status: 401 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response("expired", { status: 401 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
     await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(
-      /unauthorized \(401\)/,
+      /unauthorized \(401\)/
     );
   });
 
   it("throws AUTH_DENIED on 403 (scope mismatch)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("scope mismatch", { status: 403 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response("scope mismatch", { status: 403 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
     await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(
-      /unauthorized \(403\)/,
+      /unauthorized \(403\)/
     );
   });
 
   it("throws DEPLOY_FAILED on other non-2xx responses", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("internal error", { status: 500 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response("internal error", { status: 500 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
-    await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(
-      /returned 500/,
-    );
+    await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(/returned 500/);
   });
 
   it("wraps fetch errors as NETWORK", async () => {
     fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
-    await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(
-      /ECONNREFUSED/,
-    );
+    await expect(storage.load("brief", "story-sync", "abc")).rejects.toThrow(/ECONNREFUSED/);
   });
 });
 
@@ -146,16 +130,9 @@ describe("HttpBaselineStorage.write", () => {
   });
 
   it("PUTs the envelope and returns the locator on success", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response('{"ok":true,"locator":"x"}', { status: 200 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response('{"ok":true,"locator":"x"}', { status: 200 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
-    const locator = await storage.write(
-      "brief",
-      "story-sync",
-      "abc",
-      sampleBaseline,
-    );
+    const locator = await storage.write("brief", "story-sync", "abc", sampleBaseline);
     expect(locator).toBe(`${BASE}/brief/story-sync/abc`);
     const call = fetchMock.mock.calls[0];
     expect(call?.[1]?.method).toBe("PUT");
@@ -167,13 +144,11 @@ describe("HttpBaselineStorage.write", () => {
   });
 
   it("throws AUTH_DENIED on 401/403 write attempts", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("scope mismatch", { status: 403 }),
-    );
+    fetchMock.mockResolvedValueOnce(new Response("scope mismatch", { status: 403 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
-    await expect(
-      storage.write("brief", "story-sync", "abc", sampleBaseline),
-    ).rejects.toThrow(/unauthorized \(403\)/);
+    await expect(storage.write("brief", "story-sync", "abc", sampleBaseline)).rejects.toThrow(
+      /unauthorized \(403\)/
+    );
   });
 });
 

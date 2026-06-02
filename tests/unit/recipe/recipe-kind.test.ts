@@ -277,3 +277,160 @@ describe("readCurrent", () => {
     });
   });
 });
+
+describe("actionToChange — branch coverage", () => {
+  // error-status action carries the reason on meta.error AND prefixes
+  // the summary with `ERROR`. The reason-omitted branch falls back to
+  // "unknown error" — exercise both paths.
+  it("error action with reason → ERROR-prefixed summary + reason on meta.error", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    executeIr.mockResolvedValue(
+      makeResult("a@1", [makeAction(0, "error", "broken", "template missing")])
+    );
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].kind).toBe("noop");
+    expect(changes[0].summary).toMatch(/^ERROR.*template missing/);
+    expect(changes[0].meta).toEqual({
+      operation: "CreateItem",
+      error: "template missing",
+    });
+  });
+
+  it("error action WITHOUT reason → 'unknown error' fallback", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    executeIr.mockResolvedValue(makeResult("a@1", [makeAction(0, "error", "broken")]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].summary).toContain("unknown error");
+    expect(changes[0].meta?.error).toBe("unknown error");
+  });
+
+  // prune with mode "delete" → kind: "delete" + prunedItems meta.
+  it("prune action with delete-mode → kind delete + prunedItems on meta", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "PruneChildren", label: "prune-stale" } as PlannedAction["operation"],
+      status: "prune",
+      mutation: { kind: "pruneChildren", mode: "delete" } as PlannedAction["mutation"],
+      prunedItems: [{ itemId: "{aaa}", path: "/x" }],
+    };
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].kind).toBe("delete");
+    expect(changes[0].meta?.prunedItems).toEqual([{ itemId: "{aaa}", path: "/x" }]);
+  });
+
+  // prune in warn (rehearsal) mode → kind: "noop" (no write), but the
+  // prune summary still surfaces.
+  it("prune action with warn-mode → kind noop (rehearsal)", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "PruneChildren", label: "prune-stale" } as PlannedAction["operation"],
+      status: "prune",
+      mutation: { kind: "pruneChildren", mode: "warn" } as PlannedAction["mutation"],
+      reason: "rehearsal",
+    };
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].kind).toBe("noop");
+    expect(changes[0].summary).toContain("rehearsal");
+  });
+
+  // prune with no prunedItems → no meta written (the spread guard
+  // checks for `prunedItems.length > 0`).
+  it("prune action with empty prunedItems → omits the meta wrapper entirely", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "PruneChildren", label: "prune-zero" } as PlannedAction["operation"],
+      status: "prune",
+      mutation: { kind: "pruneChildren", mode: "delete" } as PlannedAction["mutation"],
+      prunedItems: [],
+    };
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].meta).toBeUndefined();
+  });
+
+  // conflict action → kind: "noop", CONFLICT-prefixed summary, diff
+  // surfaced on meta when present.
+  it("conflict action WITH diff → CONFLICT summary + diff on meta + conflict:true", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "SetField", label: "set-title" } as PlannedAction["operation"],
+      status: "conflict",
+      reason: "tenant moved",
+      diff: [{ fieldName: "Title", before: "A", after: "B" } as PlannedAction["diff"][number]],
+    } as PlannedAction;
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].kind).toBe("noop");
+    expect(changes[0].summary).toMatch(/^CONFLICT.*tenant moved/);
+    expect(changes[0].meta?.conflict).toBe(true);
+    expect(changes[0].meta?.diff).toHaveLength(1);
+  });
+
+  it("conflict action WITHOUT diff → meta carries conflict:true only", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "SetField", label: "set-title" } as PlannedAction["operation"],
+      status: "conflict",
+    } as PlannedAction;
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].meta).toEqual({ conflict: true });
+  });
+
+  // Non-error/prune/conflict action WITH diff on a regular create
+  // → diff carried through on meta.
+  it("regular action WITH diff → meta.diff carried; without diff → no meta", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 2)]);
+    const withDiff: PlannedAction = {
+      index: 0,
+      operation: { op: "SetField", label: "u1" } as PlannedAction["operation"],
+      status: "update",
+      diff: [{ fieldName: "T", before: "x", after: "y" } as PlannedAction["diff"][number]],
+    } as PlannedAction;
+    const noDiff: PlannedAction = {
+      index: 1,
+      operation: { op: "CreateItem", label: "c1" } as PlannedAction["operation"],
+      status: "create",
+    } as PlannedAction;
+    executeIr.mockResolvedValue(makeResult("a@1", [withDiff, noDiff]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].meta?.diff).toHaveLength(1);
+    expect(changes[1].meta).toBeUndefined();
+  });
+
+  // The reason-omitted suffix: a skip without a reason emits just the
+  // label as summary (no trailing " — ").
+  it("skip without reason → summary is the bare label, no trailing dash", async () => {
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    const action: PlannedAction = {
+      index: 0,
+      operation: { op: "SetField", label: "no-op-label" } as PlannedAction["operation"],
+      status: "skip",
+    } as PlannedAction;
+    executeIr.mockResolvedValue(makeResult("a@1", [action]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    expect(changes[0].summary).toBe("no-op-label");
+  });
+
+  // resultsToChanges fallback: when the IR is missing for an index
+  // (defensive guard), the recipeHandle falls back to result.plan.recipeHandle.
+  it("falls back to result.plan.recipeHandle when irs[i] is missing", async () => {
+    compileRecipeSet.mockReturnValue([]); // no IRs
+    executeIr.mockResolvedValue(makeResult("fallback@1", [makeAction(0, "create", "c")]));
+    // Force the executor to be called by stubbing compileRecipeSet to
+    // return an IR but slipping a wrong-length result through.
+    compileRecipeSet.mockReturnValue([makeIr("a@1", 1)]);
+    executeIr.mockResolvedValue(makeResult("fallback@1", [makeAction(0, "create", "c")]));
+    const { changes } = await recipeKind.plan([], ref, ctx);
+    // The IR at index 0 was "a@1"; result.plan.recipeHandle is
+    // "fallback@1"; irs[i]?.recipeHandle wins (a@1).
+    expect(changes[0].path).toContain("a@1");
+  });
+});

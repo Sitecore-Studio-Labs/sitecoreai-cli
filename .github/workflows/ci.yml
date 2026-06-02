@@ -56,6 +56,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Coverage ratchet gate
+        # Fails when vitest.config.ts thresholds have dropped below the
+        # baseline recorded in coverage-ratchet.json without an explicit
+        # ALLOW_RATCHET_DOWN=1 override. Forces deliberate, reviewed
+        # retreat instead of silent regression.
+        run: node scripts/check-coverage-ratchet.cjs
+
       - name: Test (with coverage thresholds)
         run: npm run test:coverage
 

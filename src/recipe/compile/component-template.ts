@@ -117,21 +117,17 @@ export function compileComponentTemplateRecipe(
 
   // `dynamicPlaceholders: true` chains `_IDynamicPlaceholder` onto the
   // params template's `__Base template`. When `recipe.parameters` points
-  // at an external `ParametersTemplateRecipe`, that template is owned by
-  // a separate recipe and may be shared across multiple components —
-  // mutating its base-template chain from this component's compile would
-  // silently change behavior for every other consumer. Reject the combo
-  // until `ParametersTemplateRecipe` grows its own `dynamicPlaceholder`
-  // flag (the right home for shared-template-scoped configuration).
-  if (recipe.parameters && recipe.dynamicPlaceholders) {
-    throw createScaiError(
-      `Recipe '${recipe.handle}' combines \`dynamicPlaceholders: true\` with an external parameters template (\`parameters: { handle: '${recipe.parameters.handle}' }\`).`,
-      "INPUT_INVALID",
-      {
-        hint: "Move the params inline on this recipe (use the top-level `params:` block instead of `parameters:`) so the synthesised parameters template can own the `_IDynamicPlaceholder` base. Mutating the shared external template from here would silently affect every other consumer.",
-      }
-    );
-  }
+  // at an external `DesignParametersTemplateRecipe`, that shared template
+  // mustn't carry IDynamicPlaceholder (other consumers may not need it).
+  // Resolution: emit a thin **per-recipe wrapper** params template that
+  // inherits FROM the external one AND adds IDynamicPlaceholder. The
+  // wrapper has no own fields — all external params pass through via
+  // template inheritance. Rendering's `Parameters Template` field
+  // points at the wrapper instead of the external directly (see
+  // `paramsRefKey` resolution further down).
+  const needsDynamicPlaceholderWrapper = Boolean(
+    recipe.parameters && recipe.dynamicPlaceholders
+  );
 
   const sectionName = resolveSectionName(recipe, context);
   if (sectionName) {
@@ -203,6 +199,15 @@ export function compileComponentTemplateRecipe(
   const hasInlineParams = recipe.params.length > 0 && !recipe.parameters;
   if (hasInlineParams) {
     emitParamsTemplate(operations, recipe, context, icon, policy, emittedFolders);
+  } else if (needsDynamicPlaceholderWrapper) {
+    emitDynamicPlaceholderWrapperTemplate(
+      operations,
+      recipe,
+      context,
+      icon,
+      policy,
+      emittedFolders
+    );
   }
 
   if (sectionName) {
@@ -214,9 +219,10 @@ export function compileComponentTemplateRecipe(
     recipe,
     context,
     icon,
-    hasInlineParams || recipe.parameters !== undefined,
+    hasInlineParams || recipe.parameters !== undefined || needsDynamicPlaceholderWrapper,
     policy,
-    emittedFolders
+    emittedFolders,
+    needsDynamicPlaceholderWrapper
   );
 
   if (recipe.variants.length > 0) {
@@ -702,6 +708,97 @@ function emitParamsTemplate(
   }
 }
 
+/**
+ * Emit a per-recipe wrapper params template that exists ONLY to chain
+ * `_IDynamicPlaceholder` onto an external shared params template
+ * without mutating the external template's own base-template list
+ * (which other recipes may share).
+ *
+ * Shape:
+ *   `<section>/Presentation Parameters/<Component> Parameters`
+ *      __Base templates:
+ *        - <external params template GUID>     ← inherits all shared params
+ *        - <SXA Headless params bases>          ← same as inline-params emitter
+ *        - `_IDynamicPlaceholder`               ← the reason we exist
+ *      (no own fields — everything inherited)
+ *
+ * The wrapper's deterministic GUID is `designParametersTemplateId(site,
+ * recipe.handle)` — same as the inline-params synthesis. They're
+ * mutually exclusive (the dispatch in `compileComponentTemplateRecipe`
+ * picks one or the other), so the GUID is never claimed twice.
+ *
+ * The rendering's `Parameters Template` field points at this wrapper
+ * (see `emitRendering`'s `useDynamicPlaceholderWrapper` branch); Pages
+ * sees the wrapper's full inherited field set + the
+ * `DynamicPlaceholderID` field contributed by `_IDynamicPlaceholder`.
+ */
+function emitDynamicPlaceholderWrapperTemplate(
+  operations: Operation[],
+  recipe: ComponentTemplateRecipe,
+  context: CompileContext,
+  icon: string,
+  policy: PushPolicy,
+  emittedFolders: Set<string>
+): void {
+  if (!recipe.parameters) return; // defensive — caller already gates
+  const site = siteOf(context);
+  const wrapperRefKey = designParametersTemplateId(site, recipe.handle);
+  const externalRefKey = designParametersTemplateId(site, recipe.parameters.handle);
+  const paramsName = `${recipe.name} Parameters`;
+  const paramsDisplayName = `${recipe.displayName} Parameters`;
+
+  const sectionName = resolveSectionName(recipe, context);
+  let paramsParent: CreateItemOp["parent"];
+  let paramsParentPath: string;
+  if (sectionName) {
+    const bucketRefKey = ensurePresentationDesignParametersBucket(
+      operations,
+      context,
+      sectionName,
+      emittedFolders
+    );
+    paramsParent = { kind: "ref-recipe", refKey: bucketRefKey };
+    paramsParentPath = resolvePresentationDesignParametersBucketPath(context, sectionName);
+  } else {
+    paramsParent = { kind: "ref-path", value: context.templatesRoot };
+    paramsParentPath = context.templatesRoot;
+  }
+  const wrapperPath = joinPath(paramsParentPath, paramsName);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `params-template-wrapper:${recipe.handle}`,
+    id: wrapperRefKey,
+    path: wrapperPath,
+    parent: paramsParent,
+    templateOf: SITECORE_TEMPLATES.TEMPLATE,
+    name: paramsName,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: paramsDisplayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "SetBaseTemplates",
+    policy,
+    label: `params-wrapper-base-templates:${recipe.handle}`,
+    itemRefKey: wrapperRefKey,
+    // Chain order: external template first (inherits ALL its params +
+    // sections), then SXA Headless bases (same as inline-params
+    // synthesis — needed for Pages's rendering-parameter dialog to
+    // surface the wrapper at all), then `_IDynamicPlaceholder` for
+    // the dynamic placeholder ID field. The wrapper has no own
+    // fields; the union of inherited bases IS its surface area.
+    baseTemplates: [
+      externalRefKey,
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
+    ],
+  } satisfies SetBaseTemplatesOp);
+}
+
 function emitRendering(
   operations: Operation[],
   recipe: ComponentTemplateRecipe,
@@ -709,7 +806,19 @@ function emitRendering(
   icon: string,
   hasParams: boolean,
   policy: PushPolicy,
-  emittedFolders: Set<string>
+  emittedFolders: Set<string>,
+  /**
+   * When true, the rendering's `Parameters Template` field points at
+   * the per-recipe DYNAMIC-PLACEHOLDER WRAPPER template (synthesised
+   * by `emitDynamicPlaceholderWrapperTemplate`) instead of the
+   * external shared params template. The wrapper's GUID is
+   * `designParametersTemplateId(site, recipe.handle)` — same as
+   * inline-params synthesis — so this branch sends the rendering at
+   * the wrapper rather than the external `recipe.parameters.handle`.
+   * See the `needsDynamicPlaceholderWrapper` rationale at the top of
+   * `compileComponentTemplateRecipe`.
+   */
+  useDynamicPlaceholderWrapper = false
 ): void {
   const site = siteOf(context);
   const renderingRefKey = renderingId(site, recipe.handle);
@@ -759,12 +868,23 @@ function emitRendering(
   ];
 
   if (hasParams) {
-    // Prefer the explicit `parameters: { handle }` reference when set,
-    // else point at the synthesised inline params template (whose
-    // refKey is `designParametersTemplateId(site, recipe.handle)`).
-    const paramsRefKey = recipe.parameters
-      ? designParametersTemplateId(site, recipe.parameters.handle)
-      : designParametersTemplateId(site, recipe.handle);
+    // Three cases for the rendering's `Parameters Template` field:
+    //   1. Wrapper synthesised because `recipe.parameters` +
+    //      `dynamicPlaceholders` — point at the wrapper (per-recipe
+    //      handle), NOT at the external shared template directly.
+    //      The wrapper inherits FROM the external + adds
+    //      `_IDynamicPlaceholder`; pointing the rendering at the
+    //      external would skip the IDynamicPlaceholder base.
+    //   2. Plain `recipe.parameters: { handle }` — point directly at
+    //      the external shared template.
+    //   3. Inline `params:` — point at the synthesised inline
+    //      template (whose GUID is `designParametersTemplateId(site,
+    //      recipe.handle)`).
+    const paramsRefKey = useDynamicPlaceholderWrapper
+      ? designParametersTemplateId(site, recipe.handle)
+      : recipe.parameters
+        ? designParametersTemplateId(site, recipe.parameters.handle)
+        : designParametersTemplateId(site, recipe.handle);
     fields.push(
       sharedField(RENDERING_FIELDS.PARAMETERS_TEMPLATE, {
         kind: "ref-recipe",

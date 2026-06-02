@@ -19,6 +19,7 @@ export type {
   PullConflictPolicy,
   PushConflictPolicy,
 } from "./baseline";
+export { classifyHashes, hashJsonValue, stableStringify } from "./baseline";
 
 export type { PullOptions, PushOptions, PushOutcome, SyncMode } from "./engine";
 export { syncDiff, syncPull, syncPush } from "./engine";

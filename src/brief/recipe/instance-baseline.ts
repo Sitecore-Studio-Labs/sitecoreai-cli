@@ -16,8 +16,7 @@
  * See sibling docs in `src/sync/baseline.ts` for the
  * `FieldClassification` vocabulary.
  */
-import { createHash } from "node:crypto";
-import type { Baseline, FieldClassification } from "@/sync";
+import { classifyHashes, hashJsonValue, type Baseline, type FieldClassification } from "@/sync";
 import type { BriefInstanceRecipe } from "./instance-schema";
 
 const TOP_LEVEL_ELEMENTS = [
@@ -29,27 +28,8 @@ const TOP_LEVEL_ELEMENTS = [
 
 type TopLevelKey = (typeof TOP_LEVEL_ELEMENTS)[number];
 
-/**
- * Stable canonical JSON — sorted keys, no whitespace. Two structurally
- * equal values hash identical regardless of key order. The brief field
- * map is `Record<string, unknown>`, so values can be ProseMirror
- * documents, ISO date strings, numbers, etc. — all serialize through
- * this.
- */
-export const stableStringify = (value: unknown): string => {
-  if (value === undefined) return "undefined";
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
-};
-
-const sha256 = (input: string): string =>
-  createHash("sha256").update(input, "utf8").digest("hex");
-
 /** Hash one recipe value (top-level or per-field) for baseline storage. */
-export const hashBriefValue = (value: unknown): string => sha256(stableStringify(value));
+export const hashBriefValue = (value: unknown): string => hashJsonValue(value);
 
 /**
  * Brief baseline payload — per-element + per-field-name hash map.
@@ -84,29 +64,12 @@ export const captureBriefBaselinePayload = (
   ),
 });
 
-/**
- * Per-element three-way classification computed from desired (recipe),
- * current (tenant), and baseline hashes.
- *
- *   - desired and current agree, both match baseline → noop
- *   - desired differs from baseline, current matches baseline → recipe-change
- *   - desired matches baseline, current differs → cms-edit
- *   - both differ from baseline → conflict
- *   - no baseline entry → first-push (planner can't classify safely)
- */
+/** Three-way classify one brief cell. Delegates to the shared helper. */
 export const classifyBriefValue = (
   desiredHash: string,
   currentHash: string,
   baselineHash: string | undefined
-): FieldClassification => {
-  if (baselineHash === undefined) return "first-push";
-  const recipeUnchanged = desiredHash === baselineHash;
-  const tenantUnchanged = currentHash === baselineHash;
-  if (recipeUnchanged && tenantUnchanged) return "recipe-change"; // both equal baseline; treat as recipe-change with R==C → planner sees no-op via equality already
-  if (!recipeUnchanged && tenantUnchanged) return "recipe-change";
-  if (recipeUnchanged && !tenantUnchanged) return "cms-edit";
-  return "conflict";
-};
+): FieldClassification => classifyHashes(desiredHash, currentHash, baselineHash);
 
 export { TOP_LEVEL_ELEMENTS };
 export type { TopLevelKey };

@@ -1180,6 +1180,22 @@ function resolveSitecoreType(field: FieldDefinition | DesignParameter): Sitecore
   if (field.sitecore?.type) {
     return field.sitecore.type;
   }
+  // Enum fields with inline `values: [...]` and no `enumHandle` only
+  // make sense as `droplist` — the alternative default (`droplink`)
+  // would require a separate EnumerationRecipe the author hasn't
+  // written. Pick `droplist` here so authors don't have to repeat
+  // themselves with an explicit `sitecore.type: "droplist"`. Authors
+  // who DO want droplink + shared enum still get it: they declare
+  // `sitecore.enumHandle` (no inline `values`), which leaves the
+  // shape-based default in place (`droplink`).
+  if (
+    field.shape === "enum" &&
+    !field.sitecore?.enumHandle &&
+    Array.isArray(field.values) &&
+    field.values.length > 0
+  ) {
+    return "droplist";
+  }
   const multiple = "multiple" in field ? field.multiple : undefined;
   return defaultSitecoreFieldType(field.shape, multiple);
 }

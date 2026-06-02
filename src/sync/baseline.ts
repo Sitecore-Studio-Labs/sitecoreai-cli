@@ -81,6 +81,62 @@ export interface Baseline<TPayload = unknown> {
 }
 
 /**
+ * Stable canonical JSON for hashing — sorted object keys, no
+ * whitespace. Two structurally equal values hash identical regardless
+ * of key order. Used by every kind's baseline payload to hash field
+ * values consistently. Exported so kind implementations don't each
+ * re-derive their own canonicaliser.
+ */
+export const stableStringify = (value: unknown): string => {
+  if (value === undefined) return "undefined";
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+};
+
+/**
+ * SHA-256 hex of `stableStringify(value)` — the canonical baseline
+ * hash. Identical inputs → identical hash regardless of key order or
+ * whitespace; differing inputs → divergent hash with cryptographic
+ * collision resistance. Shared across kinds so an orchestrator-side
+ * DB-backed storage hashes the same value the kind hashes.
+ */
+export const hashJsonValue = (value: unknown): string => {
+  // `createHash` is cheap; importing dynamically keeps the seam pure
+  // (no Node-only baggage on every consumer of this module).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  return createHash("sha256").update(stableStringify(value), "utf8").digest("hex");
+};
+
+/**
+ * Three-way classify one cell from `(desired-hash, current-hash,
+ * baseline-hash)`. `baseline-hash === undefined` means the kind never
+ * pushed this cell before — `first-push`. The kind decides downstream
+ * how to honour each classification under its push/pull policy.
+ *
+ *   R == B && C == B  → recipe-change (degenerate; equivalent to noop)
+ *   R != B && C == B  → recipe-change (safe update)
+ *   R == B && C != B  → cms-edit
+ *   R != B && C != B  → conflict
+ */
+export const classifyHashes = (
+  desiredHash: string,
+  currentHash: string,
+  baselineHash: string | undefined
+): FieldClassification => {
+  if (baselineHash === undefined) return "first-push";
+  const recipeUnchanged = desiredHash === baselineHash;
+  const tenantUnchanged = currentHash === baselineHash;
+  if (recipeUnchanged && tenantUnchanged) return "recipe-change";
+  if (!recipeUnchanged && tenantUnchanged) return "recipe-change";
+  if (recipeUnchanged && !tenantUnchanged) return "cms-edit";
+  return "conflict";
+};
+
+/**
  * Pluggable backing store for kind baselines. Storage is opaque to
  * payload schemas — each kind validates `Baseline.payload` itself on
  * `load`.

@@ -14,6 +14,7 @@ const syncMocks = vi.hoisted(() => ({
   syncDiff: vi.fn(),
   syncPull: vi.fn(),
   syncPush: vi.fn(),
+  resolveHttpBaselineStorageFromEnv: vi.fn(() => undefined),
   writeRecipe: vi.fn(),
 }));
 

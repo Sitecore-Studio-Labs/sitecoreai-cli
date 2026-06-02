@@ -21,6 +21,12 @@ export type {
 } from "./baseline";
 export { classifyHashes, hashJsonValue, stableStringify } from "./baseline";
 
+export {
+  HttpBaselineStorage,
+  SYNC_BASELINE_ENV_VARS,
+  resolveHttpBaselineStorageFromEnv,
+} from "./http-baseline-storage";
+
 export type { PullOptions, PushOptions, PushOutcome, SyncMode } from "./engine";
 export { syncDiff, syncPull, syncPush } from "./engine";
 

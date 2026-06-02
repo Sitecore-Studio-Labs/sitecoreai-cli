@@ -17,6 +17,7 @@ import {
   loadRecipe,
   planIsNoop,
   summarizePlan,
+  resolveHttpBaselineStorageFromEnv,
   syncDiff,
   syncPull,
   syncPush,
@@ -49,15 +50,26 @@ const slug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "kit";
 
-/** Build the `SyncContext` for a brand sync command invocation. */
+/**
+ * Build the `SyncContext` for a brand sync command invocation. When
+ * the orchestrator spawned scai and set `SYNC_BASELINE_ENDPOINT_URL`
+ * + `SYNC_BASELINE_AUTH_TOKEN`, the context gains an
+ * `HttpBaselineStorage` instance so three-way merge persists into
+ * the orchestrator DB instead of the operator filesystem. Plain CLI
+ * invocations (no env vars) leave `baselineStorage` unset — the
+ * brand kind degrades to two-way diff or its file-backed fallback
+ * accordingly.
+ */
 const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
   const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, options.environmentName);
+  const baselineStorage = resolveHttpBaselineStorageFromEnv();
   return {
     environmentName: options.environmentName ?? root.defaultEnvironment,
     configPath,
     logger,
     ...(options.enrich === false ? { skipEnrichment: true } : {}),
+    ...(baselineStorage ? { baselineStorage } : {}),
   };
 };
 

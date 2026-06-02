@@ -20,6 +20,7 @@ import type { Logger } from "@/shared/logger";
 import {
   loadRecipe,
   planIsNoop,
+  resolveHttpBaselineStorageFromEnv,
   summarizePlan,
   syncDiff,
   syncPull,
@@ -74,14 +75,21 @@ const kindFor = (
 /** A loaded recipe minimally carries `name` — the identifier for both kinds. */
 type NamedRecipe = { name: string } & Record<string, unknown>;
 
-/** Build the `SyncContext` for a brief sync command invocation. */
+/**
+ * Build the `SyncContext` for a brief sync command invocation.
+ * Picks up an `HttpBaselineStorage` from env when the orchestrator
+ * spawned scai with the baseline endpoint configured. Plain CLI
+ * invocations leave `baselineStorage` unset.
+ */
 const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
   const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, options.environmentName);
+  const baselineStorage = resolveHttpBaselineStorageFromEnv();
   return {
     environmentName: options.environmentName ?? root.defaultEnvironment,
     configPath,
     logger,
+    ...(baselineStorage ? { baselineStorage } : {}),
   };
 };
 

@@ -212,10 +212,30 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
-  const irs: { ir: OperationIr }[] = [
+  let irs: { ir: OperationIr }[] = [
     ...compiled.map((ir) => ({ ir })),
     ...loadedIrs.map((ir) => ({ ir })),
   ];
+
+  // Optional `--handles` filter — narrow the IR set to the operator-
+  // named handles after compile. Cross-recipe references already
+  // resolved against the full set, so dropping unmatched IRs here is
+  // safe. Unknown handles are diagnostic only; an all-unknown filter
+  // yields an empty push (no-op).
+  if (options.handles && options.handles.length > 0) {
+    const requested = new Set(options.handles);
+    const handlesInSet = new Set(irs.map(({ ir }) => ir.recipeHandle));
+    const unknown = [...requested].filter((h) => !handlesInSet.has(h));
+    if (unknown.length > 0) {
+      logger.info(
+        `--handles: ignoring unknown handle(s): ${unknown.join(", ")} (not present in compiled recipe set).`
+      );
+    }
+    irs = irs.filter(({ ir }) => requested.has(ir.recipeHandle));
+    logger.info(
+      `--handles: pushing ${irs.length} of ${compiled.length + loadedIrs.length} recipe(s) (filtered to ${[...requested].filter((h) => handlesInSet.has(h)).join(", ") || "none"}).`
+    );
+  }
 
   const crossRecipeRefs = new Map<string, string>();
   for (const { ir } of irs) {

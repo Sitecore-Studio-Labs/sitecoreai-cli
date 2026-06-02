@@ -146,6 +146,19 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    */
   skipUnchangedRecipes?: boolean;
   /**
+   * Optional handle filter. When set, only recipes whose `recipeHandle`
+   * appears in this list are pushed; the rest are dropped after
+   * compile. Matches the `handles` field convention used by the
+   * orchestrator's brief/campaign sync plans so a `recipe-sync` worker
+   * spawning scai can pass through a consistent narrow-by-handle flag.
+   *
+   * Filtering happens AFTER compile because cross-recipe references
+   * need every recipe in the set to resolve. Unknown handles in the
+   * list are ignored (logged at info); when every handle is unknown
+   * the push degrades to a no-op rather than failing.
+   */
+  handles?: readonly string[];
+  /**
    * Three-way merge conflict policy. Governs how the planner resolves
    * drift entries whose tenant value differs from the last-applied
    * baseline:

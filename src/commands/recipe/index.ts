@@ -183,6 +183,17 @@ const createPushCommand = (): Command => {
       "Skip three-way merge baseline loading + post-apply writing. Recipe becomes a legacy two-way diff (recipe-wins on every drift). Use for first-push test runs against a clean tenant or CI runs where the baseline isn't checked in."
     )
   );
+  command.addOption(
+    new Option(
+      "--handles <list>",
+      "Comma-separated list of recipe handles to narrow the push to. Cross-recipe references still resolve against the full input set; only matched handles are applied. Unknown handles are logged and ignored. Aligns with the `handles` field convention the orchestrator's brief/campaign sync plans use."
+    ).argParser((value: string) =>
+      value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    )
+  );
   addConfigOption(command);
   addVerbosityOptions(command);
 

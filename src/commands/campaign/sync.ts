@@ -17,6 +17,7 @@ import type { Logger } from "@/shared/logger";
 import {
   loadRecipe,
   planIsNoop,
+  resolveHttpBaselineStorageFromEnv,
   summarizePlan,
   syncDiff,
   syncPull,
@@ -43,14 +44,20 @@ const slug = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "campaign";
 
-/** Build the `SyncContext` for a campaign sync command invocation. */
+/**
+ * Build the `SyncContext` for a campaign sync command invocation.
+ * Picks up an `HttpBaselineStorage` from env when the orchestrator
+ * spawned scai with the baseline endpoint configured.
+ */
 const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
   const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, options.environmentName);
+  const baselineStorage = resolveHttpBaselineStorageFromEnv();
   return {
     environmentName: options.environmentName ?? root.defaultEnvironment,
     configPath,
     logger,
+    ...(baselineStorage ? { baselineStorage } : {}),
   };
 };
 

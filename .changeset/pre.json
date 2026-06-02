@@ -5,6 +5,7 @@
     "@sitecoreai-labs/sitecoreai-cli": "0.2.5"
   },
   "changesets": [
+    "brief-type-three-way-merge",
     "cli-force-exit-stderr-drain",
     "drop-registry-shims",
     "sync-merge-cells-baseline-bridge"

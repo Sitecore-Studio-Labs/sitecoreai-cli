@@ -119,14 +119,14 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const rollbackRunId = randomUUID();
   const rollbackLog = createRollbackLogger(rollbackRunId);
 
-  // Phase 2 per-site folder layout roots — optional at the envProfile
+  // Per-site folder layout roots — optional at the envProfile
   // level. When unset the compiler falls back to `templatesRoot` for
   // both, which means section-aware components nest under templatesRoot
   // (mid-migration fallback) and content templates land mixed in with
   // components. The orchestrator's ephemeral CLI config sets both.
   const componentsRoot = options.componentsRoot ?? tenant.environment.componentsRoot;
   const contentModelsRoot = options.contentModelsRoot ?? tenant.environment.contentModelsRoot;
-  // Phase 4 composition roots — optional at the envProfile level. The
+  // Composition roots — optional at the envProfile level. The
   // per-recipe compile fns throw with their own clear messages if a
   // partial-design / page-design / content-item recipe is in the set
   // but the corresponding root is unset. CLI flag overrides match the
@@ -167,7 +167,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // `insertOptions: ["accordion-item@1"]` references accordion-item's
   // template, which lives in a different recipe's IR).
   //
-  // Phase 4: recipe-source files compile through `compileRecipeSet` so
+  // Recipe-source files compile through `compileRecipeSet` so
   // cross-recipe `TemplatesMapping` contributions (every PageDesignRecipe
   // contributes one entry per `appliesTo` template) aggregate into a
   // single synthetic IR. Pre-compiled `.ir.json` inputs load directly —

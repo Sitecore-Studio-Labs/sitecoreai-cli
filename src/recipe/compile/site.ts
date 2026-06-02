@@ -15,8 +15,8 @@ import { siteOf, type CompileContext } from "./shared";
 /**
  * Compile a `SiteRecipe` to an Operation IR.
  *
- * Phase 5 Milestone E — emits a single `CreateSiteFromTemplate` op
- * that the executor dispatches through the Sites API. The
+ * Emits a single `CreateSiteFromTemplate` op that the executor
+ * dispatches through the Sites API. The
  * `SiteTemplateRecipe` it references is identified via deterministic
  * `templateId(siteTemplate)`; the executor resolves that refKey to
  * the SiteTemplate's actual Sitecore itemId via cross-recipe ref

@@ -64,13 +64,18 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * (against the item's `workflow`), `date` to a `__Created` SetField, and
  * `layout` to a `__Final Renderings` SetField.
  *
- * Phase 4 v1 limitations:
- *  - per-version personalization `variants` are not yet compiled — a story
- *    recipe that sets them is rejected with a clear error rather than
- *    silently dropped.
- *  - `link-internal` is deferred — authors use `reference` (single-element
- *    `refs`) for Droplink/Reference fields, or `link-external` for URLs.
- *  - `image.mediaPath` is an opaque path — no media-item upload.
+ * Known limitations (intentionally narrow surface; expand only when a
+ * concrete story-recipe author asks for them):
+ *  - **per-version `variants`** (personalization deltas) are not compiled
+ *    — a recipe that sets them is rejected with a clear error rather
+ *    than silently dropped. Needs a new RefValue + per-variant
+ *    SetField shape.
+ *  - **`link-internal`** is rejected at compile time — authors use
+ *    `reference` (single-element `refs`) for Droplink-shaped fields,
+ *    or `link-external` for URLs. Wiring needs a new RefValue kind
+ *    for "General Link XML wrapping a refKey-resolved GUID."
+ *  - **`image.mediaPath`** is an opaque path — no media-item upload.
+ *    Recipes ship images by referencing existing media-library items.
  */
 export function compileContentItemRecipe(
   input: ContentItemRecipe,
@@ -328,7 +333,7 @@ const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
 };
 
 /**
- * Sitecore image-field XML. Phase 4 v1 emits `mediapath` only — see
+ * Sitecore image-field XML. emits `mediapath` only — see
  * `compileContentItemRecipe` JSDoc for the media-item upload caveat.
  */
 const encodeImageXml = (img: {
@@ -370,8 +375,10 @@ const escapeXmlAttr = (s: string): string =>
 
 /**
  * Encode one ContentFieldValue to a RefValue. Returns null when the
- * shape is deferred (e.g. `link-internal` in Phase 4 v1) — the caller
- * skips emitting a SetField op for it. Throws on truly invalid input.
+ * shape is unsupported (e.g. `link-internal`, which currently throws
+ * INPUT_INVALID at compile time — see the limitations docblock on
+ * `compileContentItemRecipe`) — the caller skips emitting a SetField
+ * op for it. Throws on truly invalid input.
  *
  * Exported so `compilePageRecipe` reuses the exact same field-value
  * encoding for page-item fields.
@@ -399,13 +406,14 @@ export const encodeContentFieldValue = (
     case "link-external":
       return { kind: "string", value: encodeExternalLinkXml(value) };
     case "link-internal":
-      // Deferred: General Link XML wrapping a refKey-resolved GUID needs
-      // a new RefValue kind. Recipe authors targeting Phase 4 should use
-      // `reference` (single-element refs[]) for Droplink-shaped fields.
+      // Unsupported: needs a new RefValue kind for "General Link XML
+      // wrapping a refKey-resolved GUID." Authors use `reference`
+      // (single-element refs[]) for Droplink-shaped fields, or
+      // `link-external` with an absolute URL.
       throw createScaiError(
-        `ContentItemRecipe '${recipeHandle}': link-internal is deferred to Phase 5. ` +
+        `ContentItemRecipe '${recipeHandle}': link-internal field shape is not yet supported. ` +
           `Use 'reference' shape with a single-element refs[] for Droplink/Reference fields, ` +
-          `or 'link-external' with an absolute URL for now.`,
+          `or 'link-external' with an absolute URL.`,
         "INPUT_INVALID"
       );
     case "reference":

@@ -104,15 +104,15 @@ export interface CompileContext {
    */
   contentModelsRoot?: string;
   /**
-   * Phase 4: required for `PartialDesignRecipe` compilation. Where the
+   * Required for `PartialDesignRecipe` compilation. Where the
    * partial-design items land — typically
    * `/sitecore/content/<site>/Presentation/Partial Designs`.
-   * Optional in the type so Phase 1 callers don't have to set it; the
+   * Optional in the type so original callers don't have to set it; the
    * partial-design compiler errors with a clear message if absent.
    */
   partialDesignsRoot?: string;
   /**
-   * Phase 4: required for `PageDesignRecipe` compilation. Where the
+   * Required for `PageDesignRecipe` compilation. Where the
    * page-design items land — typically
    * `/sitecore/content/<site>/Presentation/Page Designs`.
    *
@@ -123,14 +123,14 @@ export interface CompileContext {
    */
   pageDesignsRoot?: string;
   /**
-   * Phase 4: required for `ContentItemRecipe` compilation. Where shared
+   * Required for `ContentItemRecipe` compilation. Where shared
    * content items land — typically `/sitecore/content/<tenant>/<site>/Data`
    * or a sub-bucket for SXA sites. ContentItemRecipes encode `kind: "shared"`
    * datasource targets referenced from partial / page design layouts.
    */
   contentItemsRoot?: string;
   /**
-   * Phase 5: required for `SiteTemplateRecipe` compilation. Where SXA
+   * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
    * or a sub-folder for module groupings. Site templates are reusable
    * brand-shape definitions; `SiteRecipe` instances reference one via

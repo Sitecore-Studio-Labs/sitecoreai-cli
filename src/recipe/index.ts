@@ -275,7 +275,7 @@ export {
   type SourceFields,
 } from "./schema/source-fields";
 
-// Policy assignment (Phase 3+ extension point) --------------------------
+// Policy assignment (extension point for kind-specific overrides) --------
 export {
   defaultPolicyForRecipe,
   policyFor,

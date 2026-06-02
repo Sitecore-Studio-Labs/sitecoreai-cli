@@ -71,8 +71,8 @@ const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readonly stri
  * (`ComponentTemplate.insertOptions → ContentTemplate.insertOptions → …`)
  * — the only place the current schema permits transitive recipe-to-recipe
  * references that could loop. Partial-to-partial cycles aren't possible
- * today (`PartialDesignRecipe` doesn't reference other partials); when
- * sub-partial composition lands (Phase 5+), extend the DFS below.
+ * today (`PartialDesignRecipe` doesn't reference other partials); if
+ * sub-partial composition is ever added, extend the DFS below.
  */
 
 export type RecipeKind = Recipe["kind"];

@@ -64,7 +64,18 @@ export const acquireCampaignToken = async (
     setCachedToken: setCampaignToken,
     errorCode: "AUTH_BRAND_REQUIRED",
     resolveCredential: async () => {
-      const clientSecret = await getBrandClientSecret(organizationId);
+      // Mirror brand auth's serverless escape hatch: in contexts
+      // without an OS keychain (Vercel functions, CI runners, the
+      // orchestrator's per-job spawn) the secret comes through
+      // `SITECOREAI_BRAND_CLIENT_SECRET`. Without this fallback the
+      // campaign auth would either read a stale keychain entry from a
+      // prior interactive `scai setup` (causing a 401 on mint with the
+      // wrong secret) or return undefined when there's no keychain at
+      // all. Env-var first so the caller's explicitly-provided secret
+      // wins over whatever happens to be cached in the OS keychain.
+      const envSecret = process.env.SITECOREAI_BRAND_CLIENT_SECRET?.trim();
+      const clientSecret =
+        envSecret && envSecret.length > 0 ? envSecret : await getBrandClientSecret(organizationId);
       if (!brandCredential?.clientId || !clientSecret) return undefined;
       return {
         clientId: brandCredential.clientId,

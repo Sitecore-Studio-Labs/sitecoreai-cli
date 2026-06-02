@@ -325,7 +325,7 @@ export const enumerationTemplateValueFieldId = (site: string): string =>
 /**
  * Datasource items are scoped to a page recipe's id, keyed on slot path —
  * redeploys with regenerated mock content overwrite the same item.
- * Phase 1 doesn't emit these; defined here for forward-compat parity with
+ * These aren't emitted yet; defined here for forward-compat parity with
  * the planning doc.
  */
 export const datasourceId = (pageItemId: string, slotPath: string): string =>

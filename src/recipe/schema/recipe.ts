@@ -1078,7 +1078,7 @@ export type ContentVersion = z.infer<typeof ContentVersionSchema>;
  * `primary-nav-content@1`). The handle is load-bearing — `contentItemId`
  * derives the deterministic Sitecore GUID from it.
  *
- * Field-shape ↔ template-shape validation is deferred to the Phase 4
+ * Field-shape ↔ template-shape validation is deferred to the
  * compiler (it requires cross-recipe lookup; Zod can't enforce it alone).
  */
 export const ContentItemRecipeSchema = z.object({
@@ -1139,7 +1139,7 @@ export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
 
 /**
  * One rendering placed into a placeholder, with its variant, parameters,
- * and datasource binding. The Phase 4 compiler emits each ComponentPlacement
+ * and datasource binding. The compiler emits each ComponentPlacement
  * as one `<r>` element in Sitecore's layout XML.
  *
  * The single shape used by anything that holds layout —

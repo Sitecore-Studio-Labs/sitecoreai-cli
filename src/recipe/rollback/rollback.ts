@@ -187,7 +187,7 @@ const findPriorValue = (
  * For an applied `updateItem`, each touched field reverts to its prior
  * snapshot value. If a field was unset prior, the inverse sets it to ""
  * (Sitecore's pragmatic clear). True "field-not-set" semantics would
- * require a deleteField mutation; deferred to Phase 4.
+ * require a deleteField mutation; not yet implemented.
  */
 export const inverseOf = (
   action: PlannedAction,

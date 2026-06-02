@@ -17,7 +17,7 @@
  * apply time. It does not participate in compare and gets no baseline.
  */
 import type { Baseline, FieldClassification } from "@/sync";
-import { classifyHashes, hashJsonValue } from "@/sync";
+import { classifyCellHashMaps, hashJsonValue, resolveCellByPolicy } from "@/sync";
 import type { BrandFieldValue, BrandKitRecipe } from "./schema";
 
 export interface BrandBaselinePayload {
@@ -61,37 +61,8 @@ export const classifyBrandCells = (
   desired: BrandKitRecipe,
   current: BrandKitRecipe,
   baselinePayload: BrandBaselinePayload | undefined
-): Record<string, FieldClassification> => {
-  const desiredHashes = hashBrandCells(desired);
-  const currentHashes = hashBrandCells(current);
-  const allPaths = new Set([
-    ...Object.keys(desiredHashes),
-    ...Object.keys(currentHashes),
-    ...(baselinePayload ? Object.keys(baselinePayload.cells) : []),
-  ]);
-  const classifications: Record<string, FieldClassification> = {};
-  const absentHash = hashJsonValue(undefined);
-  for (const path of allPaths) {
-    classifications[path] = classifyHashes(
-      desiredHashes[path] ?? absentHash,
-      currentHashes[path] ?? absentHash,
-      baselinePayload?.cells[path]
-    );
-  }
-  return classifications;
-};
-
-const cellResolution = (
-  classification: FieldClassification,
-  policy: "error" | "recipe-wins" | "cms-wins"
-): "desired" | "current" | "policyError" => {
-  if (classification === "cms-edit" || classification === "conflict") {
-    if (policy === "cms-wins") return "current";
-    if (policy === "error") return "policyError";
-    return "desired";
-  }
-  return "desired";
-};
+): Record<string, FieldClassification> =>
+  classifyCellHashMaps(hashBrandCells(desired), hashBrandCells(current), baselinePayload?.cells);
 
 /**
  * Merge desired vs current per the policy and return a brand-kit
@@ -114,7 +85,7 @@ export const mergeBrandByPolicy = (
 
   const pickKit = <K extends "description" | "industry">(element: K) => {
     const path = kitCellPath(element);
-    const res = cellResolution(classifications[path] ?? "first-push", policy);
+    const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
     if (res === "policyError") {
       policyErrors.push({ path, classification: classifications[path] });
       return desired[element];
@@ -142,7 +113,7 @@ export const mergeBrandByPolicy = (
       const inDesired = Object.prototype.hasOwnProperty.call(desiredFields, field);
       if (!inDesired) continue; // Tenant-only field; recipe didn't ask for it.
       const path = fieldCellPath(section, field);
-      const res = cellResolution(classifications[path] ?? "first-push", policy);
+      const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
       if (res === "policyError") {
         policyErrors.push({ path, classification: classifications[path] });
         mergedFields[field] = desiredFields[field];

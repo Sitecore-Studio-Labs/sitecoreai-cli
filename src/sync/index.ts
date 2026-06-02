@@ -21,6 +21,8 @@ export type {
 } from "./baseline";
 export { classifyHashes, hashJsonValue, stableStringify } from "./baseline";
 
+export { classifyCellHashMaps, resolveCellByPolicy } from "./merge-cells";
+
 export {
   HttpBaselineStorage,
   SYNC_BASELINE_ENV_VARS,

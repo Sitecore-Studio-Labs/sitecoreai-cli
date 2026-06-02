@@ -260,9 +260,9 @@ export const DesignParameterSchema = z.object({
 export type DesignParameter = z.infer<typeof DesignParameterSchema>;
 
 /**
- * Phase 1 = Variants Lite: bare Variant item per `name`, no internal
- * structure. Phase 2+ may add per-variant template-card bindings for full
- * SXA NVELOPe authoring.
+ * Variants-lite shape: bare Variant item per `name`, no internal
+ * structure. Could grow per-variant template-card bindings for full
+ * SXA NVELOPe authoring as a follow-up.
  *
  * `name` MUST be PascalCase. The Sitecore Content SDK looks up variants
  * at render time via case-sensitive `component[name]` indexing on the
@@ -947,8 +947,8 @@ export const DesignParametersTemplateRecipeSchema = z.object({
 export type DesignParametersTemplateRecipe = z.infer<typeof DesignParametersTemplateRecipeSchema>;
 
 /**
- * A single field value on a `ContentItemRecipe`. Tagged on `shape` so the
- * Phase 4 compiler can dispatch each value to the right Sitecore wire
+ * A single field value on a `ContentItemRecipe`. Tagged on `shape` so
+ * the compiler can dispatch each value to the right Sitecore wire
  * encoder (image XML, link XML, pipe-separated GUID list, …) without
  * cross-recipe shape lookup at parse time.
  *
@@ -1069,7 +1069,7 @@ export type ContentVersion = z.infer<typeof ContentVersionSchema>;
 
 /**
  * A concrete content item — one Sitecore item conforming to a content
- * template, populated with the recipe's field values. The Phase 4
+ * template, populated with the recipe's field values. The instance-side
  * companion to `ContentTemplateRecipe`: templates declare shape, content
  * items declare instance.
  *

@@ -81,8 +81,9 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];
 
 /**
- * Policy assignment, given the purpose of the op being emitted. Phase 1
- * collapses to a single value; future phases add branches here.
+ * Policy assignment, given the purpose of the op being emitted.
+ * Template + composition structure → `CreateAndUpdate` (recipe-owned);
+ * datasource + page items → `CreateOnly` (recipe-seeded, CMS-owned).
  */
 export const policyFor = (purpose: OpPurpose): PushPolicy => {
   switch (purpose) {

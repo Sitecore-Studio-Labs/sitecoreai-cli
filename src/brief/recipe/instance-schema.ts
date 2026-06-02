@@ -48,6 +48,61 @@ export const BriefInstanceFieldsSchema = z
     "Field values keyed by BriefField.name. Per-field value shape follows the brief type's field definitions (e.g. RichText is a ProseMirror doc node)."
   );
 
+/**
+ * One milestone on a brief's evaluation timeline — a workflow gate the
+ * brief progresses through (concept review, draft delivered, final
+ * approved, paid-media live, etc.).
+ *
+ * Distinct from the `Timeline` brief-type field type (single
+ * start/end schedule). Milestones are universal across all brief
+ * types: every brief has an evaluation timeline regardless of its
+ * type-level field configuration.
+ *
+ * **Sitecore round-trip caveat**: the Brief API doesn't currently
+ * expose a native milestone-array surface. scai's `briefInstanceKind`
+ * does NOT serialize this field into the Sitecore push body, and
+ * `briefInstanceKind.readCurrent` does NOT read it back. Milestones
+ * round-trip cleanly between recipe push and recipe pull of the same
+ * recipe file (via the schema's structural identity) but get lost on
+ * Sitecore round-trips. When the Brief API exposes a milestone field
+ * (or we pick an encoding inside `fields`), the writer will fill it
+ * in and the projection will read it.
+ */
+export const BriefMilestoneSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .describe(
+        'Milestone name — short verb phrase, e.g. "Concept Review", "Draft Delivered", "Final Approved", "Paid Media Live".'
+      ),
+    dueDate: z
+      .string()
+      .optional()
+      .describe(
+        "When the milestone is due (ISO-8601 date or datetime). Omitted milestones default to the brief's overall dueDate at render time."
+      ),
+    status: z
+      .enum(["not-started", "in-progress", "completed", "missed"])
+      .optional()
+      .describe(
+        "Milestone state. `not-started` is the default for future-dated milestones. Seed generators set this realistically from the dueDate (past-due → mostly `completed` with 1-2 late; close-present → mix of `completed` + `in-progress`; far-future → `not-started`)."
+      ),
+    description: z
+      .string()
+      .optional()
+      .describe(
+        "What this milestone represents (acceptance criteria, deliverable expected). Short — one or two sentences."
+      ),
+    completedAt: z
+      .string()
+      .optional()
+      .describe(
+        'When the milestone was actually completed (ISO-8601). Set together with `status: "completed"`.'
+      ),
+  })
+  .describe("One workflow milestone on a brief's evaluation timeline.");
+
 /** The full brief-instance recipe. */
 export const BriefInstanceRecipeSchema = z.object({
   name: z
@@ -78,6 +133,12 @@ export const BriefInstanceRecipeSchema = z.object({
     .optional()
     .describe("Whether the brief is a template (omit to leave at the server default)."),
   fields: BriefInstanceFieldsSchema,
+  evaluationTimeline: z
+    .array(BriefMilestoneSchema)
+    .optional()
+    .describe(
+      "Workflow milestones (concept review, draft delivered, final approved, etc.). Top-level — not inside `fields`. Currently recipe-local: the Sitecore Brief API has no native milestone surface, so this field round-trips through `recipe push` / `recipe pull` of the same recipe file but isn't serialized to Sitecore on apply or projected back on capture. See `BriefMilestoneSchema` for the per-entry shape + the round-trip caveat."
+    ),
 });
 
 /** A validated brief-instance recipe. */

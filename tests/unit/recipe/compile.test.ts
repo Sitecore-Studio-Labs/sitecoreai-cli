@@ -1153,3 +1153,104 @@ describe("compileRecipe — front-door dispatcher remaining kinds", () => {
     expect(ir.recipeHandle).toBe("editorial@1");
   });
 });
+
+describe("compileRecipeSet — intra-rank topological ordering", () => {
+  // Regression for "ref-source-fields … not yet in captured map":
+  // a component-template referencing a content-template by handle
+  // (via `field.sitecore.source.types`) used to fail at push time
+  // when the dependent recipe came first in file-glob order. Both
+  // kinds sit at rank 0; stable sort alone wasn't enough.
+  it("orders dependent recipes AFTER the templates they reference, even within a single rank", () => {
+    const accordionBlock: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "accordion-block@1",
+      name: "AccordionBlock",
+      displayName: "Accordion Block",
+      fields: [
+        {
+          name: "Items",
+          shape: "reference",
+          multiple: true,
+          sitecore: {
+            type: "treelist",
+            source: { kind: "filter", types: ["faq-content@1"] },
+          },
+        },
+      ],
+    };
+    const faqContent: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "faq-content@1",
+      name: "FaqContent",
+      displayName: "FAQ",
+      fields: [{ name: "Question", shape: "text" }],
+    };
+    // Input order matches the failing file-glob case
+    // (accordion-block.recipe.ts < faq-content.recipe.ts lexically).
+    const irs = compileRecipeSet([accordionBlock, faqContent], CONTEXT);
+    const recipeIrs = irs.filter(
+      (ir) => ir.recipeHandle === "accordion-block@1" || ir.recipeHandle === "faq-content@1"
+    );
+    const accordionIdx = recipeIrs.findIndex((ir) => ir.recipeHandle === "accordion-block@1");
+    const faqIdx = recipeIrs.findIndex((ir) => ir.recipeHandle === "faq-content@1");
+    expect(faqIdx).toBeGreaterThanOrEqual(0);
+    expect(accordionIdx).toBeGreaterThan(faqIdx);
+  });
+
+  it("preserves input order among recipes that don't reference each other", () => {
+    const a: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "a@1",
+      name: "A",
+      displayName: "A",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const b: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "b@1",
+      name: "B",
+      displayName: "B",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const c: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "c@1",
+      name: "C",
+      displayName: "C",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const irs = compileRecipeSet([a, b, c], CONTEXT);
+    const order = irs.map((ir) => ir.recipeHandle).filter((h) => ["a@1", "b@1", "c@1"].includes(h));
+    expect(order).toEqual(["a@1", "b@1", "c@1"]);
+  });
+
+  it("orders by `insertOptions` references too", () => {
+    const child: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "child@1",
+      name: "Child",
+      displayName: "Child",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const parent: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "parent@1",
+      name: "Parent",
+      displayName: "Parent",
+      fields: [{ name: "Title", shape: "text" }],
+      insertOptions: ["child@1"],
+    };
+    const irs = compileRecipeSet([parent, child], CONTEXT);
+    const order = irs
+      .map((ir) => ir.recipeHandle)
+      .filter((h) => ["parent@1", "child@1"].includes(h));
+    expect(order).toEqual(["child@1", "parent@1"]);
+  });
+});

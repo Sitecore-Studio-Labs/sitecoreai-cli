@@ -40,7 +40,12 @@ import {
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
 } from "./ir/sitecore-templates";
-import { type Recipe, RecipeSchema, resolveAllowedHandles } from "./schema/recipe";
+import {
+  type Recipe,
+  RecipeSchema,
+  resolveAllowedHandles,
+  type SitecoreFieldAugment,
+} from "./schema/recipe";
 import { encodeTemplatesMapping } from "./layout/templates-mapping";
 
 import { compileComponentSectionRecipe } from "./compile/component-section";
@@ -228,6 +233,214 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   page: 3,
   "site-template": 4,
   site: 5,
+};
+
+const sourceTypesOfAugment = (augment: SitecoreFieldAugment | undefined): readonly string[] => {
+  if (augment?.source?.kind !== "filter") return [];
+  return augment.source.types ?? [];
+};
+
+/**
+ * Enumerate every cross-recipe handle reference a recipe carries.
+ *
+ * Mirrors `validate.ts`'s reference inventory but RETURNS the set
+ * rather than checking it — used by `stableTopologicalSortWithinRanks`
+ * below to order recipes within an apply-rank so referenced
+ * recipes always push before recipes that point at them. (Validation
+ * already runs separately and asserts every handle resolves to an
+ * extant recipe of the right kind; this extractor assumes input has
+ * already been validated and doesn't re-check.)
+ *
+ * Keep in sync with the inventory in `validate.ts` whenever a new
+ * cross-recipe reference site is added — a forgotten reference
+ * silently reverts to alphabetic file-glob order for the affected
+ * recipe pair, which manifests as "ref-source-fields … not yet in
+ * captured map" at first push.
+ */
+const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
+  const deps = new Set<string>();
+  const add = (h: string | undefined) => {
+    if (h && h !== recipe.handle) deps.add(h);
+  };
+  switch (recipe.kind) {
+    case "component-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      add(recipe.datasource?.template?.handle);
+      add(recipe.parameters?.handle);
+      recipe.children?.allowedHandles.forEach(add);
+      for (const slot of recipe.placeholders ?? []) {
+        resolveAllowedHandles(slot).forEach(add);
+      }
+      break;
+    case "content-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      break;
+    case "design-parameters-template":
+      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
+      break;
+    case "content-item":
+      add(recipe.templateType);
+      for (const v of Object.values(recipe.fields)) {
+        if (v.shape === "link-internal") add(v.ref);
+        else if (v.shape === "reference") v.refs.forEach(add);
+      }
+      break;
+    case "page-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "page":
+      add(recipe.template);
+      for (const v of Object.values(recipe.fields ?? {})) {
+        if (v.shape === "link-internal") add(v.ref);
+        else if (v.shape === "reference") v.refs.forEach(add);
+      }
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "partial-design":
+      for (const placements of Object.values(recipe.layout.placeholders)) {
+        for (const p of placements) {
+          add(p.componentHandle);
+          if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+        }
+      }
+      break;
+    case "page-design":
+      recipe.appliesTo.forEach(add);
+      recipe.partials.forEach(add);
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "placeholder":
+      (recipe.allowedComponents ?? []).forEach(add);
+      break;
+    case "site-template":
+      recipe.pageTemplates.forEach(add);
+      recipe.pageDesigns.forEach(add);
+      if (recipe.insertOptionsMatrix) {
+        for (const [parent, children] of Object.entries(recipe.insertOptionsMatrix)) {
+          add(parent);
+          children.forEach(add);
+        }
+      }
+      if (recipe.templatesToDesigns) {
+        for (const [tplHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
+          add(tplHandle);
+          add(designHandle);
+        }
+      }
+      break;
+    case "site":
+      add(recipe.siteTemplate);
+      if (recipe.initialHome !== undefined) add(recipe.initialHome);
+      break;
+    case "component-section":
+    case "enumeration":
+    case "workflow":
+    case "webhook-authorization":
+      // Pure definitions — no outbound recipe refs in the authored shape.
+      break;
+  }
+  return [...deps];
+};
+
+/**
+ * Order recipes by apply-rank, then topologically by intra-rank
+ * cross-recipe dependencies. Producer recipes push before the
+ * recipes that reference them.
+ *
+ * Algorithm: Kahn's topological sort restricted to within-rank edges,
+ * tie-broken by original input index so unrelated recipes keep their
+ * file-glob order. Cross-rank dependencies are handled by the coarse
+ * rank already — within-rank topology only matters when two recipes
+ * of the same kind reference each other (the common case is a
+ * component-template referencing a content-template at rank 0; both
+ * sort to rank 0 and need intra-rank ordering).
+ *
+ * Cycles within a rank are not expected — `validateRecipeSet`'s cycle
+ * detector catches `insertOptions` chains, and other cross-recipe
+ * graphs are acyclic by schema construction. If a cycle does slip
+ * through (defensive), the algorithm preserves input order for the
+ * cyclic subset and emits all remaining recipes after, so push still
+ * runs in a deterministic order rather than throwing here.
+ */
+const stableTopologicalSortWithinRanks = (recipes: readonly Recipe[]): readonly Recipe[] => {
+  // Group by rank, preserving input order within each group.
+  const groups = new Map<number, Recipe[]>();
+  for (const r of recipes) {
+    const rank = RECIPE_APPLY_RANK[r.kind];
+    let bucket = groups.get(rank);
+    if (!bucket) {
+      bucket = [];
+      groups.set(rank, bucket);
+    }
+    bucket.push(r);
+  }
+  const out: Recipe[] = [];
+  for (const rank of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(rank)!;
+    if (group.length <= 1) {
+      out.push(...group);
+      continue;
+    }
+    // Build dep graph: handle → set of in-group dep handles.
+    const handleToIndex = new Map<string, number>();
+    group.forEach((r, idx) => handleToIndex.set(r.handle, idx));
+    const inDegree = new Array<number>(group.length).fill(0);
+    const adjacency: number[][] = group.map(() => []);
+    for (let i = 0; i < group.length; i++) {
+      for (const depHandle of extractRecipeDependencies(group[i])) {
+        const depIdx = handleToIndex.get(depHandle);
+        if (depIdx === undefined || depIdx === i) continue;
+        adjacency[depIdx].push(i);
+        inDegree[i]++;
+      }
+    }
+    // Kahn's algorithm with stable tie-break by original index.
+    const ready: number[] = [];
+    for (let i = 0; i < group.length; i++) if (inDegree[i] === 0) ready.push(i);
+    const sorted: Recipe[] = [];
+    while (ready.length > 0) {
+      ready.sort((a, b) => a - b);
+      const idx = ready.shift()!;
+      sorted.push(group[idx]);
+      for (const next of adjacency[idx]) {
+        inDegree[next]--;
+        if (inDegree[next] === 0) ready.push(next);
+      }
+    }
+    // Defensive: append any cycle survivors in input order.
+    if (sorted.length < group.length) {
+      const placed = new Set(sorted.map((r) => r.handle));
+      for (const r of group) if (!placed.has(r.handle)) sorted.push(r);
+    }
+    out.push(...sorted);
+  }
+  return out;
 };
 
 /**
@@ -1196,10 +1409,22 @@ export function compileRecipeSet(
   // after its site template. On a fresh push the executor resolves a
   // cross-recipe `templateOf` / ref-recipe only once the defining
   // recipe's IR has run; input (file-glob) order doesn't guarantee that
-  // (`home@1` sorts before `page@1`). The sort is STABLE — input order
-  // is preserved within a rank, so intra-rank emission order (section
-  // folders, etc.) is untouched.
-  const ranked = [...recipes].sort((a, b) => RECIPE_APPLY_RANK[a.kind] - RECIPE_APPLY_RANK[b.kind]);
+  // (`home@1` sorts before `page@1`).
+  //
+  // Within a single rank we ALSO topologically sort by recipe-level
+  // handle dependencies — without this, alphabetic file-glob order can
+  // put a referencing recipe before its referent at the same rank
+  // (e.g. `accordion-block.recipe.ts` < `faq-content.recipe.ts` lex-
+  // sorts the dependent first, then accordion-block's
+  // `field.source.types: ["faq-content@1"]` `ref-source-fields` SetField
+  // op fires before faq-content's CreateItem op runs → "not yet in
+  // captured map"). Same applies to `insertOptions`, `placeholders.
+  // allowedComponents`, and every other cross-recipe handle reference
+  // enumerated by `extractRecipeDependencies` below. The sort is stable
+  // (preserves input order among recipes with no dep relationship), so
+  // intra-rank emission order for unrelated siblings (section folders,
+  // etc.) is unchanged.
+  const ranked = stableTopologicalSortWithinRanks(recipes);
   const irs: OperationIr[] = ranked.map((r) => irByHandle.get(r.handle)!);
 
   const setSite = siteOf(context);

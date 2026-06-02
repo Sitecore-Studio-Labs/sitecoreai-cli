@@ -24,15 +24,32 @@ describe("BrandKitRecipeSchema", () => {
       documents: [{ url: "https://example.test/brand.pdf", title: "Guidelines" }],
       sections: {
         "Tone of Voice": {
+          // text — single string
           Voice: "Confident, warm",
-          Personality: ["Bold", "Approachable"],
+          // array — object-shaped `{name, id?}` entries (NOT string[])
+          Personality: [{ name: "Bold" }, { name: "Approachable" }],
+          // richArray — name + optional tags + restrictions
           Glossary: [{ name: "Sign in", restrictions: 'Never "log in"' }],
         },
+        // Glossary section — dynamic per-term fields with locale rows.
+        "Glossary and Localization": {
+          "sign in": [
+            { term: "sign in", locale: "en-US", displayName: "English (US)" },
+            { term: "anmelden", locale: "de-DE", displayName: "German" },
+          ],
+        },
+      },
+      sectionProperties: {
+        "Glossary and Localization": { sourceLanguage: "en" },
       },
     });
     expect(recipe.documents).toHaveLength(1);
     expect(recipe.sections["Tone of Voice"].Voice).toBe("Confident, warm");
-    expect(recipe.sections["Tone of Voice"].Personality).toEqual(["Bold", "Approachable"]);
+    expect(recipe.sections["Tone of Voice"].Personality).toEqual([
+      { name: "Bold" },
+      { name: "Approachable" },
+    ]);
+    expect(recipe.sectionProperties["Glossary and Localization"]?.sourceLanguage).toBe("en");
   });
 
   it("rejects a document with no url", () => {
@@ -131,14 +148,18 @@ describe("BrandKitRecipeSchema — registry superset", () => {
   });
 
   it("exports the canonical section names mirroring the registry's list", () => {
+    // Verified empirically 2026-06-02 against the live `Sync` brand
+    // kit — eight predefined sections + the dynamic Glossary section.
     expect([...BRAND_KIT_CANONICAL_SECTIONS]).toEqual([
       "Brand Context",
       "Global Goals",
       "Tone of Voice",
-      "Glossary and Localization",
-      "Do's and Don'ts",
-      "Grammar Checklists",
+      "Dos and Dont's",
       "Visual Guidelines",
+      "Image Style",
+      "Grammar Guidelines",
+      "Checklist",
+      "Glossary and Localization",
     ]);
   });
 });

@@ -1,10 +1,10 @@
 {
   "$schema": "Records the per-metric coverage thresholds. The check-coverage-ratchet script enforces 'never below baseline without ALLOW_RATCHET_DOWN=1'. Edit via the script, not by hand.",
   "thresholds": {
-    "statements": 90,
+    "statements": 91,
     "branches": 79,
-    "functions": 89,
-    "lines": 90
+    "functions": 90,
+    "lines": 92
   },
   "updated": "2026-06-02"
 }

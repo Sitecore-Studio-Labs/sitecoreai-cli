@@ -12,7 +12,15 @@ export { planIsNoop, summarizePlan, writingChanges } from "./plan";
 
 export type { ApplyResult, KindRef, RecipeKind, SyncContext } from "./kind";
 
-export type { PushOptions, PushOutcome, SyncMode } from "./engine";
+export type {
+  Baseline,
+  BaselineStorage,
+  FieldClassification,
+  PullConflictPolicy,
+  PushConflictPolicy,
+} from "./baseline";
+
+export type { PullOptions, PushOptions, PushOutcome, SyncMode } from "./engine";
 export { syncDiff, syncPull, syncPush } from "./engine";
 
 export { loadRecipe, writeRecipe } from "./io";

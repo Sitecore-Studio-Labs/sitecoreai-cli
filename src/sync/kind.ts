@@ -11,6 +11,7 @@
  */
 import type { ZodType } from "zod";
 import type { Logger } from "@/shared/logger";
+import type { BaselineStorage, PullConflictPolicy, PushConflictPolicy } from "./baseline";
 import type { RecipeChange, RecipePlan } from "./plan";
 
 /** Identifies one instance of a recipe kind on a remote environment. */
@@ -72,6 +73,32 @@ export interface SyncContext {
    * Only consumed by the `recipe` kind today; other kinds ignore.
    */
   snapshotLanguages?: readonly string[];
+  /**
+   * Pluggable per-kind baseline backing store. When present, kinds that
+   * opt into three-way merge classification call
+   * `baselineStorage.load(kind, env, handle)` during `plan()` and
+   * `baselineStorage.write(...)` from `apply()` after a successful
+   * write. Forwarded through by the engine when callers set it on
+   * `PushOptions` / `PullOptions`. Kinds without baseline support
+   * ignore.
+   *
+   * The content-recipe runtime carries its own file-backed storage
+   * separately (see `src/recipe/runtime/baseline.ts`) — this seam is
+   * for new kinds (brief, campaign, …) and remote (orchestrator-
+   * backed) impls that share one store across many kinds.
+   */
+  baselineStorage?: BaselineStorage;
+  /**
+   * Conflict policy in effect for a `push` (set by the engine from
+   * `PushOptions.conflictPolicy`). Kinds that classify per-field
+   * consult this to downgrade `conflict` / `cms-edit` actions to the
+   * chosen resolution. Default behaviour when unset is the kind's
+   * choice — content recipes default to `"error"`; brief / campaign
+   * kinds default to `"cms-wins"`.
+   */
+  pushConflictPolicy?: PushConflictPolicy;
+  /** Conflict policy in effect for a `pull` (set by the engine). */
+  pullConflictPolicy?: PullConflictPolicy;
 }
 
 /** Outcome of applying a plan. */

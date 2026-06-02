@@ -1100,11 +1100,12 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
   });
 
   // External params-template references are owned by a separate
-  // ParametersTemplateRecipe deployment. Mutating its base-template
-  // chain from a consuming component would silently affect every other
-  // consumer. Reject the combo until the params recipe grows its own
-  // dynamicPlaceholder flag (the right home for shared-template config).
-  it("throws INPUT_INVALID when dynamicPlaceholders is combined with an external parameters template", () => {
+  // DesignParametersTemplateRecipe deployment. Adding `_IDynamicPlaceholder`
+  // to that shared template's base list would silently affect every
+  // other consumer. Instead, scai synthesises a per-recipe **wrapper**
+  // template that inherits FROM the external + adds IDynamicPlaceholder,
+  // leaving the external template untouched.
+  it("synthesises a wrapper params template when dynamicPlaceholders + external parameters are combined", () => {
     const externalRef: Recipe = {
       ...layoutRecipe,
       handle: "ext-ref@1",
@@ -1113,9 +1114,29 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       params: [],
       parameters: { handle: "shared-params@1" },
     };
-    expect(() => compileComponentTemplateRecipe(externalRef, CONTEXT)).toThrow(
-      /ext-ref@1.*dynamicPlaceholders.*external parameters template/i
+    const ir = compileComponentTemplateRecipe(externalRef, CONTEXT);
+    // The wrapper's SetBaseTemplates op sits at the per-recipe template
+    // GUID (not the external shared template's GUID), and chains the
+    // external template + SXA Headless bases + IDynamicPlaceholder.
+    const op = onlyOp(
+      ir.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, "ext-ref@1")
     );
+    expect(op.baseTemplates[0]).toBe(designParametersTemplateId(SITE, "shared-params@1"));
+    expect(op.baseTemplates).toContain(IDYNAMIC_PLACEHOLDER_TEMPLATE_ID);
+    // The rendering should point at the wrapper (per-recipe handle),
+    // not at the external shared template directly.
+    const rendering = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "ext-ref@1")
+    );
+    const paramsRef = findField(rendering.fields, RENDERING_FIELDS.PARAMETERS_TEMPLATE);
+    expect(paramsRef?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: designParametersTemplateId(SITE, "ext-ref@1"),
+    });
   });
 });
 

@@ -82,6 +82,7 @@ beforeEach(() => {
   resolveEnvironment.mockReturnValue({
     envName: "test",
     environment: { templatesRoot: "/t", renderingsRoot: "/r" },
+    root: { marketplacePluginOverrides: undefined },
     timeoutMs: undefined,
   });
   createAuthoringClient.mockReturnValue({ __client: true });
@@ -240,6 +241,7 @@ describe("readCurrent", () => {
         contentModelsRoot: "/cm",
         enumerationsRoot: "/e",
       },
+      root: { marketplacePluginOverrides: undefined },
       timeoutMs: undefined,
     });
     const pulled = [{ kind: "enumeration" }];

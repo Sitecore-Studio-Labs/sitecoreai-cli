@@ -90,3 +90,15 @@ export {
   type ResolveBriefClientOptions,
   type ResolvedBriefClient,
 } from "./client";
+
+// Recipe kinds — wired into scai's `sync` engine for declarative
+// brief-type + brief-instance sync. Three-way merge with baseline is
+// supported through `ctx.baselineStorage` (see the `./sync` package
+// surface). Re-exported here so orchestrator-side callers don't need
+// the deeper `./recipe/instance-kind` path which package.json doesn't
+// expose.
+export { briefTypeKind, briefInstanceKind } from "./recipe";
+export type {
+  BriefTypeRecipe,
+  BriefInstanceRecipe,
+} from "./recipe";

@@ -388,6 +388,14 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
             recipe.parameters.handle,
             PARAMETERS_TEMPLATE_KINDS
           );
+          if (recipe.dynamicPlaceholders) {
+            fieldShapeErrors.push({
+              fromRecipe: recipe.handle,
+              fromField: "parameters",
+              message:
+                "Cannot combine external 'parameters' with 'dynamicPlaceholders: true'. The IDynamicPlaceholder base must chain onto the consumer's own params template; chaining it onto a shared external template would silently affect every other consumer. Inline the params via 'params:' or drop 'dynamicPlaceholders'.",
+            });
+          }
         }
         recipe.children?.allowedHandles.forEach((handle, idx) => {
           checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);

@@ -69,10 +69,10 @@ export function compileComponentSectionRecipe(
     return fields;
   };
 
-  // 1. Templates section folder. Lives under `componentsRoot` (Phase 2
-  //    layout) when set, otherwise under `templatesRoot` (legacy flat
-  //    fallback). Sentinel matches `ensureSectionFolder`'s key so
-  //    subsequent component recipes see it as already-emitted.
+  // 1. Templates section folder. Lives under `componentsRoot` (per-site
+  //    folder layout) when set, otherwise under `templatesRoot` (the
+  //    legacy flat fallback). Sentinel matches `ensureSectionFolder`'s
+  //    key so subsequent component recipes see it as already-emitted.
   const templatesParent = context.componentsRoot ?? context.templatesRoot;
   const templatesSectionRefKey = sectionFolderId(site, recipe.name);
   if (!emittedFolders.has(templatesSectionRefKey)) {

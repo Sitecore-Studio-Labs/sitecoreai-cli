@@ -1,6 +1,6 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
-  "version": "0.2.5",
+  "version": "0.3.0-canary.0",
   "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
@@ -138,7 +138,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "version": "changeset version"
+    "version": "changeset version",
+    "coverage:ratchet": "node scripts/check-coverage-ratchet.cjs",
+    "coverage:ratchet:raise": "RAISE_RATCHET=1 node scripts/check-coverage-ratchet.cjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,cjs,mjs}": [

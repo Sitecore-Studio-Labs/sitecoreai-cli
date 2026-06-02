@@ -20,10 +20,10 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
 /**
  * Compile a `SiteTemplateRecipe` to an Operation IR.
  *
- * Phase 5 Milestone C-extra refinement — emits the SiteTemplate item
- * (a `Solution template`-typed item under `siteTemplatesRoot`) with
- * the fields SXA's createSite flow actually reads: Name, Description,
- * Enabled, Built-in template marker, plus stub ICON / DISPLAY_NAME.
+ * Emits the SiteTemplate item (a `Solution template`-typed item under
+ * `siteTemplatesRoot`) with the fields SXA's createSite flow actually
+ * reads: Name, Description, Enabled, Built-in template marker, plus
+ * stub ICON / DISPLAY_NAME.
  *
  * **Design gap (acknowledged, not closed by this commit):** the
  * `SiteTemplateRecipe` schema models brand shape as direct lists of

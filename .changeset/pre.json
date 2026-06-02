@@ -1,0 +1,12 @@
+{
+  "mode": "pre",
+  "tag": "canary",
+  "initialVersions": {
+    "@sitecoreai-labs/sitecoreai-cli": "0.2.5"
+  },
+  "changesets": [
+    "cli-force-exit-stderr-drain",
+    "drop-registry-shims",
+    "sync-merge-cells-baseline-bridge"
+  ]
+}

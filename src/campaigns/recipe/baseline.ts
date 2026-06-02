@@ -19,7 +19,7 @@
  * one place a silent clobber would hurt.
  */
 import type { Baseline, FieldClassification } from "@/sync";
-import { classifyHashes, hashJsonValue } from "@/sync";
+import { classifyCellHashMaps, hashJsonValue, resolveCellByPolicy } from "@/sync";
 import type { CampaignDeliverable, CampaignRecipe, CampaignTask } from "./schema";
 
 /** Per-cell hash map. Key shape is per the doc comment above. */
@@ -99,42 +99,19 @@ export const classifyCampaignCells = (
   desired: CampaignRecipe,
   current: CampaignRecipe,
   baselinePayload: CampaignBaselinePayload | undefined
-): Record<string, FieldClassification> => {
-  const desiredHashes = hashCampaignCells(desired);
-  const currentHashes = hashCampaignCells(current);
-  const allPaths = new Set([
-    ...Object.keys(desiredHashes),
-    ...Object.keys(currentHashes),
-    ...(baselinePayload ? Object.keys(baselinePayload.cells) : []),
-  ]);
-  const classifications: Record<string, FieldClassification> = {};
-  const absentHash = hashJsonValue(undefined);
-  for (const path of allPaths) {
-    classifications[path] = classifyHashes(
-      desiredHashes[path] ?? absentHash,
-      currentHashes[path] ?? absentHash,
-      baselinePayload?.cells[path]
-    );
-  }
-  return classifications;
-};
+): Record<string, FieldClassification> =>
+  classifyCellHashMaps(
+    hashCampaignCells(desired),
+    hashCampaignCells(current),
+    baselinePayload?.cells
+  );
 
 /**
- * Resolve which "side" wins for a single cell under the push conflict
- * policy. `noop` / `recipe-change` / `first-push` → desired wins
- * regardless of policy.
+ * Re-export so existing campaign-domain consumers can keep importing
+ * the per-cell winner selector by its local name (`cellResolution`).
+ * The shared implementation lives in `@/sync`.
  */
-export const cellResolution = (
-  classification: FieldClassification,
-  policy: "error" | "recipe-wins" | "cms-wins"
-): "desired" | "current" | "policyError" => {
-  if (classification === "cms-edit" || classification === "conflict") {
-    if (policy === "cms-wins") return "current";
-    if (policy === "error") return "policyError";
-    return "desired"; // recipe-wins
-  }
-  return "desired";
-};
+export { resolveCellByPolicy as cellResolution };
 
 /**
  * Build a merged campaign recipe where each cell takes either the
@@ -166,7 +143,7 @@ export const mergeCampaignByPolicy = (
 
   const pickProject = <K extends keyof CampaignRecipe>(element: K): CampaignRecipe[K] => {
     const path = projectCellPath(element);
-    const res = cellResolution(classifications[path] ?? "first-push", policy);
+    const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
     if (res === "policyError") {
       policyErrors.push({ path, classification: classifications[path] });
       return desired[element];
@@ -183,7 +160,7 @@ export const mergeCampaignByPolicy = (
 
     const pickDel = <K extends keyof CampaignDeliverable>(element: K): CampaignDeliverable[K] => {
       const path = deliverableCellPath(desiredDel.name, element);
-      const res = cellResolution(classifications[path] ?? "first-push", policy);
+      const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
       if (res === "policyError") {
         policyErrors.push({ path, classification: classifications[path] });
         return desiredDel[element];
@@ -197,7 +174,7 @@ export const mergeCampaignByPolicy = (
 
       const pickTask = <K extends keyof CampaignTask>(element: K): CampaignTask[K] => {
         const path = taskCellPath(desiredDel.name, desiredTask.name, element);
-        const res = cellResolution(classifications[path] ?? "first-push", policy);
+        const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
         if (res === "policyError") {
           policyErrors.push({ path, classification: classifications[path] });
           return desiredTask[element];

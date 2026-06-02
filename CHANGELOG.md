@@ -1,5 +1,77 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.3.0-canary.0
+
+### Minor Changes
+
+- 3f5c7fe: `recipe`: drop three registry-compat shims (breaking).
+
+  Three shims that 0.2.5 added for the Sitecore Showcase Design System
+  have been removed. The registry recipes have been authoring against the
+  canonical shape for a while, so none of the shim paths were exercised
+  in practice — but anyone who was relying on them needs to migrate.
+
+  **Removed:**
+  - `loadRecipe` no longer accepts `kind: "parameters-template"` as an
+    alias for `"design-parameters-template"`. Recipes must spell the kind
+    canonically. (Was added in 0.2.5; never used by the registry.)
+  - `resolveSitecoreType` no longer defaults `shape: "enum"` fields with
+    inline `values: [...]` and no `enumHandle` to `type: "droplist"`.
+    Authors must declare `sitecore.type: "droplist"` explicitly. (The
+    inline-Droplink rejection — "neither droplist nor enumHandle" — that
+    was already in `resolveFieldSource` is the new behavior.)
+  - `ComponentTemplateRecipe` no longer combines an external
+    `parameters: { handle }` with `dynamicPlaceholders: true`. The
+    per-recipe wrapper template synthesis that 0.2.5 added has been
+    removed; the validator now surfaces this combination as
+    `INPUT_INVALID` with a clear remediation hint. Inline the params via
+    `params:` (the `_IDynamicPlaceholder` base chains onto the
+    synthesised per-recipe template directly) or drop
+    `dynamicPlaceholders` from the consumer.
+
+  **Migration:**
+  - `kind: "parameters-template"` → `kind: "design-parameters-template"`
+  - inline-values enum params without `sitecore.type` → add `sitecore.type: "droplist"`
+  - external `parameters: { handle }` + `dynamicPlaceholders: true` → inline `params: [...]` on the consumer
+
+  Recipes using only canonical shapes (the registry's recipes today) are
+  unaffected.
+
+### Patch Changes
+
+- 3f5c7fe: `cli`: drain stderr alongside stdout on force-exit.
+
+  The force-exit path drained only stdout before calling `process.exit`.
+  Parent processes that captured stderr — the orchestrator's recipe-sync
+  workers do, to surface scai exit details — could lose the trailing log
+  line, most visibly the error message the `runCli` catch block prints
+  right before exit. Adding a symmetric stderr drain after the stdout
+  drain makes both streams flush before the process tears down.
+
+  No behavior change for callers that consume stdout only or that read
+  both streams via line buffering.
+
+- 3f5c7fe: `sync` + `recipe/runtime/baseline`: two internal seams for multi-kind
+  baseline + per-cell-merge sharing.
+
+  **`src/sync/merge-cells.ts` (new export):** `classifyCellHashMaps` +
+  `resolveCellByPolicy` — generic per-cell three-way classifier + push
+  policy resolver, factored out of the brand and campaign baseline
+  modules (which each carried character-identical copies). Brand and
+  campaign now delegate; brief stays standalone (single-cell helper, no
+  shape to share).
+
+  **`adaptSyncBaselineStorage(sync) -> BaselineStorage` (new export):**
+  adapter that pins `kind: "content-recipe"` so a multi-kind sync
+  `BaselineStorage` (e.g. `HttpBaselineStorage`) can back the
+  content-recipe 2-arg surface. One orchestrator-side store can now
+  serve brand / brief / campaign / story AND content recipes without
+  recipe-side callsite changes. `CONTENT_RECIPE_BASELINE_KIND` is
+  exported as the stable discriminator (serialised into orchestrator
+  URLs / column values).
+
+  No behavior change for existing consumers.
+
 ## 0.2.5
 
 ### Patch Changes

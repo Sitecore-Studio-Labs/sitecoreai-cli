@@ -548,13 +548,12 @@ describe("compileEnumerationRecipe — location.folder grouping", () => {
  *     `enumValueId(enumerationFolderId(site, enumHandle), default)`.
  *
  * Inline Droplink (shape=enum + inline `values` + no enumHandle) is
- * inferred as Droplist — the only sensible interpretation when the
- * author has provided inline values but no shared `EnumerationRecipe`
- * to point at. `resolveSitecoreType` picks `"droplist"` as the default
- * so authors don't have to repeat themselves with an explicit
- * `sitecore.type: "droplist"`.
+ * unsupported — Sitecore Droplink needs an item-shaped Source the
+ * inline values can't express. Authors must either declare
+ * `sitecore.type: "droplist"` (pipe-separated Source string) or point
+ * at a shared `EnumerationRecipe` via `sitecore.enumHandle`.
  */
-describe("compileComponentTemplateRecipe — shape=enum + inline values (auto-droplist)", () => {
+describe("compileComponentTemplateRecipe — shape=enum + inline values (no implicit type)", () => {
   const recipe: ComponentTemplateRecipe = {
     kind: "component-template",
     schemaVersion: "1",
@@ -571,17 +570,10 @@ describe("compileComponentTemplateRecipe — shape=enum + inline values (auto-dr
     ],
   } as ComponentTemplateRecipe;
 
-  it("defaults to Droplist with the inline values as pipe-separated Source", () => {
-    const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
-    const fieldOp = findCreateItem(ir.operations, (o) => o.name === "Mood");
-    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
-      kind: "string",
-      value: "Droplist",
-    });
-    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual({
-      kind: "string",
-      value: "calm|loud",
-    });
+  it("rejects with a clear hint pointing at sitecore.type='droplist' or enumHandle", () => {
+    expect(() => compileComponentTemplateRecipe(recipe, CONTEXT)).toThrow(
+      /shape=enum but declares neither sitecore\.type='droplist' .* nor sitecore\.enumHandle/i
+    );
   });
 });
 

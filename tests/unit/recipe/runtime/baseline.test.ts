@@ -16,12 +16,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type Baseline,
   type BaselineFieldEntry,
+  CONTENT_RECIPE_BASELINE_KIND,
+  adaptSyncBaselineStorage,
   baselineFilePath,
   hashFieldValue,
   indexBaseline,
   loadBaseline,
   writeBaseline,
 } from "../../../../src/recipe/runtime/baseline";
+import type { Baseline as SyncBaseline, BaselineStorage as SyncBaselineStorage } from "@/sync";
 
 let configDir: string;
 
@@ -425,5 +428,83 @@ describe("hashFieldValueForBaseline", () => {
   it("empty layout XML hashes the same as empty for both layout fieldIds", () => {
     expect(hashFieldValueForBaseline(LAYOUT_FIELDS.RENDERINGS, "")).toBe(hashFieldValue(""));
     expect(hashFieldValueForBaseline(LAYOUT_FIELDS.FINAL_RENDERINGS, "")).toBe(hashFieldValue(""));
+  });
+});
+
+describe("adaptSyncBaselineStorage", () => {
+  // In-memory sync storage used to exercise the adapter without touching
+  // disk or the network. Mirrors the contract of HttpBaselineStorage:
+  // load returns the full envelope (kind + envName + recipeHandle +
+  // capturedAt + payload), write replaces the envelope wholesale.
+  const buildSyncStorage = (): {
+    storage: SyncBaselineStorage;
+    state: Map<string, SyncBaseline<unknown>>;
+  } => {
+    const state = new Map<string, SyncBaseline<unknown>>();
+    const key = (k: string, env: string, h: string) => `${k}/${env}/${h}`;
+    const storage: SyncBaselineStorage = {
+      load: async (k, env, h) => state.get(key(k, env, h)) ?? null,
+      write: async (k, env, h, b) => {
+        state.set(key(k, env, h), b);
+        return `mem://${key(k, env, h)}`;
+      },
+      locator: (k, env, h) => `mem://${key(k, env, h)}`,
+    };
+    return { storage, state };
+  };
+
+  it("write wraps the recipe Baseline in a sync envelope keyed by content-recipe", async () => {
+    const { storage, state } = buildSyncStorage();
+    const adapted = adaptSyncBaselineStorage(storage);
+    const baseline: Baseline = {
+      schemaVersion: "1",
+      recipeHandle: "hero@1",
+      envName: "sandbox",
+      capturedAt: "2026-06-02T00:00:00Z",
+      fields: [],
+    };
+    const locator = await adapted.write("sandbox", "hero@1", baseline);
+    expect(locator).toBe(`mem://${CONTENT_RECIPE_BASELINE_KIND}/sandbox/hero@1`);
+
+    const envelope = state.get(`${CONTENT_RECIPE_BASELINE_KIND}/sandbox/hero@1`)!;
+    expect(envelope.kind).toBe(CONTENT_RECIPE_BASELINE_KIND);
+    expect(envelope.envelopeVersion).toBe("1");
+    expect(envelope.payload).toEqual(baseline);
+  });
+
+  it("load unwraps the sync envelope back into a recipe Baseline", async () => {
+    const { storage } = buildSyncStorage();
+    const adapted = adaptSyncBaselineStorage(storage);
+    const baseline: Baseline = {
+      schemaVersion: "1",
+      recipeHandle: "hero@1",
+      envName: "sandbox",
+      capturedAt: "2026-06-02T00:00:00Z",
+      fields: [
+        {
+          itemRefKey: "item-1",
+          fieldId: "f-1",
+          valueHash: "0".repeat(64),
+        } satisfies BaselineFieldEntry,
+      ],
+    };
+    await adapted.write("sandbox", "hero@1", baseline);
+    const loaded = await adapted.load("sandbox", "hero@1");
+    expect(loaded).toEqual(baseline);
+  });
+
+  it("load returns null when the sync storage has no envelope for the key", async () => {
+    const { storage } = buildSyncStorage();
+    const adapted = adaptSyncBaselineStorage(storage);
+    const loaded = await adapted.load("sandbox", "nonexistent@1");
+    expect(loaded).toBeNull();
+  });
+
+  it("locator delegates to the sync locator with content-recipe pinned", () => {
+    const { storage } = buildSyncStorage();
+    const adapted = adaptSyncBaselineStorage(storage);
+    expect(adapted.locator("sandbox", "hero@1")).toBe(
+      `mem://${CONTENT_RECIPE_BASELINE_KIND}/sandbox/hero@1`
+    );
   });
 });

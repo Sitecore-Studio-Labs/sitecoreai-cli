@@ -248,7 +248,7 @@ describe("compileContentItemRecipe — field encoders", () => {
         buildRecipe({ X: { shape: "link-internal", ref: "home-page@1", text: "Home" } }),
         CONTEXT
       )
-    ).toThrow(/link-internal is deferred/);
+    ).toThrow(/link-internal field shape is not yet supported/);
   });
 
   it("reference → kind: 'ref-recipe-list' with refKeys derived via contentItemId", () => {
@@ -277,9 +277,9 @@ describe("compileContentItemRecipe — fixture round-trip", () => {
     });
   });
 
-  it("site-logo-content@1 throws because of its link-internal HomeLink (Phase 5+ field)", () => {
+  it("site-logo-content@1 throws because of its link-internal HomeLink (not yet supported)", () => {
     expect(() => compileContentItemRecipe(siteLogoContentRecipe, CONTEXT)).toThrow(
-      /link-internal is deferred/
+      /link-internal field shape is not yet supported/
     );
   });
 });

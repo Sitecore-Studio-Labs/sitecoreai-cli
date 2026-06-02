@@ -24,10 +24,11 @@ export const SITECORE_TEMPLATES = {
    */
   RENDERING: "04646a89-996f-4ee7-878a-ffdbf1f0ef0d",
   /**
-   * Sitecore Folder template. Used in Phase 1 Variants Lite for both the
-   * `<Rendering>/Variants` folder and each Variant item — bare items, no
-   * SXA-specific structure. Phase 2+ should switch to the SXA Variant
-   * Definition template once the GUID is sandbox-validated.
+   * Sitecore Folder template. Used in the current variants-lite shape
+   * for both the `<Rendering>/Variants` folder and each Variant item —
+   * bare items, no SXA-specific structure. A richer SXA Variant
+   * Definition template could replace this once that GUID is
+   * sandbox-validated.
    */
   FOLDER: "a87a00b1-e6db-45ab-8b54-636fec3b5523",
   /**
@@ -220,8 +221,8 @@ export const PLACEHOLDER_FIELDS = {
 
 /**
  * SXA Foundation base templates that every component-template recipe
- * (Phase 1 component template + standard values) must inherit so the
- * SXA editor framework recognises the item as a component:
+ * (component template + standard values) must inherit so the SXA
+ * editor framework recognises the item as a component:
  *
  * - `_PerSiteStandardValues` ({44A022DB-56D3-419A-B43B-E27E4D8E9C41})
  *   wires the per-site standard-values mechanism.
@@ -429,8 +430,8 @@ export const TEMPLATE_FIELD_FIELDS = {
  * designs write their layout XML to `__Renderings` (shared, since these
  * are reusable design artifacts that don't vary per language version).
  *
- * Phase 4 page placements (PageRecipe, deferred) will write to
- * `__Final Renderings` so authors can override per-version.
+ * Page placements (PageRecipe) write to `__Final Renderings` so
+ * authors can override per-version.
  */
 export const LAYOUT_FIELDS = {
   RENDERINGS: "f1a1fe9e-a60c-4ddb-a3a0-bb5b29fe732e",

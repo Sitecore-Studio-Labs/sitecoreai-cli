@@ -260,13 +260,25 @@ const slugifyHandle = (handle: string): string => handle.replace(/@/g, "_v");
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Pluggable backing store for per-(env, recipe) baseline snapshots.
+ * Pluggable backing store for per-(env, recipe) baseline snapshots —
+ * the content-recipe-specific surface (2-arg `(envName, recipeHandle)`).
  *
- * The default `FileBaselineStorage` writes to
- * `<configDir>/.scai/baseline/<env>/<slug(handle)>.baseline.json` — bound
- * to the operator's filesystem. A remote impl (orchestrator-backed,
- * shareable across CI / multi-operator) plugs in by implementing this
- * interface; no callsite needs to change.
+ * Relationship with `@/sync`'s {@link import("@/sync").BaselineStorage}:
+ * the sync interface is the multi-kind 3-arg surface used by every
+ * non-content-recipe kind (brand, brief, campaign, story, …). Content
+ * recipes pre-date the multi-kind shape and keep their 2-arg surface
+ * for callsite ergonomics — pull/push.ts wire baselineStorage through
+ * dozens of call sites, and the kind is always "content-recipe".
+ *
+ * Operators who want a single backing store across every kind plug a
+ * sync `BaselineStorage` into the recipe pipeline via
+ * {@link adaptSyncBaselineStorage} below. Internally that pins kind to
+ * `"content-recipe"`; downstream every method signature collapses to
+ * the 2-arg form callers already use.
+ *
+ * The default {@link FileBaselineStorage} writes to
+ * `<configDir>/.scai/baseline/<env>/<slug(handle)>.baseline.json`. A
+ * remote impl plugs in via the adapter; no recipe-side callsite changes.
  *
  * Contract:
  *  - `load` returns `null` for "no baseline yet" (first push to this
@@ -286,6 +298,13 @@ export interface BaselineStorage {
   /** Human-readable locator (for diagnostics; never parsed). */
   locator(envName: string, recipeHandle: string): string;
 }
+
+/**
+ * Kind discriminator used when content-recipe baselines flow through a
+ * multi-kind sync storage backend (HTTP, in-memory, etc.). Stable
+ * because it's serialised into orchestrator-side URLs / column values.
+ */
+export const CONTENT_RECIPE_BASELINE_KIND = "content-recipe";
 
 /**
  * Default storage: a directory under `<configDir>/.scai/baseline/`.
@@ -443,3 +462,38 @@ export const writeBaseline = (
   };
   return new FileBaselineStorage(configDir).write(envName, recipeHandle, baseline);
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sync-storage bridge — single backing store across every recipe kind
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Wrap a multi-kind sync `BaselineStorage` (e.g. `HttpBaselineStorage`)
+ * so it satisfies the content-recipe 2-arg `BaselineStorage` surface.
+ * `kind` is pinned to `CONTENT_RECIPE_BASELINE_KIND`; the recipe `Baseline`
+ * shape becomes the `payload` of a multi-kind envelope on write, and
+ * is unwrapped from the envelope on load.
+ *
+ * Use this to let one orchestrator-side backing store serve content
+ * recipes alongside brand / brief / campaign / story baselines —
+ * push/pull don't change shape; only the storage they're wired with does.
+ */
+export const adaptSyncBaselineStorage = (
+  sync: import("@/sync").BaselineStorage
+): BaselineStorage => ({
+  load: async (envName, recipeHandle) => {
+    const envelope = await sync.load<Baseline>(CONTENT_RECIPE_BASELINE_KIND, envName, recipeHandle);
+    return envelope ? envelope.payload : null;
+  },
+  write: (envName, recipeHandle, baseline) =>
+    sync.write<Baseline>(CONTENT_RECIPE_BASELINE_KIND, envName, recipeHandle, {
+      envelopeVersion: "1",
+      kind: CONTENT_RECIPE_BASELINE_KIND,
+      recipeHandle,
+      envName,
+      capturedAt: baseline.capturedAt,
+      payload: baseline,
+    }),
+  locator: (envName, recipeHandle) =>
+    sync.locator(CONTENT_RECIPE_BASELINE_KIND, envName, recipeHandle),
+});

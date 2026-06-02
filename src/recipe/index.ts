@@ -204,7 +204,9 @@ export type {
 export {
   BaselineFieldEntrySchema,
   BaselineSchema,
+  CONTENT_RECIPE_BASELINE_KIND,
   FileBaselineStorage,
+  adaptSyncBaselineStorage,
   baselineFilePath,
   canonicaliseLayoutXml,
   hashFieldValue,
@@ -275,7 +277,7 @@ export {
   type SourceFields,
 } from "./schema/source-fields";
 
-// Policy assignment (Phase 3+ extension point) --------------------------
+// Policy assignment (extension point for kind-specific overrides) --------
 export {
   defaultPolicyForRecipe,
   policyFor,

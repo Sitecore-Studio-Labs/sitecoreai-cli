@@ -68,18 +68,7 @@ export const loadRecipe = async (filePath: string): Promise<Recipe> => {
     ? await loadTypeScriptRecipe(filePath)
     : await readJson(filePath);
 
-  // Legacy-kind alias: the registry and some older recipes spell the
-  // design-parameters-template kind as `"parameters-template"`. Normalize
-  // before parse so RecipeSchema's discriminated union finds the right
-  // variant. Cheap rewrite, single field, no downstream changes needed —
-  // the rest of the compiler / planner / executor only knows the
-  // canonical `design-parameters-template` literal.
-  const normalized =
-    raw && typeof raw === "object" && (raw as { kind?: unknown }).kind === "parameters-template"
-      ? { ...(raw as Record<string, unknown>), kind: "design-parameters-template" }
-      : raw;
-
-  const result = RecipeSchema.safeParse(normalized);
+  const result = RecipeSchema.safeParse(raw);
   if (!result.success) {
     throw createScaiError(`Invalid recipe at ${filePath}.`, "INPUT_INVALID", {
       hint: "Ensure the file exports a `ComponentTemplateRecipe` or `ContentTemplateRecipe`.",

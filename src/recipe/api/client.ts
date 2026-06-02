@@ -172,7 +172,7 @@ export interface AuthoringApiClient {
    */
   createItem(input: CreateItemInput): Promise<CreateItemResult>;
   updateItem(input: UpdateItemInput): Promise<void>;
-  /** Phase 4 policy `CreateUpdateAndDelete` will use this. */
+  /** The future `CreateUpdateAndDelete` policy will use this. */
   deleteItem(selector: ItemSelector): Promise<void>;
   /**
    * Move an item to a new parent. Preserves the item's `itemId`, name,

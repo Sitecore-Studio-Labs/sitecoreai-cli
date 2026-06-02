@@ -73,8 +73,8 @@ export function compilePartialDesignRecipe(
     allowScoped: false,
     // SXA Partial Design's Layout pipeline normalizes canonical input
     // into delta form on first write — emit delta directly so first
-    // push converges in one cycle (commit 6404024 documented the
-    // two-cycle workaround; this is its Phase 5 follow-up).
+    // push converges in one cycle (the alternative is the two-cycle
+    // workaround documented in commit 6404024).
     mode: "delta",
   });
 

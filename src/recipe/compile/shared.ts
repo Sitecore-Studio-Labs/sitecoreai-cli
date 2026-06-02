@@ -104,15 +104,15 @@ export interface CompileContext {
    */
   contentModelsRoot?: string;
   /**
-   * Phase 4: required for `PartialDesignRecipe` compilation. Where the
+   * Required for `PartialDesignRecipe` compilation. Where the
    * partial-design items land — typically
    * `/sitecore/content/<site>/Presentation/Partial Designs`.
-   * Optional in the type so Phase 1 callers don't have to set it; the
+   * Optional in the type so original callers don't have to set it; the
    * partial-design compiler errors with a clear message if absent.
    */
   partialDesignsRoot?: string;
   /**
-   * Phase 4: required for `PageDesignRecipe` compilation. Where the
+   * Required for `PageDesignRecipe` compilation. Where the
    * page-design items land — typically
    * `/sitecore/content/<site>/Presentation/Page Designs`.
    *
@@ -123,14 +123,14 @@ export interface CompileContext {
    */
   pageDesignsRoot?: string;
   /**
-   * Phase 4: required for `ContentItemRecipe` compilation. Where shared
+   * Required for `ContentItemRecipe` compilation. Where shared
    * content items land — typically `/sitecore/content/<tenant>/<site>/Data`
    * or a sub-bucket for SXA sites. ContentItemRecipes encode `kind: "shared"`
    * datasource targets referenced from partial / page design layouts.
    */
   contentItemsRoot?: string;
   /**
-   * Phase 5: required for `SiteTemplateRecipe` compilation. Where SXA
+   * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
    * or a sub-folder for module groupings. Site templates are reusable
    * brand-shape definitions; `SiteRecipe` instances reference one via
@@ -1179,22 +1179,6 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
 function resolveSitecoreType(field: FieldDefinition | DesignParameter): SitecoreFieldType {
   if (field.sitecore?.type) {
     return field.sitecore.type;
-  }
-  // Enum fields with inline `values: [...]` and no `enumHandle` only
-  // make sense as `droplist` — the alternative default (`droplink`)
-  // would require a separate EnumerationRecipe the author hasn't
-  // written. Pick `droplist` here so authors don't have to repeat
-  // themselves with an explicit `sitecore.type: "droplist"`. Authors
-  // who DO want droplink + shared enum still get it: they declare
-  // `sitecore.enumHandle` (no inline `values`), which leaves the
-  // shape-based default in place (`droplink`).
-  if (
-    field.shape === "enum" &&
-    !field.sitecore?.enumHandle &&
-    Array.isArray(field.values) &&
-    field.values.length > 0
-  ) {
-    return "droplist";
   }
   const multiple = "multiple" in field ? field.multiple : undefined;
   return defaultSitecoreFieldType(field.shape, multiple);

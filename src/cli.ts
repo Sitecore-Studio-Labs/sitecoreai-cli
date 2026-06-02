@@ -435,8 +435,18 @@ if (shouldForceExit) {
     // with a callback flushes the writable buffer; we exit from inside
     // the callback so logs emitted at the end of a command (the bind
     // result, error hints) reach the parent process.
+    //
+    // stderr matters as much as stdout — the error path (the catch
+    // block in runCli) routes through consola.error → stderr, and
+    // a parent process capturing only stderr (the orchestrator's
+    // brand-mode worker is one) used to see the captured buffer end
+    // mid-line because process.exit fired before the stderr writable
+    // buffer drained. Draining both in sequence is the fix; the
+    // outer write covers stdout, the inner covers stderr.
     process.stdout.write("", () => {
-      process.exit(process.exitCode ?? 0);
+      process.stderr.write("", () => {
+        process.exit(process.exitCode ?? 0);
+      });
     });
   });
 } else {

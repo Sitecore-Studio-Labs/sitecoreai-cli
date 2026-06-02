@@ -97,11 +97,31 @@ export {
 export type { CompileContext } from "./compile/shared";
 
 /**
- * Stable handle for the synthetic IR `compileRecipeSet` emits to write
- * the cross-recipe `TemplatesMapping` aggregate. Not a real recipe — the
- * leading double-underscore signals "compiler-synthesized" and avoids
- * collision with any author-defined handle (recipe handles match
- * `[a-z][a-z0-9-]*@\d+`, so a leading underscore is unrepresentable).
+ * ## `__name__` aggregate-handle convention
+ *
+ * Every synthetic IR `compileRecipeSet` emits at the *cross-recipe*
+ * layer (i.e. not produced by any single author-defined recipe) uses
+ * a handle wrapped in double underscores: `__templates-mapping__`,
+ * `__available-renderings__`, `__placeholder-settings__`, etc.
+ *
+ * The convention is load-bearing:
+ *   - **Author-handle collision is impossible** — recipe handles match
+ *     `[a-z][a-z0-9-]*@\d+` (validated by `HandleString` in
+ *     `schema/recipe.ts`), so leading underscores are unrepresentable
+ *     in author input. `__foo__` is reserved for the compiler.
+ *   - **Plan / push output greps cleanly** — anything matching `__.*__`
+ *     in a recipe-set summary is a synthesized aggregate, not a real
+ *     recipe-author intent. Distinguishes "this is the cross-recipe
+ *     dispatcher reporting" from "this is your recipe being applied."
+ *   - **Apply-rank scheduling is uniform** — synthesized aggregates
+ *     get explicit rank slots (see `RECIPE_APPLY_RANK` further down)
+ *     so they run between rank tiers, not interleaved with author
+ *     recipes.
+ *
+ * Adding a new aggregate? Export the handle as
+ * `<NAME>_AGGREGATE_HANDLE = "__<kebab-name>__"` next to the others
+ * below, doc-comment the emission semantics, and pick its
+ * `RECIPE_APPLY_RANK` slot deliberately.
  */
 export const TEMPLATES_MAPPING_AGGREGATE_HANDLE = "__templates-mapping__";
 

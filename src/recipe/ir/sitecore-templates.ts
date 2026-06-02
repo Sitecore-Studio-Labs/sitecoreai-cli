@@ -285,6 +285,36 @@ export const SXA_HEADLESS_PARAMS_BASE_TEMPLATES = [
 ] as const;
 
 /**
+ * SXA `_IDynamicPlaceholder` interface template — base-template extension
+ * for rendering parameters templates that need to support nested dynamic
+ * placeholders. Contributes a `DynamicPlaceholderID` field; the Pages
+ * chrome auto-populates this field with a per-placement integer when an
+ * author drops the rendering, and the layout service emits the resolved
+ * value as the `DynamicPlaceholderId` rendering parameter. The headless
+ * SDK uses that parameter to resolve concrete `<slot>-<id>` placeholder
+ * keys against the `<slot>-{*}` template defined on the rendering.
+ *
+ * Without this base template, the parameters template has no
+ * `DynamicPlaceholderID` field, the chrome has nowhere to write the ID,
+ * and nested children either fail to bind in Pages or persist against
+ * the wrong slot key — symptom is a container rendered childless in
+ * layout service with the SDK warning
+ * `Placeholder '<slot>-1' was not found in the current rendering data`.
+ *
+ * Setting `IsRenderingsWithDynamicPlaceholders=true` in the rendering's
+ * `OtherProperties` is necessary-but-not-sufficient. Both halves are
+ * required; both are emitted by the `dynamicPlaceholders: true` flag on
+ * `ComponentTemplateRecipe`.
+ *
+ * Path: `/sitecore/templates/Foundation/Experience Accelerator/Dynamic Placeholders/Rendering Parameters/IDynamicPlaceholder`.
+ * Captured 2026-05-30 by introspecting the tenant via
+ * `_recon-page-template.cjs item <path>` — Foundation template, GUID is
+ * stable across tenants (same identity model as the other SXA bases in
+ * this module).
+ */
+export const IDYNAMIC_PLACEHOLDER_TEMPLATE_ID = "5c74e985-e055-43ff-b28c-db6c6a6450a2";
+
+/**
  * SXA Headless page base templates — what a recipe-emitted page template
  * must inherit so XM Cloud Pages recognises items conforming to it as
  * authorable pages: they pick up the layout/presentation fields, the
@@ -486,6 +516,43 @@ export const RENDERING_FIELDS = {
   PARAMETERS_TEMPLATE: "a77e8568-1ab3-44f1-a664-b7c37ec7810d",
   OPEN_PROPERTIES_AFTER_ADD: "7d8ae35f-9ed1-43b5-96a2-0a5f040d4e4e",
   OTHER_PROPERTIES: "e829c217-5e94-4306-9c48-2634b094fdc2",
+  /**
+   * "Placeholders" (PLURAL) Treelist field on the SXA Headless rendering
+   * chain. Pipe-separated list of `{GUID}` references — each GUID points
+   * at a Placeholder Settings item under `placeholderSettingsRoot`.
+   *
+   * Defined on `/sitecore/templates/System/Layout/Sections/Rendering Options/Layout Service/Placeholders`,
+   * mixed into the SXA Headless rendering template via the
+   * `Layout Service` section. The starter-kit `Container`,
+   * `Column Splitter`, `Row Splitter` et al all populate this exact
+   * field (e.g. Container's value is `{97CBC3BC-...-A5}` pointing at
+   * the matching `/Placeholder Settings/.../Container` item).
+   *
+   * The layout service reads each referenced settings item to recover
+   * the slot's `Placeholder Key` (e.g. `container-{*}`) and emit the
+   * `placeholders` map in the layout-service response. Without this
+   * field populated the layout service ships no `placeholders` array
+   * for the rendering, no child renderings resolve, and the headless
+   * SDK's `getPlaceholderRenderings` walks an empty object and warns
+   * `Placeholder '<slot>-1' was not found in the current rendering data`.
+   *
+   * Distinct from (a) the legacy singular "Placeholder" field on
+   * `/sitecore/templates/Foundation/JavaScript Services/Json Rendering`
+   * (`592a1ce7-abe0-4986-9783-0a34f3961dc0`) — a free-form string that
+   * the CMS-shaped Layout reads but SXA Headless does not; and (b)
+   * the CMS "Placeholders" plural on `System/Layout/Renderings/Rendering`
+   * (`b687328e-ca12-414d-a78e-6b4e6dca38fa`) which the Headless
+   * Json Rendering template doesn't inherit at all. Two earlier scai
+   * fixes tried each of these GUIDs in turn; the field reaching SXA's
+   * runtime is THIS one.
+   *
+   * Sandbox-verified 2026-05-31 by introspecting the live agents
+   * tenant: `/sitecore/layout/Renderings/Feature/JSS Experience Accelerator/Page Structure/Container`
+   * carries the value `{97CBC3BC-B376-47AA-9238-240672E912A5}` in
+   * its "Placeholders" field, which resolves to
+   * `/sitecore/layout/Placeholder Settings/Feature/JSS Experience Accelerator/Page Structure/Container`.
+   */
+  PLACEHOLDERS: "069a8361-b1cd-437c-8c32-a3be78941446",
 } as const;
 
 /**
@@ -502,23 +569,6 @@ export const RENDERING_FIELDS = {
 export const DICTIONARY_ENTRY_FIELDS = {
   /** Field ID for "Phrase" — the translated string value on a Dictionary Entry. */
   PHRASE: "580c75a8-c01a-4580-83cb-987776ceb3af",
-} as const;
-
-/**
- * Available Rendering Section Definition template fields. The
- * `AVAILABLE_RENDERINGS` field is the multi-list that gates which
- * renderings show up in the section's group inside the Pages
- * "Toolbox" experience. Recipe `availableIn` bindings emit
- * `AppendToMultiList` ops against this field.
- *
- * TODO (sandbox-verify): the GUID below is a placeholder until we
- * inspect an XM Cloud Headless tenant. The executor matches by
- * `fieldName` ("Available Renderings") when the IR carries one, so
- * the placeholder GUID is only load-bearing for ref-encoding round-
- * trip; mismatches are tolerated. Update once verified.
- */
-export const SECTION_DEFINITION_FIELDS = {
-  AVAILABLE_RENDERINGS: "f56cab12-7f96-4a90-b0fa-e3b6f70b14db",
 } as const;
 
 export const DEFAULT_LANGUAGE = "en";

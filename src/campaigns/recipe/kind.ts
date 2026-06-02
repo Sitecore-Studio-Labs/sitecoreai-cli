@@ -33,12 +33,20 @@ import {
 import { createScaiError } from "@/shared/errors";
 import type {
   ApplyResult,
+  Baseline,
   KindRef,
+  PushConflictPolicy,
   RecipeChange,
   RecipeKind,
   RecipePlan,
   SyncContext,
 } from "@/sync";
+import {
+  captureCampaignBaselinePayload,
+  classifyCampaignCells,
+  mergeCampaignByPolicy,
+  type CampaignBaselinePayload,
+} from "./baseline";
 import { resolveCampaignClient } from "./client";
 import { diffCampaign } from "./diff";
 import {
@@ -47,6 +55,8 @@ import {
   type CampaignRecipe,
   type CampaignTask,
 } from "./schema";
+
+const CAMPAIGN_KIND_NAME = "campaign";
 
 /** Find a campaign (project) by display name, paging the list endpoint. */
 const findProjectByName = async (
@@ -112,6 +122,26 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const client = await resolveCampaignClient(ctx);
   const applied: RecipeChange[] = [];
   const skipped: RecipeChange[] = [];
+
+  // Refuse before any writes when the planner marked unresolved
+  // three-way conflicts under the `"error"` policy. The flag may
+  // ride on the project change (preferred) or — if no project change
+  // exists this run — on the first carrier change.
+  const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
+  if (policyErrorChange) {
+    const errors =
+      (policyErrorChange.meta?.policyErrors as
+        | Array<{ path: string; classification: string }>
+        | undefined) ?? [];
+    throw createScaiError(
+      `Campaign "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
+      "POLICY_DENIED",
+      {
+        hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the campaign first to converge the recipe against the tenant.",
+        details: errors.map((e) => `${e.path} → ${e.classification}`),
+      }
+    );
+  }
 
   const projectChange = plan.changes.find((change) => change.meta?.stage === "project");
   const deliverableChanges = plan.changes.filter((change) => change.meta?.stage === "deliverable");
@@ -231,6 +261,36 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
   }
 
+  // Three-way merge baseline capture — post-apply, hash the desired
+  // recipe (the recipe the planner merged-and-wrote) so the next
+  // push can detect drift. Re-read the live state for an accurate
+  // post-apply snapshot rather than trust desired, since incremental
+  // creates may not actually land every cell (a task without a
+  // resolving deliverable is `skipped`).
+  if (ctx.baselineStorage) {
+    const snapshot = (await readCurrent(ref, ctx)) ?? undefined;
+    if (snapshot) {
+      const payload = captureCampaignBaselinePayload(snapshot);
+      const baseline: Baseline<CampaignBaselinePayload> = {
+        envelopeVersion: "1",
+        kind: CAMPAIGN_KIND_NAME,
+        recipeHandle: ref.id,
+        envName: ctx.environmentName,
+        capturedAt: new Date().toISOString(),
+        payload,
+      };
+      try {
+        await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, ref.id, baseline);
+      } catch (err) {
+        ctx.logger?.error?.(
+          `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+
   return { applied, skipped };
 };
 
@@ -246,9 +306,95 @@ const resolveTaskId = (deliverable: Deliverable, task: CampaignTask): string => 
   return match.id;
 };
 
-/** Compute the plan to converge a campaign onto `desired`. */
-const plan = async (desired: CampaignRecipe, ref: KindRef, ctx: SyncContext): Promise<RecipePlan> =>
-  diffCampaign(desired, await readCurrent(ref, ctx));
+/**
+ * Compute the plan to converge a campaign onto `desired`. When
+ * `ctx.baselineStorage` is plugged in, classifies every project /
+ * deliverable / task cell three-way (recipe / tenant / baseline) and
+ * builds a merged recipe per `ctx.pushConflictPolicy` before feeding
+ * the two-way diff. Without baseline storage, falls back to the
+ * existing two-way diff (every divergence reads as `first-push`).
+ *
+ * Annotates the resulting plan's instance-level change (the
+ * `stage: "project"` create, when present) with `policyError +
+ * policyErrors` if the policy is `"error"` and any cms-edit/conflict
+ * cells exist. Apply consults that flag before any writes.
+ */
+const plan = async (
+  desired: CampaignRecipe,
+  ref: KindRef,
+  ctx: SyncContext
+): Promise<RecipePlan> => {
+  const current = await readCurrent(ref, ctx);
+
+  // Fresh create — no baseline + no tenant to merge against.
+  if (current === null) return diffCampaign(desired, null);
+
+  let baselinePayload: CampaignBaselinePayload | undefined;
+  if (ctx.baselineStorage) {
+    const loaded = await ctx.baselineStorage.load<CampaignBaselinePayload>(
+      CAMPAIGN_KIND_NAME,
+      ctx.environmentName,
+      ref.id
+    );
+    baselinePayload = loaded?.payload;
+  }
+
+  const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
+  const classifications = classifyCampaignCells(desired, current, baselinePayload);
+  const { merged, policyErrors } = mergeCampaignByPolicy(desired, current, classifications, policy);
+
+  const basePlan = diffCampaign(merged, current);
+
+  // Stash classification + merged-recipe + policy outcome on changes
+  // so consumers (logs, UI, MCP) can drill in without re-hashing. The
+  // task-level changes carry their per-cell classification; the lead
+  // project change (if any) carries the policy error block.
+  for (const change of basePlan.changes) {
+    if (change.meta?.stage === "task") {
+      const dn = String(change.meta.deliverableName);
+      const tn = String(change.meta.taskName);
+      const perTask: Record<string, string> = {};
+      for (const [path, cls] of Object.entries(classifications)) {
+        const prefix = `deliverables.${dn}.tasks.${tn}.`;
+        if (path.startsWith(prefix)) perTask[path.slice(prefix.length)] = cls;
+      }
+      change.meta = { ...change.meta, perCellClassification: perTask, task: change.meta.task };
+    } else if (change.meta?.stage === "deliverable") {
+      const dn = String(change.meta.deliverableName);
+      const perDel: Record<string, string> = {};
+      for (const [path, cls] of Object.entries(classifications)) {
+        const prefix = `deliverables.${dn}.`;
+        if (path.startsWith(prefix) && !path.slice(prefix.length).includes("tasks.")) {
+          perDel[path.slice(prefix.length)] = cls;
+        }
+      }
+      change.meta = { ...change.meta, perCellClassification: perDel };
+    } else if (change.meta?.stage === "project") {
+      const perProject: Record<string, string> = {};
+      for (const [path, cls] of Object.entries(classifications)) {
+        if (path.startsWith("project.")) perProject[path.slice("project.".length)] = cls;
+      }
+      change.meta = {
+        ...change.meta,
+        perCellClassification: perProject,
+        ...(policyErrors.length > 0 && { policyError: true, policyErrors }),
+      };
+    }
+  }
+
+  // Even if there is no `stage: "project"` change (campaign already
+  // exists), policy errors must surface. Attach to the first
+  // deliverable change as a fallback carrier; apply checks every
+  // change for the flag.
+  if (policyErrors.length > 0 && !basePlan.changes.some((c) => c.meta?.stage === "project")) {
+    const carrier = basePlan.changes[0];
+    if (carrier) {
+      carrier.meta = { ...carrier.meta, policyError: true, policyErrors };
+    }
+  }
+
+  return basePlan;
+};
 
 /** The `campaign` recipe kind. */
 export const campaignKind: RecipeKind<CampaignRecipe> = {

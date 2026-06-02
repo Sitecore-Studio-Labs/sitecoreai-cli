@@ -132,6 +132,54 @@ export const addWhatIfOption = (command: Command): Command =>
   command.option("-w, --what-if", "Lists commands that would be executed, without executing them");
 
 /**
+ * `--allow-prune` is the recipe-author-aware consent flag for recipe
+ * pushes whose IR contains `PruneChildren` ops in `mode: "delete"`.
+ * The op's mode is the recipe-author's intent ("I want this section's
+ * unlisted children deleted"); `--allow-prune` is the operator's intent
+ * ("I've reviewed the prune list in --what-if and authorize this push
+ * to actually delete those items"). Both must align before the
+ * executor calls `deleteItem`; either alone makes the prune a
+ * rehearsal.
+ *
+ * Without this flag, `recipe push --apply` with delete-mode PruneChildren
+ * ops in the IR fails fast with `POLICY_DENIED` rather than silently
+ * degrading to a no-op. Operators set this AFTER reviewing the prune
+ * list from a `--what-if` run.
+ */
+export const addAllowPruneOption = (command: Command): Command =>
+  command.option(
+    "--allow-prune",
+    "Authorize deletion of items via PruneChildren ops with mode='delete'. Required IN ADDITION TO --apply when the IR contains delete-mode prunes."
+  );
+
+/**
+ * `--snapshot-languages` overrides which languages the prune-rollback
+ * snapshot captures per-(language, version) field values for. Comma-
+ * separated ISO codes. The first language is also treated as the
+ * rollback's createItem default.
+ *
+ * When unset, the planner AUTO-DISCOVERS via the Authoring API's
+ * tenant-level `languages { nodes { name } }` connection (the XM Cloud
+ * schema does NOT expose `Item.languages` — item-level discovery isn't
+ * possible). The client caches the tenant language set for the run; if
+ * the query errors the safety net default is `["en"]`.
+ *
+ * Set this when you want to bound snapshot cost (e.g. tenant has 12
+ * languages but only `en` and `fr` are operationally important to
+ * preserve in a rollback).
+ */
+export const addSnapshotLanguagesOption = (command: Command): Command =>
+  command.option(
+    "--snapshot-languages <list>",
+    "Comma-separated ISO codes to capture in prune-rollback snapshots. When unset, auto-discovered via the Authoring API's tenant languages query. The first language becomes the inverse createItem language.",
+    (value: string) =>
+      value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+  );
+
+/**
  * `--apply` is the universal "yes really execute" flag for destructive
  * commands. Without it, scai dry-runs as if `--what-if` were set.
  * Agent-first: no destruction without an explicit affirmative in the

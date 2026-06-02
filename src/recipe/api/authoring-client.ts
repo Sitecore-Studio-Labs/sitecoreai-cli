@@ -132,6 +132,54 @@ query($itemId: ID!) {
   }
 }`;
 
+// Per-language and per-(language, version) variants — used by the prune
+// rollback snapshot path so each pruned item's full version stack across
+// every operator-configured language gets captured. The default-context
+// queries above are kept distinct because most call sites don't need
+// language/version and shouldn't pay the GraphQL variable-binding cost.
+const GET_ITEM_BY_ID_AT_LANG = `
+query($itemId: ID!, $language: String!) {
+  item(where: { itemId: $itemId, language: $language }) {
+    ${ITEM_FRAGMENT}
+  }
+}`;
+
+const GET_ITEM_BY_PATH_AT_LANG = `
+query($path: String!, $language: String!) {
+  item(where: { path: $path, language: $language }) {
+    ${ITEM_FRAGMENT}
+  }
+}`;
+
+const GET_ITEM_BY_ID_AT_VERSION = `
+query($itemId: ID!, $language: String!, $version: Int!) {
+  item(where: { itemId: $itemId, language: $language, version: $version }) {
+    ${ITEM_FRAGMENT}
+  }
+}`;
+
+const GET_ITEM_BY_PATH_AT_VERSION = `
+query($path: String!, $language: String!, $version: Int!) {
+  item(where: { path: $path, language: $language, version: $version }) {
+    ${ITEM_FRAGMENT}
+  }
+}`;
+
+// Tenant-level languages connection. Returns every language ISO code
+// configured on the tenant — the upper bound on which languages an
+// item could have versions in. The XM Cloud Authoring schema does NOT
+// expose `Item.languages` (verified via recon against TestDemo,
+// 2026-06-01); tenant-level enumeration plus per-(item, language)
+// `getItemVersions` probes is the supported discovery path.
+const GET_TENANT_LANGUAGES = `
+query {
+  languages {
+    nodes {
+      name
+    }
+  }
+}`;
+
 const GET_CHILDREN_BY_PATH = `
 query($path: String!) {
   item(where: { path: $path }) {
@@ -250,7 +298,14 @@ const toRemoteItem = (node: RemoteItemNode): RemoteItem => ({
   // tenant doesn't recognize); else falls back to the field's GUID at
   // `field.templateField.templateFieldId`. Sitecore normalizes those GUIDs
   // without dashes, so re-format to canonical 8-4-4-4-12.
-  fields: node.fields.nodes
+  //
+  // `node.fields` can be `null` when the item exists at the lookup
+  // level but has no content in the requested (language, version) —
+  // the per-language and per-(lang, version) GraphQL queries return
+  // `fields: null` in that case. Guard universally so every caller
+  // (single getItem, batched per-language/per-version, getChildren via
+  // GET_CHILDREN_BY_ID) gets a consistent empty-fields shape.
+  fields: (node.fields?.nodes ?? [])
     .filter((field) => field.templateField?.templateFieldId)
     .map((field) => ({
       fieldId: dashifyGuid(field.templateField!.templateFieldId),
@@ -348,8 +403,44 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     retry: { maxAttempts: 1 },
   };
 
-  const fetchOne = async (selector: ItemSelector): Promise<RemoteItemNode | null> => {
+  // Per-client cache for the tenant's configured language ISO codes.
+  // First `getTenantLanguages` call hits the wire; subsequent calls
+  // return the cached promise. The cache lives for the client's
+  // lifetime — tenants don't add/remove languages in the middle of a
+  // push, and re-reading per pruned item would be wasteful.
+  let tenantLanguagesCache: Promise<string[]> | null = null;
+
+  const fetchOne = async (
+    selector: ItemSelector,
+    opts?: GetItemOptions
+  ): Promise<RemoteItemNode | null> => {
+    const language = opts?.language;
+    const version = opts?.version;
+    if (version !== undefined && language === undefined) {
+      throw createScaiError(
+        "getItem options.version requires options.language to also be set.",
+        "INPUT_INVALID"
+      );
+    }
     if (selector.itemId) {
+      if (version !== undefined && language !== undefined) {
+        const data = await runAuthoringGraphQL<GraphQLItemResponse>(
+          environment,
+          GET_ITEM_BY_ID_AT_VERSION,
+          { itemId: selector.itemId, language, version },
+          readRequest
+        );
+        return data.item;
+      }
+      if (language !== undefined) {
+        const data = await runAuthoringGraphQL<GraphQLItemResponse>(
+          environment,
+          GET_ITEM_BY_ID_AT_LANG,
+          { itemId: selector.itemId, language },
+          readRequest
+        );
+        return data.item;
+      }
       const data = await runAuthoringGraphQL<GraphQLItemResponse>(
         environment,
         GET_ITEM_BY_ID,
@@ -359,6 +450,24 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       return data.item;
     }
     if (selector.path) {
+      if (version !== undefined && language !== undefined) {
+        const data = await runAuthoringGraphQL<GraphQLItemResponse>(
+          environment,
+          GET_ITEM_BY_PATH_AT_VERSION,
+          { path: selector.path, language, version },
+          readRequest
+        );
+        return data.item;
+      }
+      if (language !== undefined) {
+        const data = await runAuthoringGraphQL<GraphQLItemResponse>(
+          environment,
+          GET_ITEM_BY_PATH_AT_LANG,
+          { path: selector.path, language },
+          readRequest
+        );
+        return data.item;
+      }
       const data = await runAuthoringGraphQL<GraphQLItemResponse>(
         environment,
         GET_ITEM_BY_PATH,
@@ -555,8 +664,8 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
   };
 
   return {
-    async getItem(selector, _options?: GetItemOptions): Promise<RemoteItem | null> {
-      const node = await fetchOne(selector);
+    async getItem(selector, options?: GetItemOptions): Promise<RemoteItem | null> {
+      const node = await fetchOne(selector, options);
       return node ? toRemoteItem(node) : null;
     },
 
@@ -804,6 +913,146 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         .map((v) => v.version)
         .filter((v): v is number => typeof v === "number")
         .sort((a, b) => a - b);
+    },
+
+    async getItemPerLanguageBatch(
+      selector: ItemSelector,
+      languages: readonly string[]
+    ): Promise<Array<{ language: string; versions: number[]; item: RemoteItem | null }>> {
+      if (languages.length === 0) return [];
+      // Aliased GraphQL: one round trip queries the item at each
+      // language's latest version, including the version stack and
+      // ITEM_FRAGMENT fields. Aliases are stable per call so the
+      // response maps cleanly back to each input language.
+      const isById = !!selector.itemId;
+      if (!isById && !selector.path) {
+        throw createScaiError(
+          "getItemPerLanguageBatch requires either path or itemId.",
+          "INPUT_INVALID"
+        );
+      }
+      const lookupVar = isById ? "$itemId: ID!" : "$path: String!";
+      const lookupClause = isById ? "itemId: $itemId" : "path: $path";
+      const variableDecls = [lookupVar, ...languages.map((_, i) => `$lang${i}: String!`)].join(
+        ", "
+      );
+      const aliasedSelections = languages
+        .map(
+          (_, i) => `
+  lang${i}: item(where: { ${lookupClause}, language: $lang${i} }) {
+    ${ITEM_FRAGMENT}
+    versions { version }
+  }`
+        )
+        .join("");
+      const query = `query Batch(${variableDecls}) {${aliasedSelections}\n}`;
+      const variables: Record<string, string> = isById
+        ? { itemId: selector.itemId! }
+        : { path: selector.path! };
+      for (let i = 0; i < languages.length; i += 1) {
+        variables[`lang${i}`] = languages[i];
+      }
+      type LangNode = (RemoteItemNode & { versions?: Array<{ version: number }> }) | null;
+      const data = await runAuthoringGraphQL<Record<string, LangNode>>(
+        environment,
+        query,
+        variables,
+        readRequest
+      );
+      return languages.map((language, i) => {
+        const node = data[`lang${i}`];
+        if (!node) return { language, versions: [], item: null };
+        const versions = (node.versions ?? [])
+          .map((v) => v.version)
+          .filter((v): v is number => typeof v === "number")
+          .sort((a, b) => a - b);
+        // Items with no version in this language return
+        // `versions: []` — treat as "not authored in this language"
+        // and skip the toRemoteItem call. (The fields null-guard now
+        // lives in toRemoteItem itself, so the call would be safe
+        // either way, but skipping avoids a degenerate item return.)
+        if (versions.length === 0) return { language, versions, item: null };
+        return { language, versions, item: toRemoteItem(node) };
+      });
+    },
+
+    async getItemAtVersionsBatch(
+      selector: ItemSelector,
+      requests: ReadonlyArray<{ language: string; version: number }>
+    ): Promise<Array<RemoteItem | null>> {
+      if (requests.length === 0) return [];
+      const isById = !!selector.itemId;
+      if (!isById && !selector.path) {
+        throw createScaiError(
+          "getItemAtVersionsBatch requires either path or itemId.",
+          "INPUT_INVALID"
+        );
+      }
+      const lookupVar = isById ? "$itemId: ID!" : "$path: String!";
+      const lookupClause = isById ? "itemId: $itemId" : "path: $path";
+      const variableDecls = [
+        lookupVar,
+        ...requests.flatMap((_, i) => [`$lang${i}: String!`, `$ver${i}: Int!`]),
+      ].join(", ");
+      const aliasedSelections = requests
+        .map(
+          (_, i) => `
+  r${i}: item(where: { ${lookupClause}, language: $lang${i}, version: $ver${i} }) {
+    ${ITEM_FRAGMENT}
+  }`
+        )
+        .join("");
+      const query = `query Batch(${variableDecls}) {${aliasedSelections}\n}`;
+      const variables: Record<string, string | number> = isById
+        ? { itemId: selector.itemId! }
+        : { path: selector.path! };
+      for (let i = 0; i < requests.length; i += 1) {
+        variables[`lang${i}`] = requests[i].language;
+        variables[`ver${i}`] = requests[i].version;
+      }
+      const data = await runAuthoringGraphQL<Record<string, RemoteItemNode | null>>(
+        environment,
+        query,
+        variables,
+        readRequest
+      );
+      return requests.map((_, i) => {
+        const node = data[`r${i}`];
+        return node ? toRemoteItem(node) : null;
+      });
+    },
+
+    async getTenantLanguages(): Promise<string[]> {
+      // Return the cached promise on repeat calls so concurrent callers
+      // share one in-flight request (the common case: planPruneChildren
+      // calls this once per `recipe push` and threads it into the
+      // snapshot pass for every pruned item).
+      if (tenantLanguagesCache) return tenantLanguagesCache;
+      type LanguagesResponse = { languages: { nodes: Array<{ name: string }> } | null };
+      tenantLanguagesCache = (async () => {
+        try {
+          const data = await runAuthoringGraphQL<LanguagesResponse>(
+            environment,
+            GET_TENANT_LANGUAGES,
+            {},
+            readRequest
+          );
+          const langs = (data.languages?.nodes ?? [])
+            .map((l) => l.name)
+            .filter((name): name is string => typeof name === "string" && name.length > 0);
+          // Always include "en" as a safety net — tenants without any
+          // explicit language config still need a default for the
+          // inverse createItem path. Dedup if "en" is already present.
+          const withDefault = langs.includes("en") ? langs : ["en", ...langs];
+          return withDefault.length > 0 ? withDefault : ["en"];
+        } catch {
+          // Best-effort: any failure falls back to the safe default.
+          // The caller (planPruneChildren) treats this the same as a
+          // single-language tenant.
+          return ["en"];
+        }
+      })();
+      return tenantLanguagesCache;
     },
   };
 };

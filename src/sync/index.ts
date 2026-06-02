@@ -12,7 +12,22 @@ export { planIsNoop, summarizePlan, writingChanges } from "./plan";
 
 export type { ApplyResult, KindRef, RecipeKind, SyncContext } from "./kind";
 
-export type { PushOptions, PushOutcome, SyncMode } from "./engine";
+export type {
+  Baseline,
+  BaselineStorage,
+  FieldClassification,
+  PullConflictPolicy,
+  PushConflictPolicy,
+} from "./baseline";
+export { classifyHashes, hashJsonValue, stableStringify } from "./baseline";
+
+export {
+  HttpBaselineStorage,
+  SYNC_BASELINE_ENV_VARS,
+  resolveHttpBaselineStorageFromEnv,
+} from "./http-baseline-storage";
+
+export type { PullOptions, PushOptions, PushOutcome, SyncMode } from "./engine";
 export { syncDiff, syncPull, syncPush } from "./engine";
 
 export { loadRecipe, writeRecipe } from "./io";

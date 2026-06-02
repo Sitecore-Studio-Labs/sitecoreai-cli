@@ -528,6 +528,81 @@ describe("apply", () => {
     expect(infoCalls.some((m) => /live: Legacy Section -> \[legacyField\]/.test(m))).toBe(true);
   });
 
+  it("refuses to create a new kit when ctx.skipEnrichment is set", async () => {
+    // --no-enrich + kit creation is incoherent: sections only exist
+    // after enrichment, so PATCHes can't land. Refuse with a clear
+    // INPUT_INVALID rather than silently creating a bare kit + every
+    // field skipped.
+    const noEnrichCtx: SyncContext = { ...ctx, skipEnrichment: true };
+    await expect(
+      brandKitKind.apply(
+        {
+          changes: [
+            {
+              kind: "create",
+              path: "kit",
+              summary: "create",
+              after: "Acme",
+              meta: { stage: "kit" },
+            },
+          ],
+        },
+        { kind: "brand-kit", id: "Acme" },
+        noEnrichCtx
+      )
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.createBrandKit).not.toHaveBeenCalled();
+  });
+
+  it("skips the self-heal enrichment cycle when ctx.skipEnrichment is set", async () => {
+    // Existing kit with no reachable targets is the self-heal trigger.
+    // With --no-enrich, the operator opted out — log + proceed to the
+    // PATCH loop (which will skip everything), but don't run the
+    // 5-15-minute enrichment pipeline.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-stuck", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([]);
+    brandApi.listBrandKitFields.mockResolvedValue([]);
+    const info = vi.fn();
+    const noEnrichCtx: SyncContext = {
+      ...ctx,
+      logger: { info } as unknown as Logger,
+      skipEnrichment: true,
+    };
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "sections.Global Goals.Digital mandatories",
+            summary: "Digital mandatories",
+            after: ["foo"],
+            meta: {
+              stage: "field",
+              section: "Global Goals",
+              field: "Digital mandatories",
+            },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      noEnrichCtx
+    );
+
+    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
+    expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.updateBrandKitField).not.toHaveBeenCalled();
+    expect(result.skipped.length).toBe(1);
+    // Diagnostic message names the no-enrich opt-out so the operator
+    // understands why nothing landed.
+    const infoCalls = info.mock.calls.map(([msg]) => String(msg));
+    expect(infoCalls.some((m) => m.includes("`--no-enrich` is set"))).toBe(true);
+  });
+
   it("throws INPUT_INVALID when no kit change exists and the kit is not found", async () => {
     brandApi.listBrandKits.mockResolvedValue({ totalCount: 0, data: [] });
 

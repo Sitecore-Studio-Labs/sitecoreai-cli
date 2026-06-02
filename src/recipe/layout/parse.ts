@@ -129,7 +129,12 @@ const unescapeXmlAttribute = (value: string): string =>
  */
 const parseAttributes = (tag: string): Record<string, string> => {
   const attrs: Record<string, string> = {};
-  const attrRe = /([\w:.-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
+  // The attribute-name class is bounded at 256 chars so a pathological
+  // input string of many trailing `-` chars can't trigger polynomial
+  // backtracking (CodeQL js/polynomial-redos guard). SXA Layout
+  // attribute names are short identifiers (`s:placeh`, `p:before`,
+  // `id`, `params`, …); 256 is ~32× any real-world value.
+  const attrRe = /([\w:.-]{1,256})\s*=\s*("([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;
   while ((match = attrRe.exec(tag)) !== null) {
     const rawValue = match[3] !== undefined ? match[3] : (match[4] ?? "");
@@ -358,3 +363,13 @@ export const layoutXmlEquivalent = (a: string, b: string): boolean => {
     return false;
   }
 };
+
+/**
+ * Variant of `layoutXmlEquivalent` that takes pre-parsed layouts —
+ * use it when the caller already parsed both sides (the planner's
+ * `computeFieldDrift` parses once for the equivalence check AND
+ * once-per-side for hashing — passing the pre-parsed values dedupes
+ * the regex-driven parse work on the hot path).
+ */
+export const layoutXmlEquivalentFromParsed = (a: ParsedLayout, b: ParsedLayout): boolean =>
+  canonicalLayout(a) === canonicalLayout(b);

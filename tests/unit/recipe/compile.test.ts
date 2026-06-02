@@ -12,6 +12,7 @@ import {
   designParameterFieldId,
   designParametersSectionId,
   designParametersTemplateId,
+  placeholderSettingsId,
   renderingId,
   sectionId,
   standardValuesId,
@@ -20,10 +21,12 @@ import {
   variantsFolderId,
 } from "../../../src/recipe/items/guids";
 import {
+  IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SXA_COMPONENT_BASE_TEMPLATES,
+  SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
   SYSTEM_FIELDS,
   TEMPLATE_FIELD_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
@@ -282,6 +285,87 @@ describe("compileComponentTemplateRecipe — cta-button worked example", () => {
   });
 });
 
+describe("compileRecipeSet — Headless Variants tree layout (regression)", () => {
+  // SXA Headless Pages chrome enumerates variants by finding
+  // HEADLESS_VARIANTS items as DIRECT children of
+  // `<site>/Presentation/Headless Variants` (depth 1), then enumerating
+  // each one's VARIANT_DEFINITION children (depth 2). Before the
+  // 2026-05-31 fix, scai wrapped each rendering's variants folder in
+  // an extra HEADLESS_VARIANTS_GROUPING section folder when the recipe
+  // declared a section — pushing the variants to depth 3 where the
+  // chrome couldn't see them. Verified against a working tenant
+  // 2026-05-31.
+  const SECTION_RECIPE: Recipe = {
+    kind: "component-section",
+    schemaVersion: "1",
+    handle: "ui-section@1",
+    name: "UI",
+    displayName: "UI Components",
+    sortOrder: 10,
+  };
+  const RECIPE_WITH_SECTION: Recipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "promo-block@1",
+    name: "PromoBlock",
+    displayName: "Promo Block",
+    section: { handle: "ui-section@1" },
+    fields: [{ name: "Heading", shape: "text" }],
+    variants: [{ name: "Default" }, { name: "Centered" }],
+  };
+
+  // compileRecipeSet returns one IR per recipe; pick the template
+  // recipe's IR by handle.
+  const compileSet = () => {
+    const irs = compileRecipeSet([SECTION_RECIPE, RECIPE_WITH_SECTION], CONTEXT);
+    const template = irs.find((ir) => ir.recipeHandle === "promo-block@1");
+    if (!template) {
+      throw new Error("template IR missing from compileRecipeSet output");
+    }
+    return template;
+  };
+
+  it("does NOT emit a HEADLESS_VARIANTS_GROUPING folder under the headless variants root even when the recipe has a section", () => {
+    const ir = compileSet();
+    const groupingFolders = ir.operations.filter(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" &&
+        op.templateOf === SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING &&
+        typeof op.path === "string" &&
+        op.path.startsWith(CONTEXT.headlessVariantsRoot)
+    );
+    expect(groupingFolders).toHaveLength(0);
+  });
+
+  it("per-rendering folder is parented directly at the headless variants root regardless of recipe.section", () => {
+    const ir = compileSet();
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === variantsFolderId(SITE, "promo-block@1")
+    );
+    expect(op.parent).toEqual({
+      kind: "ref-path",
+      value: CONTEXT.headlessVariantsRoot,
+    });
+    expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/PromoBlock`);
+    expect(op.templateOf).toBe(SITECORE_TEMPLATES.HEADLESS_VARIANTS);
+  });
+
+  it("variants land at root/<Rendering>/<Variant> (depth 2 under the Headless Variants root)", () => {
+    const ir = compileSet();
+    for (const name of ["Default", "Centered"]) {
+      const op = onlyOp(
+        ir.operations,
+        "CreateItem",
+        (o) => o.id === variantId(SITE, "promo-block@1", name)
+      );
+      expect(op.templateOf).toBe(SITECORE_TEMPLATES.VARIANT_DEFINITION);
+      expect(op.path).toBe(`${CONTEXT.headlessVariantsRoot}/PromoBlock/${name}`);
+    }
+  });
+});
+
 describe("compileComponentTemplateRecipe — section grouping", () => {
   it("groups fields by sitecore.section in first-occurrence order", () => {
     const ir = compileComponentTemplateRecipe(
@@ -478,23 +562,6 @@ describe("compileRecipeSet — Available Renderings aggregate", () => {
 });
 
 describe("compileRecipe — front-door dispatcher", () => {
-  it("dispatches a section-definition recipe", () => {
-    const sectionDef: Recipe = {
-      kind: "section-definition",
-      schemaVersion: "1",
-      handle: "hero-section@1",
-      name: "HeroSection",
-      displayName: "Hero Section",
-      sitePath: "/sitecore/content/test-tenant/test-site/Presentation/Available Renderings/Hero",
-    };
-    // A standalone section-definition is a resolution target — it emits
-    // no ops itself (AppendToMultiList ops only fire when referenced),
-    // but the dispatcher must still route it to the right compiler.
-    const ir = compileRecipe(sectionDef, CONTEXT);
-    expect(ir.recipeHandle).toBe("hero-section@1");
-    expect(ir.schemaVersion).toBe("1");
-  });
-
   it("dispatches a placeholder recipe", () => {
     const placeholder: Recipe = {
       kind: "placeholder",
@@ -865,6 +932,212 @@ describe("compileComponentTemplateRecipe — layout-only (no fields, no datasour
       refKey: templateId(SITE, "shared-author@1"),
     });
   });
+
+  it("emits a ref-recipe-list when datasource.templates lists multiple compatible templates", () => {
+    const multiTemplate: Recipe = {
+      ...layoutRecipe,
+      handle: "multi-ds@1",
+      name: "multi-ds",
+      displayName: "Multi Datasource",
+      datasource: {
+        templates: [{ handle: "author@1" }, { handle: "avatar@1" }],
+      },
+    };
+    const ir = compileComponentTemplateRecipe(multiTemplate, CONTEXT);
+    const op = onlyOp(ir.operations, "CreateItem", (o) => o.id === renderingId(SITE, "multi-ds@1"));
+    expect(findField(op.fields, RENDERING_FIELDS.DATASOURCE_TEMPLATE)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [templateId(SITE, "author@1"), templateId(SITE, "avatar@1")],
+    });
+  });
+
+  // Both halves of dynamicPlaceholders: true — without the base
+  // template, Pages chrome has no DynamicPlaceholderID field to write
+  // per-placement IDs to, and nested children ship out under the
+  // wrong slot key. Regression coverage to keep both writes wired.
+  it("params template inherits _IDynamicPlaceholder when dynamicPlaceholders: true", () => {
+    const op = onlyOp(
+      ir.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, LAYOUT_HANDLE)
+    );
+    expect(op.baseTemplates).toEqual([
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
+    ]);
+  });
+
+  it("rendering item carries IsRenderingsWithDynamicPlaceholders=true + UsePlaceholderDatasourceContext=true in OtherProperties", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    const otherProps = findField(op.fields, RENDERING_FIELDS.OTHER_PROPERTIES);
+    // UsePlaceholderDatasourceContext rides with the dynamic-placeholder
+    // chain — without it children in the rendering's slots can lose
+    // their relative-datasource binding when the layout service
+    // serialises the placeholder map. Both halves match the SXA / XM
+    // Cloud starter Container rendering.
+    expect(otherProps?.value).toEqual({
+      kind: "url-string-map",
+      entries: {
+        IsRenderingsWithDynamicPlaceholders: "true",
+        UsePlaceholderDatasourceContext: "true",
+      },
+    });
+  });
+
+  // Pure-layout renderings (no fields, no insertOptions, no datasource)
+  // skip the data-template emission entirely. Matches the XM Cloud
+  // starter Container, which has only a Rendering item + Parameters
+  // Template — no data template in the templates tree.
+  it("does not emit a data template when the recipe declares no fields and no insertOptions", () => {
+    const dataTemplateOp = ir.operations.find(
+      (o) => o.op === "CreateItem" && o.id === templateId(SITE, LAYOUT_HANDLE)
+    );
+    expect(dataTemplateOp).toBeUndefined();
+  });
+
+  it("still emits a data template when the recipe declares insertOptions but no inline fields (child-items pattern)", () => {
+    const withChildren: Recipe = {
+      ...layoutRecipe,
+      handle: "with-children@1",
+      name: "with-children",
+      displayName: "With Children",
+      insertOptions: ["accordion-item@1"],
+    };
+    const irKids = compileComponentTemplateRecipe(withChildren, CONTEXT);
+    const dataTemplateOp = irKids.operations.find(
+      (o) => o.op === "CreateItem" && o.id === templateId(SITE, "with-children@1")
+    );
+    expect(dataTemplateOp).toBeDefined();
+  });
+
+  // The Placeholders (plural) Treelist field on the SXA Headless
+  // rendering chain is what the layout service reads to enumerate slots
+  // on a rendering. The value is a list of refs to the matching
+  // Placeholder Settings items — NOT a free-form string of keys. Each
+  // referenced settings item carries the slot's `Placeholder Key`
+  // (e.g. `container-{*}`) that the runtime substitutes. Without this
+  // field the layout service ships no `placeholders` array and the
+  // headless SDK warns `Placeholder '<slot>-1' was not found in the
+  // current rendering data`.
+  it("rendering item references the Placeholder Settings items in the Placeholders Treelist", () => {
+    const op = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, LAYOUT_HANDLE)
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [placeholderSettingsId(SITE, "container-{*}")],
+    });
+  });
+
+  it("joins multiple placeholder refs in declaration order in the Placeholders Treelist", () => {
+    const multiSlot: Recipe = {
+      ...layoutRecipe,
+      handle: "multi-slot@1",
+      name: "multi-slot",
+      displayName: "Multi Slot",
+      placeholders: [
+        { key: "header-start-{*}" },
+        { key: "header-nav-{*}" },
+        { key: "header-end-{*}" },
+      ],
+    };
+    const irMulti = compileComponentTemplateRecipe(multiSlot, CONTEXT);
+    const op = onlyOp(
+      irMulti.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "multi-slot@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [
+        placeholderSettingsId(SITE, "header-start-{*}"),
+        placeholderSettingsId(SITE, "header-nav-{*}"),
+        placeholderSettingsId(SITE, "header-end-{*}"),
+      ],
+    });
+  });
+
+  it("omits the Placeholders field when the recipe declares no placeholders", () => {
+    const noPlaceholders: Recipe = {
+      ...layoutRecipe,
+      handle: "no-placeholders@1",
+      name: "no-placeholders",
+      displayName: "No Placeholders",
+      dynamicPlaceholders: false,
+      placeholders: undefined,
+    };
+    const irNone = compileComponentTemplateRecipe(noPlaceholders, CONTEXT);
+    const op = onlyOp(
+      irNone.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "no-placeholders@1")
+    );
+    expect(findField(op.fields, RENDERING_FIELDS.PLACEHOLDERS)).toBeUndefined();
+  });
+
+  it("params template does NOT inherit _IDynamicPlaceholder when dynamicPlaceholders is false/absent", () => {
+    const noDynamic: Recipe = {
+      ...layoutRecipe,
+      handle: "no-dynamic@1",
+      name: "no-dynamic",
+      displayName: "No Dynamic",
+      dynamicPlaceholders: false,
+    };
+    const irNoDynamic = compileComponentTemplateRecipe(noDynamic, CONTEXT);
+    const op = onlyOp(
+      irNoDynamic.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, "no-dynamic@1")
+    );
+    expect(op.baseTemplates).toEqual([...SXA_HEADLESS_PARAMS_BASE_TEMPLATES]);
+    expect(op.baseTemplates).not.toContain(IDYNAMIC_PLACEHOLDER_TEMPLATE_ID);
+  });
+
+  // External params-template references are owned by a separate
+  // DesignParametersTemplateRecipe deployment. Adding `_IDynamicPlaceholder`
+  // to that shared template's base list would silently affect every
+  // other consumer. Instead, scai synthesises a per-recipe **wrapper**
+  // template that inherits FROM the external + adds IDynamicPlaceholder,
+  // leaving the external template untouched.
+  it("synthesises a wrapper params template when dynamicPlaceholders + external parameters are combined", () => {
+    const externalRef: Recipe = {
+      ...layoutRecipe,
+      handle: "ext-ref@1",
+      name: "ext-ref",
+      displayName: "External Ref",
+      params: [],
+      parameters: { handle: "shared-params@1" },
+    };
+    const ir = compileComponentTemplateRecipe(externalRef, CONTEXT);
+    // The wrapper's SetBaseTemplates op sits at the per-recipe template
+    // GUID (not the external shared template's GUID), and chains the
+    // external template + SXA Headless bases + IDynamicPlaceholder.
+    const op = onlyOp(
+      ir.operations,
+      "SetBaseTemplates",
+      (o) => o.itemRefKey === designParametersTemplateId(SITE, "ext-ref@1")
+    );
+    expect(op.baseTemplates[0]).toBe(designParametersTemplateId(SITE, "shared-params@1"));
+    expect(op.baseTemplates).toContain(IDYNAMIC_PLACEHOLDER_TEMPLATE_ID);
+    // The rendering should point at the wrapper (per-recipe handle),
+    // not at the external shared template directly.
+    const rendering = onlyOp(
+      ir.operations,
+      "CreateItem",
+      (o) => o.id === renderingId(SITE, "ext-ref@1")
+    );
+    const paramsRef = findField(rendering.fields, RENDERING_FIELDS.PARAMETERS_TEMPLATE);
+    expect(paramsRef?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: designParametersTemplateId(SITE, "ext-ref@1"),
+    });
+  });
 });
 
 describe("compileRecipe — front-door dispatcher remaining kinds", () => {
@@ -899,5 +1172,106 @@ describe("compileRecipe — front-door dispatcher remaining kinds", () => {
       CONTEXT
     );
     expect(ir.recipeHandle).toBe("editorial@1");
+  });
+});
+
+describe("compileRecipeSet — intra-rank topological ordering", () => {
+  // Regression for "ref-source-fields … not yet in captured map":
+  // a component-template referencing a content-template by handle
+  // (via `field.sitecore.source.types`) used to fail at push time
+  // when the dependent recipe came first in file-glob order. Both
+  // kinds sit at rank 0; stable sort alone wasn't enough.
+  it("orders dependent recipes AFTER the templates they reference, even within a single rank", () => {
+    const accordionBlock: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "accordion-block@1",
+      name: "AccordionBlock",
+      displayName: "Accordion Block",
+      fields: [
+        {
+          name: "Items",
+          shape: "reference",
+          multiple: true,
+          sitecore: {
+            type: "treelist",
+            source: { kind: "filter", types: ["faq-content@1"] },
+          },
+        },
+      ],
+    };
+    const faqContent: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "faq-content@1",
+      name: "FaqContent",
+      displayName: "FAQ",
+      fields: [{ name: "Question", shape: "text" }],
+    };
+    // Input order matches the failing file-glob case
+    // (accordion-block.recipe.ts < faq-content.recipe.ts lexically).
+    const irs = compileRecipeSet([accordionBlock, faqContent], CONTEXT);
+    const recipeIrs = irs.filter(
+      (ir) => ir.recipeHandle === "accordion-block@1" || ir.recipeHandle === "faq-content@1"
+    );
+    const accordionIdx = recipeIrs.findIndex((ir) => ir.recipeHandle === "accordion-block@1");
+    const faqIdx = recipeIrs.findIndex((ir) => ir.recipeHandle === "faq-content@1");
+    expect(faqIdx).toBeGreaterThanOrEqual(0);
+    expect(accordionIdx).toBeGreaterThan(faqIdx);
+  });
+
+  it("preserves input order among recipes that don't reference each other", () => {
+    const a: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "a@1",
+      name: "A",
+      displayName: "A",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const b: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "b@1",
+      name: "B",
+      displayName: "B",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const c: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "c@1",
+      name: "C",
+      displayName: "C",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const irs = compileRecipeSet([a, b, c], CONTEXT);
+    const order = irs.map((ir) => ir.recipeHandle).filter((h) => ["a@1", "b@1", "c@1"].includes(h));
+    expect(order).toEqual(["a@1", "b@1", "c@1"]);
+  });
+
+  it("orders by `insertOptions` references too", () => {
+    const child: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "child@1",
+      name: "Child",
+      displayName: "Child",
+      fields: [{ name: "Title", shape: "text" }],
+    };
+    const parent: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "parent@1",
+      name: "Parent",
+      displayName: "Parent",
+      fields: [{ name: "Title", shape: "text" }],
+      insertOptions: ["child@1"],
+    };
+    const irs = compileRecipeSet([parent, child], CONTEXT);
+    const order = irs
+      .map((ir) => ir.recipeHandle)
+      .filter((h) => ["parent@1", "child@1"].includes(h));
+    expect(order).toEqual(["child@1", "parent@1"]);
   });
 });

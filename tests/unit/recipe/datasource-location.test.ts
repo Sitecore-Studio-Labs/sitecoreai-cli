@@ -745,3 +745,49 @@ describe("rendering datasource locations — IsAutoDatasourceRendering / OtherPr
     expect(otherProps.value.entries.IsAutoDatasourceRendering).toBeUndefined();
   });
 });
+
+describe("rendering datasource locations — per-location template name sanitisation", () => {
+  // Multi-segment subfolders contain `/` which Sitecore's
+  // InvalidItemNameChars setting rejects in item names. The per-LOCATION
+  // template (allowedTemplates present) uses the subfolder string as a
+  // suffix on the template's item name; without sanitisation the
+  // CreateItem op gets a name like "avatar-block Site Shared UI/Avatars
+  // Data Folder" and Authoring GraphQL fails with "An item name cannot
+  // contain any of the following characters". Collapse `/` to ` - ` so
+  // both segments stay legible without violating the name rule. The
+  // display name keeps the original `/` because Sitecore allows it
+  // there.
+  it("multi-segment subfolder + allowedTemplates emits a per-location template whose item NAME contains no `/`", () => {
+    const recipe = baseRecipe({
+      handle: "avatar-block@1",
+      name: "avatar-block",
+      displayName: "Avatar Block",
+      datasource: {
+        autoCreate: true,
+        openPropertiesAfterAdd: false,
+        locations: [
+          {
+            scope: "site",
+            subfolder: "Site Shared UI/Avatars",
+            allowedTemplates: [{ handle: "avatar-block@1" }],
+          },
+        ],
+      },
+    });
+
+    const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
+    const tplOp = ir.operations.find(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" &&
+        op.label === "site-data-folder-template:avatar-block@1:Site Shared UI/Avatars"
+    );
+    if (!tplOp) throw new Error("expected per-location template CreateItem op");
+    expect(tplOp.name).toBe("avatar-block Site Shared UI - Avatars Data Folder");
+    expect(tplOp.name).not.toContain("/");
+    const displayName = tplOp.fields.find((f) => f.fieldId === SYSTEM_FIELDS.DISPLAY_NAME);
+    if (displayName?.value.kind !== "string") {
+      throw new Error("expected DISPLAY_NAME to be string");
+    }
+    expect(displayName.value.value).toBe("Avatar Block Site Shared UI/Avatars Data Folder");
+  });
+});

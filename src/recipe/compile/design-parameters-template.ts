@@ -24,6 +24,7 @@ import {
 import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
+  PARAMS_SORT_ORDER_BASE,
   buildFieldOp,
   ensurePresentationDesignParametersBucket,
   ensureSectionFolder,
@@ -129,6 +130,7 @@ export function compileDesignParametersTemplateRecipe(
         labelPrefix: `parameters-field:${recipe.handle}`,
         field: param,
         zeroBasedIndex: index,
+        sortOrderBase: PARAMS_SORT_ORDER_BASE,
         policy,
         site,
         context,

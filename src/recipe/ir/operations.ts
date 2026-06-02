@@ -347,22 +347,38 @@ export const AppendToMultiListOpSchema = z.object({
    * from `renderingId(handle)`) without compile-time knowledge of
    * the tenant's assigned itemIds.
    */
-  values: z
-    .array(
-      z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("ref-guid"), value: GUID }),
-        z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
-      ])
-    )
-    .min(1),
   /**
-   * Append policy. `merge-unique` is the only supported value today
-   * (preserve existing, add missing). The discriminator is reserved so
-   * future policies — `replace` (full overwrite) or `replace-prefix`
-   * (atomic swap of a recipe-owned subset) — can land without changing
-   * the op shape. Existing IRs continue to round-trip unchanged.
+   * Allowed to be empty: with `appendPolicy: "replace"`, an empty `values`
+   * means "clear the multi-list" (the recipe set owns the field and has
+   * decided nothing belongs in it). With `merge-unique`, an empty array
+   * is a no-op (nothing to merge), which the planner skips. Either way
+   * the planner handles the case explicitly — no need for a `min(1)`
+   * gate at schema level.
    */
-  appendPolicy: z.literal("merge-unique"),
+  values: z.array(
+    z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("ref-guid"), value: GUID }),
+      z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
+    ])
+  ),
+  /**
+   * Append policy.
+   *
+   * - `merge-unique` (default semantics): preserve existing values, add
+   *   missing ones. Safe-by-default — other recipes can also contribute
+   *   to the same list without conflict.
+   * - `replace`: overwrite the field with exactly `values`. Used by
+   *   recipes that declare exclusive ownership of the list (e.g. a
+   *   `SectionDefinitionRecipe` with `ownership: { availableRenderings:
+   *   "exclusive" }` declaring that the components contributing to its
+   *   Available Renderings field in this push set are the full intended
+   *   set). On apply, entries not in `values` are removed.
+   *   Compiled by `buildSectionDefinitionOwnershipAggregate`.
+   *
+   * The `replace-prefix` policy (atomic swap of a recipe-owned subset)
+   * remains reserved for a future op shape; not implemented today.
+   */
+  appendPolicy: z.enum(["merge-unique", "replace"]),
 });
 
 /**
@@ -402,6 +418,107 @@ export const AddItemVersionOpSchema = z.object({
   version: z.number().int().positive(),
 });
 
+/**
+ * Prune children of a container item that aren't in `allowedHandles`.
+ *
+ * The opt-in counterpart to scai's merge-by-default model. Until a recipe
+ * declares `ownership.mode: "exclusive"` on a container, this op is
+ * never emitted — recipes only ever ADD/UPDATE items, never remove.
+ *
+ * **Forward-only.** This op is a compile-time artifact of an ownership
+ * declaration in a recipe-author's source. `readCurrent` (reverse
+ * projection from tenant state) cannot recover it — there's no tenant
+ * signal that distinguishes "the recipe owns this folder exclusively"
+ * from "the recipe contributes additively." Round-tripped recipes lose
+ * the prune op entirely; operators who want exclusive ownership must
+ * re-declare it on the ComponentSectionRecipe.
+ *
+ * Compiled from a recipe-set–level pass that walks every CreateItem op in
+ * the IR (intra- and cross-recipe both) and collects those whose `parent`
+ * resolves to the owner's itemRefKey. Their refKeys become `allowedHandles`;
+ * anything else under the parent at apply time is pruned.
+ *
+ * Emitted at the very end of the apply order (after all CreateItem and
+ * SetField ops in every recipe) so the pruner sees the freshly-created
+ * tree, not a half-built one. See `RECIPE_APPLY_RANK` in `compile.ts`.
+ *
+ * Two consent layers protect this op:
+ *  1. `mode: "warn"` (default for newly-authored ownership) — the planner
+ *     emits the prune list but the executor skips the actual delete. Lets
+ *     authors rehearse before flipping to `"delete"`.
+ *  2. CLI `--allow-prune` — even with `mode: "delete"`, the apply throws
+ *     `POLICY_DENIED` unless the operator explicitly opted in for THIS push.
+ *     Recipe-author intent (mode) and operator intent (--allow-prune) are
+ *     independent gates so neither alone can cause silent data loss.
+ *
+ * Rollback is intentionally lossy — re-created items get new GUIDs, and
+ * descendants/fields are restored from a single-level snapshot only.
+ */
+export const PruneChildrenOpSchema = z
+  .object({
+    op: z.literal("PruneChildren"),
+    ...BaseOpFields,
+    /**
+     * RefKey of the parent container — resolves to the Sitecore itemId of
+     * the item whose children are subject to the prune via `capturedItemIds`.
+     */
+    parentRefKey: GUID,
+    /**
+     * Optional content-tree path for late-path seeding — same semantics as
+     * `SetFieldOpSchema.latePath` / `AppendToMultiListOpSchema.latePath`.
+     * Container items are often pre-existing tenant scaffolding (not created
+     * by the recipe set), so the compiler emits this so the executor can
+     * resolve the parent itemId on demand if it's not in the captured map.
+     */
+    latePath: z.string().min(1).optional(),
+    /**
+     * Children to KEEP. Anything under `parentRefKey` not in this list at
+     * apply time is pruned. Each entry is either:
+     *   - a real Sitecore GUID (`ref-guid` style — already resolved)
+     *   - a recipe-internal refKey (`ref-recipe` style — resolved via the
+     *     captured map at execute time)
+     *
+     * An empty list IS legal, but ONLY when paired with a non-empty
+     * `templateFilter` — the combination of "no allowed handles" and
+     * "no template scoping" would prune every direct child of `parent`
+     * indiscriminately. The schema-level refinement below refuses the
+     * unguarded shape so hand-authored ops that forget the filter can't
+     * silently nuke a tenant's subtree.
+     */
+    allowedHandles: z.array(
+      z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("ref-guid"), value: GUID }),
+        z.object({ kind: z.literal("ref-recipe"), refKey: GUID }),
+      ])
+    ),
+    /**
+     * Optional template-GUID filter. When set (with ≥1 entry), only
+     * children whose template matches one of these GUIDs are considered
+     * for pruning; children of other templates are ignored. Lets a recipe
+     * own one "kind" of child without disturbing co-located items of
+     * other shapes (e.g. own the Rendering items in a folder, leave
+     * nested sub-folders alone). Required when `allowedHandles` is
+     * empty — see the schema refinement.
+     */
+    templateFilter: z.array(GUID).optional(),
+    /**
+     * - `"warn"` (default for newly-authored ownership): the planner emits
+     *   the would-prune list and the apply log surfaces it, but the executor
+     *   skips the actual delete. Rehearsal mode.
+     * - `"delete"`: apply actually removes children. Even then the executor
+     *   still requires CLI `--allow-prune`; the two layers are independent.
+     */
+    mode: z.enum(["warn", "delete"]),
+  })
+  .refine(
+    (op) => op.allowedHandles.length > 0 || (op.templateFilter && op.templateFilter.length > 0),
+    {
+      message:
+        "PruneChildren with empty `allowedHandles` requires a non-empty `templateFilter` — the unguarded shape would prune every direct child of the parent indiscriminately. Either list the handles to keep, or scope the prune to specific template GUIDs.",
+      path: ["allowedHandles"],
+    }
+  );
+
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
@@ -410,6 +527,7 @@ export const OperationSchema = z.discriminatedUnion("op", [
   CreateSiteFromTemplateOpSchema,
   AppendToMultiListOpSchema,
   AddItemVersionOpSchema,
+  PruneChildrenOpSchema,
 ]);
 
 export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;
@@ -419,6 +537,7 @@ export type SetStandardValuesOp = z.infer<typeof SetStandardValuesOpSchema>;
 export type CreateSiteFromTemplateOp = z.infer<typeof CreateSiteFromTemplateOpSchema>;
 export type AppendToMultiListOp = z.infer<typeof AppendToMultiListOpSchema>;
 export type AddItemVersionOp = z.infer<typeof AddItemVersionOpSchema>;
+export type PruneChildrenOp = z.infer<typeof PruneChildrenOpSchema>;
 export type Operation = z.infer<typeof OperationSchema>;
 
 export const OperationIrSchema = z.object({

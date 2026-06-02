@@ -53,12 +53,6 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // ones share the same policy as component templates — they're
   // registry-owned and should overwrite tenant edits.
   "design-parameters-template": "template-structure",
-  // Section definitions are typically tenant-pre-existing; the
-  // compiler emits AppendToMultiList ops against them rather than
-  // CreateItem. Treat as composition-structure so any future
-  // `CreateItem` for a missing section definition lands with the
-  // CreateAndUpdate policy.
-  "section-definition": "composition-structure",
   "partial-design": "composition-structure",
   "page-design": "composition-structure",
   // Site templates are registry-owned brand definitions — the template

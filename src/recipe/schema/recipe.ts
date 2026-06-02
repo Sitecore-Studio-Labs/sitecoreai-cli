@@ -65,11 +65,11 @@ const FolderPath = z
  * template.
  */
 
-const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
+export const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
 
 /**
  * The picker-scope source ("Sitecore's Source field") expressed as a
- * discriminated union over the two real modes:
+ * discriminated union over the three real modes:
  *
  *   - `filter` — composable structured fields. `types` is a picker
  *     filter restricting which recipe-defined templates appear; `query`
@@ -78,6 +78,10 @@ const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@[0-9]+$/;
  *   - `raw` — verbatim Source string, the escape hatch. Use when the
  *     structured surface doesn't fit (e.g. a bare path Treelist source
  *     like `/sitecore/content/Tags`).
+ *   - `plugin` — Sitecore Marketplace plugin slug. Paired with
+ *     `sitecore.type: "Plugin"`. The compiler emits the slug verbatim
+ *     into the field's `Source`; the Marketplace shell looks it up
+ *     against its installed-plugins catalog to mount the iframe.
  *
  * Previously the four fields were peers on `SitecoreFieldAugment` with
  * a `.refine` enforcing the mutex; the union makes the constraint
@@ -117,6 +121,22 @@ export const SitecoreFieldSourceSchema = z.discriminatedUnion("kind", [
         "Verbatim Sitecore Source string. Escape hatch for Source shapes that don't fit the `filter` mode (e.g. a bare path Treelist source like `/sitecore/content/Tags`)."
       ),
   }),
+  z.object({
+    kind: z.literal("plugin"),
+    id: z
+      .string()
+      .min(1)
+      .describe(
+        "Stable logical key identifying the marketplace plugin (e.g. `sai/matrix-editor`). Recipe-side handle; the orchestrator's recipe-sync resolver maps it to a per-org `app_id` UUID and substitutes that into `defaultAppId` before scai consumes the recipe. scai's compiler emits the substituted UUID — not this key — into the Sitecore field's `Source`."
+      ),
+    defaultAppId: z
+      .string()
+      .min(1)
+      .max(256)
+      .describe(
+        "UUID of the recipe author's published marketplace app (the value Sitecore returns via the Marketplace SDK's `application.context.id`). Used by the resolver unless the org has a per-org override in `internal.marketplace_plugin_overrides`."
+      ),
+  }),
 ]);
 
 export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
@@ -126,8 +146,8 @@ export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
  * omitted.
  *
  * `source` carries the picker-scope shape as a discriminated union
- * (`filter` | `raw`) — see `SitecoreFieldSourceSchema`. Internal
- * scai code converts to a flat `SourceFields` bag via
+ * (`filter` | `raw` | `plugin`) — see `SitecoreFieldSourceSchema`.
+ * Internal scai code converts to a flat `SourceFields` bag via
  * `augmentSourceToFields()` before passing to `renderSourceFields()`.
  */
 /**
@@ -318,9 +338,40 @@ export const PlaceholderDefinitionSchema = z.object({
    * restriction (the union is then driven entirely by `placedIn`).
    */
   allowedComponents: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
+  /**
+   * Alias of `allowedComponents`. The registry-side recipe schema
+   * names this field `allowedRenderingHandles` (the handles ARE
+   * rendering handles, so the name is more descriptive); scai's
+   * canonical name stayed `allowedComponents` for historical
+   * reasons. Accept both at the schema layer so recipes authored
+   * against either name compile — the compiler normalises them via
+   * `resolveAllowedHandles` below.
+   */
+  allowedRenderingHandles: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
 });
 
 export type PlaceholderDefinition = z.infer<typeof PlaceholderDefinitionSchema>;
+
+/**
+ * Normalise the two-name surface (`allowedComponents` /
+ * `allowedRenderingHandles`) into a single ordered list. Either may be
+ * set; if both are set their union is returned (de-duped, source
+ * order). Use everywhere the compiler reads the slot-side allowed
+ * list so the rename stays a no-op for downstream code.
+ */
+export const resolveAllowedHandles = (slot: PlaceholderDefinition): readonly string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const handle of [
+    ...(slot.allowedComponents ?? []),
+    ...(slot.allowedRenderingHandles ?? []),
+  ]) {
+    if (seen.has(handle)) continue;
+    seen.add(handle);
+    out.push(handle);
+  }
+  return out;
+};
 
 /**
  * A standalone placeholder — the hybrid model's site-chrome half. Slots
@@ -399,6 +450,19 @@ export const RenderingDatasourceLocationSchema = z.discriminatedUnion("scope", [
     scope: z.literal("page"),
     /** Optional `Data` subfolder; absent = `./Data`. */
     subfolder: z.string().min(1).optional(),
+    /**
+     * Optional per-location insert-option scoping. When set, the
+     * subfolder's Insert Options field is constrained to the listed
+     * handles instead of inheriting the rendering's full datasource
+     * template set. Lets one rendering with multiple subfolders give
+     * each subfolder its own allow-list (e.g. avatar-block's
+     * page-Avatars accepts `avatar-block@1`, site-Authors accepts
+     * `author@1`).
+     */
+    allowedTemplates: z
+      .array(z.object({ handle: z.string().regex(HANDLE_PATTERN) }))
+      .min(1)
+      .optional(),
   }),
   z.object({
     scope: z.literal("site"),
@@ -408,6 +472,10 @@ export const RenderingDatasourceLocationSchema = z.discriminatedUnion("scope", [
      * materialised once per recipe-set.
      */
     subfolder: z.string().min(1).optional(),
+    allowedTemplates: z
+      .array(z.object({ handle: z.string().regex(HANDLE_PATTERN) }))
+      .min(1)
+      .optional(),
   }),
 ]);
 
@@ -417,14 +485,21 @@ export type RenderingDatasourceLocation = z.infer<typeof RenderingDatasourceLoca
  * Top-level datasource block on `ComponentTemplateRecipe`. Captures
  * everything the rendering needs to know about its datasource:
  *
- *   - **template**: optional reference to a separate
- *     `ContentTemplateRecipe`. When set, the compiler points the
- *     rendering's Datasource Template field at that template (its
- *     fields land under `Content Models/<group>/<name>`). When unset,
- *     the component template itself is the datasource template (legacy
- *     inline-`fields:` pattern).
+ *   - **template**: optional reference to a single
+ *     `ContentTemplateRecipe`. Shortcut for the common single-template
+ *     case; equivalent to `templates: [{handle}]` with one entry. When
+ *     unset (and `templates` is unset, and the recipe has no inline
+ *     `fields:`), the rendering has no Datasource Template at all.
+ *   - **templates**: multiple compatible datasource templates — the
+ *     "compatible-datasources" pattern. The compiler pipe-joins each
+ *     template's GUID into the rendering's `Datasource Template`
+ *     shared field, so the Pages picker surfaces items conforming to
+ *     *any* of the listed templates. Mutually exclusive with `template`.
  *   - **autoCreate**: toggles `IsAutoDatasourceRendering=true` in the
  *     rendering's `OtherProperties` URL-encoded blob. Default true.
+ *     With `templates`, default to `false` at the recipe level — the
+ *     compiler can't pick one template unambiguously, so the dropping
+ *     author should be prompted to choose via the datasource picker.
  *   - **openPropertiesAfterAdd**: opens the rendering parameters
  *     dialog right after the rendering is dropped on a page. Default
  *     false.
@@ -439,33 +514,60 @@ export type RenderingDatasourceLocation = z.infer<typeof RenderingDatasourceLoca
  * The compiler pipe-joins `locations` (resolved to paths) and `query`
  * (verbatim) into the rendering's `Datasource Location` field.
  */
-export const RecipeDatasourceSchema = z.object({
-  /** Reference to a separate `ContentTemplateRecipe`. */
-  template: z
-    .object({
-      handle: z.string().regex(HANDLE_PATTERN, {
-        message: "datasource.template.handle must match `<kebab-name>@<major>`",
-      }),
-    })
-    .optional(),
-  /** Sets `IsAutoDatasourceRendering` in `OtherProperties`. Default true. */
-  autoCreate: z.boolean().default(true),
-  /** Open the properties dialog after add. Default false. */
-  openPropertiesAfterAdd: z.boolean().default(false),
-  /**
-   * Semantic-scope locations that compile to a path-style Sitecore
-   * Source segment each. Empty when only `query` entries are needed.
-   */
-  locations: z.array(RenderingDatasourceLocationSchema).default([]),
-  /**
-   * Raw Sitecore Source segments — included verbatim in the joined
-   * `Datasource Location` field. Each entry should be a complete
-   * segment (e.g. `"query:$site/*[@@name='Data']/Custom"` or
-   * `"fast:/sitecore/content/...//*[@@templatename='Foo']"`). Empty
-   * when only `locations` entries are needed.
-   */
-  query: z.array(z.string().min(1)).default([]),
-});
+export const RecipeDatasourceSchema = z
+  .object({
+    /**
+     * Reference to a single `ContentTemplateRecipe`. Shortcut for the
+     * common case; equivalent to `templates: [{handle}]` with one
+     * entry. Mutually exclusive with `templates`.
+     */
+    template: z
+      .object({
+        handle: z.string().regex(HANDLE_PATTERN, {
+          message: "datasource.template.handle must match `<kebab-name>@<major>`",
+        }),
+      })
+      .optional(),
+    /**
+     * Multiple compatible datasource templates. Each resolves to its
+     * deterministic template GUID; the compiler pipe-joins them into
+     * the rendering's `Datasource Template` shared field. Pair with a
+     * React-side adapter that normalises whichever field shape the
+     * layout service delivers. Mutually exclusive with `template`.
+     */
+    templates: z
+      .array(
+        z.object({
+          handle: z.string().regex(HANDLE_PATTERN, {
+            message: "datasource.templates[].handle must match `<kebab-name>@<major>`",
+          }),
+        })
+      )
+      .min(1)
+      .optional(),
+    /** Sets `IsAutoDatasourceRendering` in `OtherProperties`. Default true. */
+    autoCreate: z.boolean().default(true),
+    /** Open the properties dialog after add. Default false. */
+    openPropertiesAfterAdd: z.boolean().default(false),
+    /**
+     * Semantic-scope locations that compile to a path-style Sitecore
+     * Source segment each. Empty when only `query` entries are needed.
+     */
+    locations: z.array(RenderingDatasourceLocationSchema).default([]),
+    /**
+     * Raw Sitecore Source segments — included verbatim in the joined
+     * `Datasource Location` field. Each entry should be a complete
+     * segment (e.g. `"query:$site/*[@@name='Data']/Custom"` or
+     * `"fast:/sitecore/content/...//*[@@templatename='Foo']"`). Empty
+     * when only `locations` entries are needed.
+     */
+    query: z.array(z.string().min(1)).default([]),
+  })
+  .refine((ds) => !(ds.template !== undefined && ds.templates !== undefined), {
+    message:
+      "Set either `datasource.template` (single) or `datasource.templates` (multi), not both — the compiler ignores `template` when `templates` is set, which silently drops author intent. Pick one form per recipe.",
+    path: ["templates"],
+  });
 
 export type RecipeDatasource = z.infer<typeof RecipeDatasourceSchema>;
 
@@ -510,6 +612,44 @@ export const ComponentSectionRecipeSchema = z.object({
    * unset entries fall through to alphabetic by name.
    */
   sortOrder: z.number().int().optional(),
+  /**
+   * Section ownership: declares whether this section is owned by the
+   * recipe set (exclusive) or additive to whatever the tenant already
+   * has. Single concern covering BOTH the renderings folder subtree
+   * AND the Available Renderings multi-list — both flow through the
+   * aggregates ComponentSection drives.
+   *
+   * - `"additive"` (default): the recipe set adds renderings under
+   *   this section; pre-existing tenant entries the recipe set
+   *   doesn't list stay put, both as items in the folder AND as
+   *   entries in Available Renderings.
+   * - `"exclusive"`: the recipe set defines the FULL set for the
+   *   section. Items in the renderings folder absent from the recipe
+   *   set get pruned (PruneChildren op targeting the folder). The
+   *   Available Renderings field is overwritten with exactly the
+   *   recipe set's contribution.
+   *
+   * `pruneMode` is the default `mode` for the compiled PruneChildren
+   * op when `mode` is `"exclusive"`. `"warn"` (default) gives a
+   * rehearsal: the planner emits the prune list but apply skips
+   * actual deletes. `"delete"` lets apply remove (still subject to
+   * the operator's `--allow-prune` flag).
+   *
+   * **Bidirectional sync note**: this field is recipe-author intent,
+   * not derivable from tenant state. `readCurrent` (the reverse
+   * projection) cannot infer whether the operator wanted exclusive
+   * or additive ownership; round-tripped recipes always come back
+   * with `ownership` undefined (= additive default). Operators who
+   * declared `exclusive` must re-author the field after a roundtrip.
+   * Same story for `PruneChildren` ops — they're compile-time
+   * artifacts of this declaration, not capturable from tenant state.
+   */
+  ownership: z
+    .object({
+      mode: z.enum(["additive", "exclusive"]).default("additive"),
+      pruneMode: z.enum(["warn", "delete"]).default("warn"),
+    })
+    .optional(),
 });
 
 export type ComponentSectionRecipe = z.infer<typeof ComponentSectionRecipeSchema>;
@@ -603,14 +743,6 @@ export const ComponentTemplateRecipeSchema = z
         allowedHandles: z.array(z.string().regex(HANDLE_PATTERN)).min(1),
       })
       .optional(),
-    /**
-     * `SectionDefinitionRecipe` handles whose `Available Renderings`
-     * multi-list field should include this rendering's GUID. Drives the
-     * Sitecore Pages "Toolbox" surface — adding to this list registers
-     * the rendering with one or more Available Rendering Section
-     * Definition items.
-     */
-    availableIn: z.array(z.string().regex(HANDLE_PATTERN)).optional(),
     variants: z.array(RenderingVariantDefinitionSchema).default([]),
     params: z.array(DesignParameterSchema).default([]),
     /**
@@ -813,47 +945,6 @@ export const DesignParametersTemplateRecipeSchema = z.object({
 });
 
 export type DesignParametersTemplateRecipe = z.infer<typeof DesignParametersTemplateRecipeSchema>;
-
-/**
- * Available Rendering Section Definition — declares an SXA section
- * definition item that the registry uses as the target for
- * `availableIn` bindings. Each section definition holds an `Available
- * Renderings` multi-list field whose pipe-separated GUID list controls
- * which renderings appear in the section's toolbox group.
- *
- * The section definition typically lives in the content tree under
- * `/sitecore/content/<tenant>/<site>/Presentation/Available Renderings/<Section>`,
- * but exact path is recipe-supplied via `sitePath` so the same recipe
- * shape works across SXA Headless and classic SXA layouts.
- *
- * Identity: section definitions are referenced by deterministic GUID
- * via `sectionDefinitionId(handle)`. The compiler currently does not
- * emit CreateItem ops for section definitions (they're assumed to
- * pre-exist on the tenant — they're SXA-shipped scaffolding). The
- * recipe surface accepts them so cross-recipe validation of
- * `availableIn` references can resolve.
- */
-export const SectionDefinitionRecipeSchema = z.object({
-  kind: z.literal("section-definition"),
-  schemaVersion: z.literal("1"),
-  handle: z.string().regex(HANDLE_PATTERN, {
-    message: "handle must match `<kebab-name>@<major>`, e.g. showcase-section@1",
-  }),
-  name: z.string().min(1),
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  /**
-   * Sitecore content-tree path of the section definition item
-   * (e.g. `/sitecore/content/<tenant>/<site>/Presentation/Available
-   * Renderings/<Section>`). The compiler uses this as the lookup target
-   * when emitting `AppendToMultiList` ops for the section's
-   * `Available Renderings` field — the executor resolves the path to
-   * a Sitecore itemId at apply time.
-   */
-  sitePath: z.string().min(1),
-});
-
-export type SectionDefinitionRecipe = z.infer<typeof SectionDefinitionRecipeSchema>;
 
 /**
  * A single field value on a `ContentItemRecipe`. Tagged on `shape` so the
@@ -1228,16 +1319,49 @@ export const PageRecipeSchema = z.object({
     message: "template must reference a PageTemplateRecipe by handle, e.g. article-page@1",
   }),
   /**
-   * Field values keyed by field name on the page template. Same
-   * encoding surface as `ContentItemRecipe.fields` (`link-internal`
-   * is deferred — use `reference` or `link-external`).
+   * Field values keyed by field name on the page template — the primary
+   * language, single version. Simple-mode common case; mutually exclusive
+   * with `versions` (story mode). Same encoding surface as
+   * `ContentItemRecipe.fields` (`link-internal` is deferred — use
+   * `reference` or `link-external`).
    */
   fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  /**
+   * Simple mode — additional languages, one version each, keyed by ISO
+   * language code (`fr`, `de`, …). Mirrors `ContentItemRecipe.translations`:
+   * each translation carries the page's per-language field values.
+   * Mutually exclusive with `versions`.
+   *
+   * For per-language layout, use story mode (`versions[lang][n].layout`) —
+   * simple mode reuses the item-level `layout` across every language.
+   */
+  translations: z.record(z.string(), ContentTranslationSchema).optional(),
+  /**
+   * Story mode — explicit numbered versions per language, ordered, each
+   * an array of `ContentVersion`s (fields + optional per-version layout,
+   * date, workflowState). Mirrors `ContentItemRecipe.versions`. Mutually
+   * exclusive with `fields` / `translations` — a recipe is simple OR a
+   * story. The compiler enforces the XOR.
+   *
+   * Per-version `layout` overrides the item-level `layout` for that
+   * (language, version) cell.
+   */
+  versions: z.record(z.string(), z.array(ContentVersionSchema)).optional(),
+  /**
+   * Item-level `storage: shared` field values — one value for the whole
+   * page, no language or version. Mirrors `ContentItemRecipe.shared`.
+   */
+  shared: z.record(z.string(), ContentFieldValueSchema).optional(),
   /**
    * Optional page-local presentation, written to the page item's
    * `__Final Renderings`. Placements use `datasourceRef` `shared`
    * (a `ContentItemRecipe`), `scoped` (a page-local datasource at
    * `<page>/Data/<slot>`, materialised by the compiler), or `none`.
+   *
+   * In simple mode this writes the default-language v1 layout (and
+   * defaults every translation's layout to the same). In story mode the
+   * item-level `layout` is forbidden — per-version `layout` is the
+   * only place layout can live.
    */
   layout: LayoutSchema.optional(),
   /**
@@ -1927,7 +2051,6 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   PageRecipeSchema,
   PlaceholderRecipeSchema,
   DesignParametersTemplateRecipeSchema,
-  SectionDefinitionRecipeSchema,
   PartialDesignRecipeSchema,
   PageDesignRecipeSchema,
   SiteTemplateRecipeSchema,

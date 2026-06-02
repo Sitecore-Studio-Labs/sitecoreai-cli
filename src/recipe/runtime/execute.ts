@@ -11,6 +11,7 @@ import {
   type PlannedAction,
   type PlanSummary,
 } from "./plan";
+import type { BaselineIndex } from "./baseline";
 import {
   rollback,
   type RollbackError,
@@ -83,6 +84,14 @@ export interface ExecutionResult {
   aborted: boolean;
   /** Present only when the apply phase aborted; tracks the rollback outcome. */
   rollback?: RollbackResult;
+  /**
+   * Per-recipe refKey → server-assigned itemId map at end of execution.
+   * Populated by both plan and apply paths (plan-mode only resolves
+   * what's already on the tenant). Carried out so the push task can
+   * resolve `ref-recipe` field values to concrete GUIDs when writing
+   * the three-way merge baseline post-apply.
+   */
+  capturedItemIds: ReadonlyMap<string, string>;
 }
 
 export interface ExecuteOptions {
@@ -148,6 +157,40 @@ export interface ExecuteOptions {
    * nothing to disk.
    */
   rollbackLog?: RollbackLogger;
+  /**
+   * Operator-level consent to delete items via `PruneChildren` ops with
+   * `mode: "delete"`. Independent of the IR-level mode: the recipe
+   * author flips mode on the op, and the operator flips this flag on
+   * the push command. Both must align before the executor actually
+   * deletes; either alone makes it a rehearsal.
+   *
+   * Default behavior (undefined / false): apply throws `POLICY_DENIED`
+   * when it encounters a delete-mode PruneChildren — failing loudly
+   * rather than silently degrading to warn. Operators set this flag via
+   * the `--allow-prune` CLI option once they've reviewed the prune list
+   * a previous `--what-if` run surfaced.
+   */
+  allowPrune?: boolean;
+  /**
+   * Operator override for prune-rollback snapshot languages. Forwarded
+   * to the planner. When unset, the planner auto-discovers via
+   * `client.getTenantLanguages` (XM Cloud Authoring's tenant-level
+   * `languages { nodes { name } }` connection — `Item.languages` is
+   * not in the schema). Falls back to `["en"]` if the query errors.
+   * Set explicitly via `--snapshot-languages` to bound snapshot cost
+   * on tenants where discovery would return languages you don't want
+   * captured.
+   */
+  snapshotLanguages?: readonly string[];
+  /**
+   * Three-way merge baseline + conflict policy. Forwarded to the
+   * planner so per-field drift classifies against the last-applied
+   * baseline; `conflictPolicy` governs how `cms-edit` / `conflict`
+   * drifts resolve. Pass `undefined` for legacy two-way-diff (the
+   * default until operators opt in to baseline loading).
+   */
+  baselineIndex?: BaselineIndex;
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 /**
@@ -241,6 +284,7 @@ const dispatchMutation = async (
   capturedItemIds: Map<string, string>,
   pathItemIdCache: Map<string, string> | undefined,
   pathSnapshotCache: Map<string, RemoteItem | null> | undefined,
+  allowPrune: boolean,
   emit?: (event: ExecutionEvent) => void
 ): Promise<void> => {
   if (!action.mutation) return;
@@ -279,6 +323,37 @@ const dispatchMutation = async (
     const { itemId, language, addCount } = action.mutation;
     for (let n = 0; n < addCount; n += 1) {
       await client.addItemVersion({ itemId, language });
+    }
+    return;
+  }
+  if (action.mutation.kind === "pruneChildren") {
+    // mode "warn": the planner surfaced the prune list (action.prunedItems)
+    // for the operator to review — but apply intentionally does nothing.
+    // Authors flip to mode "delete" once they're confident the list is
+    // what they intend.
+    if (action.mutation.mode === "warn") return;
+    // mode "delete" + no operator opt-in: throw rather than silently
+    // skip. A silent no-op would mask the recipe author's stated intent
+    // and let operators discover too late that their --apply runs
+    // weren't actually pruning anything.
+    if (!allowPrune) {
+      throw createScaiError(
+        `PruneChildren op '${action.operation.label}' has mode='delete' but the push was not invoked with --allow-prune. Re-run with --allow-prune after reviewing the prune list in --what-if.`,
+        "POLICY_DENIED"
+      );
+    }
+    for (const itemId of action.mutation.itemIds) {
+      await client.deleteItem({ itemId });
+    }
+    // Invalidate cached snapshots for deleted items so any subsequent
+    // recipe in the same push (unlikely — prunes are sorted last — but
+    // possible if hand-authored ordering puts something after) sees the
+    // tenant state correctly.
+    if (action.prunedItems) {
+      for (const pruned of action.prunedItems) {
+        pathSnapshotCache?.delete(pruned.path);
+        pathItemIdCache?.delete(pruned.path);
+      }
     }
     return;
   }
@@ -322,12 +397,14 @@ const buildResult = (
   actions: PlannedAction[],
   summary: PlanSummary,
   aborted: boolean,
+  capturedItemIds: ReadonlyMap<string, string>,
   rollbackResult?: RollbackResult
 ): ExecutionResult => ({
   plan: { schemaVersion: "1", recipeHandle: ir.recipeHandle, actions, summary },
   summary,
   aborted,
   rollback: rollbackResult,
+  capturedItemIds,
 });
 
 const runRollback = async (
@@ -461,13 +538,26 @@ export const executeIr = async (
       sitesClient: options.sitesClient,
       pathItemIdCache: options.pathItemIdCache,
       pathSnapshotCache: options.pathSnapshotCache,
+      // Forward the operator's snapshot-languages override so
+      // `recipe push --what-if` reports the same prune-rollback
+      // snapshot intent that the apply pass would use. Without this,
+      // plan-mode silently auto-discovered while apply honored the
+      // operator's --snapshot-languages list — the audit trail diverged.
+      snapshotLanguages: options.snapshotLanguages,
+      // Three-way merge — the planner classifies drift against the
+      // baseline (when one is loaded) and applies conflictPolicy to
+      // each drift action's resolved status. Forwarded from the
+      // execute caller so plan-mode preview shows the same conflict
+      // surface apply would gate on.
+      baselineIndex: options.baselineIndex,
+      conflictPolicy: options.conflictPolicy,
     });
-    return { plan, summary: plan.summary, aborted: false };
+    return { plan, summary: plan.summary, aborted: false, capturedItemIds };
   }
 
   const actions: PlannedAction[] = [];
   const applied: PlannedAction[] = [];
-  const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0 };
+  const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0, prune: 0, conflict: 0 };
   const capturedItemIds = new Map<string, string>();
   if (options.pathItemIdCache) {
     for (const [path, itemId] of options.pathItemIdCache) {
@@ -496,7 +586,7 @@ export const executeIr = async (
         { trigger: "cancelled", forwardError: cancelMessage }
       );
       emitFailed(options, index, applied, rollbackResult, cancelMessage);
-      return buildResult(ir, actions, summary, true, rollbackResult);
+      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
     }
     const op = ir.operations[index];
     options.emit?.({ kind: "op-start", index, operation: op });
@@ -509,7 +599,10 @@ export const executeIr = async (
         client,
         capturedItemIds,
         options.sitesClient,
-        options.pathSnapshotCache
+        options.pathSnapshotCache,
+        options.snapshotLanguages,
+        options.baselineIndex,
+        options.conflictPolicy
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -526,7 +619,7 @@ export const executeIr = async (
         { trigger: "plan-error", forwardError: message }
       );
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult(ir, actions, summary, true, rollbackResult);
+      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
     }
 
     summary[action.status] += 1;
@@ -544,6 +637,7 @@ export const executeIr = async (
         capturedItemIds,
         options.pathItemIdCache,
         options.pathSnapshotCache,
+        options.allowPrune ?? false,
         options.emit
       );
       applied.push(action);
@@ -567,9 +661,9 @@ export const executeIr = async (
         { trigger: "apply-error", forwardError: message }
       );
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult(ir, actions, summary, true, rollbackResult);
+      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
     }
   }
 
-  return buildResult(ir, actions, summary, false);
+  return buildResult(ir, actions, summary, false, capturedItemIds);
 };

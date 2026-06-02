@@ -104,7 +104,13 @@ describe("runRecipePlan — input guard", () => {
     await runRecipePlan({ input: "/tmp/proj/hero.ir.json" } as never);
 
     expect(io.loadIr).toHaveBeenCalledWith("/tmp/proj/hero.ir.json");
-    expect(buildPlan).toHaveBeenCalledWith(makeIr(), { kind: "authoring-client" });
+    expect(buildPlan).toHaveBeenCalledWith(
+      makeIr(),
+      { kind: "authoring-client" },
+      {
+        snapshotLanguages: undefined,
+      }
+    );
   });
 });
 

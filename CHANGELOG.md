@@ -1,5 +1,172 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.2.4
+
+### Patch Changes
+
+- f44f6e5: `recipe`: encode `general-link` Standard Values defaults from a `text|url` string
+
+  `general-link` fields previously dropped their `default` value during SV
+  emission — the encoder returned `undefined` for every reference-shape
+  type, on the rationale that they "need encoded payloads not expressible
+  via the simple `default: string` recipe surface". That left
+  recipe-authored CTAs landing with empty Link fields, so dropped
+  renderings showed empty button shells until an author manually filled
+  the link.
+
+  The encoder now parses a pipe-separated `"<text>|<url>"` convention and
+  emits the Sitecore link-field XML payload Standard Values stores
+  natively. `linktype` is inferred from the URL prefix: `mailto:` →
+  `mailto`, leading `#` → `anchor`, anything else → `external` (Sitecore
+  runtime renders relative paths and absolute URLs identically; the link
+  picker decides internal vs external at author-time for items it can
+  resolve). Either half of the pipe may be empty (`"Click|"` → text only,
+  `"|https://x"` → url only); a value with no pipe is treated as text +
+  anchor `#`. Attribute values are XML-escaped.
+
+  ```ts
+  // Before: dropped silently.
+  { name: "Link", shape: "link", sitecore: { type: "general-link" },
+    default: "Get started|https://example.com" }
+
+  // After: SV emits
+  //   <link text="Get started" linktype="external" url="https://example.com" />
+  ```
+
+  `image`, `file`, `droplink`, `treelist`, and `treelist-with-search`
+  defaults are still skipped — they need richer payloads (GUID references
+  to media items / content items) that don't have an obvious string
+  convention. Use the existing per-item content recipes to seed those.
+
+- e0c09c0: `recipe`: fix `dynamicPlaceholders: true` to also inherit `_IDynamicPlaceholder`
+
+  `ComponentTemplateRecipe`'s `dynamicPlaceholders: true` flag previously
+  only wrote `IsRenderingsWithDynamicPlaceholders=true` into the rendering's
+  `OtherProperties` shared field. That's necessary-but-not-sufficient: SXA
+  Pages chrome also needs the parameters template to inherit
+  `_IDynamicPlaceholder`
+  (`/sitecore/templates/Foundation/Experience Accelerator/Dynamic Placeholders/Rendering Parameters/IDynamicPlaceholder`),
+  which contributes the `DynamicPlaceholderID` field the chrome writes
+  per-placement integers to.
+
+  Without the base, the chrome had no field to write the placement ID, no
+  `DynamicPlaceholderId` param appeared in layout-service rendering data,
+  and nested children either failed to bind in Pages or persisted against
+  the wrong slot key — symptom was the headless SDK warning
+  `Placeholder '<slot>-1' was not found in the current rendering data` on
+  visibly-authored containers.
+
+  `emitParamsTemplate` now appends `_IDynamicPlaceholder` to the params
+  template's `__Base template` chain whenever the recipe sets
+  `dynamicPlaceholders: true`. The OtherProperties write is unchanged.
+
+  Combining `dynamicPlaceholders: true` with `parameters: { handle }`
+  (an external `ParametersTemplateRecipe` reference) now throws
+  `INPUT_INVALID`. The external template may be shared across components;
+  mutating its base-template chain from a single consumer would silently
+  affect every other reader. Move to inline `params:` or extend
+  `ParametersTemplateRecipe` with its own flag if/when needed.
+
+- 2b56681: `recipe`: support multi-template datasources (compatible-datasources pattern)
+
+  `ComponentTemplateRecipe`'s `datasource` block now accepts a new
+  `templates: [{ handle }]` array alongside the existing single
+  `template: { handle }` shortcut (mutually exclusive). When `templates`
+  is set, the compiler emits a `ref-recipe-list` so each template's
+  GUID resolves through the executor and pipe-joins into the rendering's
+  `Datasource Template` shared field — letting the Pages picker surface
+  items conforming to **any** of the listed templates.
+
+  Use this when a single rendering can present multiple content shapes —
+  e.g. an `avatar-block@1` that accepts either an `author@1` item (rich
+  author profile) or a focused `avatar@1` item (just name + image +
+  description). Pair on the React side with a `.sitecore.ts` adapter
+  that normalises whichever field shape the layout service delivers.
+
+  `datasource.template` (singular) continues to work unchanged for the
+  common single-template case. With `templates` you'll typically want
+  `autoCreate: false` so the dropping author is prompted to pick a
+  template via the datasource picker (the compiler can't pick one
+  unambiguously).
+
+- 8bbee1c: `scai brand sync`: `--no-enrich` flag + always-lock operator PATCHes
+
+  Two changes that materially affect how `scai brand sync push`
+  interacts with Sitecore AI's brand-kit pipeline:
+
+  **New: `--no-enrich` flag.** Power-user knob that skips every code
+  path that would trigger a `BrandIngestionPipeline` /
+  `EnrichSectionsPipeline` run on Sitecore. With the flag set:
+  - the kit-creation path becomes an error (`INPUT_INVALID`) instead
+    of seeding — sections only exist after enrichment, so PATCHes
+    can't land on a fresh kit;
+  - the self-heal cycle (existing kit where none of the recipe's
+    section/field targets are reachable) is skipped;
+  - the field-PATCH loop still runs. Operator-authored values land on
+    whatever sections happen to exist; missed targets are surfaced as
+    `skipped` with a diagnostic naming the live-kit structure.
+
+  Useful when iterating on field values against a kit you know is
+  already structured correctly and you don't want to wait 5–15 min
+  for the pipeline.
+
+  The flag is exposed on the underlying `SyncContext` as
+  `skipEnrichment: boolean` so MCP tools / programmatic callers can
+  route the same intent.
+
+  **Always-lock operator PATCHes via `aiEditable: false`.** Every call
+  to `updateBrandKitField` from `brandKitKind.apply()` now sets
+  `aiEditable: false` on the target subsection. Sitecore's
+  EnrichSections pipeline is asynchronous — it can keep writing field
+  content for minutes after `seedBrandKit` returns (we only poll
+  until sections _appear_, not until enrichment finishes). Without
+  the lock, a late-arriving enrichment write overwrites the recipe
+  value mid-PATCH, surfacing as "the values I authored vanished
+  after the push." The flag pins each PATCHed field to its
+  recipe-provided value so future enrichment runs can't touch it.
+
+- daed6c7: `recipe`: add `Plugin` Sitecore field type + `plugin` source variant for Marketplace custom-field apps
+
+  Two related additions to the field-augment surface, both needed before a
+  recipe can wire a Sitecore template field to a Sitecore Marketplace
+  custom-field plugin (e.g. the new `@sai/matrix-editor`):
+  - **`type: "Plugin"`** joins the `SITECORE_FIELD_TYPES` enum. Stored
+    verbatim in the field item's `Type` shared field — the Marketplace
+    shell renders the custom plugin iframe instead of any built-in
+    editor.
+  - **`source: { kind: "plugin", id: "<slug>" }`** is the third variant on
+    the `SitecoreFieldSourceSchema` discriminated union (alongside
+    `filter` and `raw`). The compiler emits the slug verbatim into the
+    field's `Source` property; the Marketplace looks it up against its
+    installed-plugins catalog at render time to resolve the iframe URL.
+
+  Example — adding the matrix editor plugin to `matrix.recipe.ts`:
+
+  ```ts
+  {
+    name: "EditMatrix",
+    shape: "text",                 // field stores a digest string
+    sitecore: {
+      type: "Plugin",
+      source: { kind: "plugin", id: "sai/matrix-editor" },
+      hint: "Visual editor for this matrix's rows, columns, and cells.",
+      section: "Editor",
+      sortOrder: 50,
+    },
+  }
+  ```
+
+  Internals: `augmentSourceToFields` maps the new variant to a
+  `sourcePlugin` entry on the flat `SourceFields` bag; `renderSourceFields`
+  returns the slug verbatim (same precedence semantics as `sourceRaw`,
+  which already overrides everything else). `defaultSitecoreFieldType` is
+  unchanged — Plugin is opt-in only, never inferred from a `shape`.
+
+  Pull-side round-tripping (`recipe pull`) currently rebuilds plugin
+  sources as `kind: "raw"`; the slug round-trips correctly but loses the
+  plugin-vs-raw distinction. A follow-up can teach `read-current.ts` to
+  detect `Type=Plugin` and emit the structured `kind: "plugin"` form.
+
 ## 0.2.3
 
 ### Patch Changes

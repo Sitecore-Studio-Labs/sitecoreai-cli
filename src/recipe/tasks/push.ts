@@ -18,6 +18,8 @@ import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
+import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
+import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
 import { createRollbackLogger } from "../rollback/rollback-log";
@@ -207,12 +209,33 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
-  const irs: { ir: OperationIr }[] = [
+  let irs: { ir: OperationIr }[] = [
     ...compiled.map((ir) => ({ ir })),
     ...loadedIrs.map((ir) => ({ ir })),
   ];
+
+  // Optional `--handles` filter — narrow the IR set to the operator-
+  // named handles after compile. Cross-recipe references already
+  // resolved against the full set, so dropping unmatched IRs here is
+  // safe. Unknown handles are diagnostic only; an all-unknown filter
+  // yields an empty push (no-op).
+  if (options.handles && options.handles.length > 0) {
+    const requested = new Set(options.handles);
+    const handlesInSet = new Set(irs.map(({ ir }) => ir.recipeHandle));
+    const unknown = [...requested].filter((h) => !handlesInSet.has(h));
+    if (unknown.length > 0) {
+      logger.info(
+        `--handles: ignoring unknown handle(s): ${unknown.join(", ")} (not present in compiled recipe set).`
+      );
+    }
+    irs = irs.filter(({ ir }) => requested.has(ir.recipeHandle));
+    logger.info(
+      `--handles: pushing ${irs.length} of ${compiled.length + loadedIrs.length} recipe(s) (filtered to ${[...requested].filter((h) => handlesInSet.has(h)).join(", ") || "none"}).`
+    );
+  }
 
   const crossRecipeRefs = new Map<string, string>();
   for (const { ir } of irs) {
@@ -311,7 +334,14 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // callers (orchestrator, JSON consumers) see a uniform shape across
   // skipped + executed recipes.
   for (const { ir, entry } of cachedSkips) {
-    const skipSummary = { create: 0, update: 0, skip: ir.operations.length, error: 0 };
+    const skipSummary = {
+      create: 0,
+      update: 0,
+      skip: ir.operations.length,
+      error: 0,
+      prune: 0,
+      conflict: 0,
+    };
     results.push({
       plan: {
         schemaVersion: "1",
@@ -321,6 +351,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       },
       summary: skipSummary,
       aborted: false,
+      // Cached-skip path didn't run the executor — no refKeys to capture.
+      capturedItemIds: new Map(),
     });
     if (!logger.isJson()) {
       logger.info(
@@ -349,6 +381,25 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
   }
 
+  // ─── Baseline load (three-way merge) ───────────────────────────────────
+  // For each IR we're about to execute, load the persisted baseline file
+  // (last-applied per-field hashes) so the planner can classify drift as
+  // cms-edit / conflict vs plain recipe-change. Absent file → null index
+  // (legacy two-way diff behaviour). The `--no-baseline` flag skips both
+  // the load and the post-apply write.
+  const baselineStorage = options.baselineStorage ?? new FileBaselineStorage(configDir);
+  const baselineIndexByHandle = new Map<string, BaselineIndex>();
+  if (!options.noBaseline) {
+    // Parallel baseline reads: file storage is mostly disk-bound and
+    // the loads are independent per-recipe. A 50-recipe push that was
+    // sequential `await loadBaseline` now hits the disk concurrently.
+    const entries = await mapWithConcurrency(irsToExecute, async ({ ir }) => {
+      const baseline = await baselineStorage.load(tenant.envName, ir.recipeHandle);
+      return [ir.recipeHandle, indexBaseline(baseline)] as const;
+    });
+    for (const [handle, index] of entries) baselineIndexByHandle.set(handle, index);
+  }
+
   // ─── Plan or apply ────────────────────────────────────────────────────
   // Plan-mode reads are pure and have no cross-recipe ordering
   // requirements once `crossRecipeRefs` + the prefetch have populated
@@ -372,6 +423,21 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       // Dry-run never rolls back, so the logger is a no-op there. Pass
       // it through anyway — the conditional lives inside the executor.
       rollbackLog,
+      // Operator's prune consent (independent of `--apply`/--allow-write).
+      // Undefined under dry-run is fine — the executor only checks it in
+      // apply mode, and dry-run never reaches the delete-mode prune
+      // dispatch path.
+      allowPrune: options.allowPrune,
+      // Languages to capture per-(language, version) field snapshots
+      // for the prune rollback path. Defaults inside the planner to
+      // ["en"] when undefined here.
+      snapshotLanguages: options.snapshotLanguages,
+      // Three-way merge baseline — set when --no-baseline is OFF and a
+      // baseline file existed for this recipe. Maps every drifted field
+      // to a `recipe-change` / `cms-edit` / `conflict` classification
+      // the planner routes per `conflictPolicy`.
+      baselineIndex: baselineIndexByHandle.get(ir.recipeHandle),
+      conflictPolicy: options.conflictPolicy,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {
@@ -386,6 +452,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
           action.reason ? ` — ${action.reason}` : ""
         }`
       );
+      // Per-action prune list: operator sees every item that would (or
+      // did) get removed, by path + template GUID. Indented under the
+      // op so it stays readable in dense outputs.
+      if (action.prunedItems && action.prunedItems.length > 0) {
+        for (const pruned of action.prunedItems) {
+          logger.info(`      - ${pruned.path}  (template ${pruned.templateId})`, "yellow");
+        }
+      }
+      // Per-action multi-list replace summary: added/removed sets so the
+      // operator sees exactly what changes vs the live list. Skipped when
+      // both sides are empty (the planner emits skip status in that case).
+      if (action.replacedListValues) {
+        const { added, removed } = action.replacedListValues;
+        for (const guid of added) logger.info(`      + ${guid}`, "green");
+        for (const guid of removed) logger.info(`      - ${guid}`, "yellow");
+      }
     }
     if (result.aborted && result.rollback) {
       logger.warn(
@@ -399,9 +481,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     }
     logger.info(
       `  Summary: ${result.summary.create} create / ${result.summary.update} update / ${result.summary.skip} skip${
-        result.summary.error ? ` / ${result.summary.error} error` : ""
-      }`,
-      result.summary.error || result.aborted ? "yellow" : "green"
+        result.summary.prune ? ` / ${result.summary.prune} prune` : ""
+      }${result.summary.error ? ` / ${result.summary.error} error` : ""}`,
+      result.summary.error || result.aborted ? "yellow" : result.summary.prune ? "yellow" : "green"
     );
   };
 
@@ -444,6 +526,33 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       });
     }
     await saveRecipeCache(configDir, recipeCache);
+  }
+
+  // ─── Persist three-way merge baseline ──────────────────────────────────
+  // For each successfully-applied (non-aborted, non-error, non-conflict)
+  // recipe, write the per-field hash snapshot to the baseline file. The
+  // NEXT push's planner will load this and classify drift against it.
+  // Dry-run doesn't write baseline — apply has to actually land for the
+  // snapshot to reflect tenant truth. Conflict-status results are also
+  // skipped: the recipe didn't fully apply, so capturing its desired
+  // state as baseline would mask the unresolved conflict.
+  if (!isDryRun && !options.noBaseline) {
+    const capturedAt = new Date().toISOString();
+    for (const { ir } of irsToExecute) {
+      const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
+      if (!result || result.aborted || result.summary.error > 0 || result.summary.conflict > 0) {
+        continue;
+      }
+      const entries = collectBaselineEntries(ir, result.capturedItemIds);
+      if (entries.length === 0) continue;
+      await baselineStorage.write(tenant.envName, ir.recipeHandle, {
+        schemaVersion: "1",
+        recipeHandle: ir.recipeHandle,
+        envName: tenant.envName,
+        capturedAt,
+        fields: entries,
+      });
+    }
   }
 
   // Post-IR phase: register each component-template recipe's
@@ -553,5 +662,9 @@ const formatActionTag = (status: ExecutionResult["plan"]["actions"][number]["sta
       return "[ ]";
     case "error":
       return "[!]";
+    case "prune":
+      return "[-]";
+    case "conflict":
+      return "[?]";
   }
 };

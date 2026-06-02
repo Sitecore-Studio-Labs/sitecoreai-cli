@@ -71,3 +71,8 @@ export {
   type ResolveCampaignClientOptions,
   type ResolvedCampaignClient,
 } from "./client";
+
+// Recipe kind — wired into scai's `sync` engine for declarative
+// campaign sync. Three-way merge supported via `ctx.baselineStorage`.
+export { campaignKind } from "./recipe";
+export type { CampaignRecipe } from "./recipe";

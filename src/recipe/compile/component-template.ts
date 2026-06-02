@@ -1,23 +1,23 @@
 import {
   componentFolderStandardValuesId,
   componentFolderTemplateId,
-  headlessVariantsSectionFolderId,
   designParameterFieldId,
   designParametersSectionId,
   designParametersStandardValuesId,
   designParametersTemplateId,
+  placeholderSettingsId,
   renderingId,
-  sectionDefinitionId,
   sharedDataFolderTemplateId,
   siteDataFolderId,
   siteDataFolderStandardValuesId,
+  siteDataFolderStandardValuesIdForLocation,
   siteDataFolderTemplateId,
+  siteDataFolderTemplateIdForLocation,
   templateId,
   variantId,
   variantsFolderId,
 } from "../items/guids";
 import {
-  type AppendToMultiListOp,
   type CreateItemOp,
   type FieldValue,
   type Operation,
@@ -32,9 +32,8 @@ import { defaultPolicyForRecipe } from "../runtime/policy";
 import { createScaiError } from "../../shared/errors";
 import {
   DEFAULT_ICON,
-  FOLDER_ICON,
+  IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
   RENDERING_FIELDS,
-  SECTION_DEFINITION_FIELDS,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
   SXA_COMPONENT_BASE_TEMPLATES,
@@ -45,6 +44,7 @@ import { type ComponentTemplateRecipe, ComponentTemplateRecipeSchema } from "../
 import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
+  PARAMS_SORT_ORDER_BASE,
   buildFieldOp,
   buildStandardValuesFieldEntries,
   emitDatasourceTemplate,
@@ -62,19 +62,6 @@ import {
   versionedField,
   type CompileContext,
 } from "./shared";
-
-/**
- * SXA Section Definition's "Available Renderings" multi-list field —
- * the lookup key the executor uses to read/append values when
- * applying `AppendToMultiList` ops emitted from `availableIn`.
- *
- * The GUID is a placeholder until sandbox introspection lands; the
- * executor matches by `fieldName` when the IR carries one (recipe-
- * authored fields share this property), so the placeholder is
- * tolerated for now.
- */
-const AVAILABLE_RENDERINGS_FIELD_ID = SECTION_DEFINITION_FIELDS.AVAILABLE_RENDERINGS;
-const AVAILABLE_RENDERINGS_FIELD_NAME = "Available Renderings";
 
 /**
  * Resolve `recipe.section?.handle` to the section's `name` via the
@@ -111,8 +98,6 @@ const resolveSectionName = (
  *     - Renderings-side section folder (CreateOnly) at
  *       `<renderingsRoot>/ui`, then rendering at
  *       `<renderingsRoot>/ui/<Component>`
- *     - For each handle in `availableIn`, an `AppendToMultiList` op
- *       against the section definition's Available Renderings field
  *
  *   Without `section` (legacy back-compat):
  *     - Flat layout — template at `<templatesRoot>/<Component>`,
@@ -130,33 +115,61 @@ export function compileComponentTemplateRecipe(
   const policy = defaultPolicyForRecipe(recipe.kind);
   const icon = DEFAULT_ICON;
 
+  // `dynamicPlaceholders: true` chains `_IDynamicPlaceholder` onto the
+  // params template's `__Base template`. When `recipe.parameters` points
+  // at an external `DesignParametersTemplateRecipe`, that shared template
+  // mustn't carry IDynamicPlaceholder (other consumers may not need it).
+  // Resolution: emit a thin **per-recipe wrapper** params template that
+  // inherits FROM the external one AND adds IDynamicPlaceholder. The
+  // wrapper has no own fields — all external params pass through via
+  // template inheritance. Rendering's `Parameters Template` field
+  // points at the wrapper instead of the external directly (see
+  // `paramsRefKey` resolution further down).
+  const needsDynamicPlaceholderWrapper = Boolean(recipe.parameters && recipe.dynamicPlaceholders);
+
   const sectionName = resolveSectionName(recipe, context);
   if (sectionName) {
     ensureSectionFolder(operations, context, sectionName, emittedFolders);
   }
 
-  emitDatasourceTemplate(
-    operations,
-    {
-      handle: recipe.handle,
-      name: recipe.name,
-      displayName: recipe.displayName,
-      fields: recipe.fields,
-      insertOptions: recipe.insertOptions,
-      // Component templates always sit at the section root (or
-      // templatesRoot, for legacy callers).
-      parentPath: resolveComponentTemplateParent(context, sectionName),
-      // SXA Foundation bases (`_PerSiteStandardValues`,
-      // `_HorizonDatasourceGrouping`, `_PublishingGroupingTemplate`) —
-      // verified against live tenants on 2026-05-02. Without these the
-      // SXA editor doesn't recognise the item as a component and
-      // fields/standard-values won't surface in the Pages editor.
-      additionalBaseTemplates: SXA_COMPONENT_BASE_TEMPLATES,
-    },
-    context,
-    icon,
-    policy
-  );
+  // Pure-layout renderings (Container, ColumnSplitter, RowSplitter,
+  // SectionWrapper, …) declare no `fields:` and no `insertOptions`.
+  // They have no datasource — authors don't bind content to them, they
+  // just expose placeholders for children. Match the XM Cloud starter
+  // pattern by NOT emitting a phantom empty data template item for
+  // these. The rendering's `Datasource Template` shared field is
+  // already omitted for the same case (see below), so the template
+  // would be orphaned anyway. Skipping the emission keeps the
+  // templates tree honest — only renderings that need a datasource
+  // get one.
+  const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
+  const hasInsertOptions = (recipe.insertOptions?.length ?? 0) > 0;
+  const needsOwnDataTemplate = hasInlineFields || hasInsertOptions;
+  if (needsOwnDataTemplate) {
+    emitDatasourceTemplate(
+      operations,
+      {
+        handle: recipe.handle,
+        name: recipe.name,
+        displayName: recipe.displayName,
+        fields: recipe.fields,
+        insertOptions: recipe.insertOptions,
+        // Component templates always sit at the section root (or
+        // templatesRoot, for legacy callers).
+        parentPath: resolveComponentTemplateParent(context, sectionName),
+        // SXA Foundation bases (`_PerSiteStandardValues`,
+        // `_HorizonDatasourceGrouping`, `_PublishingGroupingTemplate`)
+        // — verified against live tenants on 2026-05-02. Without
+        // these the SXA editor doesn't recognise the item as a
+        // component and fields/standard-values won't surface in the
+        // Pages editor.
+        additionalBaseTemplates: SXA_COMPONENT_BASE_TEMPLATES,
+      },
+      context,
+      icon,
+      policy
+    );
+  }
 
   if (recipe.children) {
     emitComponentFolderTemplate(operations, recipe, context, icon, emittedFolders);
@@ -184,6 +197,15 @@ export function compileComponentTemplateRecipe(
   const hasInlineParams = recipe.params.length > 0 && !recipe.parameters;
   if (hasInlineParams) {
     emitParamsTemplate(operations, recipe, context, icon, policy, emittedFolders);
+  } else if (needsDynamicPlaceholderWrapper) {
+    emitDynamicPlaceholderWrapperTemplate(
+      operations,
+      recipe,
+      context,
+      icon,
+      policy,
+      emittedFolders
+    );
   }
 
   if (sectionName) {
@@ -195,17 +217,14 @@ export function compileComponentTemplateRecipe(
     recipe,
     context,
     icon,
-    hasInlineParams || recipe.parameters !== undefined,
+    hasInlineParams || recipe.parameters !== undefined || needsDynamicPlaceholderWrapper,
     policy,
-    emittedFolders
+    emittedFolders,
+    needsDynamicPlaceholderWrapper
   );
 
   if (recipe.variants.length > 0) {
     emitVariants(operations, recipe, context, icon, policy, emittedFolders);
-  }
-
-  if (recipe.availableIn && recipe.availableIn.length > 0) {
-    emitAvailableInBindings(operations, recipe, policy, siteOf(context));
   }
 
   return OperationIrSchema.parse({
@@ -213,32 +232,6 @@ export function compileComponentTemplateRecipe(
     recipeHandle: recipe.handle,
     operations,
   });
-}
-
-/**
- * Emit `AppendToMultiList` ops binding this rendering's GUID into the
- * `Available Renderings` field of each section definition listed in
- * `recipe.availableIn`. Idempotent under `merge-unique` policy.
- */
-function emitAvailableInBindings(
-  operations: Operation[],
-  recipe: ComponentTemplateRecipe,
-  policy: PushPolicy,
-  site: string
-): void {
-  const availableIn = recipe.availableIn ?? [];
-  for (const sectionDefinitionHandle of availableIn) {
-    operations.push({
-      op: "AppendToMultiList",
-      policy,
-      label: `available-in:${recipe.handle}->${sectionDefinitionHandle}`,
-      itemRefKey: sectionDefinitionId(sectionDefinitionHandle),
-      fieldId: AVAILABLE_RENDERINGS_FIELD_ID,
-      fieldName: AVAILABLE_RENDERINGS_FIELD_NAME,
-      values: [{ kind: "ref-recipe", refKey: renderingId(site, recipe.handle) }],
-      appendPolicy: "merge-unique",
-    } satisfies AppendToMultiListOp);
-  }
 }
 
 /**
@@ -399,9 +392,6 @@ function emitSiteDataFolderTemplate(
 
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
-  const folderTplRefKey = siteDataFolderTemplateId(site, recipe.handle);
-  if (emittedFolders.has(folderTplRefKey)) return;
-  emittedFolders.add(folderTplRefKey);
 
   const bucketRefKey = ensureComponentFoldersBucket(
     operations,
@@ -409,6 +399,106 @@ function emitSiteDataFolderTemplate(
     sectionName,
     emittedFolders
   );
+
+  // Split site-locations into two groups:
+  //   1. WITH allowedTemplates → emit a PER-LOCATION template + SV
+  //      with that location's allow-list (one template per subfolder).
+  //   2. WITHOUT allowedTemplates → fall through to the legacy
+  //      per-recipe template (single template, Insert Options =
+  //      recipe's own datasource template) — preserves existing
+  //      consumers that haven't adopted allowedTemplates yet.
+  const perLocationLocations = siteLocations.filter((l) => (l.allowedTemplates ?? []).length > 0);
+  const legacyLocations = siteLocations.filter((l) => (l.allowedTemplates ?? []).length === 0);
+
+  // -------- per-location templates (allowedTemplates set) --------
+  for (const location of perLocationLocations) {
+    const subfolder = location.subfolder as string;
+    if (context.sharedSubfolders?.has(subfolder)) continue;
+
+    const tplRefKey = siteDataFolderTemplateIdForLocation(site, recipe.handle, subfolder);
+    if (emittedFolders.has(tplRefKey)) continue;
+    emittedFolders.add(tplRefKey);
+
+    // Per-location data-folder templates live FLAT in the recipe's
+    // Component Folders bucket — they don't mirror the subfolder
+    // hierarchy because they're TEMPLATES (not content). The full
+    // subfolder still needs to appear in the name to disambiguate
+    // when one recipe declares multiple subfolders (`a/x` vs `a/y`
+    // would otherwise collide). Sitecore's InvalidItemNameChars
+    // setting rejects `/` in item names, so collapse to ` - `
+    // (preserves both segments for legibility). Display name keeps
+    // the original `/` — only the item name and path segment are
+    // restricted.
+    const tplNameSubfolder = subfolder.replace(/\//g, " - ");
+    const tplName = `${recipe.name} ${tplNameSubfolder} Data Folder`;
+    const tplPath = joinPath(resolveComponentFoldersBucketPath(context, sectionName), tplName);
+
+    operations.push({
+      op: "CreateItem",
+      policy,
+      label: `site-data-folder-template:${recipe.handle}:${subfolder}`,
+      id: tplRefKey,
+      path: tplPath,
+      parent: { kind: "ref-recipe", refKey: bucketRefKey },
+      templateOf: SITECORE_TEMPLATES.TEMPLATE,
+      name: tplName,
+      fields: [
+        sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
+          kind: "string",
+          value: `${recipe.displayName} ${subfolder} Data Folder`,
+        }),
+      ],
+    } satisfies CreateItemOp);
+
+    operations.push({
+      op: "SetBaseTemplates",
+      policy,
+      label: `site-data-folder-base-templates:${recipe.handle}:${subfolder}`,
+      itemRefKey: tplRefKey,
+      baseTemplates: [STANDARD_TEMPLATE_ID],
+    } satisfies SetBaseTemplatesOp);
+
+    const svRefKey = siteDataFolderStandardValuesIdForLocation(site, recipe.handle, subfolder);
+    const svPath = joinPath(tplPath, "__Standard Values");
+    operations.push({
+      op: "CreateItem",
+      policy,
+      label: `site-data-folder-standard-values:${recipe.handle}:${subfolder}`,
+      id: svRefKey,
+      path: svPath,
+      parent: { kind: "ref-recipe", refKey: tplRefKey },
+      templateOf: tplRefKey,
+      name: "__Standard Values",
+      fields: [],
+    } satisfies CreateItemOp);
+
+    operations.push({
+      op: "SetStandardValues",
+      policy,
+      label: `link-site-data-folder-standard-values:${recipe.handle}:${subfolder}`,
+      templateRefKey: tplRefKey,
+      standardValuesRefKey: svRefKey,
+    } satisfies SetStandardValuesOp);
+
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `site-data-folder-insert-options:${recipe.handle}:${subfolder}`,
+      itemRefKey: svRefKey,
+      fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+      value: {
+        kind: "ref-recipe-list",
+        refKeys: location.allowedTemplates!.map((t) => templateId(site, t.handle)),
+      },
+    } satisfies SetFieldOp);
+  }
+
+  // -------- legacy per-recipe template (no allowedTemplates) --------
+  if (legacyLocations.length === 0) return;
+  const folderTplRefKey = siteDataFolderTemplateId(site, recipe.handle);
+  if (emittedFolders.has(folderTplRefKey)) return;
+  emittedFolders.add(folderTplRefKey);
 
   const folderName = `${recipe.name} Data Folder`;
   const folderTplPath = joinPath(
@@ -434,7 +524,6 @@ function emitSiteDataFolderTemplate(
     ],
   } satisfies CreateItemOp);
 
-  // Folder templates inherit Standard Template (no custom fields).
   operations.push({
     op: "SetBaseTemplates",
     policy,
@@ -465,9 +554,6 @@ function emitSiteDataFolderTemplate(
     standardValuesRefKey: svRefKey,
   } satisfies SetStandardValuesOp);
 
-  // Single-template Insert Options for now (the recipe's own
-  // datasource template). Future-extensible to a list when the
-  // shared-subfolder coalescer lands.
   operations.push({
     op: "SetField",
     policy,
@@ -537,7 +623,18 @@ function emitParamsTemplate(
     // verified by tenant introspection of a working SXA Headless
     // component (LinkList) — without these the params dialog stays
     // empty in Pages even though the template + fields exist.
-    baseTemplates: [...SXA_HEADLESS_PARAMS_BASE_TEMPLATES],
+    //
+    // When the recipe declares `dynamicPlaceholders: true`, also chain
+    // SXA's `_IDynamicPlaceholder` interface template. That contributes
+    // the `DynamicPlaceholderID` field that Pages writes per-placement
+    // IDs to — both halves (this base AND the OtherProperties flag set
+    // in `emitRendering`) are required for nested placeholders to
+    // resolve end-to-end. Setting just one produces a silently-broken
+    // shape where the container ships out childless.
+    baseTemplates: [
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      ...(recipe.dynamicPlaceholders ? [IDYNAMIC_PLACEHOLDER_TEMPLATE_ID] : []),
+    ],
   } satisfies SetBaseTemplatesOp);
 
   const paramsSecRefKey = designParametersSectionId(site, recipe.handle, PARAMS_SECTION_NAME);
@@ -564,6 +661,7 @@ function emitParamsTemplate(
         labelPrefix: `params-field:${recipe.handle}`,
         field: param,
         zeroBasedIndex: index,
+        sortOrderBase: PARAMS_SORT_ORDER_BASE,
         policy,
         site,
         context,
@@ -608,6 +706,97 @@ function emitParamsTemplate(
   }
 }
 
+/**
+ * Emit a per-recipe wrapper params template that exists ONLY to chain
+ * `_IDynamicPlaceholder` onto an external shared params template
+ * without mutating the external template's own base-template list
+ * (which other recipes may share).
+ *
+ * Shape:
+ *   `<section>/Presentation Parameters/<Component> Parameters`
+ *      __Base templates:
+ *        - <external params template GUID>     ← inherits all shared params
+ *        - <SXA Headless params bases>          ← same as inline-params emitter
+ *        - `_IDynamicPlaceholder`               ← the reason we exist
+ *      (no own fields — everything inherited)
+ *
+ * The wrapper's deterministic GUID is `designParametersTemplateId(site,
+ * recipe.handle)` — same as the inline-params synthesis. They're
+ * mutually exclusive (the dispatch in `compileComponentTemplateRecipe`
+ * picks one or the other), so the GUID is never claimed twice.
+ *
+ * The rendering's `Parameters Template` field points at this wrapper
+ * (see `emitRendering`'s `useDynamicPlaceholderWrapper` branch); Pages
+ * sees the wrapper's full inherited field set + the
+ * `DynamicPlaceholderID` field contributed by `_IDynamicPlaceholder`.
+ */
+function emitDynamicPlaceholderWrapperTemplate(
+  operations: Operation[],
+  recipe: ComponentTemplateRecipe,
+  context: CompileContext,
+  icon: string,
+  policy: PushPolicy,
+  emittedFolders: Set<string>
+): void {
+  if (!recipe.parameters) return; // defensive — caller already gates
+  const site = siteOf(context);
+  const wrapperRefKey = designParametersTemplateId(site, recipe.handle);
+  const externalRefKey = designParametersTemplateId(site, recipe.parameters.handle);
+  const paramsName = `${recipe.name} Parameters`;
+  const paramsDisplayName = `${recipe.displayName} Parameters`;
+
+  const sectionName = resolveSectionName(recipe, context);
+  let paramsParent: CreateItemOp["parent"];
+  let paramsParentPath: string;
+  if (sectionName) {
+    const bucketRefKey = ensurePresentationDesignParametersBucket(
+      operations,
+      context,
+      sectionName,
+      emittedFolders
+    );
+    paramsParent = { kind: "ref-recipe", refKey: bucketRefKey };
+    paramsParentPath = resolvePresentationDesignParametersBucketPath(context, sectionName);
+  } else {
+    paramsParent = { kind: "ref-path", value: context.templatesRoot };
+    paramsParentPath = context.templatesRoot;
+  }
+  const wrapperPath = joinPath(paramsParentPath, paramsName);
+
+  operations.push({
+    op: "CreateItem",
+    policy,
+    label: `params-template-wrapper:${recipe.handle}`,
+    id: wrapperRefKey,
+    path: wrapperPath,
+    parent: paramsParent,
+    templateOf: SITECORE_TEMPLATES.TEMPLATE,
+    name: paramsName,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: paramsDisplayName }),
+    ],
+  } satisfies CreateItemOp);
+
+  operations.push({
+    op: "SetBaseTemplates",
+    policy,
+    label: `params-wrapper-base-templates:${recipe.handle}`,
+    itemRefKey: wrapperRefKey,
+    // Chain order: external template first (inherits ALL its params +
+    // sections), then SXA Headless bases (same as inline-params
+    // synthesis — needed for Pages's rendering-parameter dialog to
+    // surface the wrapper at all), then `_IDynamicPlaceholder` for
+    // the dynamic placeholder ID field. The wrapper has no own
+    // fields; the union of inherited bases IS its surface area.
+    baseTemplates: [
+      externalRefKey,
+      ...SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
+      IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
+    ],
+  } satisfies SetBaseTemplatesOp);
+}
+
 function emitRendering(
   operations: Operation[],
   recipe: ComponentTemplateRecipe,
@@ -615,52 +804,85 @@ function emitRendering(
   icon: string,
   hasParams: boolean,
   policy: PushPolicy,
-  emittedFolders: Set<string>
+  emittedFolders: Set<string>,
+  /**
+   * When true, the rendering's `Parameters Template` field points at
+   * the per-recipe DYNAMIC-PLACEHOLDER WRAPPER template (synthesised
+   * by `emitDynamicPlaceholderWrapperTemplate`) instead of the
+   * external shared params template. The wrapper's GUID is
+   * `designParametersTemplateId(site, recipe.handle)` — same as
+   * inline-params synthesis — so this branch sends the rendering at
+   * the wrapper rather than the external `recipe.parameters.handle`.
+   * See the `needsDynamicPlaceholderWrapper` rationale at the top of
+   * `compileComponentTemplateRecipe`.
+   */
+  useDynamicPlaceholderWrapper = false
 ): void {
   const site = siteOf(context);
   const renderingRefKey = renderingId(site, recipe.handle);
   const sectionName = resolveSectionName(recipe, context);
   const renderingParentPath = resolveRenderingParent(context, sectionName);
   const renderingPath = joinPath(renderingParentPath, recipe.name);
-  // Datasource template ref. Three cases:
-  //   1. Explicit `datasource.template` handle → reference the separate
-  //      ContentTemplateRecipe (compatible-data-source pattern).
-  //   2. Inline `fields:` (recipe has ≥ 1 field) → the component template
+  // Datasource template ref. Four cases:
+  //   1. Explicit `datasource.templates` array (≥ 1 handle) → multi-template
+  //      "compatible-datasources" pattern. Emit a `ref-recipe-list` so the
+  //      executor pipe-joins each template's GUID into the rendering's
+  //      Datasource Template shared field. The Pages picker then surfaces
+  //      items conforming to ANY of the listed templates.
+  //   2. Explicit `datasource.template` handle → reference the separate
+  //      ContentTemplateRecipe (single compatible-data-source).
+  //   3. Inline `fields:` (recipe has ≥ 1 field) → the component template
   //      IS the datasource template (legacy inline-fields pattern).
-  //   3. Neither — a pure-layout rendering (Container, ColumnSplitter,
+  //   4. Neither — a pure-layout rendering (Container, ColumnSplitter,
   //      RowSplitter, …). Emit no Datasource Template field at all so
   //      the rendering item's shared field stays empty. Sitecore Pages
   //      gates its "create or pick a datasource" prompt on this field
   //      being non-empty, so an empty value is what makes a layout-only
   //      rendering droppable without an authoring prompt.
   const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
-  const datasourceRefKey = recipe.datasource?.template
-    ? templateId(site, recipe.datasource.template.handle)
-    : hasInlineFields
-      ? templateId(site, recipe.handle)
-      : undefined;
+  const datasourceTemplates = recipe.datasource?.templates;
+  const datasourceField: FieldValue | undefined = datasourceTemplates?.length
+    ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+        kind: "ref-recipe-list",
+        refKeys: datasourceTemplates.map((t) => templateId(site, t.handle)),
+      })
+    : recipe.datasource?.template
+      ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+          kind: "ref-recipe",
+          refKey: templateId(site, recipe.datasource.template.handle),
+        })
+      : hasInlineFields
+        ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+            kind: "ref-recipe",
+            refKey: templateId(site, recipe.handle),
+          })
+        : undefined;
 
   const fields: FieldValue[] = [
     sharedField(RENDERING_FIELDS.COMPONENT_NAME, { kind: "string", value: recipe.name }),
-    ...(datasourceRefKey
-      ? [
-          sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-            kind: "ref-recipe",
-            refKey: datasourceRefKey,
-          }),
-        ]
-      : []),
+    ...(datasourceField ? [datasourceField] : []),
     sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: icon }),
     versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
   ];
 
   if (hasParams) {
-    // Prefer the explicit `parameters: { handle }` reference when set,
-    // else point at the synthesised inline params template (whose
-    // refKey is `designParametersTemplateId(site, recipe.handle)`).
-    const paramsRefKey = recipe.parameters
-      ? designParametersTemplateId(site, recipe.parameters.handle)
-      : designParametersTemplateId(site, recipe.handle);
+    // Three cases for the rendering's `Parameters Template` field:
+    //   1. Wrapper synthesised because `recipe.parameters` +
+    //      `dynamicPlaceholders` — point at the wrapper (per-recipe
+    //      handle), NOT at the external shared template directly.
+    //      The wrapper inherits FROM the external + adds
+    //      `_IDynamicPlaceholder`; pointing the rendering at the
+    //      external would skip the IDynamicPlaceholder base.
+    //   2. Plain `recipe.parameters: { handle }` — point directly at
+    //      the external shared template.
+    //   3. Inline `params:` — point at the synthesised inline
+    //      template (whose GUID is `designParametersTemplateId(site,
+    //      recipe.handle)`).
+    const paramsRefKey = useDynamicPlaceholderWrapper
+      ? designParametersTemplateId(site, recipe.handle)
+      : recipe.parameters
+        ? designParametersTemplateId(site, recipe.parameters.handle)
+        : designParametersTemplateId(site, recipe.handle);
     fields.push(
       sharedField(RENDERING_FIELDS.PARAMETERS_TEMPLATE, {
         kind: "ref-recipe",
@@ -731,15 +953,23 @@ function emitRendering(
           const parentPath =
             intermediateSegments.length > 0 ? joinPath(base, intermediateSegments.join("/")) : base;
           const folderPath = joinPath(base, subfolderSegments.join("/"));
-          // Shared-subfolder coalescer signal: when this subfolder is
-          // populated by ≥2 recipes in the set, the folder ITEM
-          // conforms to the SHARED template (whose Insert Options is
-          // the union of all contributing recipes' datasource
-          // templates). Singletons keep using the per-recipe template.
+          // Template selection per subfolder:
+          //   1. Shared-subfolder coalescer (≥2 recipes target same
+          //      subfolder) → SHARED template (Insert Options =
+          //      union of contributing recipes' datasource templates).
+          //   2. Singleton WITH allowedTemplates on this location →
+          //      per-LOCATION template (Insert Options = this
+          //      location's `allowedTemplates`).
+          //   3. Singleton WITHOUT allowedTemplates → legacy per-recipe
+          //      template (Insert Options = recipe's own datasource
+          //      template). Preserves the original behavior for
+          //      consumers that haven't adopted allowedTemplates.
           const isShared = context.sharedSubfolders?.has(location.subfolder) === true;
           const folderTemplateOf = isShared
             ? sharedDataFolderTemplateId(site, location.subfolder)
-            : siteDataFolderTemplateId(site, recipe.handle);
+            : (location.allowedTemplates ?? []).length > 0
+              ? siteDataFolderTemplateIdForLocation(site, recipe.handle, location.subfolder)
+              : siteDataFolderTemplateId(site, recipe.handle);
           operations.push({
             op: "CreateItem",
             policy: "CreateOnly",
@@ -800,6 +1030,18 @@ function emitRendering(
   }
   if (recipe.dynamicPlaceholders) {
     otherProperties.IsRenderingsWithDynamicPlaceholders = "true";
+    // Pair: tells SXA's layout-service serialiser that children inside
+    // this rendering's dynamic placeholders should inherit the
+    // rendering's datasource as their context (so child relative-
+    // datasource resolution works). Without it, children dropped into
+    // a Container / Section Wrapper / partial-design slot can fail to
+    // resolve their own datasource because the layout service ships
+    // no parent-context binding alongside the placeholder array.
+    // Pairs with the IDynamicPlaceholder base template + the
+    // Placeholders shared field — all three are required halves of
+    // the dynamic-placeholder chain on XM Cloud / SXA Headless
+    // starter renderings (Container et al carry this property).
+    otherProperties.UsePlaceholderDatasourceContext = "true";
   }
   Object.assign(otherProperties, recipe.otherProperties ?? {});
   fields.push(
@@ -808,6 +1050,36 @@ function emitRendering(
       entries: otherProperties,
     })
   );
+
+  // Placeholders (plural) Treelist field on the SXA Headless rendering
+  // chain — pipe-separated `{GUID}` refs, each pointing at one of the
+  // Placeholder Settings items emitted alongside this push.
+  //
+  // SXA Headless reads each referenced settings item to recover the
+  // slot's `Placeholder Key` (e.g. `container-{*}`) and emit a
+  // `placeholders` map in the layout-service response. The starter-kit
+  // Container / Column Splitter / Row Splitter all wire this field the
+  // same way: pipe-joined GUIDs of the matching Placeholder Settings
+  // items at `placeholderSettingsRoot`. Without it the layout service
+  // ships no `placeholders` array for the rendering and the headless
+  // SDK warns `Placeholder '<slot>-1' was not found in the current
+  // rendering data`. Two earlier scai attempts wrote string keys to a
+  // different field; the runtime ignores those — only this Treelist
+  // wires the slots up.
+  //
+  // The Placeholder Settings items are emitted by
+  // `buildPlaceholderSettingsAggregate` in compile.ts under the same
+  // `(site, key)` namespace as `placeholderSettingsId(site, key)` here,
+  // so the refKeys resolve to real itemIds by the time the executor
+  // runs the SetField — no separate dependency wiring needed.
+  if (recipe.placeholders?.length) {
+    fields.push(
+      sharedField(RENDERING_FIELDS.PLACEHOLDERS, {
+        kind: "ref-recipe-list",
+        refKeys: recipe.placeholders.map((slot) => placeholderSettingsId(site, slot.key)),
+      })
+    );
+  }
 
   operations.push({
     op: "CreateItem",
@@ -869,40 +1141,33 @@ function emitVariants(
   const root = context.headlessVariantsRoot;
   const site = siteOf(context);
 
-  // Section grouping under the Headless Variants root. Idempotent —
-  // multiple recipes sharing the same section emit one folder. Distinct
-  // dedup key from the templates-side / renderings-side section folders
-  // (different tree, different identity).
-  let perRenderingParentPath: string;
-  let perRenderingParentRef: CreateItemOp["parent"];
-  const sectionName = resolveSectionName(recipe, context);
-  if (sectionName) {
-    const sectionRefKey = headlessVariantsSectionFolderId(site, sectionName);
-    const sectionPath = joinPath(root, sectionName);
-    if (!emittedFolders.has(sectionRefKey)) {
-      emittedFolders.add(sectionRefKey);
-      operations.push({
-        op: "CreateItem",
-        policy: "CreateOnly",
-        label: `headless-variants-section-folder:${site}:${sectionName}`,
-        id: sectionRefKey,
-        path: sectionPath,
-        parent: { kind: "ref-path", value: root },
-        templateOf: SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING,
-        name: sectionName,
-        fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
-      } satisfies CreateItemOp);
-    }
-    perRenderingParentPath = sectionPath;
-    perRenderingParentRef = { kind: "ref-recipe", refKey: sectionRefKey };
-  } else {
-    perRenderingParentPath = root;
-    perRenderingParentRef = { kind: "ref-path", value: root };
-  }
+  // Per-rendering folder lives DIRECTLY under the Headless Variants
+  // root — no section-grouping intermediate.
+  //
+  // SXA Headless Pages chrome walks exactly two levels under
+  // `<site>/Presentation/Headless Variants`: <Rendering>/<Variant>.
+  // Verified against a working tenant 2026-05-31: the chrome enumerates
+  // variants by finding `HEADLESS_VARIANTS` items as DIRECT children
+  // of the headless-variants root, then enumerates each one's
+  // `VARIANT_DEFINITION` children. The recon found scai-pushed renderings
+  // wrapped in an extra `HEADLESS_VARIANTS_GROUPING` section folder
+  // (`root/ui/accordion-block/Default` vs the expected
+  // `root/accordion-block/Default`); the chrome stopped at the
+  // grouping folder and never saw the rendering's variants. Section
+  // grouping IS correct on the templates + renderings trees (Sitecore
+  // organises by section there) but the Headless Variants tree is flat.
+  //
+  // `_unusedEmittedFolders` retained so cross-recipe dedup interfaces
+  // stay compatible with callers; section folders just don't go in.
+  const _unusedEmittedFolders = emittedFolders;
+  const perRenderingParentPath = root;
+  const perRenderingParentRef: CreateItemOp["parent"] = {
+    kind: "ref-path",
+    value: root,
+  };
 
-  // Per-rendering grouping — one folder per recipe under the section
-  // (or under the root, when section-less). Always unique per recipe;
-  // no cross-recipe dedup needed.
+  // Per-rendering folder under the headless variants root. Always
+  // unique per recipe; no cross-recipe dedup needed.
   const folderRefKey = variantsFolderId(site, recipe.handle);
   const folderPath = joinPath(perRenderingParentPath, recipe.name);
   operations.push({

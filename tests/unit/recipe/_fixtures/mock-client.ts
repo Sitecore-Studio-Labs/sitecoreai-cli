@@ -5,6 +5,7 @@ import type {
   AuthoringApiClient,
   CreateItemInput,
   CreateItemResult,
+  GetItemOptions,
   ItemSelector,
   RemoteFieldValue,
   RemoteItem,
@@ -51,8 +52,27 @@ export class MockAuthoringClient implements AuthoringApiClient {
     return undefined;
   }
 
-  async getItem(selector: ItemSelector): Promise<RemoteItem | null> {
-    return this.peek(selector) ?? null;
+  async getItem(selector: ItemSelector, options?: GetItemOptions): Promise<RemoteItem | null> {
+    const found = this.peek(selector);
+    if (!found) return null;
+    const lang = options?.language;
+    const ver = options?.version;
+    if (lang === undefined && ver === undefined) return found;
+    // Filter fields to those matching (language, version). Shared fields
+    // (no language, no version) always pass through — they apply to every
+    // language/version. Versioned fields must match the requested
+    // language; when a version is requested, the field's version must
+    // match too. Mirrors the per-(language, version) read semantics of
+    // the real Authoring API where the where clause scopes fields to a
+    // specific version stack.
+    const filtered = found.fields.filter((f) => {
+      const isShared = f.language === undefined && f.version === undefined;
+      if (isShared) return true;
+      if (lang !== undefined && f.language !== undefined && f.language !== lang) return false;
+      if (ver !== undefined && f.version !== undefined && f.version !== ver) return false;
+      return true;
+    });
+    return { ...found, fields: filtered };
   }
 
   /**
@@ -173,5 +193,89 @@ export class MockAuthoringClient implements AuthoringApiClient {
     if (!item) return [];
     const count = this.versionsByItem.get(lower(item.itemId))?.get(language) ?? 0;
     return Array.from({ length: count }, (_, i) => i + 1);
+  }
+
+  /**
+   * Tenant-level language ISO codes the mock advertises to callers of
+   * `getTenantLanguages`. Defaults to `["en"]` so existing tests that
+   * don't care about multi-language stay unchanged; tests exercising
+   * the multi-language path mutate this directly before the snapshot
+   * runs.
+   */
+  public tenantLanguages: string[] = ["en"];
+  /**
+   * Opt-in failure mode for the schema-unsupported test path. When set,
+   * `getTenantLanguages` throws as if the tenant's Authoring schema
+   * doesn't expose the languages query. The real client catches and
+   * defaults to `["en"]` — exercise that path by flipping this flag.
+   */
+  public tenantLanguagesUnsupported = false;
+
+  /**
+   * Counters so tests can assert wire-call reduction without time-keeping.
+   * `getItemPerLanguageBatch` and `getItemAtVersionsBatch` increment by 1
+   * per batched call regardless of how many tuples were inside — that's
+   * the whole point of batching.
+   */
+  public batchCallCounts = {
+    perLanguageBatch: 0,
+    atVersionsBatch: 0,
+  };
+
+  async getItemPerLanguageBatch(
+    selector: ItemSelector,
+    languages: readonly string[]
+  ): Promise<Array<{ language: string; versions: number[]; item: RemoteItem | null }>> {
+    // Mirror the real client: empty input is a no-op, no wire call.
+    if (languages.length === 0) return [];
+    this.batchCallCounts.perLanguageBatch += 1;
+    const found = this.peek(selector);
+    if (!found) return languages.map((language) => ({ language, versions: [], item: null }));
+    return languages.map((language) => {
+      const versionCount = this.versionsByItem.get(lower(found.itemId))?.get(language) ?? 0;
+      if (versionCount === 0) return { language, versions: [], item: null };
+      // Mirror the real client: return the item with fields filtered to
+      // (this language, latest version) plus shared fields. The mock's
+      // stored fields already carry language/version tags.
+      const latest = versionCount;
+      const filtered = found.fields.filter((f) => {
+        const isShared = f.language === undefined && f.version === undefined;
+        if (isShared) return true;
+        if (f.language !== undefined && f.language !== language) return false;
+        if (f.version !== undefined && f.version !== latest) return false;
+        return true;
+      });
+      const versions = Array.from({ length: versionCount }, (_, i) => i + 1);
+      return { language, versions, item: { ...found, fields: filtered } };
+    });
+  }
+
+  async getItemAtVersionsBatch(
+    selector: ItemSelector,
+    requests: ReadonlyArray<{ language: string; version: number }>
+  ): Promise<Array<RemoteItem | null>> {
+    if (requests.length === 0) return [];
+    this.batchCallCounts.atVersionsBatch += 1;
+    const found = this.peek(selector);
+    if (!found) return requests.map(() => null);
+    return requests.map(({ language, version }) => {
+      const versionCount = this.versionsByItem.get(lower(found.itemId))?.get(language) ?? 0;
+      if (version > versionCount) return null;
+      const filtered = found.fields.filter((f) => {
+        const isShared = f.language === undefined && f.version === undefined;
+        if (isShared) return true;
+        if (f.language !== undefined && f.language !== language) return false;
+        if (f.version !== undefined && f.version !== version) return false;
+        return true;
+      });
+      return { ...found, fields: filtered };
+    });
+  }
+
+  async getTenantLanguages(): Promise<string[]> {
+    if (this.tenantLanguagesUnsupported) {
+      throw new Error("Cannot query field 'languages' on type 'Query' (simulated).");
+    }
+    return [...this.tenantLanguages];
   }
 }

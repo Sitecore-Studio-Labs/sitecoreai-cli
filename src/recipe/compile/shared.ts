@@ -1,5 +1,6 @@
 import {
   componentFoldersBucketId,
+  contentItemId,
   contentModelsGroupFolderId,
   enumerationContainerSectionId,
   enumerationContainerValueFieldId,
@@ -49,6 +50,7 @@ import {
   sitecoreFieldTypeLabel,
 } from "../schema/field-types";
 import {
+  applyMarketplacePluginOverride,
   augmentSourceToFields,
   renderSourceFields,
   sourceFieldsNeedHandleResolution,
@@ -264,10 +266,35 @@ export interface CompileContext {
    * the set but this is unset.
    */
   pagesRoot?: string;
+  /**
+   * Per-org overrides for marketplace plugin `app_id` UUIDs, keyed by
+   * `plugin_key` — the recipe-side `source.id` on a `kind: "plugin"`
+   * source. When a recipe's plugin reference has a matching entry, the
+   * compiler swaps the recipe-side `defaultAppId` for the override
+   * value before emitting the Sitecore Source field. Populated from
+   * `RootConfiguration.marketplacePluginOverrides` (which the
+   * orchestrator writes into `sitecoreai.cli.json` at recipe-sync
+   * preflight). Absent/empty means every plugin source emits its
+   * recipe-author `defaultAppId`.
+   */
+  marketplacePluginOverrides?: Record<string, string>;
 }
 
 export const PARAMS_SECTION_NAME = "Parameters";
 export const DEFAULT_FIELDS_SECTION = "Content";
+
+/**
+ * Sort-order offset applied to synthesised rendering parameter fields
+ * (inline `params:` on a component template, and standalone
+ * `parameters-template` recipes). The SXA Headless params base templates
+ * ship `RenderingIdentifier`, `Styles`, `GridParameters`, etc. with
+ * `__Sortorder` values in the low hundreds; defaulting custom params to
+ * `100`/`200`/… interleaves them with those inherited fields in the
+ * Pages parameters dialog. Starting custom params at `1100` keeps them
+ * grouped below the inherited standards while leaving room for
+ * explicit `sitecore.sortOrder` overrides to slot anywhere.
+ */
+export const PARAMS_SORT_ORDER_BASE = 1000;
 
 export const COMPONENT_FOLDERS_BUCKET = "Component Folders";
 export const PRESENTATION_PARAMETERS_BUCKET = "Presentation Parameters";
@@ -1027,6 +1054,19 @@ export interface BuildFieldOpInput {
   labelPrefix: string;
   field: FieldDefinition | DesignParameter;
   zeroBasedIndex: number;
+  /**
+   * Offset added to the auto-assigned `(zeroBasedIndex + 1) * 100` when
+   * the field has no explicit `sitecore.sortOrder`. Default 0.
+   *
+   * Used by rendering parameters templates: the SXA Headless params base
+   * templates ship `RenderingIdentifier`, `Styles`, `GridParameters`, etc.
+   * at sortOrder values in the low hundreds. Inline `params:` would tie
+   * or interleave with those on the inherited fields' `__Sortorder`,
+   * making the Pages parameters dialog render custom params mixed in
+   * between `id` and `css styles`. Passing a high base (e.g. `1000`)
+   * pushes synthesised params cleanly below the inherited standards.
+   */
+  sortOrderBase?: number;
   policy: PushPolicy;
   /**
    * Site name the recipe set is being compiled under. Threaded through to
@@ -1078,11 +1118,24 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
     labelPrefix,
     field,
     zeroBasedIndex,
+    sortOrderBase = 0,
     policy,
     site,
     context,
   } = input;
-  const sortOrder = field.sitecore?.sortOrder ?? (zeroBasedIndex + 1) * 100;
+  // Explicit `sitecore.sortOrder` values from the recipe are treated as
+  // RELATIVE to the field group's base so existing recipes (which were
+  // authored with `sortOrder: 100, 200, 300, ...`) continue to make
+  // sense — for params, sortOrderBase=PARAMS_SORT_ORDER_BASE (1000)
+  // lifts them above SXA's inherited low-hundreds fields. For
+  // datasource fields, sortOrderBase=0 so explicit values are unchanged.
+  // Auto-assigned values (no explicit sortOrder) get the same base +
+  // 100-step increment.
+  const explicitSortOrder = field.sitecore?.sortOrder;
+  const sortOrder =
+    explicitSortOrder != null
+      ? sortOrderBase + explicitSortOrder
+      : sortOrderBase + (zeroBasedIndex + 1) * 100;
   const sitecoreType = resolveSitecoreType(field);
   const fields: FieldValue[] = [
     sharedField(TEMPLATE_FIELD_FIELDS.TYPE, {
@@ -1126,6 +1179,22 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
 function resolveSitecoreType(field: FieldDefinition | DesignParameter): SitecoreFieldType {
   if (field.sitecore?.type) {
     return field.sitecore.type;
+  }
+  // Enum fields with inline `values: [...]` and no `enumHandle` only
+  // make sense as `droplist` — the alternative default (`droplink`)
+  // would require a separate EnumerationRecipe the author hasn't
+  // written. Pick `droplist` here so authors don't have to repeat
+  // themselves with an explicit `sitecore.type: "droplist"`. Authors
+  // who DO want droplink + shared enum still get it: they declare
+  // `sitecore.enumHandle` (no inline `values`), which leaves the
+  // shape-based default in place (`droplink`).
+  if (
+    field.shape === "enum" &&
+    !field.sitecore?.enumHandle &&
+    Array.isArray(field.values) &&
+    field.values.length > 0
+  ) {
+    return "droplist";
   }
   const multiple = "multiple" in field ? field.multiple : undefined;
   return defaultSitecoreFieldType(field.shape, multiple);
@@ -1235,6 +1304,63 @@ function encodeStandardValueDefaultForField(
       refKey: enumValueId(enumerationFolderId(site, enumHandle), raw),
     };
   }
+  // Reference-shape fields (`shape: "reference"`): the default is one
+  // or more recipe handles pointing at content items. Resolve each
+  // handle to its deterministic `contentItemId(site, handle)` GUID and
+  // emit a `ref-recipe` (single) or `ref-recipe-list` (multi). The
+  // executor matches each refKey against the per-run captured-itemId
+  // map at apply time. If the referenced handle doesn't materialise as
+  // a content item in the same recipe set, the SV write fails at apply
+  // time — author error, not silently masked here (same contract as
+  // enum defaults above).
+  //
+  // Convention:
+  //   `multiple: false` (Droplink) — single handle string, e.g.
+  //     `default: "author-jane@1"`
+  //   `multiple: true`  (Treelist / Treelist-with-search) — pipe-
+  //     separated handles, e.g. `default: "author-jane@1|author-bob@1"`
+  if (field.shape === "reference") {
+    // `multiple` lives on FieldDefinition (Treelist) but not on
+    // DesignParameter — parameters templates don't model multi-list
+    // pickers in scai today. Safe in-check covers both shapes.
+    const isMulti = "multiple" in field && field.multiple === true;
+    // enumHandle on a reference field = pick from a shared enum's
+    // value items. Each pipe-separated token maps to an enum value
+    // *name*; resolve to `enumValueId` instead of `contentItemId` so
+    // the SV write points at the right value items under the enum
+    // folder. Same contract as enum-shape SV defaults — author error
+    // (referencing a value that doesn't exist on the enum) fails at
+    // apply time with the standard captured-itemId error.
+    if (field.sitecore?.enumHandle) {
+      const enumFolder = enumerationFolderId(site, field.sitecore.enumHandle);
+      const tokens = raw
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (tokens.length === 0) return undefined;
+      if (isMulti) {
+        return {
+          kind: "ref-recipe-list",
+          refKeys: tokens.map((t) => enumValueId(enumFolder, t)),
+        };
+      }
+      return { kind: "ref-recipe", refKey: enumValueId(enumFolder, tokens[0]) };
+    }
+    if (isMulti) {
+      const handles = raw
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (handles.length === 0) return undefined;
+      return {
+        kind: "ref-recipe-list",
+        refKeys: handles.map((h) => contentItemId(site, h)),
+      };
+    }
+    const target = raw.trim();
+    if (target === "") return undefined;
+    return { kind: "ref-recipe", refKey: contentItemId(site, target) };
+  }
   return encodeStandardValueDefault(raw, resolveSitecoreType(field));
 }
 
@@ -1256,17 +1382,124 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
     case "date":
     case "datetime":
       return { kind: "string", value: raw };
-    case "image":
-    case "file":
-    case "general-link":
+    case "general-link": {
+      // Convention: pipe-separated `"<text>|<url>"`. Either half may
+      // be empty (`"Click|"` → text only, `"|https://x"` → url only).
+      // No pipe (`"Just text"`) is treated as text + anchor `#`. The
+      // encoded payload is the Sitecore link-field XML format that
+      // Standard Values stores natively. This gives recipe authors a
+      // way to seed `general-link` SVs so dropped renderings visualise
+      // immediately instead of rendering empty button shells.
+      const encoded = encodeGeneralLinkDefault(raw);
+      if (encoded == null) return undefined;
+      return { kind: "string", value: encoded };
+    }
+    case "image": {
+      // Convention: pipe-separated `"<alt>|<src>"`. `<src>` alone (no
+      // pipe) seeds a srcless-but-altless default. The encoded payload
+      // is the Sitecore image-field XML format that Standard Values
+      // stores natively. Authors swap to a real media library item via
+      // the image picker; until they do, the seeded src renders the
+      // placeholder image so dropped renderings visualise immediately.
+      //
+      // Caveat: the standard `mediaid` attribute references an item in
+      // /sitecore/media library/. Without a known media item we can't
+      // emit `mediaid`; we use the external-URL `src` form instead.
+      // Sitecore Layout Service surfaces this as `{ src, alt }` in the
+      // image-field value the React side reads.
+      const encoded = encodeImageDefault(raw);
+      if (encoded == null) return undefined;
+      return { kind: "string", value: encoded };
+    }
+    case "file": {
+      // Same `<alt>|<src>` convention as image, but emits the
+      // file-field XML (`<file src="…" />`). Layout Service surfaces
+      // it as `{ src, ... }` in the file-field value. As with image,
+      // no `mediaid` form — recipes don't ship media items, so the
+      // external-URL `src` form is what we can express. Authors swap
+      // to a real media library item via the file picker.
+      const encoded = encodeFileDefault(raw);
+      if (encoded == null) return undefined;
+      return { kind: "string", value: encoded };
+    }
     case "droplink":
     case "treelist":
     case "treelist-with-search":
-      // Reference-shape defaults need encoded payloads; not expressible
-      // via the simple `default: string` recipe surface. Skip; the field
-      // still gets created without a default.
+      // Reference-shape defaults are encoded upstream in
+      // `encodeStandardValueDefaultForField` via the recipe-handle
+      // resolver (single → `ref-recipe`, multi → `ref-recipe-list`).
+      // Reaching this branch means the field declared `shape:
+      // "reference"` but the upstream branch didn't fire — defensive
+      // skip so a malformed recipe doesn't emit a broken default.
       return undefined;
   }
+}
+
+// Sitecore link field stores a small XML payload in the Standard Values
+// row. Attributes are XML-escaped. `linktype` mirrors what the platform
+// picks based on URL shape — only mailto/anchor warrant special types
+// here; relative paths and absolute URLs both use the `external` type
+// (Sitecore's runtime renders them the same; the link picker decides
+// internal vs external at author-time for items it can resolve).
+function encodeGeneralLinkDefault(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  const pipeIndex = trimmed.indexOf("|");
+  const text = pipeIndex === -1 ? trimmed : trimmed.slice(0, pipeIndex).trim();
+  const url = pipeIndex === -1 ? "#" : trimmed.slice(pipeIndex + 1).trim() || "#";
+  const linktype = url.startsWith("mailto:")
+    ? "mailto"
+    : url.startsWith("#")
+      ? "anchor"
+      : "external";
+  const attrs: Array<[string, string]> = [
+    ["text", text],
+    ["linktype", linktype],
+    ["url", url],
+  ];
+  return `<link ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
+}
+
+// Sitecore image field stores XML in the Standard Values row. The
+// canonical attribute is `mediaid` (a GUID reference into the media
+// library), but recipes don't ship media items, so we use the
+// external-URL `src` form — Sitecore Layout Service surfaces it as
+// `{ src, alt }` in the image-field value. Empty raw returns
+// undefined so the SV entry is skipped entirely.
+function encodeImageDefault(raw: string): string | undefined {
+  return encodeMediaXmlDefault("image", raw);
+}
+
+// Same convention as image (`<alt>|<src>` or bare `<src>`); emits the
+// file-field XML form. Authors swap to a media-library item via the
+// file picker at placement time; seed src renders in the meantime.
+function encodeFileDefault(raw: string): string | undefined {
+  return encodeMediaXmlDefault("file", raw);
+}
+
+// Shared XML body for image + file fields. Sitecore's stored shape
+// for both is identical: `<image src="..." alt="..." />` vs
+// `<file src="..." alt="..." />`. The element name is the only
+// difference.
+function encodeMediaXmlDefault(element: "image" | "file", raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  const pipeIndex = trimmed.indexOf("|");
+  const alt = pipeIndex === -1 ? "" : trimmed.slice(0, pipeIndex).trim();
+  const src = pipeIndex === -1 ? trimmed : trimmed.slice(pipeIndex + 1).trim();
+  if (!src) return undefined;
+  const attrs: Array<[string, string]> = [["src", src]];
+  if (alt) attrs.push(["alt", alt]);
+  return `<${element} ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
+}
+
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 /**
@@ -1312,7 +1545,11 @@ function resolveFieldSource(
 ): RefValue | undefined {
   const sc = field.sitecore;
   if (sc) {
-    const fields = augmentSourceToFields(sc.source);
+    const effectiveSource = applyMarketplacePluginOverride(
+      sc.source,
+      context?.marketplacePluginOverrides
+    );
+    const fields = augmentSourceToFields(effectiveSource);
     if (sourceFieldsNeedHandleResolution(fields)) {
       // `types` is non-empty here because `sourceFieldsNeedHandleResolution`
       // returned true; the cast is to satisfy the IR's `.min(1)` constraint.
@@ -1330,6 +1567,38 @@ function resolveFieldSource(
     if (rendered !== undefined) {
       return { kind: "string", value: rendered };
     }
+  }
+  // Reference-shape + enumHandle = multi-pick Treelist sourced from a
+  // shared enum. Earlier iterations emitted the combined form
+  // `DataSource=<path>&IncludeTemplatesForSelection=<GUID>` so the
+  // picker would scope to the enum's folder AND restrict pickable
+  // items to the enum value template — but Sitecore Pages's Treelist
+  // chrome rejected every enum-value pick under that filter, leaving
+  // authors with "the source's filter doesn't allow those options"
+  // and no way to select platforms. The filter isn't load-bearing in
+  // practice: scai deliberately doesn't emit per-folder
+  // `__Standard Values` items inside enum folders (see the comment
+  // in `compileEnumerationRecipe`), so the enum folder's children
+  // are exactly the value items the picker should surface. Dropping
+  // the template filter keeps the picker working in Pages and only
+  // matters for tenants where an author manually drops stray content
+  // under an enum folder (rare and recoverable). Single-pick
+  // reference (Droplink) follows the same plain-`DataSource=` shape.
+  if (field.shape === "reference" && sc?.enumHandle) {
+    if (!context) {
+      throw createScaiError(
+        `Field '${field.name}' on recipe '${recipeHandle}' uses sitecore.enumHandle='${sc.enumHandle}' on a reference field but the field-op builder was invoked without a CompileContext.`,
+        "INPUT_INVALID",
+        {
+          hint: "Pass `context` into `buildFieldOp` so the enum's tenant path can be resolved from `enumsByHandle` + `enumerationsRoot`.",
+        }
+      );
+    }
+    const enumPath = resolveEnumFolderPath(context, sc.enumHandle, recipeHandle);
+    return {
+      kind: "string",
+      value: `DataSource=${enumPath}`,
+    };
   }
   if (field.shape === "enum") {
     // Droplist override on an enum field needs the inline values

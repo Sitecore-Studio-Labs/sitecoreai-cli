@@ -59,12 +59,32 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
 
 export interface RecipeTenantOptions extends RecipeCommonOptions {
   environmentName?: string;
+  /**
+   * Optional baseline storage backend. Defaults to a per-(env, recipe)
+   * file under `<configDir>/.scai/baseline/`. Pass a custom
+   * `BaselineStorage` instance (orchestrator-hosted, in-memory, etc.)
+   * to share baselines across operators / CI without changing the
+   * push / pull entry points.
+   *
+   * See `src/recipe/runtime/baseline.ts` for the `BaselineStorage`
+   * interface contract. Caller is responsible for choosing storage
+   * that's appropriate for the run (a remote storage in a CI flow,
+   * file storage for local dev).
+   */
+  baselineStorage?: import("../runtime/baseline").BaselineStorage;
 }
 
 export interface RecipePlanOptions extends RecipeTenantOptions {
   /** Single IR file path. Defaults to the config `recipes` glob (compiled in-memory). */
   input?: string;
   output?: string;
+  /**
+   * Operator override for prune-rollback snapshot languages. Mirrors
+   * the `--snapshot-languages` plumbing on `recipe push`; when unset,
+   * the planner auto-discovers via `getTenantLanguages`. See
+   * `RecipePushOptions.snapshotLanguages`.
+   */
+  snapshotLanguages?: readonly string[];
 }
 
 export interface RecipePushOptions extends RecipeTenantOptions {
@@ -93,14 +113,84 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   whatIf?: boolean;
   allowWrite?: boolean;
   /**
+   * Operator consent to delete items via `PruneChildren` ops with
+   * `mode: "delete"`. Independent of `allowWrite`: writes are always
+   * gated by --apply + the policy tier; PRUNES are additionally gated
+   * by this flag. Without it, a recipe IR containing a delete-mode
+   * PruneChildren throws `POLICY_DENIED` rather than silently
+   * degrading. Set via `--allow-prune` after reviewing the prune list
+   * from a `--what-if` run.
+   */
+  allowPrune?: boolean;
+  /**
+   * Operator override for which languages prune-rollback snapshots
+   * capture. When unset, the planner auto-discovers via the Authoring
+   * API's tenant-level `languages { nodes { name } }` connection
+   * (`getTenantLanguages` on the client). The XM Cloud schema does
+   * NOT expose `Item.languages` — item-level discovery isn't possible,
+   * so the planner enumerates tenant languages and probes each per
+   * item via `getItemVersions`. Falls back to `["en"]` if the tenant
+   * `languages` query errors. Set explicitly (comma-separated via
+   * `--snapshot-languages`) to bound snapshot cost on tenants where
+   * auto-discovery returns languages you don't want captured. The
+   * first entry doubles as the inverse `createItem`'s language.
+   */
+  snapshotLanguages?: readonly string[];
+  /**
    * When true, skip recipes whose compiled IR digest + env-profile roots
    * digest both match the persisted `.scai/recipe-cache.json` entry from
    * the previous successful push. Speedups re-pushes of an unchanged
    * recipe set on warm tenants. Off by default — out-of-band CMS edits
-   * to recipe-owned items aren't auto-redetected until either the recipe
-   * source changes or the cache is invalidated.
+   * to recipe-auto-redetected until either the recipe source changes or
+   * the cache is invalidated.
    */
   skipUnchangedRecipes?: boolean;
+  /**
+   * Optional handle filter. When set, only recipes whose `recipeHandle`
+   * appears in this list are pushed; the rest are dropped after
+   * compile. Matches the `handles` field convention used by the
+   * orchestrator's brief/campaign sync plans so a `recipe-sync` worker
+   * spawning scai can pass through a consistent narrow-by-handle flag.
+   *
+   * Filtering happens AFTER compile because cross-recipe references
+   * need every recipe in the set to resolve. Unknown handles in the
+   * list are ignored (logged at info); when every handle is unknown
+   * the push degrades to a no-op rather than failing.
+   */
+  handles?: readonly string[];
+  /**
+   * Three-way merge conflict policy. Governs how the planner resolves
+   * drift entries whose tenant value differs from the last-applied
+   * baseline:
+   *   - `"error"` (default) — apply blocks; per-conflict action gets
+   *     status `"conflict"` and the recipe aborts before any writes.
+   *   - `"recipe-wins"` — recipe value clobbers the tenant edit (matches
+   *     the legacy two-way diff behaviour scai had before baselines
+   *     existed).
+   *   - `"cms-wins"` — tenant value is preserved, recipe-side change is
+   *     dropped for this push (the recipe re-writes next time if the
+   *     baseline still disagrees).
+   *
+   * Only matters when a baseline is loaded. Without one (`--no-baseline`
+   * or first push to an env), every drift surfaces as `"update"` and
+   * this flag has no effect.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
+  /**
+   * Opt out of three-way merge baseline loading + post-apply writing.
+   * Use cases:
+   *   - First-push test runs against a clean tenant where the operator
+   *     doesn't want a baseline file polluting the workspace.
+   *   - CI runs where the baseline isn't checked in and operator wants
+   *     legacy recipe-wins behaviour.
+   *   - Debugging: comparing pre-baseline vs with-baseline behaviour.
+   *
+   * Default `false` — baselines load and write automatically. The
+   * baseline file lives at
+   * `<configDir>/.scai/baseline/<env>/<slug(handle)>.baseline.json`
+   * and is per-recipe per-environment.
+   */
+  noBaseline?: boolean;
   /**
    * Plan-mode parallelism across recipes. Plan reads are pure (no
    * mutations, no shared mutable refs across recipes), so plan-mode

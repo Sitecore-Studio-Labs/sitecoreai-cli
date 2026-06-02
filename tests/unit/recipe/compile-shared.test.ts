@@ -283,6 +283,71 @@ describe("buildFieldOp — sort order + storage axis", () => {
     expect(sortField?.value).toMatchObject({ value: 42 });
   });
 
+  it("adds sortOrderBase to the auto-assigned sort order", () => {
+    // Parameters templates pass `sortOrderBase: PARAMS_SORT_ORDER_BASE`
+    // (1000) so synthesised rendering parameters sort below the
+    // inherited base-template fields (RenderingIdentifier, Styles,
+    // GridParameters, etc., all in the low hundreds).
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ name: "Headline" }),
+      zeroBasedIndex: 0,
+      sortOrderBase: 1000,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 1100 });
+  });
+
+  it("sortOrderBase offsets an explicit sitecore.sortOrder (relative-to-base semantics)", () => {
+    // Recipes were authored with sortOrder values like 100, 200, 300
+    // when the params base was 0; lifting params to base=1000 needs
+    // those explicit values to also lift, otherwise they collide with
+    // SXA's inherited low-hundreds fields. Treat explicit sortOrder as
+    // RELATIVE to the base, so `{ sortOrderBase: 1000, sortOrder: 50 }`
+    // → 1050 on the rendering-parameters template.
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ sitecore: { sortOrder: 50 } }),
+      zeroBasedIndex: 0,
+      sortOrderBase: 1000,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 1050 });
+  });
+
+  it("explicit sitecore.sortOrder on a base=0 field group is unchanged", () => {
+    // Datasource fields (and any other group keeping the default
+    // sortOrderBase=0) keep authored sortOrder values verbatim.
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ sitecore: { sortOrder: 50 } }),
+      zeroBasedIndex: 0,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    const sortField = created.fields.find((f) => f.value.kind === "number");
+    expect(sortField?.value).toMatchObject({ value: 50 });
+  });
+
   it("emits a Shared flag for shared-storage fields", () => {
     const ops = buildFieldOp({
       recipeHandle: "h@1",
@@ -449,6 +514,63 @@ describe("buildFieldOp — sort order + storage axis", () => {
       created.fields.some((f) => f.value.kind === "string" && f.value.value === "/enums/Color")
     ).toBe(true);
   });
+
+  // reference + enumHandle = multi-pick Treelist sourced from a shared
+  // enum. Source emits a plain `DataSource=<path>` — earlier iterations
+  // appended `&IncludeTemplatesForSelection=<GUID>` to restrict the
+  // picker to enum value items, but Sitecore Pages's Treelist chrome
+  // rejected every pick under that filter (the picker reported "the
+  // source's filter doesn't allow those options" with no recovery
+  // path). The filter wasn't load-bearing — scai doesn't emit stray
+  // children inside enum folders, so the folder's children are
+  // exactly the value items the picker should surface.
+  it("emits DataSource pointing at the enum folder for a reference field with enumHandle (no IncludeTemplatesForSelection)", () => {
+    const enumCtx: CompileContext = {
+      ...baseContext,
+      enumerationsRoot: "/enums",
+      enumsByHandle: new Map<string, EnumerationRecipe>([
+        [
+          "social-platform@1",
+          {
+            kind: "enumeration",
+            schemaVersion: "1",
+            handle: "social-platform@1",
+            name: "SocialPlatform",
+            values: [{ name: "facebook" }, { name: "x" }],
+          } as EnumerationRecipe,
+        ],
+      ]),
+    };
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Platforms",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({
+        name: "Platforms",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist", enumHandle: "social-platform@1" },
+      }),
+      zeroBasedIndex: 0,
+      policy: "CreateOnly",
+      site: "default",
+      context: enumCtx,
+    });
+    const created = ops[0] as CreateItemOp;
+    const source = created.fields.find(
+      (f) =>
+        f.value.kind === "string" && f.value.value.startsWith("DataSource=/enums/SocialPlatform")
+    );
+    expect(source).toBeDefined();
+    if (source?.value.kind === "string") {
+      expect(source.value.value).toBe("DataSource=/enums/SocialPlatform");
+      // Regression guard: never re-introduce the IncludeTemplatesForSelection
+      // suffix on this branch — Pages rejects it.
+      expect(source.value.value).not.toMatch(/IncludeTemplatesForSelection/);
+    }
+  });
 });
 
 describe("buildStandardValuesFieldEntries", () => {
@@ -489,10 +611,272 @@ describe("buildStandardValuesFieldEntries", () => {
     expect(entries[0].value).toMatchObject({ kind: "string", value: "" });
   });
 
-  it("skips a reference-shape default (link / image are not string-expressible)", () => {
+  it("encodes an image default with alt|src as the Sitecore image XML payload", () => {
     const entries = buildStandardValuesFieldEntries("default", "h@1", [
-      field({ name: "Hero", shape: "image", default: "/some/path" }),
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "Hero placeholder|https://picsum.photos/seed/hero/1200/600",
+      }),
     ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://picsum.photos/seed/hero/1200/600" alt="Hero placeholder" />',
+    });
+  });
+
+  it("encodes an image default with just a src (no pipe) as src-only image XML", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "https://picsum.photos/seed/x/800/600",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://picsum.photos/seed/x/800/600" />',
+    });
+  });
+
+  it("escapes XML attribute special chars in image defaults", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: 'Quotes "&" things|https://x?q=a&r=b',
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="https://x?q=a&amp;r=b" alt="Quotes &quot;&amp;&quot; things" />',
+    });
+  });
+
+  it("skips an image default with no src (e.g. alt-only)", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Hero",
+        shape: "image",
+        default: "alt only|",
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+
+  it("encodes a file default with alt|src as the Sitecore file XML payload", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Document",
+        shape: "image",
+        sitecore: { type: "file" },
+        default: "Whitepaper|https://example.com/wp.pdf",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<file src="https://example.com/wp.pdf" alt="Whitepaper" />',
+    });
+  });
+
+  // Reference-shape defaults resolve recipe handles to their
+  // deterministic contentItemId GUIDs. The recipe set is responsible
+  // for materialising those content items in the same compile run; if
+  // the handle doesn't resolve, the SV write fails at apply time.
+  it("encodes a single-reference (Droplink) default as a ref-recipe pointing at the handle's contentItemId", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Author",
+        shape: "reference",
+        multiple: false,
+        sitecore: { type: "droplink" },
+        default: "author-jane@1",
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value.kind).toBe("ref-recipe");
+    if (entries[0].value.kind === "ref-recipe") {
+      // Deterministic — uuid5 of `default::author-jane@1` under the
+      // content-item namespace. Match a UUID shape rather than a hard
+      // GUID so the test stays passing if the namespace seed changes.
+      expect(entries[0].value.refKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
+  });
+
+  it("encodes a multi-reference (Treelist) default as a pipe-separated ref-recipe-list", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Authors",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist" },
+        default: "author-jane@1|author-bob@1|author-eve@1",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe-list");
+    if (entries[0].value.kind === "ref-recipe-list") {
+      expect(entries[0].value.refKeys).toHaveLength(3);
+      for (const refKey of entries[0].value.refKeys) {
+        expect(refKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+    }
+  });
+
+  it("skips a single-reference default when the trimmed handle is empty", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Author",
+        shape: "reference",
+        multiple: false,
+        sitecore: { type: "droplink" },
+        default: "   ",
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+
+  it("skips a multi-reference default when no handles parse out (e.g. only pipes/whitespace)", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Authors",
+        shape: "reference",
+        multiple: true,
+        sitecore: { type: "treelist" },
+        default: " | | ",
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+
+  // Reference + enumHandle = pick value items from a shared enum (multi
+  // via Treelist or single via Droplink-on-reference). Defaults resolve
+  // to enumValueId rather than contentItemId so the SV writes point at
+  // the enum's value-item folder, not a content-item GUID that doesn't
+  // exist. Same author-error contract as the enum-shape SV.
+  it("encodes a multi-reference default with enumHandle as enum-value ref-recipe-list", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Platforms",
+        shape: "reference",
+        multiple: true,
+        sitecore: {
+          type: "treelist",
+          enumHandle: "social-platform@1",
+        },
+        default: "facebook|x|linkedin",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe-list");
+    if (entries[0].value.kind === "ref-recipe-list") {
+      expect(entries[0].value.refKeys).toHaveLength(3);
+      // Should differ from the plain (no-enumHandle) contentItemId
+      // version — derived against enumValueId(enumerationFolderId(...))
+      // instead of contentItemId(site, handle). Just shape-check.
+      for (const refKey of entries[0].value.refKeys) {
+        expect(refKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+    }
+  });
+
+  it("encodes a single-reference default with enumHandle as a single enum-value ref-recipe", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Platform",
+        shape: "reference",
+        multiple: false,
+        sitecore: {
+          type: "droplink",
+          enumHandle: "social-platform@1",
+        },
+        default: "x",
+      }),
+    ]);
+    expect(entries[0].value.kind).toBe("ref-recipe");
+    if (entries[0].value.kind === "ref-recipe") {
+      expect(entries[0].value.refKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
+  });
+
+  it("encodes a general-link default with text|url as the Sitecore link XML payload", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Get started|https://example.com",
+      }),
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Get started" linktype="external" url="https://example.com" />',
+    });
+  });
+
+  it("encodes a general-link default with no pipe as text + anchor URL", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Click here",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Click here" linktype="anchor" url="#" />',
+    });
+  });
+
+  it("encodes a general-link default with mailto: as linktype mailto", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "Email us|mailto:hello@example.com",
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<link text="Email us" linktype="mailto" url="mailto:hello@example.com" />',
+    });
+  });
+
+  it("escapes XML attribute special chars in general-link defaults", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: 'Read "A&B"|https://x?q=1&r=2',
+      }),
+    ]);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value:
+        '<link text="Read &quot;A&amp;B&quot;" linktype="external" url="https://x?q=1&amp;r=2" />',
+    });
+  });
+
+  it("skips a general-link default with empty raw string", () => {
+    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+      field({
+        name: "Link",
+        shape: "link",
+        sitecore: { type: "general-link" },
+        default: "",
+      }),
+    ]);
+    // Empty default → encoder returns undefined, but the upstream
+    // code in buildStandardValuesFieldEntries treats `default: ""`
+    // as "no default declared" before the encoder ever runs; either
+    // way the SV gets no entry for this field.
     expect(entries).toEqual([]);
   });
 

@@ -99,6 +99,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
       pageTemplatesRoot,
       placeholderSettingsRoot,
       pagesRoot,
+      marketplacePluginOverrides: root.marketplacePluginOverrides,
     });
 
     const outputPath =

@@ -9,6 +9,8 @@ import {
   placeholderSettingsFolderId,
   placeholderSettingsId,
   renderingId,
+  renderingsSectionFolderId,
+  sectionFolderId,
   sharedDataFolderStandardValuesId,
   sharedDataFolderTemplateId,
   siteDataFolderTemplateId,
@@ -20,6 +22,7 @@ import {
   type Operation,
   type OperationIr,
   OperationIrSchema,
+  type PruneChildrenOp,
   type SetBaseTemplatesOp,
   type SetFieldOp,
   type SetStandardValuesOp,
@@ -37,14 +40,18 @@ import {
   STANDARD_TEMPLATE_ID,
   SYSTEM_FIELDS,
 } from "./ir/sitecore-templates";
-import { type Recipe, RecipeSchema } from "./schema/recipe";
+import {
+  type Recipe,
+  RecipeSchema,
+  resolveAllowedHandles,
+  type SitecoreFieldAugment,
+} from "./schema/recipe";
 import { encodeTemplatesMapping } from "./layout/templates-mapping";
 
 import { compileComponentSectionRecipe } from "./compile/component-section";
 import { compileComponentTemplateRecipe } from "./compile/component-template";
 import { compileContentTemplateRecipe } from "./compile/content-template";
 import { compileDesignParametersTemplateRecipe } from "./compile/design-parameters-template";
-import { compileSectionDefinitionRecipe } from "./compile/section-definition";
 import { compilePartialDesignRecipe } from "./compile/partial-design";
 import { compilePageDesignRecipe } from "./compile/page-design";
 import { compilePageTemplateRecipe } from "./compile/page-template";
@@ -72,7 +79,6 @@ export {
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
   compileDesignParametersTemplateRecipe,
-  compileSectionDefinitionRecipe,
   compilePartialDesignRecipe,
   compilePageDesignRecipe,
   compilePageTemplateRecipe,
@@ -161,6 +167,39 @@ export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
 export const PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE = "__placeholder-settings__";
 
 /**
+ * Stable handle for the synthetic IR that materialises subtree-level
+ * ownership for `ComponentSectionRecipe`s whose `ownership.mode` is
+ * `"exclusive"`. Per exclusively-owned section the aggregate emits
+ * `PruneChildren` ops for BOTH:
+ *
+ *   - The RENDERINGS section folder (`<renderingsRoot>/<section.name>`)
+ *     — prunes any rendering item the recipe set didn't produce.
+ *     `templateFilter: [RENDERING]` ensures only items conforming to
+ *     SXA Rendering get pruned — co-located non-rendering items stay.
+ *
+ *   - The TEMPLATES section folder (`<componentsRoot>/<section.name>`)
+ *     — prunes any component-template item the recipe set didn't
+ *     produce. `templateFilter: [TEMPLATE]` restricts the prune to
+ *     items conforming to the SXA Template meta-template, so the
+ *     "Component Folders" and "Presentation Parameters" bucket folders
+ *     (`templateOf: TEMPLATE_FOLDER`) are skipped — those are
+ *     compiler-managed scaffolding, not author-facing content.
+ *
+ * NOT pruned by this aggregate: the SXA Headless Variants tree. SXA
+ * stores per-rendering variant folders FLAT under
+ * `<headlessVariantsRoot>/<RenderingName>`, not under a per-section
+ * subfolder — so a section-scoped ownership declaration can't safely
+ * address them (it would have to reach across sections). A site-level
+ * variants ownership concept could land later; until then, orphan
+ * variant folders for retired renderings stay put and need manual
+ * cleanup or a hand-authored PruneChildren op.
+ *
+ * Same `__…__` compiler-synthesized convention as the other aggregate
+ * handles in this file.
+ */
+export const COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE = "__component-section-ownership__";
+
+/**
  * Cross-recipe apply-ordering rank, by recipe kind. `compileRecipeSet`
  * stably sorts per-recipe IRs by this rank so every recipe is applied
  * after the definitions it references:
@@ -184,7 +223,6 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   "content-template": 0,
   "page-template": 0,
   "design-parameters-template": 0,
-  "section-definition": 0,
   enumeration: 0,
   workflow: 0,
   "webhook-authorization": 0,
@@ -195,6 +233,214 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   page: 3,
   "site-template": 4,
   site: 5,
+};
+
+const sourceTypesOfAugment = (augment: SitecoreFieldAugment | undefined): readonly string[] => {
+  if (augment?.source?.kind !== "filter") return [];
+  return augment.source.types ?? [];
+};
+
+/**
+ * Enumerate every cross-recipe handle reference a recipe carries.
+ *
+ * Mirrors `validate.ts`'s reference inventory but RETURNS the set
+ * rather than checking it — used by `stableTopologicalSortWithinRanks`
+ * below to order recipes within an apply-rank so referenced
+ * recipes always push before recipes that point at them. (Validation
+ * already runs separately and asserts every handle resolves to an
+ * extant recipe of the right kind; this extractor assumes input has
+ * already been validated and doesn't re-check.)
+ *
+ * Keep in sync with the inventory in `validate.ts` whenever a new
+ * cross-recipe reference site is added — a forgotten reference
+ * silently reverts to alphabetic file-glob order for the affected
+ * recipe pair, which manifests as "ref-source-fields … not yet in
+ * captured map" at first push.
+ */
+const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
+  const deps = new Set<string>();
+  const add = (h: string | undefined) => {
+    if (h && h !== recipe.handle) deps.add(h);
+  };
+  switch (recipe.kind) {
+    case "component-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      add(recipe.datasource?.template?.handle);
+      add(recipe.parameters?.handle);
+      recipe.children?.allowedHandles.forEach(add);
+      for (const slot of recipe.placeholders ?? []) {
+        resolveAllowedHandles(slot).forEach(add);
+      }
+      break;
+    case "content-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      break;
+    case "design-parameters-template":
+      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
+      break;
+    case "content-item":
+      add(recipe.templateType);
+      for (const v of Object.values(recipe.fields)) {
+        if (v.shape === "link-internal") add(v.ref);
+        else if (v.shape === "reference") v.refs.forEach(add);
+      }
+      break;
+    case "page-template":
+      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      recipe.insertOptions?.forEach(add);
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "page":
+      add(recipe.template);
+      for (const v of Object.values(recipe.fields ?? {})) {
+        if (v.shape === "link-internal") add(v.ref);
+        else if (v.shape === "reference") v.refs.forEach(add);
+      }
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "partial-design":
+      for (const placements of Object.values(recipe.layout.placeholders)) {
+        for (const p of placements) {
+          add(p.componentHandle);
+          if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+        }
+      }
+      break;
+    case "page-design":
+      recipe.appliesTo.forEach(add);
+      recipe.partials.forEach(add);
+      if (recipe.layout) {
+        for (const placements of Object.values(recipe.layout.placeholders)) {
+          for (const p of placements) {
+            add(p.componentHandle);
+            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+          }
+        }
+      }
+      break;
+    case "placeholder":
+      (recipe.allowedComponents ?? []).forEach(add);
+      break;
+    case "site-template":
+      recipe.pageTemplates.forEach(add);
+      recipe.pageDesigns.forEach(add);
+      if (recipe.insertOptionsMatrix) {
+        for (const [parent, children] of Object.entries(recipe.insertOptionsMatrix)) {
+          add(parent);
+          children.forEach(add);
+        }
+      }
+      if (recipe.templatesToDesigns) {
+        for (const [tplHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
+          add(tplHandle);
+          add(designHandle);
+        }
+      }
+      break;
+    case "site":
+      add(recipe.siteTemplate);
+      if (recipe.initialHome !== undefined) add(recipe.initialHome);
+      break;
+    case "component-section":
+    case "enumeration":
+    case "workflow":
+    case "webhook-authorization":
+      // Pure definitions — no outbound recipe refs in the authored shape.
+      break;
+  }
+  return [...deps];
+};
+
+/**
+ * Order recipes by apply-rank, then topologically by intra-rank
+ * cross-recipe dependencies. Producer recipes push before the
+ * recipes that reference them.
+ *
+ * Algorithm: Kahn's topological sort restricted to within-rank edges,
+ * tie-broken by original input index so unrelated recipes keep their
+ * file-glob order. Cross-rank dependencies are handled by the coarse
+ * rank already — within-rank topology only matters when two recipes
+ * of the same kind reference each other (the common case is a
+ * component-template referencing a content-template at rank 0; both
+ * sort to rank 0 and need intra-rank ordering).
+ *
+ * Cycles within a rank are not expected — `validateRecipeSet`'s cycle
+ * detector catches `insertOptions` chains, and other cross-recipe
+ * graphs are acyclic by schema construction. If a cycle does slip
+ * through (defensive), the algorithm preserves input order for the
+ * cyclic subset and emits all remaining recipes after, so push still
+ * runs in a deterministic order rather than throwing here.
+ */
+const stableTopologicalSortWithinRanks = (recipes: readonly Recipe[]): readonly Recipe[] => {
+  // Group by rank, preserving input order within each group.
+  const groups = new Map<number, Recipe[]>();
+  for (const r of recipes) {
+    const rank = RECIPE_APPLY_RANK[r.kind];
+    let bucket = groups.get(rank);
+    if (!bucket) {
+      bucket = [];
+      groups.set(rank, bucket);
+    }
+    bucket.push(r);
+  }
+  const out: Recipe[] = [];
+  for (const rank of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(rank)!;
+    if (group.length <= 1) {
+      out.push(...group);
+      continue;
+    }
+    // Build dep graph: handle → set of in-group dep handles.
+    const handleToIndex = new Map<string, number>();
+    group.forEach((r, idx) => handleToIndex.set(r.handle, idx));
+    const inDegree = new Array<number>(group.length).fill(0);
+    const adjacency: number[][] = group.map(() => []);
+    for (let i = 0; i < group.length; i++) {
+      for (const depHandle of extractRecipeDependencies(group[i])) {
+        const depIdx = handleToIndex.get(depHandle);
+        if (depIdx === undefined || depIdx === i) continue;
+        adjacency[depIdx].push(i);
+        inDegree[i]++;
+      }
+    }
+    // Kahn's algorithm with stable tie-break by original index.
+    const ready: number[] = [];
+    for (let i = 0; i < group.length; i++) if (inDegree[i] === 0) ready.push(i);
+    const sorted: Recipe[] = [];
+    while (ready.length > 0) {
+      ready.sort((a, b) => a - b);
+      const idx = ready.shift()!;
+      sorted.push(group[idx]);
+      for (const next of adjacency[idx]) {
+        inDegree[next]--;
+        if (inDegree[next] === 0) ready.push(next);
+      }
+    }
+    // Defensive: append any cycle survivors in input order.
+    if (sorted.length < group.length) {
+      const placed = new Set(sorted.map((r) => r.handle));
+      for (const r of group) if (!placed.has(r.handle)) sorted.push(r);
+    }
+    out.push(...sorted);
+  }
+  return out;
 };
 
 /**
@@ -322,6 +568,114 @@ const buildAvailableRenderingsAggregate = (
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
+    operations,
+  });
+};
+
+/**
+ * Build the synthetic IR that materialises subtree ownership for
+ * `ComponentSectionRecipe`s whose `ownership.mode` is `"exclusive"`.
+ * Per exclusively-owned section, emits TWO `PruneChildren` ops — one
+ * targeting the renderings folder (`<renderingsRoot>/<section.name>`),
+ * one targeting the templates section folder
+ * (`<componentsRoot>/<section.name>`). Both carry `allowedHandles`
+ * listing the recipe set's contributions and a `templateFilter`
+ * scoping the prune to actual rendering / template items so co-located
+ * bucket folders ("Component Folders", "Presentation Parameters") stay
+ * untouched.
+ *
+ * The op's `mode` defaults to the section's `ownership.pruneMode`
+ * (`"warn"` by default — rehearsal-first). The operator still needs to
+ * pass `--allow-prune` for `"delete"`-mode ops to actually fire.
+ *
+ * Multi-list ownership (the Available Renderings field) is folded into
+ * the existing `buildAvailableRenderingsAggregate`, which uses
+ * SetField (full-replace semantics) — so an exclusive ComponentSection
+ * gets full ownership of BOTH the subtree AND the multi-list from a
+ * single declaration. Authors don't have to coordinate two recipes.
+ *
+ * Returns `null` when no ComponentSection declares exclusive ownership.
+ */
+const buildComponentSectionSubtreeOwnershipAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext
+): OperationIr | null => {
+  const site = siteOf(context);
+
+  const exclusiveSections = new Map<string, import("./schema/recipe").ComponentSectionRecipe>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-section") continue;
+    if (recipe.ownership?.mode !== "exclusive") continue;
+    exclusiveSections.set(recipe.handle, recipe);
+  }
+  if (exclusiveSections.size === 0) return null;
+
+  // Gather component recipes per exclusive section (matching via the
+  // component's `section.handle`). These contribute the `allowedHandles`
+  // for the section's renderings folder prune.
+  const sectionToRenderings = new Map<string, string[]>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "component-template") continue;
+    if (!recipe.section) continue;
+    if (!exclusiveSections.has(recipe.section.handle)) continue;
+    const list = sectionToRenderings.get(recipe.section.handle) ?? [];
+    list.push(recipe.handle);
+    sectionToRenderings.set(recipe.section.handle, list);
+  }
+
+  const operations: Operation[] = [];
+  for (const [sectionHandle, section] of exclusiveSections) {
+    const componentHandles = (sectionToRenderings.get(sectionHandle) ?? []).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    const mode = section.ownership?.pruneMode ?? "warn";
+
+    // Renderings folder prune. The section folder is created by
+    // `compileComponentSectionRecipe` (rank 0) before this aggregate
+    // runs, so the refKey is in the captured map by the time the
+    // PruneChildren lands. No latePath needed.
+    operations.push({
+      op: "PruneChildren",
+      policy: policyFor("composition-structure"),
+      label: `prune:renderings-section:${site}:${section.name}`,
+      parentRefKey: renderingsSectionFolderId(site, section.name),
+      allowedHandles: componentHandles.map((handle) => ({
+        kind: "ref-recipe" as const,
+        refKey: renderingId(site, handle),
+      })),
+      // Limit to the SXA Rendering template so co-located non-rendering
+      // items (any future scaffolding under the folder) stay put.
+      templateFilter: [SITECORE_TEMPLATES.RENDERING],
+      mode,
+    } satisfies PruneChildrenOp);
+
+    // Templates section folder prune. Component template items live as
+    // direct children of `<componentsRoot>/<section.name>/`, alongside
+    // bucket folders ("Component Folders", "Presentation Parameters")
+    // that conform to `TEMPLATE_FOLDER` rather than `TEMPLATE`. The
+    // template filter restricts the prune to actual component-template
+    // items so the buckets stay untouched — wiping them would orphan
+    // the per-component datasource folder templates and presentation-
+    // parameter templates that live inside.
+    operations.push({
+      op: "PruneChildren",
+      policy: policyFor("composition-structure"),
+      label: `prune:templates-section:${site}:${section.name}`,
+      parentRefKey: sectionFolderId(site, section.name),
+      allowedHandles: componentHandles.map((handle) => ({
+        kind: "ref-recipe" as const,
+        refKey: templateId(site, handle),
+      })),
+      templateFilter: [SITECORE_TEMPLATES.TEMPLATE],
+      mode,
+    } satisfies PruneChildrenOp);
+  }
+
+  if (operations.length === 0) return null;
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
     operations,
   });
 };
@@ -806,7 +1160,15 @@ const buildPlaceholderSettingsAggregate = (
           decl.displayName = slot.displayName;
         }
         if (slot.folder && decl.folder === undefined) decl.folder = slot.folder;
-        for (const handle of slot.allowedComponents ?? []) decl.allowed.add(handle);
+        // Slot-side allow list. Accept both `allowedComponents` (scai's
+        // historical name) and `allowedRenderingHandles` (the
+        // registry-side alias) — see resolveAllowedHandles in
+        // schema/recipe.ts. Earlier the compiler only read
+        // `allowedComponents`, so recipes authored with
+        // `allowedRenderingHandles` silently dropped their restriction
+        // on the Sitecore side (e.g. accordion-block's Headless
+        // placeholder accepting any rendering).
+        for (const handle of resolveAllowedHandles(slot)) decl.allowed.add(handle);
       }
     }
   }
@@ -1047,10 +1409,22 @@ export function compileRecipeSet(
   // after its site template. On a fresh push the executor resolves a
   // cross-recipe `templateOf` / ref-recipe only once the defining
   // recipe's IR has run; input (file-glob) order doesn't guarantee that
-  // (`home@1` sorts before `page@1`). The sort is STABLE — input order
-  // is preserved within a rank, so intra-rank emission order (section
-  // folders, etc.) is untouched.
-  const ranked = [...recipes].sort((a, b) => RECIPE_APPLY_RANK[a.kind] - RECIPE_APPLY_RANK[b.kind]);
+  // (`home@1` sorts before `page@1`).
+  //
+  // Within a single rank we ALSO topologically sort by recipe-level
+  // handle dependencies — without this, alphabetic file-glob order can
+  // put a referencing recipe before its referent at the same rank
+  // (e.g. `accordion-block.recipe.ts` < `faq-content.recipe.ts` lex-
+  // sorts the dependent first, then accordion-block's
+  // `field.source.types: ["faq-content@1"]` `ref-source-fields` SetField
+  // op fires before faq-content's CreateItem op runs → "not yet in
+  // captured map"). Same applies to `insertOptions`, `placeholders.
+  // allowedComponents`, and every other cross-recipe handle reference
+  // enumerated by `extractRecipeDependencies` below. The sort is stable
+  // (preserves input order among recipes with no dep relationship), so
+  // intra-rank emission order for unrelated siblings (section folders,
+  // etc.) is unchanged.
+  const ranked = stableTopologicalSortWithinRanks(recipes);
   const irs: OperationIr[] = ranked.map((r) => irByHandle.get(r.handle)!);
 
   const setSite = siteOf(context);
@@ -1149,6 +1523,49 @@ export function compileRecipeSet(
     irs.push(placeholderSettings);
   }
 
+  // Subtree ownership aggregate — emits PruneChildren ops for sections
+  // whose ComponentSectionRecipe declares ownership.children: "exclusive".
+  // MUST run LAST so every rendering CreateItem op has landed and the
+  // captured-itemId map is fully seeded; the planner reads live children
+  // of each section folder and computes (children - allowedHandles) at
+  // apply time, so any rendering the recipe set didn't produce is on the
+  // prune candidate list.
+  const componentSectionOwnership = buildComponentSectionSubtreeOwnershipAggregate(
+    recipes,
+    context
+  );
+  if (componentSectionOwnership) {
+    irs.push(componentSectionOwnership);
+  }
+
+  // Invariant guard: any IR that emits a PruneChildren op MUST be
+  // followed only by IRs that don't create items. Pruning happens last
+  // (after the captured-itemId map is fully seeded by every CreateItem
+  // in the recipe set); a future aggregate appended below the prune
+  // emitter that introduces new CreateItems would corrupt the prune
+  // candidate list — the planner reads live children at apply time and
+  // would prune items the same push was about to create.
+  //
+  // This catches the regression at compile time, before any wire call.
+  let firstPruneIrIndex = -1;
+  for (let i = 0; i < irs.length; i += 1) {
+    if (irs[i].operations.some((op) => op.op === "PruneChildren")) {
+      firstPruneIrIndex = i;
+      break;
+    }
+  }
+  if (firstPruneIrIndex >= 0) {
+    for (let i = firstPruneIrIndex + 1; i < irs.length; i += 1) {
+      const offending = irs[i].operations.find((op) => op.op === "CreateItem");
+      if (offending) {
+        throw createScaiError(
+          `Aggregate ordering invariant violated: IR '${irs[i].recipeHandle}' emits a CreateItem after the prune-emitting IR '${irs[firstPruneIrIndex].recipeHandle}' (offending op label: '${offending.label}'). PruneChildren must run LAST in compileRecipeSet — anything that creates items must appear before the prune aggregate.`,
+          "UNKNOWN"
+        );
+      }
+    }
+  }
+
   return irs;
 }
 
@@ -1172,8 +1589,6 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compilePlaceholderRecipe(recipe, context);
     case "design-parameters-template":
       return compileDesignParametersTemplateRecipe(recipe, context);
-    case "section-definition":
-      return compileSectionDefinitionRecipe(recipe, context);
     case "partial-design":
       return compilePartialDesignRecipe(recipe, context);
     case "page-design":

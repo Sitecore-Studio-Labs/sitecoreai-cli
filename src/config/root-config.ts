@@ -121,6 +121,7 @@ export const readRootConfiguration = (
     defaultEnvironment: rootJson.defaultEnvProfile ?? DEFAULT_ENVIRONMENT,
     defaultEnvProfile: rootJson.defaultEnvProfile,
     recipes: rootJson.recipes ?? DEFAULT_RECIPES_GLOBS,
+    marketplacePluginOverrides: rootJson.marketplacePluginOverrides ?? {},
   };
 };
 

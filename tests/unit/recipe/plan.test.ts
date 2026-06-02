@@ -64,7 +64,14 @@ describe("buildPlan — idempotent re-push (everything already in desired state)
     expect(firstApply.aborted).toBe(false);
 
     const plan = await buildPlan(ir, client);
-    expect(plan.summary).toEqual({ create: 0, update: 0, skip: ir.operations.length, error: 0 });
+    expect(plan.summary).toEqual({
+      create: 0,
+      update: 0,
+      skip: ir.operations.length,
+      error: 0,
+      prune: 0,
+      conflict: 0,
+    });
     expect(plan.actions.every((a) => a.status === "skip")).toBe(true);
   });
 });
@@ -258,5 +265,194 @@ describe("buildPlan — fieldName-based diff matching", () => {
         },
       ]);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Three-way merge — baseline classification + conflict policy
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildPlan — three-way merge classification", () => {
+  const itemId = "33333333-3333-3333-3333-333333333333";
+  const itemRefKey = "55555555-5555-5555-5555-555555555555";
+  const itemPath = "/sitecore/content/Demo/Data/Foo";
+  const fieldId = "c8a15ad2-8107-5cdd-a248-8c94eff1488e";
+
+  /**
+   * Set up: a SetField op writing `recipeValue` to the Body field. The
+   * tenant has `tenantValue` already. The baseline records that the
+   * previous push wrote `baselineValue`.
+   */
+  const planWith = async (
+    recipeValue: string,
+    tenantValue: string,
+    baselineValue: string | null,
+    conflictPolicy?: "error" | "recipe-wins" | "cms-wins"
+  ) => {
+    const setBodyOp: import("../../../src/recipe/ir/operations").SetFieldOp = {
+      op: "SetField",
+      policy: "CreateAndUpdate",
+      label: "field:foo:Body",
+      itemRefKey,
+      fieldId,
+      fieldName: "Body",
+      language: "en",
+      version: 1,
+      value: { kind: "string", value: recipeValue },
+    };
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId,
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "00000000-0000-0000-0000-000000000aaa",
+      name: "Foo",
+      path: itemPath,
+      fields: [{ fieldId: "server-assigned-guid", name: "Body", value: tenantValue }],
+    });
+
+    const { hashFieldValue, indexBaseline } = await import("../../../src/recipe/runtime/baseline");
+    const baseline =
+      baselineValue === null
+        ? null
+        : {
+            schemaVersion: "1" as const,
+            recipeHandle: "foo@1",
+            envName: "test",
+            capturedAt: "2026-06-01T00:00:00Z",
+            fields: [
+              {
+                itemRefKey,
+                fieldId,
+                fieldName: "Body",
+                language: "en" as const,
+                version: 1,
+                valueHash: hashFieldValue(baselineValue),
+              },
+            ],
+          };
+
+    const plan = await buildPlan(
+      {
+        schemaVersion: "1",
+        recipeHandle: "foo@1",
+        operations: [setBodyOp],
+      },
+      client,
+      {
+        capturedItemIds: new Map([[itemRefKey, itemId]]),
+        // "no baseline at all" — leave baselineIndex undefined (the
+        // --no-baseline opt-out path); only pass an index when we have
+        // actual baseline content to classify against.
+        ...(baseline !== null && { baselineIndex: indexBaseline(baseline) }),
+        conflictPolicy,
+      }
+    );
+    return plan;
+  };
+
+  it("recipe-change: tenant matches baseline → safe update, no classification surface", async () => {
+    // R='new', C='old', B='old' — tenant unchanged since last push.
+    const plan = await planWith("new", "old", "old");
+    expect(plan.summary.update).toBe(1);
+    expect(plan.summary.conflict).toBe(0);
+    expect(plan.actions[0].status).toBe("update");
+    expect(plan.actions[0].diff?.[0].classification).toBe("recipe-change");
+  });
+
+  it("cms-edit (default policy=error): recipe unchanged, tenant edited → status=conflict", async () => {
+    // R='same', C='author-edit', B='same' — recipe matches baseline,
+    // tenant moved.
+    const plan = await planWith("same", "author-edit", "same");
+    expect(plan.summary.conflict).toBe(1);
+    expect(plan.summary.update).toBe(0);
+    expect(plan.actions[0].status).toBe("conflict");
+    expect(plan.actions[0].diff?.[0].classification).toBe("cms-edit");
+    expect(plan.actions[0].reason).toMatch(/cms-edit/);
+  });
+
+  it("conflict (default policy=error): both diverged → status=conflict", async () => {
+    // R='recipe-new', C='author-edit', B='old' — both moved.
+    const plan = await planWith("recipe-new", "author-edit", "old");
+    expect(plan.summary.conflict).toBe(1);
+    expect(plan.actions[0].status).toBe("conflict");
+    expect(plan.actions[0].diff?.[0].classification).toBe("conflict");
+    expect(plan.actions[0].reason).toMatch(/tenant and recipe both diverged/);
+  });
+
+  it("policy=recipe-wins downgrades cms-edit to update with a reason", async () => {
+    const plan = await planWith("same", "author-edit", "same", "recipe-wins");
+    expect(plan.summary.update).toBe(1);
+    expect(plan.summary.conflict).toBe(0);
+    expect(plan.actions[0].status).toBe("update");
+    expect(plan.actions[0].reason).toMatch(/recipe-wins/);
+  });
+
+  it("policy=cms-wins downgrades cms-edit to skip with a reason", async () => {
+    const plan = await planWith("same", "author-edit", "same", "cms-wins");
+    expect(plan.summary.skip).toBe(1);
+    expect(plan.summary.conflict).toBe(0);
+    expect(plan.actions[0].status).toBe("skip");
+    expect(plan.actions[0].reason).toMatch(/cms-wins/);
+  });
+
+  it("first-push: baseline has no entry for this field → recipe-change (legacy update)", async () => {
+    // R='new', C='old', baseline has NO entry for Body (different field).
+    const { hashFieldValue, indexBaseline } = await import("../../../src/recipe/runtime/baseline");
+    const baseline = {
+      schemaVersion: "1" as const,
+      recipeHandle: "foo@1",
+      envName: "test",
+      capturedAt: "2026-06-01T00:00:00Z",
+      fields: [
+        {
+          itemRefKey,
+          fieldId: "unrelated-field",
+          valueHash: hashFieldValue("unrelated"),
+        },
+      ],
+    };
+    const setBodyOp: import("../../../src/recipe/ir/operations").SetFieldOp = {
+      op: "SetField",
+      policy: "CreateAndUpdate",
+      label: "field:foo:Body",
+      itemRefKey,
+      fieldId,
+      fieldName: "Body",
+      language: "en",
+      version: 1,
+      value: { kind: "string", value: "new" },
+    };
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId,
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "00000000-0000-0000-0000-000000000aaa",
+      name: "Foo",
+      path: itemPath,
+      fields: [{ fieldId: "server", name: "Body", value: "old" }],
+    });
+    const plan = await buildPlan(
+      { schemaVersion: "1", recipeHandle: "foo@1", operations: [setBodyOp] },
+      client,
+      {
+        capturedItemIds: new Map([[itemRefKey, itemId]]),
+        baselineIndex: indexBaseline(baseline),
+      }
+    );
+    expect(plan.actions[0].status).toBe("update");
+    expect(plan.actions[0].diff?.[0].classification).toBe("first-push");
+  });
+
+  it("no baseline at all → legacy two-way diff, no classification on entries", async () => {
+    const plan = await planWith("new", "old", null);
+    expect(plan.actions[0].status).toBe("update");
+    expect(plan.actions[0].diff?.[0].classification).toBeUndefined();
+  });
+
+  it("idempotent re-push with baseline: tenant==recipe==baseline → skip with no diff", async () => {
+    const plan = await planWith("same", "same", "same");
+    expect(plan.summary.skip).toBe(1);
+    expect(plan.actions[0].status).toBe("skip");
+    expect(plan.actions[0].diff).toBeUndefined();
   });
 });

@@ -547,12 +547,14 @@ describe("compileEnumerationRecipe — location.folder grouping", () => {
  *   - SV default encodes as `ref-recipe` to
  *     `enumValueId(enumerationFolderId(site, enumHandle), default)`.
  *
- * Inline Droplink (shape=enum + inline `values` + neither override) is
- * NOT supported — the SXA Headless rendering parameters dialog never
- * reliably picked up the per-field folder of values, so the compiler
- * rejects this combo with INPUT_INVALID at field-emission time.
+ * Inline Droplink (shape=enum + inline `values` + no enumHandle) is
+ * inferred as Droplist — the only sensible interpretation when the
+ * author has provided inline values but no shared `EnumerationRecipe`
+ * to point at. `resolveSitecoreType` picks `"droplist"` as the default
+ * so authors don't have to repeat themselves with an explicit
+ * `sitecore.type: "droplist"`.
  */
-describe("compileComponentTemplateRecipe — inline Droplink (rejected)", () => {
+describe("compileComponentTemplateRecipe — shape=enum + inline values (auto-droplist)", () => {
   const recipe: ComponentTemplateRecipe = {
     kind: "component-template",
     schemaVersion: "1",
@@ -569,10 +571,17 @@ describe("compileComponentTemplateRecipe — inline Droplink (rejected)", () => 
     ],
   } as ComponentTemplateRecipe;
 
-  it("throws INPUT_INVALID on shape=enum + values without sitecore.type=droplist or sitecore.enumHandle", () => {
-    expect(() => compileComponentTemplateRecipe(recipe, CONTEXT)).toThrowError(
-      /inline Droplink isn't supported/
-    );
+  it("defaults to Droplist with the inline values as pipe-separated Source", () => {
+    const ir = compileComponentTemplateRecipe(recipe, CONTEXT);
+    const fieldOp = findCreateItem(ir.operations, (o) => o.name === "Mood");
+    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.TYPE)?.value).toEqual({
+      kind: "string",
+      value: "Droplist",
+    });
+    expect(findField(fieldOp!.fields, TEMPLATE_FIELD_FIELDS.SOURCE)?.value).toEqual({
+      kind: "string",
+      value: "calm|loud",
+    });
   });
 });
 

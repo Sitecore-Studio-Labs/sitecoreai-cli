@@ -136,3 +136,8 @@ export {
   type EnrichExistingKitOptions,
   type EnrichExistingKitResult,
 } from "./seed";
+
+// Recipe kind — wired into scai's `sync` engine for declarative
+// brand-kit sync. Three-way merge supported via `ctx.baselineStorage`.
+export { brandKitKind } from "./recipe";
+export type { BrandKitRecipe } from "./recipe";

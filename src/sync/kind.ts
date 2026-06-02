@@ -11,6 +11,7 @@
  */
 import type { ZodType } from "zod";
 import type { Logger } from "@/shared/logger";
+import type { BaselineStorage, PullConflictPolicy, PushConflictPolicy } from "./baseline";
 import type { RecipeChange, RecipePlan } from "./plan";
 
 /** Identifies one instance of a recipe kind on a remote environment. */
@@ -34,6 +35,70 @@ export interface SyncContext {
   logger?: Logger;
   /** Cancellation — kinds making HTTP calls should forward this. */
   signal?: AbortSignal;
+  /**
+   * Skip every code path that triggers a Sitecore AI enrichment
+   * pipeline run. Set by the operator via `--no-enrich` on a push
+   * command (or by an orchestrator-driven flow that knows the kit is
+   * already structured).
+   *
+   * Effect on the `brand-kit` kind:
+   *  - the kitChange path becomes an error (the kit doesn't exist yet
+   *    so PATCHes can't land) instead of seeding;
+   *  - the self-heal-on-existing-bare-kit path is skipped;
+   *  - the field-PATCH loop still runs, with operator-authored values
+   *    landing on whatever sections happen to already exist.
+   *
+   * Other kinds may ignore this flag — it's a brand-kit-specific
+   * trade-off today, but lives on the shared context so the engine
+   * can route the same intent through any future kind that has
+   * comparable side effects.
+   */
+  skipEnrichment?: boolean;
+  /**
+   * Operator consent to delete items via `PruneChildren` ops with
+   * `mode: "delete"` — same shape as `--allow-prune` on `scai recipe
+   * push`. Without it, the `recipe` kind's `apply` throws
+   * `POLICY_DENIED` on any delete-mode prune in the compiled IR set.
+   *
+   * Only consumed by the `recipe` kind today; other kinds ignore.
+   */
+  allowPrune?: boolean;
+  /**
+   * Operator override for prune-rollback snapshot languages. Mirrors
+   * the `--snapshot-languages` shape on `scai recipe push`. Forwarded
+   * to `executeIr` so the snapshot pass captures the operator-named
+   * languages instead of auto-discovering. Undefined → auto-discover
+   * via the Authoring API's tenant `languages` query.
+   *
+   * Only consumed by the `recipe` kind today; other kinds ignore.
+   */
+  snapshotLanguages?: readonly string[];
+  /**
+   * Pluggable per-kind baseline backing store. When present, kinds that
+   * opt into three-way merge classification call
+   * `baselineStorage.load(kind, env, handle)` during `plan()` and
+   * `baselineStorage.write(...)` from `apply()` after a successful
+   * write. Forwarded through by the engine when callers set it on
+   * `PushOptions` / `PullOptions`. Kinds without baseline support
+   * ignore.
+   *
+   * The content-recipe runtime carries its own file-backed storage
+   * separately (see `src/recipe/runtime/baseline.ts`) — this seam is
+   * for new kinds (brief, campaign, …) and remote (orchestrator-
+   * backed) impls that share one store across many kinds.
+   */
+  baselineStorage?: BaselineStorage;
+  /**
+   * Conflict policy in effect for a `push` (set by the engine from
+   * `PushOptions.conflictPolicy`). Kinds that classify per-field
+   * consult this to downgrade `conflict` / `cms-edit` actions to the
+   * chosen resolution. Default behaviour when unset is the kind's
+   * choice — content recipes default to `"error"`; brief / campaign
+   * kinds default to `"cms-wins"`.
+   */
+  pushConflictPolicy?: PushConflictPolicy;
+  /** Conflict policy in effect for a `pull` (set by the engine). */
+  pullConflictPolicy?: PullConflictPolicy;
 }
 
 /** Outcome of applying a plan. */

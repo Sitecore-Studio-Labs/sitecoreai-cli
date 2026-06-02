@@ -1,8 +1,10 @@
 import { Command, Option } from "commander";
 import {
+  addAllowPruneOption,
   addAllowWriteOption,
   addConfigOption,
   addEnvironmentOption,
+  addSnapshotLanguagesOption,
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
@@ -10,6 +12,7 @@ import { runRecipeCompile } from "../../recipe/tasks/compile";
 import { runRecipeDiff } from "../../recipe/tasks/diff";
 import { runRecipePlan } from "../../recipe/tasks/plan";
 import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
+import { runRecipePull } from "../../recipe/tasks/pull";
 import { runRecipePush } from "../../recipe/tasks/push";
 import { createScaiError } from "../../shared/errors";
 
@@ -103,6 +106,7 @@ const createPlanCommand = (): Command => {
   addRequiredInputOption(command, "Path to a compiled .ir.json file");
   addOutputOption(command);
   addEnvironmentOption(command);
+  addSnapshotLanguagesOption(command);
   addConfigOption(command);
   addVerbosityOptions(command);
 
@@ -145,6 +149,8 @@ const createPushCommand = (): Command => {
   addEnvironmentOption(command);
   addWhatIfOption(command);
   addAllowWriteOption(command);
+  addAllowPruneOption(command);
+  addSnapshotLanguagesOption(command);
   command.addOption(
     new Option(
       "--skip-unchanged-recipes",
@@ -163,6 +169,31 @@ const createPushCommand = (): Command => {
       return parsed;
     })
   );
+  command.addOption(
+    new Option(
+      "--conflict-policy <policy>",
+      "Three-way merge resolution for tenant-side author edits since the last push. `error` (default) blocks the apply on any conflict; `recipe-wins` clobbers the author edit; `cms-wins` preserves it and drops the recipe-side change for this push."
+    )
+      .choices(["error", "recipe-wins", "cms-wins"])
+      .default("error")
+  );
+  command.addOption(
+    new Option(
+      "--no-baseline",
+      "Skip three-way merge baseline loading + post-apply writing. Recipe becomes a legacy two-way diff (recipe-wins on every drift). Use for first-push test runs against a clean tenant or CI runs where the baseline isn't checked in."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--handles <list>",
+      "Comma-separated list of recipe handles to narrow the push to. Cross-recipe references still resolve against the full input set; only matched handles are applied. Unknown handles are logged and ignored. Aligns with the `handles` field convention the orchestrator's brief/campaign sync plans use."
+    ).argParser((value: string) =>
+      value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    )
+  );
   addConfigOption(command);
   addVerbosityOptions(command);
 
@@ -173,7 +204,15 @@ const createPushCommand = (): Command => {
     // without this guard, the CLI exits 0 and orchestrators (or CI)
     // can't tell a successful push from a 100%-failed one.
     const failed = results.some((result) => result.aborted || result.summary.error > 0);
-    if (failed) {
+    // Three-way merge: conflict actions block the apply at the planner
+    // layer (the action's status is "conflict" so no mutation runs), but
+    // the recipe-level result doesn't auto-abort — surface it here so the
+    // CLI exits non-zero and the operator sees the conflict list. Skipped
+    // when --conflict-policy isn't "error" (recipe-wins / cms-wins already
+    // resolved the conflicts inline; summary.conflict stays 0 in those
+    // cases).
+    const conflicted = results.some((result) => result.summary.conflict > 0);
+    if (failed || conflicted) {
       const abortedRecipes = results.filter((r) => r.aborted);
       const errored = results.reduce((acc, r) => acc + r.summary.error, 0);
       // Pull each aborted recipe's last action's reason / rollback summary
@@ -192,12 +231,126 @@ const createPushCommand = (): Command => {
           lastAction?.reason ?? "apply error (see events[])"
         }${rollback}`;
       });
+      // Conflict surface — one line per (recipe, op) that the three-way
+      // merge classified as conflict. Includes the conflict reason from
+      // the planner ("conflict: tenant and recipe both diverged …" or
+      // "cms-edit: author edited tenant after last push …").
+      const conflictDetails: string[] = [];
+      for (const r of results) {
+        if (r.summary.conflict === 0) continue;
+        for (const action of r.plan.actions) {
+          if (action.status !== "conflict") continue;
+          conflictDetails.push(
+            `${r.plan.recipeHandle}: ${action.operation.label} — ${action.reason ?? "conflict"}`
+          );
+        }
+      }
+      const totalConflicts = results.reduce((acc, r) => acc + r.summary.conflict, 0);
+      const summarySegments: string[] = [];
+      if (abortedRecipes.length > 0)
+        summarySegments.push(`${abortedRecipes.length} of ${results.length} recipe(s) aborted`);
+      if (errored > 0) summarySegments.push(`${errored} op error(s)`);
+      if (totalConflicts > 0) summarySegments.push(`${totalConflicts} three-way merge conflict(s)`);
+      throw createScaiError(`Recipe push failed: ${summarySegments.join("; ")}.`, "DEPLOY_FAILED", {
+        hint:
+          totalConflicts > 0 && !failed
+            ? "Pass --conflict-policy=recipe-wins to clobber the author edits, or =cms-wins to preserve them and drop the recipe-side change for this push."
+            : "Inspect per-op `events[]` in the JSON output (or rerun with --verbose) to see which op aborted and why.",
+        details: [...abortDetails, ...conflictDetails],
+      });
+    }
+  });
+  return command;
+};
+
+const createPullCommand = (): Command => {
+  const command = new Command("pull").description(
+    "Read tenant state and dump every reverse-projectable recipe to disk as .recipe.json. Read-only — does not mutate the tenant. Default snapshot mode dumps everything to <out>; `--against <recipes-dir>` enables three-way merge detection (in-sync / disk-ahead / tenant-edited / conflict)."
+  );
+  command.addOption(
+    new Option("-o, --output <path>", "Output directory. Defaults to ./pulled-recipes.")
+  );
+  command.addOption(
+    new Option(
+      "--against <recipes-dir>",
+      "Path to authored recipes directory (or single recipe file). Enables merge-detection mode: compares the tenant projection against your local recipes + baseline and classifies each recipe. Use `--against .` to use the config glob from sitecoreai.cli.json."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--conflict-policy <policy>",
+      "Merge-mode conflict policy (mirrors push's, direction-inverted). `error` (default) exits non-zero on tenant-edited / conflict; `disk-wins` skips writes for recipes with disk changes; `tenant-wins` writes every tenant projection regardless. Only used with --against."
+    )
+      .choices(["error", "disk-wins", "tenant-wins"])
+      .default("error")
+  );
+  command.addOption(
+    new Option(
+      "--no-baseline",
+      "Skip three-way merge baseline loading. Without a baseline, any divergence classifies as conflict (we can't tell who moved)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--write-plan <path>",
+      "Write a merge-plan JSON file with every per-recipe per-field classification + the default winner per --conflict-policy. Hand-editable: operator opens the file, flips `winner` to `disk` or `tenant` per field, then re-runs `recipe pull --apply-plan <same-path>` to commit. Implies merge mode (--against must be set)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--apply-plan <path>",
+      "Read a merge-plan JSON file and use its `winner` picks per field instead of --conflict-policy. Pull rebuilds classifications + verifies the plan still matches the current tenant + disk state; refuses to apply a stale plan. Implies merge mode."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--dry-run",
+      "Classify + report what WOULD be written without writing any files (no recipe JSON files, no merge plan). Useful in CI for verifying tenant + disk are in sync without leaving runner-FS artifacts."
+    )
+  );
+  addRecipeRootOptions(command);
+  command.addOption(
+    new Option(
+      "--pages-root <path>",
+      "Sitecore parent path for page items. Falls back to envProfiles[<name>].pagesRoot."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--enumerations-root <path>",
+      "Sitecore parent path for enumeration containers. Falls back to envProfiles[<name>].enumerationsRoot."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--placeholder-settings-root <path>",
+      "Sitecore parent path for Placeholder Settings items. Falls back to envProfiles[<name>].placeholderSettingsRoot."
+    )
+  );
+  addEnvironmentOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.action(async (options) => {
+    const result = await runRecipePull(options);
+    // Merge-mode --policy=error blocks on tenant-edited / conflict.
+    // Surface as CLI non-zero so CI / orchestrators see the same signal
+    // as `push` would on conflict.
+    if (result.blocked) {
       throw createScaiError(
-        `Recipe push failed: ${abortedRecipes.length} of ${results.length} recipe(s) aborted; ${errored} op error(s) total.`,
+        `Recipe pull blocked: ${result.byStatus["tenant-edited"]} tenant-edited + ${result.byStatus.conflict} conflict recipe(s) need manual reconciliation.`,
         "DEPLOY_FAILED",
         {
-          hint: "Inspect per-op `events[]` in the JSON output (or rerun with --verbose) to see which op aborted and why.",
-          details: abortDetails,
+          hint: "Pass --conflict-policy=tenant-wins to adopt the tenant changes, or =disk-wins to keep your local recipes. Or reconcile by hand and re-run.",
+          details: result.files
+            .filter((f) => f.status === "tenant-edited" || f.status === "conflict")
+            .map(
+              (f) =>
+                `${f.handle}: ${f.status}` +
+                (f.diskChangedFields || f.tenantChangedFields
+                  ? ` (disk:${f.diskChangedFields}, tenant:${f.tenantChangedFields})`
+                  : "")
+            ),
         }
       );
     }
@@ -254,6 +407,7 @@ export const createRecipeCommand = (): Command => {
   command.addCommand(createCompileCommand());
   command.addCommand(createDiffCommand());
   command.addCommand(createPlanCommand());
+  command.addCommand(createPullCommand());
   command.addCommand(createPushCommand());
   command.addCommand(createPruneDefaultsCommand());
 
@@ -279,6 +433,15 @@ export const createRecipeCommand = (): Command => {
       "",
       "  # Push a single recipe explicitly",
       "  $ scai provision recipe push -i ./recipes/cta-button.recipe.ts -n my-tenant --allow-write",
+      "",
+      "  # Snapshot: pull tenant state to ./pulled-recipes (does NOT mutate the tenant)",
+      "  $ scai provision recipe pull -n my-tenant -o ./pulled-recipes",
+      "",
+      "  # Merge: compare tenant against your local recipes, exit non-zero on conflict",
+      "  $ scai provision recipe pull -n my-tenant --against ./recipes",
+      "",
+      "  # Merge + adopt author edits (overwrite pulled-recipes with tenant projection)",
+      "  $ scai provision recipe pull -n my-tenant --against ./recipes --conflict-policy=tenant-wins",
       "",
       "  # Preview the SXA OOTB prune (no mutations)",
       "  $ scai provision recipe prune-defaults -n my-tenant --what-if",

@@ -152,3 +152,80 @@ describe("AppendToMultiList — merge-unique policy", () => {
     expect(incoming.value.value.toLowerCase()).toContain(directGuid);
   });
 });
+
+const replaceOp = (
+  values: AppendToMultiListOp["values"] = [{ kind: "ref-recipe", refKey: RENDERING_REF_KEY }]
+): AppendToMultiListOp => ({
+  ...newOp(values),
+  appendPolicy: "replace",
+});
+
+describe("AppendToMultiList — replace policy", () => {
+  it("writes exactly the desired set, removing pre-existing entries the recipe didn't list", async () => {
+    const client = new MockAuthoringClient();
+    // Live list has TWO entries; the replace op specifies only ONE.
+    // After apply, the live list should be exactly that one.
+    const existing =
+      "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}|{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}";
+    seedSectionItem(client, existing);
+    const captured = new Map<string, string>([
+      [SECTION_REF_KEY, SECTION_ITEM_ID],
+      [RENDERING_REF_KEY, RENDERING_ITEM_ID],
+    ]);
+
+    const action = await buildAction(0, replaceOp(), client, captured);
+
+    expect(action.status).toBe("update");
+    if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
+    const incoming = action.mutation.input.fields[0];
+    if (incoming.value.kind !== "string") throw new Error("expected string");
+    const written = incoming.value.value.toLowerCase();
+    expect(written).toContain(RENDERING_ITEM_ID.toLowerCase());
+    expect(written).not.toContain("aaaaaaaa");
+    expect(written).not.toContain("bbbbbbbb");
+
+    // replacedListValues should reflect the diff.
+    expect(action.replacedListValues).toBeDefined();
+    expect(action.replacedListValues?.added.map((s) => s.toLowerCase())).toEqual([
+      RENDERING_ITEM_ID.toLowerCase(),
+    ]);
+    expect(action.replacedListValues?.removed.sort()).toEqual([
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    ]);
+  });
+
+  it("status skip when the live set already matches the desired set (idempotent)", async () => {
+    const client = new MockAuthoringClient();
+    seedSectionItem(client, `{${RENDERING_ITEM_ID.toUpperCase()}}`);
+    const captured = new Map<string, string>([
+      [SECTION_REF_KEY, SECTION_ITEM_ID],
+      [RENDERING_REF_KEY, RENDERING_ITEM_ID],
+    ]);
+
+    const action = await buildAction(0, replaceOp(), client, captured);
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toMatch(/already matches/);
+    expect(action.replacedListValues).toEqual({ added: [], removed: [] });
+  });
+
+  it("status update when the desired set is empty but the live list isn't (clears the field)", async () => {
+    const client = new MockAuthoringClient();
+    seedSectionItem(
+      client,
+      "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}|{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}"
+    );
+    const captured = new Map<string, string>([[SECTION_REF_KEY, SECTION_ITEM_ID]]);
+
+    const action = await buildAction(0, replaceOp([]), client, captured);
+
+    expect(action.status).toBe("update");
+    if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
+    const incoming = action.mutation.input.fields[0];
+    if (incoming.value.kind !== "string") throw new Error("expected string");
+    expect(incoming.value.value).toBe("");
+    expect(action.replacedListValues?.removed.length).toBe(2);
+    expect(action.replacedListValues?.added).toEqual([]);
+  });
+});

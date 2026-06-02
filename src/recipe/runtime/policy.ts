@@ -4,22 +4,21 @@ import type { Recipe } from "../schema/recipe";
 /**
  * Policy assignment for compiler-emitted operations.
  *
- * Phase 1: every op a recipe emits is `CreateAndUpdate` — the registry is
- * the source of truth for templates, sections, fields, renderings, and
- * variants. Authors should not edit those in the CMS; if they do, a
- * registry deploy overwrites.
+ * Template structure (templates, sections, fields, renderings, variants)
+ * uses `CreateAndUpdate` — the recipe is the source of truth; if an
+ * author edits the corresponding CMS item, the next push overwrites.
  *
- * Phase 3 (datasource items, page items) introduces `CreateOnly`: the
- * registry seeds initial content, the CMS owns it thereafter. The
- * `policyFor` switch is the single seam to add that distinction without
- * rewriting every emission site in `compile.ts`.
+ * Datasource items + page items use `CreateOnly` — the recipe seeds
+ * initial content, the CMS owns it thereafter. The `policyFor` switch
+ * is the single seam adding this distinction without rewriting every
+ * emission site in `compile.ts`.
  */
 
 /**
- * The kind of op being emitted. Phase 1 only has `template-structure`
- * ops; Phase 3+ adds `datasource-item` and `page-item`. Phase 4 adds
- * `composition-structure` for partials and page designs (registry-owned
- * compositional artifacts, like component templates — `CreateAndUpdate`).
+ * The kind of op being emitted. `template-structure` covers component
+ * + content + page templates; `composition-structure` covers partial
+ * designs and page designs (still recipe-owned, `CreateAndUpdate`);
+ * `datasource-item` + `page-item` cover seeded content (`CreateOnly`).
  */
 export type OpPurpose =
   | "template-structure"

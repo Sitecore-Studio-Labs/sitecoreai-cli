@@ -204,7 +204,9 @@ export type {
 export {
   BaselineFieldEntrySchema,
   BaselineSchema,
+  CONTENT_RECIPE_BASELINE_KIND,
   FileBaselineStorage,
+  adaptSyncBaselineStorage,
   baselineFilePath,
   canonicaliseLayoutXml,
   hashFieldValue,

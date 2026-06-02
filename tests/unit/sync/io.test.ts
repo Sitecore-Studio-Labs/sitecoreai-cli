@@ -56,6 +56,18 @@ describe("writeRecipe + loadRecipe — YAML / JSON path", () => {
       });
     });
   });
+
+  it("throws INPUT_INVALID with the parse error as hint when the YAML is malformed", async () => {
+    await withTempDir(async (dir) => {
+      const file = join(dir, "malformed.yaml");
+      writeFile(file, "name: Acme\ntags:\n  - a\n  - [unterminated");
+      await expect(loadRecipe(file, schema)).rejects.toMatchObject({
+        code: "INPUT_INVALID",
+        message: expect.stringMatching(/not valid YAML\/JSON/i),
+        hint: expect.any(String),
+      });
+    });
+  });
 });
 
 /**

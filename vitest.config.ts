@@ -60,10 +60,10 @@ export default defineConfig({
       // (alongside the 0.3 stable cut). Ratchet back up to 92/81/90/93
       // as the in-flight modules catch up.
       thresholds: {
-        statements: 90,
-        branches: 79,
-        functions: 89,
-        lines: 90,
+        statements: 91,
+        branches: 79.5,
+        functions: 90,
+        lines: 92,
       },
     },
   },

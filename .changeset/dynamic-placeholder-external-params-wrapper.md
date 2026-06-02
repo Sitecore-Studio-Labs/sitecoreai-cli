@@ -1,5 +1,5 @@
 ---
-"@sitecoreai-labs/sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": patch
 ---
 
 `ComponentTemplateRecipe`: support `dynamicPlaceholders: true` combined with

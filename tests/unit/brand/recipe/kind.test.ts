@@ -109,7 +109,13 @@ describe("readCurrent", () => {
     expect(recipe).toMatchObject({
       name: "Acme",
       industry: "retail",
-      sections: { "Tone of Voice": { Voice: "Confident", Personality: ["Bold"] } },
+      sections: {
+        "Tone of Voice": {
+          Voice: "Confident",
+          // `array` entries round-trip as `{name}` objects (server `id`s dropped).
+          Personality: [{ name: "Bold" }],
+        },
+      },
     });
   });
 });
@@ -685,7 +691,9 @@ describe("apply", () => {
     );
   });
 
-  it("converts a string-array field value into { name } API entries", async () => {
+  it("passes array entry objects through toApiValue unchanged", async () => {
+    // Recipe `array` fields are already object-shaped (`{name, id?}`);
+    // toApiValue is now a thin type bridge, not a string→object converter.
     brandApi.listBrandKits.mockResolvedValue({
       totalCount: 1,
       data: [{ id: "kit-1", name: "Acme" }],
@@ -703,7 +711,7 @@ describe("apply", () => {
             kind: "update",
             path: "sections.S.Pillars",
             summary: "Pillars",
-            after: ["Trust", "Speed"],
+            after: [{ name: "Trust" }, { name: "Speed" }],
             meta: { stage: "field", section: "S", field: "Pillars" },
           },
         ],

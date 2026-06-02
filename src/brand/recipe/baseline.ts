@@ -132,6 +132,11 @@ export const mergeBrandByPolicy = (
     industry: pickKit("industry"),
     documents: desired.documents,
     sections: mergedSections,
+    // sectionProperties is not yet part of three-way classification —
+    // pass through the recipe-author intent verbatim. When/if Sitecore
+    // exposes a write path for `sourceLanguage`, classify by cell at
+    // path `sectionProperties.<section>.sourceLanguage` and resolve here.
+    sectionProperties: desired.sectionProperties,
   };
 
   return { merged, policyErrors };

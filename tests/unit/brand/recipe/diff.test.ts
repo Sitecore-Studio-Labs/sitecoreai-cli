@@ -55,7 +55,7 @@ describe("diffBrandKit — kit absent", () => {
 describe("diffBrandKit — kit present", () => {
   const current = recipe({
     name: "Acme",
-    sections: { "Tone of Voice": { Voice: "Old voice", Personality: ["Bold"] } },
+    sections: { "Tone of Voice": { Voice: "Old voice", Personality: [{ name: "Bold" }] } },
   });
 
   it("marks unchanged fields as noop", () => {
@@ -96,13 +96,16 @@ describe("diffBrandKit — kit present", () => {
 
   it("diffs list values structurally", () => {
     const same = diffBrandKit(
-      recipe({ name: "Acme", sections: { "Tone of Voice": { Personality: ["Bold"] } } }),
+      recipe({ name: "Acme", sections: { "Tone of Voice": { Personality: [{ name: "Bold" }] } } }),
       current
     );
     expect(same.changes[0].kind).toBe("noop");
 
     const changed = diffBrandKit(
-      recipe({ name: "Acme", sections: { "Tone of Voice": { Personality: ["Bold", "Calm"] } } }),
+      recipe({
+        name: "Acme",
+        sections: { "Tone of Voice": { Personality: [{ name: "Bold" }, { name: "Calm" }] } },
+      }),
       current
     );
     expect(changed.changes[0].kind).toBe("update");

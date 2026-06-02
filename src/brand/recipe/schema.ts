@@ -27,43 +27,124 @@ import { z } from "zod";
 
 const HANDLE_PATTERN = /^[a-z][a-z0-9-]*@\d+$/;
 
-/** A `richArray`-field entry: text plus optional tags and a constraint. */
-export const BrandRichEntrySchema = z.object({
+/**
+ * An `array`-field entry: a single `{name}` object slot. Server-assigned
+ * `id` echoed back on read; omit when authoring.
+ *
+ * Used for Sitecore's flat list fields — Dos and dont's, Checklist
+ * values, Grammar guidelines values, Visual Guidelines > Logo
+ * guidelines / Colour palettes, Brand Context > Brand concept. Mirrors
+ * `BrandArrayEntry` in the registry's `sitecore-recipes.ts` and
+ * `BrandKitArrayEntry` in this package's API client layer.
+ */
+export const BrandArrayEntrySchema = z.object({
   name: z.string().min(1).describe("The entry's text."),
+  id: z
+    .string()
+    .optional()
+    .describe("Server-assigned UUID. Omit when authoring; the API fills it in."),
+});
+
+/**
+ * A `richArray`-field entry: text plus optional tags and a constraint.
+ * Used for Tone scenarios + Image style scenarios (Sitecore UI labels
+ * `name`→"Instructions" and `tags`→"Keys").
+ */
+export const BrandRichEntrySchema = z.object({
+  name: z.string().min(1).describe('The entry\'s text. (Sitecore UI label: "Instructions".)'),
   tags: z
     .array(z.string())
     .optional()
-    .describe('Free-form tags, e.g. "Marketing", "Claims", "Self-Serve".'),
+    .describe(
+      'Free-form tags, e.g. "Marketing", "Claims", "Self-Serve". (Sitecore UI label: "Keys".)'
+    ),
   restrictions: z
     .string()
     .optional()
     .describe('Per-scenario constraint, e.g. "Never use scarcity in marketing copy".'),
+  id: z
+    .string()
+    .optional()
+    .describe("Server-assigned UUID. Omit when authoring; the API fills it in."),
 });
 
 /**
- * A brand-kit field value. The shape that is valid depends on the live
- * field's type — `text` → string, `array` → string list, `richArray` →
- * rich entries — which the kind resolves against the kit at diff time.
+ * A glossary translation row. The `Glossary and Localization` section's
+ * fields are dynamic — one per glossary term — and each field's value
+ * is an array of these rows (one per locale). The section's base
+ * language belongs in `BrandKitRecipe.sectionProperties[…].sourceLanguage`.
  */
-export const BrandFieldValueSchema = z
-  .union([z.string(), z.array(z.string()), z.array(BrandRichEntrySchema)])
-  .describe("A text value, a list of names, or a list of rich entries.");
+export const BrandGlossaryEntrySchema = z.object({
+  term: z.string().min(1).describe("The translated term for this locale."),
+  locale: z.string().min(1).describe("BCP-47 locale tag, e.g. `en-US`, `ja-JP`, `de-DE`."),
+  displayName: z
+    .string()
+    .optional()
+    .describe('Human label for the locale, e.g. "Japanese (Japan)". UI hint.'),
+  id: z
+    .string()
+    .optional()
+    .describe("Server-assigned UUID. Omit when authoring; the API fills it in."),
+});
 
 /**
- * Canonical Sitecore AI brand-kit section names — the seven buckets
- * the EnrichSections pipeline produces. Mirrors
- * `BRAND_KIT_CANONICAL_SECTIONS` in the registry's recipe definitions.
- * Exported so callers building recipes have a stable list to bias
- * `documents[].sections` against.
+ * A brand-kit field value. The valid shape depends on the live field's
+ * `type` — `text` → string, `array` → `BrandArrayEntry[]`, `richArray`
+ * → `BrandRichEntry[]`. Glossary fields are special: dynamic per-term
+ * with `BrandGlossaryEntry[]` values. Sitecore returns HTTP 422 if you
+ * PATCH a mismatched shape (e.g. a string into an `array` field).
+ *
+ * The earlier `string[]` member of this union was empirically wrong —
+ * `array` is object-shaped on the wire, not string-shaped — and made
+ * every list-field push 422.
+ */
+export const BrandFieldValueSchema = z
+  .union([
+    z.string(),
+    z.array(BrandArrayEntrySchema),
+    z.array(BrandRichEntrySchema),
+    z.array(BrandGlossaryEntrySchema),
+  ])
+  .describe(
+    "A text value, an object-array of `{name}` entries, a richArray of `{name, tags?, restrictions?}` entries, or a glossary array of `{term, locale, displayName?}` rows."
+  );
+
+/**
+ * Section-level metadata that Sitecore stores alongside the field
+ * dictionary. Today the only load-bearing slot is `sourceLanguage`,
+ * the Glossary section's base/default-language tag (BCP-47).
+ */
+export const BrandKitSectionPropertiesSchema = z.object({
+  sourceLanguage: z
+    .string()
+    .optional()
+    .describe(
+      "BCP-47 default/base language tag. On `Glossary and Localization`, names the language entries default to when no per-row locale matches."
+    ),
+});
+
+/**
+ * Canonical Sitecore AI brand-kit section names — verified empirically
+ * 2026-06-02 against the live `Sync` brand kit. Earlier snapshots of
+ * this list were wrong on three names ("Do's and Don'ts" → "Dos and
+ * Dont's", "Grammar Checklists" → "Grammar Guidelines") and missing
+ * two sections ("Image Style", "Checklist"); recipes built against
+ * those names PATCH-skipped silently.
+ *
+ * Mirrors `BRAND_KIT_CANONICAL_SECTIONS` in the registry's recipe
+ * definitions. Exported so callers building recipes have a stable
+ * list to bias `documents[].sections` against.
  */
 export const BRAND_KIT_CANONICAL_SECTIONS = [
   "Brand Context",
   "Global Goals",
   "Tone of Voice",
-  "Glossary and Localization",
-  "Do's and Don'ts",
-  "Grammar Checklists",
+  "Dos and Dont's",
   "Visual Guidelines",
+  "Image Style",
+  "Grammar Guidelines",
+  "Checklist",
+  "Glossary and Localization",
 ] as const;
 export type BrandKitCanonicalSection = (typeof BRAND_KIT_CANONICAL_SECTIONS)[number];
 
@@ -201,7 +282,13 @@ export const BrandKitRecipeSchema = z.object({
     .record(z.string(), z.record(z.string(), BrandFieldValueSchema))
     .default({})
     .describe(
-      "Desired field values, keyed by section name then field name. Prefer canonical names from BRAND_KIT_CANONICAL_SECTIONS for the outer key. Sections and fields are created by enrichment; push converges their values."
+      "Desired field values, keyed by section name then field name. Prefer canonical names from BRAND_KIT_CANONICAL_SECTIONS for the outer key. Sections and fields are created by enrichment; push converges their values. `Glossary and Localization` is a special case: its inner keys are dynamic (one per glossary term) and the value is `BrandGlossaryEntry[]`; the section's base language lives on `sectionProperties`."
+    ),
+  sectionProperties: z
+    .record(z.string(), BrandKitSectionPropertiesSchema)
+    .default({})
+    .describe(
+      "Per-section metadata sidecar (keyed by section name). Currently load-bearing only for `Glossary and Localization`'s `sourceLanguage`."
     ),
 });
 
@@ -215,8 +302,20 @@ export type BrandKitRecipe = z.infer<typeof BrandKitRecipeSchema>;
  */
 export type BrandKitRecipeInput = z.input<typeof BrandKitRecipeSchema>;
 
-/** A brand-kit field value (text / name list / rich entries). */
+/** A brand-kit field value (text / array entries / rich entries / glossary entries). */
 export type BrandFieldValue = z.infer<typeof BrandFieldValueSchema>;
+
+/** A single `array`-field entry (object with `name`). */
+export type BrandArrayEntry = z.infer<typeof BrandArrayEntrySchema>;
+
+/** A single `richArray`-field entry (name + optional tags + restrictions). */
+export type BrandRichEntry = z.infer<typeof BrandRichEntrySchema>;
+
+/** A single glossary-and-localization translation row. */
+export type BrandGlossaryEntry = z.infer<typeof BrandGlossaryEntrySchema>;
+
+/** Per-section metadata (currently only `sourceLanguage`). */
+export type BrandKitSectionProperties = z.infer<typeof BrandKitSectionPropertiesSchema>;
 
 /** A brand document reference within a recipe (URL or registry-file). */
 export type BrandDocument = z.infer<typeof BrandDocumentSchema>;

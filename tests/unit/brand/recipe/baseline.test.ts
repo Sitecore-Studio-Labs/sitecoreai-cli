@@ -19,7 +19,9 @@ const fullKit = () =>
     sections: {
       "Brand Context": {
         Mission: "Build durable vehicles",
-        Values: ["Quality", "Reliability"],
+        // `array` fields are object-shaped on the wire — `{name}` per
+        // entry, not bare strings.
+        Values: [{ name: "Quality" }, { name: "Reliability" }],
       },
       "Tone of Voice": {
         Voice: "Confident",
@@ -37,7 +39,9 @@ describe("hashBrandCells", () => {
   it("emits one cell per section × field", () => {
     const cells = hashBrandCells(fullKit());
     expect(cells["sections.Brand Context.Mission"]).toBe(hashJsonValue("Build durable vehicles"));
-    expect(cells["sections.Brand Context.Values"]).toBe(hashJsonValue(["Quality", "Reliability"]));
+    expect(cells["sections.Brand Context.Values"]).toBe(
+      hashJsonValue([{ name: "Quality" }, { name: "Reliability" }])
+    );
     expect(cells["sections.Tone of Voice.Voice"]).toBe(hashJsonValue("Confident"));
   });
 

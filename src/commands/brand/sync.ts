@@ -41,6 +41,14 @@ interface SyncOptions extends CommonOptions {
    * would always be undefined — keep this typed as `enrich`.
    */
   enrich?: boolean;
+  /**
+   * Three-way merge conflict policy. Honored by `brandKitKind` when a
+   * baseline is loaded (via `ctx.baselineStorage`). Without a baseline
+   * the brand kind degrades to two-way diff and this flag has no
+   * effect. Default `"error"` matches the safety-first stance:
+   * conflicts surface for resolution rather than silently clobbering.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 /** Slugify a kit name for a default recipe filename. */
@@ -60,6 +68,12 @@ const slug = (value: string): string =>
  * brand kind degrades to two-way diff or its file-backed fallback
  * accordingly.
  */
+/**
+ * Map the CLI flag value into the SyncContext slot the brand kind
+ * reads. `undefined` (flag not passed) leaves the kind on its
+ * built-in `"error"` default — the kind treats absent + "error" the
+ * same way so omitting the flag yields safe behavior.
+ */
 const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
   const configPath = options.config ?? process.cwd();
   const root = readRootConfiguration(configPath, options.environmentName);
@@ -70,6 +84,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     logger,
     ...(options.enrich === false ? { skipEnrichment: true } : {}),
     ...(baselineStorage ? { baselineStorage } : {}),
+    ...(options.conflictPolicy ? { pushConflictPolicy: options.conflictPolicy } : {}),
   };
 };
 
@@ -156,6 +171,12 @@ const createPushCommand = (): Command => {
         "--no-enrich",
         "Skip every code path that triggers a Sitecore AI enrichment pipeline run. Field PATCHes only — kit must already exist with the right section structure. Useful for fast iteration on field values without waiting 5-15 min for an enrichment cycle."
       )
+    )
+    .addOption(
+      new Option(
+        "--conflict-policy <policy>",
+        "Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them and drops the recipe-side change for this push. Requires a baseline (HTTP storage via env or file-backed); without one, the brand kind degrades to two-way diff and this flag has no effect."
+      ).choices(["error", "recipe-wins", "cms-wins"])
     );
   addEnvironmentOption(command);
   addConfigOption(command);

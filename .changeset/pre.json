@@ -1,0 +1,24 @@
+{
+  "mode": "pre",
+  "tag": "canary",
+  "initialVersions": {
+    "@sitecoreai-labs/sitecoreai-cli": "0.2.4"
+  },
+  "changesets": [
+    "bidirectional-sync",
+    "data-folder-template-multi-segment",
+    "dynamic-placeholder-completeness",
+    "dynamic-placeholder-external-params-wrapper",
+    "enum-droplist-default",
+    "headless-variants-flat-layout",
+    "image-sv-default",
+    "intra-rank-topo-sort",
+    "page-data-folder-insert-options",
+    "parameters-template-kind-alias",
+    "placeholder-allowed-rendering-handles-alias",
+    "reference-and-file-sv-defaults",
+    "reference-enum-handle-no-template-filter",
+    "reference-shape-enum-handle",
+    "rendering-placeholders-field"
+  ]
+}

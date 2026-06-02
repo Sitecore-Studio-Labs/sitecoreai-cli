@@ -1,5 +1,472 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.3.0-canary.0
+
+### Minor Changes
+
+- 4fbea1b: `recipe`: bidirectional sync — three-way merge between recipes, tenant, and a per-(env, recipe) baseline
+
+  `scai recipe push` and `scai recipe pull` are now joined by a
+  baseline-backed three-way merge that detects "the author edited this
+  in the CMS since my last push" (push side) and "my local recipe has
+  changes the tenant hasn't seen" (pull side). Before 0.3, push silently
+  clobbered tenant-side author edits and pull was a snapshot-only dump
+  that ignored your local recipes.
+
+  **New on `scai provision recipe push`:**
+  - `--conflict-policy=error|recipe-wins|cms-wins` (default `error`) —
+    block on any cms-edit / conflict, or pick a side. `error` exits
+    non-zero with per-(recipe, op) details so CI fails loud instead of
+    silently overwriting.
+  - `--no-baseline` — opt out of baseline load + post-apply write
+    (legacy two-way diff behaviour).
+  - Successful pushes write a baseline file to
+    `<configDir>/.scai/baseline/<env>/<slug(handle)>.baseline.json`
+    (atomic temp + rename; SHA-256 hashes per field, not values).
+
+  **New `scai provision recipe pull` commands + flags:**
+  - `pull` is the new reverse command — read tenant state to disk as
+    `.recipe.json` files. Snapshot mode (default) dumps to
+    `--output ./pulled-recipes`; never overwrites authored `.recipe.ts`
+    source.
+  - `--against <recipes-dir>` enables merge-detection mode. Pull
+    classifies each recipe as `in-sync` / `disk-ahead` / `tenant-edited`
+    / `conflict` / `disk-only` / `tenant-only`, surfaces per-field
+    statuses, and blocks under default `--conflict-policy=error` if
+    anything needs operator attention.
+  - `--conflict-policy=error|disk-wins|tenant-wins` — direction-inverted
+    from push. `tenant-wins` does **per-field merge** for ContentItem
+    and Page recipes (preserves disk-ahead fields, adopts tenant
+    elsewhere); `disk-wins` keeps local recipes authoritative.
+  - `--write-plan <path>` emits a hand-editable JSON plan with one
+    entry per per-recipe per-field classification + the default winner.
+    Operator flips per-field `winner` between `"disk"` and `"tenant"`,
+    then re-runs with `--apply-plan <path>` to commit. Apply-plan
+    verifies the plan still matches the current tenant + disk state
+    (refuses to apply stale plans against a moved world).
+  - `--no-baseline` mirrors push.
+  - `--dry-run` classifies + reports without writing any files.
+
+  **Reverse-projection (`readCurrent`) coverage:** the projection now
+  covers 10 recipe kinds with full multi-language + multi-version
+  fidelity for `ContentItem` and `Page`. Layout XML is parsed +
+  canonicalised before hashing so push (canonical XML) and tenant
+  read-back (SXA delta XML) round-trip cleanly.
+
+  **Public API additions** (importable from `@sitecoreai-labs/sitecoreai-cli/recipe`):
+  - `BaselineStorage` interface + `FileBaselineStorage` class (default
+    impl). Pass a custom storage to push / pull via
+    `RecipeTenantOptions.baselineStorage` for orchestrator-hosted /
+    in-memory backends.
+  - `Baseline`, `BaselineFieldEntry`, `BaselineIndex` types +
+    `BaselineSchema`, `BaselineFieldEntrySchema` Zod schemas.
+  - `loadBaseline`, `writeBaseline`, `baselineFilePath`,
+    `indexBaseline`, `hashFieldValue`, `hashFieldValueForBaseline`,
+    `isLayoutFieldId`, `canonicaliseLayoutXml`.
+  - `MergePlan`, `MergePlanRecipe`, `MergePlanField` types +
+    `MergePlanSchema`, `MergePlanRecipeSchema`, `MergePlanFieldSchema`
+    Zod schemas.
+
+  **Behaviour changes operators will see:**
+  - Successful `recipe push` now writes baseline files (one per
+    recipe, per env) to `<configDir>/.scai/baseline/<env>/`. Add
+    to `.gitignore` if you don't want them checked in; they regenerate
+    on each push.
+  - Default `recipe push` policy is `error` — out-of-band Sitecore UI
+    edits will block re-pushes until the operator picks
+    `--conflict-policy=recipe-wins` or `=cms-wins`. To restore the
+    pre-0.3 silent-clobber behaviour, pass `--conflict-policy=recipe-wins`
+    or `--no-baseline`.
+  - `recipe pull` is new — no behaviour change for existing flows that
+    don't run it.
+
+  **Security:** the `Scai Handle` tenant marker field is now validated
+  against `HANDLE_PATTERN` before being trusted in file-path composition
+  (audit-flagged path-traversal hardening). Malformed markers
+  (`'../../tmp/pwn@1'`, paths with separators, etc.) fall back to
+  synthesising the handle from the Sitecore item name; defensive
+  `assertWithinDir` guards added to `writeRecipeJson` +
+  `FileBaselineStorage` as belt-and-braces.
+
+  **Performance:** baseline loads run in parallel (was sequential);
+  layout XML parses are deduped on the planner's hot path (4× → 2×
+  parses per drift); template per-field rollup is O(1) per field
+  (was O(T × S) via prefix-walk).
+
+  Full operator walkthrough: [`docs/bidirectional-sync.md`](https://github.com/Sitecore-Studio-Labs/sitecoreai-cli/blob/main/docs/bidirectional-sync.md).
+  Architecture rationale: [`docs/recipe-sync-architecture.md`](https://github.com/Sitecore-Studio-Labs/sitecoreai-cli/blob/main/docs/recipe-sync-architecture.md).
+
+- `ComponentTemplateRecipe`: support `dynamicPlaceholders: true` combined with
+  an external `parameters: { handle }` reference.
+
+  Previously, scai rejected this combination because chaining
+  `_IDynamicPlaceholder` onto the external shared parameters template would
+  mutate behaviour for every other consumer. Authors had to inline the params
+  on every recipe that wanted dynamic placeholders, losing the shared-template
+  benefit.
+
+  Now the compiler emits a thin per-recipe **wrapper** parameters template
+  that inherits FROM the external shared template AND adds
+  `_IDynamicPlaceholder`. The external template's base-template chain isn't
+  mutated; the wrapper has no own fields (everything inherits via Sitecore
+  template inheritance); the rendering's `Parameters Template` field points
+  at the wrapper instead of the external directly. The wrapper's GUID is
+  `designParametersTemplateId(site, recipe.handle)` — same as the inline-
+  params synthesis (they're mutually exclusive).
+
+  Behaviour for recipes that already work (inline-params-only OR
+  external-params-without-dynamic-placeholders) is unchanged. Recipes that
+  previously failed with the `combines dynamicPlaceholders + external
+parameters template` error now compile.
+
+### Patch Changes
+
+- 2504665: `recipe`: sanitise multi-segment subfolder when naming a per-location data-folder template
+
+  A `datasource.locations: [{ scope: "site", subfolder: "Site Shared UI/Avatars", allowedTemplates: [...] }]` block compiled into a per-location data-folder template whose item NAME embedded the raw subfolder string — producing `"avatar-block Site Shared UI/Avatars Data Folder"`. Sitecore's `InvalidItemNameChars` setting rejects `/` in item names, so Authoring GraphQL aborted the upsert with:
+
+  ```
+  An item name cannot contain any of the following characters: \/:?"<>|[]
+  ```
+
+  `emitSiteDataFolderTemplate`'s per-location path now collapses `/` to `-` in the item NAME (and the path segment) so both subfolder segments stay legible without violating the name rule. The display NAME keeps the original `/` since Sitecore allows it there.
+
+  ```ts
+  // subfolder: "Site Shared UI/Avatars"
+
+  // item name (sanitised):
+  "avatar-block Site Shared UI - Avatars Data Folder";
+
+  // display name (preserved):
+  "Avatar Block Site Shared UI/Avatars Data Folder";
+  ```
+
+  The SHARED data-folder template path (cross-recipe coalescing) was already correct — it used `leafSegment` and routed intermediate segments into the path hierarchy. Only the per-location codepath had the bug.
+
+  Repro: any `ComponentTemplateRecipe` with `datasource.locations` declaring a multi-segment subfolder + `allowedTemplates` aborted on push.
+
+- d0860be: `recipe`: pair `UsePlaceholderDatasourceContext=true` with dynamic placeholders + skip phantom data templates for pure-layout renderings
+
+  Two follow-ups to the Placeholders shared-field fix that round out the
+  dynamic-placeholder chain so scai-emitted renderings match the SXA / XM
+  Cloud starter Container shape end-to-end.
+
+  **`UsePlaceholderDatasourceContext=true`** is now written alongside
+  `IsRenderingsWithDynamicPlaceholders=true` in OtherProperties whenever
+  `dynamicPlaceholders: true`. Without it, children dropped into a
+  Container / Section Wrapper / partial-design slot can lose their
+  relative-datasource binding when the layout service serialises the
+  placeholder map — the parent-context binding gets dropped and child
+  renderings resolve against the page root instead of the parent
+  datasource. Both properties ride with the dynamic-placeholder chain on
+  the XM Cloud starter Container rendering; both are needed.
+
+  **Pure-layout renderings now skip data-template emission.** A recipe
+  with no `fields:` and no `insertOptions:` (e.g. Container,
+  ColumnSplitter, RowSplitter, SectionWrapper, partial designs)
+  previously emitted a phantom empty data template at
+  `<componentsRoot>/<section>/<Name>` — orphan, never referenced (the
+  rendering's Datasource Template shared field was already omitted for
+  the same case). The XM Cloud starter Container has only a Rendering
+  item + Parameters Template; no template in the templates tree.
+  `emitDatasourceTemplate` is now gated on `hasInlineFields ||
+hasInsertOptions` so layout-only recipes match the starter shape.
+
+  Recipes that bind content (`fields: [...]`) or compose child items via
+  `insertOptions: [...]` still emit a data template — only the
+  fields-empty + insertOptions-empty case is skipped.
+
+- `resolveSitecoreType`: default `shape: "enum"` fields with inline
+  `values: [...]` and no `enumHandle` to `type: "droplist"`.
+
+  Previously the default was `droplink`, which requires `sitecore.enumHandle`
+  pointing at a shared `EnumerationRecipe`. Authors who wrote inline `values`
+  had no shared enum to point at, so compile threw INPUT_INVALID and demanded
+  they add a redundant `sitecore.type: "droplist"` to every enum field.
+
+  Now the default tracks intent: inline `values` → droplist (pipe-list Source).
+  Authors who want droplink + shared enum still get it: declare `enumHandle`
+  without inline `values`, and the shape-based default (`droplink`) stands.
+
+  Authors who explicitly set `sitecore.type` are unaffected.
+
+- 76352de: `recipe`: drop the section-grouping folder under the Headless Variants tree so SXA Pages chrome can find variant items
+
+  Before: a `ComponentTemplateRecipe` with `section.handle` set emitted its per-rendering variants folder under an intermediate `HEADLESS_VARIANTS_GROUPING` section folder:
+
+  ```
+  <site>/Presentation/Headless Variants/
+  └── ui/                                ← HEADLESS_VARIANTS_GROUPING (extra layer)
+      └── promo-block/                   ← HEADLESS_VARIANTS
+          └── Default                    ← VARIANT_DEFINITION
+          └── Centered
+  ```
+
+  SXA Headless Pages chrome enumerates variants by walking exactly two levels under the Headless Variants root: `<Rendering>/<Variant>`. Verified against a working tenant 2026-05-31 — the chrome finds `HEADLESS_VARIANTS` items as DIRECT children of the headless-variants root, then enumerates each one's `VARIANT_DEFINITION` children. The section-grouping wrapper pushed scai's variants to depth 3 where the chrome couldn't see them; authors saw an empty variant dropdown in Pages for every rendering scai pushed.
+
+  The fix drops the section-grouping folder for the Headless Variants tree only. The templates tree + renderings tree still use section grouping (Sitecore organises by section there). After the fix:
+
+  ```
+  <site>/Presentation/Headless Variants/
+  └── promo-block/                       ← HEADLESS_VARIANTS (direct under root)
+      └── Default                        ← VARIANT_DEFINITION
+      └── Centered
+  ```
+
+  Existing tenants that pushed with the old layout will have stale `HEADLESS_VARIANTS_GROUPING` folders under the Headless Variants root. They're inert (the chrome ignored them anyway) but should be deleted manually in Content Editor — `re-push` with the new version doesn't remove them.
+
+  Three regression tests added in `tests/unit/recipe/compile.test.ts` cover: no grouping folder emitted, per-rendering folder parented at the root, variants at depth 2.
+
+- 2f1bad2: `recipe`: encode `image` Standard Values defaults from an `alt|src` URL string
+
+  `image`-shaped fields previously dropped their `default` value during SV
+  emission — the encoder returned `undefined` for every remaining
+  reference shape on the rationale that media-library item references
+  weren't expressible from a recipe string. That left every recipe with
+  a Media field rendering an empty image slot until an author manually
+  picked a media item.
+
+  The encoder now accepts a pipe-separated `"<alt>|<src>"` convention
+  (or a bare `"<src>"` with no pipe) and emits Sitecore's image-field
+  XML with the external-URL `src` form:
+
+  ```ts
+  { name: "Hero", shape: "image",
+    default: "Hero placeholder|https://picsum.photos/seed/hero/1200/600" }
+
+  // → <image src="https://picsum.photos/seed/hero/1200/600" alt="Hero placeholder" />
+  ```
+
+  Sitecore Layout Service surfaces the encoded value as `{ src, alt }`
+  in the image-field JSON the React side reads. Authors swap to a real
+  media-library item via the image picker at placement time; until they
+  do, the seeded src renders the placeholder image so dropped renderings
+  visualise immediately. Empty raw values or pipe-only with no src are
+  skipped — they'd produce a broken `<img src="">` otherwise.
+
+  `file`, `droplink`, `treelist`, and `treelist-with-search` are still
+  skipped — they need GUID payloads the string convention can't express.
+  Future work could resolve these against the recipe set's content
+  recipes (find the content item by handle, emit its deterministic GUID).
+
+- `compileRecipeSet`: order recipes topologically within each apply-rank.
+
+  Previously, recipes that shared an apply-rank (e.g. `ComponentTemplate` and
+  `ContentTemplate`, both rank 0) were ordered by stable file-glob order. A
+  referencing recipe whose filename sorted alphabetically before its referent
+  (e.g. `accordion-block.recipe.ts` < `faq-content.recipe.ts`) would fail at
+  push time with `ref-source-fields references handle 'faq-content@1'; not yet
+in captured map` because the dependent's `field.sitecore.source.types: [...]`
+  emitted before the dependency's `CreateItem`.
+
+  Replace the coarse rank-only sort with stable Kahn topological sort within
+  each rank group. `extractRecipeDependencies` mirrors `validate.ts`'s
+  reference inventory across every recipe kind. Producer recipes emit before
+  consumers; unrelated siblings preserve input order; cycles (shouldn't reach
+  this layer) degrade gracefully to input order.
+
+  No behaviour change for recipe sets without intra-rank cross-references.
+
+- 76352de: `recipe`: stamp page Data folder Insert Options (`__Masters`) from the page's rendering datasource templates
+
+  A `PageRecipe` with `placements[]` referencing rendering datasource templates materialised the `<page>/Data` folder as a bare `FOLDER` item with no `__Standard Values` `__Masters` field. Authors who turned off `autoCreate` on a rendering — or wanted to create another datasource later from the Sitecore Pages tree — saw an empty right-click Insert menu.
+
+  `compile/page.ts` now walks every placement, collects the union of the rendering's `datasource.templates[]` / `datasource.template` / inline-fields handles (deduped, first-seen order), and emits a `SetField` op writing those template GUIDs as a `ref-recipe-list` into the Data folder's `__Masters` shared field. The resolver uses `tolerateMissing: true` so standalone single-recipe compiles still emit the field; multi-component pages get one entry per unique template across all placements.
+
+  Three new tests in `tests/unit/recipe/page-level.test.ts` cover: union resolution across `templates[]` + `template` + inline-fields fallbacks (deduped across placements), no-emit when the page has no scoped slots, and `tolerateMissing` standalone compile.
+
+- `loadRecipe`: accept `kind: "parameters-template"` as an alias for
+  `"design-parameters-template"`.
+
+  The registry and some older recipes spell the design-parameters-template
+  kind as `"parameters-template"`. `loadRecipe` now normalizes the kind
+  literal before zod parse so `RecipeSchema`'s discriminated union finds
+  the right variant. Rest of the pipeline (`RECIPE_APPLY_RANK`,
+  `compileRecipeSet` dispatch, executor) still only knows the canonical
+  `design-parameters-template` literal — the alias lives entirely at the
+  loader boundary.
+
+  Existing recipes using `"design-parameters-template"` are unaffected.
+
+- 76352de: `recipe`: accept `allowedRenderingHandles` alias on inline placeholder slots
+
+  The registry-side recipe schema names this field
+  `allowedRenderingHandles` (handles ARE rendering handles, so the name
+  is more descriptive); scai's canonical name had stayed
+  `allowedComponents`. Recipes authored against the registry naming
+  silently dropped their slot-side restriction at compile time — the
+  field was present in the recipe JSON but ignored by both the compiler
+  and `validateRecipeSet`, so the Placeholder Settings item ended up
+  permissive (e.g. accordion-block's Headless `accordion-items-{*}`
+  slot accepted any rendering instead of restricting to
+  `accordion-item-rendering@1`).
+
+  `PlaceholderDefinitionSchema` now accepts both fields; a new
+  `resolveAllowedHandles` helper returns the de-duped union (source
+  order). Compiler + validator both route through the helper, so
+  recipes using either name compile to the same Sitecore artifact.
+  Validation messages normalise to `allowedRenderingHandles` so the
+  canonical name surfaces in author-facing errors.
+
+- f8e46c8: `recipe`: encode `file`, `droplink`, `treelist`, and `treelist-with-search` Standard Values defaults
+
+  Rounds out SV default encoding so every common field shape can be
+  seeded from a recipe string. Authors no longer have to swap to a
+  "populate after deploy" workflow just to get a non-empty initial
+  field — every shape now has a path.
+
+  **`file`** (same convention as `image`):
+
+  ```ts
+  { name: "Document", shape: "image", sitecore: { type: "file" },
+    default: "Whitepaper|https://example.com/wp.pdf" }
+  // → <file src="https://example.com/wp.pdf" alt="Whitepaper" />
+  ```
+
+  **`reference` shape — single (Droplink)**: the default is a recipe
+  handle; the encoder resolves it to that handle's deterministic
+  `contentItemId(site, handle)` GUID and emits a `ref-recipe`:
+
+  ```ts
+  { name: "Author", shape: "reference", multiple: false,
+    sitecore: { type: "droplink" },
+    default: "author-jane@1" }
+  // → SV value = ref-recipe pointing at contentItemId(site, "author-jane@1")
+  ```
+
+  **`reference` shape — multi (Treelist / Treelist-with-search)**: the
+  default is pipe-separated recipe handles; emits a `ref-recipe-list`:
+
+  ```ts
+  { name: "Authors", shape: "reference", multiple: true,
+    sitecore: { type: "treelist" },
+    default: "author-jane@1|author-bob@1" }
+  // → SV value = ref-recipe-list, refKeys = [contentItemId(...), ...]
+  ```
+
+  The recipe set must materialise content items at the referenced
+  handles in the same compile run. If a handle doesn't resolve, the SV
+  write fails at apply time with the executor's standard "ref-recipe
+  target not in captured-itemId map" error — author error, not silently
+  masked. Same contract as enum-value defaults.
+
+  Tests: 5,144 passing (+5 covering file + single/multi reference +
+  empty-input safe handling).
+
+- 76352de: `recipe`: drop `IncludeTemplatesForSelection` filter from `reference + enumHandle` Treelist sources
+
+  Sitecore Pages's Treelist chrome rejects every pick under the combined
+  `DataSource=<path>&IncludeTemplatesForSelection=<GUID>` form, leaving
+  authors with "the source's filter doesn't allow those options" and no
+  recovery path on any field whose recipe declares
+  `shape: "reference"` + `sitecore.enumHandle`. The template filter
+  wasn't load-bearing — scai deliberately doesn't emit per-folder
+  `__Standard Values` items inside enum folders, so the enum folder's
+  children are exactly the value items the picker should surface.
+  Switched the compile to emit plain `DataSource=<enumPath>`.
+  Regression-tested in `compile-shared.test.ts`.
+
+- 2f8c8a3: `recipe`: honour `sitecore.enumHandle` on `shape: "reference"` (Treelist pick-from-enum)
+
+  Previously `enumHandle` only worked on `shape: "enum"` (single-select
+  Droplink). For multi-pick scenarios — "pick which social platforms to
+  show", "pick which feature flags this site enables" — authors had to
+  fall back to a free-text comma-separated convention because the
+  recipe DSL couldn't express "Treelist sourced from this enum".
+
+  Now `enumHandle` works on `shape: "reference"` too. Both branches use
+  the same enum folder path resolution; the reference branch additionally
+  restricts the picker to enum value items via
+  `IncludeTemplatesForSelection`:
+
+  ```ts
+  // Single-pick Droplink (existing behaviour, unchanged):
+  { name: "Platform", shape: "enum",
+    sitecore: { enumHandle: "social-platform@1" } }
+  // → Source: /sitecore/.../Enumerations/SocialPlatform
+
+  // Multi-pick Treelist (NEW):
+  { name: "Platforms", shape: "reference", multiple: true,
+    sitecore: { type: "treelist", enumHandle: "social-platform@1" } }
+  // → Source: DataSource=/sitecore/.../Enumerations/SocialPlatform
+  //           &IncludeTemplatesForSelection={<enum-value-template-GUID>}
+  ```
+
+  Standard Values defaults follow the same rules:
+
+  ```ts
+  // Single-pick default = enum value name:
+  { ..., default: "x" }
+  // → SV value = ref-recipe pointing at enumValueId(folder, "x")
+
+  // Multi-pick default = pipe-separated enum value names:
+  { ..., default: "facebook|x|linkedin" }
+  // → SV value = ref-recipe-list pointing at the three enum values
+  ```
+
+  Same author-error contract as enum-shape SV defaults: referencing a
+  value name the enum doesn't define fails at apply time with the
+  standard "ref-recipe target not in captured-itemId map" error.
+
+  Tests: 5,147 passing (+3 covering the new branches).
+
+- 885885c: `recipe`: wire rendering Placeholders Treelist to the Placeholder Settings items it creates
+
+  `ComponentTemplateRecipe`'s `placeholders: [...]` block previously
+  only emitted `Placeholder Settings` items at `placeholderSettingsRoot`
+  — which carry per-key allow-lists and editor-toolbox metadata. The
+  matching wire on the Rendering item that joins those settings items
+  to the rendering was missing, so the layout service shipped no
+  `placeholders` array for the rendering, child renderings never
+  resolved, and the headless SDK warned
+
+      Placeholder '<slot>-1' was not found in the current rendering data
+
+  even when the recipe correctly set `dynamicPlaceholders: true`,
+  chained the `_IDynamicPlaceholder` base template, and emitted every
+  Placeholder Settings item the slot needed.
+
+  `emitRendering` now writes the **Placeholders** (plural) Treelist
+  shared field at `069a8361-b1cd-437c-8c32-a3be78941446` — the SXA
+  Headless rendering-chain field, mixed in via
+  `/sitecore/templates/System/Layout/Sections/Rendering Options/Layout Service/Placeholders`.
+  Value is a `ref-recipe-list` of GUIDs, one per declared slot, each
+  pointing at the matching Placeholder Settings item already emitted
+  by `buildPlaceholderSettingsAggregate`:
+
+  ```ts
+  {
+    placeholders: [
+      { key: "container-{*}" },
+      { key: "footer-{*}" },
+    ],
+  }
+  // → Placeholders Treelist refs:
+  //   [
+  //     placeholderSettingsId(site, "container-{*}"),
+  //     placeholderSettingsId(site, "footer-{*}"),
+  //   ]
+  ```
+
+  The starter-kit `Container`, `Column Splitter`, `Row Splitter`, etc.
+  all wire their slots through this exact field — the SXA Headless
+  runtime dereferences each ref to read the `Placeholder Key` (the
+  `container-{*}` template-shaped string) before emitting the
+  `placeholders` map. The literal `{*}` token lives on the settings
+  item, not on the rendering field, which is why earlier attempts at
+  writing pipe-joined raw key strings to the rendering had no effect:
+  the runtime never reads the rendering for keys.
+
+  > Two unreleased earlier attempts at this fix targeted the wrong
+  > field entirely — commit `885885c` wrote pipe-joined keys to the
+  > standard CMS Layout's plural "Placeholders" (b687328e-...) which
+  > the Headless Json Rendering template doesn't inherit (Authoring
+  > GraphQL rejected the upsert outright); commit `84fa785` switched
+  > to the Json Rendering template's singular "Placeholder" field
+  > (592a1ce7-...) which Authoring accepts but the layout service
+  > ignores. Caught + corrected (this changeset / commit) before any
+  > release shipped: still 0.2.5 on `latest` after publishing.
+
 ## 0.2.4
 
 ### Patch Changes

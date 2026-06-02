@@ -61,7 +61,7 @@ export default defineConfig({
       // as the in-flight modules catch up.
       thresholds: {
         statements: 91,
-        branches: 79.5,
+        branches: 80,
         functions: 90,
         lines: 92,
       },

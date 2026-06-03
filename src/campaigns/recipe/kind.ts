@@ -121,32 +121,63 @@ const findProjectByName = async (
   }
 };
 
+/**
+ * Pull `handle:<x>` out of a labels array and return both the
+ * extracted handle and the labels with that entry stripped. Used by
+ * the projection helpers so the recipe surfaces `handle` + clean
+ * `labels[]` rather than leaking the identity-marker as a free-form
+ * label.
+ */
+const splitHandleFromLabels = (
+  labels: ReadonlyArray<string> | undefined
+): { handle: string | undefined; labels: string[] } => {
+  if (!labels || labels.length === 0) return { handle: undefined, labels: [] };
+  let handle: string | undefined;
+  const cleaned: string[] = [];
+  for (const l of labels) {
+    if (l.startsWith("handle:") && !handle) {
+      handle = l.slice("handle:".length);
+      continue;
+    }
+    cleaned.push(l);
+  }
+  return { handle, labels: cleaned };
+};
+
 /** Project a live task into the clean recipe shape (server ids dropped). */
-const toRecipeTask = (task: Task): CampaignTask => ({
-  name: task.name,
-  status: task.status,
-  dueDate: task.due_date ?? undefined,
-  priority: task.priority ?? undefined,
-  description: task.description ?? undefined,
-  assignee: task.assignee ?? undefined,
-  labels: task.labels ?? [],
-  // `handle` + `dependencies` are recipe-author concerns — the wire
-  // doesn't carry them as authored. On pull, leave both empty; the
-  // operator re-attaches handles by hand when adopting an existing
-  // project as a recipe source.
-  dependencies: [],
-});
+const toRecipeTask = (task: Task): CampaignTask => {
+  const { handle, labels } = splitHandleFromLabels(task.labels);
+  return {
+    ...(handle ? { handle } : {}),
+    name: task.name,
+    status: task.status,
+    dueDate: task.due_date ?? undefined,
+    priority: task.priority ?? undefined,
+    description: task.description ?? undefined,
+    assignee: task.assignee ?? undefined,
+    labels,
+    // `dependencies` is a recipe-author concern — the wire stores
+    // them as full UUID triples (not handle-keyed), so on pull we
+    // leave the array empty. The operator re-authors deps when
+    // adopting an existing project as a recipe source.
+    dependencies: [],
+  };
+};
 
 /** Project a live deliverable into the clean recipe shape. */
-const toRecipeDeliverable = (deliverable: Deliverable): CampaignDeliverable => ({
-  name: deliverable.name,
-  status: deliverable.status,
-  dueDate: deliverable.due_date ?? undefined,
-  funnelStage: deliverable.funnel_stage,
-  funnelTactics: deliverable.funnel_tactics ?? [],
-  labels: deliverable.labels ?? [],
-  tasks: (deliverable.tasks ?? []).map(toRecipeTask),
-});
+const toRecipeDeliverable = (deliverable: Deliverable): CampaignDeliverable => {
+  const { handle, labels } = splitHandleFromLabels(deliverable.labels);
+  return {
+    ...(handle ? { handle } : {}),
+    name: deliverable.name,
+    status: deliverable.status,
+    dueDate: deliverable.due_date ?? undefined,
+    funnelStage: deliverable.funnel_stage,
+    funnelTactics: deliverable.funnel_tactics ?? [],
+    labels,
+    tasks: (deliverable.tasks ?? []).map(toRecipeTask),
+  };
+};
 
 /** Capture a live campaign as a recipe. `null` when no project has the name. */
 const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignRecipe | null> => {
@@ -278,11 +309,36 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     project = await getProject(client, found.id);
   }
 
-  // Index existing deliverables by name so task changes can resolve
-  // their parent — and so already-present deliverables are skipped.
+  // Index existing deliverables by their stamped `handle:<handle>`
+  // label first, then by name as fallback. Re-syncs match by label
+  // even when the LLM picks a different display name between runs.
+  // Helper extracts the value out of a `handle:<x>` label, if present.
+  const handleFromLabels = (labels: ReadonlyArray<string> | undefined): string | null => {
+    if (!labels) return null;
+    for (const l of labels) {
+      if (l.startsWith("handle:")) return l.slice("handle:".length);
+    }
+    return null;
+  };
   const deliverablesByName = new Map<string, Deliverable>(
     (project.deliverables ?? []).map((deliverable) => [deliverable.name, deliverable])
   );
+  const deliverablesByHandle = new Map<string, Deliverable>();
+  for (const deliverable of project.deliverables ?? []) {
+    const h = handleFromLabels(deliverable.labels);
+    if (h) deliverablesByHandle.set(h, deliverable);
+  }
+
+  /** Find an existing deliverable by recipe shape, preferring label. */
+  const findExistingDeliverable = (
+    recipeDeliverable: CampaignDeliverable
+  ): Deliverable | undefined => {
+    if (recipeDeliverable.handle) {
+      const byHandle = deliverablesByHandle.get(recipeDeliverable.handle);
+      if (byHandle) return byHandle;
+    }
+    return deliverablesByName.get(recipeDeliverable.name);
+  };
 
   // Create missing deliverables. Their tasks are created in the task
   // pass below, which resolves against this freshly-populated index.
@@ -296,6 +352,31 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       skipped.push(change);
       continue;
     }
+
+    // Even when the planner classified this as a fresh create, check
+    // for an existing deliverable carrying our recipe's `handle:<x>`
+    // label — adopt it rather than spawning a duplicate.
+    const existing = findExistingDeliverable(deliverable);
+    if (existing) {
+      ctx.logger?.info(
+        `Adopting existing deliverable "${existing.name}" via handle "${deliverable.handle ?? "(name)"}" — recipe name "${deliverable.name}" matched.`
+      );
+      applied.push(change);
+      continue;
+    }
+
+    // Stamp `handle:<handle>` into labels at create time so future
+    // re-syncs (or other operators authoring against the same recipe)
+    // can match by label. Idempotent — never appends the same label
+    // twice because the recipe's authored labels[] is the source of
+    // truth on each push.
+    const labelsWithHandle = deliverable.handle
+      ? [
+          ...(deliverable.labels ?? []).filter((l) => !l.startsWith("handle:")),
+          `handle:${deliverable.handle}`,
+        ]
+      : (deliverable.labels ?? []);
+
     ctx.logger?.info(`Creating deliverable "${deliverable.name}".`);
     const created = await createDeliverable(client, project.id, {
       name: deliverable.name,
@@ -303,9 +384,12 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       status: deliverable.status,
       funnel_stage: deliverable.funnelStage,
       funnel_tactics: deliverable.funnelTactics,
-      labels: deliverable.labels,
+      labels: labelsWithHandle,
     });
     deliverablesByName.set(created.name, created);
+    if (deliverable.handle) {
+      deliverablesByHandle.set(deliverable.handle, created);
+    }
     applied.push(change);
   }
 
@@ -322,10 +406,20 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const tasksByHandle = new Map<string, ResolvedTaskRef>();
   for (const deliverable of project.deliverables ?? []) {
     for (const t of deliverable.tasks ?? []) {
-      // Existing tasks have no handle on the wire — we can't address
-      // them as a dep target by handle. The recipe owns handle ↔ name
-      // identity, so when the existing task's name matches a task in
-      // the recipe with a handle, capture that mapping.
+      // Prefer the `handle:<x>` label stamped at create time — that's
+      // the identity the orchestrator stamps on every task it pushes
+      // for stable dependency + re-sync resolution.
+      const labelHandle = handleFromLabels(t.labels);
+      if (labelHandle) {
+        tasksByHandle.set(labelHandle, {
+          projectId: project.id,
+          deliverableId: deliverable.id,
+          taskId: t.id,
+        });
+        continue;
+      }
+      // Legacy fallback for tasks pushed before the label scheme
+      // landed: match by recipe name and capture the recipe's handle.
       const recipeTask = taskChanges
         .map((c) => c.meta?.task as CampaignTask | undefined)
         .find((rt) => rt?.name === t.name);
@@ -364,32 +458,59 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
     let taskId: string | null = null;
     if (change.kind === "create") {
-      const created = await createTask(client, project.id, parent.id, {
-        name: task.name,
-        due_date: task.dueDate,
-        status: task.status,
-      });
-      taskId = created.id;
-      // createTask only accepts name/due_date/status — converge the
-      // remaining fields with a follow-up update so a freshly-created
-      // task does not silently lose its priority/description/assignee/labels.
-      if (
-        task.priority !== undefined ||
-        task.description !== undefined ||
-        task.assignee !== undefined ||
-        (task.labels ?? []).length > 0
-      ) {
-        await updateTask(client, project.id, parent.id, created.id, {
+      // Adopt instead of duplicate when an existing task on this
+      // deliverable carries our recipe's `handle:<x>` label.
+      const existingByHandle = task.handle
+        ? (parent.tasks ?? []).find((t) => (t.labels ?? []).includes(`handle:${task.handle}`))
+        : undefined;
+      const labelsWithHandle = task.handle
+        ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
+        : (task.labels ?? []);
+      if (existingByHandle) {
+        ctx.logger?.info(
+          `Adopting existing task "${existingByHandle.name}" via handle "${task.handle}" — recipe name "${task.name}" matched.`
+        );
+        taskId = existingByHandle.id;
+        await updateTask(client, project.id, parent.id, taskId, {
           name: task.name,
           due_date: task.dueDate,
           status: task.status,
           priority: task.priority ?? null,
           description: task.description ?? null,
           assignee: task.assignee ?? null,
-          labels: task.labels ?? [],
+          labels: labelsWithHandle,
         });
+        applied.push(change);
+      } else {
+        const created = await createTask(client, project.id, parent.id, {
+          name: task.name,
+          due_date: task.dueDate,
+          status: task.status,
+        });
+        taskId = created.id;
+        // createTask only accepts name/due_date/status — converge the
+        // remaining fields with a follow-up update so a freshly-created
+        // task does not silently lose its priority/description/
+        // assignee/labels. Stamp `handle:<x>` into labels here so the
+        // task is matchable on re-sync regardless of name drift.
+        if (
+          task.priority !== undefined ||
+          task.description !== undefined ||
+          task.assignee !== undefined ||
+          labelsWithHandle.length > 0
+        ) {
+          await updateTask(client, project.id, parent.id, created.id, {
+            name: task.name,
+            due_date: task.dueDate,
+            status: task.status,
+            priority: task.priority ?? null,
+            description: task.description ?? null,
+            assignee: task.assignee ?? null,
+            labels: labelsWithHandle,
+          });
+        }
+        applied.push(change);
       }
-      applied.push(change);
     } else if (change.kind === "update") {
       // PUT is full-replacement — the recipe carries the whole task.
       taskId = resolveTaskId(parent, task);
@@ -503,8 +624,20 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   return { applied, skipped };
 };
 
-/** Resolve a recipe task to its server id within a live deliverable. */
+/**
+ * Resolve a recipe task to its server id within a live deliverable.
+ * Matches by `handle:<handle>` label first when the recipe carries a
+ * handle, then falls back to name — the same labels-first strategy
+ * the deliverable matcher uses.
+ */
 const resolveTaskId = (deliverable: Deliverable, task: CampaignTask): string => {
+  if (task.handle) {
+    const handleLabel = `handle:${task.handle}`;
+    const byLabel = (deliverable.tasks ?? []).find((candidate) =>
+      (candidate.labels ?? []).includes(handleLabel)
+    );
+    if (byLabel) return byLabel.id;
+  }
   const match = (deliverable.tasks ?? []).find((candidate) => candidate.name === task.name);
   if (!match) {
     throw createScaiError(

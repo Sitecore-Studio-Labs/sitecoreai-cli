@@ -91,9 +91,24 @@ export const CampaignTaskSchema = z.object({
 
 /**
  * A deliverable — a funnel-stage grouping of tasks under a campaign.
- * Identified within its campaign by `name`.
+ * Matched within its campaign by `handle` (stamped into the wire's
+ * `labels` array as `handle:<handle>`) when present, falling back to
+ * `name`. Stable handles keep re-syncs idempotent even when the LLM
+ * picks different display names between story regenerates.
  */
 export const CampaignDeliverableSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `top-funnel-creative@1`). Apply stamps
+   * `handle:<handle>` into the deliverable's `labels` so re-pushes
+   * match by label rather than by the volatile display name. Optional
+   * but strongly recommended for generator-produced deliverables.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle. Stamped into the wire `labels` array as `handle:<handle>` so re-pushes match by label rather than by the LLM-volatile display name."
+    ),
   name: z
     .string()
     .min(1)

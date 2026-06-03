@@ -126,7 +126,7 @@ const createPullCommand = (): Command => {
     .description("Capture a live brief type or brief instance as a recipe file.")
     .requiredOption(
       "--name <name>",
-      "Identifier of the recipe. Brief-type codename (`CreativeBrief`) or brief display name (`Q3 Launch`)."
+      "Identifier of the recipe. Brief-type codename (`Creative`) or brief display name (`Q3 Launch`)."
     )
     .addOption(new Option("--file <path>", "Output recipe file (default: <name>.<kind>.yaml)"));
   addKindOption(command);

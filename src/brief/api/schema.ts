@@ -88,7 +88,7 @@ export type BriefField = RichTextField | DateTimeField | TimelineField | BudgetF
 /** BriefType — the schema template a brief instance is built against. */
 export type BriefType = {
   id: string;
-  /** Stable codename, e.g. `CreativeBrief`. */
+  /** Stable codename, e.g. `Creative`. */
   name: string;
   /** Localized human label. */
   label: LocalizedString;

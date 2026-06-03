@@ -103,7 +103,7 @@ export const BriefTypeRecipeSchema = z.object({
       "Must start with a letter and contain only letters, digits, or underscores."
     )
     .describe(
-      "Stable codename of the brief type, e.g. `CreativeBrief`. Identifies the type when pushing."
+      "Stable codename of the brief type, e.g. `Creative`. Identifies the type when pushing."
     ),
   label: LocalizedStringSchema.describe("Localized human label for the brief type."),
   description: z.string().describe("Human description of what the brief type is for."),

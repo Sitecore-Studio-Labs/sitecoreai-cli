@@ -136,18 +136,111 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefInstanc
   return toRecipe(brief, briefTypeName);
 };
 
-/** Resolve a recipe's `briefTypeName` to its server id, or fail with a hint. */
-const resolveBriefTypeId = async (
+/** Resolve a recipe's `briefTypeName` to the full type record (id + field defs), or fail with a hint. */
+const resolveBriefType = async (
   client: BriefApiClientOptions,
   briefTypeName: string
-): Promise<string> => {
+): Promise<BriefType> => {
   const type = await findTypeByName(client, briefTypeName);
   if (!type) {
     throw createScaiError(`Brief type "${briefTypeName}" not found.`, "INPUT_INVALID", {
       hint: "Push the brief-type recipe first, or check the `briefTypeName` codename with `scai ops brief types list`.",
     });
   }
-  return type.id;
+  return type;
+};
+
+/**
+ * Convert an HTML-ish string into a minimal-but-valid ProseMirror doc.
+ * The Brief API stores RichText as a ProseMirror document; raw HTML
+ * strings fail validation with
+ * `Unexpected character encountered while parsing value: <`.
+ *
+ * Lossy — block-level only, drops inline formatting (bold/italic/
+ * links etc.). Adequate for first-push of LLM-generated briefs where
+ * the content is plain prose; richer formatting needs the brief
+ * editor on the Sitecore side OR a real HTML→ProseMirror converter
+ * (e.g. prosemirror-model + DOMParser, which scai doesn't ship).
+ *
+ * Empty input → empty doc `{type: "doc", content: []}` (also accepted).
+ */
+const htmlToProseMirrorDoc = (html: string): Record<string, unknown> => {
+  const plain = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  const paragraphs = plain
+    .split(/\n\s*\n|\n/g)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (paragraphs.length === 0) return { type: "doc", content: [] };
+  return {
+    type: "doc",
+    content: paragraphs.map((text) => ({
+      type: "paragraph",
+      content: [{ type: "text", text }],
+    })),
+  };
+};
+
+/**
+ * Wrap a recipe's `fields` map with the `{type, value}` shape the
+ * Brief API requires on create/update. Unwrapped values (raw `{amount,
+ * currency}` for Budget, HTML strings for RichText, etc.) are common
+ * in recipes built from LLM output or the orchestrator's StoryBrief
+ * shape; without wrapping the API returns either
+ * `Missing 'type' property for field: <name>` or, for RichText with a
+ * string value, `Unexpected character encountered while parsing value`.
+ *
+ * Idempotent: values that already have `{type, value}` pass through
+ * untouched so round-tripped recipes (pull → push) don't double-wrap.
+ *
+ * RichText values that are HTML strings get a lossy block-level
+ * conversion to a ProseMirror doc — see `htmlToProseMirrorDoc`.
+ *
+ * Unknown field names (in the recipe but not on the type) pass through
+ * as-is — the server rejects them with a clearer "field not on type"
+ * error than scai could synthesize.
+ */
+const wrapBriefFields = (
+  fields: Record<string, unknown> | undefined,
+  briefType: BriefType
+): Record<string, unknown> => {
+  if (!fields) return {};
+  const typeByName = new Map<string, string>(briefType.fields.map((f) => [f.name, f.type]));
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(fields)) {
+    const fieldType = typeByName.get(name);
+    if (!fieldType) {
+      wrapped[name] = value;
+      continue;
+    }
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      "type" in value &&
+      "value" in value
+    ) {
+      wrapped[name] = value; // already wrapped
+      continue;
+    }
+    // RichText fields can't accept a bare string — convert to a
+    // minimal ProseMirror doc. Other types pass the value through as
+    // the wrapped `value`.
+    let wireValue: unknown = value;
+    if (fieldType === "RichText" && typeof value === "string") {
+      wireValue = htmlToProseMirrorDoc(value);
+    }
+    wrapped[name] = { type: fieldType, value: wireValue };
+  }
+  return wrapped;
 };
 
 /**
@@ -305,12 +398,13 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
   let writtenRecipe: BriefInstanceRecipe = recipe;
   if (instanceChange.kind === "create") {
-    const briefTypeId = await resolveBriefTypeId(client, recipe.briefTypeName);
+    const briefType = await resolveBriefType(client, recipe.briefTypeName);
+    const wrappedFields = wrapBriefFields(recipe.fields, briefType);
     const input: CreateBriefInput = {
       name: recipe.name,
-      briefTypeId,
+      briefTypeId: briefType.id,
       ...(recipe.locale !== undefined && { locale: recipe.locale }),
-      ...(Object.keys(recipe.fields ?? {}).length > 0 && { fields: recipe.fields }),
+      ...(Object.keys(wrappedFields).length > 0 && { fields: wrappedFields }),
       ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
     };
     ctx.logger?.info(`Creating brief "${recipe.name}".`);
@@ -334,8 +428,8 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // different type. Surface that loudly instead of silently dropping
     // the change.
     const types = await listBriefTypes(client);
-    const existingTypeName =
-      types.data.find((type) => type.id === existing.briefType.id)?.name ?? existing.briefType.id;
+    const existingType = types.data.find((type) => type.id === existing.briefType.id);
+    const existingTypeName = existingType?.name ?? existing.briefType.id;
     if (existingTypeName !== recipe.briefTypeName) {
       throw createScaiError(
         `Cannot repoint brief "${recipe.name}" from type "${existingTypeName}" to "${recipe.briefTypeName}".`,
@@ -345,12 +439,19 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         }
       );
     }
+    // Wrap fields using the existing brief-type's field definitions
+    // when we have them (we should — we just listed the types). Same
+    // {type, value} requirement as create; without this an update with
+    // unwrapped Budget/Timeline/etc. round-trips a 400.
+    const wrappedFields = existingType
+      ? wrapBriefFields(recipe.fields, existingType)
+      : (recipe.fields ?? {});
     const patch: Partial<CreateBriefInput> & { status?: BriefStatus } = {
       name: recipe.name,
       ...(recipe.locale !== undefined && { locale: recipe.locale }),
       ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
       ...(recipe.status !== undefined && { status: recipe.status }),
-      fields: recipe.fields ?? {},
+      fields: wrappedFields,
     };
     ctx.logger?.info(`Updating brief "${recipe.name}" (${existing.id}).`);
     await updateBrief(client, existing.id, patch);

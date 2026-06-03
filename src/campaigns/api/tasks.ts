@@ -48,6 +48,20 @@ export type CreateTaskInput = {
   dependencies?: unknown[];
 };
 
+/**
+ * The Orchestrate API rejects `POST .../tasks` with HTTP 422
+ * `{detail: [{loc:["body","due_date"], msg:"Field required"}]}` when
+ * `due_date` is absent (verified 2026-06-03). Default to ~30 days out
+ * when the input omits one so an operator-added task without a
+ * date still lands on first push.
+ */
+const DEFAULT_TASK_DUE_DATE_DAYS_OUT = 30;
+const defaultTaskDueDate = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + DEFAULT_TASK_DUE_DATE_DAYS_OUT);
+  return d.toISOString().slice(0, 10);
+};
+
 /** Create a task under a deliverable. Returns the persisted record (201). */
 export const createTask = (
   options: CampaignApiClientOptions,
@@ -61,7 +75,7 @@ export const createTask = (
       project_id: projectId,
       project_deliverable_id: deliverableId,
       name: input.name,
-      due_date: input.due_date,
+      due_date: input.due_date ?? defaultTaskDueDate(),
       status: input.status ?? "NOT_STARTED",
       archived: false,
       dependencies: input.dependencies ?? [],

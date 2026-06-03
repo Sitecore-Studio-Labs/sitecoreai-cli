@@ -47,6 +47,8 @@ import type {
   RecipePlan,
   SyncContext,
 } from "@/sync";
+import { listProjects } from "@/campaigns";
+import { resolveCampaignClient } from "@/campaigns/recipe/client";
 import { resolveBriefClient } from "./client";
 import { diffBriefInstance } from "./instance-diff";
 import {
@@ -112,6 +114,37 @@ const findTypeByName = async (
 ): Promise<BriefType | null> => {
   const page = await listBriefTypes(client);
   return page.data.find((type) => type.name === name) ?? null;
+};
+
+/**
+ * Resolve a campaign by (storyId, campaignHandle) to its server
+ * project id. Pages the Orchestrate list endpoint and returns the
+ * first project carrying BOTH identity labels — `story:<storyId>`
+ * and `handle:<campaignHandle>`. The orchestrator stamps these
+ * labels on every story-generated campaign.
+ *
+ * Returns `null` when no project matches. The caller treats that as
+ * "no link" — a warning is logged but the brief push still succeeds.
+ */
+const resolveCampaignProjectId = async (
+  ctx: SyncContext,
+  params: { storyId: string; campaignHandle: string }
+): Promise<string | null> => {
+  const storyLabel = `story:${params.storyId}`;
+  const handleLabel = `handle:${params.campaignHandle}`;
+  const client = await resolveCampaignClient(ctx);
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await listProjects(client, cursor ? { next: cursor } : undefined);
+    for (const project of page.data) {
+      const labels = project.labels ?? [];
+      if (labels.includes(storyLabel) && labels.includes(handleLabel)) {
+        return project.id;
+      }
+    }
+    if (!page.next || page.data.length === 0) return null;
+    cursor = page.next;
+  }
 };
 
 /** Enumerate every brief on the remote — fans out into the aggregate sync. */
@@ -529,6 +562,75 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
           }`
         );
       }
+    }
+  }
+
+  // External references — primarily the brief→campaign link.
+  // Verified writable 2026-06-03 via PUT on the brief with a
+  // `references` field. Set in a follow-up PUT so the create path
+  // (which doesn't accept references) stays separate from the linkage
+  // step. The whole array gets replaced on each push — pull → push
+  // round-trips a stable references[] field (per the read schema).
+  //
+  // Two sources merge: explicit `recipe.references` (operator-authored
+  // pre-resolved ExternalLinks) and the resolved-at-apply-time
+  // campaignHandle (the orchestrator-friendly path). Resolving the
+  // handle calls the Orchestrate API to find the project carrying the
+  // matching `story:<id>` + `handle:<campaign>` identity labels.
+  const referencesToWrite: Array<{
+    type: "ExternalLink";
+    relatedSystem: string;
+    relatedType?: string | null;
+    id: string;
+  }> = [];
+  if (recipe.references && recipe.references.length > 0) {
+    for (const r of recipe.references) {
+      referencesToWrite.push({
+        type: "ExternalLink",
+        relatedSystem: r.relatedSystem,
+        ...(r.relatedType !== undefined ? { relatedType: r.relatedType } : {}),
+        id: r.id,
+      });
+    }
+  }
+  if (writtenBriefId && recipe.campaignHandle && recipe.storyId) {
+    try {
+      const projectId = await resolveCampaignProjectId(ctx, {
+        storyId: recipe.storyId,
+        campaignHandle: recipe.campaignHandle,
+      });
+      if (projectId) {
+        referencesToWrite.push({
+          type: "ExternalLink",
+          relatedSystem: "co",
+          relatedType: "Project",
+          id: projectId,
+        });
+      } else {
+        ctx.logger?.warn?.(
+          `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign with matching identity labels was found — reference not set.`
+        );
+      }
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to resolve campaignHandle "${recipe.campaignHandle}" for brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
+  if (writtenBriefId && referencesToWrite.length > 0) {
+    ctx.logger?.info(`Setting ${referencesToWrite.length} reference(s) on brief "${recipe.name}".`);
+    try {
+      await updateBrief(client, writtenBriefId, {
+        references: referencesToWrite,
+      });
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to set references on brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
   }
 

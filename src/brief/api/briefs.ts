@@ -125,14 +125,30 @@ export const createBrief = (
 };
 
 /**
+ * One external-link reference attached to a brief — most commonly a
+ * link to its parent Orchestrate project (campaign). Verified
+ * writable 2026-06-03 via PUT on the brief with `references: [...]`.
+ */
+export type BriefExternalReference = {
+  type: "ExternalLink";
+  relatedSystem: string;
+  relatedType?: string | null;
+  id: string;
+};
+
+/**
  * Partial update of a brief (`PUT /api/brief/v1/briefs/{id}` — 204 No
- * Content). A status-only body is accepted; other partial fields are
- * wired but only the `status` path is verified (2026-05-15).
+ * Content). A status-only body is accepted; the `status` path is
+ * verified (2026-05-15); the `references` path is verified
+ * (2026-06-03); other partial fields are wired but unverified.
  */
 export const updateBrief = (
   options: BriefApiClientOptions,
   briefId: string,
-  patch: Partial<CreateBriefInput> & { status?: BriefStatus }
+  patch: Partial<CreateBriefInput> & {
+    status?: BriefStatus;
+    references?: BriefExternalReference[];
+  }
 ): Promise<void> =>
   briefRequest<void>(options, `/api/brief/v1/briefs/${encodeURIComponent(briefId)}`, {
     method: "PUT",

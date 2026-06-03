@@ -159,6 +159,44 @@ export const BriefCommentSchema = z
   })
   .describe("One comment on a brief.");
 
+/**
+ * Cross-resource reference attached to a brief. Sitecore Brief API
+ * persists these in the `references` array on a read; verified
+ * 2026-06-03 that `PUT /api/brief/v1/briefs/{id}` with a `references`
+ * field on the body accepts the same shape and persists it.
+ *
+ * The most common use is linking a brief to its parent Orchestrate
+ * project (campaign) — `relatedSystem: "co"`, `relatedType: "Project"`,
+ * `id: <projectId>`. Other related-system slugs (e.g. `xmcloud`)
+ * appear on read but their write semantics are unverified.
+ */
+export const BriefExternalReferenceSchema = z
+  .object({
+    type: z.literal("ExternalLink").describe('Discriminator. Always "ExternalLink" today.'),
+    relatedSystem: z
+      .string()
+      .min(1)
+      .describe(
+        "Sibling system slug — `co` for Sitecore Orchestrate (campaigns/projects), `xmcloud` for XM Cloud content. Verified for `co`; others unverified."
+      ),
+    relatedType: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Resource type within the `relatedSystem`, e.g. `Project` for an Orchestrate campaign. `null` is accepted."
+      ),
+    id: z
+      .string()
+      .min(1)
+      .describe(
+        "Foreign identifier — a UUID for an Orchestrate project, an Auth0 sub for an `xmcloud` user, etc."
+      ),
+  })
+  .describe(
+    "One external reference attached to a brief. Linking a brief to its parent campaign uses {type: ExternalLink, relatedSystem: 'co', relatedType: 'Project', id: <projectId>}."
+  );
+
 /** The full brief-instance recipe. */
 export const BriefInstanceRecipeSchema = z.object({
   name: z
@@ -206,6 +244,24 @@ export const BriefInstanceRecipeSchema = z.object({
     .optional()
     .describe(
       "Comments attached to the brief — POSTed to `/api/brief/v1/comments` after the brief is created/updated. Create-only for now. Each comment carries its own `authorId` so a single push can populate a multi-person conversation. See `BriefCommentSchema` for the field set and impersonation semantics."
+    ),
+  references: z
+    .array(BriefExternalReferenceSchema)
+    .optional()
+    .describe(
+      "External resource references — linking a brief to its parent Orchestrate project (campaign) is the verified case: `{type: ExternalLink, relatedSystem: 'co', relatedType: 'Project', id: <projectId>}`. Applied via a follow-up `PUT /api/brief/v1/briefs/{id}` after the brief is created."
+    ),
+  campaignHandle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable handle of the parent Orchestrate campaign (project). When set, scai's apply path resolves it to a project id via list-by-labels (`story:<storyId>` + `handle:<campaignHandle>`) and PUTs the resolved ExternalLink onto the brief's references. The campaign must already exist on the tenant — story-sync pushes campaigns before briefs."
+    ),
+  storyId: z
+    .string()
+    .optional()
+    .describe(
+      "Story UUID. Narrows campaign-handle resolution by the `story:<id>` label so two stories that share a campaign handle don't collide. Omittable when `campaignHandle` is also omitted."
     ),
 });
 

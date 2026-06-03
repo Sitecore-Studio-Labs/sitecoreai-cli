@@ -62,21 +62,45 @@ import { BriefInstanceRecipeSchema, type BriefInstanceRecipe } from "./instance-
 const BRIEF_KIND_NAME = "brief";
 
 /**
- * Find a brief by its display name, paging the list endpoint until a
- * match is found or the cursor is exhausted. The Brief list endpoint
- * supports no server-side name filter (see `ListBriefsQuery`), so the
- * walk is unavoidable.
+ * Identity-marker pattern callers stamp into a brief's name to keep
+ * re-pushes idempotent. Shape: `[story:<storyId>/<handle>]`. The orchestrator
+ * uses this for story-generated briefs; ad-hoc recipes that don't carry a
+ * marker fall back to exact-name match below.
+ */
+const IDENTITY_MARKER_RE = /\[story:[^\]]+\]\s*$/;
+
+/**
+ * Find a brief by name, paging the list endpoint until a match is
+ * found or the cursor is exhausted. The Brief list endpoint supports
+ * no server-side name filter, so the walk is unavoidable.
+ *
+ * Matching is two-stage. If the supplied `name` ends with a
+ * `[story:…/…]` identity marker, we prefer to match other briefs
+ * carrying the SAME marker — the marker pins identity even when an
+ * operator (or the LLM) tweaks the prefix between pushes (different
+ * displayName phrasing, typo fix, etc.). Falls back to exact-name
+ * match when no marker is present OR when nothing matched by marker,
+ * so legacy briefs without a marker still upsert cleanly.
  */
 const findBriefByName = async (
   client: BriefApiClientOptions,
   name: string
 ): Promise<Brief | null> => {
+  const markerMatch = name.match(IDENTITY_MARKER_RE);
+  const marker = markerMatch ? markerMatch[0] : null;
   let cursor: string | undefined;
+  let exactFallback: Brief | null = null;
   for (;;) {
     const page = await listBriefs(client, cursor ? { next: cursor } : undefined);
-    const match = page.data.find((brief) => brief.name === name);
-    if (match) return match;
-    if (!page.next || page.data.length === 0) return null;
+    for (const brief of page.data) {
+      if (brief.name === name) {
+        exactFallback ??= brief;
+      }
+      if (marker && brief.name.endsWith(marker)) {
+        return brief;
+      }
+    }
+    if (!page.next || page.data.length === 0) return exactFallback;
     cursor = page.next;
   }
 };

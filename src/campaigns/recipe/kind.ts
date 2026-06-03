@@ -59,17 +59,64 @@ import {
 
 const CAMPAIGN_KIND_NAME = "campaign";
 
-/** Find a campaign (project) by display name, paging the list endpoint. */
+/**
+ * Identity labels callers stamp into a campaign so re-pushes can find
+ * the same project even when its displayName changes between runs
+ * (the LLM picks fresh phrasing on each story regenerate). Shape:
+ * `["story:<storyId>", "handle:<recipeHandle>"]`. When the supplied
+ * `identityLabels` include `story:`/`handle:` entries the matcher
+ * prefers them over the exact-name match.
+ */
+const extractIdentityLabels = (
+  labels: ReadonlyArray<string> | undefined
+): { story: string | null; handle: string | null } => {
+  let story: string | null = null;
+  let handle: string | null = null;
+  for (const label of labels ?? []) {
+    if (label.startsWith("story:") && !story) story = label;
+    if (label.startsWith("handle:") && !handle) handle = label;
+  }
+  return { story, handle };
+};
+
+/**
+ * Find a campaign (project) by display name, paging the list endpoint.
+ *
+ * Matching is layered:
+ *  1. When `identityLabels` carry the orchestrator's `story:` +
+ *     `handle:` markers, find a project whose `labels` include BOTH —
+ *     pin identity by labels so a displayName edit between pushes
+ *     doesn't create a duplicate.
+ *  2. Otherwise (ad-hoc recipes without identity markers), fall back
+ *     to exact-name match.
+ *
+ * Exact-name continues to work for legacy recipes; the label-aware
+ * branch only activates when the orchestrator-style markers are
+ * present on the desired side.
+ */
 const findProjectByName = async (
   client: CampaignApiClientOptions,
-  name: string
+  name: string,
+  identityLabels: ReadonlyArray<string> = []
 ): Promise<Project | null> => {
+  const { story, handle } = extractIdentityLabels(identityLabels);
+  const useLabelMatch = story !== null && handle !== null;
   let cursor: string | undefined;
+  let nameFallback: Project | null = null;
   for (;;) {
     const page = await listProjects(client, { next: cursor });
-    const match = page.data.find((project) => project.name === name);
-    if (match) return match;
-    if (!page.next || page.data.length === 0) return null;
+    for (const project of page.data) {
+      if (project.name === name) {
+        nameFallback ??= project;
+      }
+      if (useLabelMatch) {
+        const labels = project.labels ?? [];
+        if (labels.includes(story) && labels.includes(handle)) {
+          return project;
+        }
+      }
+    }
+    if (!page.next || page.data.length === 0) return nameFallback;
     cursor = page.next;
   }
 };
@@ -162,17 +209,35 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   let project: Project;
   if (projectChange) {
     const name = String(projectChange.after);
-    ctx.logger?.info(`Creating campaign "${name}".`);
-    project = await createProject(client, {
-      name,
-      description: projectChange.meta?.description as string | undefined,
-      status: projectChange.meta?.status as string | undefined,
-      start_date: projectChange.meta?.startDate as string | undefined,
-      due_date: projectChange.meta?.dueDate as string | undefined,
-      brandkit_id: projectChange.meta?.brandKitId as string | undefined,
-      labels: (projectChange.meta?.labels as string[] | undefined) ?? [],
-    });
-    applied.push(projectChange);
+    const desiredLabels = (projectChange.meta?.labels as string[] | undefined) ?? [];
+
+    // Even when the planner classified this as a fresh create
+    // (readCurrent didn't find a project by exact name), try a
+    // label-based upsert here — the orchestrator stamps stable
+    // `story:<id>` + `handle:<handle>` markers on every campaign,
+    // so a displayName change between regenerates shouldn't spawn
+    // a duplicate. Falls through to createProject when no marker
+    // hit lands.
+    const labelMatch = await findProjectByName(client, name, desiredLabels);
+    if (labelMatch && labelMatch.name !== name) {
+      ctx.logger?.info(
+        `Adopting existing campaign "${labelMatch.name}" (id ${labelMatch.id}) via identity labels — recipe name "${name}" was a rename.`
+      );
+      project = await getProject(client, labelMatch.id);
+      applied.push(projectChange);
+    } else {
+      ctx.logger?.info(`Creating campaign "${name}".`);
+      project = await createProject(client, {
+        name,
+        description: projectChange.meta?.description as string | undefined,
+        status: projectChange.meta?.status as string | undefined,
+        start_date: projectChange.meta?.startDate as string | undefined,
+        due_date: projectChange.meta?.dueDate as string | undefined,
+        brandkit_id: projectChange.meta?.brandKitId as string | undefined,
+        labels: desiredLabels,
+      });
+      applied.push(projectChange);
+    }
 
     // POST each member to the project. The Orchestrate UI shows the
     // project only to its members, so a project with no real-user

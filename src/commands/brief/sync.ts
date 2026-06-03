@@ -44,6 +44,13 @@ interface SyncOptions extends CommonOptions {
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
+  /**
+   * Three-way merge conflict policy. Honored by `briefTypeKind` /
+   * `briefInstanceKind` when a baseline is loaded (via
+   * `ctx.baselineStorage`). Without a baseline the kinds degrade to
+   * two-way diff and this flag has no effect.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 /** Slugify a recipe name for a default filename. */
@@ -90,6 +97,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     configPath,
     logger,
     ...(baselineStorage ? { baselineStorage } : {}),
+    ...(options.conflictPolicy ? { pushConflictPolicy: options.conflictPolicy } : {}),
   };
 };
 
@@ -183,7 +191,13 @@ const createPushCommand = (): Command => {
     .description("Converge a brief type or brief onto a recipe file. Dry-run unless --allow-write.")
     .requiredOption("--file <path>", "Recipe file (.yaml / .json)")
     .addOption(new Option("--allow-write", "Apply the plan (default is a dry-run)"))
-    .addOption(new Option("--prune", "Include delete changes (off by default)"));
+    .addOption(new Option("--prune", "Include delete changes (off by default)"))
+    .addOption(
+      new Option(
+        "--conflict-policy <policy>",
+        "Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them. Requires a baseline (HTTP storage via env or file-backed); without one, the kinds degrade to two-way diff and this flag has no effect."
+      ).choices(["error", "recipe-wins", "cms-wins"])
+    );
   addKindOption(command);
   addEnvironmentOption(command);
   addConfigOption(command);

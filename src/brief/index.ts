@@ -72,7 +72,9 @@ export {
 export {
   listBriefTasks,
   getBriefTask,
+  createBriefTask,
   type BriefTaskMetadata,
+  type CreateBriefTaskInput,
   type ListBriefTasksQuery,
 } from "./api/tasks";
 

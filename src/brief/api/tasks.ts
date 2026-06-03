@@ -60,3 +60,48 @@ export const listBriefTasks = (
 /** Read a single task by id. **Untested** — inferred from REST conventions. */
 export const getBriefTask = (options: BriefApiClientOptions, taskId: string): Promise<BriefTask> =>
   briefRequest<BriefTask>(options, `/api/brief/v1/tasks/${encodeURIComponent(taskId)}`);
+
+/**
+ * Input for `createBriefTask` — the verb behind "post a to-do".
+ *
+ * Verified against TestDemo 2026-06-03. The persisted task carries
+ * `{id, title, status, assignees, brief, createdOn, createdBy,
+ * updatedOn, updatedBy}` — nothing else. Probed fields that are
+ * silently dropped: `description`, `body`, `dueDate`, `DueOn`. The
+ * `status` field is locked to `"Pending"` on create regardless of
+ * what's posted (server overrides). To set status, fall back to the
+ * (unverified) PATCH endpoint after create.
+ */
+export type CreateBriefTaskInput = {
+  /** Brief the to-do attaches to. */
+  briefId: string;
+  /** Short verb phrase shown in the brief's to-do list. Required. */
+  title: string;
+  /**
+   * Auth0 subjects of the users the to-do is assigned to. Optional.
+   * Note the wire name is `assigneeIds` on create; the read response
+   * projects them as a `assignees: Reference[]` array.
+   */
+  assigneeIds?: string[];
+};
+
+/**
+ * Post a to-do to a brief (`POST /api/brief/v1/tasks`). Returns the
+ * persisted task on success. The Brief API's task shape is minimal —
+ * no description, no due date — so the title carries the full
+ * intent. See `CreateBriefTaskInput` for the verified field set.
+ */
+export const createBriefTask = (
+  options: BriefApiClientOptions,
+  input: CreateBriefTaskInput
+): Promise<BriefTask> =>
+  briefRequest<BriefTask>(options, "/api/brief/v1/tasks", {
+    method: "POST",
+    body: {
+      briefId: input.briefId,
+      title: input.title,
+      ...(input.assigneeIds && input.assigneeIds.length > 0
+        ? { assigneeIds: input.assigneeIds }
+        : {}),
+    },
+  });

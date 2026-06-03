@@ -23,6 +23,8 @@
  */
 import {
   createBrief,
+  createBriefComment,
+  createBriefTask,
   getBrief,
   listBriefTypes,
   listBriefs,
@@ -397,6 +399,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
 
   let writtenRecipe: BriefInstanceRecipe = recipe;
+  let writtenBriefId: string | null = null;
   if (instanceChange.kind === "create") {
     const briefType = await resolveBriefType(client, recipe.briefTypeName);
     const wrappedFields = wrapBriefFields(recipe.fields, briefType);
@@ -409,6 +412,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     };
     ctx.logger?.info(`Creating brief "${recipe.name}".`);
     const created = await createBrief(client, input);
+    writtenBriefId = created.id;
 
     // `createBrief` accepts no `status` field — POSTs land in the
     // server default ("Draft"). If the recipe pins a different status,
@@ -455,8 +459,54 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     };
     ctx.logger?.info(`Updating brief "${recipe.name}" (${existing.id}).`);
     await updateBrief(client, existing.id, patch);
+    writtenBriefId = existing.id;
   }
   applied.push(instanceChange);
+
+  // Sub-resource creates: todos + comments. The Brief API exposes
+  // these as separate POST endpoints (no inline write on the brief
+  // itself). Create-only for now — re-pushing a recipe doesn't
+  // dedup against existing tasks/comments. Failure on a single sub-
+  // resource doesn't roll back the brief: log + continue, so a
+  // misconfigured comment authorId doesn't lose the whole push.
+  if (writtenBriefId && recipe.todos && recipe.todos.length > 0) {
+    ctx.logger?.info(`Posting ${recipe.todos.length} to-do(s) to brief "${recipe.name}".`);
+    for (const todo of recipe.todos) {
+      try {
+        await createBriefTask(client, {
+          briefId: writtenBriefId,
+          title: todo.title,
+          ...(todo.assigneeIds && todo.assigneeIds.length > 0
+            ? { assigneeIds: todo.assigneeIds }
+            : {}),
+        });
+      } catch (err) {
+        ctx.logger?.warn?.(
+          `Failed to post to-do "${todo.title}" on brief "${recipe.name}": ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+  if (writtenBriefId && recipe.comments && recipe.comments.length > 0) {
+    ctx.logger?.info(`Posting ${recipe.comments.length} comment(s) to brief "${recipe.name}".`);
+    for (const comment of recipe.comments) {
+      try {
+        await createBriefComment(client, {
+          briefId: writtenBriefId,
+          text: comment.text,
+          authorId: comment.authorId,
+        });
+      } catch (err) {
+        ctx.logger?.warn?.(
+          `Failed to post comment by ${comment.authorId} on brief "${recipe.name}": ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
 
   // Per-element changes are converged by the single PUT (or POST).
   for (const change of plan.changes) {

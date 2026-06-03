@@ -37,25 +37,40 @@ export const listBriefComments = (
 /**
  * Input for `createBriefComment`.
  *
- * **UNVERIFIED** — no comment write was captured during reverse-engineering.
- * The body below (`{ briefId, text }`) is a best guess. The Brief API's
- * write scope (`co.briefs:w`) is documented as covering "post comments",
- * so the endpoint exists — but the exact field names are unconfirmed.
- * Verify by running `scai ops brief comments add <id> --text "…" --apply`
- * against a tenant, then tighten this shape.
+ * Verified against TestDemo 2026-06-03: the POST body takes `briefId`,
+ * `text`, and `authorId`. `authorId` is REQUIRED — a missing author
+ * 400s with `AuthorId: Author is required`. `text` accepts a plain
+ * string OR a ProseMirror doc node; the server stores either as a
+ * RichText envelope (`{type: "RichText", value: …}`).
+ *
+ * Server records `author` as the impersonated user (whomever you pass
+ * in `authorId`) while `createdBy` independently captures the actual
+ * caller's Auth0 subject. This separation is intentional — callers
+ * may post as a different visible author while the audit trail stays
+ * honest about who wrote.
  */
 export type CreateBriefCommentInput = {
   /** Brief the comment is attached to. */
   briefId: string;
-  /** Comment text. */
-  text: string;
+  /**
+   * Comment body. Plain strings persist as a RichText envelope
+   * wrapping the string; ProseMirror doc nodes persist with all
+   * marks (bold, italic, links, etc.) intact.
+   */
+  text: string | Record<string, unknown>;
+  /**
+   * Auth0 subject of the user the comment should appear authored by.
+   * Use `scai ops campaign users list` to enumerate the tenant's
+   * member directory and pick a valid sub (e.g. `auth0|<id>`).
+   * Required — POSTing without it 400s.
+   */
+  authorId: string;
 };
 
 /**
- * Post a comment to a brief (`POST /api/brief/v1/comments`).
- *
- * **UNVERIFIED** — see `CreateBriefCommentInput`. Returns the persisted
- * comment on success.
+ * Post a comment to a brief (`POST /api/brief/v1/comments`). Returns
+ * the persisted comment on success. See `CreateBriefCommentInput`
+ * for the body shape and author-impersonation semantics.
  */
 export const createBriefComment = (
   options: BriefApiClientOptions,
@@ -63,5 +78,9 @@ export const createBriefComment = (
 ): Promise<BriefComment> =>
   briefRequest<BriefComment>(options, "/api/brief/v1/comments", {
     method: "POST",
-    body: { briefId: input.briefId, text: input.text },
+    body: {
+      briefId: input.briefId,
+      text: input.text,
+      authorId: input.authorId,
+    },
   });

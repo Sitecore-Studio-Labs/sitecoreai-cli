@@ -68,6 +68,24 @@ describe("extractErrorMessage", () => {
     expect(extractErrorMessage({ errors: [{ message: "first" }, "second"] })).toBe("first; second");
   });
 
+  it("surfaces FastAPI/pydantic detail arrays with loc + msg", () => {
+    // Captured verbatim from the Orchestrate API on 2026-06-03 when
+    // POSTing /api/orchestrate/v1/projects with no due_date.
+    const message = extractErrorMessage({
+      detail: [
+        { type: "missing", loc: ["body", "due_date"], msg: "Field required" },
+        {
+          type: "string_too_short",
+          loc: ["body", "name"],
+          msg: "String should have at least 1 character",
+        },
+      ],
+    });
+    expect(message).toBe(
+      "body.due_date: Field required; body.name: String should have at least 1 character"
+    );
+  });
+
   it("returns undefined when no usable message is present", () => {
     expect(extractErrorMessage({ status: 400 })).toBeUndefined();
     expect(extractErrorMessage(undefined)).toBeUndefined();

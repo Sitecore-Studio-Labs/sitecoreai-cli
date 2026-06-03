@@ -110,6 +110,27 @@ export const extractErrorMessage = (body: unknown): string | undefined => {
     }
   }
 
+  // FastAPI / pydantic shape: `detail: [{loc: ["body", "due_date"],
+  // msg: "Field required", type: "missing"}, …]`. The Orchestrate API
+  // returns this. Without this branch a 422 surfaces as just
+  // "(422)" — opaque to operators and worker logs.
+  if (Array.isArray(record.detail)) {
+    const fastApi = record.detail
+      .map((d) => {
+        if (!d || typeof d !== "object") return undefined;
+        const entry = d as { loc?: unknown; msg?: unknown };
+        const loc = Array.isArray(entry.loc)
+          ? entry.loc.map((p) => String(p)).join(".")
+          : undefined;
+        const msg = typeof entry.msg === "string" ? entry.msg : undefined;
+        if (!msg) return undefined;
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .filter((s): s is string => Boolean(s))
+      .join("; ");
+    if (fastApi) return summary ? `${summary} ${fastApi}` : fastApi;
+  }
+
   const fieldErrors = extractFieldErrors(record.errors);
   if (fieldErrors) {
     return summary ? `${summary} ${fieldErrors}` : fieldErrors;

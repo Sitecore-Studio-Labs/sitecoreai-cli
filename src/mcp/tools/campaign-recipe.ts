@@ -95,7 +95,11 @@ export const registerCampaignRecipeTools = (registry: McpRegistry): void => {
       const plan = await syncDiff(
         campaignKind,
         input.recipe,
-        { kind: campaignKind.name, id: input.recipe.name },
+        {
+          kind: campaignKind.name,
+          id: input.recipe.name,
+          ...(input.recipe.handle ? { baselineKey: input.recipe.handle } : {}),
+        },
         ctx
       );
       return {
@@ -132,7 +136,11 @@ export const registerCampaignRecipeTools = (registry: McpRegistry): void => {
       const outcome = await syncPush(
         campaignKind,
         input.recipe,
-        { kind: campaignKind.name, id: input.recipe.name },
+        {
+          kind: campaignKind.name,
+          id: input.recipe.name,
+          ...(input.recipe.handle ? { baselineKey: input.recipe.handle } : {}),
+        },
         ctx,
         { mode, prune: input.prune }
       );

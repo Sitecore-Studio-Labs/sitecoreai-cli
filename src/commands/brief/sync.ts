@@ -79,8 +79,35 @@ const kindFor = (
   };
 };
 
-/** A loaded recipe minimally carries `name` — the identifier for both kinds. */
-type NamedRecipe = { name: string } & Record<string, unknown>;
+/**
+ * A loaded recipe minimally carries `name` — and optionally a stable
+ * `handle` used as the baseline key when present. Display `name` can
+ * include URL-unsafe characters (`&`, `?`, etc.); handles are URL-safe
+ * by convention so they ride cleanly inside the baseline path.
+ */
+type NamedRecipe = { name: string; handle?: string } & Record<string, unknown>;
+
+/**
+ * Build the KindRef for a loaded recipe.
+ *
+ * `id` stays the display name so each kind's `readCurrent` can locate
+ * the resource on the tenant the way it always has (the brief lookup
+ * extracts an identity marker from the name; the brief-type lookup
+ * matches the codename verbatim).
+ *
+ * `baselineKey` carries the URL-safe handle. The remote
+ * `HttpBaselineStorage` rides this as the path segment instead of
+ * the display name, which sidesteps the orchestrator's `/api/v1/
+ * sync-baselines/...` regex on URL-unsafe characters like `&`.
+ */
+const refFor = (
+  kindName: string,
+  recipe: NamedRecipe,
+): { kind: string; id: string; baselineKey?: string } => ({
+  kind: kindName,
+  id: recipe.name,
+  ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+});
 
 /**
  * Build the `SyncContext` for a brief sync command invocation.
@@ -178,7 +205,7 @@ const createDiffCommand = (): Command => {
     const plan = await syncDiff(
       recipeKind,
       recipe,
-      { kind: recipeKind.name, id: recipe.name },
+      refFor(recipeKind.name, recipe),
       ctx
     );
     printPlan(logger, plan);
@@ -211,7 +238,7 @@ const createPushCommand = (): Command => {
     const outcome = await syncPush(
       recipeKind,
       recipe,
-      { kind: recipeKind.name, id: recipe.name },
+      refFor(recipeKind.name, recipe),
       ctx,
       { mode, prune: options.prune }
     );

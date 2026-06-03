@@ -120,7 +120,11 @@ const createDiffCommand = (): Command => {
     const plan = await syncDiff(
       campaignKind,
       recipe,
-      { kind: campaignKind.name, id: recipe.name },
+      {
+        kind: campaignKind.name,
+        id: recipe.name,
+        ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+      },
       ctx
     );
     printPlan(logger, plan);
@@ -145,7 +149,11 @@ const createPushCommand = (): Command => {
     const outcome = await syncPush(
       campaignKind,
       recipe,
-      { kind: campaignKind.name, id: recipe.name },
+      {
+        kind: campaignKind.name,
+        id: recipe.name,
+        ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+      },
       ctx,
       { mode, prune: options.prune }
     );

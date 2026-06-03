@@ -18,8 +18,24 @@ import type { RecipeChange, RecipePlan } from "./plan";
 export interface KindRef {
   /** The recipe kind, e.g. `brand-kit`. */
   kind: string;
-  /** Kind-specific identifier of the instance (a kit id, a site name…). */
+  /**
+   * Kind-specific identifier of the instance (a kit id, a site name,
+   * a brief's marked display name…). Used by each kind's
+   * `readCurrent` to locate the resource on the tenant.
+   */
   id: string;
+  /**
+   * Optional URL-safe key used as the third path segment when reading
+   * / writing baselines (e.g. `<config>/<env>/<baselineKey>`). Falls
+   * back to `id` when absent.
+   *
+   * Decoupled from `id` because the lookup identifier and the baseline
+   * key serve different audiences: `id` may contain display-name
+   * punctuation (`&`, `?`, colons, spaces) that breaks URL paths, while
+   * `baselineKey` is a stable kebab handle. The campaign + brief sync
+   * commands set this from `recipe.handle` when present.
+   */
+  baselineKey?: string;
 }
 
 /** Ambient context handed to a kind's operations. */

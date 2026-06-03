@@ -156,6 +156,23 @@ export const CampaignMemberSchema = z
 
 /** The full campaign recipe — a project plus its nested deliverables. */
 export const CampaignRecipeSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `spring-refresh-bundle-save@1`) used as
+   * the baseline key + cross-recipe reference target. Display names
+   * (`name`) can include arbitrary punctuation that breaks URL paths
+   * — handles are URL-safe by convention.
+   *
+   * Optional for back-compat with recipes authored before this field
+   * existed. When absent, the baseline key falls back to the display
+   * name; pushes from agentic flows (registry + orchestrator) should
+   * always set it explicitly.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle (e.g. `spring-refresh-bundle-save@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
+    ),
   name: z
     .string()
     .min(1)

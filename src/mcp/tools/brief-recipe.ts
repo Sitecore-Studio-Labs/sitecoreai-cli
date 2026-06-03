@@ -60,7 +60,19 @@ const recipeKindFor = (kind: BriefRecipeKind | undefined): RecipeKind<unknown> =
 };
 
 /** Both kinds carry a stable `name` — the identifier the engine matches on. */
-type NamedRecipe = { name: string } & Record<string, unknown>;
+type NamedRecipe = { name: string; handle?: string } & Record<string, unknown>;
+
+/** Build the KindRef. `id` stays the display name (tenant lookup); the
+ *  optional `baselineKey` carries the URL-safe handle for remote
+ *  baseline storage. See commands/brief/sync.ts for full rationale. */
+const refFor = (
+  kindName: string,
+  recipe: NamedRecipe,
+): { kind: string; id: string; baselineKey?: string } => ({
+  kind: kindName,
+  id: recipe.name,
+  ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+});
 
 export const registerBriefRecipeTools = (registry: McpRegistry): void => {
   registry.registerTool({
@@ -127,7 +139,7 @@ export const registerBriefRecipeTools = (registry: McpRegistry): void => {
         throw createScaiError("verb='diff' requires `recipe`.", "INPUT_INVALID");
       }
       const recipe = input.recipe as NamedRecipe;
-      const plan = await syncDiff(kind, recipe, { kind: kind.name, id: recipe.name }, ctx);
+      const plan = await syncDiff(kind, recipe, refFor(kind.name, recipe), ctx);
       return {
         content: [{ type: "text", text: planSummaryText(plan) }],
         structuredContent: {
@@ -175,7 +187,7 @@ export const registerBriefRecipeTools = (registry: McpRegistry): void => {
       const kind = recipeKindFor(input.kind);
       const recipe = input.recipe as NamedRecipe;
       const mode = input.whatIf ? "what-if" : "apply";
-      const outcome = await syncPush(kind, recipe, { kind: kind.name, id: recipe.name }, ctx, {
+      const outcome = await syncPush(kind, recipe, refFor(kind.name, recipe), ctx, {
         mode,
         prune: input.prune,
       });

@@ -497,7 +497,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       const prior = await ctx.baselineStorage.load<BriefBaselinePayload>(
         BRIEF_KIND_NAME,
         ctx.environmentName,
-        ref.id
+        ref.baselineKey ?? ref.id
       );
       priorBaselineTenantId = prior?.payload?.tenantId;
     } catch {
@@ -739,16 +739,17 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // future push can still resolve the row by id.
     const tenantIdForBaseline = writtenBriefId ?? priorBaselineTenantId ?? undefined;
     const payload = captureBriefBaselinePayload(writtenRecipe, tenantIdForBaseline);
+    const baselineKey = ref.baselineKey ?? ref.id;
     const baseline: Baseline<BriefBaselinePayload> = {
       envelopeVersion: "1",
       kind: BRIEF_KIND_NAME,
-      recipeHandle: ref.id,
+      recipeHandle: baselineKey,
       envName: ctx.environmentName,
       capturedAt: new Date().toISOString(),
       payload,
     };
     try {
-      await ctx.baselineStorage.write(BRIEF_KIND_NAME, ctx.environmentName, ref.id, baseline);
+      await ctx.baselineStorage.write(BRIEF_KIND_NAME, ctx.environmentName, baselineKey, baseline);
     } catch (err) {
       // Baseline write failures must not silently fall back to two-way
       // mode on the next push — that re-introduces silent-clobber. Log
@@ -791,7 +792,7 @@ const plan = async (
     const loaded = await ctx.baselineStorage.load<BriefBaselinePayload>(
       BRIEF_KIND_NAME,
       ctx.environmentName,
-      ref.id
+      ref.baselineKey ?? ref.id
     );
     baselinePayload = loaded?.payload;
   }

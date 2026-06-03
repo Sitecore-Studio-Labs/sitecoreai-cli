@@ -199,6 +199,23 @@ export const BriefExternalReferenceSchema = z
 
 /** The full brief-instance recipe. */
 export const BriefInstanceRecipeSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `concept-review-brief@1`) used as the
+   * baseline key. Display names (`name`) can include arbitrary
+   * punctuation that breaks URL paths — handles are URL-safe by
+   * convention.
+   *
+   * Optional for back-compat with recipes authored before this field
+   * existed. When absent, the baseline key falls back to the display
+   * name; pushes from agentic flows (registry + orchestrator) should
+   * always set it explicitly.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle (e.g. `concept-review-brief@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
+    ),
   name: z
     .string()
     .min(1)

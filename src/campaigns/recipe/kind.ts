@@ -245,7 +245,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       const prior = await ctx.baselineStorage.load<CampaignBaselinePayload>(
         CAMPAIGN_KIND_NAME,
         ctx.environmentName,
-        ref.id
+        ref.baselineKey ?? ref.id
       );
       priorBaselineTenantId = prior?.payload?.tenantId;
     } catch {
@@ -641,16 +641,17 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     const snapshot = (await readCurrent(ref, ctx)) ?? undefined;
     if (snapshot) {
       const payload = captureCampaignBaselinePayload(snapshot, project.id);
+      const baselineKey = ref.baselineKey ?? ref.id;
       const baseline: Baseline<CampaignBaselinePayload> = {
         envelopeVersion: "1",
         kind: CAMPAIGN_KIND_NAME,
-        recipeHandle: ref.id,
+        recipeHandle: baselineKey,
         envName: ctx.environmentName,
         capturedAt: new Date().toISOString(),
         payload,
       };
       try {
-        await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, ref.id, baseline);
+        await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, baselineKey, baseline);
       } catch (err) {
         ctx.logger?.error?.(
           `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
@@ -716,7 +717,7 @@ const plan = async (
     const loaded = await ctx.baselineStorage.load<CampaignBaselinePayload>(
       CAMPAIGN_KIND_NAME,
       ctx.environmentName,
-      ref.id
+      ref.baselineKey ?? ref.id
     );
     baselinePayload = loaded?.payload;
   }

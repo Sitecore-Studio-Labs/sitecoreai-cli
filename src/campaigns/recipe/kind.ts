@@ -19,6 +19,7 @@
  * See docs/recipe-sync-architecture.md.
  */
 import {
+  addProjectMember,
   createDeliverable,
   createProject,
   createTask,
@@ -82,6 +83,11 @@ const toRecipeTask = (task: Task): CampaignTask => ({
   description: task.description ?? undefined,
   assignee: task.assignee ?? undefined,
   labels: task.labels ?? [],
+  // `handle` + `dependencies` are recipe-author concerns — the wire
+  // doesn't carry them as authored. On pull, leave both empty; the
+  // operator re-attaches handles by hand when adopting an existing
+  // project as a recipe source.
+  dependencies: [],
 });
 
 /** Project a live deliverable into the clean recipe shape. */
@@ -113,6 +119,11 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     dueDate: project.due_date ?? undefined,
     brandKitId: project.brandkit_id ?? undefined,
     labels: project.labels ?? [],
+    // Members aren't currently projected on pull — the read endpoint
+    // returns them, but recipe-side authorship treats them as opt-in
+    // (a recipe doesn't necessarily want to lock a project's
+    // membership). Future: project them with a flag.
+    members: [],
     deliverables: (project.deliverables ?? []).map(toRecipeDeliverable),
   };
 };
@@ -162,6 +173,36 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       labels: (projectChange.meta?.labels as string[] | undefined) ?? [],
     });
     applied.push(projectChange);
+
+    // POST each member to the project. The Orchestrate UI shows the
+    // project only to its members, so a project with no real-user
+    // members is invisible in the UI even though it exists on the
+    // wire. Promote the first member to ADMIN if none is — guards
+    // against a service-account-only project the operator can't see.
+    const members =
+      (projectChange.meta?.members as
+        | Array<{ authorId: string; role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER" }>
+        | undefined) ?? [];
+    if (members.length > 0) {
+      const ensured = members.some((m) => m.role === "ADMIN")
+        ? members
+        : members.map((m, i) => (i === 0 ? { authorId: m.authorId, role: "ADMIN" as const } : m));
+      ctx.logger?.info(`Adding ${ensured.length} member(s) to "${name}".`);
+      for (const m of ensured) {
+        try {
+          await addProjectMember(client, project.id, {
+            id: m.authorId,
+            ...(m.role ? { role: m.role } : {}),
+          });
+        } catch (err) {
+          ctx.logger?.warn?.(
+            `Failed to add member ${m.authorId} (${m.role ?? "default role"}) to "${name}": ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+      }
+    }
   } else {
     const found = await findProjectByName(client, ref.id);
     if (!found) {
@@ -203,7 +244,45 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     applied.push(change);
   }
 
+  // Track every task we've touched so the dependency second-pass can
+  // resolve handle references to {project, deliverable, task} triples.
+  // Includes tasks we created this run AND tasks already on the
+  // tenant that the recipe hasn't changed — a recipe may declare a
+  // dependency on a previously-pushed task.
+  type ResolvedTaskRef = {
+    projectId: string;
+    deliverableId: string;
+    taskId: string;
+  };
+  const tasksByHandle = new Map<string, ResolvedTaskRef>();
+  for (const deliverable of project.deliverables ?? []) {
+    for (const t of deliverable.tasks ?? []) {
+      // Existing tasks have no handle on the wire — we can't address
+      // them as a dep target by handle. The recipe owns handle ↔ name
+      // identity, so when the existing task's name matches a task in
+      // the recipe with a handle, capture that mapping.
+      const recipeTask = taskChanges
+        .map((c) => c.meta?.task as CampaignTask | undefined)
+        .find((rt) => rt?.name === t.name);
+      if (recipeTask?.handle) {
+        tasksByHandle.set(recipeTask.handle, {
+          projectId: project.id,
+          deliverableId: deliverable.id,
+          taskId: t.id,
+        });
+      }
+    }
+  }
+
   // Converge tasks — create the missing ones, PUT-replace changed ones.
+  // Defer setting `dependencies` to a second pass — the deps reference
+  // sibling tasks by handle, and not all may exist yet when this loop
+  // visits a referencing task.
+  const tasksWithDeps: Array<{
+    task: CampaignTask;
+    parent: Deliverable;
+    taskId: string;
+  }> = [];
   for (const change of taskChanges) {
     if (change.kind === "noop") {
       skipped.push(change);
@@ -218,12 +297,14 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       continue;
     }
 
+    let taskId: string | null = null;
     if (change.kind === "create") {
       const created = await createTask(client, project.id, parent.id, {
         name: task.name,
         due_date: task.dueDate,
         status: task.status,
       });
+      taskId = created.id;
       // createTask only accepts name/due_date/status — converge the
       // remaining fields with a follow-up update so a freshly-created
       // task does not silently lose its priority/description/assignee/labels.
@@ -246,7 +327,8 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       applied.push(change);
     } else if (change.kind === "update") {
       // PUT is full-replacement — the recipe carries the whole task.
-      await updateTask(client, project.id, parent.id, resolveTaskId(parent, task), {
+      taskId = resolveTaskId(parent, task);
+      await updateTask(client, project.id, parent.id, taskId, {
         name: task.name,
         due_date: task.dueDate,
         status: task.status,
@@ -258,6 +340,68 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       applied.push(change);
     } else {
       skipped.push(change);
+    }
+
+    if (taskId !== null) {
+      if (task.handle) {
+        tasksByHandle.set(task.handle, {
+          projectId: project.id,
+          deliverableId: parent.id,
+          taskId,
+        });
+      }
+      if ((task.dependencies ?? []).length > 0) {
+        tasksWithDeps.push({ task, parent, taskId });
+      }
+    }
+  }
+
+  // Dependencies second pass — now that every task in the project
+  // has a UUID, resolve each task's `dependencies: [<handle>]` list
+  // to the full `{project_id, project_deliverable_id, task_id}`
+  // triples the Brief API expects and PUT them back.
+  for (const { task, parent, taskId } of tasksWithDeps) {
+    const resolved: Array<{
+      project_id: string;
+      project_deliverable_id: string;
+      task_id: string;
+    }> = [];
+    const missing: string[] = [];
+    for (const depHandle of task.dependencies ?? []) {
+      const ref = tasksByHandle.get(depHandle);
+      if (!ref) {
+        missing.push(depHandle);
+        continue;
+      }
+      resolved.push({
+        project_id: ref.projectId,
+        project_deliverable_id: ref.deliverableId,
+        task_id: ref.taskId,
+      });
+    }
+    if (missing.length > 0) {
+      ctx.logger?.warn?.(
+        `Task "${task.name}" references unknown task handles in dependencies: ${missing.join(", ")}. Skipped those refs.`
+      );
+    }
+    if (resolved.length === 0) continue;
+    try {
+      await updateTask(client, project.id, parent.id, taskId, {
+        name: task.name,
+        due_date: task.dueDate,
+        status: task.status,
+        priority: task.priority ?? null,
+        description: task.description ?? null,
+        assignee: task.assignee ?? null,
+        labels: task.labels,
+        dependencies: resolved,
+      });
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to set dependencies on task "${task.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
   }
 

@@ -184,12 +184,17 @@ export const mergeCampaignByPolicy = (
 
       return {
         name: desiredTask.name,
+        handle: desiredTask.handle,
         status: pickTask("status"),
         dueDate: pickTask("dueDate"),
         priority: pickTask("priority"),
         description: pickTask("description"),
         assignee: pickTask("assignee"),
         labels: pickTask("labels") ?? [],
+        // Dependencies are forward refs — they never round-trip through
+        // current-state (the wire stores them as full UUID triples,
+        // not handles). Trust the desired side verbatim.
+        dependencies: desiredTask.dependencies ?? [],
       };
     });
 
@@ -212,6 +217,10 @@ export const mergeCampaignByPolicy = (
     dueDate: pickProject("dueDate"),
     brandKitId: pickProject("brandKitId"),
     labels: pickProject("labels") ?? [],
+    // Members aren't part of the three-way merge — they're applied
+    // separately at create time (and idempotent on re-POST), so the
+    // desired side flows through unchanged.
+    members: desired.members ?? [],
     deliverables: mergedDeliverables,
   };
 

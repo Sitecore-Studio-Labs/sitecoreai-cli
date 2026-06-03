@@ -236,25 +236,53 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const deliverableChanges = plan.changes.filter((change) => change.meta?.stage === "deliverable");
   const taskChanges = plan.changes.filter((change) => change.meta?.stage === "task");
 
+  // Prior baseline tenantId — when present, prefer id-resolve over
+  // label or name match. Survives any drift in the project's
+  // displayName + identity labels.
+  let priorBaselineTenantId: string | undefined;
+  if (ctx.baselineStorage) {
+    try {
+      const prior = await ctx.baselineStorage.load<CampaignBaselinePayload>(
+        CAMPAIGN_KIND_NAME,
+        ctx.environmentName,
+        ref.id
+      );
+      priorBaselineTenantId = prior?.payload?.tenantId;
+    } catch {
+      // Best-effort.
+    }
+  }
+
   // Resolve the campaign (project) id — creating it when the plan says so.
   let project: Project;
   if (projectChange) {
     const name = String(projectChange.after);
     const desiredLabels = (projectChange.meta?.labels as string[] | undefined) ?? [];
 
-    // Even when the planner classified this as a fresh create
-    // (readCurrent didn't find a project by exact name), try a
-    // label-based upsert here — the orchestrator stamps stable
-    // `story:<id>` + `handle:<handle>` markers on every campaign,
-    // so a displayName change between regenerates shouldn't spawn
-    // a duplicate. Falls through to createProject when no marker
-    // hit lands.
-    const labelMatch = await findProjectByName(client, name, desiredLabels);
-    if (labelMatch && labelMatch.name !== name) {
+    // Two-stage adopt before falling through to createProject:
+    //  1. Baseline-stored tenant id (strongest signal — survives any
+    //     displayName + label drift).
+    //  2. Identity labels on the desired side (story:<id> +
+    //     handle:<x>) matching an existing project's labels.
+    let adopted: Project | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        adopted = await getProject(client, priorBaselineTenantId);
+      } catch {
+        adopted = null;
+      }
+    }
+    if (!adopted) {
+      const labelMatch = await findProjectByName(client, name, desiredLabels);
+      if (labelMatch && labelMatch.name !== name) {
+        adopted = await getProject(client, labelMatch.id);
+      }
+    }
+    if (adopted) {
       ctx.logger?.info(
-        `Adopting existing campaign "${labelMatch.name}" (id ${labelMatch.id}) via identity labels — recipe name "${name}" was a rename.`
+        `Adopting existing campaign "${adopted.name}" (id ${adopted.id}) — recipe name "${name}" was a rename or recipe-handle drift.`
       );
-      project = await getProject(client, labelMatch.id);
+      project = adopted;
       applied.push(projectChange);
     } else {
       ctx.logger?.info(`Creating campaign "${name}".`);
@@ -300,13 +328,25 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       }
     }
   } else {
-    const found = await findProjectByName(client, ref.id);
-    if (!found) {
+    // Update branch: same id-first preference as the create branch.
+    let resolved: Project | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        resolved = await getProject(client, priorBaselineTenantId);
+      } catch {
+        resolved = null;
+      }
+    }
+    if (!resolved) {
+      const found = await findProjectByName(client, ref.id);
+      if (found) resolved = await getProject(client, found.id);
+    }
+    if (!resolved) {
       throw createScaiError(`Campaign "${ref.id}" not found`, "INPUT_INVALID", {
         hint: "Push a recipe that creates the campaign, or check the name.",
       });
     }
-    project = await getProject(client, found.id);
+    project = resolved;
   }
 
   // Index existing deliverables by their stamped `handle:<handle>`
@@ -600,7 +640,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   if (ctx.baselineStorage) {
     const snapshot = (await readCurrent(ref, ctx)) ?? undefined;
     if (snapshot) {
-      const payload = captureCampaignBaselinePayload(snapshot);
+      const payload = captureCampaignBaselinePayload(snapshot, project.id);
       const baseline: Baseline<CampaignBaselinePayload> = {
         envelopeVersion: "1",
         kind: CAMPAIGN_KIND_NAME,

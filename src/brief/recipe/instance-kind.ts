@@ -195,6 +195,35 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefInstanc
   return toRecipe(brief, briefTypeName);
 };
 
+/**
+ * Prefer-id read: try `getBrief(tenantId)` first when a baseline-
+ * stored UUID is available. Falls back to the name-based read when
+ * the id is missing or no longer resolves. Same pattern brief-types
+ * + campaigns + brand-kits use — keeps re-pushes idempotent across
+ * displayName edits.
+ */
+const readCurrentByIdOrName = async (
+  ref: KindRef,
+  ctx: SyncContext,
+  tenantId: string | undefined
+): Promise<BriefInstanceRecipe | null> => {
+  if (tenantId) {
+    try {
+      const client = await resolveBriefClient(ctx);
+      const brief = await getBrief(client, tenantId);
+      if (brief) {
+        const types = await listBriefTypes(client);
+        const briefTypeName =
+          types.data.find((t) => t.id === brief.briefType.id)?.name ?? brief.briefType.id;
+        return toRecipe(brief, briefTypeName);
+      }
+    } catch {
+      // Row deleted or transient error — fall through to name-based.
+    }
+  }
+  return readCurrent(ref, ctx);
+};
+
 /** Resolve a recipe's `briefTypeName` to the full type record (id + field defs), or fail with a hint. */
 const resolveBriefType = async (
   client: BriefApiClientOptions,
@@ -457,29 +486,89 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
   let writtenRecipe: BriefInstanceRecipe = recipe;
   let writtenBriefId: string | null = null;
+
+  // Prior baseline tenantId lets apply resolve the brief by id
+  // before falling back to the marker-suffix-based name match.
+  // Survives a displayName edit between pushes without orphaning
+  // the existing tenant row.
+  let priorBaselineTenantId: string | undefined;
+  if (ctx.baselineStorage) {
+    try {
+      const prior = await ctx.baselineStorage.load<BriefBaselinePayload>(
+        BRIEF_KIND_NAME,
+        ctx.environmentName,
+        ref.id
+      );
+      priorBaselineTenantId = prior?.payload?.tenantId;
+    } catch {
+      // Best-effort.
+    }
+  }
+
   if (instanceChange.kind === "create") {
+    // If the baseline has a stored tenant id, try to adopt the
+    // existing row before re-creating. The plan classified this as
+    // a create because readCurrent couldn't find the brief by name,
+    // but the id may still resolve a renamed-but-existing row.
+    let adopted: Brief | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        adopted = await getBrief(client, priorBaselineTenantId);
+      } catch {
+        adopted = null;
+      }
+    }
     const briefType = await resolveBriefType(client, recipe.briefTypeName);
     const wrappedFields = wrapBriefFields(recipe.fields, briefType);
-    const input: CreateBriefInput = {
-      name: recipe.name,
-      briefTypeId: briefType.id,
-      ...(recipe.locale !== undefined && { locale: recipe.locale }),
-      ...(Object.keys(wrappedFields).length > 0 && { fields: wrappedFields }),
-      ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
-    };
-    ctx.logger?.info(`Creating brief "${recipe.name}".`);
-    const created = await createBrief(client, input);
-    writtenBriefId = created.id;
+    if (adopted) {
+      ctx.logger?.info(
+        `Adopting existing brief "${adopted.name}" (id ${adopted.id}) via baseline tenantId — recipe name "${recipe.name}" was a rename.`
+      );
+      const patch: Partial<CreateBriefInput> & { status?: BriefStatus } = {
+        name: recipe.name,
+        ...(recipe.locale !== undefined && { locale: recipe.locale }),
+        ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
+        ...(recipe.status !== undefined && { status: recipe.status }),
+        fields: wrappedFields,
+      };
+      await updateBrief(client, adopted.id, patch);
+      writtenBriefId = adopted.id;
+      applied.push(instanceChange);
+      // Skip the create+status-converge flow below.
+    } else {
+      const input: CreateBriefInput = {
+        name: recipe.name,
+        briefTypeId: briefType.id,
+        ...(recipe.locale !== undefined && { locale: recipe.locale }),
+        ...(Object.keys(wrappedFields).length > 0 && { fields: wrappedFields }),
+        ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
+      };
+      ctx.logger?.info(`Creating brief "${recipe.name}".`);
+      const created = await createBrief(client, input);
+      writtenBriefId = created.id;
 
-    // `createBrief` accepts no `status` field — POSTs land in the
-    // server default ("Draft"). If the recipe pins a different status,
-    // converge with a follow-up PUT so the post-apply state matches.
-    if (recipe.status && recipe.status !== created.status) {
-      ctx.logger?.info(`Setting brief "${recipe.name}" status to "${recipe.status}".`);
-      await updateBrief(client, created.id, { status: recipe.status });
+      // `createBrief` accepts no `status` field — POSTs land in the
+      // server default ("Draft"). If the recipe pins a different status,
+      // converge with a follow-up PUT so the post-apply state matches.
+      if (recipe.status && recipe.status !== created.status) {
+        ctx.logger?.info(`Setting brief "${recipe.name}" status to "${recipe.status}".`);
+        await updateBrief(client, created.id, { status: recipe.status });
+      }
     }
   } else {
-    const existing = await findBriefByName(client, ref.id);
+    // Prefer baseline-stored tenantId over name match — robust to
+    // displayName/handle drift between pushes.
+    let existing: Brief | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        existing = await getBrief(client, priorBaselineTenantId);
+      } catch {
+        existing = null;
+      }
+    }
+    if (!existing) {
+      existing = await findBriefByName(client, ref.id);
+    }
     if (!existing) {
       throw createScaiError(`Brief "${ref.id}" not found.`, "INPUT_INVALID", {
         hint: "The brief was expected to exist for an update — check the name or push a create.",
@@ -646,7 +735,10 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // `ctx.baselineStorage`; without it, the kind operates in two-way
   // mode and never writes baselines.
   if (ctx.baselineStorage) {
-    const payload = captureBriefBaselinePayload(writtenRecipe);
+    // Preserve the prior baseline tenantId across noop applies so a
+    // future push can still resolve the row by id.
+    const tenantIdForBaseline = writtenBriefId ?? priorBaselineTenantId ?? undefined;
+    const payload = captureBriefBaselinePayload(writtenRecipe, tenantIdForBaseline);
     const baseline: Baseline<BriefBaselinePayload> = {
       envelopeVersion: "1",
       kind: BRIEF_KIND_NAME,
@@ -691,14 +783,9 @@ const plan = async (
   ref: KindRef,
   ctx: SyncContext
 ): Promise<RecipePlan> => {
-  const current = await readCurrent(ref, ctx);
-
-  // Fresh create — no baseline needed, no tenant state to merge.
-  if (current === null) return diffBriefInstance(desired, null);
-
-  // Load baseline if storage is plugged in; without it, the merge
-  // sees `baselinePayload: undefined` and everything classifies as
-  // `first-push` (two-way diff equivalent).
+  // Load baseline FIRST so we can use any stored tenant id when
+  // reading current state. Survives a brief name/handle drift between
+  // pushes — the id keeps pointing at the same row.
   let baselinePayload: BriefBaselinePayload | undefined;
   if (ctx.baselineStorage) {
     const loaded = await ctx.baselineStorage.load<BriefBaselinePayload>(
@@ -708,6 +795,11 @@ const plan = async (
     );
     baselinePayload = loaded?.payload;
   }
+
+  const current = await readCurrentByIdOrName(ref, ctx, baselinePayload?.tenantId);
+
+  // Fresh create — no baseline needed, no tenant state to merge.
+  if (current === null) return diffBriefInstance(desired, null);
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const outcome = mergeWithPolicy(desired, current, baselinePayload, policy);

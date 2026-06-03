@@ -38,6 +38,15 @@ export interface BriefTypeBaselinePayload {
   schemaVersion: "1";
   /** Flat path → SHA-256 hash. See module doc for the path vocabulary. */
   cells: Record<string, string>;
+  /**
+   * Server UUID of the brief-type row this baseline was captured
+   * against. Optional for back-compat with baselines written before
+   * this field landed. When present, the kind's apply path prefers
+   * id-match (via `getBriefType(id)`) before falling back to the
+   * codename-based `findTypeByName` — survives a codename refactor
+   * without orphaning the existing tenant row.
+   */
+  tenantId?: string;
 }
 
 export type BriefTypeBaseline = Baseline<BriefTypeBaselinePayload>;
@@ -63,12 +72,19 @@ export const hashBriefTypeCells = (recipe: BriefTypeRecipe): Record<string, stri
   return cells;
 };
 
-/** Construct a baseline payload from a successfully applied recipe. */
+/**
+ * Construct a baseline payload from a successfully applied recipe.
+ * Pass the tenant `id` returned by `createBriefType` / read from
+ * `findTypeByName` after `updateBriefType` so the next push can
+ * resolve the row by id rather than relying on a codename match.
+ */
 export const captureBriefTypeBaselinePayload = (
-  recipe: BriefTypeRecipe
+  recipe: BriefTypeRecipe,
+  tenantId?: string
 ): BriefTypeBaselinePayload => ({
   schemaVersion: "1",
   cells: hashBriefTypeCells(recipe),
+  ...(tenantId ? { tenantId } : {}),
 });
 
 /**

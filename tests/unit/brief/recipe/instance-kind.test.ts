@@ -15,6 +15,10 @@ const briefApi = vi.hoisted(() => ({
   getBrief: vi.fn(),
   createBrief: vi.fn(),
   updateBrief: vi.fn(),
+  listBriefTasks: vi.fn(async () => ({ totalCount: 0, next: null, data: [] })),
+  createBriefTask: vi.fn(),
+  deleteBriefTask: vi.fn(),
+  createBriefComment: vi.fn(),
 }));
 vi.mock("../../../../src/brief", () => briefApi);
 
@@ -130,9 +134,41 @@ describe("readCurrent", () => {
       status: "Draft",
       isTemplate: false,
       fields: { summary: { type: "RichText", value: { kind: "doc", children: [] } } },
+      todos: [],
     });
     expect(recipe).not.toHaveProperty("id");
     expect(recipe).not.toHaveProperty("createdOn");
+  });
+
+  it("projects tenant tasks into the recipe's todos array", async () => {
+    briefApi.listBriefs.mockResolvedValue({ totalCount: 1, next: null, data: [liveBrief] });
+    briefApi.getBrief.mockResolvedValue(liveBrief);
+    briefApi.listBriefTypes.mockResolvedValue({ totalCount: 1, next: null, data: [liveType] });
+    briefApi.listBriefTasks.mockResolvedValueOnce({
+      totalCount: 2,
+      next: null,
+      data: [
+        {
+          id: "task-1",
+          title: "Review with CSM",
+          assignees: [
+            { type: "ExternalLink", relatedSystem: "auth0", relatedType: null, id: "auth0|alice" },
+          ],
+        },
+        { id: "task-2", title: "Sign off", assignees: [] },
+      ],
+    });
+
+    const recipe = await briefInstanceKind.readCurrent(ref, ctx);
+
+    expect(recipe?.todos).toEqual([
+      { title: "Review with CSM", assigneeIds: ["auth0|alice"] },
+      { title: "Sign off" },
+    ]);
+    expect(briefApi.listBriefTasks).toHaveBeenCalledWith(
+      { accessToken: "tok" },
+      { briefId: "brief-1", metadataToLoad: ["assignees"] },
+    );
   });
 
   it("falls back to the brief-type UUID when the type has been deleted (orphan)", async () => {

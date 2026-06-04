@@ -62,6 +62,22 @@ export const getBriefTask = (options: BriefApiClientOptions, taskId: string): Pr
   briefRequest<BriefTask>(options, `/api/brief/v1/tasks/${encodeURIComponent(taskId)}`);
 
 /**
+ * Delete a single task by id (`DELETE /api/brief/v1/tasks/{id}`). Used by
+ * `briefInstanceKind.apply` to implement full-replace semantics for the
+ * `todos` field — list existing tasks, delete them, re-create from the
+ * recipe. Verified against TestDemo 2026-06-04 (returns 2xx; the deleted
+ * task disappears from the subsequent list response while sibling tasks
+ * on the same brief survive). See `scripts/probe-delete-brief-task.ts`.
+ */
+export const deleteBriefTask = (
+  options: BriefApiClientOptions,
+  taskId: string
+): Promise<void> =>
+  briefRequest<void>(options, `/api/brief/v1/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+
+/**
  * Input for `createBriefTask` — the verb behind "post a to-do".
  *
  * Verified against TestDemo 2026-06-03. The persisted task carries

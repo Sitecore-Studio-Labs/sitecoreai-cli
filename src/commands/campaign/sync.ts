@@ -43,6 +43,14 @@ interface SyncOptions extends CommonOptions {
   environmentName?: string;
   config?: string;
   campaign?: string;
+  /**
+   * Sitecore Orchestrate project UUID. When set on `pull`, the read
+   * path skips findProjectByName and loads the project by id directly
+   * — survives any display-name drift between the recipe side and the
+   * tenant. The orchestrator passes this once a first push stamps a
+   * UUID onto the registry's recipe.
+   */
+  sitecoreId?: string;
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
@@ -106,6 +114,12 @@ const createPullCommand = (): Command => {
     .description("Capture a live campaign as a recipe file.")
     .requiredOption("--campaign <name>", "Campaign display name")
     .addOption(
+      new Option(
+        "--sitecore-id <uuid>",
+        "Sitecore Orchestrate project UUID. When set, the read path loads the project by id and skips the display-name search — survives renames on either side. Pass the UUID stamped by a prior push (`--identities-out` writes it; the orchestrator persists it onto the recipe row)."
+      )
+    )
+    .addOption(
       new Option("--file <path>", "Output recipe file (default: <campaign>.campaign.yaml)")
     );
   addEnvironmentOption(command);
@@ -115,10 +129,18 @@ const createPullCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const campaignName = options.campaign ?? "";
-    const recipe = await syncPull(campaignKind, { kind: campaignKind.name, id: campaignName }, ctx);
+    const recipe = await syncPull(
+      campaignKind,
+      {
+        kind: campaignKind.name,
+        id: campaignName,
+        ...(options.sitecoreId ? { tenantId: options.sitecoreId } : {}),
+      },
+      ctx
+    );
     if (!recipe) {
       throw inputError(
-        `Campaign "${campaignName}" not found.`,
+        `Campaign "${campaignName}"${options.sitecoreId ? ` (sitecoreId=${options.sitecoreId})` : ""} not found.`,
         "List campaigns with `scai ops campaign list`."
       );
     }

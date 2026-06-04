@@ -144,9 +144,11 @@ export type Brief = {
 export type ExternalMapping = Record<string, unknown>;
 
 /**
- * Task on a brief. Shape is **provisional** — no task payload was
- * captured during reverse-engineering (the test brief has zero tasks).
- * Re-probe when a brief with tasks is available and tighten this type.
+ * Task on a brief. Verified against TestDemo 2026-06-03 — persisted
+ * fields are `{id, title, status, assignees, brief, createdOn,
+ * createdBy, updatedOn, updatedBy}`. `assignees` is only populated on
+ * list responses when the request includes `MetadataToLoad=assignees`;
+ * other shapes leave it absent.
  *
  * Naming note: the Content Operations UI — and scai's CLI/MCP surface —
  * call these "to-dos". This wire type keeps the API's `task` naming for
@@ -154,7 +156,14 @@ export type ExternalMapping = Record<string, unknown>;
  */
 export type BriefTask = {
   id: string;
-  [key: string]: unknown;
+  title: string;
+  status?: string;
+  assignees?: Reference[];
+  brief?: Reference;
+  createdOn?: string;
+  createdBy?: Reference;
+  updatedOn?: string;
+  updatedBy?: Reference;
 };
 
 /**

@@ -25,13 +25,16 @@ import {
   createBrief,
   createBriefComment,
   createBriefTask,
+  deleteBriefTask,
   getBrief,
+  listBriefTasks,
   listBriefTypes,
   listBriefs,
   updateBrief,
   type Brief,
   type BriefApiClientOptions,
   type BriefStatus,
+  type BriefTask,
   type BriefType,
   type CreateBriefInput,
 } from "@/brief";
@@ -163,14 +166,36 @@ const list = async (ctx: SyncContext): Promise<KindRef[]> => {
   }
 };
 
+/**
+ * Canonicalise a task into a `BriefTodoSchema`-shaped object. Used both
+ * to project pulled tasks into the recipe and to compare existing-vs-
+ * desired todos under the full-replace apply path.
+ */
+const taskToTodo = (
+  task: BriefTask
+): { title: string; assigneeIds?: string[] } => {
+  const assigneeIds = (task.assignees ?? [])
+    .map((a) => a.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return {
+    title: task.title,
+    ...(assigneeIds.length > 0 ? { assigneeIds } : {}),
+  };
+};
+
 /** Project a live brief into the recipe shape, dropping server ids/metadata. */
-const toRecipe = (brief: Brief, briefTypeName: string): BriefInstanceRecipe => ({
+const toRecipe = (
+  brief: Brief,
+  briefTypeName: string,
+  todos: BriefTask[] | undefined
+): BriefInstanceRecipe => ({
   name: brief.name,
   briefTypeName,
   locale: brief.locale || undefined,
   status: brief.status,
   isTemplate: brief.isTemplate,
   fields: brief.fields ?? {},
+  ...(todos !== undefined ? { todos: todos.map(taskToTodo) } : {}),
 });
 
 /**
@@ -193,7 +218,15 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefInstanc
   const briefTypeName =
     types.data.find((type) => type.id === brief.briefType.id)?.name ?? brief.briefType.id;
 
-  return toRecipe(brief, briefTypeName);
+  // Pull tasks (todos) so the recipe round-trips them. The brief read
+  // endpoint omits `assignees` from inline tasks; list them separately
+  // with `MetadataToLoad=assignees` to get the assignee subs.
+  const tasks = await listBriefTasks(client, {
+    briefId: brief.id,
+    metadataToLoad: ["assignees"],
+  });
+
+  return toRecipe(brief, briefTypeName, tasks.data);
 };
 
 /**
@@ -216,7 +249,11 @@ const readCurrentByIdOrName = async (
         const types = await listBriefTypes(client);
         const briefTypeName =
           types.data.find((t) => t.id === brief.briefType.id)?.name ?? brief.briefType.id;
-        return toRecipe(brief, briefTypeName);
+        const tasks = await listBriefTasks(client, {
+          briefId: brief.id,
+          metadataToLoad: ["assignees"],
+        });
+        return toRecipe(brief, briefTypeName, tasks.data);
       }
     } catch {
       // Row deleted or transient error — fall through to name-based.
@@ -614,30 +651,83 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
   applied.push(instanceChange);
 
-  // Sub-resource creates: todos + comments. The Brief API exposes
-  // these as separate POST endpoints (no inline write on the brief
-  // itself). Create-only for now — re-pushing a recipe doesn't
-  // dedup against existing tasks/comments. Failure on a single sub-
-  // resource doesn't roll back the brief: log + continue, so a
-  // misconfigured comment authorId doesn't lose the whole push.
-  if (writtenBriefId && recipe.todos && recipe.todos.length > 0) {
-    ctx.logger?.info(`Posting ${recipe.todos.length} to-do(s) to brief "${recipe.name}".`);
-    for (const todo of recipe.todos) {
-      try {
-        await createBriefTask(client, {
-          briefId: writtenBriefId,
-          title: todo.title,
-          ...(todo.assigneeIds && todo.assigneeIds.length > 0
-            ? { assigneeIds: todo.assigneeIds }
-            : {}),
-        });
-      } catch (err) {
-        ctx.logger?.warn?.(
-          `Failed to post to-do "${todo.title}" on brief "${recipe.name}": ${
-            err instanceof Error ? err.message : String(err)
-          }`
+  // Todos — full-replace semantics. The Brief API has no PATCH/PUT for
+  // a task (verified TestDemo 2026-06-03), so converging the tenant on
+  // the recipe's to-do list means delete-all-then-create-all. We avoid
+  // churn by comparing canonical signatures first: if the existing
+  // tasks already match the desired array (same titles + same assignee
+  // sets, ignoring order), it's a no-op.
+  //
+  // `recipe.todos === undefined` (field omitted) leaves tenant tasks
+  // untouched — back-compat with recipes that don't author todos.
+  // `recipe.todos === []` explicitly clears the tenant list.
+  if (writtenBriefId && recipe.todos !== undefined) {
+    try {
+      const existing = await listBriefTasks(client, {
+        briefId: writtenBriefId,
+        metadataToLoad: ["assignees"],
+      });
+      const existingTodos = existing.data.map(taskToTodo);
+      const desiredTodos = recipe.todos.map((t) => ({
+        title: t.title,
+        ...(t.assigneeIds && t.assigneeIds.length > 0
+          ? { assigneeIds: [...t.assigneeIds].sort() }
+          : {}),
+      }));
+      const canonical = (
+        items: Array<{ title: string; assigneeIds?: string[] }>
+      ): string =>
+        JSON.stringify(
+          items
+            .map((i) => ({
+              title: i.title,
+              assigneeIds: [...(i.assigneeIds ?? [])].sort(),
+            }))
+            .sort((a, b) => a.title.localeCompare(b.title))
         );
+      if (canonical(existingTodos) === canonical(desiredTodos)) {
+        ctx.logger?.info(
+          `To-dos on brief "${recipe.name}" already match recipe — no changes.`
+        );
+      } else {
+        ctx.logger?.info(
+          `Replacing ${existing.data.length} to-do(s) on brief "${recipe.name}" with ${recipe.todos.length} from recipe.`
+        );
+        for (const task of existing.data) {
+          try {
+            await deleteBriefTask(client, task.id);
+          } catch (err) {
+            ctx.logger?.warn?.(
+              `Failed to delete to-do ${task.id} on brief "${recipe.name}": ${
+                err instanceof Error ? err.message : String(err)
+              }`
+            );
+          }
+        }
+        for (const todo of recipe.todos) {
+          try {
+            await createBriefTask(client, {
+              briefId: writtenBriefId,
+              title: todo.title,
+              ...(todo.assigneeIds && todo.assigneeIds.length > 0
+                ? { assigneeIds: todo.assigneeIds }
+                : {}),
+            });
+          } catch (err) {
+            ctx.logger?.warn?.(
+              `Failed to post to-do "${todo.title}" on brief "${recipe.name}": ${
+                err instanceof Error ? err.message : String(err)
+              }`
+            );
+          }
+        }
       }
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to converge to-dos on brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
   }
   if (writtenBriefId && recipe.comments && recipe.comments.length > 0) {

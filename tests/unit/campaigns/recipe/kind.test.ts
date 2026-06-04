@@ -101,6 +101,131 @@ describe("readCurrent", () => {
     expect(JSON.stringify(recipe)).not.toContain("task-1");
   });
 
+  it("reads by sitecoreId (ref.tenantId) and skips findProjectByName", async () => {
+    campaignApi.getProject.mockResolvedValue({
+      id: "proj-direct",
+      name: "Spring Launch (renamed on tenant)",
+      description: "",
+      status: "NOT_STARTED",
+      start_date: null,
+      due_date: null,
+      brandkit_id: null,
+      labels: [],
+      deliverables: [],
+    });
+
+    const recipe = await campaignKind.readCurrent(
+      { kind: "campaign", id: "Spring Launch", tenantId: "proj-direct" },
+      ctx
+    );
+
+    expect(recipe?.name).toBe("Spring Launch (renamed on tenant)");
+    expect(campaignApi.getProject).toHaveBeenCalledWith(expect.anything(), "proj-direct");
+    expect(campaignApi.listProjects).not.toHaveBeenCalled();
+  });
+
+  it("falls back to name search when ref.tenantId resolves but is stale", async () => {
+    // First getProject (by ref.tenantId) throws — the project was deleted/replaced.
+    campaignApi.getProject.mockRejectedValueOnce(new Error("404 Not Found"));
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 1,
+      next: null,
+      data: [{ id: "proj-fresh", name: "Spring Launch" }],
+    });
+    // Second getProject (by found.id from the name search) succeeds.
+    campaignApi.getProject.mockResolvedValueOnce({
+      id: "proj-fresh",
+      name: "Spring Launch",
+      description: "",
+      status: "NOT_STARTED",
+      start_date: null,
+      due_date: null,
+      brandkit_id: null,
+      labels: [],
+      deliverables: [],
+    });
+
+    const recipe = await campaignKind.readCurrent(
+      { kind: "campaign", id: "Spring Launch", tenantId: "stale-id" },
+      ctx
+    );
+
+    expect(recipe?.name).toBe("Spring Launch");
+    expect(campaignApi.listProjects).toHaveBeenCalledOnce();
+  });
+
+  it("reverse-maps task dependency UUIDs to handles via labels", async () => {
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 1,
+      next: null,
+      data: [{ id: "proj-1", name: "Spring Launch" }],
+    });
+    campaignApi.getProject.mockResolvedValue({
+      id: "proj-1",
+      name: "Spring Launch",
+      description: "",
+      status: "NOT_STARTED",
+      start_date: null,
+      due_date: null,
+      brandkit_id: null,
+      labels: [],
+      deliverables: [
+        {
+          id: "del-1",
+          name: "Email blast",
+          status: "NOT_STARTED",
+          due_date: null,
+          funnel_stage: "TOP",
+          funnel_tactics: [],
+          labels: [],
+          tasks: [
+            {
+              id: "task-upstream",
+              name: "Draft copy",
+              labels: ["handle:draft-copy@1"],
+              dependencies: [],
+            },
+            {
+              id: "task-downstream",
+              name: "Review copy",
+              labels: ["handle:review-copy@1"],
+              dependencies: [
+                {
+                  project_id: "proj-1",
+                  project_deliverable_id: "del-1",
+                  task_id: "task-upstream",
+                },
+                {
+                  project_id: "proj-1",
+                  project_deliverable_id: "del-1",
+                  task_id: "task-without-handle",
+                },
+              ],
+            },
+            {
+              // No handle label — can't be referenced by other tasks; survives
+              // as a task on the recipe but won't appear in dependencies.
+              id: "task-without-handle",
+              name: "Set ad budget",
+              labels: [],
+              dependencies: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const recipe = await campaignKind.readCurrent(ref, ctx);
+    const tasks = recipe?.deliverables?.[0]?.tasks ?? [];
+    const downstream = tasks.find((t) => t.name === "Review copy");
+    expect(downstream?.dependencies).toEqual(["draft-copy@1"]);
+    // Tasks without a handle:<x> label are silently dropped from the
+    // dependency list (would need to be addressed by UUID, which the
+    // recipe shape doesn't support).
+    const handleless = tasks.find((t) => t.name === "Set ad budget");
+    expect(handleless?.handle).toBeUndefined();
+  });
+
   it("pages the project list to find a match", async () => {
     campaignApi.listProjects
       .mockResolvedValueOnce({

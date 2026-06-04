@@ -267,7 +267,7 @@ export const BriefInstanceRecipeSchema = z.object({
     .array(BriefTodoSchema)
     .optional()
     .describe(
-      "To-dos attached to the brief — POSTed to `/api/brief/v1/tasks` after the brief is created/updated. Create-only for now; updating or deleting existing todos is out of scope until a diff strategy lands. See `BriefTodoSchema` for the persisted-field set."
+      "To-dos attached to the brief. Full-replace semantics on apply: scai lists the brief's existing tasks, compares canonical signatures (sorted titles + sorted assigneeIds), and when they differ deletes all existing and POSTs the recipe's array fresh. Equal signatures no-op. Omitting the field entirely leaves tenant tasks untouched (back-compat); `todos: []` explicitly clears the list. Round-trips on `pull` via `listBriefTasks` with `MetadataToLoad=assignees`. See `BriefTodoSchema` for the persisted-field set."
     ),
   comments: z
     .array(BriefCommentSchema)

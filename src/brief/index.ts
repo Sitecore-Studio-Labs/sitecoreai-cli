@@ -74,6 +74,7 @@ export {
   listBriefTasks,
   getBriefTask,
   createBriefTask,
+  deleteBriefTask,
   type BriefTaskMetadata,
   type CreateBriefTaskInput,
   type ListBriefTasksQuery,

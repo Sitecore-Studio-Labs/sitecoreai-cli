@@ -145,8 +145,51 @@ const splitHandleFromLabels = (
   return { handle, labels: cleaned };
 };
 
+/**
+ * Build a `taskId → handle` index for the whole project, used to
+ * reverse-map dependency UUID triples back to handle references.
+ * Only tasks that carry a `handle:<x>` label appear in the map —
+ * legacy tasks without a handle can't be referenced by handle on the
+ * recipe side, so omitting them is correct.
+ */
+const indexHandlesByTaskId = (project: Project): Map<string, string> => {
+  const index = new Map<string, string>();
+  for (const deliverable of project.deliverables ?? []) {
+    for (const task of deliverable.tasks ?? []) {
+      const { handle } = splitHandleFromLabels(task.labels);
+      if (handle) index.set(task.id, handle);
+    }
+  }
+  return index;
+};
+
+/**
+ * Project the wire's `dependencies: [{project_id, project_deliverable_id,
+ * task_id}, ...]` triples into the recipe's `dependencies: [<handle>]`
+ * shape. Drops any entry whose `task_id` resolves to a task without a
+ * handle (legacy, pre-handle-stamping tasks can't be referenced by
+ * handle so silently dropping is the only sensible outcome — adding
+ * the UUID directly would make the recipe non-portable and break the
+ * apply path's handle-based resolver).
+ */
+const reverseMapDependencyHandles = (
+  wireDeps: unknown,
+  handleByTaskId: Map<string, string>
+): string[] => {
+  if (!Array.isArray(wireDeps)) return [];
+  const handles: string[] = [];
+  for (const dep of wireDeps) {
+    if (!dep || typeof dep !== "object") continue;
+    const taskId = (dep as { task_id?: unknown }).task_id;
+    if (typeof taskId !== "string") continue;
+    const handle = handleByTaskId.get(taskId);
+    if (handle) handles.push(handle);
+  }
+  return handles;
+};
+
 /** Project a live task into the clean recipe shape (server ids dropped). */
-const toRecipeTask = (task: Task): CampaignTask => {
+const toRecipeTask = (task: Task, handleByTaskId: Map<string, string>): CampaignTask => {
   const { handle, labels } = splitHandleFromLabels(task.labels);
   return {
     ...(handle ? { handle } : {}),
@@ -157,16 +200,20 @@ const toRecipeTask = (task: Task): CampaignTask => {
     description: task.description ?? undefined,
     assignee: task.assignee ?? undefined,
     labels,
-    // `dependencies` is a recipe-author concern — the wire stores
-    // them as full UUID triples (not handle-keyed), so on pull we
-    // leave the array empty. The operator re-authors deps when
-    // adopting an existing project as a recipe source.
-    dependencies: [],
+    // Reverse-mapped from the wire's UUID triples. Entries whose
+    // `task_id` references a task without a `handle:<x>` label are
+    // dropped — that task can't be addressed by handle on the recipe
+    // side, and the apply path would just log it as missing on the
+    // next push.
+    dependencies: reverseMapDependencyHandles(task.dependencies, handleByTaskId),
   };
 };
 
 /** Project a live deliverable into the clean recipe shape. */
-const toRecipeDeliverable = (deliverable: Deliverable): CampaignDeliverable => {
+const toRecipeDeliverable = (
+  deliverable: Deliverable,
+  handleByTaskId: Map<string, string>
+): CampaignDeliverable => {
   const { handle, labels } = splitHandleFromLabels(deliverable.labels);
   return {
     ...(handle ? { handle } : {}),
@@ -176,19 +223,45 @@ const toRecipeDeliverable = (deliverable: Deliverable): CampaignDeliverable => {
     funnelStage: deliverable.funnel_stage,
     funnelTactics: deliverable.funnel_tactics ?? [],
     labels,
-    tasks: (deliverable.tasks ?? []).map(toRecipeTask),
+    tasks: (deliverable.tasks ?? []).map((task) => toRecipeTask(task, handleByTaskId)),
   };
 };
 
-/** Capture a live campaign as a recipe. `null` when no project has the name. */
+/**
+ * Capture a live campaign as a recipe. Returns `null` when the campaign
+ * can't be resolved on the tenant.
+ *
+ * Resolution order:
+ *  1. `ref.tenantId` (Sitecore Orchestrate project UUID) — when set,
+ *     read the project directly by id and skip the list/search. The
+ *     orchestrator passes this via `--sitecore-id` once the first push
+ *     has stamped a UUID onto the registry's recipe, so name/whitespace
+ *     drift on either side no longer breaks pull.
+ *  2. `ref.id` (display name) — paged list search. Legacy path, used
+ *     when no Sitecore UUID is available yet.
+ */
 const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignRecipe | null> => {
   const client = await resolveCampaignClient(ctx);
-  const found = await findProjectByName(client, ref.id);
-  if (!found) return null;
 
-  // The list endpoint omits inlined children; re-read by id to get the
-  // full deliverable + task tree.
-  const project = await getProject(client, found.id);
+  let project: Project | null = null;
+  if (ref.tenantId) {
+    try {
+      project = await getProject(client, ref.tenantId);
+    } catch {
+      // Best-effort — fall through to the name-based search below so a
+      // stale/wrong tenantId on the ref doesn't permanently block pull.
+      project = null;
+    }
+  }
+  if (!project) {
+    const found = await findProjectByName(client, ref.id);
+    if (!found) return null;
+    // The list endpoint omits inlined children; re-read by id to get
+    // the full deliverable + task tree.
+    project = await getProject(client, found.id);
+  }
+
+  const handleByTaskId = indexHandlesByTaskId(project);
 
   return {
     name: project.name,
@@ -203,7 +276,9 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     // (a recipe doesn't necessarily want to lock a project's
     // membership). Future: project them with a flag.
     members: [],
-    deliverables: (project.deliverables ?? []).map(toRecipeDeliverable),
+    deliverables: (project.deliverables ?? []).map((d) =>
+      toRecipeDeliverable(d, handleByTaskId)
+    ),
   };
 };
 

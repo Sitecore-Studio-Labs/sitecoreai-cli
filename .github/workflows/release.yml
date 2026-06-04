@@ -132,14 +132,20 @@ jobs:
           fi
 
       - name: "Publish canary to npm (dist-tag: canary)"
-        # In pre-mode (`changeset pre enter canary`) the version was
-        # already bumped locally via `changeset version` — `--snapshot`
-        # is incompatible with pre-mode and errors out. Outside pre-mode
-        # we'd want `npx changeset version --snapshot canary` here for
-        # an ad-hoc canary off any branch. Detect via `pre.json` so the
-        # step works either way.
+        # In pre-mode (`changeset pre enter canary`) `changeset version`
+        # was already run locally — the pending changeset got consumed
+        # and `package.json` is at `0.3.0-canary.N`. Pre-mode also pins
+        # `changeset publish` to its own dist-tag (`canary` here, from
+        # pre.json) and rejects an explicit `--tag` and `--snapshot`.
+        # So in pre-mode: bare `publish` is correct.
+        #
+        # Outside pre-mode we want the older snapshot flow — bump to a
+        # `0.3.0-canary-<sha>` style version and publish under the
+        # canary dist-tag. Detect via `pre.json`.
         run: |
-          if [ ! -f .changeset/pre.json ]; then
+          if [ -f .changeset/pre.json ]; then
+            npx changeset publish --no-git-tag
+          else
             npx changeset version --snapshot canary
+            npx changeset publish --tag canary --no-git-tag
           fi
-          npx changeset publish --tag canary --no-git-tag

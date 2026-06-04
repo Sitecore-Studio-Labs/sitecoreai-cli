@@ -8,6 +8,7 @@
     "brief-type-three-way-merge",
     "cli-force-exit-stderr-drain",
     "drop-registry-shims",
+    "registry-tracked-sitecore-ids",
     "sync-merge-cells-baseline-bridge"
   ]
 }

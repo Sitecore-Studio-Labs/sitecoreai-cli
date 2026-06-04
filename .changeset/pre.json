@@ -5,6 +5,7 @@
     "@sitecoreai-labs/sitecoreai-cli": "0.2.5"
   },
   "changesets": [
+    "brand-kit-identity-surface",
     "brief-type-three-way-merge",
     "campaign-conflict-policy-flag",
     "campaign-task-identity-stamp",

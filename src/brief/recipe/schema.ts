@@ -54,6 +54,19 @@ export const DateTimeFieldSchema = z
   })
   .describe("A date-time field.");
 
+/**
+ * A simple boolean field (true/false). Observed on SitecoreAI's
+ * built-in types — `SitecoreAIEvaluation.QualifiedBANT` is a Boolean
+ * gate the rest of the eval defers to. Persisted as `true`/`false` on
+ * brief instances.
+ */
+export const BooleanFieldSchema = z
+  .object({
+    type: z.literal("Boolean").describe("Discriminator — a true/false field."),
+    ...briefFieldBaseShape,
+  })
+  .describe("A boolean field.");
+
 /** A timeline field — a schedule with holiday/weekend handling. */
 export const TimelineFieldSchema = z
   .object({
@@ -89,10 +102,13 @@ export const BriefFieldSchema = z
   .discriminatedUnion("type", [
     RichTextFieldSchema,
     DateTimeFieldSchema,
+    BooleanFieldSchema,
     TimelineFieldSchema,
     BudgetFieldSchema,
   ])
-  .describe("A field definition: one of RichText, DateTime, Timeline, or Budget.");
+  .describe(
+    "A field definition: one of RichText, DateTime, Boolean, Timeline, or Budget.",
+  );
 
 /** The full brief-type recipe. */
 export const BriefTypeRecipeSchema = z.object({

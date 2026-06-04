@@ -67,6 +67,7 @@ export type BriefFieldBase = {
 
 export type RichTextField = BriefFieldBase & { type: "RichText" };
 export type DateTimeField = BriefFieldBase & { type: "DateTime" };
+export type BooleanField = BriefFieldBase & { type: "Boolean" };
 export type TimelineField = BriefFieldBase & {
   type: "Timeline";
   /** Schedule calculation strategy enum — observed values include `0`. Semantics TBD. */
@@ -83,7 +84,12 @@ export type BudgetField = BriefFieldBase & {
 };
 
 /** Union of every observed field kind. New kinds will widen this union. */
-export type BriefField = RichTextField | DateTimeField | TimelineField | BudgetField;
+export type BriefField =
+  | RichTextField
+  | DateTimeField
+  | BooleanField
+  | TimelineField
+  | BudgetField;
 
 /** BriefType — the schema template a brief instance is built against. */
 export type BriefType = {

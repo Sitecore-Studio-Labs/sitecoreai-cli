@@ -138,10 +138,13 @@ export interface SyncContext {
  * may surface one `"campaign"` identity plus several `"deliverable"`
  * and `"task"` identities under it. `parentHandle` lets the caller
  * place the identity correctly when one entity type appears nested
- * under another (a task lives inside a deliverable).
+ * under another (a task lives inside a deliverable). A brand-kit
+ * apply surfaces a single `"brand-kit"` identity so the caller can
+ * persist the SAI-side kit UUID — campaigns then link via
+ * `brandkit_id` against that UUID, not the recipe handle.
  */
 export interface ResolvedIdentity {
-  scope: "brief" | "campaign" | "deliverable" | "task";
+  scope: "brand-kit" | "brief" | "campaign" | "deliverable" | "task";
   handle?: string;
   /**
    * `name` is the Sitecore-side display name at apply time. Useful as a
@@ -165,11 +168,9 @@ export interface ApplyResult {
   skipped: RecipeChange[];
   /**
    * Resolved Sitecore UUIDs for every entity scai touched during the
-   * apply, scoped by kind. Optional because not every kind has
-   * meaningful identities to surface (a `brand-kit` apply has none —
-   * the kit is identified by the brand UUID the caller already
-   * supplied). Caller is responsible for persisting these onto its
-   * own model.
+   * apply, scoped by kind. Optional — kinds whose apply doesn't
+   * surface any identities (`recipe` for now) leave it unset. Caller
+   * is responsible for persisting these onto its own model.
    */
   identities?: ResolvedIdentity[];
 }

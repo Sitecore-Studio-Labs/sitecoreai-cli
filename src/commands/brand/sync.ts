@@ -6,6 +6,8 @@
  *   diff  show the plan to converge a kit onto a recipe
  *   push  apply that plan (dry-run unless --allow-write)
  */
+import { writeFile } from "node:fs/promises";
+
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 import { brandKitKind } from "@/brand/recipe";
@@ -23,9 +25,18 @@ import {
   syncPush,
   writeRecipe,
   type RecipePlan,
+  type ResolvedIdentity,
   type SyncContext,
   type SyncMode,
 } from "@/sync";
+
+const writeIdentitiesOut = async (
+  path: string,
+  identities: ReadonlyArray<ResolvedIdentity>,
+): Promise<void> => {
+  const body = JSON.stringify({ identities }, null, 2);
+  await writeFile(path, body, "utf8");
+};
 
 interface SyncOptions extends CommonOptions {
   environmentName?: string;
@@ -49,6 +60,11 @@ interface SyncOptions extends CommonOptions {
    * conflicts surface for resolution rather than silently clobbering.
    */
   conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
+  /** Optional path; when set, the push outcome's resolved Sitecore
+   *  brand-kit UUID is written there as JSON. Consumed by the
+   *  orchestrator so the brand_kits row holds a real UUID instead
+   *  of the recipe handle. */
+  identitiesOut?: string;
 }
 
 /** Slugify a kit name for a default recipe filename. */
@@ -177,6 +193,12 @@ const createPushCommand = (): Command => {
         "--conflict-policy <policy>",
         "Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them and drops the recipe-side change for this push. Requires a baseline (HTTP storage via env or file-backed); without one, the brand kind degrades to two-way diff and this flag has no effect."
       ).choices(["error", "recipe-wins", "cms-wins"])
+    )
+    .addOption(
+      new Option(
+        "--identities-out <path>",
+        "Write the apply outcome's resolved Sitecore brand-kit UUID to a JSON file at this path. The orchestrator reads it back to stamp the real UUID onto its brand_kits row — without this the row stores the recipe handle as a placeholder and downstream campaign pushes can't populate `brandkit_id`."
+      )
     );
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -206,6 +228,9 @@ const createPushCommand = (): Command => {
         logger.warn("Push triggers paid AI pipeline runs (~5-15 min).");
       }
       logger.info("Dry-run. Re-run with --allow-write to apply.");
+    }
+    if (options.identitiesOut && outcome.result?.identities) {
+      await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
   });
   return command;

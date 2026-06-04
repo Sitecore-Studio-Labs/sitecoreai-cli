@@ -99,6 +99,7 @@ export const registerCampaignRecipeTools = (registry: McpRegistry): void => {
           kind: campaignKind.name,
           id: input.recipe.name,
           ...(input.recipe.handle ? { baselineKey: input.recipe.handle } : {}),
+          ...(input.recipe.sitecoreId ? { tenantId: input.recipe.sitecoreId } : {}),
         },
         ctx
       );
@@ -140,6 +141,7 @@ export const registerCampaignRecipeTools = (registry: McpRegistry): void => {
           kind: campaignKind.name,
           id: input.recipe.name,
           ...(input.recipe.handle ? { baselineKey: input.recipe.handle } : {}),
+          ...(input.recipe.sitecoreId ? { tenantId: input.recipe.sitecoreId } : {}),
         },
         ctx,
         { mode, prune: input.prune }

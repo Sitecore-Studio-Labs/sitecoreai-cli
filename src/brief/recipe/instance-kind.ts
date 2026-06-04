@@ -45,6 +45,7 @@ import type {
   RecipeChange,
   RecipeKind,
   RecipePlan,
+  ResolvedIdentity,
   SyncContext,
 } from "@/sync";
 import { listProjects } from "@/campaigns";
@@ -504,6 +505,10 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       // Best-effort.
     }
   }
+  // Ref-supplied tenantId (registry-tracked) wins over the baseline-
+  // stored one. Falls back when absent (CLI invocation without a
+  // recipe-side id).
+  const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
 
   if (instanceChange.kind === "create") {
     // If the baseline has a stored tenant id, try to adopt the
@@ -511,9 +516,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // a create because readCurrent couldn't find the brief by name,
     // but the id may still resolve a renamed-but-existing row.
     let adopted: Brief | null = null;
-    if (priorBaselineTenantId) {
+    if (effectiveTenantId) {
       try {
-        adopted = await getBrief(client, priorBaselineTenantId);
+        adopted = await getBrief(client, effectiveTenantId);
       } catch {
         adopted = null;
       }
@@ -559,9 +564,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // Prefer baseline-stored tenantId over name match — robust to
     // displayName/handle drift between pushes.
     let existing: Brief | null = null;
-    if (priorBaselineTenantId) {
+    if (effectiveTenantId) {
       try {
-        existing = await getBrief(client, priorBaselineTenantId);
+        existing = await getBrief(client, effectiveTenantId);
       } catch {
         existing = null;
       }
@@ -737,7 +742,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   if (ctx.baselineStorage) {
     // Preserve the prior baseline tenantId across noop applies so a
     // future push can still resolve the row by id.
-    const tenantIdForBaseline = writtenBriefId ?? priorBaselineTenantId ?? undefined;
+    const tenantIdForBaseline = writtenBriefId ?? effectiveTenantId ?? undefined;
     const payload = captureBriefBaselinePayload(writtenRecipe, tenantIdForBaseline);
     const baselineKey = ref.baselineKey ?? ref.id;
     const baseline: Baseline<BriefBaselinePayload> = {
@@ -764,7 +769,20 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
   }
 
-  return { applied, skipped };
+  // Surface the resolved Sitecore Brief UUID so the caller (orchestrator
+  // → registry) can persist it on the recipe and skip scai's marker-in-
+  // name fallback on every subsequent push.
+  const identities: ResolvedIdentity[] = [];
+  if (writtenBriefId) {
+    identities.push({
+      scope: "brief",
+      sitecoreId: writtenBriefId,
+      ...(recipe.handle ? { handle: recipe.handle } : {}),
+      ...(recipe.name ? { name: recipe.name } : {}),
+    });
+  }
+
+  return { applied, skipped, identities };
 };
 
 /**
@@ -797,7 +815,12 @@ const plan = async (
     baselinePayload = loaded?.payload;
   }
 
-  const current = await readCurrentByIdOrName(ref, ctx, baselinePayload?.tenantId);
+  // Prefer the ref-supplied tenantId (registry-tracked Sitecore UUID)
+  // over the baseline-stored one. The ref carries the authoritative id
+  // when the caller (registry → orchestrator) knows it; baseline is a
+  // fallback for CLI-only flows and first-push recovery.
+  const tenantIdForLookup = ref.tenantId ?? baselinePayload?.tenantId;
+  const current = await readCurrentByIdOrName(ref, ctx, tenantIdForLookup);
 
   // Fresh create — no baseline needed, no tenant state to merge.
   if (current === null) return diffBriefInstance(desired, null);

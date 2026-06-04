@@ -60,18 +60,24 @@ const recipeKindFor = (kind: BriefRecipeKind | undefined): RecipeKind<unknown> =
 };
 
 /** Both kinds carry a stable `name` — the identifier the engine matches on. */
-type NamedRecipe = { name: string; handle?: string } & Record<string, unknown>;
+type NamedRecipe = {
+  name: string;
+  handle?: string;
+  sitecoreId?: string;
+} & Record<string, unknown>;
 
 /** Build the KindRef. `id` stays the display name (tenant lookup); the
  *  optional `baselineKey` carries the URL-safe handle for remote
- *  baseline storage. See commands/brief/sync.ts for full rationale. */
+ *  baseline storage; `tenantId` short-circuits the lookup when the
+ *  Sitecore UUID is already known. See commands/brief/sync.ts. */
 const refFor = (
   kindName: string,
-  recipe: NamedRecipe,
-): { kind: string; id: string; baselineKey?: string } => ({
+  recipe: NamedRecipe
+): { kind: string; id: string; baselineKey?: string; tenantId?: string } => ({
   kind: kindName,
   id: recipe.name,
   ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+  ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
 });
 
 export const registerBriefRecipeTools = (registry: McpRegistry): void => {

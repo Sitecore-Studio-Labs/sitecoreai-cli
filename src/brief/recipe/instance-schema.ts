@@ -216,6 +216,19 @@ export const BriefInstanceRecipeSchema = z.object({
     .describe(
       "Stable kebab handle (e.g. `concept-review-brief@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
     ),
+  /**
+   * Sitecore Brief UUID. When set on input, the sync commands stamp
+   * it into `KindRef.tenantId` so `readCurrent` skips the marker-in-
+   * name search and reads the brief by id directly. Retires the
+   * `[story:X/handle@1]` suffix once every brief has been stamped.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Sitecore Brief UUID. When set, scai's apply path reads the brief by id directly — skipping the marker-in-name fallback."
+    ),
   name: z
     .string()
     .min(1)

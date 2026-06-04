@@ -40,6 +40,7 @@ import type {
   RecipeChange,
   RecipeKind,
   RecipePlan,
+  ResolvedIdentity,
   SyncContext,
 } from "@/sync";
 import {
@@ -252,6 +253,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       // Best-effort.
     }
   }
+  // Ref-supplied tenantId (registry-tracked) wins over the baseline-
+  // stored one. Falls back when absent.
+  const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
 
   // Resolve the campaign (project) id — creating it when the plan says so.
   let project: Project;
@@ -265,9 +269,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     //  2. Identity labels on the desired side (story:<id> +
     //     handle:<x>) matching an existing project's labels.
     let adopted: Project | null = null;
-    if (priorBaselineTenantId) {
+    if (effectiveTenantId) {
       try {
-        adopted = await getProject(client, priorBaselineTenantId);
+        adopted = await getProject(client, effectiveTenantId);
       } catch {
         adopted = null;
       }
@@ -330,9 +334,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   } else {
     // Update branch: same id-first preference as the create branch.
     let resolved: Project | null = null;
-    if (priorBaselineTenantId) {
+    if (effectiveTenantId) {
       try {
-        resolved = await getProject(client, priorBaselineTenantId);
+        resolved = await getProject(client, effectiveTenantId);
       } catch {
         resolved = null;
       }
@@ -651,7 +655,12 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         payload,
       };
       try {
-        await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, baselineKey, baseline);
+        await ctx.baselineStorage.write(
+          CAMPAIGN_KIND_NAME,
+          ctx.environmentName,
+          baselineKey,
+          baseline
+        );
       } catch (err) {
         ctx.logger?.error?.(
           `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
@@ -662,7 +671,48 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
   }
 
-  return { applied, skipped };
+  // Surface resolved Sitecore UUIDs so the caller (orchestrator →
+  // registry) can persist them onto the recipe and skip scai's
+  // baseline / label fallback on subsequent pushes. We surface every
+  // entity scai resolved a UUID for during this run — the project, plus
+  // each handled deliverable + handled task. Entities without a handle
+  // can't be back-referenced by the caller, so they're omitted.
+  const identities: ResolvedIdentity[] = [];
+  // Campaign-level identity. `ref.baselineKey` carries the recipe's
+  // stable handle; `ref.id` is the display name at push time. Both are
+  // useful to the caller for round-tripping the id back onto its
+  // model.
+  identities.push({
+    scope: "campaign",
+    sitecoreId: project.id,
+    ...(ref.baselineKey ? { handle: ref.baselineKey } : {}),
+    name: ref.id,
+  });
+  // Reverse-map deliverable.id → handle so each task identity can
+  // declare its parentHandle without a second pass through the recipe.
+  const deliverableHandleById = new Map<string, string>();
+  for (const [handle, deliverable] of deliverablesByHandle.entries()) {
+    identities.push({
+      scope: "deliverable",
+      sitecoreId: deliverable.id,
+      handle,
+      name: deliverable.name,
+      ...(ref.baselineKey ? { parentHandle: ref.baselineKey } : {}),
+    });
+    deliverableHandleById.set(deliverable.id, handle);
+  }
+  for (const [handle, taskRef] of tasksByHandle.entries()) {
+    identities.push({
+      scope: "task",
+      sitecoreId: taskRef.taskId,
+      handle,
+      ...(deliverableHandleById.get(taskRef.deliverableId)
+        ? { parentHandle: deliverableHandleById.get(taskRef.deliverableId) }
+        : {}),
+    });
+  }
+
+  return { applied, skipped, identities };
 };
 
 /**

@@ -59,6 +59,17 @@ export const CampaignTaskSchema = z.object({
     .describe(
       "Stable kebab handle (e.g. `subject-line-ab-test@1`) so other tasks can declare a dependency on this one. Optional — only required when this task is referenced as a dependency."
     ),
+  /**
+   * Sitecore Orchestrate task UUID. When present, the apply path uses
+   * it directly instead of paging the project's tasks and matching by
+   * `handle:<x>` label. Round-trips through the apply outcome so the
+   * orchestrator can persist it back onto the registry recipe.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Sitecore Orchestrate task UUID. Skip-label-search fast path when present."),
   name: z.string().min(1).describe("Task name. Identifies the task within its deliverable."),
   status: CampaignStatusSchema.optional().describe(
     'Task status — a server enum. Confirmed values: "NOT_STARTED". Other UPPER_SNAKE values may exist on the server; the schema accepts them but agents should prefer the confirmed set.'
@@ -109,6 +120,16 @@ export const CampaignDeliverableSchema = z.object({
     .describe(
       "Stable kebab handle. Stamped into the wire `labels` array as `handle:<handle>` so re-pushes match by label rather than by the LLM-volatile display name."
     ),
+  /**
+   * Sitecore Orchestrate deliverable UUID. When present, the apply
+   * path uses it directly instead of paging the project's
+   * deliverables and matching by `handle:<x>` label.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Sitecore Orchestrate deliverable UUID. Skip-label-search fast path when present."),
   name: z
     .string()
     .min(1)
@@ -172,6 +193,18 @@ export const CampaignRecipeSchema = z.object({
     .optional()
     .describe(
       "Stable kebab handle (e.g. `spring-refresh-bundle-save@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
+    ),
+  /**
+   * Sitecore Orchestrate project UUID. When set on input, the sync
+   * commands stamp it into `KindRef.tenantId` so `readCurrent` can
+   * skip the label/name search and read the project directly.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Sitecore Orchestrate project UUID. When set, scai's apply path skips the label search and reads the project by id directly."
     ),
   name: z
     .string()

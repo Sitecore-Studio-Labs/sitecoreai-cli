@@ -36,6 +36,17 @@ export interface KindRef {
    * commands set this from `recipe.handle` when present.
    */
   baselineKey?: string;
+  /**
+   * Optional Sitecore tenant UUID for the resource. When present,
+   * `readCurrent` should prefer a direct `GET ${uuid}` over the
+   * name/marker/label search paths. Lets the orchestrator (or any
+   * registry-backed caller) pin the identity authoritatively — no
+   * pagination, no marker-in-name leakage on the tenant, no
+   * mis-match on display-name edits. Falls through to the existing
+   * name/marker/label search when absent (first push, or CLI
+   * invocation that doesn't track ids).
+   */
+  tenantId?: string;
 }
 
 /** Ambient context handed to a kind's operations. */
@@ -117,12 +128,50 @@ export interface SyncContext {
   pullConflictPolicy?: PullConflictPolicy;
 }
 
+/**
+ * One Sitecore identity scai resolved during apply. Reported back to
+ * the caller (the orchestrator, the MCP host, …) so registry-backed
+ * authors can persist the UUID on their own recipe row and stop
+ * relying on scai's baseline + marker fallback on subsequent pushes.
+ *
+ * The `scope` field disambiguates nested entities: a campaign apply
+ * may surface one `"campaign"` identity plus several `"deliverable"`
+ * and `"task"` identities under it. `parentHandle` lets the caller
+ * place the identity correctly when one entity type appears nested
+ * under another (a task lives inside a deliverable).
+ */
+export interface ResolvedIdentity {
+  scope: "brief" | "campaign" | "deliverable" | "task";
+  handle?: string;
+  /**
+   * `name` is the Sitecore-side display name at apply time. Useful as a
+   * disambiguator for un-handled entities (a task with no handle can
+   * still be matched on a subsequent push by `(deliverableHandle, name,
+   * index)` when the caller needs to write the id back).
+   */
+  name?: string;
+  /** Parent entity handle for nested scopes — `deliverable` → campaign;
+   *  `task` → deliverable. */
+  parentHandle?: string;
+  /** Resolved Sitecore UUID. Always present (that's the point). */
+  sitecoreId: string;
+}
+
 /** Outcome of applying a plan. */
 export interface ApplyResult {
   /** Changes that were written to the remote. */
   applied: RecipeChange[];
   /** Changes deliberately not written (e.g. filtered deletes). */
   skipped: RecipeChange[];
+  /**
+   * Resolved Sitecore UUIDs for every entity scai touched during the
+   * apply, scoped by kind. Optional because not every kind has
+   * meaningful identities to surface (a `brand-kit` apply has none —
+   * the kit is identified by the brand UUID the caller already
+   * supplied). Caller is responsible for persisting these onto its
+   * own model.
+   */
+  identities?: ResolvedIdentity[];
 }
 
 /** One declarative surface the `sync` engine can operate on. */

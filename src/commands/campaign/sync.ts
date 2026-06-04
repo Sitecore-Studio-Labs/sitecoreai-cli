@@ -7,6 +7,8 @@
  *   diff  show the plan to converge a campaign onto a recipe
  *   push  apply that plan (dry-run unless --allow-write)
  */
+import { writeFile } from "node:fs/promises";
+
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 import { campaignKind } from "@/campaigns/recipe";
@@ -14,6 +16,15 @@ import { readRootConfiguration } from "@/config/root-config";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
+import type { ResolvedIdentity } from "@/sync";
+
+const writeIdentitiesOut = async (
+  path: string,
+  identities: ReadonlyArray<ResolvedIdentity>
+): Promise<void> => {
+  const body = JSON.stringify({ identities }, null, 2);
+  await writeFile(path, body, "utf8");
+};
 import {
   loadRecipe,
   planIsNoop,
@@ -35,6 +46,10 @@ interface SyncOptions extends CommonOptions {
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
+  /** Optional path; when set, the push outcome's resolved Sitecore
+   *  UUIDs (project / deliverables / tasks) are written there as JSON.
+   *  Consumed by the orchestrator. */
+  identitiesOut?: string;
 }
 
 /** Slugify a campaign name for a default recipe filename. */
@@ -124,6 +139,7 @@ const createDiffCommand = (): Command => {
         kind: campaignKind.name,
         id: recipe.name,
         ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+        ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
       },
       ctx
     );
@@ -137,7 +153,13 @@ const createPushCommand = (): Command => {
     .description("Converge a campaign onto a recipe file. Dry-run unless --allow-write.")
     .requiredOption("--file <path>", "Recipe file (.yaml / .json)")
     .addOption(new Option("--allow-write", "Apply the plan (default is a dry-run)"))
-    .addOption(new Option("--prune", "Include delete changes (off by default)"));
+    .addOption(new Option("--prune", "Include delete changes (off by default)"))
+    .addOption(
+      new Option(
+        "--identities-out <path>",
+        "Write the apply outcome's resolved Sitecore UUIDs (project, deliverables, tasks) to a JSON file at this path. The orchestrator reads it back to persist UUIDs onto its own model so the next push can read entities by id directly."
+      )
+    );
   addEnvironmentOption(command);
   addConfigOption(command);
   addVerbosityOptions(command);
@@ -153,6 +175,7 @@ const createPushCommand = (): Command => {
         kind: campaignKind.name,
         id: recipe.name,
         ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+        ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
       },
       ctx,
       { mode, prune: options.prune }
@@ -167,6 +190,9 @@ const createPushCommand = (): Command => {
       logger.info("Already converged — nothing to do.", "green");
     } else {
       logger.info("Dry-run. Re-run with --allow-write to apply.");
+    }
+    if (options.identitiesOut && outcome.result?.identities) {
+      await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
   });
   return command;

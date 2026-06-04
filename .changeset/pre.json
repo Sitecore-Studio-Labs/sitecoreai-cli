@@ -7,6 +7,7 @@
   "changesets": [
     "brief-type-three-way-merge",
     "campaign-conflict-policy-flag",
+    "campaign-task-identity-stamp",
     "cli-force-exit-stderr-drain",
     "drop-registry-shims",
     "registry-tracked-sitecore-ids",

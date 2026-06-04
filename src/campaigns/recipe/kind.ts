@@ -558,6 +558,14 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     } else if (change.kind === "update") {
       // PUT is full-replacement — the recipe carries the whole task.
       taskId = resolveTaskId(parent, task);
+      // Stamp `handle:<x>` on update writes too, not just on create.
+      // Without this, a task whose recipe gained identity (via the
+      // orchestrator's lazy backfill or a hand-edit) would never
+      // reach the tenant — the apply path would push the raw
+      // operator-authored labels and leave the wire unidentified.
+      const labelsWithHandle = task.handle
+        ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
+        : (task.labels ?? []);
       await updateTask(client, project.id, parent.id, taskId, {
         name: task.name,
         due_date: task.dueDate,
@@ -565,7 +573,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         priority: task.priority ?? null,
         description: task.description ?? null,
         assignee: task.assignee ?? null,
-        labels: task.labels,
+        labels: labelsWithHandle,
       });
       applied.push(change);
     } else {

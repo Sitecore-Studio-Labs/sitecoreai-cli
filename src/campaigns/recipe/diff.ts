@@ -24,15 +24,35 @@ import { isDeepStrictEqual } from "node:util";
 import type { RecipeChange, RecipePlan } from "@/sync";
 import type { CampaignDeliverable, CampaignRecipe, CampaignTask } from "./schema";
 
-/** Compare two recipe tasks ignoring undefined-vs-absent noise. */
-const tasksEqual = (a: CampaignTask, b: CampaignTask): boolean =>
-  a.name === b.name &&
-  a.status === b.status &&
-  a.dueDate === b.dueDate &&
-  a.priority === b.priority &&
-  a.description === b.description &&
-  a.assignee === b.assignee &&
-  isDeepStrictEqual(a.labels, b.labels);
+/**
+ * Compare two recipe tasks ignoring undefined-vs-absent noise.
+ *
+ * The recipe's `handle` is also counted as identity: when the desired
+ * recipe carries a handle and the current task's wire labels lack
+ * `handle:<handle>`, we treat that as a difference so `apply` runs the
+ * UPDATE path and stamps the label. Without this gate, a recipe that
+ * adds identity to an existing task (the common case after the
+ * orchestrator's lazy handle backfill) would diff as noop — and the
+ * tenant would stay unidentified, so the next rename re-creates a
+ * duplicate.
+ */
+const tasksEqual = (a: CampaignTask, b: CampaignTask): boolean => {
+  const baseEqual =
+    a.name === b.name &&
+    a.status === b.status &&
+    a.dueDate === b.dueDate &&
+    a.priority === b.priority &&
+    a.description === b.description &&
+    a.assignee === b.assignee &&
+    isDeepStrictEqual(a.labels, b.labels);
+  if (!baseEqual) return false;
+  if (a.handle) {
+    const expectedLabel = `handle:${a.handle}`;
+    const hasLabel = (b.labels ?? []).includes(expectedLabel);
+    if (!hasLabel) return false;
+  }
+  return true;
+};
 
 /** Diff a deliverable's tasks against the current deliverable's tasks. */
 const diffTasks = (

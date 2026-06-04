@@ -18,18 +18,8 @@
  *   pnpm exec tsx -r tsconfig-paths/register \
  *     scripts/probe-brief-author-impersonation.ts <briefTypeId> <auth0Sub>
  */
-import {
-  createBrief,
-  deleteBrief,
-  getBrief,
-  listBriefTypes,
-  resolveBriefClient,
-} from "@/brief";
-import { briefRequest } from "@/brief/api/request";
-import type {
-  BriefApiClientOptions,
-  BriefQueryRecord,
-} from "@/brief/api/types";
+import { createBrief, deleteBrief, getBrief, listBriefTypes, resolveBriefClient } from "@/brief";
+import type { BriefApiClientOptions } from "@/brief/api/types";
 
 interface BodyCandidate {
   kind: "body";
@@ -62,7 +52,7 @@ const CANDIDATES = (sub: string): Candidate[] => [
 const postBriefWithExtraHeaders = async (
   client: BriefApiClientOptions,
   body: Record<string, unknown>,
-  headers: Record<string, string>,
+  headers: Record<string, string>
 ): Promise<{ id: string }> => {
   const url = `${client.baseUrl}/api/brief/v1/briefs`;
   const res = await fetch(url, {
@@ -76,9 +66,7 @@ const postBriefWithExtraHeaders = async (
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(
-      `POST ${url} → ${res.status} ${res.statusText}: ${await res.text()}`,
-    );
+    throw new Error(`POST ${url} → ${res.status} ${res.statusText}: ${await res.text()}`);
   }
   return (await res.json()) as { id: string };
 };
@@ -86,7 +74,7 @@ const postBriefWithExtraHeaders = async (
 async function probeOne(
   client: BriefApiClientOptions,
   briefTypeId: string,
-  candidate: Candidate,
+  candidate: Candidate
 ): Promise<void> {
   const name = `[probe-author ${candidate.kind}/${candidate.label} ${new Date().toISOString()}]`;
   const baseBody = {
@@ -107,38 +95,28 @@ async function probeOne(
       });
       briefId = out.id;
     } else {
-      const out = await postBriefWithExtraHeaders(
-        client,
-        baseBody,
-        candidate.headers,
-      );
+      const out = await postBriefWithExtraHeaders(client, baseBody, candidate.headers);
       briefId = out.id;
     }
     console.log(`Created brief ${briefId}`);
     const got = await getBrief(client, briefId);
     console.log(
-      `  createdBy: ${JSON.stringify(got.createdBy)}\n  updatedBy: ${JSON.stringify(got.updatedBy)}`,
+      `  createdBy: ${JSON.stringify(got.createdBy)}\n  updatedBy: ${JSON.stringify(got.updatedBy)}`
     );
-    if (
-      got.createdBy &&
-      "id" in got.createdBy &&
-      got.createdBy.id === sub
-    ) {
+    if (got.createdBy && "id" in got.createdBy && got.createdBy.id === sub) {
       console.log(`  ★ MATCH — createdBy.id === ${sub}`);
     } else {
       console.log(`  ✗ no match — server stamped its own caller`);
     }
   } catch (err) {
-    console.log(
-      `  PUT failed: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`,
-    );
+    console.log(`  PUT failed: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`);
   } finally {
     if (briefId) {
       try {
         await deleteBrief(client, briefId);
       } catch (err) {
         console.warn(
-          `  cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`,
+          `  cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`
         );
       }
     }
@@ -148,9 +126,7 @@ async function probeOne(
 async function main(): Promise<void> {
   const briefTypeId = process.argv[2];
   if (!briefTypeId || !sub) {
-    console.error(
-      "Usage: probe-brief-author-impersonation.ts <briefTypeId> <auth0Sub>",
-    );
+    console.error("Usage: probe-brief-author-impersonation.ts <briefTypeId> <auth0Sub>");
     process.exit(2);
   }
 

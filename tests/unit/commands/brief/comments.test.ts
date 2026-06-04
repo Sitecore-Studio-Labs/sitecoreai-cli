@@ -69,10 +69,10 @@ describe("createBriefCommentsCommand — command tree", () => {
     }
   });
 
-  it("marks --text as a required option on add", () => {
+  it("marks --text and --author as required options on add", () => {
     const add = sub(comments, "add")!;
     const required = add.options.filter((o) => o.mandatory).map((o) => o.long);
-    expect(required).toEqual(["--text"]);
+    expect(required).toEqual(["--text", "--author"]);
   });
 
   it("declares --apply and --what-if on add", () => {
@@ -122,26 +122,62 @@ describe("brief comments list", () => {
 });
 
 describe("brief comments add", () => {
-  it("threads the briefId + --text and forces whatIf:true without --apply", async () => {
+  it("threads the briefId + --text + --author and forces whatIf:true without --apply", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    await runComments(["add", "brief-1", "--text", "Looks good", "--quiet"]);
+    await runComments([
+      "add",
+      "brief-1",
+      "--text",
+      "Looks good",
+      "--author",
+      "auth0|csm",
+      "--quiet",
+    ]);
     expect(taskMocks.runBriefCommentAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ briefId: "brief-1", text: "Looks good", whatIf: true })
+      expect.objectContaining({
+        briefId: "brief-1",
+        text: "Looks good",
+        author: "auth0|csm",
+        whatIf: true,
+      })
     );
     expect(stderr).toHaveBeenCalled();
   });
 
   it("executes the write (no whatIf coercion) when --apply is passed", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    await runComments(["add", "brief-1", "--text", "Ship it", "--quiet", "--apply"]);
+    await runComments([
+      "add",
+      "brief-1",
+      "--text",
+      "Ship it",
+      "--author",
+      "auth0|csm",
+      "--quiet",
+      "--apply",
+    ]);
     const call = taskMocks.runBriefCommentAdd.mock.calls[0][0];
-    expect(call).toMatchObject({ briefId: "brief-1", text: "Ship it", apply: true });
+    expect(call).toMatchObject({
+      briefId: "brief-1",
+      text: "Ship it",
+      author: "auth0|csm",
+      apply: true,
+    });
     expect(call.whatIf).toBeUndefined();
     expect(stderr).not.toHaveBeenCalled();
   });
 
   it("rejects a missing required --text", async () => {
-    await expect(runComments(["add", "brief-1", "--quiet"])).rejects.toBeDefined();
+    await expect(
+      runComments(["add", "brief-1", "--author", "auth0|csm", "--quiet"])
+    ).rejects.toBeDefined();
+    expect(taskMocks.runBriefCommentAdd).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing required --author", async () => {
+    await expect(
+      runComments(["add", "brief-1", "--text", "Hello", "--quiet"])
+    ).rejects.toBeDefined();
     expect(taskMocks.runBriefCommentAdd).not.toHaveBeenCalled();
   });
 });

@@ -1,33 +1,35 @@
 /**
- * Probe: discover the HTTP contract for clearing `briefs[]` on a
- * project. The dangling-brief-ref bug (where deleteProject 403s
- * because the project still references a brief that's already been
- * deleted) needs a workaround: PATCH or PUT the project to clear
- * `briefs[]`, then retry DELETE.
+ * Probe: verify the proposed fix for the dangling-brief-ref bug.
+ *
+ * Hypothesis: clearing `brief.references[]` BEFORE `deleteBrief` lets
+ * Orchestrate clean up the reverse-view `project.briefs[]` reference
+ * at the source. Then a subsequent `deleteProject` has no dangling
+ * link to detach and succeeds. If this works, the fix is a tiny
+ * scai-side change: prepend an unlink step to `runBriefDelete`.
  *
  * Sequence (self-cleaning):
- *   1. Create throwaway project + brief + link
- *   2. Delete the brief directly → project now has dangling brief ref
- *   3. Try `deleteProject` → expect to fail with the detach error
- *   4. Try PATCH /projects/{id} body { briefs: [] }
- *   5. Try PUT /projects/{id} body { ...project, briefs: [] }
- *   6. Whichever update works → retry DELETE
- *   7. If all fail → DELETE the project (might require admin cleanup)
+ *   1. Create throwaway project + brief
+ *   2. Link the brief to the project via updateBrief(refs)
+ *   3. Read the project — confirm project.briefs[] now contains the brief
+ *   4. unlink: updateBrief(briefId, {references: []})
+ *   5. Read the project — does project.briefs[] still reference the brief?
+ *   6. deleteBrief
+ *   7. deleteProject — should succeed cleanly (the fix is real if this works)
  *
- * Output is JSON to stdout with the results of each step.
+ * Output is JSON to stdout with each step's outcome.
  */
 import {
-  resolveBriefClient,
   createBrief,
   deleteBrief,
-  type BriefType,
   listBriefTypes,
+  resolveBriefClient,
   updateBrief,
+  type BriefType,
 } from "@/brief";
 import {
-  campaignRequest,
   createProject,
   deleteProject,
+  getProject,
   resolveCampaignClient,
   type Project,
 } from "@/campaigns";
@@ -46,18 +48,13 @@ const main = async (): Promise<void> => {
     process.stderr.write(`  ${ok ? "ok  " : "FAIL"} ${step} — ${detail}\n`);
   };
 
-  process.stderr.write(`> resolving clients${envName ? ` for '${envName}'` : ""}\n`);
-  const { client: campaignClient, orgId } = await resolveCampaignClient({
-    envName,
-  });
+  process.stderr.write(`> resolving clients\n`);
+  const { client: campaignClient } = await resolveCampaignClient({ envName });
   const { client: briefClient } = await resolveBriefClient({ envName });
-  process.stderr.write(`> org=${orgId}\n`);
-  process.stderr.write(`> campaignBase=${campaignClient.baseUrl}\n`);
-  process.stderr.write(`> briefBase=${briefClient.baseUrl}\n`);
 
   const stamp = new Date().toISOString();
 
-  // 1. Pick a brief type so the throwaway brief is creatable.
+  // 1. Pick a brief type.
   let briefType: BriefType | undefined;
   try {
     const types = await listBriefTypes(briefClient, { limit: 5 });
@@ -70,7 +67,6 @@ const main = async (): Promise<void> => {
     push("pick brief type", true, `name=${briefType.name}`);
   } catch (error) {
     push("pick brief type", false, String(error));
-    process.stdout.write(`${JSON.stringify({ records }, null, 2)}\n`);
     process.exit(1);
   }
 
@@ -78,8 +74,8 @@ const main = async (): Promise<void> => {
   let project: Project | undefined;
   try {
     project = await createProject(campaignClient, {
-      name: `scai-probe-update ${stamp}`,
-      description: "Throwaway project — _probe-project-update.ts.",
+      name: `scai-probe-unlink ${stamp}`,
+      description: "Throwaway — _probe-project-update.ts.",
       due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10),
@@ -87,15 +83,14 @@ const main = async (): Promise<void> => {
     push("create project", true, `id=${project.id}`);
   } catch (error) {
     push("create project", false, String(error));
-    process.stdout.write(`${JSON.stringify({ records }, null, 2)}\n`);
     process.exit(1);
   }
 
-  // 3. Create a brief, then PUT references pointing at the project.
+  // 3. Create brief.
   let briefId: string | undefined;
   try {
     const brief = await createBrief(briefClient, {
-      name: `scai-probe-update-brief ${stamp}`,
+      name: `scai-probe-unlink-brief ${stamp}`,
       briefTypeId: briefType.id,
       locale: "en-us",
       fields: {},
@@ -105,25 +100,67 @@ const main = async (): Promise<void> => {
   } catch (error) {
     push("create brief", false, String(error));
   }
+
+  // 4. Link brief→project via updateBrief.
   if (briefId) {
     try {
       await updateBrief(briefClient, briefId, {
         references: [
           {
             type: "ExternalLink",
-            relatedSystem: "Orchestrate",
-            relatedType: "Campaign",
+            relatedSystem: "co",
+            relatedType: "Project",
             id: project.id,
           },
         ],
       });
-      push("link brief→project", true, `briefId=${briefId}`);
+      push("link brief→project", true, "");
     } catch (error) {
       push("link brief→project", false, String(error));
     }
   }
 
-  // 4. Delete the brief → project now has a dangling brief reference.
+  // 5. Verify the reverse view — project.briefs[] now contains the brief.
+  try {
+    const refreshed = await getProject(campaignClient, project.id);
+    const briefIds = (refreshed.briefs ?? []).map((b) => b.id);
+    const hasBrief = briefIds.includes(briefId ?? "");
+    push(
+      "read project after link",
+      hasBrief,
+      `briefs=${JSON.stringify(briefIds)}`,
+    );
+  } catch (error) {
+    push("read project after link", false, String(error));
+  }
+
+  // 6. THE TEST: clear brief.references[] BEFORE deleting the brief.
+  if (briefId) {
+    try {
+      await updateBrief(briefClient, briefId, { references: [] });
+      push("unlink (references: [])", true, "");
+    } catch (error) {
+      push("unlink (references: [])", false, String(error));
+    }
+  }
+
+  // 7. Re-read project — did Orchestrate clean up project.briefs[]?
+  let projectBriefsAfterUnlink: Array<{ id: string }> = [];
+  try {
+    const refreshed = await getProject(campaignClient, project.id);
+    projectBriefsAfterUnlink = refreshed.briefs ?? [];
+    const briefIds = projectBriefsAfterUnlink.map((b) => b.id);
+    const stillHasBrief = briefIds.includes(briefId ?? "");
+    push(
+      "read project after unlink",
+      !stillHasBrief,
+      `briefs=${JSON.stringify(briefIds)} (cleared=${!stillHasBrief})`,
+    );
+  } catch (error) {
+    push("read project after unlink", false, String(error));
+  }
+
+  // 8. Delete the brief.
   if (briefId) {
     try {
       await deleteBrief(briefClient, briefId);
@@ -133,69 +170,12 @@ const main = async (): Promise<void> => {
     }
   }
 
-  // 5. Try deleteProject → expect failure if the bug reproduces.
+  // 9. Delete the project. SUCCEEDS = the fix works.
   try {
     await deleteProject(campaignClient, project.id);
-    push(
-      "initial deleteProject",
-      true,
-      "succeeded immediately — bug may not reproduce on this tenant",
-    );
-    process.stdout.write(`${JSON.stringify({ records }, null, 2)}\n`);
-    process.exit(0);
+    push("delete project (the fix test)", true, "succeeded ✓");
   } catch (error) {
-    push("initial deleteProject", false, `${String(error).slice(0, 200)}`);
-  }
-
-  const projectPath = `/api/orchestrate/v1/projects/${encodeURIComponent(project.id)}`;
-
-  // 6. PATCH attempt — partial update with just briefs cleared.
-  try {
-    await campaignRequest<unknown>(campaignClient, projectPath, {
-      method: "PATCH",
-      body: { briefs: [] },
-    });
-    push("PATCH { briefs: [] }", true, "accepted");
-  } catch (error) {
-    push("PATCH { briefs: [] }", false, `${String(error).slice(0, 200)}`);
-  }
-
-  // 7. PUT attempt — full body with briefs[] cleared. Use the project
-  // we created plus an empty briefs array.
-  try {
-    await campaignRequest<unknown>(campaignClient, projectPath, {
-      method: "PUT",
-      body: {
-        name: project.name,
-        description: project.description ?? "",
-        start_date: project.start_date,
-        due_date: project.due_date,
-        status: project.status,
-        brandkit_id: project.brandkit_id,
-        labels: project.labels ?? [],
-        members: project.members ?? [],
-        briefs: [],
-      },
-    });
-    push("PUT (full body) briefs=[]", true, "accepted");
-  } catch (error) {
-    push(
-      "PUT (full body) briefs=[]",
-      false,
-      `${String(error).slice(0, 200)}`,
-    );
-  }
-
-  // 8. Retry deleteProject after attempted updates.
-  try {
-    await deleteProject(campaignClient, project.id);
-    push("deleteProject (after update)", true, "succeeded ✓");
-  } catch (error) {
-    push(
-      "deleteProject (after update)",
-      false,
-      `${String(error).slice(0, 200)}`,
-    );
+    push("delete project (the fix test)", false, String(error).slice(0, 300));
   }
 
   process.stdout.write(`${JSON.stringify({ records }, null, 2)}\n`);

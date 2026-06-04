@@ -404,6 +404,22 @@ export const runBriefUpdate = async (
  * Delete a brief instance. Mirrors `runBriefTypeDelete` — honours
  * `whatIf` for a plan-only dry run. SDK `deleteBrief` is verified
  * against the Agents tenant.
+ *
+ * Pre-delete unlink: before issuing the DELETE we PUT
+ * `{references: []}` to clear the brief's external references. The
+ * dangling-reference bug on Orchestrate's `deleteProject` (which
+ * tries to detach `project.briefs[]` entries before completing, and
+ * 403s when those briefs are already gone) is downstream of briefs
+ * that get deleted without clearing their references first. Doing
+ * the unlink at the source — the brief side — gives Orchestrate's
+ * reverse-view machinery a chance to clean up the project's
+ * `briefs[]` while the brief is still alive. Best-effort: a failure
+ * on the unlink step is logged but doesn't block the delete (the
+ * brief still ends up gone, which is the user's goal; only the
+ * downstream project might carry a dangling ref).
+ *
+ * Probed 2026-06-04: clearing references via updateBrief is a clean
+ * no-op on briefs that have none; safe to apply unconditionally.
  */
 export const runBriefDelete = async (
   options: RunBriefBaseOptions & { briefId: string; whatIf?: boolean }
@@ -417,6 +433,13 @@ export const runBriefDelete = async (
       logger.info(`Would delete brief ${options.briefId}.`, "yellow");
     }
     return plan;
+  }
+  try {
+    await updateBrief(client, options.briefId, { references: [] });
+  } catch (error) {
+    logger.verbose(
+      `Pre-delete unlink failed for brief ${options.briefId} (continuing with delete): ${error instanceof Error ? error.message : String(error)}`
+    );
   }
   await deleteBrief(client, options.briefId);
   const result = { id: options.briefId, deleted: true };

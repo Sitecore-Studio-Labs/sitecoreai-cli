@@ -22,6 +22,7 @@ import {
   deleteBrief,
   type BriefType,
   listBriefTypes,
+  updateBrief,
 } from "@/brief";
 import {
   campaignRequest,
@@ -90,30 +91,36 @@ const main = async (): Promise<void> => {
     process.exit(1);
   }
 
-  // 3. Create a brief linked to the project. The Brief API takes a
-  // `references` array on create that points at the campaign id —
-  // mirrors the link the LLM-generated briefs carry.
+  // 3. Create a brief, then PUT references pointing at the project.
   let briefId: string | undefined;
   try {
     const brief = await createBrief(briefClient, {
       name: `scai-probe-update-brief ${stamp}`,
-      briefTypeName: briefType.name,
+      briefTypeId: briefType.id,
       locale: "en-us",
-      status: "Draft",
       fields: {},
-      references: [
-        {
-          type: "ExternalLink",
-          relatedSystem: "Orchestrate",
-          relatedType: "Campaign",
-          id: project.id,
-        },
-      ],
     });
     briefId = brief.id;
-    push("create brief w/link", true, `id=${briefId}`);
+    push("create brief", true, `id=${briefId}`);
   } catch (error) {
-    push("create brief w/link", false, String(error));
+    push("create brief", false, String(error));
+  }
+  if (briefId) {
+    try {
+      await updateBrief(briefClient, briefId, {
+        references: [
+          {
+            type: "ExternalLink",
+            relatedSystem: "Orchestrate",
+            relatedType: "Campaign",
+            id: project.id,
+          },
+        ],
+      });
+      push("link brief→project", true, `briefId=${briefId}`);
+    } catch (error) {
+      push("link brief→project", false, String(error));
+    }
   }
 
   // 4. Delete the brief → project now has a dangling brief reference.

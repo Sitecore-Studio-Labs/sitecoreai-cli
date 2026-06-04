@@ -99,6 +99,7 @@ export const diffCampaign = (
         dueDate: desired.dueDate,
         brandKitId: desired.brandKitId,
         labels: desired.labels,
+        members: desired.members,
       },
     });
   }

@@ -103,8 +103,132 @@ export const BriefMilestoneSchema = z
   })
   .describe("One workflow milestone on a brief's evaluation timeline.");
 
+/**
+ * One to-do on a brief. The Brief API exposes a minimal task surface —
+ * the persisted record carries only `title`, `status` (locked to
+ * `Pending` on create), and `assignees`. Probing TestDemo 2026-06-03
+ * confirmed that `description`, `body`, `dueDate`, and `DueOn` are
+ * silently dropped by the server, so they're not in the recipe.
+ *
+ * Round-trip: `apply` POSTs each todo to `/api/brief/v1/tasks` after
+ * the brief is created/updated. The pull projection lists tasks
+ * filtered by `BriefId` and rebuilds the array from response order.
+ */
+export const BriefTodoSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1)
+      .describe(
+        "Short verb phrase shown in the brief's to-do list. The only text the Brief API persists on a task — no description field exists."
+      ),
+    assigneeIds: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "Auth0 subjects (e.g. `auth0|<sub>`) assigned to the to-do. Use `scai ops campaign users list` to enumerate the tenant's member directory."
+      ),
+  })
+  .describe("One to-do on a brief.");
+
+/**
+ * One comment on a brief. The Brief API stores comments with an
+ * impersonated `author` (the Auth0 sub passed in `authorId`) while
+ * `createdBy` independently captures the calling client — letting
+ * automation post on behalf of named users (CSM, Designer, Legal,
+ * etc.) without conflating the audit trail.
+ *
+ * `text` accepts a plain string OR a ProseMirror doc node; the
+ * server persists either as a RichText envelope. The seed
+ * generator emits ProseMirror so formatting (bold, links, lists)
+ * survives the round-trip into the brief's comment thread.
+ */
+export const BriefCommentSchema = z
+  .object({
+    text: z
+      .union([z.string().min(1), z.record(z.string(), z.unknown())])
+      .describe(
+        "Comment body. Plain string OR ProseMirror doc node. ProseMirror preserves marks (bold, italic, links) — the seed generator emits PM for formatted comments."
+      ),
+    authorId: z
+      .string()
+      .min(1)
+      .describe(
+        "Auth0 subject of the visible comment author (e.g. `auth0|<sub>`). Use `scai ops campaign users list` to enumerate. Required — the Brief API rejects POSTs without an authorId."
+      ),
+  })
+  .describe("One comment on a brief.");
+
+/**
+ * Cross-resource reference attached to a brief. Sitecore Brief API
+ * persists these in the `references` array on a read; verified
+ * 2026-06-03 that `PUT /api/brief/v1/briefs/{id}` with a `references`
+ * field on the body accepts the same shape and persists it.
+ *
+ * The most common use is linking a brief to its parent Orchestrate
+ * project (campaign) — `relatedSystem: "co"`, `relatedType: "Project"`,
+ * `id: <projectId>`. Other related-system slugs (e.g. `xmcloud`)
+ * appear on read but their write semantics are unverified.
+ */
+export const BriefExternalReferenceSchema = z
+  .object({
+    type: z.literal("ExternalLink").describe('Discriminator. Always "ExternalLink" today.'),
+    relatedSystem: z
+      .string()
+      .min(1)
+      .describe(
+        "Sibling system slug — `co` for Sitecore Orchestrate (campaigns/projects), `xmcloud` for XM Cloud content. Verified for `co`; others unverified."
+      ),
+    relatedType: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Resource type within the `relatedSystem`, e.g. `Project` for an Orchestrate campaign. `null` is accepted."
+      ),
+    id: z
+      .string()
+      .min(1)
+      .describe(
+        "Foreign identifier — a UUID for an Orchestrate project, an Auth0 sub for an `xmcloud` user, etc."
+      ),
+  })
+  .describe(
+    "One external reference attached to a brief. Linking a brief to its parent campaign uses {type: ExternalLink, relatedSystem: 'co', relatedType: 'Project', id: <projectId>}."
+  );
+
 /** The full brief-instance recipe. */
 export const BriefInstanceRecipeSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `concept-review-brief@1`) used as the
+   * baseline key. Display names (`name`) can include arbitrary
+   * punctuation that breaks URL paths — handles are URL-safe by
+   * convention.
+   *
+   * Optional for back-compat with recipes authored before this field
+   * existed. When absent, the baseline key falls back to the display
+   * name; pushes from agentic flows (registry + orchestrator) should
+   * always set it explicitly.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle (e.g. `concept-review-brief@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
+    ),
+  /**
+   * Sitecore Brief UUID. When set on input, the sync commands stamp
+   * it into `KindRef.tenantId` so `readCurrent` skips the marker-in-
+   * name search and reads the brief by id directly. Retires the
+   * `[story:X/handle@1]` suffix once every brief has been stamped.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Sitecore Brief UUID. When set, scai's apply path reads the brief by id directly — skipping the marker-in-name fallback."
+    ),
   name: z
     .string()
     .min(1)
@@ -138,6 +262,36 @@ export const BriefInstanceRecipeSchema = z.object({
     .optional()
     .describe(
       "Workflow milestones (concept review, draft delivered, final approved, etc.). Top-level — not inside `fields`. Currently recipe-local: the Sitecore Brief API has no native milestone surface, so this field round-trips through `recipe push` / `recipe pull` of the same recipe file but isn't serialized to Sitecore on apply or projected back on capture. See `BriefMilestoneSchema` for the per-entry shape + the round-trip caveat."
+    ),
+  todos: z
+    .array(BriefTodoSchema)
+    .optional()
+    .describe(
+      "To-dos attached to the brief — POSTed to `/api/brief/v1/tasks` after the brief is created/updated. Create-only for now; updating or deleting existing todos is out of scope until a diff strategy lands. See `BriefTodoSchema` for the persisted-field set."
+    ),
+  comments: z
+    .array(BriefCommentSchema)
+    .optional()
+    .describe(
+      "Comments attached to the brief — POSTed to `/api/brief/v1/comments` after the brief is created/updated. Create-only for now. Each comment carries its own `authorId` so a single push can populate a multi-person conversation. See `BriefCommentSchema` for the field set and impersonation semantics."
+    ),
+  references: z
+    .array(BriefExternalReferenceSchema)
+    .optional()
+    .describe(
+      "External resource references — linking a brief to its parent Orchestrate project (campaign) is the verified case: `{type: ExternalLink, relatedSystem: 'co', relatedType: 'Project', id: <projectId>}`. Applied via a follow-up `PUT /api/brief/v1/briefs/{id}` after the brief is created."
+    ),
+  campaignHandle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable handle of the parent Orchestrate campaign (project). When set, scai's apply path resolves it to a project id via list-by-labels (`story:<storyId>` + `handle:<campaignHandle>`) and PUTs the resolved ExternalLink onto the brief's references. The campaign must already exist on the tenant — story-sync pushes campaigns before briefs."
+    ),
+  storyId: z
+    .string()
+    .optional()
+    .describe(
+      "Story UUID. Narrows campaign-handle resolution by the `story:<id>` label so two stories that share a campaign handle don't collide. Omittable when `campaignHandle` is also omitted."
     ),
 });
 

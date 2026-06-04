@@ -26,6 +26,14 @@ import type { CampaignDeliverable, CampaignRecipe, CampaignTask } from "./schema
 export interface CampaignBaselinePayload {
   schemaVersion: "1";
   cells: Record<string, string>;
+  /**
+   * Server UUID of the project row this baseline was captured against.
+   * When present, apply prefers id-match via `getProject(id)` before
+   * falling back to the labels-based `findProjectByName`. Survives a
+   * displayName edit between pushes without orphaning the existing
+   * tenant row.
+   */
+  tenantId?: string;
 }
 
 export type CampaignBaseline = Baseline<CampaignBaselinePayload>;
@@ -82,12 +90,19 @@ export const hashCampaignCells = (recipe: CampaignRecipe): Record<string, string
   return cells;
 };
 
-/** Build the post-apply baseline payload for a campaign recipe. */
+/**
+ * Build the post-apply baseline payload for a campaign recipe.
+ * Pass the tenant `id` of the project this apply landed on so the
+ * next push can resolve the row by id rather than by displayName /
+ * identity labels.
+ */
 export const captureCampaignBaselinePayload = (
-  recipe: CampaignRecipe
+  recipe: CampaignRecipe,
+  tenantId?: string
 ): CampaignBaselinePayload => ({
   schemaVersion: "1",
   cells: hashCampaignCells(recipe),
+  ...(tenantId ? { tenantId } : {}),
 });
 
 /**
@@ -184,12 +199,17 @@ export const mergeCampaignByPolicy = (
 
       return {
         name: desiredTask.name,
+        handle: desiredTask.handle,
         status: pickTask("status"),
         dueDate: pickTask("dueDate"),
         priority: pickTask("priority"),
         description: pickTask("description"),
         assignee: pickTask("assignee"),
         labels: pickTask("labels") ?? [],
+        // Dependencies are forward refs — they never round-trip through
+        // current-state (the wire stores them as full UUID triples,
+        // not handles). Trust the desired side verbatim.
+        dependencies: desiredTask.dependencies ?? [],
       };
     });
 
@@ -212,6 +232,10 @@ export const mergeCampaignByPolicy = (
     dueDate: pickProject("dueDate"),
     brandKitId: pickProject("brandKitId"),
     labels: pickProject("labels") ?? [],
+    // Members aren't part of the three-way merge — they're applied
+    // separately at create time (and idempotent on re-POST), so the
+    // desired side flows through unchanged.
+    members: desired.members ?? [],
     deliverables: mergedDeliverables,
   };
 

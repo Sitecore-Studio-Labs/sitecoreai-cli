@@ -27,6 +27,21 @@ export type CreateDeliverableInput = {
   labels?: string[];
 };
 
+/**
+ * The Orchestrate API rejects `POST .../deliverables` with HTTP 422
+ * `{detail: [{loc:["body","due_date"], msg:"Field required"}]}` when
+ * `due_date` is absent — verified empirically against `ai-workflows-euw`
+ * on 2026-06-03. Default to ~30 days out when the input omits it so a
+ * recipe-authored deliverable without an explicit timeline still
+ * lands on first push.
+ */
+const DEFAULT_DELIVERABLE_DUE_DATE_DAYS_OUT = 30;
+const defaultDeliverableDueDate = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + DEFAULT_DELIVERABLE_DUE_DATE_DAYS_OUT);
+  return d.toISOString().slice(0, 10);
+};
+
 /** Create a deliverable under a campaign. Returns the persisted record. */
 export const createDeliverable = (
   options: CampaignApiClientOptions,
@@ -41,7 +56,7 @@ export const createDeliverable = (
       body: {
         name: input.name,
         project_id: projectId,
-        due_date: input.due_date,
+        due_date: input.due_date ?? defaultDeliverableDueDate(),
         status: input.status ?? "NOT_STARTED",
         funnel_stage: input.funnel_stage,
         funnel_tactics: input.funnel_tactics ?? [],

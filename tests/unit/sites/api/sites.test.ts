@@ -5,6 +5,7 @@ import {
   listSites,
   listSiteTemplates,
   retrieveSite,
+  retrieveWorkflowStatistics,
   setSiteBrandKit,
   updateSite,
 } from "../../../../src/sites/api/sites";
@@ -137,5 +138,37 @@ describe("sites API — recipe-required helpers", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
     expect(JSON.parse(init.body)).toEqual({ brandKitId: null });
+  });
+
+  it("retrieveWorkflowStatistics GETs the workflow rollup path with no query when query is omitted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ workflows: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await retrieveWorkflowStatistics(baseOptions, "site-1");
+
+    expect(result).toEqual({ workflows: [] });
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/site-1/statistics/workflow`);
+  });
+
+  it("retrieveWorkflowStatistics threads environmentId into the query string", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ workflows: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await retrieveWorkflowStatistics(baseOptions, "site-1", { environmentId: "main" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${DEFAULT_SITES_API_BASE}/api/v1/sites/site-1/statistics/workflow?environmentId=main`
+    );
+  });
+
+  it("retrieveWorkflowStatistics omits the query when environmentId is undefined inside the query bag", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ workflows: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await retrieveWorkflowStatistics(baseOptions, "site-1", { environmentId: undefined });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/site-1/statistics/workflow`);
   });
 });

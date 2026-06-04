@@ -46,6 +46,30 @@ const CampaignFunnelStageSchema = z.union([z.enum(KNOWN_CAMPAIGN_FUNNEL_STAGES),
  * from a captured recipe.
  */
 export const CampaignTaskSchema = z.object({
+  /**
+   * Stable handle for cross-task dependency references. Optional —
+   * tasks without a handle can't be referenced by another task's
+   * `dependencies` array but otherwise behave identically. Convention
+   * is `<kebab-name>@<schemaVersion>` (e.g. `subject-line-ab-test@1`),
+   * matching the brief + campaign handle scheme.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle (e.g. `subject-line-ab-test@1`) so other tasks can declare a dependency on this one. Optional — only required when this task is referenced as a dependency."
+    ),
+  /**
+   * Sitecore Orchestrate task UUID. When present, the apply path uses
+   * it directly instead of paging the project's tasks and matching by
+   * `handle:<x>` label. Round-trips through the apply outcome so the
+   * orchestrator can persist it back onto the registry recipe.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Sitecore Orchestrate task UUID. Skip-label-search fast path when present."),
   name: z.string().min(1).describe("Task name. Identifies the task within its deliverable."),
   status: CampaignStatusSchema.optional().describe(
     'Task status — a server enum. Confirmed values: "NOT_STARTED". Other UPPER_SNAKE values may exist on the server; the schema accepts them but agents should prefer the confirmed set.'
@@ -60,13 +84,52 @@ export const CampaignTaskSchema = z.object({
   description: z.string().optional().describe("Task description. HTML."),
   assignee: z.string().optional().describe('Assignee — an Auth0 user subject (e.g. "auth0|...").'),
   labels: z.array(z.string()).default([]).describe("Free-form labels on the task."),
+  /**
+   * Tasks this one depends on, referenced by their `handle`. The
+   * orchestrator resolves handles to server UUIDs in a second push
+   * pass after all tasks are created — dependencies CAN reference
+   * tasks in sibling deliverables under the same project (the wire
+   * accepts cross-deliverable refs because each dep entry carries
+   * the full `{project_id, project_deliverable_id, task_id}` triple).
+   */
+  dependencies: z
+    .array(z.string().min(1))
+    .default([])
+    .describe(
+      "Handles of tasks this task depends on. Resolved to server UUIDs at push time. Cross-deliverable references are supported as long as both tasks belong to the same campaign."
+    ),
 });
 
 /**
  * A deliverable — a funnel-stage grouping of tasks under a campaign.
- * Identified within its campaign by `name`.
+ * Matched within its campaign by `handle` (stamped into the wire's
+ * `labels` array as `handle:<handle>`) when present, falling back to
+ * `name`. Stable handles keep re-syncs idempotent even when the LLM
+ * picks different display names between story regenerates.
  */
 export const CampaignDeliverableSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `top-funnel-creative@1`). Apply stamps
+   * `handle:<handle>` into the deliverable's `labels` so re-pushes
+   * match by label rather than by the volatile display name. Optional
+   * but strongly recommended for generator-produced deliverables.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle. Stamped into the wire `labels` array as `handle:<handle>` so re-pushes match by label rather than by the LLM-volatile display name."
+    ),
+  /**
+   * Sitecore Orchestrate deliverable UUID. When present, the apply
+   * path uses it directly instead of paging the project's
+   * deliverables and matching by `handle:<x>` label.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Sitecore Orchestrate deliverable UUID. Skip-label-search fast path when present."),
   name: z
     .string()
     .min(1)
@@ -88,8 +151,61 @@ export const CampaignDeliverableSchema = z.object({
     ),
 });
 
+/**
+ * A campaign member — a tenant user attached to the project with a
+ * role. Verified roles (TestDemo 2026-06-03): `ADMIN`, `EDITOR`,
+ * `VIEWER`, `MEMBER`. The `role` field is omittable; the server
+ * default behaviour is captured in the project's UI permissions
+ * model and not yet documented here.
+ */
+export const CampaignMemberSchema = z
+  .object({
+    authorId: z
+      .string()
+      .min(1)
+      .describe(
+        "Auth0 subject of the tenant user (e.g. `auth0|<sub>`). Use `scai ops campaign users list` to enumerate the tenant directory."
+      ),
+    role: z
+      .enum(["ADMIN", "EDITOR", "VIEWER", "MEMBER"])
+      .optional()
+      .describe(
+        "Role on the project. ADMIN can add other members + delete the project; EDITOR can edit content but not membership; VIEWER reads only; MEMBER is the unprivileged default."
+      ),
+  })
+  .describe("One member on a campaign (project).");
+
 /** The full campaign recipe — a project plus its nested deliverables. */
 export const CampaignRecipeSchema = z.object({
+  /**
+   * Stable kebab handle (e.g. `spring-refresh-bundle-save@1`) used as
+   * the baseline key + cross-recipe reference target. Display names
+   * (`name`) can include arbitrary punctuation that breaks URL paths
+   * — handles are URL-safe by convention.
+   *
+   * Optional for back-compat with recipes authored before this field
+   * existed. When absent, the baseline key falls back to the display
+   * name; pushes from agentic flows (registry + orchestrator) should
+   * always set it explicitly.
+   */
+  handle: z
+    .string()
+    .optional()
+    .describe(
+      "Stable kebab handle (e.g. `spring-refresh-bundle-save@1`). When set, used as the baseline key — URL-safe by construction. Falls back to `name` when absent (back-compat)."
+    ),
+  /**
+   * Sitecore Orchestrate project UUID. When set on input, the sync
+   * commands stamp it into `KindRef.tenantId` so `readCurrent` can
+   * skip the label/name search and read the project directly.
+   */
+  sitecoreId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Sitecore Orchestrate project UUID. When set, scai's apply path skips the label search and reads the project by id directly."
+    ),
   name: z
     .string()
     .min(1)
@@ -105,6 +221,20 @@ export const CampaignRecipeSchema = z.object({
     .optional()
     .describe("Associated brand kit UUID. A cross-reference, not an embedded object."),
   labels: z.array(z.string()).default([]).describe("Free-form labels on the campaign."),
+  /**
+   * Members on the project. `apply` enforces an ADMIN-present
+   * invariant — if no entry carries `role: "ADMIN"`, the first
+   * member is promoted to ADMIN before push. This guards against
+   * a service-account-only project (which leaves the project
+   * unusable in the Orchestrate UI because the actual humans
+   * have no permission to see or edit it).
+   */
+  members: z
+    .array(CampaignMemberSchema)
+    .default([])
+    .describe(
+      "Project members keyed by Auth0 sub. Each entry POSTs to /projects/{id}/members after the project is created. The apply path ensures at least one member is ADMIN."
+    ),
   deliverables: z
     .array(CampaignDeliverableSchema)
     .default([])

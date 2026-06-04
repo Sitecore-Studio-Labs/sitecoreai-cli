@@ -10,7 +10,7 @@
 export type { ChangeKind, PlanSummary, RecipeChange, RecipePlan } from "./plan";
 export { planIsNoop, summarizePlan, writingChanges } from "./plan";
 
-export type { ApplyResult, KindRef, RecipeKind, SyncContext } from "./kind";
+export type { ApplyResult, KindRef, RecipeKind, ResolvedIdentity, SyncContext } from "./kind";
 
 export type {
   Baseline,

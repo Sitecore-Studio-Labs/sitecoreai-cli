@@ -94,3 +94,38 @@ export const deleteProject = (
   campaignRequest<void>(options, `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}`, {
     method: "DELETE",
   });
+
+/**
+ * Input for `addProjectMember`. Verified against TestDemo 2026-06-03:
+ * the POST body takes `{id, role?}` where `id` is the Auth0 subject
+ * and `role` is one of `ADMIN`, `EDITOR`, `VIEWER`, `MEMBER` (omittable).
+ */
+export type AddProjectMemberInput = {
+  /** Auth0 subject (e.g. `auth0|<sub>`). */
+  id: string;
+  /** Project role. Omittable; server applies its default. */
+  role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER";
+};
+
+/**
+ * Attach a tenant user to the project as a member with the given role.
+ * Idempotent server-side — re-POSTing with the same `id` updates the
+ * role instead of creating a duplicate row. Returns the updated
+ * project envelope.
+ */
+export const addProjectMember = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  input: AddProjectMemberInput
+): Promise<Project> =>
+  campaignRequest<Project>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}/members`,
+    {
+      method: "POST",
+      body: {
+        id: input.id,
+        ...(input.role ? { role: input.role } : {}),
+      },
+    }
+  );

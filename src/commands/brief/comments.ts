@@ -26,19 +26,31 @@ const createCommentsListCommand = (): Command => {
 const createCommentsAddCommand = (): Command => {
   const command = new Command("add")
     .description(
-      "Post a comment to a brief. UNVERIFIED — the comment write body is a best guess; smoke-test before relying on it. Requires --apply."
+      "Post a comment to a brief. Verified body shape: briefId + text + authorId; the server records `author` as the impersonated user while `createdBy` captures the actual caller. Requires --apply."
     )
     .argument("<briefId>", "Brief UUID")
-    .addOption(new Option("--text <text>", "Comment text").makeOptionMandatory(true));
+    .addOption(new Option("--text <text>", "Comment text").makeOptionMandatory(true))
+    .addOption(
+      new Option(
+        "--author <authorId>",
+        "Auth0 subject of the visible comment author (e.g. auth0|abc123). Use `scai ops campaign users list` to enumerate."
+      ).makeOptionMandatory(true)
+    );
   addOrgScopeOptions(command);
   addConfigOption(command);
   addVerbosityOptions(command);
   addApplyOption(command);
   addWhatIfOption(command);
   command.action(async (briefId, options) => {
-    await withApplyGate(async (opts: { text: string; apply?: boolean; whatIf?: boolean }) => {
-      await runBriefCommentAdd({ ...opts, briefId });
-    })(options);
+    await withApplyGate(
+      async (opts: { text: string; author: string; apply?: boolean; whatIf?: boolean }) => {
+        await runBriefCommentAdd({
+          ...opts,
+          briefId,
+          authorId: opts.author,
+        });
+      }
+    )(options);
   });
   return command;
 };

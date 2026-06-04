@@ -23,6 +23,8 @@
  */
 import {
   createBrief,
+  createBriefComment,
+  createBriefTask,
   getBrief,
   listBriefTypes,
   listBriefs,
@@ -43,8 +45,11 @@ import type {
   RecipeChange,
   RecipeKind,
   RecipePlan,
+  ResolvedIdentity,
   SyncContext,
 } from "@/sync";
+import { listProjects } from "@/campaigns";
+import { resolveCampaignClient } from "@/campaigns/recipe/client";
 import { resolveBriefClient } from "./client";
 import { diffBriefInstance } from "./instance-diff";
 import {
@@ -60,21 +65,45 @@ import { BriefInstanceRecipeSchema, type BriefInstanceRecipe } from "./instance-
 const BRIEF_KIND_NAME = "brief";
 
 /**
- * Find a brief by its display name, paging the list endpoint until a
- * match is found or the cursor is exhausted. The Brief list endpoint
- * supports no server-side name filter (see `ListBriefsQuery`), so the
- * walk is unavoidable.
+ * Identity-marker pattern callers stamp into a brief's name to keep
+ * re-pushes idempotent. Shape: `[story:<storyId>/<handle>]`. The orchestrator
+ * uses this for story-generated briefs; ad-hoc recipes that don't carry a
+ * marker fall back to exact-name match below.
+ */
+const IDENTITY_MARKER_RE = /\[story:[^\]]+\]\s*$/;
+
+/**
+ * Find a brief by name, paging the list endpoint until a match is
+ * found or the cursor is exhausted. The Brief list endpoint supports
+ * no server-side name filter, so the walk is unavoidable.
+ *
+ * Matching is two-stage. If the supplied `name` ends with a
+ * `[story:…/…]` identity marker, we prefer to match other briefs
+ * carrying the SAME marker — the marker pins identity even when an
+ * operator (or the LLM) tweaks the prefix between pushes (different
+ * displayName phrasing, typo fix, etc.). Falls back to exact-name
+ * match when no marker is present OR when nothing matched by marker,
+ * so legacy briefs without a marker still upsert cleanly.
  */
 const findBriefByName = async (
   client: BriefApiClientOptions,
   name: string
 ): Promise<Brief | null> => {
+  const markerMatch = name.match(IDENTITY_MARKER_RE);
+  const marker = markerMatch ? markerMatch[0] : null;
   let cursor: string | undefined;
+  let exactFallback: Brief | null = null;
   for (;;) {
     const page = await listBriefs(client, cursor ? { next: cursor } : undefined);
-    const match = page.data.find((brief) => brief.name === name);
-    if (match) return match;
-    if (!page.next || page.data.length === 0) return null;
+    for (const brief of page.data) {
+      if (brief.name === name) {
+        exactFallback ??= brief;
+      }
+      if (marker && brief.name.endsWith(marker)) {
+        return brief;
+      }
+    }
+    if (!page.next || page.data.length === 0) return exactFallback;
     cursor = page.next;
   }
 };
@@ -86,6 +115,37 @@ const findTypeByName = async (
 ): Promise<BriefType | null> => {
   const page = await listBriefTypes(client);
   return page.data.find((type) => type.name === name) ?? null;
+};
+
+/**
+ * Resolve a campaign by (storyId, campaignHandle) to its server
+ * project id. Pages the Orchestrate list endpoint and returns the
+ * first project carrying BOTH identity labels — `story:<storyId>`
+ * and `handle:<campaignHandle>`. The orchestrator stamps these
+ * labels on every story-generated campaign.
+ *
+ * Returns `null` when no project matches. The caller treats that as
+ * "no link" — a warning is logged but the brief push still succeeds.
+ */
+const resolveCampaignProjectId = async (
+  ctx: SyncContext,
+  params: { storyId: string; campaignHandle: string }
+): Promise<string | null> => {
+  const storyLabel = `story:${params.storyId}`;
+  const handleLabel = `handle:${params.campaignHandle}`;
+  const client = await resolveCampaignClient(ctx);
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await listProjects(client, cursor ? { next: cursor } : undefined);
+    for (const project of page.data) {
+      const labels = project.labels ?? [];
+      if (labels.includes(storyLabel) && labels.includes(handleLabel)) {
+        return project.id;
+      }
+    }
+    if (!page.next || page.data.length === 0) return null;
+    cursor = page.next;
+  }
 };
 
 /** Enumerate every brief on the remote — fans out into the aggregate sync. */
@@ -136,18 +196,140 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefInstanc
   return toRecipe(brief, briefTypeName);
 };
 
-/** Resolve a recipe's `briefTypeName` to its server id, or fail with a hint. */
-const resolveBriefTypeId = async (
+/**
+ * Prefer-id read: try `getBrief(tenantId)` first when a baseline-
+ * stored UUID is available. Falls back to the name-based read when
+ * the id is missing or no longer resolves. Same pattern brief-types
+ * + campaigns + brand-kits use — keeps re-pushes idempotent across
+ * displayName edits.
+ */
+const readCurrentByIdOrName = async (
+  ref: KindRef,
+  ctx: SyncContext,
+  tenantId: string | undefined
+): Promise<BriefInstanceRecipe | null> => {
+  if (tenantId) {
+    try {
+      const client = await resolveBriefClient(ctx);
+      const brief = await getBrief(client, tenantId);
+      if (brief) {
+        const types = await listBriefTypes(client);
+        const briefTypeName =
+          types.data.find((t) => t.id === brief.briefType.id)?.name ?? brief.briefType.id;
+        return toRecipe(brief, briefTypeName);
+      }
+    } catch {
+      // Row deleted or transient error — fall through to name-based.
+    }
+  }
+  return readCurrent(ref, ctx);
+};
+
+/** Resolve a recipe's `briefTypeName` to the full type record (id + field defs), or fail with a hint. */
+const resolveBriefType = async (
   client: BriefApiClientOptions,
   briefTypeName: string
-): Promise<string> => {
+): Promise<BriefType> => {
   const type = await findTypeByName(client, briefTypeName);
   if (!type) {
     throw createScaiError(`Brief type "${briefTypeName}" not found.`, "INPUT_INVALID", {
       hint: "Push the brief-type recipe first, or check the `briefTypeName` codename with `scai ops brief types list`.",
     });
   }
-  return type.id;
+  return type;
+};
+
+/**
+ * Convert an HTML-ish string into a minimal-but-valid ProseMirror doc.
+ * The Brief API stores RichText as a ProseMirror document; raw HTML
+ * strings fail validation with
+ * `Unexpected character encountered while parsing value: <`.
+ *
+ * Lossy — block-level only, drops inline formatting (bold/italic/
+ * links etc.). Adequate for first-push of LLM-generated briefs where
+ * the content is plain prose; richer formatting needs the brief
+ * editor on the Sitecore side OR a real HTML→ProseMirror converter
+ * (e.g. prosemirror-model + DOMParser, which scai doesn't ship).
+ *
+ * Empty input → empty doc `{type: "doc", content: []}` (also accepted).
+ */
+const htmlToProseMirrorDoc = (html: string): Record<string, unknown> => {
+  const plain = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  const paragraphs = plain
+    .split(/\n\s*\n|\n/g)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (paragraphs.length === 0) return { type: "doc", content: [] };
+  return {
+    type: "doc",
+    content: paragraphs.map((text) => ({
+      type: "paragraph",
+      content: [{ type: "text", text }],
+    })),
+  };
+};
+
+/**
+ * Wrap a recipe's `fields` map with the `{type, value}` shape the
+ * Brief API requires on create/update. Unwrapped values (raw `{amount,
+ * currency}` for Budget, HTML strings for RichText, etc.) are common
+ * in recipes built from LLM output or the orchestrator's StoryBrief
+ * shape; without wrapping the API returns either
+ * `Missing 'type' property for field: <name>` or, for RichText with a
+ * string value, `Unexpected character encountered while parsing value`.
+ *
+ * Idempotent: values that already have `{type, value}` pass through
+ * untouched so round-tripped recipes (pull → push) don't double-wrap.
+ *
+ * RichText values that are HTML strings get a lossy block-level
+ * conversion to a ProseMirror doc — see `htmlToProseMirrorDoc`.
+ *
+ * Unknown field names (in the recipe but not on the type) pass through
+ * as-is — the server rejects them with a clearer "field not on type"
+ * error than scai could synthesize.
+ */
+const wrapBriefFields = (
+  fields: Record<string, unknown> | undefined,
+  briefType: BriefType
+): Record<string, unknown> => {
+  if (!fields) return {};
+  const typeByName = new Map<string, string>(briefType.fields.map((f) => [f.name, f.type]));
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(fields)) {
+    const fieldType = typeByName.get(name);
+    if (!fieldType) {
+      wrapped[name] = value;
+      continue;
+    }
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      "type" in value &&
+      "value" in value
+    ) {
+      wrapped[name] = value; // already wrapped
+      continue;
+    }
+    // RichText fields can't accept a bare string — convert to a
+    // minimal ProseMirror doc. Other types pass the value through as
+    // the wrapped `value`.
+    let wireValue: unknown = value;
+    if (fieldType === "RichText" && typeof value === "string") {
+      wireValue = htmlToProseMirrorDoc(value);
+    }
+    wrapped[name] = { type: fieldType, value: wireValue };
+  }
+  return wrapped;
 };
 
 /**
@@ -304,27 +486,94 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
 
   let writtenRecipe: BriefInstanceRecipe = recipe;
-  if (instanceChange.kind === "create") {
-    const briefTypeId = await resolveBriefTypeId(client, recipe.briefTypeName);
-    const input: CreateBriefInput = {
-      name: recipe.name,
-      briefTypeId,
-      ...(recipe.locale !== undefined && { locale: recipe.locale }),
-      ...(Object.keys(recipe.fields ?? {}).length > 0 && { fields: recipe.fields }),
-      ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
-    };
-    ctx.logger?.info(`Creating brief "${recipe.name}".`);
-    const created = await createBrief(client, input);
+  let writtenBriefId: string | null = null;
 
-    // `createBrief` accepts no `status` field — POSTs land in the
-    // server default ("Draft"). If the recipe pins a different status,
-    // converge with a follow-up PUT so the post-apply state matches.
-    if (recipe.status && recipe.status !== created.status) {
-      ctx.logger?.info(`Setting brief "${recipe.name}" status to "${recipe.status}".`);
-      await updateBrief(client, created.id, { status: recipe.status });
+  // Prior baseline tenantId lets apply resolve the brief by id
+  // before falling back to the marker-suffix-based name match.
+  // Survives a displayName edit between pushes without orphaning
+  // the existing tenant row.
+  let priorBaselineTenantId: string | undefined;
+  if (ctx.baselineStorage) {
+    try {
+      const prior = await ctx.baselineStorage.load<BriefBaselinePayload>(
+        BRIEF_KIND_NAME,
+        ctx.environmentName,
+        ref.baselineKey ?? ref.id
+      );
+      priorBaselineTenantId = prior?.payload?.tenantId;
+    } catch {
+      // Best-effort.
+    }
+  }
+  // Ref-supplied tenantId (registry-tracked) wins over the baseline-
+  // stored one. Falls back when absent (CLI invocation without a
+  // recipe-side id).
+  const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
+
+  if (instanceChange.kind === "create") {
+    // If the baseline has a stored tenant id, try to adopt the
+    // existing row before re-creating. The plan classified this as
+    // a create because readCurrent couldn't find the brief by name,
+    // but the id may still resolve a renamed-but-existing row.
+    let adopted: Brief | null = null;
+    if (effectiveTenantId) {
+      try {
+        adopted = await getBrief(client, effectiveTenantId);
+      } catch {
+        adopted = null;
+      }
+    }
+    const briefType = await resolveBriefType(client, recipe.briefTypeName);
+    const wrappedFields = wrapBriefFields(recipe.fields, briefType);
+    if (adopted) {
+      ctx.logger?.info(
+        `Adopting existing brief "${adopted.name}" (id ${adopted.id}) via baseline tenantId — recipe name "${recipe.name}" was a rename.`
+      );
+      const patch: Partial<CreateBriefInput> & { status?: BriefStatus } = {
+        name: recipe.name,
+        ...(recipe.locale !== undefined && { locale: recipe.locale }),
+        ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
+        ...(recipe.status !== undefined && { status: recipe.status }),
+        fields: wrappedFields,
+      };
+      await updateBrief(client, adopted.id, patch);
+      writtenBriefId = adopted.id;
+      applied.push(instanceChange);
+      // Skip the create+status-converge flow below.
+    } else {
+      const input: CreateBriefInput = {
+        name: recipe.name,
+        briefTypeId: briefType.id,
+        ...(recipe.locale !== undefined && { locale: recipe.locale }),
+        ...(Object.keys(wrappedFields).length > 0 && { fields: wrappedFields }),
+        ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
+      };
+      ctx.logger?.info(`Creating brief "${recipe.name}".`);
+      const created = await createBrief(client, input);
+      writtenBriefId = created.id;
+
+      // `createBrief` accepts no `status` field — POSTs land in the
+      // server default ("Draft"). If the recipe pins a different status,
+      // converge with a follow-up PUT so the post-apply state matches.
+      if (recipe.status && recipe.status !== created.status) {
+        ctx.logger?.info(`Setting brief "${recipe.name}" status to "${recipe.status}".`);
+        await updateBrief(client, created.id, { status: recipe.status });
+      }
     }
   } else {
-    const existing = await findBriefByName(client, ref.id);
+    // Prefer baseline-stored tenantId over name match — robust to
+    // displayName/handle drift between pushes.
+    let existing: Brief | null = null;
+    if (effectiveTenantId) {
+      try {
+        existing = await getBrief(client, effectiveTenantId);
+      } catch {
+        existing = null;
+      }
+    }
+    if (!existing) {
+      existing = await findBriefByName(client, ref.id);
+    }
     if (!existing) {
       throw createScaiError(`Brief "${ref.id}" not found.`, "INPUT_INVALID", {
         hint: "The brief was expected to exist for an update — check the name or push a create.",
@@ -334,8 +583,8 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // different type. Surface that loudly instead of silently dropping
     // the change.
     const types = await listBriefTypes(client);
-    const existingTypeName =
-      types.data.find((type) => type.id === existing.briefType.id)?.name ?? existing.briefType.id;
+    const existingType = types.data.find((type) => type.id === existing.briefType.id);
+    const existingTypeName = existingType?.name ?? existing.briefType.id;
     if (existingTypeName !== recipe.briefTypeName) {
       throw createScaiError(
         `Cannot repoint brief "${recipe.name}" from type "${existingTypeName}" to "${recipe.briefTypeName}".`,
@@ -345,17 +594,139 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         }
       );
     }
+    // Wrap fields using the existing brief-type's field definitions
+    // when we have them (we should — we just listed the types). Same
+    // {type, value} requirement as create; without this an update with
+    // unwrapped Budget/Timeline/etc. round-trips a 400.
+    const wrappedFields = existingType
+      ? wrapBriefFields(recipe.fields, existingType)
+      : (recipe.fields ?? {});
     const patch: Partial<CreateBriefInput> & { status?: BriefStatus } = {
       name: recipe.name,
       ...(recipe.locale !== undefined && { locale: recipe.locale }),
       ...(recipe.isTemplate !== undefined && { isTemplate: recipe.isTemplate }),
       ...(recipe.status !== undefined && { status: recipe.status }),
-      fields: recipe.fields ?? {},
+      fields: wrappedFields,
     };
     ctx.logger?.info(`Updating brief "${recipe.name}" (${existing.id}).`);
     await updateBrief(client, existing.id, patch);
+    writtenBriefId = existing.id;
   }
   applied.push(instanceChange);
+
+  // Sub-resource creates: todos + comments. The Brief API exposes
+  // these as separate POST endpoints (no inline write on the brief
+  // itself). Create-only for now — re-pushing a recipe doesn't
+  // dedup against existing tasks/comments. Failure on a single sub-
+  // resource doesn't roll back the brief: log + continue, so a
+  // misconfigured comment authorId doesn't lose the whole push.
+  if (writtenBriefId && recipe.todos && recipe.todos.length > 0) {
+    ctx.logger?.info(`Posting ${recipe.todos.length} to-do(s) to brief "${recipe.name}".`);
+    for (const todo of recipe.todos) {
+      try {
+        await createBriefTask(client, {
+          briefId: writtenBriefId,
+          title: todo.title,
+          ...(todo.assigneeIds && todo.assigneeIds.length > 0
+            ? { assigneeIds: todo.assigneeIds }
+            : {}),
+        });
+      } catch (err) {
+        ctx.logger?.warn?.(
+          `Failed to post to-do "${todo.title}" on brief "${recipe.name}": ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+  if (writtenBriefId && recipe.comments && recipe.comments.length > 0) {
+    ctx.logger?.info(`Posting ${recipe.comments.length} comment(s) to brief "${recipe.name}".`);
+    for (const comment of recipe.comments) {
+      try {
+        await createBriefComment(client, {
+          briefId: writtenBriefId,
+          text: comment.text,
+          authorId: comment.authorId,
+        });
+      } catch (err) {
+        ctx.logger?.warn?.(
+          `Failed to post comment by ${comment.authorId} on brief "${recipe.name}": ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+
+  // External references — primarily the brief→campaign link.
+  // Verified writable 2026-06-03 via PUT on the brief with a
+  // `references` field. Set in a follow-up PUT so the create path
+  // (which doesn't accept references) stays separate from the linkage
+  // step. The whole array gets replaced on each push — pull → push
+  // round-trips a stable references[] field (per the read schema).
+  //
+  // Two sources merge: explicit `recipe.references` (operator-authored
+  // pre-resolved ExternalLinks) and the resolved-at-apply-time
+  // campaignHandle (the orchestrator-friendly path). Resolving the
+  // handle calls the Orchestrate API to find the project carrying the
+  // matching `story:<id>` + `handle:<campaign>` identity labels.
+  const referencesToWrite: Array<{
+    type: "ExternalLink";
+    relatedSystem: string;
+    relatedType?: string | null;
+    id: string;
+  }> = [];
+  if (recipe.references && recipe.references.length > 0) {
+    for (const r of recipe.references) {
+      referencesToWrite.push({
+        type: "ExternalLink",
+        relatedSystem: r.relatedSystem,
+        ...(r.relatedType !== undefined ? { relatedType: r.relatedType } : {}),
+        id: r.id,
+      });
+    }
+  }
+  if (writtenBriefId && recipe.campaignHandle && recipe.storyId) {
+    try {
+      const projectId = await resolveCampaignProjectId(ctx, {
+        storyId: recipe.storyId,
+        campaignHandle: recipe.campaignHandle,
+      });
+      if (projectId) {
+        referencesToWrite.push({
+          type: "ExternalLink",
+          relatedSystem: "co",
+          relatedType: "Project",
+          id: projectId,
+        });
+      } else {
+        ctx.logger?.warn?.(
+          `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign with matching identity labels was found — reference not set.`
+        );
+      }
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to resolve campaignHandle "${recipe.campaignHandle}" for brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
+  if (writtenBriefId && referencesToWrite.length > 0) {
+    ctx.logger?.info(`Setting ${referencesToWrite.length} reference(s) on brief "${recipe.name}".`);
+    try {
+      await updateBrief(client, writtenBriefId, {
+        references: referencesToWrite,
+      });
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to set references on brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
 
   // Per-element changes are converged by the single PUT (or POST).
   for (const change of plan.changes) {
@@ -369,17 +740,21 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // `ctx.baselineStorage`; without it, the kind operates in two-way
   // mode and never writes baselines.
   if (ctx.baselineStorage) {
-    const payload = captureBriefBaselinePayload(writtenRecipe);
+    // Preserve the prior baseline tenantId across noop applies so a
+    // future push can still resolve the row by id.
+    const tenantIdForBaseline = writtenBriefId ?? effectiveTenantId ?? undefined;
+    const payload = captureBriefBaselinePayload(writtenRecipe, tenantIdForBaseline);
+    const baselineKey = ref.baselineKey ?? ref.id;
     const baseline: Baseline<BriefBaselinePayload> = {
       envelopeVersion: "1",
       kind: BRIEF_KIND_NAME,
-      recipeHandle: ref.id,
+      recipeHandle: baselineKey,
       envName: ctx.environmentName,
       capturedAt: new Date().toISOString(),
       payload,
     };
     try {
-      await ctx.baselineStorage.write(BRIEF_KIND_NAME, ctx.environmentName, ref.id, baseline);
+      await ctx.baselineStorage.write(BRIEF_KIND_NAME, ctx.environmentName, baselineKey, baseline);
     } catch (err) {
       // Baseline write failures must not silently fall back to two-way
       // mode on the next push — that re-introduces silent-clobber. Log
@@ -394,7 +769,20 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
   }
 
-  return { applied, skipped };
+  // Surface the resolved Sitecore Brief UUID so the caller (orchestrator
+  // → registry) can persist it on the recipe and skip scai's marker-in-
+  // name fallback on every subsequent push.
+  const identities: ResolvedIdentity[] = [];
+  if (writtenBriefId) {
+    identities.push({
+      scope: "brief",
+      sitecoreId: writtenBriefId,
+      ...(recipe.handle ? { handle: recipe.handle } : {}),
+      ...(recipe.name ? { name: recipe.name } : {}),
+    });
+  }
+
+  return { applied, skipped, identities };
 };
 
 /**
@@ -414,23 +802,28 @@ const plan = async (
   ref: KindRef,
   ctx: SyncContext
 ): Promise<RecipePlan> => {
-  const current = await readCurrent(ref, ctx);
-
-  // Fresh create — no baseline needed, no tenant state to merge.
-  if (current === null) return diffBriefInstance(desired, null);
-
-  // Load baseline if storage is plugged in; without it, the merge
-  // sees `baselinePayload: undefined` and everything classifies as
-  // `first-push` (two-way diff equivalent).
+  // Load baseline FIRST so we can use any stored tenant id when
+  // reading current state. Survives a brief name/handle drift between
+  // pushes — the id keeps pointing at the same row.
   let baselinePayload: BriefBaselinePayload | undefined;
   if (ctx.baselineStorage) {
     const loaded = await ctx.baselineStorage.load<BriefBaselinePayload>(
       BRIEF_KIND_NAME,
       ctx.environmentName,
-      ref.id
+      ref.baselineKey ?? ref.id
     );
     baselinePayload = loaded?.payload;
   }
+
+  // Prefer the ref-supplied tenantId (registry-tracked Sitecore UUID)
+  // over the baseline-stored one. The ref carries the authoritative id
+  // when the caller (registry → orchestrator) knows it; baseline is a
+  // fallback for CLI-only flows and first-push recovery.
+  const tenantIdForLookup = ref.tenantId ?? baselinePayload?.tenantId;
+  const current = await readCurrentByIdOrName(ref, ctx, tenantIdForLookup);
+
+  // Fresh create — no baseline needed, no tenant state to merge.
+  if (current === null) return diffBriefInstance(desired, null);
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const outcome = mergeWithPolicy(desired, current, baselinePayload, policy);

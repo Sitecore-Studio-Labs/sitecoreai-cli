@@ -23,6 +23,13 @@ import type { BrandFieldValue, BrandKitRecipe } from "./schema";
 export interface BrandBaselinePayload {
   schemaVersion: "1";
   cells: Record<string, string>;
+  /**
+   * Server UUID of the brand kit this baseline was captured against.
+   * When present, apply prefers id-match via `getBrandKit(id)` before
+   * falling back to name-based resolution. Survives a kit name edit
+   * between pushes without orphaning the existing tenant row.
+   */
+  tenantId?: string;
 }
 
 export type BrandBaseline = Baseline<BrandBaselinePayload>;
@@ -47,9 +54,13 @@ export const hashBrandCells = (recipe: BrandKitRecipe): Record<string, string> =
   return cells;
 };
 
-export const captureBrandBaselinePayload = (recipe: BrandKitRecipe): BrandBaselinePayload => ({
+export const captureBrandBaselinePayload = (
+  recipe: BrandKitRecipe,
+  tenantId?: string
+): BrandBaselinePayload => ({
   schemaVersion: "1",
   cells: hashBrandCells(recipe),
+  ...(tenantId ? { tenantId } : {}),
 });
 
 /**

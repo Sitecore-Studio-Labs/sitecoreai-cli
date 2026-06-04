@@ -52,7 +52,7 @@ export const createBriefCommand = (): Command => {
       "  $ scai ops brief delete <briefId> --apply --force    # delete a brief\n" +
       "  $ scai ops brief types list -n agents                # list brief schemas\n" +
       "  $ scai ops brief types create -f t.json --apply      # create a new schema\n" +
-      "  $ scai ops brief sync pull --name CreativeBrief      # capture a type as a recipe\n" +
+      "  $ scai ops brief sync pull --name Creative      # capture a type as a recipe\n" +
       "  $ scai ops brief sync pull --kind brief --name MyBrief  # capture a brief as a recipe\n" +
       "  $ scai ops brief sync push --kind brief -f b.yaml --allow-write  # converge a brief\n" +
       "  $ scai ops brief todos <briefId> --assignees         # to-dos on a brief, with assignees\n" +

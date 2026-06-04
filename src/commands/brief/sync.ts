@@ -10,6 +10,8 @@
  * pre-instance surface — the same flag distinguishes `briefTypeKind`
  * (the schema template) from `briefInstanceKind` (a populated brief).
  */
+import { writeFile } from "node:fs/promises";
+
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
 import { briefInstanceKind, briefTypeKind } from "@/brief/recipe";
@@ -17,6 +19,15 @@ import { readRootConfiguration } from "@/config/root-config";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
+import type { ResolvedIdentity } from "@/sync";
+
+const writeIdentitiesOut = async (
+  path: string,
+  identities: ReadonlyArray<ResolvedIdentity>
+): Promise<void> => {
+  const body = JSON.stringify({ identities }, null, 2);
+  await writeFile(path, body, "utf8");
+};
 import {
   loadRecipe,
   planIsNoop,
@@ -44,6 +55,16 @@ interface SyncOptions extends CommonOptions {
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
+  /** Optional path; when set, the push outcome's resolved Sitecore
+   *  UUIDs are written there as JSON. Consumed by the orchestrator. */
+  identitiesOut?: string;
+  /**
+   * Three-way merge conflict policy. Honored by `briefTypeKind` /
+   * `briefInstanceKind` when a baseline is loaded (via
+   * `ctx.baselineStorage`). Without a baseline the kinds degrade to
+   * two-way diff and this flag has no effect.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 /** Slugify a recipe name for a default filename. */
@@ -72,8 +93,40 @@ const kindFor = (
   };
 };
 
-/** A loaded recipe minimally carries `name` — the identifier for both kinds. */
-type NamedRecipe = { name: string } & Record<string, unknown>;
+/**
+ * A loaded recipe minimally carries `name` — and optionally a stable
+ * `handle` used as the baseline key when present. Display `name` can
+ * include URL-unsafe characters (`&`, `?`, etc.); handles are URL-safe
+ * by convention so they ride cleanly inside the baseline path.
+ */
+type NamedRecipe = {
+  name: string;
+  handle?: string;
+  sitecoreId?: string;
+} & Record<string, unknown>;
+
+/**
+ * Build the KindRef for a loaded recipe.
+ *
+ * `id` stays the display name so each kind's `readCurrent` can locate
+ * the resource on the tenant the way it always has (the brief lookup
+ * extracts an identity marker from the name; the brief-type lookup
+ * matches the codename verbatim).
+ *
+ * `baselineKey` carries the URL-safe handle. The remote
+ * `HttpBaselineStorage` rides this as the path segment instead of
+ * the display name, which sidesteps the orchestrator's `/api/v1/
+ * sync-baselines/...` regex on URL-unsafe characters like `&`.
+ */
+const refFor = (
+  kindName: string,
+  recipe: NamedRecipe
+): { kind: string; id: string; baselineKey?: string; tenantId?: string } => ({
+  kind: kindName,
+  id: recipe.name,
+  ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+  ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
+});
 
 /**
  * Build the `SyncContext` for a brief sync command invocation.
@@ -90,6 +143,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     configPath,
     logger,
     ...(baselineStorage ? { baselineStorage } : {}),
+    ...(options.conflictPolicy ? { pushConflictPolicy: options.conflictPolicy } : {}),
   };
 };
 
@@ -126,7 +180,7 @@ const createPullCommand = (): Command => {
     .description("Capture a live brief type or brief instance as a recipe file.")
     .requiredOption(
       "--name <name>",
-      "Identifier of the recipe. Brief-type codename (`CreativeBrief`) or brief display name (`Q3 Launch`)."
+      "Identifier of the recipe. Brief-type codename (`Creative`) or brief display name (`Q3 Launch`)."
     )
     .addOption(new Option("--file <path>", "Output recipe file (default: <name>.<kind>.yaml)"));
   addKindOption(command);
@@ -167,12 +221,7 @@ const createDiffCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const { recipeKind } = kindFor(options.kind);
     const recipe = (await loadRecipe(options.file ?? "", recipeKind.schema)) as NamedRecipe;
-    const plan = await syncDiff(
-      recipeKind,
-      recipe,
-      { kind: recipeKind.name, id: recipe.name },
-      ctx
-    );
+    const plan = await syncDiff(recipeKind, recipe, refFor(recipeKind.name, recipe), ctx);
     printPlan(logger, plan);
   });
   return command;
@@ -183,7 +232,19 @@ const createPushCommand = (): Command => {
     .description("Converge a brief type or brief onto a recipe file. Dry-run unless --allow-write.")
     .requiredOption("--file <path>", "Recipe file (.yaml / .json)")
     .addOption(new Option("--allow-write", "Apply the plan (default is a dry-run)"))
-    .addOption(new Option("--prune", "Include delete changes (off by default)"));
+    .addOption(new Option("--prune", "Include delete changes (off by default)"))
+    .addOption(
+      new Option(
+        "--conflict-policy <policy>",
+        "Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them. Requires a baseline (HTTP storage via env or file-backed); without one, the kinds degrade to two-way diff and this flag has no effect."
+      ).choices(["error", "recipe-wins", "cms-wins"])
+    )
+    .addOption(
+      new Option(
+        "--identities-out <path>",
+        "Write the apply outcome's resolved Sitecore UUIDs (project, brief, deliverable, task) to a JSON file at this path. The orchestrator reads it back to persist UUIDs onto its own model so the next push can read entities by id directly — bypassing scai's marker-in-name / handle-label search."
+      )
+    );
   addKindOption(command);
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -194,13 +255,10 @@ const createPushCommand = (): Command => {
     const { recipeKind } = kindFor(options.kind);
     const recipe = (await loadRecipe(options.file ?? "", recipeKind.schema)) as NamedRecipe;
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
-    const outcome = await syncPush(
-      recipeKind,
-      recipe,
-      { kind: recipeKind.name, id: recipe.name },
-      ctx,
-      { mode, prune: options.prune }
-    );
+    const outcome = await syncPush(recipeKind, recipe, refFor(recipeKind.name, recipe), ctx, {
+      mode,
+      prune: options.prune,
+    });
     printPlan(logger, outcome.plan);
     if (outcome.result) {
       logger.info(
@@ -211,6 +269,9 @@ const createPushCommand = (): Command => {
       logger.info("Already converged — nothing to do.", "green");
     } else {
       logger.info("Dry-run. Re-run with --allow-write to apply.");
+    }
+    if (options.identitiesOut && outcome.result?.identities) {
+      await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
   });
   return command;

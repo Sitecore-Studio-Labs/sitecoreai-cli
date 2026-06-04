@@ -39,12 +39,23 @@ export interface BriefBaselinePayload {
   elements: Partial<Record<TopLevelKey, string>>;
   /** Per-field hash, keyed by `BriefField.name` (Z fields). */
   fields: Record<string, string>;
+  /**
+   * Server UUID of the brief row this baseline was captured against.
+   * When present, apply prefers id-match via `getBrief(id)` before
+   * falling back to the marker-suffix-based `findBriefByName`. Lets a
+   * brief survive a displayName edit between pushes (or a brief
+   * handle change) without orphaning the existing tenant row.
+   */
+  tenantId?: string;
 }
 
 export type BriefBaseline = Baseline<BriefBaselinePayload>;
 
 /** Construct a baseline payload from a successfully applied recipe. */
-export const captureBriefBaselinePayload = (recipe: BriefInstanceRecipe): BriefBaselinePayload => ({
+export const captureBriefBaselinePayload = (
+  recipe: BriefInstanceRecipe,
+  tenantId?: string
+): BriefBaselinePayload => ({
   schemaVersion: "1",
   elements: {
     briefTypeName: hashBriefValue(recipe.briefTypeName),
@@ -55,6 +66,7 @@ export const captureBriefBaselinePayload = (recipe: BriefInstanceRecipe): BriefB
   fields: Object.fromEntries(
     Object.entries(recipe.fields ?? {}).map(([name, value]) => [name, hashBriefValue(value)])
   ),
+  ...(tenantId ? { tenantId } : {}),
 });
 
 /** Three-way classify one brief cell. Delegates to the shared helper. */

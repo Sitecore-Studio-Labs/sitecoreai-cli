@@ -23,6 +23,7 @@
  */
 import {
   createBriefType,
+  getBriefType,
   listBriefTypes,
   updateBriefType,
   type BriefApiClientOptions,
@@ -99,6 +100,31 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BriefTypeRec
   return type ? toRecipe(type) : null;
 };
 
+/**
+ * Prefer-id read: when a baseline-captured `tenantId` is available,
+ * fetch the row by id first. Falls back to the name-based read when
+ * the id either isn't provided or no longer resolves (the row was
+ * deleted on the tenant side). Survives a recipe codename rename —
+ * the id still maps to the existing brief-type row.
+ */
+const readCurrentByIdOrName = async (
+  _desired: BriefTypeRecipe,
+  ref: KindRef,
+  ctx: SyncContext,
+  tenantId: string | undefined
+): Promise<BriefTypeRecipe | null> => {
+  if (tenantId) {
+    try {
+      const client = await resolveBriefClient(ctx);
+      const type = await getBriefType(client, tenantId);
+      if (type) return toRecipe(type);
+    } catch {
+      // 404 / network — fall through to name-based read.
+    }
+  }
+  return readCurrent(ref, ctx);
+};
+
 /** Apply a plan — straight CRUD: create the type, or PUT-replace it. */
 const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
   const client = await resolveBriefClient(ctx);
@@ -144,12 +170,67 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
   const input = toApiInput(recipe);
 
+  // Capture the tenant id of whichever row this apply lands on, so
+  // the baseline write below can stamp it. Survives a future codename
+  // rename — the next push can find the same row by id even if `name`
+  // drifts.
+  let writtenTenantId: string | undefined;
+  // If the baseline already carries a tenantId from a prior push,
+  // resolve the row by id first — handles the codename-rename case
+  // (the recipe's `ref.id` is the NEW codename, but the existing
+  // tenant row still carries the OLD one).
+  let priorBaselineTenantId: string | undefined;
+  if (ctx.baselineStorage) {
+    try {
+      const prior = await ctx.baselineStorage.load<BriefTypeBaselinePayload>(
+        BRIEF_TYPE_KIND_NAME,
+        ctx.environmentName,
+        ref.id
+      );
+      priorBaselineTenantId = prior?.payload?.tenantId;
+    } catch {
+      // Best-effort — baseline load failure just disables id-first.
+    }
+  }
+
   if (typeChange.kind === "create") {
-    ctx.logger?.info(`Creating brief type "${recipe.name}".`);
-    await createBriefType(client, input);
+    // Even when the plan classified this as a fresh create, a prior
+    // baseline-stored id wins: the row exists, just the recipe forgot.
+    // Resolve, treat as update.
+    let adopted: BriefType | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        adopted = await getBriefType(client, priorBaselineTenantId);
+      } catch {
+        adopted = null;
+      }
+    }
+    if (adopted) {
+      ctx.logger?.info(
+        `Adopting existing brief type "${adopted.name}" (id ${adopted.id}) via baseline tenantId — recipe codename "${recipe.name}" was a rename.`
+      );
+      await updateBriefType(client, adopted.id, input);
+      writtenTenantId = adopted.id;
+    } else {
+      ctx.logger?.info(`Creating brief type "${recipe.name}".`);
+      const created = await createBriefType(client, input);
+      writtenTenantId = created.id;
+    }
     applied.push(typeChange);
   } else if (typeChange.kind === "update") {
-    const existing = await findTypeByName(client, ref.id);
+    // Prefer the baseline-stored tenant id over a name lookup —
+    // robust to a codename rename between pushes.
+    let existing: BriefType | null = null;
+    if (priorBaselineTenantId) {
+      try {
+        existing = await getBriefType(client, priorBaselineTenantId);
+      } catch {
+        existing = null;
+      }
+    }
+    if (!existing) {
+      existing = await findTypeByName(client, ref.id);
+    }
     if (!existing) {
       throw createScaiError(`Brief type "${ref.id}" not found.`, "INPUT_INVALID", {
         hint: "The type was expected to exist for an update — check the name or push a create.",
@@ -157,6 +238,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
     ctx.logger?.info(`Updating brief type "${recipe.name}" (${existing.id}).`);
     await updateBriefType(client, existing.id, input);
+    writtenTenantId = existing.id;
     applied.push(typeChange);
   } else {
     // `noop` typeChange — surfaces a post-merge state that equals the
@@ -181,7 +263,13 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // wrote (the merged value), not the raw operator-authored desired,
   // so a cms-wins downgrade lands an accurate baseline.
   if (ctx.baselineStorage) {
-    const payload = captureBriefTypeBaselinePayload(recipe);
+    // Fall back to the prior baseline's tenantId when this run was a
+    // noop (no createBriefType / updateBriefType call to learn from).
+    // Preserves the captured id across pushes.
+    const payload = captureBriefTypeBaselinePayload(
+      recipe,
+      writtenTenantId ?? priorBaselineTenantId
+    );
     const baseline: Baseline<BriefTypeBaselinePayload> = {
       envelopeVersion: "1",
       kind: BRIEF_TYPE_KIND_NAME,
@@ -229,14 +317,11 @@ const plan = async (
   ref: KindRef,
   ctx: SyncContext
 ): Promise<RecipePlan> => {
-  const current = await readCurrent(ref, ctx);
-
-  // Fresh create — no baseline needed, no tenant state to merge.
-  if (current === null) return diffBriefType(desired, null);
-
-  // Load baseline if storage is plugged in; without it, the merge sees
-  // `baselinePayload: undefined` and everything classifies as
-  // `first-push` (two-way diff equivalent).
+  // Load baseline FIRST so we can use any stored tenant id to resolve
+  // the existing row before the name lookup. Survives a codename
+  // refactor (rename) — without the id-first path, a name change
+  // makes findTypeByName miss and the recipe would create a new
+  // brief-type instead of updating the existing one.
   let baselinePayload: BriefTypeBaselinePayload | undefined;
   if (ctx.baselineStorage) {
     const loaded = await ctx.baselineStorage.load<BriefTypeBaselinePayload>(
@@ -246,6 +331,11 @@ const plan = async (
     );
     baselinePayload = loaded?.payload;
   }
+
+  let current = await readCurrentByIdOrName(desired, ref, ctx, baselinePayload?.tenantId);
+
+  // Fresh create — no baseline needed, no tenant state to merge.
+  if (current === null) return diffBriefType(desired, null);
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const classifications = classifyBriefTypeCells(desired, current, baselinePayload);

@@ -42,8 +42,10 @@ export {
   getProject,
   createProject,
   deleteProject,
+  addProjectMember,
   type ListProjectsQuery,
   type CreateProjectInput,
+  type AddProjectMemberInput,
 } from "./api/projects";
 
 export {

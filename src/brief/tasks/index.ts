@@ -429,15 +429,28 @@ export const runBriefDelete = async (
 };
 
 /**
- * Post a comment to a brief. **UNVERIFIED** — the comment write body is
- * a best guess (see `createBriefComment`). Honours `whatIf`.
+ * Post a comment to a brief. Verified against TestDemo 2026-06-03 —
+ * `authorId` is required; the server records `author` as the
+ * impersonated user while `createdBy` captures the actual caller.
+ * Honours `whatIf`.
  */
 export const runBriefCommentAdd = async (
-  options: RunBriefBaseOptions & { briefId: string; text: string; whatIf?: boolean }
-): Promise<BriefComment | { plan: { briefId: string; text: string } }> => {
+  options: RunBriefBaseOptions & {
+    briefId: string;
+    text: string;
+    authorId: string;
+    whatIf?: boolean;
+  }
+): Promise<BriefComment | { plan: { briefId: string; text: string; authorId: string } }> => {
   const { logger, client } = await prepareBriefClient(options);
   if (options.whatIf) {
-    const plan = { plan: { briefId: options.briefId, text: options.text } };
+    const plan = {
+      plan: {
+        briefId: options.briefId,
+        text: options.text,
+        authorId: options.authorId,
+      },
+    };
     if (logger.isJson()) {
       writeBriefEnvelope("comment.add", options, plan, { whatIf: true });
     } else {
@@ -448,6 +461,7 @@ export const runBriefCommentAdd = async (
   const created = await createBriefComment(client, {
     briefId: options.briefId,
     text: options.text,
+    authorId: options.authorId,
   });
   if (logger.isJson()) {
     writeBriefEnvelope("comment.add", options, created);

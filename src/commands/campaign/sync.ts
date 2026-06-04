@@ -50,6 +50,13 @@ interface SyncOptions extends CommonOptions {
    *  UUIDs (project / deliverables / tasks) are written there as JSON.
    *  Consumed by the orchestrator. */
   identitiesOut?: string;
+  /**
+   * Three-way merge conflict policy. Honored by `campaignKind` when a
+   * baseline is loaded (via `ctx.baselineStorage`). Without a baseline
+   * the kind degrades to two-way diff and this flag has no effect.
+   * Mirrors `brief sync push`'s flag.
+   */
+  conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
 }
 
 /** Slugify a campaign name for a default recipe filename. */
@@ -73,6 +80,7 @@ const buildContext = (options: SyncOptions, logger: Logger): SyncContext => {
     configPath,
     logger,
     ...(baselineStorage ? { baselineStorage } : {}),
+    ...(options.conflictPolicy ? { pushConflictPolicy: options.conflictPolicy } : {}),
   };
 };
 
@@ -154,6 +162,12 @@ const createPushCommand = (): Command => {
     .requiredOption("--file <path>", "Recipe file (.yaml / .json)")
     .addOption(new Option("--allow-write", "Apply the plan (default is a dry-run)"))
     .addOption(new Option("--prune", "Include delete changes (off by default)"))
+    .addOption(
+      new Option(
+        "--conflict-policy <policy>",
+        "Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them. Requires a baseline (HTTP storage via env or file-backed); without one, the kind degrades to two-way diff and this flag has no effect. Mirrors `scai ops brief sync push --conflict-policy`."
+      ).choices(["error", "recipe-wins", "cms-wins"])
+    )
     .addOption(
       new Option(
         "--identities-out <path>",

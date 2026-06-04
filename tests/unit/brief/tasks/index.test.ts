@@ -316,10 +316,44 @@ describe("brief runners — write verbs honour --what-if", () => {
     await runners.runBriefDelete({ quiet: true, briefId: "brief-1", whatIf: true });
 
     vi.mocked(briefsApi.deleteBrief).mockResolvedValue(undefined as never);
+    vi.mocked(briefsApi.updateBrief).mockResolvedValue(undefined as never);
     const deletedJson = await runners.runBriefDelete({ json: true, briefId: "brief-1" });
     expect(deletedJson).toEqual({ id: "brief-1", deleted: true });
     const deletedHuman = await runners.runBriefDelete({ quiet: true, briefId: "brief-1" });
     expect(deletedHuman).toEqual({ id: "brief-1", deleted: true });
+  });
+
+  it("runBriefDelete clears brief.references[] before deleting (dangling-ref workaround)", async () => {
+    vi.mocked(briefsApi.updateBrief).mockResolvedValue(undefined as never);
+    vi.mocked(briefsApi.deleteBrief).mockResolvedValue(undefined as never);
+
+    await runners.runBriefDelete({ quiet: true, briefId: "brief-1" });
+
+    // Unlink: PUT { references: [] } so Orchestrate clears its
+    // project.briefs[] reverse view before the brief is gone.
+    expect(vi.mocked(briefsApi.updateBrief)).toHaveBeenCalledWith(
+      client,
+      "brief-1",
+      { references: [] },
+    );
+    expect(vi.mocked(briefsApi.deleteBrief)).toHaveBeenCalledWith(client, "brief-1");
+
+    // Order matters — unlink before delete, not after.
+    const updateOrder =
+      vi.mocked(briefsApi.updateBrief).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+    const deleteOrder =
+      vi.mocked(briefsApi.deleteBrief).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+    expect(updateOrder).toBeLessThan(deleteOrder);
+  });
+
+  it("runBriefDelete still deletes when the unlink step fails (best-effort)", async () => {
+    vi.mocked(briefsApi.updateBrief).mockRejectedValue(new Error("unlink boom"));
+    vi.mocked(briefsApi.deleteBrief).mockResolvedValue(undefined as never);
+
+    const result = await runners.runBriefDelete({ quiet: true, briefId: "brief-1" });
+
+    expect(result).toEqual({ id: "brief-1", deleted: true });
+    expect(vi.mocked(briefsApi.deleteBrief)).toHaveBeenCalledWith(client, "brief-1");
   });
 
   it("runBriefCommentAdd plans then posts a comment", async () => {

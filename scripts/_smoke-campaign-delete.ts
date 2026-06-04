@@ -29,18 +29,14 @@
  *     scripts/_smoke-campaign-delete.ts agents
  */
 import {
-  acquireCampaignToken,
   createDeliverable,
   createProject,
   createTask,
   deleteDeliverable,
   deleteProject,
   deleteTask,
-  type CampaignApiClientOptions,
+  resolveCampaignClient,
 } from "@/campaigns";
-import { CAMPAIGN_API_HOST_TEMPLATE } from "@/campaigns/api/types";
-import { readRootConfiguration } from "@/config/root-config";
-import { resolveRegionalBaseUrl } from "@/shared/region";
 
 type StepRecord = {
   step: string;
@@ -49,33 +45,25 @@ type StepRecord = {
 };
 
 const main = async (): Promise<void> => {
-  const envName = process.argv[2] ?? "agents";
-  const root = readRootConfiguration("./sitecoreai.cli.json", envName);
-  const environment = root.environments[envName];
-  if (!environment) {
-    process.stderr.write(`Env profile '${envName}' not in sitecoreai.cli.json\n`);
-    process.exit(2);
-  }
+  const envName = process.argv[2];
 
-  process.stderr.write(`> acquiring campaign token for '${envName}'\n`);
-  let token: string;
+  process.stderr.write(
+    `> resolving campaign client${envName ? ` for '${envName}'` : ""}\n`,
+  );
+  let client;
+  let orgId: string;
   try {
-    token = await acquireCampaignToken({ envName, environment });
+    const resolved = await resolveCampaignClient({ envName });
+    client = resolved.client;
+    orgId = resolved.orgId;
   } catch (error) {
-    process.stderr.write(`> token mint FAILED: ${String(error)}\n`);
+    process.stderr.write(`> client resolve FAILED: ${String(error)}\n`);
     process.exit(1);
     return;
   }
 
-  // Region-resolve the host the same way the CLI runners do.
-  const baseUrl = await resolveRegionalBaseUrl({
-    hostTemplate: CAMPAIGN_API_HOST_TEMPLATE,
-    organizationId: environment.organizationId,
-    override: (environment as unknown as { campaignBaseUrl?: string }).campaignBaseUrl,
-    acquireToken: async () => token,
-  });
-  const client: CampaignApiClientOptions = { accessToken: token, baseUrl };
-  process.stderr.write(`> base=${baseUrl}\n`);
+  process.stderr.write(`> org=${orgId}\n`);
+  process.stderr.write(`> base=${client.baseUrl}\n`);
 
   const records: StepRecord[] = [];
   const push = (step: string, ok: boolean, detail: string): void => {
@@ -91,6 +79,9 @@ const main = async (): Promise<void> => {
     const project = await createProject(client, {
       name: `scai-smoke-delete ${stamp}`,
       description: "Throwaway project created by _smoke-campaign-delete.ts — safe to delete.",
+      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10),
     });
     projectId = project.id;
     push("create project", true, `id=${projectId}`);
@@ -159,7 +150,7 @@ const main = async (): Promise<void> => {
 
   const allOk = records.every((r) => r.ok);
   process.stdout.write(
-    `${JSON.stringify({ envName, projectId, deliverableId, taskId, allOk, records }, null, 2)}\n`
+    `${JSON.stringify({ envName: envName ?? "(default)", orgId, projectId, deliverableId, taskId, allOk, records }, null, 2)}\n`
   );
   process.exit(allOk ? 0 : 1);
 };

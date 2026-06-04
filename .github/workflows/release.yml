@@ -132,6 +132,14 @@ jobs:
           fi
 
       - name: "Publish canary to npm (dist-tag: canary)"
+        # In pre-mode (`changeset pre enter canary`) the version was
+        # already bumped locally via `changeset version` — `--snapshot`
+        # is incompatible with pre-mode and errors out. Outside pre-mode
+        # we'd want `npx changeset version --snapshot canary` here for
+        # an ad-hoc canary off any branch. Detect via `pre.json` so the
+        # step works either way.
         run: |
-          npx changeset version --snapshot canary
+          if [ ! -f .changeset/pre.json ]; then
+            npx changeset version --snapshot canary
+          fi
           npx changeset publish --tag canary --no-git-tag

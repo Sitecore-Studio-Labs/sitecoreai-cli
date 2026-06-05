@@ -64,6 +64,7 @@ import { compileDictionaryRecipe } from "./compile/dictionary";
 import { compileEnumerationRecipe } from "./compile/enumeration";
 import { compileWorkflowRecipe } from "./compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
+import { compileVariantRecipe } from "./compile/variant";
 import {
   joinPath,
   sharedField,
@@ -92,6 +93,7 @@ export {
   compileEnumerationRecipe,
   compileWorkflowRecipe,
   compileWebhookAuthorizationRecipe,
+  compileVariantRecipe,
 };
 
 // Re-export the CompileContext type so callers can keep importing it
@@ -250,6 +252,11 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   "webhook-authorization": 0,
   "content-item": 1,
   placeholder: 1,
+  // Brand variants attach to existing component-templates (rank 0).
+  // Rank 1 keeps them after the canonical in the same set — and, when
+  // installed standalone (the common case), still respects layering
+  // against any composition-level recipes shipped alongside.
+  variant: 1,
   "partial-design": 2,
   "page-design": 3,
   page: 3,
@@ -393,6 +400,15 @@ const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
       break;
     case "dictionary":
       add(recipe.site);
+      break;
+    case "variant":
+      // Brand-scoped sidecar variant — depends on its canonical
+      // ComponentTemplateRecipe so the topo sort runs it after the
+      // canonical (when both happen to be in the same recipe set).
+      // In typical brand-variant installs the canonical isn't in
+      // this set; the dependency edge then has no in-set referent
+      // and the topo sort treats it as a leaf.
+      add(recipe.targetRendering.handle);
       break;
     case "component-section":
     case "enumeration":
@@ -1651,5 +1667,7 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileWorkflowRecipe(recipe, context);
     case "webhook-authorization":
       return compileWebhookAuthorizationRecipe(recipe, context);
+    case "variant":
+      return compileVariantRecipe(recipe, context);
   }
 }

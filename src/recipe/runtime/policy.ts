@@ -82,6 +82,12 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // webhook URLs, and authorization metadata as the recipe evolves.
   workflow: "composition-structure",
   "webhook-authorization": "composition-structure",
+  // Brand-scoped sidecar variants are registry-owned scaffolding: the
+  // per-rendering Headless Variants folder + the VARIANT_DEFINITION item.
+  // CreateAndUpdate so re-pushes can update the displayName as the
+  // brand variant's recipe evolves; the canonical rendering is
+  // untouched by the same op set.
+  variant: "composition-structure",
 };
 
 export const purposeForRecipe = (kind: Recipe["kind"]): OpPurpose => PURPOSE_BY_RECIPE_KIND[kind];

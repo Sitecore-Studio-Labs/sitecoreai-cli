@@ -1441,6 +1441,88 @@ export const PartialDesignRecipeSchema = z.object({
 export type PartialDesignRecipe = z.infer<typeof PartialDesignRecipeSchema>;
 
 /**
+ * Brand-scoped sidecar variant for an existing rendering. A standalone
+ * recipe that adds ONE new variant to an existing ComponentTemplateRecipe
+ * without mutating it — schema-level "the canonical is sacred" enforcement.
+ *
+ * Compiles to two coordinated writes:
+ *
+ *   1. `HEADLESS_VARIANTS` per-rendering folder at
+ *      `<headlessVariantsRoot>/<targetRendering.name>/` (idempotent
+ *      via the executor's CreateOrUpdate semantics).
+ *   2. `VARIANT_DEFINITION` item at
+ *      `<headlessVariantsRoot>/<targetRendering.name>/<name>`.
+ *
+ * Pages discovers variants by **folder walk** — there is NO variant-list
+ * field on the rendering item. Creating the item IS the registration.
+ * Tree MUST be flat (`root/<rendering>/<variant>`) — wrapping in a
+ * section-grouping intermediate makes Pages stop at the grouping folder
+ * and never see the variants. See [`compile/component-template.ts`'s
+ * `emitVariants`](compile/component-template.ts) for the verification
+ * trail (live tenant 2026-05-31).
+ *
+ * `content` is the TSX source for the head-repo sidecar file. scai does
+ * NOT consume it during recipe push — the install descriptor / file-drop
+ * pipeline that runs alongside scai writes the file to the head repo's
+ * `<canonical-dir>/<canonical-prefix>.<kebab(name)>.tsx` path, where
+ * the Sitecore Content SDK's component-map generator
+ * (`prepareComponentsForMap`) groups it with the canonical under one
+ * map entry. Including it in this schema keeps the orchestrator-stored
+ * row, the install descriptor, and the scai recipe all using one shape.
+ *
+ * No affordance to mutate the canonical's body, fields, params, or
+ * datasource. Brand fidelity is a presentation concern; data-shape
+ * changes belong on the canonical or as a new component.
+ */
+export const VariantRecipeSchema = z.object({
+  kind: z.literal("variant"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. hero-allstate-skinny@1",
+  }),
+  /** Reference to the canonical ComponentTemplateRecipe this variant attaches to. */
+  targetRendering: z.object({
+    /** Handle of the canonical rendering (e.g. `hero@1`). */
+    handle: z.string().regex(HANDLE_PATTERN, {
+      message: "targetRendering.handle must match `<kebab-name>@<major>`, e.g. hero@1",
+    }),
+    /**
+     * Rendering's `name` field — the kebab-case Sitecore item name of
+     * the canonical rendering (e.g. `hero`). Used to compute the
+     * per-rendering Headless Variants folder path on Sitecore. Required
+     * because the canonical recipe is typically NOT in this recipe set
+     * (it was deployed in a prior install); we cannot look it up via
+     * `componentsByHandle`. Convention: matches `handle.split("@")[0]`.
+     */
+    name: z.string().min(1),
+  }),
+  /**
+   * PascalCase variant name. Same value Sitecore writes to
+   * `params.FieldNames` when an author picks this variant; same value
+   * the Content SDK uses to look up the named export inside the head
+   * repo's sidecar file. The VARIANT_DEFINITION item lands with this
+   * name under the per-rendering folder.
+   */
+  name: z.string().regex(VARIANT_NAME_PATTERN, {
+    message:
+      "Variant `name` must be PascalCase (e.g. `AllstateSkinny`) — used as both the Sitecore VARIANT_DEFINITION item name and the named export inside the sidecar TSX.",
+  }),
+  /** Author-facing label. Defaults to `name`. */
+  displayName: z.string().min(1).optional(),
+  description: z.string().optional(),
+  /**
+   * TSX source for the head-repo sidecar file. NOT consumed by scai's
+   * compile — read by the install descriptor / file-drop pipeline that
+   * writes it to `<canonical-dir>/<canonical-prefix>.<kebab(name)>.tsx`
+   * in the head repo. Carried on the recipe so one shape covers the
+   * orchestrator DB row, the install descriptor, and this recipe.
+   */
+  content: z.string().min(1),
+});
+
+export type VariantRecipe = z.infer<typeof VariantRecipeSchema>;
+
+/**
  * Maps page templates to a layout. Lives at
  * `/sitecore/.../Presentation/Page Designs/<name>` on a tenant. Establishes
  * the templates-to-design mapping (the Sitecore SXA Page Designs root
@@ -2298,6 +2380,7 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   PlaceholderRecipeSchema,
   DesignParametersTemplateRecipeSchema,
   PartialDesignRecipeSchema,
+  VariantRecipeSchema,
   PageDesignRecipeSchema,
   SiteTemplateRecipeSchema,
   SiteRecipeSchema,

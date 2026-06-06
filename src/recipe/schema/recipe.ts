@@ -1589,24 +1589,37 @@ export const SiteTemplateRecipeSchema = z.object({
   /**
    * Picker tile thumbnail — the small image Sitecore AI renders next
    * to the template's name in the "Create a site" UI. Discriminated
-   * union over two authoring modes (locked 2026-06-06):
+   * union over two authoring modes (locked 2026-06-06, renamed
+   * 2026-06-06 after sub-milestone A's U3 finding):
    *
-   *   - `kind: "url"` — author hosts the image externally (CDN, S3,
-   *     GitHub raw); the compiler writes the URL directly to the
-   *     picker field. The v1 / cheap path scai implements first.
+   *   - `kind: "external-url"` — author hosts the source bytes
+   *     externally (CDN, S3, GitHub raw); the compiler fetches the
+   *     bytes at compile time and uploads them to Sitecore's media
+   *     library.
    *   - `kind: "asset"` — `path` is a registry-relative reference
    *     (e.g. `./thumbnail.png` sibling of this recipe). The compiler
-   *     uploads the file to Sitecore's media library via a new
-   *     media-upload IR op and writes the resolved media-item GUID.
-   *     The polish path — pending scai's media-upload op.
+   *     reads the file locally and uploads it to Sitecore's media
+   *     library.
    *
-   * **scai gap:** the field is dropped entirely at install today. When
-   * scai catches up, `url` mode lands first; `asset` mode follows.
+   * **Both modes terminate in a media-library upload + a media-XML
+   * write to the standard Sitecore `__Thumbnail` field** (GUID
+   * `c7c26117-dbb1-42b2-ab5e-f7223845cca3`, encoding
+   * `<image mediaid="{GUID}" />`). The difference is only the source
+   * of the bytes: remote-URL fetch vs. local-path read. The
+   * discriminator was renamed from `"url"` to `"external-url"` to
+   * signal to authors that the URL is a source of bytes, not the
+   * literal field value — writing a raw URL to `__Thumbnail` would
+   * silently no-op (U3 finding in
+   * `docs/plans/site-template-modules-and-picker.investigation.json`).
+   *
+   * **scai gap:** the field is dropped entirely at install today.
+   * Compile-side wiring (media-upload IR op + SetField on
+   * `__Thumbnail`) is sub-milestone C/D, gated on A's findings.
    */
   thumbnail: z
     .discriminatedUnion("kind", [
       z.object({
-        kind: z.literal("url"),
+        kind: z.literal("external-url"),
         url: z.string().min(1),
         alt: z.string().optional(),
       }),
@@ -1619,12 +1632,25 @@ export const SiteTemplateRecipeSchema = z.object({
     .optional(),
   /**
    * Hero image rendered on the template's detail panel in the picker.
-   * Same discriminated-union shape as `thumbnail`; same gap.
+   * Same discriminated-union shape as `thumbnail`; both modes upload
+   * bytes to the media library (see `thumbnail` JSDoc for the U3
+   * media-XML rationale).
+   *
+   * **Pending sub-milestone C's investigation:** A's findings note
+   * that the SXA Solution Template item has no separate `image` field
+   * on its inheritance chain — the picker's detail-panel hero appears
+   * to render the same `__Thumbnail` media item as the tile, just at
+   * a larger size (U3 in
+   * `docs/plans/site-template-modules-and-picker.investigation.json`).
+   * `image` is likely a no-op distinct from `thumbnail`; the field
+   * stays in the schema so authors can express intent, but compile
+   * may collapse it into `thumbnail` once C confirms the picker's
+   * resolution path.
    */
   image: z
     .discriminatedUnion("kind", [
       z.object({
-        kind: z.literal("url"),
+        kind: z.literal("external-url"),
         url: z.string().min(1),
         alt: z.string().optional(),
       }),

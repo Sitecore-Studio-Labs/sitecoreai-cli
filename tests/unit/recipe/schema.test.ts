@@ -608,17 +608,17 @@ describe("SiteTemplateRecipe Zod schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts thumbnail with kind: url", () => {
+  it("accepts thumbnail with kind: external-url", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
       thumbnail: {
-        kind: "url",
+        kind: "external-url",
         url: "https://cdn.example.com/ccl-thumb.png",
         alt: "Click Click Launch thumbnail",
       },
     });
     expect(result.success).toBe(true);
-    if (result.success && result.data.thumbnail?.kind === "url") {
+    if (result.success && result.data.thumbnail?.kind === "external-url") {
       expect(result.data.thumbnail.url).toBe("https://cdn.example.com/ccl-thumb.png");
       expect(result.data.thumbnail.alt).toBe("Click Click Launch thumbnail");
     }
@@ -635,6 +635,14 @@ describe("SiteTemplateRecipe Zod schema", () => {
     }
   });
 
+  it("rejects thumbnail with the legacy kind: url discriminator (renamed to external-url 2026-06-06)", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      thumbnail: { kind: "url", url: "https://cdn.example.com/ccl-thumb.png" },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects thumbnail with an unknown discriminator kind", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
@@ -643,11 +651,11 @@ describe("SiteTemplateRecipe Zod schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts image with kind: url", () => {
+  it("accepts image with kind: external-url", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
       image: {
-        kind: "url",
+        kind: "external-url",
         url: "https://cdn.example.com/ccl-hero.png",
         alt: "CCL hero",
       },
@@ -661,6 +669,14 @@ describe("SiteTemplateRecipe Zod schema", () => {
       image: { kind: "asset", path: "./hero.png" },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("rejects image with the legacy kind: url discriminator (renamed to external-url 2026-06-06)", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      image: { kind: "url", url: "https://cdn.example.com/ccl-hero.png" },
+    });
+    expect(result.success).toBe(false);
   });
 
   it("rejects image with an unknown discriminator kind", () => {

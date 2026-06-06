@@ -5,18 +5,18 @@ scai-authored site template (a) renders a usable tile in the SitecoreAI
 "Create a site" picker, and (b) actually instantiates a site with the
 brand structure the recipe describes, rather than an empty shell.
 
-Status: partially implemented (credentials-independent slice).
-**Three open design questions resolved by operator 2026-06-06 — see
-"Operator decisions" at the bottom.** Sub-milestone A (sandbox
-introspection) verifies those calls against the sandbox and resolves
-U1–U6 before B/C/D commit to a schema shape.
+Status: Sub-milestone A complete (commit `5c53df6` on
+`agent/site-template-investigation`); thumbnail discriminator renamed
+(this commit). D/E still pending.
 
 **Landed 2026-06-06 (credentials-independent slice of C, partial of D):**
 
 - `SiteTemplateRecipeSchema` mirrors the registry: adds
-  `thumbnail` / `image` (discriminated `url | asset` union) and
-  `contents`. URL mode is the cheap path; asset mode lands schema-first
-  with the media-upload IR op deferred per the operator decision below.
+  `thumbnail` / `image` (discriminated `external-url | asset` union)
+  and `contents`. Both modes upload bytes to the media library per
+  U3 — the difference is the byte source (remote fetch vs. local
+  read). Schema lands first; the media-upload IR op is deferred per
+  the operator decision below.
 - `compileSiteTemplateRecipe` now emits an explicit `consola.warn` when
   the recipe populates any schema-accepted-but-compile-dropped field
   (`pageTemplates`, `pageDesigns`, `insertOptionsMatrix`,
@@ -25,20 +25,21 @@ U1–U6 before B/C/D commit to a schema shape.
   `compile/site-template.ts:143-156` is now noisy by default; minimal
   recipes still stay quiet.
 - Unit tests cover both the schema discriminated-union shapes (parse
-  pass/fail across `kind: "url"`, `kind: "asset"`, and unknown
-  discriminators) and the warn behavior (populated → warns; minimal →
-  silent).
+  pass/fail across `kind: "external-url"`, `kind: "asset"`, the
+  rejected legacy `kind: "url"` literal, and unknown discriminators)
+  and the warn behavior (populated → warns; minimal → silent).
 
 **Still blocked on sandbox credentials** (no `SITECOREAI_DEPLOY_TOKEN`
 or `SITECOREAI_CLIENT_ID` + `SITECOREAI_CLIENT_SECRET` for
-`xmc-lizsitecore088b-starterkitsa33f-contentatte7784`):
+`xmc-lizsitecore798d-xmc25db-yourfirstxmdb85`):
 
 - Sub-milestone A (introspection of U1–U6).
 - Sub-milestone E (live integration test).
 - The GUID-dependent parts of D — module placement under the tenant
   tree, `SITE_MODULES` / `TENANT_MODULES` field writes, picker-field
-  SetField ops for `thumbnail` / `image` (we have the schema but not
-  the source-field GUID), and the `kind: "asset"` media-upload IR op.
+  SetField ops for `thumbnail` / `image` (we have the schema and the
+  source-field GUID `c7c26117-...` from U3), and the media-upload IR
+  op both `external-url` and `asset` modes terminate in.
 
 ## Sub-milestone A findings (2026-06-06)
 
@@ -194,7 +195,8 @@ Quoting the existing TODO in `compile/site-template.ts:143-156` (load-bearing fo
 ## Investigation needed before code work begins
 
 Concrete unknowns. None of these is answerable without sandbox
-introspection against `xmc-lizsitecore088b-starterkitsa33f-contentatte7784`.
+introspection against `xmc-lizsitecore798d-xmc25db-yourfirstxmdb85`
+(substituted 2026-06-06; see decision 4 below).
 
 | Unknown                                                                    | What to verify                                                                                                                                                                                                                                                                                    | How                                                                                                                                                                                                                         |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -281,17 +283,19 @@ Compiler synthesises Module items inline from the `SiteTemplateRecipe`'s existin
 
 ### 2. Thumbnail authoring source — support both as a discriminated union
 
-Schema models both modes from day one, scai implements URL first then asset:
+Schema models both modes from day one. **Both modes terminate in a media-library write per A's U3 finding** — the discriminator names the byte source, not the storage path:
 
 ```ts
 thumbnail:
-  | { kind: "url", url: string, alt?: string }       // operator hosts (CDN / GitHub raw / S3)
-  | { kind: "asset", path: string, alt?: string }    // registry-relative path; new media-upload IR op
+  | { kind: "external-url", url: string, alt?: string }  // remote source; compile fetches bytes at compile time
+  | { kind: "asset", path: string, alt?: string }        // registry-relative path; compile reads bytes locally
 ```
 
-Apply the same shape to `image`. `url` is the cheap v1 path — one SetField op writes the URL directly to the picker field, no new IR. `asset` is the polish path — adds a media-upload IR op that lands the file in Sitecore's media library and writes the resolved media-item GUID. The brand-generation pipeline picks per-template based on whether the image is hosted externally or repo-bundled.
+Apply the same shape to `image`. The Sites API picker's `__Thumbnail` field (GUID `c7c26117-...`) mandates a Sitecore media-XML reference (`<image mediaid="{GUID}" />`); writing a raw URL silently no-ops. Both modes therefore (a) upload bytes to the media library via a new media-upload IR op, then (b) emit a SetField op on `__Thumbnail` with the resolved media-XML. The brand-generation pipeline picks `external-url` when the image is hosted externally (CDN / GitHub raw / S3) or `asset` when it's bundled in the registry.
 
-**Implication for C:** schema lands with the discriminated union; compile handles `kind: "url"` end-to-end. `kind: "asset"` is allowed by schema but throws an explicit `NOT_YET_IMPLEMENTED` error at compile time until the media-upload IR op lands (deferred follow-up, NOT blocking E).
+**Renamed 2026-06-06.** The original draft used `kind: "url"` and `kind: "asset"`. After A's U3 finding showed `__Thumbnail` does not accept a literal URL, the discriminator was renamed `"url"` → `"external-url"` to signal to authors that the URL is a byte source, not the literal field value.
+
+**Implication for C:** schema lands with the discriminated union; compile gates on the media-upload IR op for both modes (no cheap-path-without-IR-op variant). Until the media-upload IR op lands, compile throws an explicit `NOT_YET_IMPLEMENTED` error for any populated `thumbnail` / `image`. The discriminator only affects how the IR op sources bytes (remote fetch vs. local read).
 
 ### 3. Module item placement — tenant-rooted, verify in A
 
@@ -306,6 +310,10 @@ Modules land under the tenant tree (`/sitecore/system/Settings/Project/<tenant>/
 5. Instantiate via the Sites API picker and assert the resulting site picks up the tenant-rooted Module's contributions correctly.
 
 If step 5 succeeds → tenant-rooted is confirmed safe; proceed with D under this assumption. If the picker silently drops the tenant-rooted Module despite template-correctness → fall back to Foundation-rooted, document the failure mode in the resolved-U section, and update the plan. Either way, the decision is data-driven by A's evidence.
+
+### 4. Sandbox tenant substitution for D/E
+
+Sub-milestones D/E use `xmc-lizsitecore798d-xmc25db-yourfirstxmdb85` in place of the originally-named `xmc-lizsitecore088b-starterkitsa33f-contentatte7784` (decommissioned / never-provisioned per A's introspection — it does not appear in this org's 14-environment list). Same org (`org_Sqg9NOB4DhDdpb1x`); the substitute already has the three production tenant-rooted Solution templates (Alaris, SYNC, Solterra and Co) that already exhibit the tenant-rooted-module pattern, so it's the right surface for D's compile-side work and E's live integration test.
 
 ### What's still open
 

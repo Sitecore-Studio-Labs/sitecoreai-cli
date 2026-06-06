@@ -279,8 +279,8 @@ describe("compileSiteTemplateRecipe — populated-but-dropped warning", () => {
     compileSiteTemplateRecipe(
       {
         ...MINIMAL_RECIPE,
-        thumbnail: { kind: "url", url: "https://cdn.example.com/thumb.png" },
-        image: { kind: "url", url: "https://cdn.example.com/hero.png" },
+        thumbnail: { kind: "external-url", url: "https://cdn.example.com/thumb.png" },
+        image: { kind: "external-url", url: "https://cdn.example.com/hero.png" },
         contents: "## Details",
       },
       COMPILE_CONTEXT

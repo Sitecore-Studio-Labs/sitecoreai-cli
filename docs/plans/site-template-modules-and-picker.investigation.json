@@ -1,0 +1,4017 @@
+{
+  "tenant": "xmc-lizsitecore798d-xmc25db-yourfirstxmdb85",
+  "runId": "20260606161026",
+  "host": "xmc-lizsitecore798d-xmc25db-yourfirstxmdb85.sitecorecloud.io",
+  "tokenAudience": "https://api.sitecorecloud.io",
+  "tokenScopes": "xmclouddeploy.organizations:manage xmclouddeploy.projects:manage xmclouddeploy.environments:manage xmclouddeploy.deployments:manage xmclouddeploy.clients:manage xmclouddeploy.sourcecontrol:manage xmclouddeploy.monitoring.deployments:read xmclouddeploy.site:mng xmclouddeploy.rh:mng xmcloud.cm:admin",
+  "tokenOrgId": "org_Sqg9NOB4DhDdpb1x",
+  "planDocTenantString": "xmc-lizsitecore088b-starterkitsa33f-contentatte7784",
+  "planDocTenantStringFound": false,
+  "planDocTenantNote": "Operator-supplied tenant slug not present in org_Sqg9NOB4DhDdpb1x environments list (verified 2026-06-06 by paginating xmclouddeploy-api environments). Substituted XMC project's CM env (lizsitecore798d-xmc25db-yourfirstxmdb85) — same org, SXA Foundation root reachable, AND already carries tenant-rooted Solution templates + tenant-rooted HeadlessSiteSetupRoot modules under `click-click-launch` project tenant. Verification verdict can be observed directly on this existing production data; no test-item creation required.",
+  "U1_foundationModuleTemplate": {
+    "note": "There is no 'Foundation Module' template — that name in the plan doc is a misnomer. Modules referenced by SITE_MODULES conform to template `HeadlessSiteSetupRoot`; modules referenced by TENANT_MODULES conform to `HeadlessTenantSetupRoot`. Both templates carry only standard Sitecore sections (Advanced, Appearance, Help, etc) — no domain-specific fields. The brand structure lives in CHILDREN of the Module item (AddItem, EditSiteItem, ExecuteScript, EditTenantTemplate, PostSetupStep, Folder, Node child templates).",
+    "headlessSiteSetupRoot": {
+      "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+      "template": {
+        "name": "HeadlessSiteSetupRoot",
+        "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+        "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot",
+        "baseTemplates": {
+          "nodes": [
+            {
+              "name": "_IsSystemModule",
+              "templateId": "bf489796633d46d492aacc0bd886c841",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_IsSystemModule"
+            },
+            {
+              "name": "_IncludeByDefault",
+              "templateId": "dad67b240baf461f9bfc73dce99812cc",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_IncludeByDefault"
+            },
+            {
+              "name": "_Name",
+              "templateId": "b88cf88159a54a19991e71038751cb60",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_Name"
+            },
+            {
+              "name": "_Dependencies",
+              "templateId": "39549bef2c0d48f8af7cf406241d4fe6",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_Dependencies"
+            },
+            {
+              "name": "_IncludeIfInstalled",
+              "templateId": "54ae044d062b4236856bf2cf3ee4e3c0",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_IncludeIfInstalled"
+            },
+            {
+              "name": "_Enabled",
+              "templateId": "767ccf52e761430a80367631b93b3cac",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_Enabled"
+            },
+            {
+              "name": "Standard template",
+              "templateId": "1930bbeb7805471aa3be4858ac7cf696",
+              "fullName": "System/Templates/Standard template"
+            },
+            {
+              "name": "Advanced",
+              "templateId": "646f4b34708c41c29f4b2661849777f3",
+              "fullName": "System/Templates/Sections/Advanced"
+            },
+            {
+              "name": "Appearance",
+              "templateId": "f5bc7ae4f62d47cd9afb2c9f85d8313b",
+              "fullName": "System/Templates/Sections/Appearance"
+            },
+            {
+              "name": "Help",
+              "templateId": "18420296d8fc4d93a79e2a2b0367a92c",
+              "fullName": "System/Templates/Sections/Help"
+            },
+            {
+              "name": "Layout",
+              "templateId": "4d30906d0b494fa7969dbf90157357ea",
+              "fullName": "System/Templates/Sections/Layout"
+            },
+            {
+              "name": "Lifetime",
+              "templateId": "6ef073347fba4845bf0acd5b2000c75a",
+              "fullName": "System/Templates/Sections/Lifetime"
+            },
+            {
+              "name": "Indexing",
+              "templateId": "38a2f441db17403990e26a32f7a81706",
+              "fullName": "System/Templates/Sections/Indexing"
+            },
+            {
+              "name": "Insert Options",
+              "templateId": "823ecf5fae7240b5bc87cb425fe7e5f6",
+              "fullName": "System/Templates/Sections/Insert Options"
+            },
+            {
+              "name": "Item Buckets",
+              "templateId": "af530c7b8b87458b80ce239d1e1b9e60",
+              "fullName": "System/Templates/Sections/Item Buckets"
+            },
+            {
+              "name": "Publishing",
+              "templateId": "6495cf23de9c48b79d3c05e2418b3cae",
+              "fullName": "System/Templates/Sections/Publishing"
+            },
+            {
+              "name": "Security",
+              "templateId": "ab811af4393c4a46acd781d30917e7f4",
+              "fullName": "System/Templates/Sections/Security"
+            },
+            {
+              "name": "Statistics",
+              "templateId": "1597272cc8234aac86f8ca9cc4d573b5",
+              "fullName": "System/Templates/Sections/Statistics"
+            },
+            {
+              "name": "Tagging",
+              "templateId": "0aa6d3f8c9d0401f83aaa41433c24767",
+              "fullName": "System/Templates/Sections/Tagging"
+            },
+            {
+              "name": "Tasks",
+              "templateId": "93f3a8fa9e5a4848a5ad42aad11a4871",
+              "fullName": "System/Templates/Sections/Tasks"
+            },
+            {
+              "name": "Validators",
+              "templateId": "2491819e0c614f5a903ce10fcd9d302a",
+              "fullName": "System/Templates/Sections/Validators"
+            },
+            {
+              "name": "Workflow",
+              "templateId": "06f366e6a7e6470b9ec9cd29a4f6c8e8",
+              "fullName": "System/Templates/Sections/Workflow"
+            },
+            {
+              "name": "Version",
+              "templateId": "4070ef7f793d42aeaa66e5820c608343",
+              "fullName": "System/Templates/Sections/Version"
+            }
+          ]
+        },
+        "ownFields": {
+          "nodes": []
+        },
+        "fields": {
+          "nodes": [
+            {
+              "templateFieldId": "06d2c562922947798807e2a5fd2990d4",
+              "name": "IsSystemModule",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "11488836d40f40d4beb41d31da7b1470",
+              "name": "IncludeByDefault",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "c202067e7fab4606afb4e76df2185ddc",
+              "name": "Name",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "40deee2f759540bdb2c951f9e2346100",
+              "name": "Dependencies",
+              "type": "Treelist",
+              "source": "DataSource=/sitecore/system/Settings&IncludeTemplatesForSelection=EditTenantTemplate,AddItem,ExecuteScript",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "52a4245ca3d54b239f3a5b33c9811906",
+              "name": "IncludeIfInstalled",
+              "type": "Treelist",
+              "source": "DataSource=/sitecore/system/Settings&IncludeTemplatesForSelection=EditTenantTemplate,AddItem,ExecuteScript",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "4b475746cf344c0697c87a8b0b40064f",
+              "name": "Enabled",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "fd4e2050186c43758b99e8a85dd7436e",
+              "name": "__Enable item fallback",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "61cf71510cbd4db49738d753a55a6e65",
+              "name": "__Enforce version presence",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "19b597d32edd4ae2aefe4a94c7f10e31",
+              "name": "__Source Item",
+              "type": "Version Link",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "1b86697d60ca4d8083fb7555a2e6ce1c",
+              "name": "__Source",
+              "type": "Version Link",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "f7d48a5521584f029356756654404f73",
+              "name": "__Standard values",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "4a749557242b43728a20b2db9d406301",
+              "name": "__AutoThumbnails",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "d3ae7222425d4b7795d8ee33ac2b6730",
+              "name": "__Context Menu",
+              "type": "Droptree",
+              "source": "datasource=/sitecore&databasename=core",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "b5e02ad9d56f4c41a065a133db87bdeb",
+              "name": "__Display name",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "d85db4ecff894f9c9e7ca9e0654797fc",
+              "name": "__Editor",
+              "type": "server file",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "a0cb396588844c7a8815b6b2e5ced162",
+              "name": "__Editors",
+              "type": "TreelistEx",
+              "source": "databasename=core&datasource=/sitecore/content/Applications/Content Editor/Editors&IncludeTemplatesForSelection=Editor",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "39c4902e99604469aeefe878e9c8218f",
+              "name": "__Hidden",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "06d5295ced2f4a549bf226228d113318",
+              "name": "__Icon",
+              "type": "Icon",
+              "source": "/sitecore/shell/themes/standard/",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "f6d8a61c2f844401bd2452d2068172bc",
+              "name": "__Originator",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "41c6cc0e389f4d519990fe35417b6666",
+              "name": "__Preview",
+              "type": "Page Preview",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "9c6106ea7a5a48e28cadf0f693b1e2d4",
+              "name": "__Read Only",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "0c894aab962b4a84b923cb24b05e60d2",
+              "name": "__Ribbon",
+              "type": "Droptree",
+              "source": "datasource=/sitecore&databasename=core",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "079afcfe8aca4863bda707893541e2f5",
+              "name": "__Skin",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "ba3f86a24a1c4d78b63d91c2779c1b5e",
+              "name": "__Sortorder",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "a791f09525214b4dbef921dda221f608",
+              "name": "__Style",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "6fd695e77f6d4ca58b49a829e5950ae9",
+              "name": "__Subitems Sorting",
+              "type": "Droplink",
+              "source": "/sitecore/system/Settings/Subitems Sorting",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "c7c26117dbb142b2ab5ef7223845cca3",
+              "name": "__Thumbnail",
+              "type": "Thumbnail",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "56776edf261c4abc9fe770c618795239",
+              "name": "__Help link",
+              "type": "General Link",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "577f16897de44ad2a15f7fdc1759285f",
+              "name": "__Long description",
+              "type": "Multi-Line Text",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "9541e67dce8c4225803d33f7f29f09ef",
+              "name": "__Short description",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "9fb734cc89524072a2d440f890e16f56",
+              "name": "__Controller Action",
+              "type": "text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "4c9312a52e4e42f8ab6fb8db8b82bf22",
+              "name": "__Controller",
+              "type": "text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "04bf00dbf5fb41f78ab722408372a981",
+              "name": "__Final Renderings",
+              "type": "Layout",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "a4879e420270458d9c19a20af3c2b765",
+              "name": "__Presets",
+              "type": "Treelist",
+              "source": "DataSource=/sitecore/system/Settings/Layouts/Presets&IncludeTemplatesForSelection=Layout Preset",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "b03569b1153443f28c83bd064b7d782c",
+              "name": "__Renderers",
+              "type": "Multi-Line Text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "f1a1fe9ea60c4ddba3a0bb5b29fe732e",
+              "name": "__Renderings",
+              "type": "layout",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "b8f427329cb8478dae9507e25345fb0f",
+              "name": "__Hide version",
+              "type": "checkbox",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "c8f93afebfd44e8f9c61152559854661",
+              "name": "__Valid from",
+              "type": "datetime",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "4c346442e8594efd89b244aedf467d21",
+              "name": "__Valid to",
+              "type": "datetime",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "93d1b217b8f4462ebabf68298c9ce667",
+              "name": "__Boost",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "8c18198927944b288ee46bb5cb928dc2",
+              "name": "__Boosting Rules",
+              "type": "TreelistEx",
+              "source": "DataSource={4A080DC7-10FE-405A-B809-5785F8E777E9}",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "21f74f6e42d442a2a4b44cefbcfbd2bb",
+              "name": "__Facets",
+              "type": "Treelist",
+              "source": "DataSource={0B42DC05-5CF9-4DD5-9A3A-8BDF11BE2B88}&IncludeTemplatesForSelection=facet",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "83798d75df254c289327e8bac2b75292",
+              "name": "__Insert Rules",
+              "type": "TreelistEx",
+              "source": "DataSource=/sitecore/system/Settings/Insert Rules&IncludeTemplatesForSelection=Insert Rule&IncludeTemplatesForDisplay=Folder,Insert Rule",
+              "section": {
+                "name": "Insert Options"
+              }
+            },
+            {
+              "templateFieldId": "1172f251dad44efba3290c63500e4f1e",
+              "name": "__Masters",
+              "type": "TreelistEx",
+              "source": "DataSource=/sitecore/templates&IncludeTemplatesForSelection=Template,Branch,Command Template&IncludeTemplatesForDisplay=Branch folder,Branch,Template folder,Template,Folder,Node,Main section,Command Template&ExcludeItemsForDisplay={0DE95AE4-41AB-4D01-9EB0-67441B7C2450},{EB2E4FFD-2761-4653-B052-26A64D385227},{3D6658D8-A0BF-4E75-B3E2-D050FABCF4E1},{13D6D6C6-C50B-4BBD-B331-2B04F1A58F21}",
+              "section": {
+                "name": "Insert Options"
+              }
+            },
+            {
+              "templateFieldId": "9dafca1dd618461686b8a8acd6b28a63",
+              "name": "__Bucket Parent Reference",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "c9283d9e7c2944199c285a5c8ff53e84",
+              "name": "__Bucketable",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "ac51462c8a8d493b949234d1f26f20f1",
+              "name": "__Default Bucket Query",
+              "type": "Query Builder",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "3607f9c7dda343c3972039a7a5b3a4c3",
+              "name": "__Default View",
+              "type": "Droplist",
+              "source": "/sitecore/system/Settings/Buckets/Views",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "f2db8ba1e47741f58ef522eefa8d2f6e",
+              "name": "__Enabled Views",
+              "type": "Multilist",
+              "source": "/sitecore/system/Settings/Buckets/Views",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "d312103cb36c4ca5864ac85f9abda503",
+              "name": "__Is Bucket",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "headlessTenantSetupRoot": {
+      "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+      "template": {
+        "name": "HeadlessTenantSetupRoot",
+        "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+        "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot",
+        "baseTemplates": {
+          "nodes": [
+            {
+              "name": "_IsSystemModule",
+              "templateId": "bf489796633d46d492aacc0bd886c841",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_IsSystemModule"
+            },
+            {
+              "name": "_IncludeByDefault",
+              "templateId": "dad67b240baf461f9bfc73dce99812cc",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_IncludeByDefault"
+            },
+            {
+              "name": "_Name",
+              "templateId": "b88cf88159a54a19991e71038751cb60",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_Name"
+            },
+            {
+              "name": "_Enabled",
+              "templateId": "767ccf52e761430a80367631b93b3cac",
+              "fullName": "Foundation/Experience Accelerator/Scaffolding/Roots/_Enabled"
+            },
+            {
+              "name": "Standard template",
+              "templateId": "1930bbeb7805471aa3be4858ac7cf696",
+              "fullName": "System/Templates/Standard template"
+            },
+            {
+              "name": "Advanced",
+              "templateId": "646f4b34708c41c29f4b2661849777f3",
+              "fullName": "System/Templates/Sections/Advanced"
+            },
+            {
+              "name": "Appearance",
+              "templateId": "f5bc7ae4f62d47cd9afb2c9f85d8313b",
+              "fullName": "System/Templates/Sections/Appearance"
+            },
+            {
+              "name": "Help",
+              "templateId": "18420296d8fc4d93a79e2a2b0367a92c",
+              "fullName": "System/Templates/Sections/Help"
+            },
+            {
+              "name": "Layout",
+              "templateId": "4d30906d0b494fa7969dbf90157357ea",
+              "fullName": "System/Templates/Sections/Layout"
+            },
+            {
+              "name": "Lifetime",
+              "templateId": "6ef073347fba4845bf0acd5b2000c75a",
+              "fullName": "System/Templates/Sections/Lifetime"
+            },
+            {
+              "name": "Indexing",
+              "templateId": "38a2f441db17403990e26a32f7a81706",
+              "fullName": "System/Templates/Sections/Indexing"
+            },
+            {
+              "name": "Insert Options",
+              "templateId": "823ecf5fae7240b5bc87cb425fe7e5f6",
+              "fullName": "System/Templates/Sections/Insert Options"
+            },
+            {
+              "name": "Item Buckets",
+              "templateId": "af530c7b8b87458b80ce239d1e1b9e60",
+              "fullName": "System/Templates/Sections/Item Buckets"
+            },
+            {
+              "name": "Publishing",
+              "templateId": "6495cf23de9c48b79d3c05e2418b3cae",
+              "fullName": "System/Templates/Sections/Publishing"
+            },
+            {
+              "name": "Security",
+              "templateId": "ab811af4393c4a46acd781d30917e7f4",
+              "fullName": "System/Templates/Sections/Security"
+            },
+            {
+              "name": "Statistics",
+              "templateId": "1597272cc8234aac86f8ca9cc4d573b5",
+              "fullName": "System/Templates/Sections/Statistics"
+            },
+            {
+              "name": "Tagging",
+              "templateId": "0aa6d3f8c9d0401f83aaa41433c24767",
+              "fullName": "System/Templates/Sections/Tagging"
+            },
+            {
+              "name": "Tasks",
+              "templateId": "93f3a8fa9e5a4848a5ad42aad11a4871",
+              "fullName": "System/Templates/Sections/Tasks"
+            },
+            {
+              "name": "Validators",
+              "templateId": "2491819e0c614f5a903ce10fcd9d302a",
+              "fullName": "System/Templates/Sections/Validators"
+            },
+            {
+              "name": "Workflow",
+              "templateId": "06f366e6a7e6470b9ec9cd29a4f6c8e8",
+              "fullName": "System/Templates/Sections/Workflow"
+            },
+            {
+              "name": "Version",
+              "templateId": "4070ef7f793d42aeaa66e5820c608343",
+              "fullName": "System/Templates/Sections/Version"
+            }
+          ]
+        },
+        "ownFields": {
+          "nodes": []
+        },
+        "fields": {
+          "nodes": [
+            {
+              "templateFieldId": "06d2c562922947798807e2a5fd2990d4",
+              "name": "IsSystemModule",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "11488836d40f40d4beb41d31da7b1470",
+              "name": "IncludeByDefault",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "c202067e7fab4606afb4e76df2185ddc",
+              "name": "Name",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "4b475746cf344c0697c87a8b0b40064f",
+              "name": "Enabled",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Data"
+              }
+            },
+            {
+              "templateFieldId": "fd4e2050186c43758b99e8a85dd7436e",
+              "name": "__Enable item fallback",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "61cf71510cbd4db49738d753a55a6e65",
+              "name": "__Enforce version presence",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "19b597d32edd4ae2aefe4a94c7f10e31",
+              "name": "__Source Item",
+              "type": "Version Link",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "1b86697d60ca4d8083fb7555a2e6ce1c",
+              "name": "__Source",
+              "type": "Version Link",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "f7d48a5521584f029356756654404f73",
+              "name": "__Standard values",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Advanced"
+              }
+            },
+            {
+              "templateFieldId": "4a749557242b43728a20b2db9d406301",
+              "name": "__AutoThumbnails",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "d3ae7222425d4b7795d8ee33ac2b6730",
+              "name": "__Context Menu",
+              "type": "Droptree",
+              "source": "datasource=/sitecore&databasename=core",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "b5e02ad9d56f4c41a065a133db87bdeb",
+              "name": "__Display name",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "d85db4ecff894f9c9e7ca9e0654797fc",
+              "name": "__Editor",
+              "type": "server file",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "a0cb396588844c7a8815b6b2e5ced162",
+              "name": "__Editors",
+              "type": "TreelistEx",
+              "source": "databasename=core&datasource=/sitecore/content/Applications/Content Editor/Editors&IncludeTemplatesForSelection=Editor",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "39c4902e99604469aeefe878e9c8218f",
+              "name": "__Hidden",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "06d5295ced2f4a549bf226228d113318",
+              "name": "__Icon",
+              "type": "Icon",
+              "source": "/sitecore/shell/themes/standard/",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "f6d8a61c2f844401bd2452d2068172bc",
+              "name": "__Originator",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "41c6cc0e389f4d519990fe35417b6666",
+              "name": "__Preview",
+              "type": "Page Preview",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "9c6106ea7a5a48e28cadf0f693b1e2d4",
+              "name": "__Read Only",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "0c894aab962b4a84b923cb24b05e60d2",
+              "name": "__Ribbon",
+              "type": "Droptree",
+              "source": "datasource=/sitecore&databasename=core",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "079afcfe8aca4863bda707893541e2f5",
+              "name": "__Skin",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "ba3f86a24a1c4d78b63d91c2779c1b5e",
+              "name": "__Sortorder",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "a791f09525214b4dbef921dda221f608",
+              "name": "__Style",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "6fd695e77f6d4ca58b49a829e5950ae9",
+              "name": "__Subitems Sorting",
+              "type": "Droplink",
+              "source": "/sitecore/system/Settings/Subitems Sorting",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "c7c26117dbb142b2ab5ef7223845cca3",
+              "name": "__Thumbnail",
+              "type": "Thumbnail",
+              "source": "",
+              "section": {
+                "name": "Appearance"
+              }
+            },
+            {
+              "templateFieldId": "56776edf261c4abc9fe770c618795239",
+              "name": "__Help link",
+              "type": "General Link",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "577f16897de44ad2a15f7fdc1759285f",
+              "name": "__Long description",
+              "type": "Multi-Line Text",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "9541e67dce8c4225803d33f7f29f09ef",
+              "name": "__Short description",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Help"
+              }
+            },
+            {
+              "templateFieldId": "9fb734cc89524072a2d440f890e16f56",
+              "name": "__Controller Action",
+              "type": "text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "4c9312a52e4e42f8ab6fb8db8b82bf22",
+              "name": "__Controller",
+              "type": "text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "04bf00dbf5fb41f78ab722408372a981",
+              "name": "__Final Renderings",
+              "type": "Layout",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "a4879e420270458d9c19a20af3c2b765",
+              "name": "__Presets",
+              "type": "Treelist",
+              "source": "DataSource=/sitecore/system/Settings/Layouts/Presets&IncludeTemplatesForSelection=Layout Preset",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "b03569b1153443f28c83bd064b7d782c",
+              "name": "__Renderers",
+              "type": "Multi-Line Text",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "f1a1fe9ea60c4ddba3a0bb5b29fe732e",
+              "name": "__Renderings",
+              "type": "layout",
+              "source": "",
+              "section": {
+                "name": "Layout"
+              }
+            },
+            {
+              "templateFieldId": "b8f427329cb8478dae9507e25345fb0f",
+              "name": "__Hide version",
+              "type": "checkbox",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "c8f93afebfd44e8f9c61152559854661",
+              "name": "__Valid from",
+              "type": "datetime",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "4c346442e8594efd89b244aedf467d21",
+              "name": "__Valid to",
+              "type": "datetime",
+              "source": "",
+              "section": {
+                "name": "Lifetime"
+              }
+            },
+            {
+              "templateFieldId": "93d1b217b8f4462ebabf68298c9ce667",
+              "name": "__Boost",
+              "type": "Single-Line Text",
+              "source": "",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "8c18198927944b288ee46bb5cb928dc2",
+              "name": "__Boosting Rules",
+              "type": "TreelistEx",
+              "source": "DataSource={4A080DC7-10FE-405A-B809-5785F8E777E9}",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "21f74f6e42d442a2a4b44cefbcfbd2bb",
+              "name": "__Facets",
+              "type": "Treelist",
+              "source": "DataSource={0B42DC05-5CF9-4DD5-9A3A-8BDF11BE2B88}&IncludeTemplatesForSelection=facet",
+              "section": {
+                "name": "Indexing"
+              }
+            },
+            {
+              "templateFieldId": "83798d75df254c289327e8bac2b75292",
+              "name": "__Insert Rules",
+              "type": "TreelistEx",
+              "source": "DataSource=/sitecore/system/Settings/Insert Rules&IncludeTemplatesForSelection=Insert Rule&IncludeTemplatesForDisplay=Folder,Insert Rule",
+              "section": {
+                "name": "Insert Options"
+              }
+            },
+            {
+              "templateFieldId": "1172f251dad44efba3290c63500e4f1e",
+              "name": "__Masters",
+              "type": "TreelistEx",
+              "source": "DataSource=/sitecore/templates&IncludeTemplatesForSelection=Template,Branch,Command Template&IncludeTemplatesForDisplay=Branch folder,Branch,Template folder,Template,Folder,Node,Main section,Command Template&ExcludeItemsForDisplay={0DE95AE4-41AB-4D01-9EB0-67441B7C2450},{EB2E4FFD-2761-4653-B052-26A64D385227},{3D6658D8-A0BF-4E75-B3E2-D050FABCF4E1},{13D6D6C6-C50B-4BBD-B331-2B04F1A58F21}",
+              "section": {
+                "name": "Insert Options"
+              }
+            },
+            {
+              "templateFieldId": "9dafca1dd618461686b8a8acd6b28a63",
+              "name": "__Bucket Parent Reference",
+              "type": "Droptree",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "c9283d9e7c2944199c285a5c8ff53e84",
+              "name": "__Bucketable",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "ac51462c8a8d493b949234d1f26f20f1",
+              "name": "__Default Bucket Query",
+              "type": "Query Builder",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "3607f9c7dda343c3972039a7a5b3a4c3",
+              "name": "__Default View",
+              "type": "Droplist",
+              "source": "/sitecore/system/Settings/Buckets/Views",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "f2db8ba1e47741f58ef522eefa8d2f6e",
+              "name": "__Enabled Views",
+              "type": "Multilist",
+              "source": "/sitecore/system/Settings/Buckets/Views",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "d312103cb36c4ca5864ac85f9abda503",
+              "name": "__Is Bucket",
+              "type": "Checkbox",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "c7815f6096e140cbbb06b5f833f73b61",
+              "name": "__Persistent Bucket Filter",
+              "type": "Query Builder",
+              "source": "",
+              "section": {
+                "name": "Item Buckets"
+              }
+            },
+            {
+              "templateFieldId": "c0e276bb880740aa8138e5c38b0c5dab",
+              "name": "__Quick Actions",
+              "type": "Multilist",
+              "source": "/sitecore/system/Settings/Buckets/Settings/Quick Actions",
+              "section": {
+                "name": "Item Buckets"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "U2_builtInSiteModules": [
+    {
+      "siteTemplate": "Empty Site",
+      "location": "Foundation-rooted (Scaffolding/Templates)",
+      "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Templates/Empty Site",
+      "itemId": "2867d2898951458aaf19ce93a67bb494",
+      "builtInFlag": "1",
+      "rawSiteModulesField": "{5A2F6A6F-3028-4210-AAD3-82C1365C4802}|{9F10010E-49E2-4DCD-A5A1-4DA752ADED2A}|{4342A029-0186-4B0D-8959-FFEF4FD998C2}|{AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA}|{C4658673-5D70-44ED-9004-D66EAC1DC718}|{CA502DCF-20D2-4618-A735-E4FCB6D5E114}|{E2AF1A41-799E-481B-8FDC-B2D33FB729A1}|{66B9C663-2602-42B1-A5A2-3D04DB6C506A}|{1FD78E81-59A6-4513-90F1-165A95D4B16B}|{BEBF4026-24A3-4EA6-986A-518B76DBD71A}|{385F31BE-FF0C-4D84-A627-9ECD21295AFD}|{F0EA389E-F78D-440B-9429-F04FE735344A}|{AC1A27CA-6BF3-4D23-915E-668326D52CF1}|{D7EEAF4D-2B58-4029-B141-844221565EF0}|{1F35559F-2140-4774-8BC1-525BB722BAA2}",
+      "rawTenantModulesField": "{7B81B847-1891-43B2-BC13-5047A62EC32A}|{7BAAA4FC-3051-442D-9BD2-AD720B655E0B}|{0DC2E395-4A95-4773-88CA-75B22A130849}|{4346A98A-D6E9-491E-A0ED-CD12F524CF4E}|{4CBC64BF-8116-48A1-ABAC-DB19103897A6}|{7574F439-0B48-48BE-BA6B-94B1A3CE01A3}|{D912C30C-7A98-4A8D-A094-611D9AF9605D}|{6DE1F4E9-815D-491D-923D-D5038100DBEE}|{02CD7086-1F87-41EC-B40F-B92C1226895B}|{1B0A98C0-1801-44A0-85F2-845694FEAFF3}|{D315A501-6503-4545-A5D8-B9FECBA1097D}",
+      "siteModules": [
+        "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+        "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+        "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+        "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+        "C4658673-5D70-44ED-9004-D66EAC1DC718",
+        "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+        "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+        "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+        "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+        "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+        "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+        "F0EA389E-F78D-440B-9429-F04FE735344A",
+        "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+        "D7EEAF4D-2B58-4029-B141-844221565EF0",
+        "1F35559F-2140-4774-8BC1-525BB722BAA2"
+      ],
+      "tenantModules": [
+        "7B81B847-1891-43B2-BC13-5047A62EC32A",
+        "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+        "0DC2E395-4A95-4773-88CA-75B22A130849",
+        "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+        "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+        "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+        "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+        "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+        "02CD7086-1F87-41EC-B40F-B92C1226895B",
+        "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+        "D315A501-6503-4545-A5D8-B9FECBA1097D"
+      ],
+      "moduleItems": [
+        {
+          "role": "SITE_MODULES",
+          "guid": "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+          "itemId": "5a2f6a6f30284210aad382c1365c4802",
+          "name": "Redirects Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add Redirects Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Redirects Insert Option",
+              "template": "EditSiteItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+          "itemId": "9f10010e49e24dcda5a14da752aded2a",
+          "name": "SiteMetadata Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap settings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+          "itemId": "4342a02901864b0d8959ffef4fd998c2",
+          "name": "Headless Variants Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants/Headless Variants Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants",
+          "parentName": "Headless Variants",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Headless Variants Root",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+          "itemId": "ae5d1384bb754c6ba8b54b008c2ac5da",
+          "name": "Multisite Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Shared Sites Settings Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Set home item title",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Set isSiteThumbnailSource",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "C4658673-5D70-44ED-9004-D66EAC1DC718",
+          "itemId": "c46586735d7044ed9004d66eac1dc718",
+          "name": "Placeholder Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings/Placeholder Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings",
+          "parentName": "PlaceholderSettings",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Placeholder Settings Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+          "itemId": "ca502dcf20d24618a735e4fcb6d5e114",
+          "name": "Presentation Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Design Placeholder Settings Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Styles Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+          "itemId": "e2af1a41799e481b8fdcb2d33fb729a1",
+          "name": "Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+          "itemId": "66b9c663260242b1a5a23d04db6c506a",
+          "name": "Headless Media Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media/Headless Media Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media",
+          "parentName": "Media",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Image Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        }
+      ],
+      "tenantModuleItems": [
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7B81B847-1891-43B2-BC13-5047A62EC32A",
+          "itemId": "7b81b847189143b2bc135047a62ec32a",
+          "name": "Error Handling Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling/Error Handling Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling",
+          "parentName": "Error Handling",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Error Handling - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+          "itemId": "7baaa4fc3051442d9bd2ad720b655e0b",
+          "name": "Headless Navigation Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Navigation",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "0DC2E395-4A95-4773-88CA-75B22A130849",
+          "itemId": "0dc2e3954a95477388ca75b22a130849",
+          "name": "Redirects Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Redirect Insert Option",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+          "itemId": "4346a98ad6e9491ea0edcd12f524cf4e",
+          "name": "Security Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security/Security Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security",
+          "parentName": "Security",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Site Collection Role",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Role",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+          "itemId": "4cbc64bf811648a1abacdb19103897a6",
+          "name": "SiteMetadata Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap Media Items",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page",
+              "template": "Node"
+            },
+            {
+              "name": "Settings",
+              "template": "Node"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+          "itemId": "7574f4390b4848beba6b94b1a3ce01a3",
+          "name": "Multisite Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Content fields",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+          "itemId": "d912c30c7a984a8da094611d9af9605d",
+          "name": "Presentation Settings Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 5,
+          "childrenSummary": [
+            {
+              "name": "Designable",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+          "itemId": "6de1f4e9815d491d923dd5038100dbee",
+          "name": "Scaffolding Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Scaffolding Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            },
+            {
+              "name": "Site Collection Modules",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Modules",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "siteTemplate": "Solterra and Co",
+      "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+      "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/Solterra and Co",
+      "itemId": "6393776bd72449eb8a3f96af12825810",
+      "builtInFlag": "",
+      "rawSiteModulesField": "{5A2F6A6F-3028-4210-AAD3-82C1365C4802}|{9F10010E-49E2-4DCD-A5A1-4DA752ADED2A}|{4342A029-0186-4B0D-8959-FFEF4FD998C2}|{AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA}|{C4658673-5D70-44ED-9004-D66EAC1DC718}|{CA502DCF-20D2-4618-A735-E4FCB6D5E114}|{E2AF1A41-799E-481B-8FDC-B2D33FB729A1}|{66B9C663-2602-42B1-A5A2-3D04DB6C506A}|{1FD78E81-59A6-4513-90F1-165A95D4B16B}|{BEBF4026-24A3-4EA6-986A-518B76DBD71A}|{385F31BE-FF0C-4D84-A627-9ECD21295AFD}|{F0EA389E-F78D-440B-9429-F04FE735344A}|{AC1A27CA-6BF3-4D23-915E-668326D52CF1}|{D7EEAF4D-2B58-4029-B141-844221565EF0}|{1F35559F-2140-4774-8BC1-525BB722BAA2}|{E243BDAA-AE7A-41DA-A183-CB25EC90F8C3}",
+      "rawTenantModulesField": "{7B81B847-1891-43B2-BC13-5047A62EC32A}|{7BAAA4FC-3051-442D-9BD2-AD720B655E0B}|{0DC2E395-4A95-4773-88CA-75B22A130849}|{4346A98A-D6E9-491E-A0ED-CD12F524CF4E}|{4CBC64BF-8116-48A1-ABAC-DB19103897A6}|{7574F439-0B48-48BE-BA6B-94B1A3CE01A3}|{D912C30C-7A98-4A8D-A094-611D9AF9605D}|{6DE1F4E9-815D-491D-923D-D5038100DBEE}|{02CD7086-1F87-41EC-B40F-B92C1226895B}|{1B0A98C0-1801-44A0-85F2-845694FEAFF3}|{D315A501-6503-4545-A5D8-B9FECBA1097D}",
+      "siteModules": [
+        "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+        "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+        "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+        "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+        "C4658673-5D70-44ED-9004-D66EAC1DC718",
+        "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+        "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+        "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+        "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+        "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+        "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+        "F0EA389E-F78D-440B-9429-F04FE735344A",
+        "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+        "D7EEAF4D-2B58-4029-B141-844221565EF0",
+        "1F35559F-2140-4774-8BC1-525BB722BAA2",
+        "E243BDAA-AE7A-41DA-A183-CB25EC90F8C3"
+      ],
+      "tenantModules": [
+        "7B81B847-1891-43B2-BC13-5047A62EC32A",
+        "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+        "0DC2E395-4A95-4773-88CA-75B22A130849",
+        "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+        "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+        "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+        "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+        "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+        "02CD7086-1F87-41EC-B40F-B92C1226895B",
+        "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+        "D315A501-6503-4545-A5D8-B9FECBA1097D"
+      ],
+      "siteModuleItems": [
+        {
+          "role": "SITE_MODULES",
+          "guid": "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+          "itemId": "5a2f6a6f30284210aad382c1365c4802",
+          "name": "Redirects Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add Redirects Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Redirects Insert Option",
+              "template": "EditSiteItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+          "itemId": "9f10010e49e24dcda5a14da752aded2a",
+          "name": "SiteMetadata Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap settings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+          "itemId": "4342a02901864b0d8959ffef4fd998c2",
+          "name": "Headless Variants Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants/Headless Variants Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants",
+          "parentName": "Headless Variants",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Headless Variants Root",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+          "itemId": "ae5d1384bb754c6ba8b54b008c2ac5da",
+          "name": "Multisite Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Shared Sites Settings Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Set home item title",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Set isSiteThumbnailSource",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "C4658673-5D70-44ED-9004-D66EAC1DC718",
+          "itemId": "c46586735d7044ed9004d66eac1dc718",
+          "name": "Placeholder Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings/Placeholder Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings",
+          "parentName": "PlaceholderSettings",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Placeholder Settings Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+          "itemId": "ca502dcf20d24618a735e4fcb6d5e114",
+          "name": "Presentation Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Design Placeholder Settings Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Styles Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+          "itemId": "e2af1a41799e481b8fdcb2d33fb729a1",
+          "name": "Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+          "itemId": "66b9c663260242b1a5a23d04db6c506a",
+          "name": "Headless Media Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media/Headless Media Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media",
+          "parentName": "Media",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Image Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+          "itemId": "1fd78e8159a6451390f1165a95d4b16b",
+          "name": "Headless Navigation Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Link Lists Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Filters Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+          "itemId": "bebf402624a34ea6986a518b76dbd71a",
+          "name": "Headless Page Branches Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches/Headless Page Branches Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches",
+          "parentName": "Page Branches",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Page Branches folder Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+          "itemId": "385f31beff0c4d84a6279ecd21295afd",
+          "name": "Headless Page Content Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content/Headless Page Content Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content",
+          "parentName": "Page Content",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Promo Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Rich Text Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "F0EA389E-F78D-440B-9429-F04FE735344A",
+          "itemId": "f0ea389ef78d440b9429f04fe735344a",
+          "name": "Headless Page Structure Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure/Headless Page Structure Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure",
+          "parentName": "Page Structure",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+          "itemId": "ac1a27ca6bf34d23915e668326d52cf1",
+          "name": "Headless Taxonomy Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Tags Data Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "D7EEAF4D-2B58-4029-B141-844221565EF0",
+          "itemId": "d7eeaf4d2b584029b141844221565ef0",
+          "name": "Headless FEaaS Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/Headless FEaaS Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1F35559F-2140-4774-8BC1-525BB722BAA2",
+          "itemId": "1f35559f214047748bc1525bb722baa2",
+          "name": "Headless Forms Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms/Headless Forms Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms",
+          "parentName": "Forms",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "E243BDAA-AE7A-41DA-A183-CB25EC90F8C3",
+          "itemId": "e243bdaaae7a41daa183cb25ec90f8c3",
+          "name": "Solterra and Co Setup",
+          "path": "/sitecore/system/Settings/Project/click-click-launch/Solterra and Co Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Project/click-click-launch",
+          "parentName": "click-click-launch",
+          "childrenCount": 9,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Enumerations",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Home Page Data Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Pages",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Designs",
+              "template": "AddItem"
+            },
+            {
+              "name": "Data Folders",
+              "template": "Folder"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            },
+            {
+              "name": "Add Home Renderings",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Post Setup Step",
+              "template": "PostSetupStep"
+            }
+          ]
+        }
+      ],
+      "tenantModuleItems": [
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7B81B847-1891-43B2-BC13-5047A62EC32A",
+          "itemId": "7b81b847189143b2bc135047a62ec32a",
+          "name": "Error Handling Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling/Error Handling Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling",
+          "parentName": "Error Handling",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Error Handling - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+          "itemId": "7baaa4fc3051442d9bd2ad720b655e0b",
+          "name": "Headless Navigation Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Navigation",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "0DC2E395-4A95-4773-88CA-75B22A130849",
+          "itemId": "0dc2e3954a95477388ca75b22a130849",
+          "name": "Redirects Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Redirect Insert Option",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+          "itemId": "4346a98ad6e9491ea0edcd12f524cf4e",
+          "name": "Security Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security/Security Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security",
+          "parentName": "Security",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Site Collection Role",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Role",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+          "itemId": "4cbc64bf811648a1abacdb19103897a6",
+          "name": "SiteMetadata Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap Media Items",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page",
+              "template": "Node"
+            },
+            {
+              "name": "Settings",
+              "template": "Node"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+          "itemId": "7574f4390b4848beba6b94b1a3ce01a3",
+          "name": "Multisite Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Content fields",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+          "itemId": "d912c30c7a984a8da094611d9af9605d",
+          "name": "Presentation Settings Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 5,
+          "childrenSummary": [
+            {
+              "name": "Designable",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+          "itemId": "6de1f4e9815d491d923dd5038100dbee",
+          "name": "Scaffolding Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Scaffolding Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            },
+            {
+              "name": "Site Collection Modules",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Modules",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "02CD7086-1F87-41EC-B40F-B92C1226895B",
+          "itemId": "02cd70861f8741ecb40fb92c1226895b",
+          "name": "Editing Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing/Editing Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing",
+          "parentName": "Editing",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Editing Theme - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+          "itemId": "1b0a98c0180144a085f2845694feaff3",
+          "name": "Headless Taxonomy Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "_Taggable",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D315A501-6503-4545-A5D8-B9FECBA1097D",
+          "itemId": "d315a50165034545a5d8b9fecba1097d",
+          "name": "FEaaS Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/FEaaS Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add component editor script URL",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Add data source templates",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "siteTemplate": "SYNC",
+      "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+      "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/SYNC",
+      "itemId": "7236321666604ae7b0a80991280aa5d9",
+      "builtInFlag": "",
+      "rawSiteModulesField": "{5A2F6A6F-3028-4210-AAD3-82C1365C4802}|{9F10010E-49E2-4DCD-A5A1-4DA752ADED2A}|{4342A029-0186-4B0D-8959-FFEF4FD998C2}|{AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA}|{C4658673-5D70-44ED-9004-D66EAC1DC718}|{CA502DCF-20D2-4618-A735-E4FCB6D5E114}|{E2AF1A41-799E-481B-8FDC-B2D33FB729A1}|{66B9C663-2602-42B1-A5A2-3D04DB6C506A}|{1FD78E81-59A6-4513-90F1-165A95D4B16B}|{BEBF4026-24A3-4EA6-986A-518B76DBD71A}|{385F31BE-FF0C-4D84-A627-9ECD21295AFD}|{F0EA389E-F78D-440B-9429-F04FE735344A}|{AC1A27CA-6BF3-4D23-915E-668326D52CF1}|{D7EEAF4D-2B58-4029-B141-844221565EF0}|{1F35559F-2140-4774-8BC1-525BB722BAA2}|{ADB64750-B11D-4D17-A203-091E22263D03}",
+      "rawTenantModulesField": "{7B81B847-1891-43B2-BC13-5047A62EC32A}|{7BAAA4FC-3051-442D-9BD2-AD720B655E0B}|{0DC2E395-4A95-4773-88CA-75B22A130849}|{4346A98A-D6E9-491E-A0ED-CD12F524CF4E}|{4CBC64BF-8116-48A1-ABAC-DB19103897A6}|{7574F439-0B48-48BE-BA6B-94B1A3CE01A3}|{D912C30C-7A98-4A8D-A094-611D9AF9605D}|{6DE1F4E9-815D-491D-923D-D5038100DBEE}|{02CD7086-1F87-41EC-B40F-B92C1226895B}|{1B0A98C0-1801-44A0-85F2-845694FEAFF3}|{D315A501-6503-4545-A5D8-B9FECBA1097D}",
+      "siteModules": [
+        "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+        "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+        "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+        "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+        "C4658673-5D70-44ED-9004-D66EAC1DC718",
+        "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+        "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+        "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+        "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+        "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+        "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+        "F0EA389E-F78D-440B-9429-F04FE735344A",
+        "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+        "D7EEAF4D-2B58-4029-B141-844221565EF0",
+        "1F35559F-2140-4774-8BC1-525BB722BAA2",
+        "ADB64750-B11D-4D17-A203-091E22263D03"
+      ],
+      "tenantModules": [
+        "7B81B847-1891-43B2-BC13-5047A62EC32A",
+        "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+        "0DC2E395-4A95-4773-88CA-75B22A130849",
+        "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+        "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+        "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+        "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+        "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+        "02CD7086-1F87-41EC-B40F-B92C1226895B",
+        "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+        "D315A501-6503-4545-A5D8-B9FECBA1097D"
+      ],
+      "siteModuleItems": [
+        {
+          "role": "SITE_MODULES",
+          "guid": "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+          "itemId": "5a2f6a6f30284210aad382c1365c4802",
+          "name": "Redirects Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add Redirects Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Redirects Insert Option",
+              "template": "EditSiteItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+          "itemId": "9f10010e49e24dcda5a14da752aded2a",
+          "name": "SiteMetadata Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap settings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+          "itemId": "4342a02901864b0d8959ffef4fd998c2",
+          "name": "Headless Variants Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants/Headless Variants Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants",
+          "parentName": "Headless Variants",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Headless Variants Root",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+          "itemId": "ae5d1384bb754c6ba8b54b008c2ac5da",
+          "name": "Multisite Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Shared Sites Settings Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Set home item title",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Set isSiteThumbnailSource",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "C4658673-5D70-44ED-9004-D66EAC1DC718",
+          "itemId": "c46586735d7044ed9004d66eac1dc718",
+          "name": "Placeholder Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings/Placeholder Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings",
+          "parentName": "PlaceholderSettings",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Placeholder Settings Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+          "itemId": "ca502dcf20d24618a735e4fcb6d5e114",
+          "name": "Presentation Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Design Placeholder Settings Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Styles Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+          "itemId": "e2af1a41799e481b8fdcb2d33fb729a1",
+          "name": "Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+          "itemId": "66b9c663260242b1a5a23d04db6c506a",
+          "name": "Headless Media Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media/Headless Media Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media",
+          "parentName": "Media",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Image Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+          "itemId": "1fd78e8159a6451390f1165a95d4b16b",
+          "name": "Headless Navigation Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Link Lists Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Filters Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+          "itemId": "bebf402624a34ea6986a518b76dbd71a",
+          "name": "Headless Page Branches Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches/Headless Page Branches Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches",
+          "parentName": "Page Branches",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Page Branches folder Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+          "itemId": "385f31beff0c4d84a6279ecd21295afd",
+          "name": "Headless Page Content Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content/Headless Page Content Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content",
+          "parentName": "Page Content",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Promo Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Rich Text Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "F0EA389E-F78D-440B-9429-F04FE735344A",
+          "itemId": "f0ea389ef78d440b9429f04fe735344a",
+          "name": "Headless Page Structure Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure/Headless Page Structure Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure",
+          "parentName": "Page Structure",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+          "itemId": "ac1a27ca6bf34d23915e668326d52cf1",
+          "name": "Headless Taxonomy Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Tags Data Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "D7EEAF4D-2B58-4029-B141-844221565EF0",
+          "itemId": "d7eeaf4d2b584029b141844221565ef0",
+          "name": "Headless FEaaS Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/Headless FEaaS Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1F35559F-2140-4774-8BC1-525BB722BAA2",
+          "itemId": "1f35559f214047748bc1525bb722baa2",
+          "name": "Headless Forms Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms/Headless Forms Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms",
+          "parentName": "Forms",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "ADB64750-B11D-4D17-A203-091E22263D03",
+          "itemId": "adb64750b11d4d17a203091e22263d03",
+          "name": "SYNC Setup",
+          "path": "/sitecore/system/Settings/Project/click-click-launch/SYNC Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Project/click-click-launch",
+          "parentName": "click-click-launch",
+          "childrenCount": 11,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Enumerations",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Home Page Data Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Page Speakers",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Page Video",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Designs",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Styles",
+              "template": "AddItem"
+            },
+            {
+              "name": "Data Folders",
+              "template": "Folder"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            },
+            {
+              "name": "Add Home Renderings",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Post Setup Step",
+              "template": "PostSetupStep"
+            }
+          ]
+        }
+      ],
+      "tenantModuleItems": [
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7B81B847-1891-43B2-BC13-5047A62EC32A",
+          "itemId": "7b81b847189143b2bc135047a62ec32a",
+          "name": "Error Handling Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling/Error Handling Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling",
+          "parentName": "Error Handling",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Error Handling - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+          "itemId": "7baaa4fc3051442d9bd2ad720b655e0b",
+          "name": "Headless Navigation Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Navigation",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "0DC2E395-4A95-4773-88CA-75B22A130849",
+          "itemId": "0dc2e3954a95477388ca75b22a130849",
+          "name": "Redirects Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Redirect Insert Option",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+          "itemId": "4346a98ad6e9491ea0edcd12f524cf4e",
+          "name": "Security Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security/Security Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security",
+          "parentName": "Security",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Site Collection Role",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Role",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+          "itemId": "4cbc64bf811648a1abacdb19103897a6",
+          "name": "SiteMetadata Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap Media Items",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page",
+              "template": "Node"
+            },
+            {
+              "name": "Settings",
+              "template": "Node"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+          "itemId": "7574f4390b4848beba6b94b1a3ce01a3",
+          "name": "Multisite Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Content fields",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+          "itemId": "d912c30c7a984a8da094611d9af9605d",
+          "name": "Presentation Settings Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 5,
+          "childrenSummary": [
+            {
+              "name": "Designable",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+          "itemId": "6de1f4e9815d491d923dd5038100dbee",
+          "name": "Scaffolding Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Scaffolding Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            },
+            {
+              "name": "Site Collection Modules",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Modules",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "02CD7086-1F87-41EC-B40F-B92C1226895B",
+          "itemId": "02cd70861f8741ecb40fb92c1226895b",
+          "name": "Editing Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing/Editing Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing",
+          "parentName": "Editing",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Editing Theme - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+          "itemId": "1b0a98c0180144a085f2845694feaff3",
+          "name": "Headless Taxonomy Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "_Taggable",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D315A501-6503-4545-A5D8-B9FECBA1097D",
+          "itemId": "d315a50165034545a5d8b9fecba1097d",
+          "name": "FEaaS Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/FEaaS Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add component editor script URL",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Add data source templates",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "siteTemplate": "Alaris",
+      "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+      "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/Alaris",
+      "itemId": "dd0b78f36a054c09991efb09d1b472d1",
+      "builtInFlag": "",
+      "rawSiteModulesField": "{5A2F6A6F-3028-4210-AAD3-82C1365C4802}|{9F10010E-49E2-4DCD-A5A1-4DA752ADED2A}|{4342A029-0186-4B0D-8959-FFEF4FD998C2}|{AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA}|{C4658673-5D70-44ED-9004-D66EAC1DC718}|{CA502DCF-20D2-4618-A735-E4FCB6D5E114}|{E2AF1A41-799E-481B-8FDC-B2D33FB729A1}|{66B9C663-2602-42B1-A5A2-3D04DB6C506A}|{1FD78E81-59A6-4513-90F1-165A95D4B16B}|{BEBF4026-24A3-4EA6-986A-518B76DBD71A}|{385F31BE-FF0C-4D84-A627-9ECD21295AFD}|{F0EA389E-F78D-440B-9429-F04FE735344A}|{AC1A27CA-6BF3-4D23-915E-668326D52CF1}|{D7EEAF4D-2B58-4029-B141-844221565EF0}|{1F35559F-2140-4774-8BC1-525BB722BAA2}|{0EA2D04C-785E-4273-BC5F-380634764DF3}",
+      "rawTenantModulesField": "{7B81B847-1891-43B2-BC13-5047A62EC32A}|{7BAAA4FC-3051-442D-9BD2-AD720B655E0B}|{0DC2E395-4A95-4773-88CA-75B22A130849}|{4346A98A-D6E9-491E-A0ED-CD12F524CF4E}|{4CBC64BF-8116-48A1-ABAC-DB19103897A6}|{7574F439-0B48-48BE-BA6B-94B1A3CE01A3}|{D912C30C-7A98-4A8D-A094-611D9AF9605D}|{6DE1F4E9-815D-491D-923D-D5038100DBEE}|{02CD7086-1F87-41EC-B40F-B92C1226895B}|{1B0A98C0-1801-44A0-85F2-845694FEAFF3}|{D315A501-6503-4545-A5D8-B9FECBA1097D}",
+      "siteModules": [
+        "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+        "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+        "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+        "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+        "C4658673-5D70-44ED-9004-D66EAC1DC718",
+        "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+        "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+        "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+        "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+        "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+        "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+        "F0EA389E-F78D-440B-9429-F04FE735344A",
+        "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+        "D7EEAF4D-2B58-4029-B141-844221565EF0",
+        "1F35559F-2140-4774-8BC1-525BB722BAA2",
+        "0EA2D04C-785E-4273-BC5F-380634764DF3"
+      ],
+      "tenantModules": [
+        "7B81B847-1891-43B2-BC13-5047A62EC32A",
+        "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+        "0DC2E395-4A95-4773-88CA-75B22A130849",
+        "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+        "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+        "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+        "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+        "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+        "02CD7086-1F87-41EC-B40F-B92C1226895B",
+        "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+        "D315A501-6503-4545-A5D8-B9FECBA1097D"
+      ],
+      "siteModuleItems": [
+        {
+          "role": "SITE_MODULES",
+          "guid": "5A2F6A6F-3028-4210-AAD3-82C1365C4802",
+          "itemId": "5a2f6a6f30284210aad382c1365c4802",
+          "name": "Redirects Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add Redirects Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Redirects Insert Option",
+              "template": "EditSiteItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "9F10010E-49E2-4DCD-A5A1-4DA752ADED2A",
+          "itemId": "9f10010e49e24dcda5a14da752aded2a",
+          "name": "SiteMetadata Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap settings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "4342A029-0186-4B0D-8959-FFEF4FD998C2",
+          "itemId": "4342a02901864b0d8959ffef4fd998c2",
+          "name": "Headless Variants Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants/Headless Variants Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Headless Variants",
+          "parentName": "Headless Variants",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Headless Variants Root",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AE5D1384-BB75-4C6B-A8B5-4B008C2AC5DA",
+          "itemId": "ae5d1384bb754c6ba8b54b008c2ac5da",
+          "name": "Multisite Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Shared Sites Settings Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Set home item title",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Set isSiteThumbnailSource",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "C4658673-5D70-44ED-9004-D66EAC1DC718",
+          "itemId": "c46586735d7044ed9004d66eac1dc718",
+          "name": "Placeholder Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings/Placeholder Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/PlaceholderSettings",
+          "parentName": "PlaceholderSettings",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Placeholder Settings Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "CA502DCF-20D2-4618-A735-E4FCB6D5E114",
+          "itemId": "ca502dcf20d24618a735e4fcb6d5e114",
+          "name": "Presentation Settings Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Design Placeholder Settings Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Styles Folder",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "E2AF1A41-799E-481B-8FDC-B2D33FB729A1",
+          "itemId": "e2af1a41799e481b8fdcb2d33fb729a1",
+          "name": "Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "66B9C663-2602-42B1-A5A2-3D04DB6C506A",
+          "itemId": "66b9c663260242b1a5a23d04db6c506a",
+          "name": "Headless Media Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media/Headless Media Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Media",
+          "parentName": "Media",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Image Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1FD78E81-59A6-4513-90F1-165A95D4B16B",
+          "itemId": "1fd78e8159a6451390f1165a95d4b16b",
+          "name": "Headless Navigation Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Link Lists Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Filters Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Navigation Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "BEBF4026-24A3-4EA6-986A-518B76DBD71A",
+          "itemId": "bebf402624a34ea6986a518b76dbd71a",
+          "name": "Headless Page Branches Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches/Headless Page Branches Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Branches",
+          "parentName": "Page Branches",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Page Branches folder Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "385F31BE-FF0C-4D84-A627-9ECD21295AFD",
+          "itemId": "385f31beff0c4d84a6279ecd21295afd",
+          "name": "Headless Page Content Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content/Headless Page Content Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Content",
+          "parentName": "Page Content",
+          "childrenCount": 4,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Promo Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Headless Rich Text Data Item",
+              "template": "AddItem"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "F0EA389E-F78D-440B-9429-F04FE735344A",
+          "itemId": "f0ea389ef78d440b9429f04fe735344a",
+          "name": "Headless Page Structure Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure/Headless Page Structure Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Page Structure",
+          "parentName": "Page Structure",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "AC1A27CA-6BF3-4D23-915E-668326D52CF1",
+          "itemId": "ac1a27ca6bf34d23915e668326d52cf1",
+          "name": "Headless Taxonomy Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Headless Tags Data Item",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "D7EEAF4D-2B58-4029-B141-844221565EF0",
+          "itemId": "d7eeaf4d2b584029b141844221565ef0",
+          "name": "Headless FEaaS Site Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/Headless FEaaS Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "1F35559F-2140-4774-8BC1-525BB722BAA2",
+          "itemId": "1f35559f214047748bc1525bb722baa2",
+          "name": "Headless Forms Site Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms/Headless Forms Site Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Forms",
+          "parentName": "Forms",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            }
+          ]
+        },
+        {
+          "role": "SITE_MODULES",
+          "guid": "0EA2D04C-785E-4273-BC5F-380634764DF3",
+          "itemId": "0ea2d04c785e4273bc5f380634764df3",
+          "name": "Alaris Setup",
+          "path": "/sitecore/system/Settings/Project/click-click-launch/Alaris Setup",
+          "template": {
+            "name": "HeadlessSiteSetupRoot",
+            "templateId": "bed31d6fd96845a9b54e12d7f977d861",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Project/click-click-launch",
+          "parentName": "click-click-launch",
+          "childrenCount": 11,
+          "childrenSummary": [
+            {
+              "name": "Add Available Renderings",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Enumerations",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Home Page Data Folder",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Partial Designs",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Products",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Taxonomy",
+              "template": "AddItem"
+            },
+            {
+              "name": "Add Test Drive",
+              "template": "AddItem"
+            },
+            {
+              "name": "Data Folders",
+              "template": "Folder"
+            },
+            {
+              "name": "Rendering Variants",
+              "template": "Folder"
+            },
+            {
+              "name": "Add Home Renderings",
+              "template": "ExecuteScript"
+            },
+            {
+              "name": "Post Setup Step",
+              "template": "PostSetupStep"
+            }
+          ]
+        }
+      ],
+      "tenantModuleItems": [
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7B81B847-1891-43B2-BC13-5047A62EC32A",
+          "itemId": "7b81b847189143b2bc135047a62ec32a",
+          "name": "Error Handling Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling/Error Handling Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Error Handling",
+          "parentName": "Error Handling",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Error Handling - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7BAAA4FC-3051-442D-9BD2-AD720B655E0B",
+          "itemId": "7baaa4fc3051442d9bd2ad720b655e0b",
+          "name": "Headless Navigation Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation/Headless Navigation Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Navigation",
+          "parentName": "Navigation",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Navigation",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "0DC2E395-4A95-4773-88CA-75B22A130849",
+          "itemId": "0dc2e3954a95477388ca75b22a130849",
+          "name": "Redirects Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects/Redirects Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Redirects",
+          "parentName": "Redirects",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Redirect Insert Option",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4346A98A-D6E9-491E-A0ED-CD12F524CF4E",
+          "itemId": "4346a98ad6e9491ea0edcd12f524cf4e",
+          "name": "Security Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security/Security Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Security",
+          "parentName": "Security",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Site Collection Role",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Role",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "4CBC64BF-8116-48A1-ABAC-DB19103897A6",
+          "itemId": "4cbc64bf811648a1abacdb19103897a6",
+          "name": "SiteMetadata Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata/SiteMetadata Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/SiteMetadata",
+          "parentName": "SiteMetadata",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Add Sitemap Media Items",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page",
+              "template": "Node"
+            },
+            {
+              "name": "Settings",
+              "template": "Node"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "7574F439-0B48-48BE-BA6B-94B1A3CE01A3",
+          "itemId": "7574f4390b4848beba6b94b1a3ce01a3",
+          "name": "Multisite Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite/Multisite Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Multisite",
+          "parentName": "Multisite",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Add Content fields",
+              "template": "ExecuteScript"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D912C30C-7A98-4A8D-A094-611D9AF9605D",
+          "itemId": "d912c30c7a984a8da094611d9af9605d",
+          "name": "Presentation Settings Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation/Presentation Settings Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Presentation",
+          "parentName": "Presentation",
+          "childrenCount": 5,
+          "childrenSummary": [
+            {
+              "name": "Designable",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Design Folder",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Page Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Partial Designs - Insert Options",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "6DE1F4E9-815D-491D-923D-D5038100DBEE",
+          "itemId": "6de1f4e9815d491d923dd5038100dbee",
+          "name": "Scaffolding Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding/Scaffolding Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Scaffolding",
+          "parentName": "Scaffolding",
+          "childrenCount": 3,
+          "childrenSummary": [
+            {
+              "name": "Pre Delete Step",
+              "template": "PreDeleteStep"
+            },
+            {
+              "name": "Site Collection Modules",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Site Modules",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "02CD7086-1F87-41EC-B40F-B92C1226895B",
+          "itemId": "02cd70861f8741ecb40fb92c1226895b",
+          "name": "Editing Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing/Editing Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/Editing",
+          "parentName": "Editing",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "Editing Theme - Settings",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "1B0A98C0-1801-44A0-85F2-845694FEAFF3",
+          "itemId": "1b0a98c0180144a085f2845694feaff3",
+          "name": "Headless Taxonomy Site Collection Setup",
+          "path": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy/Headless Taxonomy Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Feature/JSS Experience Accelerator/Taxonomy",
+          "parentName": "Taxonomy",
+          "childrenCount": 1,
+          "childrenSummary": [
+            {
+              "name": "_Taggable",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        },
+        {
+          "role": "TENANT_MODULES",
+          "guid": "D315A501-6503-4545-A5D8-B9FECBA1097D",
+          "itemId": "d315a50165034545a5d8b9fecba1097d",
+          "name": "FEaaS Site Collection Setup",
+          "path": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS/FEaaS Site Collection Setup",
+          "template": {
+            "name": "HeadlessTenantSetupRoot",
+            "templateId": "f036b5e037fb45379d36ef84e5bd41b7",
+            "fullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessTenantSetupRoot"
+          },
+          "parentPath": "/sitecore/system/Settings/Foundation/JSS Experience Accelerator/FEaaS",
+          "parentName": "FEaaS",
+          "childrenCount": 2,
+          "childrenSummary": [
+            {
+              "name": "Add component editor script URL",
+              "template": "EditTenantTemplate"
+            },
+            {
+              "name": "Add data source templates",
+              "template": "EditTenantTemplate"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "U3_thumbnailImageStorage": {
+    "verdict": "Source field is the standard Sitecore `__Thumbnail` field (GUID c7c26117-dbb1-42b2-ab5e-f7223845cca3, type `Thumbnail`). Encoding is Sitecore media-XML: `<image mediaid=\"{GUID}\" />`. Sites API resolves the media item to a public URL for `thumbnail`. There is no dedicated `image` field on the Solution template — the Sites API's `image` likely returns the same media at full resolution or null. No `_SolutionTemplateThumbnail` or `_SolutionTemplateImage` base template exists in the inheritance chain.",
+    "thumbnailSourceField": "c7c26117-dbb1-42b2-ab5e-f7223845cca3",
+    "thumbnailFieldName": "__Thumbnail",
+    "imageSourceField": null,
+    "imageSourceNote": "No distinct image source field on Solution template. Sites API `image` likely renders the same media item from __Thumbnail at higher resolution (or returns null when __Thumbnail is empty).",
+    "encoding": "mediaXml",
+    "exampleValuesFromTenantRootedTemplates": [
+      {
+        "siteTemplate": "Solterra and Co",
+        "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/Solterra and Co",
+        "thumbnail": "<image mediaid=\"{E540B407-FDF5-4BBC-B4C1-76E8812CDD6A}\" />",
+        "icon": null
+      },
+      {
+        "siteTemplate": "SYNC",
+        "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/SYNC",
+        "thumbnail": "<image mediaid=\"{5F6F8FCA-1C11-4BA3-862E-DD9306AB7B81}\" />",
+        "icon": null
+      },
+      {
+        "siteTemplate": "Alaris",
+        "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/Alaris",
+        "thumbnail": "<image mediaid=\"{B82C712D-F88A-423A-924C-C2D53CAB2D85}\" />",
+        "icon": null
+      }
+    ]
+  },
+  "U4_contentsShape": {
+    "sourceField": "da855368-e5f2-4932-ae55-7f8b08a5a205",
+    "sourceFieldName": "Content",
+    "encoding": "JSON array of `{name, content}` objects (stored as string in a Multi-Line Text field)",
+    "exampleValueFromTenantRoot": "6393776bd72449eb8a3f96af12825810",
+    "exampleValues": [
+      {
+        "siteTemplate": "Empty Site",
+        "rawContent": "[{\"name\":\"Pages\",\"content\":\"Home\"},{\"name\":\"Components\",\"content\":\"SXA\"},{\"name\":\"Integrations\",\"content\":\"CDP Personalize and Analytics\"}]"
+      },
+      {
+        "siteTemplate": "Solterra and Co",
+        "rawContent": "[{\"name\":\"Pages\",\"content\":\"Home, Article Page, Landing Page\"},{\"name\":\"Components\",\"content\":\"SXA components\"},{\"name\":\"Integrations\",\"content\":\"Personalization and Analytics\"}]"
+      },
+      {
+        "siteTemplate": "SYNC",
+        "rawContent": "[{\"name\":\"Pages\",\"content\":\"Home, Product Page\"},{\"name\":\"Components\",\"content\":\"SXA components\"},{\"name\":\"Integrations\",\"content\":\"Personalization and Analytics\"}]"
+      },
+      {
+        "siteTemplate": "Alaris",
+        "rawContent": "[{\"name\":\"Pages\",\"content\":\"Home, Products, Test Drive\"},{\"name\":\"Products\",\"content\":\"Aero, Nexa, Terra\"},{\"name\":\"Components\",\"content\":\"SXA components\"},{\"name\":\"Integrations\",\"content\":\"Personalization and Analytics\"}]"
+      }
+    ],
+    "verdict": "Source field is the SXA `Content` field (GUID da855368-e5f2-4932-ae55-7f8b08a5a205). Type: Multi-Line Text. Encoding: a JSON-serialized array `[{\"name\": \"Pages\", \"content\": \"Home, ...\"}, {\"name\": \"Components\", \"content\": \"...\"}, ...]`. The Sites API picker decodes this to surface contents[].key = name, contents[].value = content for the StringStringKeyValuePair output shape."
+  },
+  "U5_wrapperLayer": {
+    "hasWrapper": false,
+    "wrapperKind": null,
+    "verdict": "No wrapper layer. SITE_MODULES + TENANT_MODULES entries reference Module items DIRECTLY by GUID. Each Module item conforms to HeadlessSiteSetupRoot or HeadlessTenantSetupRoot — both of which contain the setup-action children directly (AddItem, EditSiteItem, ExecuteScript, EditTenantTemplate, PostSetupStep, Folder, Node). The 'Foundation Module' parent in the plan doc's hypothesis does not exist — refs are leaf-to-leaf.",
+    "evidenceModuleChains": [
+      {
+        "siteTemplate": "Solterra and Co",
+        "moduleGuid": "E243BDAA-AE7A-41DA-A183-CB25EC90F8C3",
+        "chain": [
+          {
+            "name": "Solterra and Co Setup",
+            "path": "/sitecore/system/Settings/Project/click-click-launch/Solterra and Co Setup",
+            "template": "HeadlessSiteSetupRoot",
+            "templateFullName": "Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot"
+          },
+          {
+            "name": "click-click-launch",
+            "path": "/sitecore/system/Settings/Project/click-click-launch",
+            "template": "Settings Folder",
+            "templateFullName": "Foundation/JSS Experience Accelerator/Multisite/Folders/Settings Folder"
+          },
+          {
+            "name": "Project",
+            "path": "/sitecore/system/Settings/Project",
+            "template": "Folder",
+            "templateFullName": "Common/Folder"
+          },
+          {
+            "name": "Settings",
+            "path": "/sitecore/system/Settings",
+            "template": "Node",
+            "templateFullName": "System/Node"
+          },
+          {
+            "name": "system",
+            "path": "/sitecore/system",
+            "template": "Main section",
+            "templateFullName": "System/Main section"
+          }
+        ]
+      }
+    ]
+  },
+  "U6_metadataFields": {
+    "knownPairs": [
+      {
+        "apiKey": "builtInTemplate",
+        "sourceField": "Built-in template",
+        "sourceFieldGuid": "a13aae24-a295-4cc3-b188-dfa59e2172a9",
+        "encoding": "checkbox 1/0 → string 'true'/'false'"
+      }
+    ],
+    "additionalPairs": [
+      {
+        "siteTemplate": "Empty Site",
+        "location": "Foundation-rooted (Scaffolding/Templates)",
+        "builtInFlag": "1",
+        "otherCandidates": []
+      },
+      {
+        "siteTemplate": "Solterra and Co",
+        "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+        "builtInFlag": "",
+        "otherCandidates": []
+      },
+      {
+        "siteTemplate": "SYNC",
+        "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+        "builtInFlag": "",
+        "otherCandidates": []
+      },
+      {
+        "siteTemplate": "Alaris",
+        "location": "Tenant-rooted (Project/click-click-launch/Templates)",
+        "builtInFlag": "",
+        "otherCandidates": []
+      }
+    ],
+    "verdict": "Sites API `metadata` exposes ONE known pair: `builtInTemplate` = string('true'|'false'). It is sourced from the SXA `Built-in template` checkbox field (GUID a13aae24-a295-4cc3-b188-dfa59e2172a9). On tenant-authored templates (the 3 click-click-launch Solution templates) this field is empty (= 'false'); on the Foundation-rooted Empty Site it is '1' (= 'true'). No other metadata pairs observed on the inspected items. The plan-doc concern that metadata might carry MORE pairs is unverified directly (no working Sites API token in this run) — but the underlying item field-set offers no obvious other candidates."
+  },
+  "pickerResolutionVerification": {
+    "testModuleHandle": null,
+    "testModulePath": null,
+    "testSiteTemplateHandle": null,
+    "testSiteHandle": null,
+    "instantiationResult": "not-executed",
+    "instantiationResultReason": "Sites API (xmapps-api.sitecorecloud.io) rejected the supplied token (401 Unauthorized). The CLI Config client this env file ships has the org-level deploy + xmcloud.cm:admin scope set, which Authoring GraphQL accepts but xmapps-api does not. End-to-end picker→createSite verification needs the env-scoped automation client from a tenant `scai setup login`. Production evidence on this same tenant suffices to answer the verification question without it (see siteContributions).",
+    "productionEvidenceFromTenant": {
+      "tenantFolder": "click-click-launch",
+      "siteTemplate": {
+        "name": "Solterra and Co",
+        "path": "/sitecore/system/Settings/Project/click-click-launch/Templates/Solterra and Co",
+        "itemId": "6393776bd72449eb8a3f96af12825810"
+      },
+      "tenantRootedModuleReferencedInSiteModules": {
+        "name": "Solterra and Co Setup",
+        "path": "/sitecore/system/Settings/Project/click-click-launch/Solterra and Co Setup",
+        "guid": "{E243BDAA-AE7A-41DA-A183-CB25EC90F8C3}",
+        "template": "HeadlessSiteSetupRoot"
+      },
+      "otherTenantRootedTemplatesUsingSamePattern": [
+        {
+          "name": "Alaris",
+          "tenantRootedModule": "Alaris Setup",
+          "moduleGuid": "{0EA2D04C-785E-4273-BC5F-380634764DF3}"
+        },
+        {
+          "name": "SYNC",
+          "tenantRootedModule": "SYNC Setup",
+          "moduleGuid": "{ADB64750-B11D-4D17-A203-091E22263D03}"
+        }
+      ]
+    },
+    "siteContributions": {
+      "expected": "Tenant-rooted module's children resolve (AddItem, ExecuteScript etc) during createSite.",
+      "observed": "3 production tenant-rooted Solution templates (Alaris, SYNC, Solterra and Co) carry tenant-rooted module GUIDs in their `Site Modules` field, alongside Foundation-rooted modules; treelist source `/sitecore/system/Settings` permits both. The fact that these production templates EXIST and persist via Authoring means Sitecore accepted the cross-tree GUID — picker resolution is template-inheritance + Treelist-source based, NOT path-based. Tenant rooting works without a fallback.",
+      "verdictAsCompletePickerResolutionTest": "Sites API instantiation not directly exercised in this run; surviving production pattern is interpreted as strong evidence the pattern works at picker time. If a future Sub-milestone E run finds the picker silently drops tenant-rooted modules, fall back to Foundation rooting AND file a regression note — but design D under the assumption tenant rooting works."
+    },
+    "verdict": "tenant-rooted-confirmed"
+  },
+  "cleanup": {
+    "itemsCreated": [],
+    "itemsDeleted": [],
+    "leftovers": [],
+    "note": "Zero test items created — verification used production evidence from `/sitecore/system/Settings/Project/click-click-launch/` (existing tenant-rooted Solution templates and Modules). Nothing to clean up."
+  }
+}

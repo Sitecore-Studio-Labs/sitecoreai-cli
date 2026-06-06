@@ -40,6 +40,140 @@ or `SITECOREAI_CLIENT_ID` + `SITECOREAI_CLIENT_SECRET` for
   SetField ops for `thumbnail` / `image` (we have the schema but not
   the source-field GUID), and the `kind: "asset"` media-upload IR op.
 
+## Sub-milestone A findings (2026-06-06)
+
+Captured in `docs/plans/site-template-modules-and-picker.investigation.json`
+(committed alongside this update). Sandbox: **XMC project's CM env**
+(`xmc-lizsitecore798d-xmc25db-yourfirstxmdb85`, org_Sqg9NOB4DhDdpb1x).
+The operator-supplied tenant slug `xmc-lizsitecore088b-...` does not
+exist in this org's environments list anymore (verified by paginating
+xmclouddeploy-api); substituted the XMC env because it already carries
+**three production tenant-rooted Solution templates + tenant-rooted
+`HeadlessSiteSetupRoot` modules** under the `click-click-launch`
+Project tenant — the exact pattern A needs to verify.
+
+Token mint: succeeds at audience `https://api.sitecorecloud.io` with
+scope `xmcloud.cm:admin` (+ org-level `xmclouddeploy.*`). Authoring
+GraphQL works fine; **xmapps-api Sites API returns 401** because this
+client is org-scoped, not env-scoped — so live Sites-API picker
+instantiation was NOT exercised in this run.
+
+**U1. "Foundation Module template" is a misnomer.** There is no single
+"Foundation Module" template. SXA splits Module roots in two:
+
+- `SITE_MODULES` entries → conform to template `HeadlessSiteSetupRoot`
+  (GUID `bed31d6f-d968-45a9-b54e-12d7f977d861`).
+- `TENANT_MODULES` entries → conform to `HeadlessTenantSetupRoot`
+  (GUID `f036b5e0-37fb-4537-9d36-ef84e5bd41b7`).
+
+Both templates carry **only standard Sitecore sections** (Advanced,
+Appearance, Help, etc.); no domain-specific fields. The brand
+structure lives in the Module item's **children** — instances of
+`AddItem`, `EditSiteItem`, `EditTenantTemplate`, `ExecuteScript`,
+`PostSetupStep`, `Folder`, `Node`. Each setup-action child carries its
+own field set describing the operation to perform during createSite.
+
+**U2. SITE_MODULES vs TENANT_MODULES on the only built-in.** "Empty
+Site" carries 15 SITE_MODULES (per-site setup actions: Redirects,
+SiteMetadata, Headless Variants, Multisite, PlaceholderSettings,
+PresentationSettings, etc.) and 11 TENANT_MODULES (per-collection
+setup: Error Handling, Navigation, Security, etc.). All built-in
+module items live under SXA Foundation/Feature paths, NOT under a
+single "Scaffolding/Modules" folder. **Three tenant-rooted Solution
+templates (Alaris, SYNC, Solterra and Co) at `/sitecore/system/Settings/
+Project/click-click-launch/Templates/` mirror the built-in module
+list AND append a single tenant-rooted `HeadlessSiteSetupRoot` GUID
+as the last entry.** That last entry is the tenant's own brand-setup
+module under `/sitecore/system/Settings/Project/click-click-launch/`.
+
+**U3. Thumbnail / image storage = standard `__Thumbnail` field.** No
+dedicated thumbnail/image field on the SXA Solution template
+inheritance chain (no `_SolutionTemplateThumbnail`). The Sites API
+picker's `thumbnail` and `image` map to the standard Sitecore
+**`__Thumbnail` field** (GUID `c7c26117-dbb1-42b2-ab5e-f7223845cca3`,
+type `Thumbnail`). Encoding is **Sitecore media-XML**:
+`<image mediaid="{GUID}" />`. Confirmed by the three tenant-rooted
+Solution templates, each of which has `__Thumbnail` populated with a
+media-XML reference to a media library item. There is no separate
+source field for `image` — the Sites API likely renders the same
+media item at a larger size (or returns null).
+
+> **Implication for C (revised).** The schema's `thumbnail` / `image`
+> discriminated union is fine, but the `kind: "url"` path can't write
+> directly to `__Thumbnail` — that field expects media-XML, not a URL.
+> Compile needs to either (a) upload the URL's referent to the media
+> library and write the resulting media-XML, OR (b) restrict
+> `kind: "url"` to a different SXA-aware destination (e.g., write
+> nothing to `__Thumbnail` and rely on Standard Sitecore icon
+> fallback), OR (c) accept a `__Thumbnail` value pre-shaped as media-
+> XML and document the constraint. Discuss with operator before C
+> lands — the decision changes whether `kind: "url"` is genuinely the
+> "cheap path."
+
+**U4. `contents` source field + encoding.** Source is the SXA `Content`
+field (GUID `da855368-e5f2-4932-ae55-7f8b08a5a205`, type Multi-Line
+Text). Encoding is a JSON-serialized array `[{"name": "Pages",
+"content": "Home, ..."}, {"name": "Components", "content": "..."}]`.
+The Sites API picker decodes this to `StringStringKeyValuePair[]`
+where `key = name`, `value = content`. Compile just stringifies the
+authored array.
+
+**U5. No wrapper layer between Site Template and Module.**
+SITE_MODULES + TENANT_MODULES refs point at Module items **directly**
+(by GUID). No intervening Tenant-Module wrapper template. Parent
+chain confirms: tenant-rooted Module sits under
+`/sitecore/system/Settings/Project/<tenant>/<Module Name>` with a
+`Folder`/`Settings Folder` parent — no SXA-specific wrapper.
+
+**U6. `metadata` carries only `builtInTemplate`.** Sourced from the
+SXA `Built-in template` checkbox (GUID `a13aae24-a295-4cc3-b188-
+dfa59e2172a9`). On tenant-authored templates this is empty (= false);
+on the Foundation-rooted Empty Site it is "1" (= true). No other
+metadata pairs observed in the item field set. The Sites API
+`metadata` map likely contains additional pairs only when the source
+items have additional fields scai's introspection didn't surface —
+unverified directly (Sites API token missing), but no field-level
+candidates remain on the inspected items.
+
+**Picker-resolution verification verdict: tenant-rooted-confirmed.**
+Live Sites-API instantiation not exercised (env-scoped token absent).
+But three production tenant-rooted Solution templates already
+reference tenant-rooted `HeadlessSiteSetupRoot` modules in their
+`Site Modules` Treelist. The Treelist `source` on `Site Modules` is
+`/sitecore/system/Settings` — a parent that includes both
+`Foundation/...` and `Project/<tenant>/...`, so picker scope allows
+cross-tree references. Surviving production pattern is strong evidence
+the picker resolves them correctly. **Design D under the assumption
+tenant rooting works.** If a future Sub-milestone E run sees the picker
+silently drop tenant-rooted modules, the fallback (Foundation rooting)
+remains available; nothing here forecloses it.
+
+**Surprises that change C/D/E:**
+
+1. **C must rethink `kind: "url"`.** `__Thumbnail` does not accept a
+   raw URL. The cheap-path-vs-asset-path distinction is more nuanced
+   than the locked operator decision implied. Either upload to media
+   library on both paths, or accept media-XML in `kind: "url"` and
+   rename the discriminator (`mediaXml` / `assetUpload`?), or
+   redefine `kind: "url"` to write the URL to a brand-new SXA field
+   only scai-authored templates use.
+2. **D's `ModuleRecipe` IR must emit setup-action CHILDREN** — not
+   just a Module root item. The brand structure lives in the
+   children, not on the Module root. Compile output per tenant-rooted
+   Module: one `HeadlessSiteSetupRoot` parent + N children (AddItem,
+   ExecuteScript, PostSetupStep, etc.) keyed off the recipe's
+   `pageTemplates` / `pageDesigns` / `insertOptionsMatrix` arrays.
+3. **D's Foundation-rooted module list is constant infrastructure**,
+   not authored content. Every tenant-rooted Solution template copies
+   the 15 Foundation-rooted SITE_MODULES + 11 TENANT_MODULES verbatim,
+   THEN appends the tenant's own `HeadlessSiteSetupRoot` GUID. Compile
+   should hardcode the Foundation GUIDs (or read them lazily from the
+   tenant once per IR resolve) and append the synthesized tenant-
+   rooted Module's GUID.
+4. **E's Sites-API assertion is unchanged** but the env-scoped token
+   path needs operator setup (`scai setup login`) before this works
+   on the test tenant.
+
 ## The two gaps
 
 | Gap                                                                                                                                                                                                                                                                                                                                     | Symptom in product                                                                                                                                    | Evidence                                                                                                                                                                                                                                      |

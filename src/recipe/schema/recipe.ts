@@ -1663,9 +1663,31 @@ export const SiteTemplateRecipeSchema = z.object({
     .optional(),
   /**
    * Detail-panel content summary — what the picker shows under the
-   * hero image when a tile is selected. Plain markdown.
+   * hero image when a tile is selected.
+   *
+   * Encoded as an array of `{ name, content }` pairs — the Sites API
+   * picker decodes this to `StringStringKeyValuePair[]` where `name`
+   * becomes the section heading (e.g. "Pages", "Components",
+   * "Integrations") and `content` becomes the body text under it.
+   *
+   * Sub-milestone A's U4 finding
+   * (`docs/plans/site-template-modules-and-picker.investigation.json`)
+   * established the source field is the SXA `Content` field (GUID
+   * `da855368-…`, Multi-Line Text); the on-disk encoding is a
+   * JSON-serialized array stored as a string. Production examples
+   * (Empty Site, Solterra and Co, SYNC, Alaris) all carry the
+   * `Array<{name, content}>` shape. The schema was originally
+   * `z.string()` (sub-milestone C land); changed to an array of pairs
+   * on sub-milestone D after A's evidence landed.
    */
-  contents: z.string().optional(),
+  contents: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        content: z.string().min(1),
+      })
+    )
+    .optional(),
 });
 
 export type SiteTemplateRecipe = z.infer<typeof SiteTemplateRecipeSchema>;

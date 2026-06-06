@@ -469,6 +469,133 @@ export const SITE_TEMPLATE_FIELDS = {
 } as const;
 
 /**
+ * SXA Module root templates — the two SXA-shipped templates a Module
+ * item conforms to. Captured by sub-milestone A introspection
+ * (`docs/plans/site-template-modules-and-picker.investigation.json`,
+ * U1):
+ *
+ *   - `HEADLESS_SITE_SETUP_ROOT` — Module items referenced by a
+ *     Solution template's `Site Modules` field. Conforms to
+ *     `Foundation/JSS Experience Accelerator/Scaffolding/Roots/HeadlessSiteSetupRoot`.
+ *   - `HEADLESS_TENANT_SETUP_ROOT` — Module items referenced by
+ *     `Tenant Modules`. Conforms to `…/Scaffolding/Roots/HeadlessTenantSetupRoot`.
+ *
+ * Both templates only carry standard Sitecore sections; the brand
+ * structure lives in the Module item's CHILDREN (setup-action items
+ * conforming to `AddItem`, `EditSiteItem`, `EditTenantTemplate`,
+ * `ExecuteScript`, `PostSetupStep`, etc.).
+ */
+export const HEADLESS_SITE_SETUP_ROOT = "bed31d6f-d968-45a9-b54e-12d7f977d861";
+export const HEADLESS_TENANT_SETUP_ROOT = "f036b5e0-37fb-4537-9d36-ef84e5bd41b7";
+
+/**
+ * Standard Sitecore `__Thumbnail` field GUID (type `Thumbnail`).
+ * The Sites API picker's thumbnail surface reads this field; encoding
+ * is Sitecore media-XML: `<image mediaid="{GUID}" />`.
+ *
+ * Sub-milestone A U3 confirmed the SXA Solution Template has no
+ * dedicated thumbnail or image field on its inheritance chain — both
+ * the picker's `thumbnail` and `image` resolve through this standard
+ * field (`image` likely renders the same media at full resolution).
+ */
+export const SYSTEM_THUMBNAIL_FIELD_ID = "c7c26117-dbb1-42b2-ab5e-f7223845cca3";
+
+/**
+ * Setup-action child template paths under SXA's Scaffolding/Templates
+ * tree. Each Module item conforms to `HEADLESS_SITE_SETUP_ROOT` /
+ * `HEADLESS_TENANT_SETUP_ROOT`; its CHILDREN conform to one of these
+ * action templates. Sub-milestone A's U2 capture surfaced these names
+ * via the `Dependencies` field source filter on the SXA module-root
+ * templates (`IncludeTemplatesForSelection=EditTenantTemplate,AddItem,
+ * ExecuteScript`); production module trees in `click-click-launch`
+ * (Alaris/SYNC/Solterra and Co Setup) carry children of types
+ * `AddItem`, `EditSiteItem`, `EditTenantTemplate`, `ExecuteScript`,
+ * `PostSetupStep`, plus organisational `Folder` / `Node`.
+ *
+ * Template GUIDs are intentionally NOT captured here. A's introspection
+ * captured the child template NAMES but not their GUIDs — that's the
+ * single ambiguous pointer from A. The compiler resolves these
+ * templates via the IR's `ref-path` `templateOf` shape (`CreateItemOp`
+ * supports it), which the executor pre-seeds at apply time via a
+ * `getItemsByPaths` batch — the same mechanism workflow templates
+ * already use.
+ *
+ * **Open question for sub-milestone E:** verify these paths against a
+ * live tenant before the first push; if any diverge, capture the
+ * actual GUID here and switch the compile-side `templateOf` to a
+ * direct GUID for slightly cheaper executor resolution.
+ */
+export const SETUP_ACTION_TEMPLATE_PATHS = {
+  ADD_ITEM:
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/AddItem",
+  EDIT_SITE_ITEM:
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/EditSiteItem",
+  EDIT_TENANT_TEMPLATE:
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/EditTenantTemplate",
+  EXECUTE_SCRIPT:
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/ExecuteScript",
+  POST_SETUP_STEP:
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/PostSetupStep",
+} as const;
+
+/**
+ * Hardcoded Foundation Module GUIDs that every recipe-emitted site
+ * template aggregates into its `Site Modules` field, alongside the
+ * tenant-rooted Module the recipe synthesises. Captured by
+ * sub-milestone A's U2 finding from the built-in "Empty Site"
+ * template; the three production tenant-rooted Solution templates
+ * (Alaris, SYNC, Solterra and Co) all mirror this list verbatim and
+ * append their own tenant-rooted Module GUID.
+ *
+ * Stable: SXA-shipped Foundation items; GUIDs are constant across
+ * tenants (same identity model as `SXA_COMPONENT_BASE_TEMPLATES`).
+ * Ordering matches the U2 capture for deterministic compile output —
+ * re-pushes against a tenant produce identical pipe-separated
+ * payloads, so the planner reports a no-op for unchanged fields.
+ */
+export const FOUNDATION_SITE_MODULES = [
+  "5a2f6a6f-3028-4210-aad3-82c1365c4802",
+  "9f10010e-49e2-4dcd-a5a1-4da752aded2a",
+  "4342a029-0186-4b0d-8959-ffef4fd998c2",
+  "ae5d1384-bb75-4c6b-a8b5-4b008c2ac5da",
+  "c4658673-5d70-44ed-9004-d66eac1dc718",
+  "ca502dcf-20d2-4618-a735-e4fcb6d5e114",
+  "e2af1a41-799e-481b-8fdc-b2d33fb729a1",
+  "66b9c663-2602-42b1-a5a2-3d04db6c506a",
+  "1fd78e81-59a6-4513-90f1-165a95d4b16b",
+  "bebf4026-24a3-4ea6-986a-518b76dbd71a",
+  "385f31be-ff0c-4d84-a627-9ecd21295afd",
+  "f0ea389e-f78d-440b-9429-f04fe735344a",
+  "ac1a27ca-6bf3-4d23-915e-668326d52cf1",
+  "d7eeaf4d-2b58-4029-b141-844221565ef0",
+  "1f35559f-2140-4774-8bc1-525bb722baa2",
+] as const;
+
+/**
+ * Hardcoded Foundation Tenant-Module GUIDs aggregated into the
+ * `Tenant Modules` field. Same captured-from-U2 origin as
+ * `FOUNDATION_SITE_MODULES` — the three production tenant-rooted
+ * Solution templates all carry this list verbatim. The recipe-
+ * synthesised tenant-rooted Module is NOT appended to this list
+ * because today's `SiteTemplateRecipe` describes site-scoped brand
+ * structure only (page templates, page designs, etc.); cross-site
+ * tenant-scoped overrides would need a separate authoring surface.
+ */
+export const FOUNDATION_TENANT_MODULES = [
+  "7b81b847-1891-43b2-bc13-5047a62ec32a",
+  "7baaa4fc-3051-442d-9bd2-ad720b655e0b",
+  "0dc2e395-4a95-4773-88ca-75b22a130849",
+  "4346a98a-d6e9-491e-a0ed-cd12f524cf4e",
+  "4cbc64bf-8116-48a1-abac-db19103897a6",
+  "7574f439-0b48-48be-ba6b-94b1a3ce01a3",
+  "d912c30c-7a98-4a8d-a094-611d9af9605d",
+  "6de1f4e9-815d-491d-923d-d5038100dbee",
+  "02cd7086-1f87-41ec-b40f-b92c1226895b",
+  "1b0a98c0-1801-44a0-85f2-845694feaff3",
+  "d315a501-6503-4545-a5d8-b9fecba1097d",
+] as const;
+
+/**
  * Per-site `SiteTemplate` field on a Headless Site item — points at
  * the SXA Site Template (Solution template) item the site was cloned
  * from. Captured on the sandbox in 2026-05-01 introspection.

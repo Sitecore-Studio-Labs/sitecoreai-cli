@@ -687,15 +687,39 @@ describe("SiteTemplateRecipe Zod schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts contents as a plain-string markdown summary", () => {
+  it("accepts contents as an array of {name, content} pairs (sub-milestone A U4 shape)", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      contents: [
+        { name: "Pages", content: "Home, Article Page, Landing Page" },
+        { name: "Components", content: "SXA components" },
+        { name: "Integrations", content: "Personalization and Analytics" },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contents).toHaveLength(3);
+      expect(result.data.contents?.[0]).toEqual({
+        name: "Pages",
+        content: "Home, Article Page, Landing Page",
+      });
+    }
+  });
+
+  it("rejects contents as a plain string (was the pre-D shape; A's U4 evidence reshaped it)", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
       contents: "## What you get\n\n- Page templates\n- Page designs",
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.contents).toContain("What you get");
-    }
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a contents entry missing the `name` field", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      contents: [{ content: "Body only" }],
+    });
+    expect(result.success).toBe(false);
   });
 });
 

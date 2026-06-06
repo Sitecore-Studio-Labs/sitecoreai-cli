@@ -83,6 +83,21 @@ export const RefValueSchema = z.discriminatedUnion("kind", [
     kind: z.literal("url-string-map"),
     entries: z.record(z.string(), z.string()),
   }),
+  /**
+   * Sitecore media-XML reference to a recipe-uploaded media item.
+   * The executor renders this as `<image mediaid="{${guid}}" />`
+   * (with curly braces around the GUID) where `guid` is the
+   * server-assigned media item itemId resolved from `refKey` via
+   * the captured-itemId map — populated by `MediaUploadOp`'s apply.
+   *
+   * Mirrors `ref-recipe` resolution semantics; the wrapper element is
+   * the only difference. The `__Thumbnail` field (and any other
+   * Thumbnail-typed field) requires this XML shape — a raw GUID
+   * silently no-ops on the picker side.
+   *
+   * Executor wiring lands with sub-milestone E.
+   */
+  z.object({ kind: z.literal("media-xml-ref"), refKey: GUID }),
 ]);
 
 export type RefValue = z.infer<typeof RefValueSchema>;
@@ -519,6 +534,67 @@ export const PruneChildrenOpSchema = z
     }
   );
 
+/**
+ * Upload a media-library item from an external URL or a local asset path.
+ *
+ * Used by `SiteTemplateRecipe.thumbnail` and `.image` — sub-milestone A's
+ * U3 finding (`docs/plans/site-template-modules-and-picker.investigation.json`)
+ * established that the Sites API picker's `thumbnail` field surface
+ * (`__Thumbnail`, GUID `c7c26117-…`) accepts Sitecore media-XML only
+ * (`<image mediaid="{GUID}" />`); writing a raw URL is silently a
+ * no-op. The discriminated source union mirrors the recipe-side
+ * `thumbnail` / `image` shape:
+ *
+ *   - `kind: "external-url"` — author hosts the source bytes
+ *     externally (CDN, S3, GitHub raw); the executor fetches the
+ *     bytes at apply time and uploads them to Sitecore's media library.
+ *   - `kind: "asset"` — `path` is a recipe-file-relative reference
+ *     (e.g. `./thumbnail.png`). The executor reads the file locally
+ *     and uploads it.
+ *
+ * The compiler emits one MediaUpload op per thumbnail/image, AND a
+ * SetField op against the consuming item (the SiteTemplate) whose
+ * value is a `string` reference of the shape `<image mediaid="{${id}}" />`
+ * — at apply time the executor substitutes the uploaded media item's
+ * server-assigned GUID into the templated string. The `id` field
+ * here is the refKey that ties the two ops together.
+ *
+ * Executor wiring lands with sub-milestone E (live integration test
+ * with the orchestrator); this commit only locks the IR shape so the
+ * site-template compiler can emit ops.
+ */
+export const MediaUploadOpSchema = z.object({
+  op: z.literal("MediaUpload"),
+  ...BaseOpFields,
+  /**
+   * Recipe-internal uuidv5. Stable across compiles. Used as the refKey
+   * for `<image mediaid="{${id}}" />`-shaped SetField value strings
+   * the compiler emits alongside this op; the executor substitutes the
+   * captured Sitecore media itemId before dispatching the field write.
+   */
+  id: GUID,
+  /**
+   * Discriminated byte source — external URL the executor fetches, or
+   * a local asset path the executor reads. Both terminate in a media
+   * library upload + a `__Thumbnail`-shape SetField write.
+   */
+  source: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("external-url"), url: NON_EMPTY }),
+    z.object({ kind: z.literal("asset"), path: NON_EMPTY }),
+  ]),
+  /**
+   * Optional override for the media library destination path. Default
+   * (when unset): `/sitecore/media library/SiteTemplates/<recipeName>/<basename>`
+   * where `basename` is the source URL's pathname tail or the asset
+   * path's basename. The compiler emits the recipe-name-scoped default
+   * for site-template recipes; future callers (page-recipe images,
+   * partial-design hero shots) can override per-op.
+   */
+  destinationPath: z.string().min(1).optional(),
+  /** Optional alt text — becomes the media item's `Alt` field. */
+  altText: z.string().optional(),
+});
+
 export const OperationSchema = z.discriminatedUnion("op", [
   CreateItemOpSchema,
   SetFieldOpSchema,
@@ -528,6 +604,7 @@ export const OperationSchema = z.discriminatedUnion("op", [
   AppendToMultiListOpSchema,
   AddItemVersionOpSchema,
   PruneChildrenOpSchema,
+  MediaUploadOpSchema,
 ]);
 
 export type CreateItemOp = z.infer<typeof CreateItemOpSchema>;
@@ -538,6 +615,7 @@ export type CreateSiteFromTemplateOp = z.infer<typeof CreateSiteFromTemplateOpSc
 export type AppendToMultiListOp = z.infer<typeof AppendToMultiListOpSchema>;
 export type AddItemVersionOp = z.infer<typeof AddItemVersionOpSchema>;
 export type PruneChildrenOp = z.infer<typeof PruneChildrenOpSchema>;
+export type MediaUploadOp = z.infer<typeof MediaUploadOpSchema>;
 export type Operation = z.infer<typeof OperationSchema>;
 
 export const OperationIrSchema = z.object({

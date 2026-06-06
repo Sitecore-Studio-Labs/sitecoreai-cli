@@ -518,6 +518,68 @@ export const sharedDataFolderTemplateId = (site: string, subfolder: string): str
   uuidv5(`${site}::shared-data-folder-template::${subfolder}`, NAMESPACE_TEMPLATE);
 
 /**
+ * Identity helpers for `SiteTemplateRecipe`-emitted artifacts.
+ *
+ * The site template's own item identity is `templateId(site, handle)` —
+ * a site template is a Sitecore template item, same identity family as
+ * regular templates. The helpers below derive companion items the
+ * site-template compile emits alongside it: media uploads (thumbnail /
+ * image), the tenant-rooted SXA Module root, and each setup-action
+ * child under the Module root. All seeds scope under the site
+ * template's own GUID so two recipes with the same handle in different
+ * sites don't collide.
+ */
+
+/**
+ * Recipe-internal refKey for a thumbnail media item emitted by
+ * `MediaUploadOp` when a `SiteTemplateRecipe` populates `thumbnail`.
+ * Pairs 1:1 with the SetField op that writes the `__Thumbnail` media
+ * XML on the site template item — the SetField value's
+ * `kind: "media-xml-ref"` references this same refKey, which the
+ * executor substitutes at apply time for the captured media itemId.
+ */
+export const thumbnailMediaId = (site: string, handle: string): string =>
+  uuidv5("thumbnail", templateId(site, handle));
+
+/**
+ * Recipe-internal refKey for an image (hero) media item emitted when a
+ * `SiteTemplateRecipe` populates `image`. Distinct seed from
+ * `thumbnailMediaId` so a recipe that supplies both gets two upload
+ * ops — even though Sub-milestone A's U3 finding suggests the picker
+ * surfaces the same media item for both. Schema-level intent is
+ * preserved; collapsing into one upload is a follow-up if U3's
+ * observation holds against a live Sites API run.
+ */
+export const imageMediaId = (site: string, handle: string): string =>
+  uuidv5("image", templateId(site, handle));
+
+/**
+ * Recipe-internal refKey for the tenant-rooted SXA Module item
+ * synthesised by `compileSiteTemplateRecipe`. Conforms to
+ * `HEADLESS_SITE_SETUP_ROOT`; lands at
+ * `<siteTemplatesRoot>/Modules/<RecipeName>`. The site template's
+ * `Site Modules` field aggregates this refKey alongside the hardcoded
+ * `FOUNDATION_SITE_MODULES` GUIDs.
+ */
+export const siteTemplateModuleId = (site: string, handle: string): string =>
+  uuidv5("module", templateId(site, handle));
+
+/**
+ * Recipe-internal refKey for one setup-action child item under a
+ * recipe-synthesised SXA Module root. Each `pageTemplates[i]`,
+ * `pageDesigns[i]`, `insertOptionsMatrix[k]`, etc. expands to a
+ * separate action-child item; the seed encodes both the action
+ * "kind" (which the compiler picks per source field) and the
+ * referenced handle so two pageTemplates entries get distinct refKeys.
+ */
+export const siteTemplateModuleActionId = (
+  site: string,
+  handle: string,
+  actionKind: string,
+  targetHandle: string
+): string => uuidv5(`${actionKind}::${targetHandle}`, siteTemplateModuleId(site, handle));
+
+/**
  * Standard-values item refKey for a shared per-subfolder Data Folder
  * template. Same `__standard-values` seed pattern as the rest of the
  * SV family.

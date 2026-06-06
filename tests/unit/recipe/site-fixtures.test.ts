@@ -8,12 +8,22 @@ import {
   compileRecipe,
   compileSiteTemplateRecipe,
 } from "../../../src/recipe/compile";
-import { templateId } from "../../../src/recipe/items/guids";
-import type { CreateItemOp, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
+  siteTemplateModuleActionId,
+  siteTemplateModuleId,
+  templateId,
+  thumbnailMediaId,
+} from "../../../src/recipe/items/guids";
+import type { CreateItemOp, MediaUploadOp, SetFieldOp } from "../../../src/recipe/ir/operations";
+import {
+  FOUNDATION_SITE_MODULES,
+  FOUNDATION_TENANT_MODULES,
+  HEADLESS_SITE_SETUP_ROOT,
+  SETUP_ACTION_TEMPLATE_PATHS,
   SITECORE_TEMPLATES,
   SITE_TEMPLATE_FIELDS,
   SYSTEM_FIELDS,
+  SYSTEM_THUMBNAIL_FIELD_ID,
 } from "../../../src/recipe/ir/sitecore-templates";
 import {
   RecipeSchema,
@@ -132,13 +142,24 @@ const findSet = (ir: ReturnType<typeof compileSiteTemplateRecipe>, label: string
   ir.operations.find((op): op is SetFieldOp => op.op === "SetField" && op.label === label)!;
 
 describe("compileSiteTemplateRecipe", () => {
-  it("emits CreateItem + SetField ops for the SXA Solution-template fields", () => {
+  it("emits CreateItem + SetField ops for the SXA Solution-template scalar fields", () => {
     const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
     expect(ir.recipeHandle).toBe("ccl-brand-template@1");
-    // CreateItem + Name + Description + Enabled + Built-in template = 5
-    expect(ir.operations).toHaveLength(5);
+    // The first op is always the SiteTemplate CreateItem; the four
+    // scalar SetField ops (Name, Description, Enabled, Built-in) live
+    // adjacent. Module-composition ops follow after — those are
+    // exercised by the dedicated tests below.
     expect(ir.operations[0].op).toBe("CreateItem");
-    expect(ir.operations.filter((op) => op.op === "SetField")).toHaveLength(4);
+    const scalarLabels = new Set([
+      "site-template-name:ccl-brand-template@1",
+      "site-template-description:ccl-brand-template@1",
+      "site-template-enabled:ccl-brand-template@1",
+      "site-template-builtin:ccl-brand-template@1",
+    ]);
+    const scalarOps = ir.operations.filter(
+      (op): op is SetFieldOp => op.op === "SetField" && scalarLabels.has(op.label)
+    );
+    expect(scalarOps).toHaveLength(4);
   });
 
   it("CreateItem identity uses templateId(handle) — site templates are regular template items", () => {
@@ -239,13 +260,15 @@ describe("compileSiteTemplateRecipe", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Picker UX gap warning — schema accepts thumbnail/image/contents (and the
-// pre-existing pageTemplates/pageDesigns/etc.) but compile silently drops
-// them today. The warn is the operator's only signal until the plan at
-// docs/plans/site-template-modules-and-picker.md lands.
+// Sub-milestone D — Picker UX gap closure.
+//
+// After D the warn list shrinks to just `image` (per A's U3: the SXA
+// Solution template has no separate image source field; the picker
+// likely renders __Thumbnail at full resolution). Every other
+// schema-accepted-but-was-dropped field now compiles to real ops.
 // ---------------------------------------------------------------------------
 
-describe("compileSiteTemplateRecipe — populated-but-dropped warning", () => {
+describe("compileSiteTemplateRecipe — populated-but-dropped warning (post-D)", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   const MINIMAL_RECIPE = {
@@ -265,47 +288,373 @@ describe("compileSiteTemplateRecipe — populated-but-dropped warning", () => {
     warnSpy.mockRestore();
   });
 
-  it("warns once when the recipe populates fields that are dropped at install", () => {
+  it("does NOT warn when only pageTemplates/pageDesigns are populated (now compiled)", () => {
     compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const message = warnSpy.mock.calls[0]?.[0] as string;
-    expect(message).toContain("ccl-brand-template@1");
-    expect(message).toContain("pending docs/plans/site-template-modules-and-picker.md");
-    expect(message).toContain("pageTemplates");
-    expect(message).toContain("pageDesigns");
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it("includes thumbnail/image/contents in the dropped-fields list when populated", () => {
+  it("does NOT warn when thumbnail/contents are populated (now compiled)", () => {
     compileSiteTemplateRecipe(
       {
         ...MINIMAL_RECIPE,
         thumbnail: { kind: "external-url", url: "https://cdn.example.com/thumb.png" },
+        contents: [{ name: "Pages", content: "Home" }],
+      },
+      COMPILE_CONTEXT
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("warns when `image` is populated (still dropped pending E)", () => {
+    compileSiteTemplateRecipe(
+      {
+        ...MINIMAL_RECIPE,
         image: { kind: "external-url", url: "https://cdn.example.com/hero.png" },
-        contents: "## Details",
       },
       COMPILE_CONTEXT
     );
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const message = warnSpy.mock.calls[0]?.[0] as string;
-    expect(message).toContain("thumbnail");
+    expect(message).toContain("minimal-template@1");
     expect(message).toContain("image");
-    expect(message).toContain("contents");
+    // Other fields shouldn't appear — they're compiled now.
+    expect(message).not.toContain("thumbnail");
+    expect(message).not.toContain("contents");
+    expect(message).not.toContain("pageTemplates");
   });
 
   it("does NOT warn when the recipe only uses compile-handled fields", () => {
     compileSiteTemplateRecipe(MINIMAL_RECIPE, COMPILE_CONTEXT);
     expect(warnSpy).not.toHaveBeenCalled();
   });
+});
 
-  it("does NOT warn when pageTemplates/pageDesigns default to empty arrays", () => {
-    compileSiteTemplateRecipe(
+// ---------------------------------------------------------------------------
+// Sub-milestone D — thumbnail compile path (G2 picker fields).
+// ---------------------------------------------------------------------------
+
+describe("compileSiteTemplateRecipe — thumbnail compilation", () => {
+  const BASE = {
+    kind: "site-template" as const,
+    schemaVersion: "1" as const,
+    handle: "thumb-template@1",
+    name: "ThumbTemplate",
+    displayName: "Thumb Template",
+  };
+
+  it("emits MediaUpload + SetField(__Thumbnail) for kind: external-url", () => {
+    const ir = compileSiteTemplateRecipe(
       {
-        ...MINIMAL_RECIPE,
-        pageTemplates: [],
-        pageDesigns: [],
+        ...BASE,
+        thumbnail: {
+          kind: "external-url",
+          url: "https://cdn.example.com/thumb.png",
+          alt: "Brand thumbnail",
+        },
       },
       COMPILE_CONTEXT
     );
-    expect(warnSpy).not.toHaveBeenCalled();
+
+    const upload = ir.operations.find((op): op is MediaUploadOp => op.op === "MediaUpload");
+    expect(upload).toBeDefined();
+    expect(upload?.label).toBe("media-upload:thumbnail:thumb-template@1");
+    expect(upload?.id).toBe(thumbnailMediaId(SITE, "thumb-template@1"));
+    expect(upload?.source).toEqual({
+      kind: "external-url",
+      url: "https://cdn.example.com/thumb.png",
+    });
+    expect(upload?.destinationPath).toBe(
+      "/sitecore/media library/SiteTemplates/ThumbTemplate/thumb.png"
+    );
+    expect(upload?.altText).toBe("Brand thumbnail");
+
+    const setThumb = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-template-thumbnail:thumb-template@1"
+    );
+    expect(setThumb).toBeDefined();
+    expect(setThumb?.fieldId).toBe(SYSTEM_THUMBNAIL_FIELD_ID);
+    expect(setThumb?.value).toEqual({
+      kind: "media-xml-ref",
+      refKey: thumbnailMediaId(SITE, "thumb-template@1"),
+    });
+  });
+
+  it("emits MediaUpload + SetField(__Thumbnail) for kind: asset", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        ...BASE,
+        thumbnail: { kind: "asset", path: "./assets/thumb.png" },
+      },
+      COMPILE_CONTEXT
+    );
+
+    const upload = ir.operations.find((op): op is MediaUploadOp => op.op === "MediaUpload");
+    expect(upload).toBeDefined();
+    expect(upload?.source).toEqual({ kind: "asset", path: "./assets/thumb.png" });
+    expect(upload?.destinationPath).toBe(
+      "/sitecore/media library/SiteTemplates/ThumbTemplate/thumb.png"
+    );
+    // No alt → omitted, not undefined-stamped
+    expect(upload?.altText).toBeUndefined();
+  });
+
+  it("omits MediaUpload + thumbnail SetField when recipe.thumbnail is unset", () => {
+    const ir = compileSiteTemplateRecipe(BASE, COMPILE_CONTEXT);
+    expect(ir.operations.find((op) => op.op === "MediaUpload")).toBeUndefined();
+    expect(
+      ir.operations.find(
+        (op) => op.op === "SetField" && op.label.startsWith("site-template-thumbnail:")
+      )
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-milestone D — contents compile (G2 picker fields).
+// ---------------------------------------------------------------------------
+
+describe("compileSiteTemplateRecipe — contents compilation", () => {
+  const BASE = {
+    kind: "site-template" as const,
+    schemaVersion: "1" as const,
+    handle: "contents-template@1",
+    name: "ContentsTemplate",
+    displayName: "Contents Template",
+  };
+
+  it("emits SetField(SXA Content) with the JSON-stringified pairs", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        ...BASE,
+        contents: [
+          { name: "Pages", content: "Home, Article Page" },
+          { name: "Components", content: "SXA components" },
+        ],
+      },
+      COMPILE_CONTEXT
+    );
+
+    const setContents = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-template-contents:contents-template@1"
+    );
+    expect(setContents).toBeDefined();
+    expect(setContents?.fieldId).toBe(SITE_TEMPLATE_FIELDS.CONTENT);
+    expect(setContents?.value).toEqual({
+      kind: "string",
+      value: JSON.stringify([
+        { name: "Pages", content: "Home, Article Page" },
+        { name: "Components", content: "SXA components" },
+      ]),
+    });
+  });
+
+  it("omits SetField(Content) when recipe.contents is unset", () => {
+    const ir = compileSiteTemplateRecipe(BASE, COMPILE_CONTEXT);
+    expect(
+      ir.operations.find(
+        (op) => op.op === "SetField" && op.label.startsWith("site-template-contents:")
+      )
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-milestone D — Module synthesis + SITE_MODULES aggregation (G1).
+// ---------------------------------------------------------------------------
+
+describe("compileSiteTemplateRecipe — module synthesis", () => {
+  it("synthesises one Module root + AddItem child for a minimal pageTemplates recipe", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        kind: "site-template",
+        schemaVersion: "1",
+        handle: "min-modules@1",
+        name: "MinModules",
+        displayName: "Min Modules",
+        pageTemplates: ["page@1"],
+      },
+      COMPILE_CONTEXT
+    );
+
+    const moduleRefKey = siteTemplateModuleId(SITE, "min-modules@1");
+    const moduleCreate = ir.operations.find(
+      (op): op is CreateItemOp =>
+        op.op === "CreateItem" && op.label === "site-template-module:min-modules@1"
+    );
+    expect(moduleCreate).toBeDefined();
+    expect(moduleCreate?.id).toBe(moduleRefKey);
+    expect(moduleCreate?.path).toBe("/sitecore/templates/Project/Demo/Modules/MinModules");
+    expect(moduleCreate?.parent).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/templates/Project/Demo/Modules",
+    });
+    expect(moduleCreate?.templateOf).toBe(HEADLESS_SITE_SETUP_ROOT);
+
+    // One action child for pageTemplates[0].
+    const actionRefKey = siteTemplateModuleActionId(
+      SITE,
+      "min-modules@1",
+      "add-page-template",
+      "page@1"
+    );
+    const actionCreate = ir.operations.find(
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.id === actionRefKey
+    );
+    expect(actionCreate).toBeDefined();
+    expect(actionCreate?.parent).toEqual({ kind: "ref-recipe", refKey: moduleRefKey });
+    expect(actionCreate?.templateOf).toEqual({
+      kind: "ref-path",
+      value: SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM,
+    });
+    expect(actionCreate?.name).toBe("Add page@1");
+  });
+
+  it("emits the right action template per source field (AddItem / EditSiteItem / EditTenantTemplate)", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        kind: "site-template",
+        schemaVersion: "1",
+        handle: "mixed-modules@1",
+        name: "MixedModules",
+        displayName: "Mixed Modules",
+        pageTemplates: ["page@1"],
+        pageDesigns: ["design@1"],
+        insertOptionsMatrix: { "page@1": ["page@1"] },
+        templatesToDesigns: { "page@1": "design@1" },
+        dictionary: [{ phrase: "Hello", defaultValue: "Hello" }],
+        taxonomy: [{ root: "Topics", defaultTags: ["A"] }],
+      },
+      COMPILE_CONTEXT
+    );
+
+    const actionTemplatePathOf = (refKey: string): unknown => {
+      const op = ir.operations.find(
+        (o): o is CreateItemOp => o.op === "CreateItem" && o.id === refKey
+      );
+      return op?.templateOf;
+    };
+
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "add-page-template", "page@1")
+      )
+    ).toEqual({ kind: "ref-path", value: SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM });
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "add-page-design", "design@1")
+      )
+    ).toEqual({ kind: "ref-path", value: SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM });
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "insert-options", "page@1")
+      )
+    ).toEqual({ kind: "ref-path", value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_SITE_ITEM });
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "templates-to-designs", "page@1")
+      )
+    ).toEqual({
+      kind: "ref-path",
+      value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE,
+    });
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "dictionary", "Hello")
+      )
+    ).toEqual({
+      kind: "ref-path",
+      value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE,
+    });
+    expect(
+      actionTemplatePathOf(
+        siteTemplateModuleActionId(SITE, "mixed-modules@1", "taxonomy", "Topics")
+      )
+    ).toEqual({
+      kind: "ref-path",
+      value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE,
+    });
+  });
+
+  it("does NOT synthesise a Module item when none of the source fields are populated", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        kind: "site-template",
+        schemaVersion: "1",
+        handle: "no-modules@1",
+        name: "NoModules",
+        displayName: "No Modules",
+      },
+      COMPILE_CONTEXT
+    );
+    expect(
+      ir.operations.find(
+        (op) => op.op === "CreateItem" && op.label.startsWith("site-template-module:")
+      )
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-milestone D — SITE_MODULES / TENANT_MODULES aggregation.
+// ---------------------------------------------------------------------------
+
+describe("compileSiteTemplateRecipe — SITE_MODULES / TENANT_MODULES aggregation", () => {
+  it("aggregates the 15 Foundation site modules + the synthesised tenant module GUID", () => {
+    const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    const setSiteModules = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-template-site-modules:ccl-brand-template@1"
+    );
+    expect(setSiteModules).toBeDefined();
+    expect(setSiteModules?.fieldId).toBe(SITE_TEMPLATE_FIELDS.SITE_MODULES);
+    expect(setSiteModules?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [...FOUNDATION_SITE_MODULES, siteTemplateModuleId(SITE, "ccl-brand-template@1")],
+    });
+  });
+
+  it("writes only the 15 Foundation site modules when no source fields are populated", () => {
+    const ir = compileSiteTemplateRecipe(
+      {
+        kind: "site-template",
+        schemaVersion: "1",
+        handle: "bare@1",
+        name: "Bare",
+        displayName: "Bare",
+      },
+      COMPILE_CONTEXT
+    );
+    const setSiteModules = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-template-site-modules:bare@1"
+    );
+    expect(setSiteModules?.value).toEqual({
+      kind: "ref-guid-list",
+      values: [...FOUNDATION_SITE_MODULES],
+    });
+  });
+
+  it("writes the 11 Foundation tenant modules verbatim into TENANT_MODULES", () => {
+    const ir = compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    const setTenantModules = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-template-tenant-modules:ccl-brand-template@1"
+    );
+    expect(setTenantModules).toBeDefined();
+    expect(setTenantModules?.fieldId).toBe(SITE_TEMPLATE_FIELDS.TENANT_MODULES);
+    expect(setTenantModules?.value).toEqual({
+      kind: "ref-guid-list",
+      values: [...FOUNDATION_TENANT_MODULES],
+    });
+  });
+
+  it("Foundation site module list has exactly 15 GUIDs (A's U2 capture)", () => {
+    expect(FOUNDATION_SITE_MODULES).toHaveLength(15);
+  });
+
+  it("Foundation tenant module list has exactly 11 GUIDs (A's U2 capture)", () => {
+    expect(FOUNDATION_TENANT_MODULES).toHaveLength(11);
   });
 });

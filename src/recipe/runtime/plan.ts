@@ -964,6 +964,13 @@ const lookupSelector = (
     // Authoring API getItem; planCreateSite handles the lookup itself.
     return null;
   }
+  if (op.op === "MediaUpload") {
+    // MediaUpload idempotency goes through a media-library lookup at
+    // apply time (sub-milestone E); the planner has nothing to read up
+    // front. Return null so the dispatch loop short-circuits to the
+    // op-specific handler.
+    return null;
+  }
   let refKey: string;
   if (op.op === "SetField" || op.op === "SetBaseTemplates") {
     refKey = op.itemRefKey;
@@ -1171,6 +1178,18 @@ export const buildAction = async (
         return planAddItemVersion(index, op, remote, client);
       case "PruneChildren":
         return planPruneChildren(index, op, capturedItemIds, client, snapshotLanguages);
+      case "MediaUpload":
+        // Sub-milestone E wires the live media-library upload + the
+        // captured-itemId stamp. Until then, plan as a deferred skip
+        // with an explicit reason so callers see the gap rather than a
+        // silent no-op. The compile-side wiring (D) emits this op so
+        // the IR shape is stable; the executor catches up next.
+        return {
+          index,
+          operation: op,
+          status: "skip",
+          reason: `MediaUpload executor not yet implemented (sub-milestone E in docs/plans/site-template-modules-and-picker.md).`,
+        };
     }
   })();
   return { ...action, snapshot: remote };

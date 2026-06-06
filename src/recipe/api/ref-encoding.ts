@@ -30,6 +30,7 @@ export const renderRefValue = (value: RefValue): string => {
     case "ref-recipe":
     case "ref-recipe-list":
     case "ref-source-fields":
+    case "media-xml-ref":
       throw createScaiError(
         `Unresolved ${value.kind} cannot be rendered — call resolveRecipeRefs first.`,
         "UNKNOWN"
@@ -131,6 +132,30 @@ export const resolveRecipeRefs = (
       // sourceTypes is non-empty in this branch (IR validation), so
       // renderSourceFields always returns a string.
       return { kind: "string", value: rendered as string };
+    }
+    case "media-xml-ref": {
+      // Resolve the recipe-internal refKey for an uploaded media item
+      // to its server-assigned Sitecore itemId, then wrap as the SXA
+      // media-XML reference encoding (`<image mediaid="{GUID}" />`).
+      // The `__Thumbnail` field — and any other Thumbnail-typed field —
+      // only resolves the media item correctly when the value is this
+      // XML wrapper; a raw GUID silently no-ops.
+      //
+      // Executor-side `MediaUpload` apply is sub-milestone E: the media
+      // upload op itself isn't dispatched yet, so this branch will
+      // throw at runtime until E lands. The error message points at
+      // the upcoming work so the failure is informative.
+      const itemId = capturedItemIds.get(value.refKey);
+      if (!itemId) {
+        // TODO (sub-milestone E): wire `MediaUploadOp` apply path so
+        // the captured map carries media itemIds before this resolves.
+        throw createScaiError(
+          `media-xml-ref refKey ${value.refKey} not in captured map — MediaUploadOp executor is not yet implemented (sub-milestone E in docs/plans/site-template-modules-and-picker.md).`,
+          "UNKNOWN"
+        );
+      }
+      const curly = `{${dashifyGuid(itemId).toUpperCase()}}`;
+      return { kind: "string", value: `<image mediaid="${curly}" />` };
     }
     default:
       return value;

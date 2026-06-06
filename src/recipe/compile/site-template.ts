@@ -1,8 +1,15 @@
 import { consola } from "consola";
 import { createScaiError } from "@/shared/errors";
-import { templateId } from "../items/guids";
+import {
+  imageMediaId,
+  siteTemplateModuleActionId,
+  siteTemplateModuleId,
+  templateId,
+  thumbnailMediaId,
+} from "../items/guids";
 import {
   type CreateItemOp,
+  type MediaUploadOp,
   type Operation,
   type OperationIr,
   OperationIrSchema,
@@ -11,9 +18,14 @@ import {
 import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   DEFAULT_ICON,
+  FOUNDATION_SITE_MODULES,
+  FOUNDATION_TENANT_MODULES,
+  HEADLESS_SITE_SETUP_ROOT,
+  SETUP_ACTION_TEMPLATE_PATHS,
   SITECORE_TEMPLATES,
   SITE_TEMPLATE_FIELDS,
   SYSTEM_FIELDS,
+  SYSTEM_THUMBNAIL_FIELD_ID,
 } from "../ir/sitecore-templates";
 import { type SiteTemplateRecipe, SiteTemplateRecipeSchema } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
@@ -22,76 +34,88 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * Compile a `SiteTemplateRecipe` to an Operation IR.
  *
  * Emits the SiteTemplate item (a `Solution template`-typed item under
- * `siteTemplatesRoot`) with the fields SXA's createSite flow actually
- * reads: Name, Description, Enabled, Built-in template marker, plus
- * stub ICON / DISPLAY_NAME.
+ * `siteTemplatesRoot`) AND, per sub-milestone D
+ * (`docs/plans/site-template-modules-and-picker.md`):
  *
- * **Design gap (acknowledged, not closed by this commit):** the
- * `SiteTemplateRecipe` schema models brand shape as direct lists of
- * page templates, page designs, an insert-options matrix, a
- * templates-to-designs mapping, dictionary entries, and taxonomy
- * roots. SXA's Solution template doesn't carry any of those directly
- * — it carries a `Site Modules` + `Tenant Modules` list of MODULE
- * item refs, and modules hold the brand structure. Mapping the
- * recipe schema's high-level fields to SXA modules is open work
- * (probably needs a `ModuleRecipe` kind, or a "modules" array on
- * SiteTemplateRecipe that resolves to existing module item GUIDs).
+ *   - **Picker-tile fields** (G2):
+ *     - `__Thumbnail` media-XML — sourced from `recipe.thumbnail`
+ *       (discriminated `external-url | asset`); compiles to one
+ *       `MediaUploadOp` + one `SetField` op with `media-xml-ref` value.
+ *     - `image` is currently dropped (no separate SXA field — A's U3
+ *       finding); when sub-milestone E confirms the picker behaviour
+ *       this either falls through `__Thumbnail` or gets its own field.
+ *     - `Content` (SXA Solution Template) — sourced from
+ *       `recipe.contents`; encoded as `JSON.stringify(Array<{name,content}>)`.
+ *   - **Module composition** (G1):
+ *     - Synthesises ONE tenant-rooted SXA Module item per recipe
+ *       (conforming to `HEADLESS_SITE_SETUP_ROOT`) at
+ *       `<siteTemplatesRoot>/Modules/<RecipeName>`.
+ *     - For each `pageTemplates[i]` / `pageDesigns[i]` /
+ *       `insertOptionsMatrix[k]` / `templatesToDesigns[k]` /
+ *       `dictionary[i]` / `taxonomy[i]` emits a setup-action CHILD
+ *       under the Module, conforming to the appropriate setup-action
+ *       template (`AddItem`, `EditSiteItem`, `EditTenantTemplate`).
+ *     - Aggregates the 15 Foundation site modules + the synthesised
+ *       tenant-rooted Module GUID into `SITE_MODULES` (pipe-separated
+ *       deterministic order). Writes the 11 Foundation tenant modules
+ *       into `TENANT_MODULES` verbatim (the recipe shape doesn't
+ *       describe tenant-scoped overrides).
  *
- * Sandbox introspection (2026-05-01) confirmed:
- *   - SXA "Site Template" = item conforming to `Solution template`
- *     (templateId 1b2dfd3b-f2f2-4f40-a75c-f6c2490919c4)
- *   - Built-in templates live at `/sitecore/system/Settings/Foundation/
- *     JSS Experience Accelerator/Scaffolding/Templates`
- *   - Field GUIDs captured in SITE_TEMPLATE_FIELDS (sitecore-templates.ts)
+ * **What's still dropped at install (warned):** `image`. Per A's U3,
+ * the SXA Solution template has no separate `image` source field; the
+ * Sites API picker likely renders the `__Thumbnail` media at full
+ * resolution. The recipe schema still accepts `image` so authors can
+ * express intent, but compile drops it pending sub-milestone E's
+ * verification — that's the only remaining entry in
+ * `DROPPED_AT_INSTALL_FIELDS`.
  *
- * What this commit emits:
- *   - CreateItem with the correct `templateOf` GUID
- *   - SetField for Name (Solution-template's `Name` field, not __Display Name)
- *   - SetField for Description (when recipe.description is set)
- *   - SetField for Enabled = "1"
- *   - SetField for Built-in template = "0" (recipe-authored, not SXA-shipped)
- *
- * Deferred to a follow-up plan revision (because the recipe-schema-to-
- * SXA-modules mapping needs design):
- *   - Site Modules / Tenant Modules SetFields populated from the recipe's
- *     pageTemplates / pageDesigns / etc. (currently they need to map to
- *     existing module item GUIDs, which we don't yet)
- *   - Dictionary subitems (live under <site>/Dictionary, not under
- *     the site template; they're per-site, not per-template)
- *   - Taxonomy: no per-site Taxonomy folder found on the sandbox; the
- *     SXA convention may put taxonomy elsewhere or it may not be a
- *     site-template concern
- *
- * Identity: `templateId(handle)` derives the SiteTemplate item's
- * deterministic refKey.
+ * Sandbox introspection (2026-06-06 sub-milestone A) confirmed:
+ *   - SXA Module roots conform to `HeadlessSiteSetupRoot`
+ *     (`bed31d6f-…`); their children (setup-action items) carry the
+ *     brand structure.
+ *   - Built-in `Empty Site` carries 15 Foundation SITE_MODULES + 11
+ *     TENANT_MODULES; the three production tenant-rooted Solution
+ *     templates (Alaris, SYNC, Solterra and Co) mirror that list and
+ *     append a single tenant-rooted Module GUID.
+ *   - Tenant rooting is supported by the Treelist source's
+ *     `/sitecore/system/Settings` scope; picker resolves modules by
+ *     template inheritance, not by path.
  */
 /**
- * Fields the SiteTemplate Zod schema accepts today but compile silently
- * drops at install. Populating any of them triggers an explicit warn so
- * authors get clear feedback that the data won't reach Sitecore until
- * the plan at `docs/plans/site-template-modules-and-picker.md` lands.
+ * Fields the SiteTemplate Zod schema accepts today but compile still
+ * drops at install. After sub-milestone D this list shrinks to just
+ * `image` — see the JSDoc above for why.
  */
 const DROPPED_AT_INSTALL_FIELDS = [
-  "pageTemplates",
-  "pageDesigns",
-  "insertOptionsMatrix",
-  "templatesToDesigns",
-  "dictionary",
-  "taxonomy",
-  "thumbnail",
   "image",
-  "contents",
 ] as const satisfies readonly (keyof SiteTemplateRecipe)[];
 
 function listPopulatedDroppedFields(recipe: SiteTemplateRecipe): string[] {
   return DROPPED_AT_INSTALL_FIELDS.filter((key) => {
-    const value = recipe[key];
+    const value: unknown = recipe[key];
     if (value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
     if (typeof value === "object" && value !== null) return Object.keys(value).length > 0;
     if (typeof value === "string") return value.length > 0;
     return true;
   });
+}
+
+function basenameForMediaSource(
+  source: { kind: "external-url"; url: string } | { kind: "asset"; path: string }
+): string {
+  if (source.kind === "external-url") {
+    try {
+      const url = new URL(source.url);
+      const tail = url.pathname.split("/").filter(Boolean).pop();
+      return tail ?? "thumbnail";
+    } catch {
+      const tail = source.url.split("/").filter(Boolean).pop();
+      return tail ?? "thumbnail";
+    }
+  }
+  const tail = source.path.split("/").filter(Boolean).pop();
+  return tail ?? "thumbnail";
 }
 
 export function compileSiteTemplateRecipe(
@@ -115,7 +139,8 @@ export function compileSiteTemplateRecipe(
 
   const operations: Operation[] = [];
   const policy = defaultPolicyForRecipe(recipe.kind);
-  const itemRefKey = templateId(siteOf(context), recipe.handle);
+  const site = siteOf(context);
+  const itemRefKey = templateId(site, recipe.handle);
   const itemPath = joinPath(context.siteTemplatesRoot, recipe.name);
 
   operations.push({
@@ -177,20 +202,226 @@ export function compileSiteTemplateRecipe(
     value: { kind: "string", value: "0" },
   } satisfies SetFieldOp);
 
-  // TODO (next plan revision — needs design):
-  //   - Module resolution. SXA stores brand structure in MODULES, not
-  //     directly on the Solution template. recipe.pageTemplates,
-  //     recipe.pageDesigns, recipe.insertOptionsMatrix,
-  //     recipe.templatesToDesigns map to module composition that this
-  //     compiler doesn't yet model. Site Modules + Tenant Modules
-  //     SetFields would carry pipe-separated module-item GUIDs once
-  //     the schema gains a module-references field (or a separate
-  //     ModuleRecipe kind that the compiler can resolve to GUIDs).
-  //   - Dictionary entries. Per-site Dictionary lives under
-  //     <site>/Dictionary, not under the site template. SiteRecipe
-  //     compile (Milestone D) is the right place to set those.
-  //   - Taxonomy. No per-site Taxonomy folder discovered on the
-  //     sandbox; the SXA convention isn't clear yet. Defer.
+  // ---------------------------------------------------------------------
+  // Picker-tile fields (G2).
+  // ---------------------------------------------------------------------
+
+  if (recipe.thumbnail) {
+    const refKey = thumbnailMediaId(site, recipe.handle);
+    const basename = basenameForMediaSource(recipe.thumbnail);
+    operations.push({
+      op: "MediaUpload",
+      policy,
+      label: `media-upload:thumbnail:${recipe.handle}`,
+      id: refKey,
+      source: recipe.thumbnail,
+      destinationPath: `/sitecore/media library/SiteTemplates/${recipe.name}/${basename}`,
+      ...(recipe.thumbnail.alt ? { altText: recipe.thumbnail.alt } : {}),
+    } satisfies MediaUploadOp);
+
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `site-template-thumbnail:${recipe.handle}`,
+      itemRefKey,
+      fieldId: SYSTEM_THUMBNAIL_FIELD_ID,
+      value: { kind: "media-xml-ref", refKey },
+    } satisfies SetFieldOp);
+  }
+
+  if (recipe.contents && recipe.contents.length > 0) {
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `site-template-contents:${recipe.handle}`,
+      itemRefKey,
+      fieldId: SITE_TEMPLATE_FIELDS.CONTENT,
+      value: { kind: "string", value: JSON.stringify(recipe.contents) },
+    } satisfies SetFieldOp);
+  }
+
+  // `image` is intentionally NOT compiled today — Sub-milestone A's U3
+  // surfaced no separate `image` source field on the SXA Solution template;
+  // the picker likely renders the same `__Thumbnail` media at full
+  // resolution. The DROPPED_AT_INSTALL_FIELDS warn above fires when
+  // authors populate it, so the gap is explicit. The image refKey helper
+  // (`imageMediaId`) is in place for sub-milestone E to wire if a separate
+  // source field surfaces.
+  void imageMediaId;
+
+  // ---------------------------------------------------------------------
+  // Module composition (G1) — synthesise the tenant-rooted Module item
+  // and its setup-action children, then aggregate SITE_MODULES.
+  // ---------------------------------------------------------------------
+
+  const moduleRefKey = siteTemplateModuleId(site, recipe.handle);
+  const modulesFolderPath = joinPath(context.siteTemplatesRoot, "Modules");
+  const moduleItemPath = joinPath(modulesFolderPath, recipe.name);
+
+  const hasSynthesisInput =
+    recipe.pageTemplates.length > 0 ||
+    recipe.pageDesigns.length > 0 ||
+    (recipe.insertOptionsMatrix && Object.keys(recipe.insertOptionsMatrix).length > 0) ||
+    (recipe.templatesToDesigns && Object.keys(recipe.templatesToDesigns).length > 0) ||
+    (recipe.dictionary && recipe.dictionary.length > 0) ||
+    (recipe.taxonomy && recipe.taxonomy.length > 0);
+
+  if (hasSynthesisInput) {
+    // Module root. Conforms to HEADLESS_SITE_SETUP_ROOT — the SXA-shipped
+    // template every site-scoped Module item conforms to (A's U1 finding).
+    operations.push({
+      op: "CreateItem",
+      policy,
+      label: `site-template-module:${recipe.handle}`,
+      id: moduleRefKey,
+      path: moduleItemPath,
+      parent: { kind: "ref-path", value: modulesFolderPath },
+      templateOf: HEADLESS_SITE_SETUP_ROOT,
+      name: recipe.name,
+      fields: [
+        sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
+        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
+          kind: "string",
+          value: `${recipe.displayName} Setup`,
+        }),
+      ],
+    } satisfies CreateItemOp);
+
+    // Setup-action children. Each source-recipe field expands into one
+    // (or more) child items under the Module root. The action template
+    // is picked per source-field kind:
+    //
+    //   - pageTemplates     → AddItem            (add a page template
+    //                                              to the site)
+    //   - pageDesigns       → AddItem            (add a page design)
+    //   - insertOptionsMatrix → EditSiteItem     (set per-template Insert
+    //                                              Options on a site item)
+    //   - templatesToDesigns  → EditTenantTemplate (set template→design
+    //                                                 mapping at tenant)
+    //   - dictionary        → EditTenantTemplate (seed Dictionary phrase
+    //                                              defaults at tenant)
+    //   - taxonomy          → EditTenantTemplate (seed Taxonomy roots at
+    //                                              tenant)
+    //
+    // **Ambiguous pointer from A** — A's investigation surfaced the action
+    // child template NAMES + the production tenant-rooted Module
+    // composition pattern, but did NOT capture each action template's
+    // GUID. We use the IR's `ref-path` `templateOf` shape (same mechanism
+    // workflow templates already use) so the executor resolves these at
+    // apply time via a single `getItemsByPaths` batch. Sub-milestone E
+    // verifies the path mapping and switches to direct GUIDs if any of
+    // the paths diverge on a live tenant.
+    const actionPolicy = policy;
+    const emitAction = (
+      actionKind: string,
+      targetHandle: string,
+      childName: string,
+      templatePath: string
+    ): void => {
+      const childRefKey = siteTemplateModuleActionId(site, recipe.handle, actionKind, targetHandle);
+      operations.push({
+        op: "CreateItem",
+        policy: actionPolicy,
+        label: `site-template-module-action:${recipe.handle}:${actionKind}:${targetHandle}`,
+        id: childRefKey,
+        path: joinPath(moduleItemPath, childName),
+        parent: { kind: "ref-recipe", refKey: moduleRefKey },
+        templateOf: { kind: "ref-path", value: templatePath },
+        name: childName,
+        fields: [
+          sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
+          versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: childName }),
+        ],
+      } satisfies CreateItemOp);
+    };
+
+    for (const handle of recipe.pageTemplates) {
+      emitAction(
+        "add-page-template",
+        handle,
+        `Add ${handle}`,
+        SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM
+      );
+    }
+    for (const handle of recipe.pageDesigns) {
+      emitAction("add-page-design", handle, `Add ${handle}`, SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM);
+    }
+    if (recipe.insertOptionsMatrix) {
+      for (const parentHandle of Object.keys(recipe.insertOptionsMatrix).sort()) {
+        emitAction(
+          "insert-options",
+          parentHandle,
+          `Insert Options ${parentHandle}`,
+          SETUP_ACTION_TEMPLATE_PATHS.EDIT_SITE_ITEM
+        );
+      }
+    }
+    if (recipe.templatesToDesigns) {
+      for (const tplHandle of Object.keys(recipe.templatesToDesigns).sort()) {
+        emitAction(
+          "templates-to-designs",
+          tplHandle,
+          `Map ${tplHandle} to Design`,
+          SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
+        );
+      }
+    }
+    if (recipe.dictionary) {
+      for (const entry of recipe.dictionary) {
+        emitAction(
+          "dictionary",
+          entry.phrase,
+          `Dictionary ${entry.phrase}`,
+          SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
+        );
+      }
+    }
+    if (recipe.taxonomy) {
+      for (const entry of recipe.taxonomy) {
+        emitAction(
+          "taxonomy",
+          entry.root,
+          `Taxonomy ${entry.root}`,
+          SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
+        );
+      }
+    }
+  }
+
+  // `Site Modules` aggregation. Every recipe-emitted site template carries
+  // the 15 Foundation site modules (per A's U2 capture of `Empty Site`)
+  // plus the synthesised tenant-rooted Module GUID (when present).
+  // Deterministic order — Foundation first, tenant-rooted last — matches
+  // the three production tenant-rooted Solution templates' field shape.
+  operations.push({
+    op: "SetField",
+    policy,
+    label: `site-template-site-modules:${recipe.handle}`,
+    itemRefKey,
+    fieldId: SITE_TEMPLATE_FIELDS.SITE_MODULES,
+    value: hasSynthesisInput
+      ? {
+          kind: "ref-recipe-list",
+          refKeys: [...FOUNDATION_SITE_MODULES, moduleRefKey],
+        }
+      : {
+          kind: "ref-guid-list",
+          values: [...FOUNDATION_SITE_MODULES],
+        },
+  } satisfies SetFieldOp);
+
+  // `Tenant Modules` is the 11 Foundation tenant modules verbatim — no
+  // tenant-rooted entry appended because today's SiteTemplateRecipe
+  // shape only describes site-scoped brand structure. Cross-site
+  // tenant-scoped overrides would need a new authoring surface.
+  operations.push({
+    op: "SetField",
+    policy,
+    label: `site-template-tenant-modules:${recipe.handle}`,
+    itemRefKey,
+    fieldId: SITE_TEMPLATE_FIELDS.TENANT_MODULES,
+    value: { kind: "ref-guid-list", values: [...FOUNDATION_TENANT_MODULES] },
+  } satisfies SetFieldOp);
 
   return OperationIrSchema.parse({
     schemaVersion: "1",

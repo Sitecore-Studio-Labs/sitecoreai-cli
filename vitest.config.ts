@@ -6,7 +6,13 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    setupFiles: ["tests/integration/setup.ts"],
+    // Integration tests load .env files via an explicit `import "./setup"`
+    // (or transitively through `./helpers`); applying the env-loading
+    // setup globally would leak SITECOREAI_CLIENT_ID / _CLIENT_SECRET /
+    // _AUTHORITY into unit tests that explicitly model the
+    // no-credential path (e.g. serialization auth-resolver tests),
+    // turning those assertions into TypeErrors when the loaded env vars
+    // accidentally satisfy the credential-chain resolver.
     coverage: {
       provider: "v8",
       reportsDirectory: "coverage",

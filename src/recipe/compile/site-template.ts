@@ -1,3 +1,4 @@
+import { consola } from "consola";
 import { createScaiError } from "@/shared/errors";
 import { templateId } from "../items/guids";
 import {
@@ -64,6 +65,35 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * Identity: `templateId(handle)` derives the SiteTemplate item's
  * deterministic refKey.
  */
+/**
+ * Fields the SiteTemplate Zod schema accepts today but compile silently
+ * drops at install. Populating any of them triggers an explicit warn so
+ * authors get clear feedback that the data won't reach Sitecore until
+ * the plan at `docs/plans/site-template-modules-and-picker.md` lands.
+ */
+const DROPPED_AT_INSTALL_FIELDS = [
+  "pageTemplates",
+  "pageDesigns",
+  "insertOptionsMatrix",
+  "templatesToDesigns",
+  "dictionary",
+  "taxonomy",
+  "thumbnail",
+  "image",
+  "contents",
+] as const satisfies readonly (keyof SiteTemplateRecipe)[];
+
+function listPopulatedDroppedFields(recipe: SiteTemplateRecipe): string[] {
+  return DROPPED_AT_INSTALL_FIELDS.filter((key) => {
+    const value = recipe[key];
+    if (value === undefined) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "object" && value !== null) return Object.keys(value).length > 0;
+    if (typeof value === "string") return value.length > 0;
+    return true;
+  });
+}
+
 export function compileSiteTemplateRecipe(
   input: SiteTemplateRecipe,
   context: CompileContext
@@ -73,6 +103,13 @@ export function compileSiteTemplateRecipe(
     throw createScaiError(
       `compileSiteTemplateRecipe requires context.siteTemplatesRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
+    );
+  }
+
+  const populatedDropped = listPopulatedDroppedFields(recipe);
+  if (populatedDropped.length > 0) {
+    consola.warn(
+      `compileSiteTemplateRecipe: recipe '${recipe.handle}' populated fields that are accepted by the schema but currently dropped at install (pending docs/plans/site-template-modules-and-picker.md): ${populatedDropped.join(", ")}`
     );
   }
 

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { consola } from "consola";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { alarisRecipe } from "../../../example/recipes/alaris.recipe";
 import { cclBrandTemplateRecipe } from "../../../example/recipes/ccl-brand-template.recipe";
 import { solterraCoRecipe } from "../../../example/recipes/solterra-co.recipe";
@@ -234,5 +235,77 @@ describe("compileSiteTemplateRecipe", () => {
     // CreateSiteFromTemplate op followed by N SetField ops (one per
     // dictionary override). Taxonomy emission is still deferred to v3.
     expect(ir.operations[0].op).toBe("CreateSiteFromTemplate");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Picker UX gap warning — schema accepts thumbnail/image/contents (and the
+// pre-existing pageTemplates/pageDesigns/etc.) but compile silently drops
+// them today. The warn is the operator's only signal until the plan at
+// docs/plans/site-template-modules-and-picker.md lands.
+// ---------------------------------------------------------------------------
+
+describe("compileSiteTemplateRecipe — populated-but-dropped warning", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  const MINIMAL_RECIPE = {
+    kind: "site-template" as const,
+    schemaVersion: "1" as const,
+    handle: "minimal-template@1",
+    name: "MinimalTemplate",
+    displayName: "Minimal Template",
+    description: "Only fields the compiler currently surfaces",
+  };
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("warns once when the recipe populates fields that are dropped at install", () => {
+    compileSiteTemplateRecipe(cclBrandTemplateRecipe, COMPILE_CONTEXT);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = warnSpy.mock.calls[0]?.[0] as string;
+    expect(message).toContain("ccl-brand-template@1");
+    expect(message).toContain("pending docs/plans/site-template-modules-and-picker.md");
+    expect(message).toContain("pageTemplates");
+    expect(message).toContain("pageDesigns");
+  });
+
+  it("includes thumbnail/image/contents in the dropped-fields list when populated", () => {
+    compileSiteTemplateRecipe(
+      {
+        ...MINIMAL_RECIPE,
+        thumbnail: { kind: "url", url: "https://cdn.example.com/thumb.png" },
+        image: { kind: "url", url: "https://cdn.example.com/hero.png" },
+        contents: "## Details",
+      },
+      COMPILE_CONTEXT
+    );
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = warnSpy.mock.calls[0]?.[0] as string;
+    expect(message).toContain("thumbnail");
+    expect(message).toContain("image");
+    expect(message).toContain("contents");
+  });
+
+  it("does NOT warn when the recipe only uses compile-handled fields", () => {
+    compileSiteTemplateRecipe(MINIMAL_RECIPE, COMPILE_CONTEXT);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT warn when pageTemplates/pageDesigns default to empty arrays", () => {
+    compileSiteTemplateRecipe(
+      {
+        ...MINIMAL_RECIPE,
+        pageTemplates: [],
+        pageDesigns: [],
+      },
+      COMPILE_CONTEXT
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });

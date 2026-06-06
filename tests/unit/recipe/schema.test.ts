@@ -607,6 +607,80 @@ describe("SiteTemplateRecipe Zod schema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts thumbnail with kind: url", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      thumbnail: {
+        kind: "url",
+        url: "https://cdn.example.com/ccl-thumb.png",
+        alt: "Click Click Launch thumbnail",
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.thumbnail?.kind === "url") {
+      expect(result.data.thumbnail.url).toBe("https://cdn.example.com/ccl-thumb.png");
+      expect(result.data.thumbnail.alt).toBe("Click Click Launch thumbnail");
+    }
+  });
+
+  it("accepts thumbnail with kind: asset", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      thumbnail: { kind: "asset", path: "./thumbnail.png" },
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.thumbnail?.kind === "asset") {
+      expect(result.data.thumbnail.path).toBe("./thumbnail.png");
+    }
+  });
+
+  it("rejects thumbnail with an unknown discriminator kind", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      thumbnail: { kind: "invalid", url: "https://x" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts image with kind: url", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      image: {
+        kind: "url",
+        url: "https://cdn.example.com/ccl-hero.png",
+        alt: "CCL hero",
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts image with kind: asset", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      image: { kind: "asset", path: "./hero.png" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects image with an unknown discriminator kind", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      image: { kind: "bogus", path: "./hero.png" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts contents as a plain-string markdown summary", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      contents: "## What you get\n\n- Page templates\n- Page designs",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contents).toContain("What you get");
+    }
+  });
 });
 
 const baseSite = {

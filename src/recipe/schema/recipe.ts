@@ -1586,6 +1586,60 @@ export const SiteTemplateRecipeSchema = z.object({
    * Default taxonomy structure. Sites can override tag lists per-root.
    */
   taxonomy: z.array(SiteTemplateTaxonomyEntrySchema).optional(),
+  /**
+   * Picker tile thumbnail — the small image Sitecore AI renders next
+   * to the template's name in the "Create a site" UI. Discriminated
+   * union over two authoring modes (locked 2026-06-06):
+   *
+   *   - `kind: "url"` — author hosts the image externally (CDN, S3,
+   *     GitHub raw); the compiler writes the URL directly to the
+   *     picker field. The v1 / cheap path scai implements first.
+   *   - `kind: "asset"` — `path` is a registry-relative reference
+   *     (e.g. `./thumbnail.png` sibling of this recipe). The compiler
+   *     uploads the file to Sitecore's media library via a new
+   *     media-upload IR op and writes the resolved media-item GUID.
+   *     The polish path — pending scai's media-upload op.
+   *
+   * **scai gap:** the field is dropped entirely at install today. When
+   * scai catches up, `url` mode lands first; `asset` mode follows.
+   */
+  thumbnail: z
+    .discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("url"),
+        url: z.string().min(1),
+        alt: z.string().optional(),
+      }),
+      z.object({
+        kind: z.literal("asset"),
+        path: z.string().min(1),
+        alt: z.string().optional(),
+      }),
+    ])
+    .optional(),
+  /**
+   * Hero image rendered on the template's detail panel in the picker.
+   * Same discriminated-union shape as `thumbnail`; same gap.
+   */
+  image: z
+    .discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("url"),
+        url: z.string().min(1),
+        alt: z.string().optional(),
+      }),
+      z.object({
+        kind: z.literal("asset"),
+        path: z.string().min(1),
+        alt: z.string().optional(),
+      }),
+    ])
+    .optional(),
+  /**
+   * Detail-panel content summary — what the picker shows under the
+   * hero image when a tile is selected. Plain markdown.
+   */
+  contents: z.string().optional(),
 });
 
 export type SiteTemplateRecipe = z.infer<typeof SiteTemplateRecipeSchema>;

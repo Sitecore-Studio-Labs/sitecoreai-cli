@@ -74,15 +74,6 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  */
 export function compilePageRecipe(input: PageRecipe, context: CompileContext): OperationIr {
   const recipe = PageRecipeSchema.parse(input);
-  if (!context.pagesRoot) {
-    throw createScaiError(
-      `compilePageRecipe requires context.pagesRoot; tenant-side path missing for recipe ${recipe.handle}`,
-      "INPUT_INVALID",
-      {
-        hint: "Set `pagesRoot` on the active envProfile in sitecoreai.cli.json — e.g. `/sitecore/content/<tenant>/<site>/Home`.",
-      }
-    );
-  }
 
   // Simple (fields/translations) XOR story (versions) — never both. Zod
   // can't carry a refine on a discriminated-union member, so the compiler
@@ -104,7 +95,34 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
   const itemRefKey = pageItemId(site, recipe.handle);
-  const itemPath = joinPath(context.pagesRoot, recipe.name);
+
+  // Path resolution: explicit `itemPath` (registry shape) wins —
+  // substitute `{site}` with the active site name, parent the page at
+  // the path's parent dir. Fall back to `pagesRoot + name` for legacy
+  // recipes that don't carry `itemPath`. `pagesRoot` is required only
+  // in the fallback path.
+  let itemPath: string;
+  let parentPath: string;
+  let itemName: string;
+  if (recipe.itemPath) {
+    itemPath = recipe.itemPath.replace(/\{site\}/g, site);
+    const lastSlash = itemPath.lastIndexOf("/");
+    parentPath = itemPath.slice(0, lastSlash);
+    itemName = itemPath.slice(lastSlash + 1);
+  } else {
+    if (!context.pagesRoot) {
+      throw createScaiError(
+        `compilePageRecipe requires context.pagesRoot or an explicit \`itemPath\`; tenant-side path missing for recipe ${recipe.handle}`,
+        "INPUT_INVALID",
+        {
+          hint: "Set `pagesRoot` on the active envProfile in sitecoreai.cli.json — e.g. `/sitecore/content/<tenant>/<site>/Home` — or author `itemPath: '/sitecore/content/{site}/...'` on the recipe.",
+        }
+      );
+    }
+    itemPath = joinPath(context.pagesRoot, recipe.name);
+    parentPath = context.pagesRoot;
+    itemName = recipe.name;
+  }
 
   const createItem: CreateItemOp = {
     op: "CreateItem",
@@ -112,12 +130,12 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     label: `page:${recipe.handle}`,
     id: itemRefKey,
     path: itemPath,
-    parent: { kind: "ref-path", value: context.pagesRoot },
+    parent: { kind: "ref-path", value: parentPath },
     // String GUID — resolves as a refKey when the page template ships in
     // the same set (`templateId(template)` is captured at apply time),
     // else as a literal Sitecore template GUID.
     templateOf: templateId(site, recipe.template),
-    name: recipe.name,
+    name: itemName,
     fields: [
       sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
       versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
@@ -129,24 +147,35 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   const versionOps: Operation[] = [];
   const fieldOps: Operation[] = [];
 
-  /** Emit one SetField per field value at the given (language, version). */
+  /**
+   * Emit one SetField per field value at the given (language, version).
+   *
+   * Accepts either scai-native discriminated `ContentFieldValue`s or the
+   * registry's flat shape (string, boolean, number, `{src, alt}`,
+   * `{href, text}`) — normalised through `normalizeFieldValue` before
+   * delegating to the shared `encodeContentFieldValue`.
+   */
   const emitFields = (
-    fields: Record<string, ContentFieldValue>,
+    fields: Record<string, unknown>,
     language: string | undefined,
     version: number | undefined,
-    labelTag: string
+    labelTag: string,
+    targetItemRefKey: string = itemRefKey,
+    templateHandle: string = recipe.template
   ): void => {
-    for (const [fieldName, fieldValue] of Object.entries(fields)) {
-      const value = encodeContentFieldValue(fieldValue, recipe.handle, site);
+    for (const [fieldName, rawValue] of Object.entries(fields)) {
+      const normalised = normalizeFieldValue(rawValue);
+      if (normalised === null) continue;
+      const value = encodeContentFieldValue(normalised, recipe.handle, site);
       if (value === null) continue;
       fieldOps.push({
         op: "SetField",
         policy,
         label: `page-field:${recipe.handle}:${labelTag}:${fieldName}`,
-        itemRefKey,
+        itemRefKey: targetItemRefKey,
         // Recipe-created field — Sitecore assigns its own GUID, so this
         // is an IR-internal refKey; the mutation resolves via `fieldName`.
-        fieldId: fieldId(site, recipe.template, fieldName),
+        fieldId: fieldId(site, templateHandle, fieldName),
         fieldName,
         ...(language !== undefined && { language }),
         ...(version !== undefined && { version }),
@@ -358,17 +387,19 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       } satisfies SetFieldOp);
     }
 
-    for (const [slot, componentHandle] of scopedSlots) {
+    for (const [slot, info] of scopedSlots) {
       // Resolve the component's datasource template; fall back to the
       // component template itself (the inline-`fields:` pattern, and
       // the only option for a standalone single-recipe compile).
-      const component = context.componentsByHandle?.get(componentHandle);
-      const datasourceTemplateHandle = component?.datasource?.template?.handle ?? componentHandle;
+      const component = context.componentsByHandle?.get(info.componentHandle);
+      const datasourceTemplateHandle =
+        component?.datasource?.template?.handle ?? info.componentHandle;
+      const slotItemRefKey = datasourceId(itemRefKey, slot);
       operations.push({
         op: "CreateItem",
         policy,
         label: `page-datasource:${recipe.handle}:${slot}`,
-        id: datasourceId(itemRefKey, slot),
+        id: slotItemRefKey,
         path: joinPath(dataFolderPath, slot),
         parent: { kind: "ref-recipe", refKey: dataFolderRefKey },
         templateOf: templateId(site, datasourceTemplateHandle),
@@ -378,6 +409,22 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
           versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: slot }),
         ],
       } satisfies CreateItemOp);
+
+      // Field values for the materialised `<page>/Data/<slot>` item.
+      // Reuses the shared `emitFields` (which normalises both registry
+      // flat shapes and scai-native discriminated values via
+      // `encodeContentFieldValue`). Fields land on the slot item's own
+      // refKey, scoped to that item's template for fieldId derivation.
+      if (Object.keys(info.fields).length > 0) {
+        emitFields(
+          info.fields,
+          DEFAULT_LANGUAGE,
+          DEFAULT_VERSION,
+          `scoped:${slot}`,
+          slotItemRefKey,
+          datasourceTemplateHandle
+        );
+      }
     }
   }
   operations.push(...fieldOps);
@@ -428,8 +475,20 @@ const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
   return `${yyyy}${MM}${dd}T${HH}${mm}${ss}Z`;
 };
 
+interface ScopedSlotInfo {
+  /** Handle of the placed component — drives datasource-template fallback. */
+  componentHandle: string;
+  /**
+   * Field values for the materialised `<page>/Data/<slot>` item, taken
+   * from the first placement's `datasourceRef.scoped.fields` (first-seen
+   * wins; the slot item is shared structure across (lang, version)
+   * cells, so its field values are taken once).
+   */
+  fields: Record<string, unknown>;
+}
+
 /**
- * Collect the deduped `<slot, componentHandle>` map across every layout
+ * Collect the deduped `<slot, ScopedSlotInfo>` map across every layout
  * the recipe declares — item-level `layout` plus each `versions[lang][n]
  * .layout` cell. Order is first-seen for stable IR output.
  *
@@ -438,8 +497,8 @@ const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
  * (one Sitecore item per slot, regardless of how many `(lang, version)`
  * cells reference it), so this collection is union-of-layouts.
  */
-const collectScopedSlots = (recipe: PageRecipe): Map<string, string> => {
-  const slots = new Map<string, string>();
+const collectScopedSlots = (recipe: PageRecipe): Map<string, ScopedSlotInfo> => {
+  const slots = new Map<string, ScopedSlotInfo>();
   const addFrom = (layout: Layout): void => {
     for (const placements of Object.values(layout.placeholders)) {
       for (const placement of placements) {
@@ -447,7 +506,10 @@ const collectScopedSlots = (recipe: PageRecipe): Map<string, string> => {
           placement.datasourceRef?.kind === "scoped" &&
           !slots.has(placement.datasourceRef.slot)
         ) {
-          slots.set(placement.datasourceRef.slot, placement.componentHandle);
+          slots.set(placement.datasourceRef.slot, {
+            componentHandle: placement.componentHandle,
+            fields: placement.datasourceRef.fields ?? {},
+          });
         }
       }
     }
@@ -461,6 +523,57 @@ const collectScopedSlots = (recipe: PageRecipe): Map<string, string> => {
     }
   }
   return slots;
+};
+
+/**
+ * Normalise a raw field value (registry flat shape OR scai-native
+ * discriminated shape) to a `ContentFieldValue` for
+ * `encodeContentFieldValue`. Returns `null` when the value is not
+ * recognised (drops it from emission).
+ *
+ * Registry shape mapping:
+ *  - string  → `{ shape: "text" }`
+ *  - boolean → `{ shape: "boolean" }`
+ *  - number  → `{ shape: "integer" }` when an integer, else `{ shape: "number" }`
+ *  - object with `src`  → `{ shape: "image", mediaPath: src, alt?, width?, height? }`
+ *  - object with `href` → `{ shape: "link-external", href, text?, target?, title? }`
+ *  - object with `shape` → already a `ContentFieldValue`, pass through
+ */
+const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") return { shape: "text", value: raw };
+  if (typeof raw === "boolean") return { shape: "boolean", value: raw };
+  if (typeof raw === "number") {
+    return Number.isInteger(raw)
+      ? { shape: "integer", value: raw }
+      : { shape: "number", value: raw };
+  }
+  if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    // Already a scai-native discriminated ContentFieldValue.
+    if (typeof obj.shape === "string") return obj as unknown as ContentFieldValue;
+    // Registry image shape: { src, alt?, width?, height? }.
+    if (typeof obj.src === "string") {
+      return {
+        shape: "image",
+        mediaPath: obj.src,
+        ...(typeof obj.alt === "string" ? { alt: obj.alt } : {}),
+        ...(typeof obj.width === "number" ? { width: obj.width } : {}),
+        ...(typeof obj.height === "number" ? { height: obj.height } : {}),
+      };
+    }
+    // Registry external-link shape: { href, text?, target?, title? }.
+    if (typeof obj.href === "string") {
+      return {
+        shape: "link-external",
+        href: obj.href,
+        ...(typeof obj.text === "string" ? { text: obj.text } : {}),
+        ...(typeof obj.target === "string" ? { target: obj.target } : {}),
+        ...(typeof obj.title === "string" ? { title: obj.title } : {}),
+      };
+    }
+  }
+  return null;
 };
 
 /**

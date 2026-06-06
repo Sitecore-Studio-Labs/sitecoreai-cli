@@ -668,9 +668,12 @@ export const mergeContentValueRecipe = (
   // same coordinates.
   const DEFAULT_LANGUAGE = "en";
   const DEFAULT_VERSION = 1;
+  // `PageRecipe.fields` is `Record<string, unknown>` (loose registry shape
+  // alongside scai-native ContentFieldValue) — cast for the merge, which
+  // is a structural pass-through that doesn't inspect the value's shape.
   merged.fields = mergeFieldMap(
-    diskRecipe.fields,
-    tenantRecipe.fields,
+    diskRecipe.fields as Record<string, ContentFieldValue>,
+    tenantRecipe.fields as Record<string, ContentFieldValue>,
     DEFAULT_LANGUAGE,
     DEFAULT_VERSION
   );

@@ -2690,8 +2690,10 @@ describe("readCurrentRecipes — placement datasource arms", () => {
     const partial = recipes!.find((r): r is PartialDesignRecipe => r.kind === "partial-design");
     const placements = partial!.layout.placeholders["/main"];
     expect(placements).toHaveLength(3);
-    // Placement 1: local: sentinel → scoped datasourceRef.
-    expect(placements[0].datasourceRef).toEqual({ kind: "scoped", slot: "Hero" });
+    // Placement 1: local: sentinel → scoped datasourceRef. `fields: {}` is
+    // the unified-shape carrier — read-current doesn't round-trip the
+    // materialised slot-item field values, so the carrier is empty.
+    expect(placements[0].datasourceRef).toEqual({ kind: "scoped", slot: "Hero", fields: {} });
     // Placement 2: GUID resolved via the marker index → shared datasourceRef.
     expect(placements[1].datasourceRef).toEqual({ kind: "shared", handle: "shared-hero@1" });
     // Placement 3: GUID has no marker → datasourceRef omitted entirely.

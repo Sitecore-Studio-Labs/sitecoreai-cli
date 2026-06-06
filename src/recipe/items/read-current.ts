@@ -1036,7 +1036,10 @@ const placementFromParsed = (
 
   if (parsed.datasource !== undefined) {
     if (parsed.datasource.kind === "local") {
-      placement.datasourceRef = { kind: "scoped", slot: parsed.datasource.slot };
+      // Pull-side: the materialised `<page>/Data/<slot>` field values are
+      // not round-tripped here; leave `fields` empty (Zod's `.default({})`
+      // populates if missing, but be explicit for type narrowing).
+      placement.datasourceRef = { kind: "scoped", slot: parsed.datasource.slot, fields: {} };
     } else {
       const dsHandle = guidIndex.get(parsed.datasource.guid);
       if (dsHandle !== undefined) {

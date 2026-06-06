@@ -550,11 +550,16 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
 
       case "page":
         checkRef(recipe.handle, "template", recipe.template, PAGE_TEMPLATE_KINDS);
-        for (const [fieldName, value] of Object.entries(recipe.fields ?? {})) {
-          if (value.shape === "link-internal") {
+        // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
+        // shape alongside scai-native ContentFieldValue). Only scai-native
+        // shapes carry cross-recipe handle refs; sniff `shape` defensively.
+        for (const [fieldName, raw] of Object.entries(recipe.fields ?? {})) {
+          if (raw === null || typeof raw !== "object" || !("shape" in raw)) continue;
+          const value = raw as { shape: string; ref?: string; refs?: readonly string[] };
+          if (value.shape === "link-internal" && typeof value.ref === "string") {
             checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
-          } else if (value.shape === "reference") {
-            value.refs.forEach((handle, idx) => {
+          } else if (value.shape === "reference" && Array.isArray(value.refs)) {
+            value.refs.forEach((handle: string, idx: number) => {
               checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
             });
           }

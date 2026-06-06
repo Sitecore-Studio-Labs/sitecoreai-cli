@@ -2,6 +2,7 @@
 
 **Date opened:** 2026-06-06
 **Opened from:** registry session that added `PageDesignRecipe` + `PageItemTemplateRecipe.pageDesign`
+**Registry-side update 2026-06-06:** Option A's registry-side changes have landed. The registry now uses scai's vocabulary (`page-template` / `page` kinds; `appliesTo` on `PageDesignRecipe`; no `pageDesign` ref on the template). Only the scai-side verification work below remains.
 **Owner on next pickup:** the next scai session (run this from the scai checkout, not from the registry checkout)
 
 ## TL;DR
@@ -12,14 +13,14 @@ Until reconciled, the new registry reference experiences (`standard-page@1`, `ho
 
 ## What landed in the registry (2026-06-06)
 
-| File | What changed |
-|---|---|
-| `src/lib/registry/sitecore-recipes.ts` | Added `PageDesignRecipe` (kind `"page-design"`, `partials: HandleString[]`, `layout: Layout` required, `superRefine` rejects `datasourceRef.kind: "scoped"`); added optional `pageDesign: { handle }` to `PageItemTemplateRecipe`; wired into the top-level `Recipe` union. |
-| `src/components/registry/experiences/page-designs/standard-page/standard-page.recipe.ts` | Reference page-design — `standard-header@1` + `standard-footer@1`, pre-places `container@1` at `headless-main`. |
-| `src/components/registry/experiences/page-items/homepage-demo/homepage-demo.recipe.ts` | Reference page-item using `template: { handle: "page@1" }` (which is `kind: "page-item-template"`), drops `hero@1` + `features-list-grid@1` into `container-1`. |
-| `src/components/registry/experiences/page.recipe.ts` | Now declares `pageDesign: { handle: "standard-page@1" }` on the shared `Page` template. |
-| `scripts/registry/generate-recipe-schemas.ts` | Emits `page-design.schema.json` for Agent Studio. |
-| `scripts/registry/generate-registry-entries.ts` | Knows the `page-design` / `partial-design` kinds so orphan recipes get a descriptive `description` field. |
+| File                                                                                     | What changed                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/registry/sitecore-recipes.ts`                                                   | Added `PageDesignRecipe` (kind `"page-design"`, `partials: HandleString[]`, `layout: Layout` required, `superRefine` rejects `datasourceRef.kind: "scoped"`); added optional `pageDesign: { handle }` to `PageItemTemplateRecipe`; wired into the top-level `Recipe` union. |
+| `src/components/registry/experiences/page-designs/standard-page/standard-page.recipe.ts` | Reference page-design — `standard-header@1` + `standard-footer@1`, pre-places `container@1` at `headless-main`.                                                                                                                                                             |
+| `src/components/registry/experiences/page-items/homepage-demo/homepage-demo.recipe.ts`   | Reference page-item using `template: { handle: "page@1" }` (which is `kind: "page-item-template"`), drops `hero@1` + `features-list-grid@1` into `container-1`.                                                                                                             |
+| `src/components/registry/experiences/page.recipe.ts`                                     | Now declares `pageDesign: { handle: "standard-page@1" }` on the shared `Page` template.                                                                                                                                                                                     |
+| `scripts/registry/generate-recipe-schemas.ts`                                            | Emits `page-design.schema.json` for Agent Studio.                                                                                                                                                                                                                           |
+| `scripts/registry/generate-registry-entries.ts`                                          | Knows the `page-design` / `partial-design` kinds so orphan recipes get a descriptive `description` field.                                                                                                                                                                   |
 
 Registry-side JSON Schema lives at `src/registry-content/schemas/page-design.schema.json`.
 
@@ -27,12 +28,12 @@ Registry-side JSON Schema lives at `src/registry-content/schemas/page-design.sch
 
 ### 1. Recipe-kind names
 
-| Concept | registry | scai |
-|---|---|---|
-| Page template | `PageItemTemplateRecipe` — `kind: "page-item-template"` | `PageTemplateRecipeSchema` — `kind: "page-template"` |
-| Page instance | `PageItemRecipe` — `kind: "page-item"` | `PageRecipeSchema` — `kind: "page"` |
-| Page design | `PageDesignRecipe` — `kind: "page-design"` ✓ | `PageDesignRecipeSchema` — `kind: "page-design"` ✓ |
-| Partial design | `PartialDesignRecipe` — `kind: "partial-design"` ✓ | `PartialDesignRecipeSchema` — `kind: "partial-design"` ✓ |
+| Concept        | registry                                                | scai                                                     |
+| -------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| Page template  | `PageItemTemplateRecipe` — `kind: "page-item-template"` | `PageTemplateRecipeSchema` — `kind: "page-template"`     |
+| Page instance  | `PageItemRecipe` — `kind: "page-item"`                  | `PageRecipeSchema` — `kind: "page"`                      |
+| Page design    | `PageDesignRecipe` — `kind: "page-design"` ✓            | `PageDesignRecipeSchema` — `kind: "page-design"` ✓       |
+| Partial design | `PartialDesignRecipe` — `kind: "partial-design"` ✓      | `PartialDesignRecipeSchema` — `kind: "partial-design"` ✓ |
 
 So `homepage-demo@1` ships with `kind: "page-item"` and a `template: { handle: "page@1" }` ref pointing at a `kind: "page-item-template"` recipe — both rejected by scai's `RecipeSchema` discriminated union.
 
@@ -53,12 +54,12 @@ These two approaches are **semantically equivalent** in SXA (both end up writing
 
 ### 3. Required vs optional fields on `PageDesignRecipe`
 
-| Field | registry | scai |
-|---|---|---|
-| `partials` | `default([])` | `default([])` ✓ |
-| `layout` | required `Layout` | `LayoutSchema.optional()` |
+| Field                       | registry                               | scai                                                    |
+| --------------------------- | -------------------------------------- | ------------------------------------------------------- |
+| `partials`                  | `default([])`                          | `default([])` ✓                                         |
+| `layout`                    | required `Layout`                      | `LayoutSchema.optional()`                               |
 | scoped-datasource rejection | `superRefine` rejects `kind: "scoped"` | (verify — likely enforced in `compileLayoutPlacements`) |
-| `appliesTo` | (absent) | required-with-default |
+| `appliesTo`                 | (absent)                               | required-with-default                                   |
 
 ## Three reconciliation options
 
@@ -100,9 +101,9 @@ Migrate scai's `PageTemplateRecipeSchema` → `PageItemTemplateRecipeSchema`, `P
 
 ## Recommended path: Option A
 
-1. **(scai side, this brief's owner)** Run `superRefine` audit on `PageDesignRecipeSchema` — either add the scoped-datasource rejection or document where it's enforced in compile. Verify `compilePageDesignRecipe` handles the new registry recipes once renamed.
-2. **(registry side, separate session)** Rename `PageItemTemplateRecipe` → `PageTemplateRecipe`, `PageItemRecipe` → `PageRecipe`. Move `pageDesign` template ref → `appliesTo` array on `PageDesignRecipe`. Update `page.recipe.ts`, `standard-page.recipe.ts`, `homepage-demo.recipe.ts`, and the entries generator. Regenerate schemas + entries.
-3. **(integration)** Run an end-to-end `recipe_sync` against a sandbox tenant with the renamed registry recipes to confirm `standard-page@1` lands as a Page Design item with `PartialDesigns` populated, and `homepage-demo` lands as a page that inherits the design via `TemplatesMapping`.
+1. ~~**(registry side)** Rename `PageItemTemplateRecipe` → `PageTemplateRecipe`, `PageItemRecipe` → `PageRecipe`. Move `pageDesign` template ref → `appliesTo` array on `PageDesignRecipe`. Update `page.recipe.ts`, `standard-page.recipe.ts`, `homepage-demo.recipe.ts`, and the entries generator. Regenerate schemas + entries.~~ **Done 2026-06-06.** Folder `experiences/page-items/` → `experiences/pages/` too. JSON Schemas regenerated; stale `page-item*.schema.json` removed. Typecheck + recipe-discovery test pass.
+2. **(scai side, this brief's owner)** Run `superRefine` audit on `PageDesignRecipeSchema` — either add the scoped-datasource rejection or document where it's enforced in compile. Verify `compilePageDesignRecipe` parses and compiles the registry's `standard-page@1` (now ships with `appliesTo: ["page@1"]`).
+3. **(integration)** Run an end-to-end `recipe_sync` against a sandbox tenant with the registry recipes to confirm `standard-page@1` lands as a Page Design item with `PartialDesigns` populated, and `homepage-demo` (kind `page`) lands as a page that inherits the design via the Page Designs root `TemplatesMapping`.
 4. **(this brief)** Delete after step 3 lands and `recipe_sync` integration is green.
 
 ## Pre-existing context worth knowing before picking this up

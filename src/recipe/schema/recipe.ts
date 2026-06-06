@@ -1184,6 +1184,18 @@ export const ComponentPlacementSchema = z.object({
          * Only valid in a `PageRecipe` layout.
          */
         slot: z.string().min(1),
+        /**
+         * Field values for the materialised `<page>/Data/<slot>` item,
+         * keyed by field name (matching the rendering's
+         * `ComponentTemplateRecipe` field names). Accepts both the
+         * scai-native discriminated `ContentFieldValue` shape
+         * (`{ shape, value, ... }`) and the registry's flat shape —
+         * plain strings (text), booleans, numbers, `{ src, alt }` for
+         * image fields, `{ href, text }` for link-external fields. The
+         * compiler normalises into `ContentFieldValue` and reuses
+         * `encodeContentFieldValue` to emit the Sitecore wire form.
+         */
+        fields: z.record(z.string(), z.unknown()).default({}),
       }),
       z.object({ kind: z.literal("none") }),
     ])
@@ -1319,13 +1331,42 @@ export const PageRecipeSchema = z.object({
     message: "template must reference a PageTemplateRecipe by handle, e.g. article-page@1",
   }),
   /**
+   * Explicit item path in the content tree. Must start with the literal
+   * prefix `/sitecore/content/{site}/` — the `{site}` placeholder is the
+   * only supported substitution and is replaced with the active site
+   * name (`context.site`, defaulting to `default`) at compile time, so
+   * the same recipe installs cleanly across sites. The path's parent
+   * directory becomes the page's parent ref; the leaf segment supersedes
+   * `name` for path emission.
+   *
+   * Optional for back-compat: when omitted, the compiler falls back to
+   * `joinPath(context.pagesRoot, name)` (legacy behavior — `pagesRoot`
+   * remains required only in that fallback path).
+   *
+   * Example: `/sitecore/content/{site}/Home/Homepage Demo`.
+   */
+  itemPath: z
+    .string()
+    .regex(/^\/sitecore\/content\/\{site\}\/.+/, {
+      message:
+        "itemPath must start with `/sitecore/content/{site}/` — `{site}` is the only supported placeholder and is substituted with the target site name at install time.",
+    })
+    .optional(),
+  /**
    * Field values keyed by field name on the page template — the primary
    * language, single version. Simple-mode common case; mutually exclusive
-   * with `versions` (story mode). Same encoding surface as
-   * `ContentItemRecipe.fields` (`link-internal` is deferred — use
-   * `reference` or `link-external`).
+   * with `versions` (story mode).
+   *
+   * Accepts BOTH shapes:
+   *  - scai-native discriminated `ContentFieldValue` — `{ shape, value, ... }`.
+   *  - Registry flat shape — plain strings (text), booleans, numbers,
+   *    `{ src, alt }` for image fields, `{ href, text }` for link-external
+   *    fields.
+   *
+   * `compilePageRecipe` normalises into `ContentFieldValue` then reuses
+   * `encodeContentFieldValue` to emit the Sitecore wire form.
    */
-  fields: z.record(z.string(), ContentFieldValueSchema).default({}),
+  fields: z.record(z.string(), z.unknown()).default({}),
   /**
    * Simple mode — additional languages, one version each, keyed by ISO
    * language code (`fr`, `de`, …). Mirrors `ContentItemRecipe.translations`:

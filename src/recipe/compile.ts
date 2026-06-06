@@ -322,9 +322,15 @@ const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
       break;
     case "page":
       add(recipe.template);
+      // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
+      // shape + scai-native ContentFieldValue). Only scai-native shapes
+      // carry cross-recipe handle refs; sniff `shape` defensively.
       for (const v of Object.values(recipe.fields ?? {})) {
-        if (v.shape === "link-internal") add(v.ref);
-        else if (v.shape === "reference") v.refs.forEach(add);
+        if (v !== null && typeof v === "object" && "shape" in v) {
+          const sv = v as { shape: string; ref?: string; refs?: readonly string[] };
+          if (sv.shape === "link-internal" && typeof sv.ref === "string") add(sv.ref);
+          else if (sv.shape === "reference" && Array.isArray(sv.refs)) sv.refs.forEach(add);
+        }
       }
       if (recipe.layout) {
         for (const placements of Object.values(recipe.layout.placeholders)) {

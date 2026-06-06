@@ -673,7 +673,7 @@ describe("SiteTemplateRecipe Zod schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts image with kind: external-url", () => {
+  it("silently strips the speculative `image` field (removed from schema 2026-06-06 — no SXA target distinct from __Thumbnail)", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
       image: {
@@ -683,30 +683,11 @@ describe("SiteTemplateRecipe Zod schema", () => {
       },
     });
     expect(result.success).toBe(true);
-  });
-
-  it("accepts image with kind: asset", () => {
-    const result = SiteTemplateRecipeSchema.safeParse({
-      ...baseSiteTemplate,
-      image: { kind: "asset", path: "./hero.png" },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects image with the legacy kind: url discriminator (renamed to external-url 2026-06-06)", () => {
-    const result = SiteTemplateRecipeSchema.safeParse({
-      ...baseSiteTemplate,
-      image: { kind: "url", url: "https://cdn.example.com/ccl-hero.png" },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects image with an unknown discriminator kind", () => {
-    const result = SiteTemplateRecipeSchema.safeParse({
-      ...baseSiteTemplate,
-      image: { kind: "bogus", path: "./hero.png" },
-    });
-    expect(result.success).toBe(false);
+    if (result.success) {
+      // Zod default `.strip()` drops unknown keys — `image` no longer
+      // exists on the parsed shape.
+      expect((result.data as Record<string, unknown>).image).toBeUndefined();
+    }
   });
 
   it("accepts contents as an array of {name, content} pairs (sub-milestone A U4 shape)", () => {

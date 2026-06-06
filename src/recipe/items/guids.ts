@@ -561,18 +561,6 @@ export const thumbnailMediaId = (site: string, handle: string): string =>
   uuidv5("thumbnail", templateId(site, handle));
 
 /**
- * Recipe-internal refKey for an image (hero) media item emitted when a
- * `SiteTemplateRecipe` populates `image`. Distinct seed from
- * `thumbnailMediaId` so a recipe that supplies both gets two upload
- * ops — even though Sub-milestone A's U3 finding suggests the picker
- * surfaces the same media item for both. Schema-level intent is
- * preserved; collapsing into one upload is a follow-up if U3's
- * observation holds against a live Sites API run.
- */
-export const imageMediaId = (site: string, handle: string): string =>
-  uuidv5("image", templateId(site, handle));
-
-/**
  * Recipe-internal refKey for the tenant-rooted SXA Module item
  * synthesised by `compileSiteTemplateRecipe`. Conforms to
  * `HEADLESS_SITE_SETUP_ROOT`; lands at

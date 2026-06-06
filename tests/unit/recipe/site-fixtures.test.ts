@@ -262,13 +262,13 @@ describe("compileSiteTemplateRecipe", () => {
 // ---------------------------------------------------------------------------
 // Sub-milestone D — Picker UX gap closure.
 //
-// After D the warn list shrinks to just `image` (per A's U3: the SXA
-// Solution template has no separate image source field; the picker
-// likely renders __Thumbnail at full resolution). Every other
-// schema-accepted-but-was-dropped field now compiles to real ops.
+// Every schema-accepted field now compiles to real ops; there are no
+// populated-but-dropped fields and no warn paths. The speculative
+// `image` field was removed from the schema 2026-06-06 (A's U3: SXA
+// Solution Template has no source field distinct from `__Thumbnail`).
 // ---------------------------------------------------------------------------
 
-describe("compileSiteTemplateRecipe — populated-but-dropped warning (post-D)", () => {
+describe("compileSiteTemplateRecipe — no populated-but-dropped warnings", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   const MINIMAL_RECIPE = {
@@ -303,24 +303,6 @@ describe("compileSiteTemplateRecipe — populated-but-dropped warning (post-D)",
       COMPILE_CONTEXT
     );
     expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it("warns when `image` is populated (still dropped pending E)", () => {
-    compileSiteTemplateRecipe(
-      {
-        ...MINIMAL_RECIPE,
-        image: { kind: "external-url", url: "https://cdn.example.com/hero.png" },
-      },
-      COMPILE_CONTEXT
-    );
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const message = warnSpy.mock.calls[0]?.[0] as string;
-    expect(message).toContain("minimal-template@1");
-    expect(message).toContain("image");
-    // Other fields shouldn't appear — they're compiled now.
-    expect(message).not.toContain("thumbnail");
-    expect(message).not.toContain("contents");
-    expect(message).not.toContain("pageTemplates");
   });
 
   it("does NOT warn when the recipe only uses compile-handled fields", () => {

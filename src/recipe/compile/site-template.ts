@@ -1,7 +1,5 @@
-import { consola } from "consola";
 import { createScaiError } from "@/shared/errors";
 import {
-  imageMediaId,
   siteTemplateModuleActionId,
   siteTemplateModuleId,
   templateId,
@@ -41,9 +39,10 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *     - `__Thumbnail` media-XML — sourced from `recipe.thumbnail`
  *       (discriminated `external-url | asset`); compiles to one
  *       `MediaUploadOp` + one `SetField` op with `media-xml-ref` value.
- *     - `image` is currently dropped (no separate SXA field — A's U3
- *       finding); when sub-milestone E confirms the picker behaviour
- *       this either falls through `__Thumbnail` or gets its own field.
+ *       The SXA Solution Template has no separate `image` source field
+ *       distinct from `__Thumbnail` (A's U3 finding); the picker's
+ *       detail-panel hero renders the same media item at a larger
+ *       size. Schema dropped the speculative `image` field 2026-06-06.
  *     - `Content` (SXA Solution Template) — sourced from
  *       `recipe.contents`; encoded as `JSON.stringify(Array<{name,content}>)`.
  *   - **Module composition** (G1):
@@ -67,13 +66,10 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *       into `TENANT_MODULES` verbatim (the recipe shape doesn't
  *       describe tenant-scoped overrides).
  *
- * **What's still dropped at install (warned):** `image`. Per A's U3,
- * the SXA Solution template has no separate `image` source field; the
- * Sites API picker likely renders the `__Thumbnail` media at full
- * resolution. The recipe schema still accepts `image` so authors can
- * express intent, but compile drops it pending sub-milestone E's
- * verification — that's the only remaining entry in
- * `DROPPED_AT_INSTALL_FIELDS`.
+ * **All schema fields are compiled at install today.** The speculative
+ * `image` field was dropped from the schema 2026-06-06 — A's U3
+ * introspection confirmed no separate SXA source field distinct from
+ * `__Thumbnail`.
  *
  * Sandbox introspection (2026-06-06 sub-milestone A) confirmed:
  *   - SXA Module roots conform to `HeadlessSiteSetupRoot`
@@ -87,26 +83,6 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *     `/sitecore/system/Settings` scope; picker resolves modules by
  *     template inheritance, not by path.
  */
-/**
- * Fields the SiteTemplate Zod schema accepts today but compile still
- * drops at install. After sub-milestone D this list shrinks to just
- * `image` — see the JSDoc above for why.
- */
-const DROPPED_AT_INSTALL_FIELDS = [
-  "image",
-] as const satisfies readonly (keyof SiteTemplateRecipe)[];
-
-function listPopulatedDroppedFields(recipe: SiteTemplateRecipe): string[] {
-  return DROPPED_AT_INSTALL_FIELDS.filter((key) => {
-    const value: unknown = recipe[key];
-    if (value === undefined) return false;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === "object" && value !== null) return Object.keys(value).length > 0;
-    if (typeof value === "string") return value.length > 0;
-    return true;
-  });
-}
-
 /**
  * Sanitize a recipe handle (`my-page@1`) into a Sitecore-valid item
  * name. Sitecore's `ItemNameValidation` setting rejects names containing
@@ -150,13 +126,6 @@ export function compileSiteTemplateRecipe(
     throw createScaiError(
       `compileSiteTemplateRecipe requires context.siteTemplatesRoot; tenant-side path missing for recipe ${recipe.handle}`,
       "INPUT_INVALID"
-    );
-  }
-
-  const populatedDropped = listPopulatedDroppedFields(recipe);
-  if (populatedDropped.length > 0) {
-    consola.warn(
-      `compileSiteTemplateRecipe: recipe '${recipe.handle}' populated fields that are accepted by the schema but currently dropped at install (pending docs/plans/site-template-modules-and-picker.md): ${populatedDropped.join(", ")}`
     );
   }
 
@@ -262,15 +231,6 @@ export function compileSiteTemplateRecipe(
       value: { kind: "string", value: JSON.stringify(recipe.contents) },
     } satisfies SetFieldOp);
   }
-
-  // `image` is intentionally NOT compiled today — Sub-milestone A's U3
-  // surfaced no separate `image` source field on the SXA Solution template;
-  // the picker likely renders the same `__Thumbnail` media at full
-  // resolution. The DROPPED_AT_INSTALL_FIELDS warn above fires when
-  // authors populate it, so the gap is explicit. The image refKey helper
-  // (`imageMediaId`) is in place for sub-milestone E to wire if a separate
-  // source field surfaces.
-  void imageMediaId;
 
   // ---------------------------------------------------------------------
   // Module composition (G1) — synthesise the tenant-rooted Module item

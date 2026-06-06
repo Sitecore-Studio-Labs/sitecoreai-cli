@@ -1631,37 +1631,6 @@ export const SiteTemplateRecipeSchema = z.object({
     ])
     .optional(),
   /**
-   * Hero image rendered on the template's detail panel in the picker.
-   * Same discriminated-union shape as `thumbnail`; both modes upload
-   * bytes to the media library (see `thumbnail` JSDoc for the U3
-   * media-XML rationale).
-   *
-   * **Pending sub-milestone C's investigation:** A's findings note
-   * that the SXA Solution Template item has no separate `image` field
-   * on its inheritance chain — the picker's detail-panel hero appears
-   * to render the same `__Thumbnail` media item as the tile, just at
-   * a larger size (U3 in
-   * `docs/plans/site-template-modules-and-picker.investigation.json`).
-   * `image` is likely a no-op distinct from `thumbnail`; the field
-   * stays in the schema so authors can express intent, but compile
-   * may collapse it into `thumbnail` once C confirms the picker's
-   * resolution path.
-   */
-  image: z
-    .discriminatedUnion("kind", [
-      z.object({
-        kind: z.literal("external-url"),
-        url: z.string().min(1),
-        alt: z.string().optional(),
-      }),
-      z.object({
-        kind: z.literal("asset"),
-        path: z.string().min(1),
-        alt: z.string().optional(),
-      }),
-    ])
-    .optional(),
-  /**
    * Detail-panel content summary — what the picker shows under the
    * hero image when a tile is selected.
    *

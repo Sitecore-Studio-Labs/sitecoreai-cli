@@ -234,6 +234,29 @@ describe("sub-milestone E — SiteTemplate picker end-to-end", () => {
         // ignore
       }
     }
+    // 5. SXA collection item under /sitecore/system/Settings/Project. The
+    //    Sites API auto-creates a `Settings/Project/<collectionName>` item
+    //    alongside the content-tree collection when `collectionName` is
+    //    used (vs an existing `collectionId`). Site delete does NOT cascade
+    //    to this settings item — each test run otherwise leaks one orphan.
+    //    Hard guard: only delete if the name matches our exact per-run
+    //    `E2eCollection${RUN_ID}` value. Never delete `click-click-launch`,
+    //    `next-wave`, or any non-test collection.
+    if ("collectionName" in siteRecipe && siteRecipe.collectionName) {
+      const expectedName = siteRecipe.collectionName;
+      if (expectedName.startsWith("E2eCollection")) {
+        try {
+          const settingsCollection = await authoring.getItem({
+            path: `/sitecore/system/Settings/Project/${expectedName}`,
+          });
+          if (settingsCollection && settingsCollection.name === expectedName) {
+            await authoring.deleteItem({ itemId: settingsCollection.itemId });
+          }
+        } catch {
+          // best-effort; surface in test logs but don't block teardown
+        }
+      }
+    }
   }, PUSH_TIMEOUT_MS);
 
   it(

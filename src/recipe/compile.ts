@@ -60,6 +60,7 @@ import { compilePlaceholderRecipe } from "./compile/placeholder";
 import { compileContentItemRecipe } from "./compile/content-item";
 import { compileSiteTemplateRecipe } from "./compile/site-template";
 import { compileSiteRecipe } from "./compile/site";
+import { compileDictionaryRecipe } from "./compile/dictionary";
 import { compileEnumerationRecipe } from "./compile/enumeration";
 import { compileWorkflowRecipe } from "./compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
@@ -87,6 +88,7 @@ export {
   compileContentItemRecipe,
   compileSiteTemplateRecipe,
   compileSiteRecipe,
+  compileDictionaryRecipe,
   compileEnumerationRecipe,
   compileWorkflowRecipe,
   compileWebhookAuthorizationRecipe,
@@ -252,7 +254,11 @@ const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   "page-design": 3,
   page: 3,
   "site-template": 4,
+  // Sites must materialise before dictionaries — a DictionaryRecipe's
+  // items land under `<site>/Dictionary/<name>` and the site's content
+  // tree has to exist first.
   site: 5,
+  dictionary: 6,
 };
 
 const sourceTypesOfAugment = (augment: SitecoreFieldAugment | undefined): readonly string[] => {
@@ -367,6 +373,7 @@ const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
     case "site-template":
       recipe.pageTemplates.forEach(add);
       recipe.pageDesigns.forEach(add);
+      (recipe.dictionaries ?? []).forEach(add);
       if (recipe.insertOptionsMatrix) {
         for (const [parent, children] of Object.entries(recipe.insertOptionsMatrix)) {
           add(parent);
@@ -383,6 +390,9 @@ const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
     case "site":
       add(recipe.siteTemplate);
       if (recipe.initialHome !== undefined) add(recipe.initialHome);
+      break;
+    case "dictionary":
+      add(recipe.site);
       break;
     case "component-section":
     case "enumeration":
@@ -1383,12 +1393,22 @@ export function compileRecipeSet(
     }
   }
 
+  // Cross-recipe site map — `compileDictionaryRecipe` uses it to
+  // resolve a dictionary's host site to a content-tree path.
+  const sitesByHandle = new Map<string, import("./schema/recipe").SiteRecipe>();
+  for (const recipe of recipes) {
+    if (recipe.kind === "site") {
+      sitesByHandle.set(recipe.handle, recipe);
+    }
+  }
+
   const perRecipeContext: CompileContext = {
     ...context,
     ...(sharedSubfolders.size > 0 ? { sharedSubfolders } : {}),
     ...(sectionsByHandle.size > 0 ? { sectionsByHandle } : {}),
     ...(enumsByHandle.size > 0 ? { enumsByHandle } : {}),
     ...(componentsByHandle.size > 0 ? { componentsByHandle } : {}),
+    ...(sitesByHandle.size > 0 ? { sitesByHandle } : {}),
   };
 
   // Process section recipes FIRST so their rich-fields folder ops seed
@@ -1623,6 +1643,8 @@ export function compileRecipe(input: Recipe, context: CompileContext): Operation
       return compileSiteTemplateRecipe(recipe, context);
     case "site":
       return compileSiteRecipe(recipe, context);
+    case "dictionary":
+      return compileDictionaryRecipe(recipe, context);
     case "enumeration":
       return compileEnumerationRecipe(recipe, context);
     case "workflow":

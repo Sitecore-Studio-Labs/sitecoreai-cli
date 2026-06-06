@@ -397,6 +397,14 @@ export const SYSTEM_FIELDS = {
    * `templateField.templateFieldId` introspection.
    */
   INSERT_OPTIONS: "1172f251-dad4-4efb-a329-0c63500e4f1e",
+  /**
+   * `__Help text` — the standard Sitecore item Help field. Used by
+   * `compileDictionaryRecipe` to land translator-facing phrase
+   * descriptions; surfaces in Sitecore's Content Editor tooltip and
+   * any translation tooling that reads the field. GUID is the
+   * well-known Sitecore built-in.
+   */
+  HELP_TEXT: "577f1689-7de4-4ad2-a15f-7fdc1759285f",
 } as const;
 
 /** Field-definition shared fields on a Template Field item. */
@@ -696,18 +704,59 @@ export const RENDERING_FIELDS = {
 
 /**
  * Sitecore Dictionary Entry template fields. Used by SiteRecipe's
- * `dictionaryOverrides` — each phrase override SetFields the Phrase
- * value on an existing `<site>/Dictionary/<phraseName>` item that
- * SXA's Site Wizard materialises from the SiteTemplate's defaults.
+ * `dictionaryOverrides` AND by `compileDictionaryRecipe` when emitting
+ * fresh Dictionary Entry items — each phrase becomes ONE Entry item
+ * carrying these fields per item version per locale.
  *
  * TODO (sandbox-verify): the PHRASE GUID below is the standard
- * Sitecore Dictionary Entry "Phrase" field. Validate via Authoring
- * API introspection during the first integration test push and
- * update if the SXA-shipped Dictionary Entry template diverges.
+ * Sitecore Dictionary Entry "Phrase" field; KEY is the Entry's stable
+ * key field consuming components reference. Both should be validated
+ * via Authoring API introspection during the first integration test
+ * push and updated if the SXA-shipped Dictionary Entry template
+ * diverges. The KEY field is necessary because Sitecore Dictionary
+ * Entry items carry BOTH a `Key` (stable, lookup-by-name) AND a
+ * `Phrase` (translated value); consuming components look up by Key.
  */
 export const DICTIONARY_ENTRY_FIELDS = {
   /** Field ID for "Phrase" — the translated string value on a Dictionary Entry. */
   PHRASE: "580c75a8-c01a-4580-83cb-987776ceb3af",
+  /**
+   * Field ID for "Key" — the stable phrase-key consuming components
+   * reference. TODO (sandbox-verify): the value below is a placeholder
+   * derived from the standard Sitecore Dictionary Entry template's Key
+   * field; verify via introspection before the first live push.
+   *
+   * **Gap (2026-06-06):** A's introspection focused on SiteTemplate /
+   * Module GUIDs; Dictionary Entry field GUIDs were NOT captured. The
+   * compile path emits a `fieldName: "Key"` alongside this GUID so the
+   * authoring client can fall back to name-based resolution if the GUID
+   * doesn't match the tenant's Dictionary Entry template — same
+   * recipe-derived-vs-tenant-assigned pattern recipe-created template
+   * fields already use.
+   */
+  KEY: "580c75a8-c01a-4580-83cb-987776ceb3b0",
+} as const;
+
+/**
+ * Sitecore-shipped Dictionary template paths. Both the Dictionary
+ * Folder (organisational) and Dictionary Entry (leaf-phrase) templates
+ * are Sitecore built-ins; their items live under
+ * `/sitecore/templates/System/Dictionary/`. Used via `templateOf: {
+ * kind: "ref-path", value }` so the executor resolves the GUID at
+ * apply time — same mechanism setup-action templates already use.
+ *
+ * **Gap (2026-06-06):** Sub-milestone A's introspection focused on
+ * Module GUIDs; Dictionary Folder + Dictionary Entry template GUIDs
+ * were NOT captured. Using path-based refs keeps the compile honest
+ * (no guessed GUIDs) and shifts the verification to first-push
+ * integration time. If introspection later captures the GUIDs, switch
+ * `templateOf` to direct values for slightly cheaper resolution.
+ */
+export const DICTIONARY_TEMPLATE_PATHS = {
+  /** Standard Sitecore "Dictionary Folder" template path. */
+  FOLDER: "/sitecore/templates/System/Dictionary/Dictionary Folder",
+  /** Standard Sitecore "Dictionary Entry" template path. */
+  ENTRY: "/sitecore/templates/System/Dictionary/Dictionary Entry",
 } as const;
 
 export const DEFAULT_LANGUAGE = "en";

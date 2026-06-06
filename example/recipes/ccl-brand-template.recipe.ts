@@ -54,14 +54,11 @@ export const cclBrandTemplateRecipe = {
     "product-page@1": "default-page-design@1",
   },
 
-  dictionary: [
-    { phrase: "ContactUs", defaultValue: "Contact Us" },
-    { phrase: "ReadMore", defaultValue: "Read more" },
-    { phrase: "BackToTop", defaultValue: "Back to top" },
-    { phrase: "Loading", defaultValue: "Loading…" },
-    { phrase: "SearchPlaceholder", defaultValue: "Search…" },
-    { phrase: "Submit", defaultValue: "Submit" },
-  ],
+  // Reference to a standalone DictionaryRecipe that carries the
+  // phrase library (replaces the pre-2026-06-06 inline `dictionary`
+  // array; that shape couldn't express per-locale translations and
+  // tied phrase authoring to template authoring).
+  dictionaries: ["ccl-shared-labels@1"],
 
   taxonomy: [
     {

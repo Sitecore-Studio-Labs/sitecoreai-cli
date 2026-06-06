@@ -3,6 +3,8 @@ import {
   ComponentPlacementSchema,
   ComponentTemplateRecipeSchema,
   ContentItemRecipeSchema,
+  DictionaryPhraseSchema,
+  DictionaryRecipeSchema,
   PageDesignRecipeSchema,
   PartialDesignRecipeSchema,
   RecipeSchema,
@@ -557,13 +559,29 @@ describe("SiteTemplateRecipe Zod schema", () => {
         "home-page@1": "default-page-design@1",
         "landing-page@1": "landing-design@1",
       },
-      dictionary: [
-        { phrase: "ContactUs", defaultValue: "Contact Us" },
-        { phrase: "ReadMore", defaultValue: "Read more" },
-      ],
+      dictionaries: ["core-ui-labels@1", "brand-labels@1"],
       taxonomy: [{ root: "Content Types", defaultTags: ["Article", "Landing"] }],
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.dictionaries).toEqual(["core-ui-labels@1", "brand-labels@1"]);
+    }
+  });
+
+  it("defaults dictionaries to [] when omitted", () => {
+    const result = SiteTemplateRecipeSchema.safeParse(baseSiteTemplate);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.dictionaries).toEqual([]);
+    }
+  });
+
+  it("rejects a dictionaries entry that doesn't match HANDLE_PATTERN", () => {
+    const result = SiteTemplateRecipeSchema.safeParse({
+      ...baseSiteTemplate,
+      dictionaries: ["core-ui-labels@1", "no-version"],
+    });
+    expect(result.success).toBe(false);
   });
 
   it("rejects a handle without a major-version suffix", () => {
@@ -600,12 +618,16 @@ describe("SiteTemplateRecipe Zod schema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects a dictionary entry missing `phrase`", () => {
+  it("does not accept the pre-2026-06-06 inline dictionary shape (replaced by dictionaries refs)", () => {
     const result = SiteTemplateRecipeSchema.safeParse({
       ...baseSiteTemplate,
-      dictionary: [{ defaultValue: "Read more" }],
+      dictionaries: ["core-ui-labels@1"],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // No `dictionary` key on the parsed data — only `dictionaries`.
+      expect((result.data as Record<string, unknown>).dictionary).toBeUndefined();
+    }
   });
 
   it("accepts thumbnail with kind: external-url", () => {
@@ -807,6 +829,67 @@ describe("SiteRecipe Zod schema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts dictionaryOverrides with per-locale Record<locale, string> values", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      dictionaryOverrides: {
+        ContactUs: {
+          en: "Get in touch",
+          fr: "Nous contacter",
+          "pt-BR": "Entre em contato",
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a mix of flat-string and per-locale dictionaryOverrides values on the same site", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      dictionaryOverrides: {
+        ContactUs: "Get in touch",
+        ReadMore: { en: "Continue", fr: "Continuer" },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects dictionaryOverrides per-locale map with locale key shorter than 2 chars", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      dictionaryOverrides: { ContactUs: { x: "too short" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts siteRole: 'regular' and 'shared'", () => {
+    const regular = SiteRecipeSchema.safeParse({ ...baseSite, siteRole: "regular" });
+    expect(regular.success).toBe(true);
+    const shared = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      name: "Shared",
+      handle: "showcase-shared@1",
+      siteRole: "shared",
+    });
+    expect(shared.success).toBe(true);
+  });
+
+  it("rejects an unknown siteRole value", () => {
+    const result = SiteRecipeSchema.safeParse({
+      ...baseSite,
+      siteRole: "not-a-role",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("leaves siteRole undefined when omitted (regular site is the default)", () => {
+    const result = SiteRecipeSchema.safeParse(baseSite);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.siteRole).toBeUndefined();
+    }
+  });
+
   it("rejects taxonomyOverrides with empty tag strings", () => {
     const result = SiteRecipeSchema.safeParse({
       ...baseSite,
@@ -839,5 +922,120 @@ describe("SiteRecipe Zod schema", () => {
     delete withoutCollectionName.collectionName;
     const result = SiteRecipeSchema.safeParse(withoutCollectionName);
     expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DictionaryPhrase + DictionaryRecipe Zod schemas (2026-06-06 registry mirror).
+// ---------------------------------------------------------------------------
+
+const basePhrase = {
+  defaultValue: "Sign up",
+};
+
+describe("DictionaryPhrase Zod schema", () => {
+  it("accepts the minimum shape (just defaultValue)", () => {
+    const result = DictionaryPhraseSchema.safeParse(basePhrase);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a phrase with per-locale translations + a translator description", () => {
+    const result = DictionaryPhraseSchema.safeParse({
+      defaultValue: "Sign up",
+      translations: { fr: "S'inscrire", de: "Anmelden", "pt-BR": "Cadastre-se" },
+      description: "Account creation CTA. Distinct from cta-log-in.",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects translations with a locale key shorter than 2 chars", () => {
+    const result = DictionaryPhraseSchema.safeParse({
+      defaultValue: "Sign up",
+      translations: { f: "trop court" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an empty defaultValue (operators can intentionally blank a phrase)", () => {
+    const result = DictionaryPhraseSchema.safeParse({ defaultValue: "" });
+    expect(result.success).toBe(true);
+  });
+});
+
+const baseDictionary = {
+  kind: "dictionary" as const,
+  schemaVersion: "1" as const,
+  handle: "core-ui-labels@1",
+  name: "CoreUiLabels",
+  displayName: "Core UI Labels",
+  site: "showcase-shared@1",
+};
+
+describe("DictionaryRecipe Zod schema", () => {
+  it("accepts the minimum shape (kind + handle + name + displayName + site)", () => {
+    const result = DictionaryRecipeSchema.safeParse(baseDictionary);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.phrases).toEqual({});
+    }
+  });
+
+  it("accepts a fully populated dictionary with phrases + primaryLocale + description", () => {
+    const result = DictionaryRecipeSchema.safeParse({
+      ...baseDictionary,
+      description: "Generic chrome + form labels shared across the collection",
+      primaryLocale: "en",
+      phrases: {
+        "cta-sign-up": {
+          defaultValue: "Sign up",
+          translations: { fr: "S'inscrire" },
+        },
+        "cta-log-in": { defaultValue: "Log in" },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(Object.keys(result.data.phrases)).toHaveLength(2);
+    }
+  });
+
+  it("rejects a handle without a major-version suffix", () => {
+    const result = DictionaryRecipeSchema.safeParse({
+      ...baseDictionary,
+      handle: "core-ui-labels",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a site ref that doesn't match HANDLE_PATTERN", () => {
+    const result = DictionaryRecipeSchema.safeParse({
+      ...baseDictionary,
+      site: "Not A Handle",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a primaryLocale shorter than 2 chars", () => {
+    const result = DictionaryRecipeSchema.safeParse({
+      ...baseDictionary,
+      primaryLocale: "x",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("dispatches via the Recipe discriminated union as kind: dictionary", () => {
+    const result = RecipeSchema.safeParse(baseDictionary);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kind).toBe("dictionary");
+    }
+  });
+
+  it("rejects an empty phrase key (only the value can be empty, not the key)", () => {
+    const result = DictionaryRecipeSchema.safeParse({
+      ...baseDictionary,
+      phrases: { "": { defaultValue: "x" } },
+    });
+    expect(result.success).toBe(false);
   });
 });

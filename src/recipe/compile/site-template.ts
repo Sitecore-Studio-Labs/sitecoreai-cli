@@ -52,9 +52,15 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *       `<siteTemplatesRoot>/Modules/<RecipeName>`.
  *     - For each `pageTemplates[i]` / `pageDesigns[i]` /
  *       `insertOptionsMatrix[k]` / `templatesToDesigns[k]` /
- *       `dictionary[i]` / `taxonomy[i]` emits a setup-action CHILD
- *       under the Module, conforming to the appropriate setup-action
- *       template (`AddItem`, `EditSiteItem`, `EditTenantTemplate`).
+ *       `taxonomy[i]` emits a setup-action CHILD under the Module,
+ *       conforming to the appropriate setup-action template
+ *       (`AddItem`, `EditSiteItem`, `EditTenantTemplate`).
+ *     - **Dictionaries are NOT setup-action children.** As of the
+ *       2026-06-06 registry mirror, `dictionaries: HandleString[]` is
+ *       a REF list; phrases land via the referenced
+ *       `DictionaryRecipe`'s own compile path under
+ *       `<site>/Dictionary/<recipe.name>/`. Cross-recipe validation
+ *       checks every handle resolves.
  *     - Aggregates the 15 Foundation site modules + the synthesised
  *       tenant-rooted Module GUID into `SITE_MODULES` (pipe-separated
  *       deterministic order). Writes the 11 Foundation tenant modules
@@ -280,7 +286,6 @@ export function compileSiteTemplateRecipe(
     recipe.pageDesigns.length > 0 ||
     (recipe.insertOptionsMatrix && Object.keys(recipe.insertOptionsMatrix).length > 0) ||
     (recipe.templatesToDesigns && Object.keys(recipe.templatesToDesigns).length > 0) ||
-    (recipe.dictionary && recipe.dictionary.length > 0) ||
     (recipe.taxonomy && recipe.taxonomy.length > 0);
 
   if (hasSynthesisInput) {
@@ -315,10 +320,16 @@ export function compileSiteTemplateRecipe(
     //                                              Options on a site item)
     //   - templatesToDesigns  → EditTenantTemplate (set template→design
     //                                                 mapping at tenant)
-    //   - dictionary        → EditTenantTemplate (seed Dictionary phrase
-    //                                              defaults at tenant)
     //   - taxonomy          → EditTenantTemplate (seed Taxonomy roots at
     //                                              tenant)
+    //
+    // Dictionaries are NO LONGER inline on SiteTemplateRecipe — as of
+    // the 2026-06-06 registry mirror the template carries
+    // `dictionaries: HandleString[]` REFs, and the phrases land via the
+    // referenced `DictionaryRecipe`'s own compile path (under
+    // `<site>/Dictionary/<recipe.name>/`). The SiteTemplate emits NO
+    // setup-action for dictionaries — cross-recipe validation just
+    // checks that every handle resolves.
     //
     // **Ambiguous pointer from A** — A's investigation surfaced the action
     // child template NAMES + the production tenant-rooted Module
@@ -388,16 +399,10 @@ export function compileSiteTemplateRecipe(
         );
       }
     }
-    if (recipe.dictionary) {
-      for (const entry of recipe.dictionary) {
-        emitAction(
-          "dictionary",
-          entry.phrase,
-          `Dictionary ${sanitizeHandleForItemName(entry.phrase)}`,
-          SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
-        );
-      }
-    }
+    // Dictionaries removed from the setup-action loop (2026-06-06): the
+    // phrases live on standalone DictionaryRecipes and land via their
+    // own compile path, not as setup-action children of the
+    // SiteTemplate's Module item.
     if (recipe.taxonomy) {
       for (const entry of recipe.taxonomy) {
         emitAction(

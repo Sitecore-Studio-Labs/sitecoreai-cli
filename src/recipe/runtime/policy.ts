@@ -65,6 +65,12 @@ const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // policy purposes; per-op CreateOnly vs CreateAndUpdate gets
   // refined when the executor lands (Milestone D).
   site: "composition-structure",
+  // Dictionaries are registry-owned phrase libraries. CreateAndUpdate
+  // so re-pushes replace authored Phrase values when the recipe
+  // changes — keeping the registry as the source of truth for
+  // shareable copy. Per-site `dictionaryOverrides` still applies
+  // through the SiteRecipe compile path.
+  dictionary: "composition-structure",
   // Enumerations are registry-owned vocabulary. CreateAndUpdate so
   // re-pushes flip displayName edits and add/remove value items as
   // the recipe evolves. Authors who need extra values can add them

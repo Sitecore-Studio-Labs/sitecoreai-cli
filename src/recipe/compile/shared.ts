@@ -267,6 +267,24 @@ export interface CompileContext {
    */
   pagesRoot?: string;
   /**
+   * Cross-recipe map of site handles → `SiteRecipe`, populated by
+   * `compileRecipeSet` from every `site` recipe in the input.
+   * `compileDictionaryRecipe` uses this to resolve `recipe.site` to
+   * the host SiteRecipe so the dictionary can compose its content-tree
+   * path under `<sitePath>/Dictionary/<recipe.name>`. Standalone
+   * callers leave this unset; `compileDictionaryRecipe` then errors
+   * unless `crossRecipeSitePaths` provides a direct path.
+   */
+  sitesByHandle?: ReadonlyMap<string, import("../schema/recipe").SiteRecipe>;
+  /**
+   * Pre-resolved content-tree paths for sites referenced by
+   * dictionaries — keyed by SiteRecipe handle. Used by orchestrator-
+   * side wiring where the host site already exists on the tenant (not
+   * in the recipe set) but its path is known. Overrides `sitesByHandle`
+   * resolution when both are present.
+   */
+  crossRecipeSitePaths?: Record<string, string>;
+  /**
    * Per-org overrides for marketplace plugin `app_id` UUIDs, keyed by
    * `plugin_key` — the recipe-side `source.id` on a `kind: "plugin"`
    * source. When a recipe's plugin reference has a matching entry, the

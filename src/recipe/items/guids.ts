@@ -97,14 +97,33 @@ export const siteId = (handle: string): string => uuidv5(handle, NAMESPACE_SITE)
 
 /**
  * Recipe-internal refKey for a dictionary phrase item under a site.
- * SXA's Site Wizard materialises `<site>/Dictionary/<phraseName>` based
- * on the SiteTemplate's dictionary defaults; SiteRecipe's
- * `dictionaryOverrides` writes the Phrase field on those existing
- * items. The executor seeds this refKey via cross-recipe path lookup
- * after `CreateSiteFromTemplate` materialises the site.
+ * Two emission paths land on this identity:
+ *
+ *   1. `SiteRecipe.dictionaryOverrides` — overrides an existing
+ *      `<site>/Dictionary/<phraseName>` item. The executor seeds the
+ *      refKey via cross-recipe path lookup after
+ *      `CreateSiteFromTemplate` materialises the site's content tree
+ *      and any DictionaryRecipes have landed.
+ *   2. `compileDictionaryRecipe` — emits a `CreateItem` for each
+ *      phrase entry under the dictionary's folder, parented to
+ *      `dictionaryFolderId(siteHandle, recipeName)`.
+ *
+ * Both produce the same uuidv5 so override SetFields and the original
+ * CreateItem agree on identity even when authored from different
+ * recipes.
  */
 export const dictionaryPhraseId = (siteHandle: string, phraseName: string): string =>
   uuidv5(`dictionary:${phraseName}`, siteId(siteHandle));
+
+/**
+ * Recipe-internal refKey for a `DictionaryRecipe`'s top-level
+ * Dictionary Folder item. Lands at `<site>/Dictionary/<recipeName>/`
+ * — sibling of the per-phrase Entry items. Per-DictionaryRecipe
+ * grouping means multiple dictionaries can target the same host site
+ * without colliding (each lands under its own subfolder).
+ */
+export const dictionaryFolderId = (siteHandle: string, recipeName: string): string =>
+  uuidv5(`dictionary-folder:${recipeName}`, siteId(siteHandle));
 
 /**
  * Recipe-internal refKey for a taxonomy folder (root) under a site.

@@ -50,7 +50,7 @@ describe("ccl-brand-template@1 worked example", () => {
       expect(result.data.pageDesigns).toHaveLength(3);
       expect(Object.keys(result.data.insertOptionsMatrix ?? {})).toHaveLength(5);
       expect(Object.keys(result.data.templatesToDesigns ?? {})).toHaveLength(4);
-      expect(result.data.dictionary).toHaveLength(6);
+      expect(result.data.dictionaries).toEqual(["ccl-shared-labels@1"]);
       expect(result.data.taxonomy).toHaveLength(2);
     }
   });
@@ -525,7 +525,15 @@ describe("compileSiteTemplateRecipe — module synthesis", () => {
         pageDesigns: ["design@1"],
         insertOptionsMatrix: { "page@1": ["page@1"] },
         templatesToDesigns: { "page@1": "design@1" },
-        dictionary: [{ phrase: "Hello", defaultValue: "Hello" }],
+        // dictionaries are referenced via `dictionaries: HandleString[]`
+        // now (2026-06-06 schema mirror); the phrases land via the
+        // DictionaryRecipe's own compile path, NOT a SiteTemplate
+        // setup-action child. The dictionary action assertion below is
+        // therefore gone — the only verbs the SiteTemplate emits are the
+        // ones whose source data still lives inline on the SiteTemplate
+        // (pageTemplates / pageDesigns / insertOptions / templatesToDesigns
+        // / taxonomy).
+        dictionaries: ["my-labels@1"],
         taxonomy: [{ root: "Topics", defaultTags: ["A"] }],
       },
       COMPILE_CONTEXT
@@ -561,14 +569,14 @@ describe("compileSiteTemplateRecipe — module synthesis", () => {
       kind: "ref-path",
       value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE,
     });
+    // No `dictionary` setup-action — dictionaries are referenced by
+    // handle on SiteTemplateRecipe.dictionaries and land via the
+    // DictionaryRecipe's own compile path.
     expect(
       actionTemplatePathOf(
         siteTemplateModuleActionId(SITE, "mixed-modules@1", "dictionary", "Hello")
       )
-    ).toEqual({
-      kind: "ref-path",
-      value: SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE,
-    });
+    ).toBeUndefined();
     expect(
       actionTemplatePathOf(
         siteTemplateModuleActionId(SITE, "mixed-modules@1", "taxonomy", "Topics")

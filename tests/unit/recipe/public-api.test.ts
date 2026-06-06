@@ -153,14 +153,16 @@ describe("public recipe API surface", () => {
 describe("unstable recipe composition surface", () => {
   const COMPOSITION_EXPORTS = [
     "ContentItemRecipeSchema",
+    "DictionaryPhraseSchema",
+    "DictionaryRecipeSchema",
     "PageDesignRecipeSchema",
     "PartialDesignRecipeSchema",
     "SiteGroupingSchema",
     "SiteRecipeSchema",
-    "SiteTemplateDictionaryEntrySchema",
     "SiteTemplateRecipeSchema",
     "SiteTemplateTaxonomyEntrySchema",
     "compileContentItemRecipe",
+    "compileDictionaryRecipe",
     "compilePageDesignRecipe",
     "compilePartialDesignRecipe",
     "compileSiteRecipe",

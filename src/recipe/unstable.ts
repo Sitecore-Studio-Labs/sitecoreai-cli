@@ -18,19 +18,21 @@
 // Composition-kind schemas + types ----------------------------------------
 export {
   ContentItemRecipeSchema,
+  DictionaryPhraseSchema,
+  DictionaryRecipeSchema,
   PageDesignRecipeSchema,
   PartialDesignRecipeSchema,
   SiteGroupingSchema,
   SiteRecipeSchema,
-  SiteTemplateDictionaryEntrySchema,
   SiteTemplateRecipeSchema,
   SiteTemplateTaxonomyEntrySchema,
   type ContentItemRecipe,
+  type DictionaryPhrase,
+  type DictionaryRecipe,
   type PageDesignRecipe,
   type PartialDesignRecipe,
   type SiteGrouping,
   type SiteRecipe,
-  type SiteTemplateDictionaryEntry,
   type SiteTemplateRecipe,
   type SiteTemplateTaxonomyEntry,
 } from "./schema/recipe";
@@ -38,6 +40,7 @@ export {
 // Composition-kind compilers ----------------------------------------------
 export {
   compileContentItemRecipe,
+  compileDictionaryRecipe,
   compilePageDesignRecipe,
   compilePartialDesignRecipe,
   compileSiteRecipe,

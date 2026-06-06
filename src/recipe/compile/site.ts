@@ -8,7 +8,11 @@ import {
   type SetFieldOp,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { DICTIONARY_ENTRY_FIELDS } from "../ir/sitecore-templates";
+import {
+  DEFAULT_LANGUAGE,
+  DEFAULT_VERSION,
+  DICTIONARY_ENTRY_FIELDS,
+} from "../ir/sitecore-templates";
 import { type SiteRecipe, SiteRecipeSchema } from "../schema/recipe";
 import { siteOf, type CompileContext } from "./shared";
 
@@ -95,18 +99,48 @@ export function compileSiteRecipe(input: SiteRecipe, context: CompileContext): O
 
   // Resolve the site's content-tree path for late-path composition on
   // dictionary override ops. See docstring for resolution priority.
+  //
+  // The override value can be either a flat `string` (overrides the
+  // primary locale) or a `Record<locale, string>` (per-locale overrides
+  // for one or more languages). Flat-string overrides emit ONE SetField
+  // against the default-language version; per-locale overrides emit ONE
+  // SetField per locale, each targeting the matching item version on
+  // the existing Dictionary Entry. Either way the targeted item is the
+  // same `<site>/Dictionary/<phrase>` Sitecore item — versions differ.
   const sitePath = resolveSiteContentTreePath(recipe);
   if (sitePath && recipe.dictionaryOverrides) {
-    for (const [phrase, value] of Object.entries(recipe.dictionaryOverrides)) {
-      operations.push({
-        op: "SetField",
-        policy,
-        label: `dictionary-override:${recipe.handle}/${phrase}`,
-        itemRefKey: dictionaryPhraseId(recipe.handle, phrase),
-        fieldId: DICTIONARY_ENTRY_FIELDS.PHRASE,
-        value: { kind: "string", value },
-        latePath: `${sitePath}/Dictionary/${phrase}`,
-      } satisfies SetFieldOp);
+    for (const [phrase, raw] of Object.entries(recipe.dictionaryOverrides)) {
+      const latePath = `${sitePath}/Dictionary/${phrase}`;
+      const itemRefKey = dictionaryPhraseId(recipe.handle, phrase);
+      if (typeof raw === "string") {
+        operations.push({
+          op: "SetField",
+          policy,
+          label: `dictionary-override:${recipe.handle}/${phrase}`,
+          itemRefKey,
+          fieldId: DICTIONARY_ENTRY_FIELDS.PHRASE,
+          language: DEFAULT_LANGUAGE,
+          version: DEFAULT_VERSION,
+          value: { kind: "string", value: raw },
+          latePath,
+        } satisfies SetFieldOp);
+      } else {
+        // Per-locale overrides — sort locales for deterministic op
+        // ordering (debugging, golden tests, IR diffs).
+        for (const locale of Object.keys(raw).sort()) {
+          operations.push({
+            op: "SetField",
+            policy,
+            label: `dictionary-override:${recipe.handle}/${phrase}:${locale}`,
+            itemRefKey,
+            fieldId: DICTIONARY_ENTRY_FIELDS.PHRASE,
+            language: locale,
+            version: DEFAULT_VERSION,
+            value: { kind: "string", value: raw[locale] },
+            latePath,
+          } satisfies SetFieldOp);
+        }
+      }
     }
   }
 

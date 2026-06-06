@@ -1483,22 +1483,6 @@ export const PageDesignRecipeSchema = z.object({
 export type PageDesignRecipe = z.infer<typeof PageDesignRecipeSchema>;
 
 /**
- * Default dictionary entry on a `SiteTemplateRecipe`. Every entry the
- * template declares becomes a Sitecore dictionary phrase with the
- * supplied default value. Sites instancing the template can override
- * the value per-phrase via `SiteRecipe.dictionaryOverrides`; phrases
- * not overridden read the template default.
- */
-export const SiteTemplateDictionaryEntrySchema = z.object({
-  /** Phrase key — the dictionary item's name. Stable across overrides. */
-  phrase: z.string().min(1),
-  /** Default value (the translated string for the template's primary language). */
-  defaultValue: z.string(),
-});
-
-export type SiteTemplateDictionaryEntry = z.infer<typeof SiteTemplateDictionaryEntrySchema>;
-
-/**
  * Default taxonomy bucket on a `SiteTemplateRecipe`. Each bucket has a
  * root folder name (e.g. "Content Types") and a list of tag names that
  * become the default children. Sites can override the tag list
@@ -1578,10 +1562,26 @@ export const SiteTemplateRecipeSchema = z.object({
     .record(z.string().regex(HANDLE_PATTERN), z.string().regex(HANDLE_PATTERN))
     .optional(),
   /**
-   * Default dictionary phrases. Sites can override values per-phrase;
-   * unoverridden phrases use the template default.
+   * `DictionaryRecipe` handles whose phrases this template includes.
+   * The dictionaries are NOT authored inline on the template — they
+   * live as standalone `DictionaryRecipe`s pointing at a host
+   * `SiteRecipe` via their `site` ref. The template just declares
+   * which dictionaries every instance should pick up at install time.
+   *
+   * Order matters for duplicate phrase keys: later handles win
+   * (last-wins, mirrors CSS cascade intuition).
+   *
+   * Replaces the pre-2026-06-06 inline `dictionary: Array<{phrase,
+   * defaultValue}>` shape — that couldn't express per-locale
+   * translations and tied phrase authoring to template authoring.
+   * Compile emits NO ops for this field on the SiteTemplate side; the
+   * phrases land via the dictionaries' own compile path. Cross-recipe
+   * validation verifies every handle resolves to a `DictionaryRecipe`.
+   *
+   * Mirrors the registry's `SiteTemplateRecipe.dictionaries`. MUST stay
+   * in sync.
    */
-  dictionary: z.array(SiteTemplateDictionaryEntrySchema).optional(),
+  dictionaries: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
   /**
    * Default taxonomy structure. Sites can override tag lists per-root.
    */
@@ -1820,12 +1820,40 @@ export const SiteRecipeSchema = z.object({
    */
   siteGrouping: SiteGroupingSchema.optional(),
   /**
-   * Per-phrase override for dictionary values declared on the
-   * `SiteTemplateRecipe.dictionary`. Keys are phrase names; values
-   * replace the template default. Phrases not in this map use the
-   * template default.
+   * Optional site role. The SXA convention for sharing content
+   * (dictionary phrases, datasources, media) across sibling sites in a
+   * collection is to give one site the role `shared` — it lands at
+   * `<collection>/Shared` and sibling sites automatically inherit its
+   * content via SXA's resolution chain.
+   *
+   *   - omitted / `"regular"` — a normal site under the collection
+   *   - `"shared"` — the collection's shared content host. The compiler
+   *     uses the SXA "Create shared site" template path and lands the
+   *     site at `<collection>/Shared`. At most ONE shared site is
+   *     allowed per collection — cross-recipe validation enforces this.
+   *
+   * `DictionaryRecipe`s pointing at this site via their `site` ref
+   * become the shareable phrase library every sibling site picks up.
+   *
+   * Mirrors the registry's `SiteRecipe.siteRole`. MUST stay in sync.
    */
-  dictionaryOverrides: z.record(z.string().min(1), z.string()).optional(),
+  siteRole: z.enum(["regular", "shared"]).optional(),
+  /**
+   * Per-phrase overrides for dictionary values declared on the
+   * dictionaries the site's template references. Keys are phrase keys;
+   * values are either a flat string (overrides the primary-locale
+   * value) or a per-locale map (override specific locales while
+   * leaving others on the dictionary's default). Phrases not in this
+   * map use the dictionary's authored values verbatim.
+   *
+   * Locale keys must be ≥ 2 chars (ISO codes like `en`, `fr-CA`).
+   *
+   * Mirrors the registry's `SiteRecipe.dictionaryOverrides`. MUST stay
+   * in sync.
+   */
+  dictionaryOverrides: z
+    .record(z.string().min(1), z.union([z.string(), z.record(z.string().min(2), z.string())]))
+    .optional(),
   /**
    * Per-root override for taxonomy default tags. Keys are taxonomy
    * root names declared on the template; values replace the
@@ -1840,6 +1868,112 @@ export const SiteRecipeSchema = z.object({
 });
 
 export type SiteRecipe = z.infer<typeof SiteRecipeSchema>;
+
+/**
+ * One phrase in a `DictionaryRecipe`. The primary-locale value is
+ * always required; additional locales land as translations keyed by
+ * ISO code (e.g. `"en"`, `"fr-CA"`). When a site renders in a locale
+ * that has no entry on the phrase, the primary-locale `defaultValue`
+ * is the fallback.
+ *
+ * Mirrors the registry's `DictionaryPhrase`. MUST stay in sync.
+ */
+export const DictionaryPhraseSchema = z.object({
+  /**
+   * Value in the dictionary's primary locale. Always populated. Becomes
+   * the default version of the Sitecore Dictionary Entry item's `Phrase`
+   * field.
+   */
+  defaultValue: z.string(),
+  /**
+   * Per-locale translations. Each key is an ISO locale code (≥ 2 chars,
+   * e.g. `en`, `fr-CA`); each value is that locale's version of the
+   * phrase. Compiles to one item version per locale on the Sitecore
+   * Dictionary Entry.
+   */
+  translations: z.record(z.string().min(2), z.string()).optional(),
+  /**
+   * Optional translator-facing note — context, tone hints, where the
+   * phrase appears. Never rendered. Stored on the Dictionary Entry
+   * item as a help-text / description field for translation tooling.
+   */
+  description: z.string().optional(),
+});
+
+export type DictionaryPhrase = z.infer<typeof DictionaryPhraseSchema>;
+
+/**
+ * A reusable, locale-aware phrase library — UI labels, form copy, CTA
+ * strings — that one or more `SiteTemplateRecipe`s pull in via their
+ * `dictionaries: HandleString[]` ref list.
+ *
+ * **Where the phrases land in Sitecore.** Each `DictionaryRecipe` is
+ * scoped to a single `site` via the `site: HandleString` ref. At
+ * install time the compiler materialises a Dictionary Folder named
+ * after this recipe under `<site>/Dictionary/<recipe.name>/`, with
+ * one Dictionary Entry item per `phrases` key. Each entry carries
+ * one Sitecore item version per locale present in
+ * `phrases[*].translations`, plus the primary-locale version from
+ * `defaultValue`.
+ *
+ * **How sharing works.** Point the `site` ref at a `SiteRecipe` whose
+ * `siteRole: "shared"` and the dictionary becomes the shared phrase
+ * library every sibling site in the same collection inherits via
+ * SXA's resolution chain. Point it at a regular `SiteRecipe` and the
+ * dictionary is private to that one site. There's no extra wiring —
+ * the inheritance behaviour comes from the site's role, not the
+ * dictionary itself.
+ *
+ * **Composition.** `SiteTemplateRecipe` references dictionaries by
+ * handle (`dictionaries: HandleString[]`); multiple templates can
+ * reference the same `DictionaryRecipe`. Brand-specific dictionaries
+ * layer on top of base ones by handle order (last-wins for duplicate
+ * phrase keys). Per-site authoring tweaks live on
+ * `SiteRecipe.dictionaryOverrides`.
+ *
+ * **Phrase-key contract.** Keys are stable identifiers (e.g.
+ * `cta-learn-more`, `form-submit-label`). Renaming a key breaks every
+ * consuming component. Add new keys freely; never repurpose an
+ * existing one for a different meaning.
+ *
+ * Mirrors the registry's `DictionaryRecipe`. MUST stay in sync.
+ */
+export const DictionaryRecipeSchema = z.object({
+  kind: z.literal("dictionary"),
+  schemaVersion: z.literal("1"),
+  handle: z.string().regex(HANDLE_PATTERN, {
+    message: "handle must match `<kebab-name>@<major>`, e.g. core-ui-labels@1",
+  }),
+  /** Sitecore item name for the Dictionary Folder this recipe materialises. */
+  name: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  /**
+   * The site whose `/Dictionary/` subtree this recipe lands under. For
+   * a shareable phrase library, point at a `SiteRecipe` with
+   * `siteRole: "shared"` — sibling sites in the collection inherit the
+   * phrases via SXA's resolution chain. For a site-private dictionary,
+   * point at a regular site. Cross-recipe validation enforces that the
+   * handle resolves to a `SiteRecipe` in the set.
+   */
+  site: z.string().regex(HANDLE_PATTERN, {
+    message: "site must reference a SiteRecipe by handle, e.g. showcase-shared@1",
+  }),
+  /**
+   * Primary locale these phrases are authored in (e.g. `"en"`,
+   * `"en-US"`). Falls back to the host site's primary `language` when
+   * omitted. Drives the default Sitecore item version for each entry.
+   */
+  primaryLocale: z.string().min(2).optional(),
+  /**
+   * Phrase library keyed by phrase key. Phrase keys are stable
+   * identifiers (e.g. `cta-learn-more`, `form-submit-label`) — never
+   * change them after publishing or every consuming component breaks.
+   */
+  phrases: z.record(z.string().min(1), DictionaryPhraseSchema).default({}),
+});
+
+export type DictionaryRecipe = z.infer<typeof DictionaryRecipeSchema>;
 
 /**
  * Discriminated union of recipe kinds. Compilers and validators can accept
@@ -2198,6 +2332,7 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
   PageDesignRecipeSchema,
   SiteTemplateRecipeSchema,
   SiteRecipeSchema,
+  DictionaryRecipeSchema,
   EnumerationRecipeSchema,
   WorkflowRecipeSchema,
   WebhookAuthorizationRecipeSchema,

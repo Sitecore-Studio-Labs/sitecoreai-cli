@@ -61,6 +61,16 @@ const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readonly stri
  *     layout.placeholders[*][*].componentHandle           → ComponentTemplateRecipe
  *     layout.placeholders[*][*].datasourceRef.handle      → ContentItemRecipe
  *
+ *   SiteTemplateRecipe
+ *     dictionaries[*]                     → DictionaryRecipe
+ *
+ *   DictionaryRecipe
+ *     site                                → SiteRecipe
+ *
+ * Shared-site uniqueness: at most ONE SiteRecipe per collection (keyed
+ * on collectionId / collectionName) may carry `siteRole: "shared"`.
+ * Reported as a `FieldShapeError` on the first offender.
+ *
  * Beyond reference resolution this also checks **placement legality** —
  * a layout placement into a recipe-defined placeholder whose
  * `Allowed Controls` whitelist doesn't include the component is reported
@@ -91,6 +101,8 @@ const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["design-parameters-tem
 const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
 const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
 const SITE_TEMPLATE_KINDS: readonly RecipeKind[] = ["site-template"];
+const SITE_KINDS: readonly RecipeKind[] = ["site"];
+const DICTIONARY_KINDS: readonly RecipeKind[] = ["dictionary"];
 const ANY_KINDS: readonly RecipeKind[] = [
   "component-template",
   "content-template",
@@ -593,6 +605,16 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
         recipe.pageDesigns.forEach((handle, idx) => {
           checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
         });
+        // `.default([])` on the schema only applies during Zod parse;
+        // test fixtures that hand-construct Recipe objects can leave
+        // the field undefined. Defensive `?? []` mirrors how
+        // `pageTemplates` is also schema-`.default([])` and how
+        // existing call sites elsewhere in the codebase rely on the
+        // parse-then-validate contract — keeping it tolerant here
+        // avoids breaking happy-path tests on unrelated fixtures.
+        (recipe.dictionaries ?? []).forEach((handle, idx) => {
+          checkRef(recipe.handle, `dictionaries.${idx}`, handle, DICTIONARY_KINDS);
+        });
         if (recipe.insertOptionsMatrix) {
           for (const [parentHandle, allowedChildren] of Object.entries(
             recipe.insertOptionsMatrix
@@ -657,6 +679,42 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
           });
         }
         break;
+      case "dictionary":
+        checkRef(recipe.handle, "site", recipe.site, SITE_KINDS);
+        break;
+    }
+  }
+
+  // Shared-site uniqueness: at most ONE SiteRecipe with
+  // `siteRole: "shared"` is allowed per collection. SXA's resolution
+  // chain treats the `Shared` site as the per-collection content host;
+  // a second shared site under the same collection would silently
+  // shadow the first.
+  //
+  // Collection identity is approximated by `collectionId` if present,
+  // else `collectionName` (the two are XOR-enforced above). Sites
+  // missing both don't have a unique collection key — they fail the
+  // XOR check, so they're already flagged; we skip them here to avoid
+  // a confusing "shared-site" error stacked on top of the XOR error.
+  const sharedByCollection = new Map<string, string[]>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "site" || recipe.siteRole !== "shared") continue;
+    const collectionKey = recipe.collectionId ?? recipe.collectionName;
+    if (!collectionKey) continue;
+    const bucket = sharedByCollection.get(collectionKey) ?? [];
+    bucket.push(recipe.handle);
+    sharedByCollection.set(collectionKey, bucket);
+  }
+  for (const [collectionKey, sharedHandles] of sharedByCollection) {
+    if (sharedHandles.length > 1) {
+      // Report once, on the first offender, listing every conflicting
+      // recipe so the operator can pick which one to flip back to
+      // `regular`.
+      fieldShapeErrors.push({
+        fromRecipe: sharedHandles[0],
+        fromField: "siteRole",
+        message: `collection '${collectionKey}' has ${sharedHandles.length} SiteRecipes with siteRole: 'shared' (${sharedHandles.join(", ")}). SXA's resolution chain allows at most ONE shared site per collection — pick one and flip the others to siteRole: 'regular'.`,
+      });
     }
   }
 

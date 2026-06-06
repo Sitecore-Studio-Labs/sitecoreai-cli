@@ -700,6 +700,186 @@ describe("validateRecipeSet — SiteRecipe references", () => {
   });
 });
 
+describe("validateRecipeSet — DictionaryRecipe + SiteTemplate.dictionaries refs", () => {
+  const hostSite: Recipe = {
+    kind: "site",
+    schemaVersion: "1",
+    handle: "showcase-shared@1",
+    name: "Shared",
+    displayName: "Shared",
+    siteTemplate: "ccl-brand@1",
+    language: "en",
+    collectionName: "Showcase",
+    siteRole: "shared",
+  };
+
+  const coreLabels: Recipe = {
+    kind: "dictionary",
+    schemaVersion: "1",
+    handle: "core-ui-labels@1",
+    name: "CoreUiLabels",
+    displayName: "Core UI Labels",
+    site: "showcase-shared@1",
+    phrases: { "cta-go": { defaultValue: "Go" } },
+  };
+
+  const brandTemplateWithDict: Recipe = {
+    ...cclBrand,
+    dictionaries: ["core-ui-labels@1"],
+  };
+
+  it("accepts a SiteTemplate.dictionaries entry that resolves to a DictionaryRecipe", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      brandTemplateWithDict,
+      hostSite,
+      coreLabels,
+    ]);
+    expect(isValid(result)).toBe(true);
+  });
+
+  it("flags a SiteTemplate.dictionaries entry that doesn't resolve", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      { ...cclBrand, dictionaries: ["missing-labels@1"] },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: cclBrand.handle,
+      fromField: "dictionaries.0",
+      handle: "missing-labels@1",
+      expectedKinds: ["dictionary"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags a SiteTemplate.dictionaries entry that resolves to the wrong kind", () => {
+    const result = validateRecipeSet([
+      ...SITE_TEMPLATE_DEPS,
+      hostSite,
+      { ...cclBrand, dictionaries: ["showcase-shared@1"] },
+    ]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: cclBrand.handle,
+      fromField: "dictionaries.0",
+      handle: "showcase-shared@1",
+      expectedKinds: ["dictionary"],
+      actualKind: "site",
+    });
+  });
+
+  it("flags a DictionaryRecipe.site that doesn't resolve", () => {
+    const result = validateRecipeSet([coreLabels]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: coreLabels.handle,
+      fromField: "site",
+      handle: "showcase-shared@1",
+      expectedKinds: ["site"],
+      actualKind: undefined,
+    });
+  });
+
+  it("flags a DictionaryRecipe.site that resolves to the wrong kind", () => {
+    const result = validateRecipeSet([cclBrand, { ...coreLabels, site: cclBrand.handle }]);
+    expect(result.unresolvedHandles).toContainEqual({
+      fromRecipe: coreLabels.handle,
+      fromField: "site",
+      handle: cclBrand.handle,
+      expectedKinds: ["site"],
+      actualKind: "site-template",
+    });
+  });
+});
+
+describe("validateRecipeSet — shared-site uniqueness per collection", () => {
+  const baseShared = {
+    kind: "site" as const,
+    schemaVersion: "1" as const,
+    siteTemplate: "ccl-brand@1",
+    language: "en",
+    siteRole: "shared" as const,
+  };
+
+  it("accepts ONE shared site per collection (the SXA-supported shape)", () => {
+    const sharedA: Recipe = {
+      ...baseShared,
+      handle: "shared-a@1",
+      name: "Shared",
+      displayName: "Shared",
+      collectionName: "Showcase",
+    };
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand, sharedA]);
+    expect(isValid(result)).toBe(true);
+  });
+
+  it("flags two shared sites under the SAME collectionName as a FieldShapeError", () => {
+    const sharedA: Recipe = {
+      ...baseShared,
+      handle: "shared-a@1",
+      name: "SharedA",
+      displayName: "Shared A",
+      collectionName: "Showcase",
+    };
+    const sharedB: Recipe = {
+      ...baseShared,
+      handle: "shared-b@1",
+      name: "SharedB",
+      displayName: "Shared B",
+      collectionName: "Showcase",
+    };
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand, sharedA, sharedB]);
+    expect(result.fieldShapeErrors).toContainEqual({
+      fromRecipe: "shared-a@1",
+      fromField: "siteRole",
+      message: expect.stringMatching(
+        /collection 'Showcase' has 2 SiteRecipes with siteRole: 'shared'/
+      ),
+    });
+    expect(isValid(result)).toBe(false);
+  });
+
+  it("flags two shared sites under the SAME collectionId", () => {
+    const sharedA: Recipe = {
+      ...baseShared,
+      handle: "shared-a@1",
+      name: "SharedA",
+      displayName: "Shared A",
+      collectionId: "coll-abc-123",
+    };
+    const sharedB: Recipe = {
+      ...baseShared,
+      handle: "shared-b@1",
+      name: "SharedB",
+      displayName: "Shared B",
+      collectionId: "coll-abc-123",
+    };
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand, sharedA, sharedB]);
+    expect(result.fieldShapeErrors).toContainEqual({
+      fromRecipe: "shared-a@1",
+      fromField: "siteRole",
+      message: expect.stringMatching(/collection 'coll-abc-123' has 2 SiteRecipes/),
+    });
+  });
+
+  it("accepts shared sites in DIFFERENT collections", () => {
+    const sharedA: Recipe = {
+      ...baseShared,
+      handle: "shared-a@1",
+      name: "SharedA",
+      displayName: "Shared A",
+      collectionName: "Showcase",
+    };
+    const sharedB: Recipe = {
+      ...baseShared,
+      handle: "shared-b@1",
+      name: "SharedB",
+      displayName: "Shared B",
+      collectionName: "Marketing",
+    };
+    const result = validateRecipeSet([...SITE_TEMPLATE_DEPS, cclBrand, sharedA, sharedB]);
+    expect(isValid(result)).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Coverage top-up: placement legality, duplicate placeholder keys, the
 // remaining per-kind reference checks (page / page-template / content-item

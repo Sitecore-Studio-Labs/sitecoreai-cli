@@ -12,11 +12,7 @@ import {
 } from "../../../src/recipe";
 import type { Recipe, SiteRecipe, SiteTemplateRecipe } from "../../../src/recipe/schema/recipe";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
-import {
-  createSitesApiClient,
-  type Site,
-  type SitesApiClient,
-} from "../../../src/recipe/api/sites-client";
+import { createSitesApiClient, type SitesApiClient } from "../../../src/recipe/api/sites-client";
 import type { EnvironmentConfiguration } from "../../../src/config/types";
 import {
   FOUNDATION_SITE_MODULES,
@@ -373,9 +369,20 @@ describe("sub-milestone E — SiteTemplate picker end-to-end", () => {
       // ----------------------------------------------------------------
       const moduleChildren = await authoring.getChildren({ itemId: moduleRoot!.itemId });
       const childNames = moduleChildren.map((c) => c.name).sort();
+      // The compiler sanitizes handle → item name (see
+      // `sanitizeHandleForItemName` in `compile/site-template.ts`):
+      // `@<n>` becomes ` v<n>`, other illegal chars collapse to spaces.
+      // Mirror that here so the assertion checks the actual item names
+      // Sitecore stored, not the raw handles.
+      const sanitizeHandle = (h: string): string =>
+        h
+          .replace(/@(\d+)$/, " v$1")
+          .replace(/[^\w\s\-$]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
       const expectedChildNames = [
-        `Add ${templateRecipe.pageTemplates[0]}`,
-        `Add ${templateRecipe.pageDesigns[0]}`,
+        `Add ${sanitizeHandle(templateRecipe.pageTemplates[0])}`,
+        `Add ${sanitizeHandle(templateRecipe.pageDesigns[0])}`,
       ].sort();
       expect(childNames).toEqual(expect.arrayContaining(expectedChildNames));
       // Verify each child's templateOf resolves to the expected SXA path.
@@ -411,12 +418,13 @@ describe("sub-milestone E — SiteTemplate picker end-to-end", () => {
         SITE_TEMPLATE_FIELDS.SITE_MODULES
       );
       expect(siteModulesValue, "SITE_MODULES field").toBeDefined();
-      const siteModulesList = (siteModulesValue ?? "").split("|").map((s) =>
-        s
-          .trim()
-          .replace(/^\{|\}$/g, "")
-          .toLowerCase()
-      );
+      // Normalize each entry to the canonical no-curlies, no-hyphens,
+      // lowercase form so the comparison is shape-agnostic — the field
+      // stores hyphenated GUIDs but the compiler constants we compare
+      // against are hyphen-stripped.
+      const siteModulesList = (siteModulesValue ?? "")
+        .split("|")
+        .map((s) => s.trim().replace(/[{}-]/g, "").toLowerCase());
       expect(siteModulesList.length).toBe(FOUNDATION_SITE_MODULES.length + 1);
       // Foundation prefix matches the constant list verbatim.
       for (let i = 0; i < FOUNDATION_SITE_MODULES.length; i += 1) {
@@ -429,13 +437,34 @@ describe("sub-milestone E — SiteTemplate picker end-to-end", () => {
 
       // ----------------------------------------------------------------
       // Assertion g — Sites API createSite succeeds; the resulting
-      //   site is present in listSites; its template resolves to the
-      //   SiteTemplate item we just created.
+      //   site item appears under the SXA content tree at
+      //   `/sitecore/content/<collectionName>/<siteName>`.
+      //
+      //   The Sites API's listSites endpoint is eventually-consistent:
+      //   the underlying SXA scaffolding job takes minutes to fully
+      //   complete (module composition + indexing) even though the
+      //   content-tree write lands early. Authoring GraphQL `getItem`
+      //   reads the same master DB as the scaffolding writer, so the
+      //   site item surfaces as soon as SXA writes it — no async
+      //   job-status delay. Short retry window (~30s, 3s intervals)
+      //   covers the bounded write-then-read race.
       // ----------------------------------------------------------------
-      const allSites = await sitesClient.listSites();
-      const found: Site | undefined = allSites.find((s) => s.name === siteRecipe.name);
-      expect(found, `Site '${siteRecipe.name}' should be present after push`).toBeDefined();
-      if (found?.id) created.siteId = found.id;
+      const siteContentPath = `/sitecore/content/${
+        ("collectionName" in siteRecipe && siteRecipe.collectionName) || ""
+      }/${siteRecipe.name}`;
+      const RETRY_INTERVAL_MS = 3_000;
+      const RETRY_ATTEMPTS = 10; // ~30s total
+      let siteItem: Awaited<ReturnType<typeof authoring.getItem>> = null;
+      for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt += 1) {
+        siteItem = await authoring.getItem({ path: siteContentPath });
+        if (siteItem) break;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
+      }
+      expect(
+        siteItem,
+        `Site item at '${siteContentPath}' should exist after createSite (waited ${(RETRY_ATTEMPTS * RETRY_INTERVAL_MS) / 1000}s)`
+      ).not.toBeNull();
+      if (siteItem) created.siteId = siteItem.itemId;
     },
     PUSH_TIMEOUT_MS
   );

@@ -428,31 +428,67 @@ const dispatchMutation = async (
     );
   }
   await awaitSitesJob(sitesClient, jobHandle, emit);
-  // Re-list and capture the new site's itemId. The Sites API doesn't
-  // return the materialised site object from createSite directly —
-  // listSites is the canonical way to get the assigned id.
-  //
-  // Retry with linear backoff: when `awaitSitesJob` returns via the
-  // "job not found / gc'd" path, the listSites index can still trail
-  // the actual site materialisation by a few seconds (verified
-  // 2026-06-06 against TestDemo during sub-milestone E). A short
-  // bounded retry absorbs that lag without hand-tuning per tenant.
-  const LIST_SITES_RETRY_DELAYS_MS = [0, 1_000, 2_000, 5_000, 10_000, 15_000];
-  let created: { id?: string | null; name?: string | null } | undefined;
-  for (const delay of LIST_SITES_RETRY_DELAYS_MS) {
+  // Capture the new site's itemId by reading the SXA content-tree
+  // item directly via Authoring GraphQL. The Sites API's `listSites`
+  // index is eventually-consistent — verified 2026-06-06 against
+  // TestDemo, the index trailed the actual site materialisation by
+  // minutes despite the SXA scaffolding job reporting "Done (gc'd)".
+  // Authoring GraphQL reads the same master DB the scaffolding writer
+  // commits to, so the content-tree item surfaces as soon as SXA
+  // writes it. SXA convention puts the site at
+  // `/sitecore/content/<collectionName>/<siteName>`; when the caller
+  // passed `collectionId` instead, look up the collection item by ID
+  // to read its content-tree path, then append the site name.
+  const siteContentPath = await resolveSiteContentPath(client, input);
+  const SITE_PATH_RETRY_DELAYS_MS = [0, 1_000, 2_000, 5_000, 10_000, 15_000, 30_000, 30_000];
+  let createdItemId: string | undefined;
+  for (const delay of SITE_PATH_RETRY_DELAYS_MS) {
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-    const sites = await sitesClient.listSites();
-    created = sites.find((s) => s.name === input.siteName);
-    if (created?.id) break;
+    const siteItem = await client.getItem({ path: siteContentPath });
+    if (siteItem?.itemId) {
+      createdItemId = siteItem.itemId;
+      break;
+    }
   }
-  if (created?.id) {
-    capturedItemIds.set(siteRefKey, created.id);
+  if (createdItemId) {
+    capturedItemIds.set(siteRefKey, createdItemId);
   } else {
     throw createScaiError(
-      `createSite for '${input.siteName}' completed but the site is not present in listSites after retries — cannot capture itemId.`,
+      `createSite for '${input.siteName}' completed but the site item is not present at '${siteContentPath}' after retries — cannot capture itemId.`,
       "SITES_API_FAILED"
     );
   }
+};
+
+/**
+ * Build the SXA content-tree path for a just-created site. SXA places
+ * sites at `/sitecore/content/<collectionName>/<siteName>`. When the
+ * caller passed `collectionId` instead of `collectionName`, fetch the
+ * collection item by ID to read its content-tree path, then append the
+ * site name. Throws when neither is set — the Sites API would have
+ * already rejected the createSite call upstream in that case.
+ */
+const resolveSiteContentPath = async (
+  client: AuthoringApiClient,
+  input: { siteName: string; collectionName?: string | null; collectionId?: string | null }
+): Promise<string> => {
+  if (input.collectionName) {
+    return `/sitecore/content/${input.collectionName}/${input.siteName}`;
+  }
+  if (input.collectionId) {
+    const collection = await client.getItem({ itemId: input.collectionId });
+    if (!collection?.path) {
+      throw createScaiError(
+        `Cannot resolve content-tree path for site '${input.siteName}' — collection '${input.collectionId}' not found.`,
+        "SITES_API_FAILED"
+      );
+    }
+    return `${collection.path.replace(/\/+$/, "")}/${input.siteName}`;
+  }
+  throw createScaiError(
+    `Cannot resolve content-tree path for site '${input.siteName}' — neither collectionName nor collectionId set.`,
+    "SITES_API_FAILED"
+  );
 };
 
 const buildResult = (

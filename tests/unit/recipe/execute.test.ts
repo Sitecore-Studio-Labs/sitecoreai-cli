@@ -510,16 +510,25 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
       path: "/sitecore/templates/SiteTemplate",
       fields: [],
     });
-    // listSites returns no match during planning, then the materialised
-    // site after createSite runs — so the executor can capture its itemId.
+    // After createSite runs, the executor captures the site's itemId via
+    // Authoring `getItem` against the SXA content-tree path
+    // `/sitecore/content/<collectionName>/<siteName>`. Preload that path
+    // so the post-apply getItem lookup returns the materialised site.
     let siteCreated = false;
+    client.preload({
+      itemId: "site-id-1",
+      templateId: "site-tpl",
+      parentId: "p",
+      name: "MarketingSite",
+      path: "/sitecore/content/Marketing/MarketingSite",
+      fields: [],
+    });
     const sitesClient = makeSitesClient({
       createSite: async () => {
         siteCreated = true;
         return { handle: "job-1" } as never;
       },
-      listSites: async () =>
-        (siteCreated ? [{ id: "site-id-1", name: "MarketingSite" }] : []) as never,
+      listSites: async () => [] as never,
     });
     const events: ExecutionEvent[] = [];
 

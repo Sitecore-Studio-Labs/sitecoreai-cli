@@ -227,25 +227,19 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
     const sitesClient = makeStubSitesClient({
       createSite: vi.fn(async () => ({ handle: "job-42" }) as JobResponse),
       getJobStatus: vi.fn(async () => ({ state: "Done" }) as unknown as Job),
-      listSites: vi.fn(async () =>
-        // Two calls: idempotency check (empty) + post-apply capture (with site)
-        []
-      ),
-    });
-    // listSites must return the new site on the post-apply call — make
-    // a stateful stub so the first call returns empty, the second
-    // returns the created site.
-    let listSitesCallCount = 0;
-    sitesClient.listSites = vi.fn(async () => {
-      listSitesCallCount += 1;
-      if (listSitesCallCount === 1) return [];
-      return [{ id: "newly-assigned-site-id", name: op.siteName }] as Site[];
+      // Idempotency check at plan time: returns empty so the planner
+      // doesn't skip. Post-apply capture is via Authoring `getItem`
+      // against the SXA content-tree path, not listSites — see the
+      // stubbed `authoring.getItem` below.
+      listSites: vi.fn(async () => []),
     });
 
     const authoring = makeStubAuthoringClient();
     // Pre-seed the templateRefKey via a cross-recipe ref the stub client
-    // resolves: we register a path → return a synthetic remote item with
-    // an itemId, which the executor captures into capturedItemIds.
+    // resolves, AND return a synthetic site item when the executor
+    // reads the just-created site's content-tree path. The path follows
+    // SXA convention `/sitecore/content/<collectionName>/<siteName>`.
+    const expectedSitePath = `/sitecore/content/${op.collectionName}/${op.siteName}`;
     authoring.getItem = vi.fn(async (selector) => {
       if (selector.path === "/templates/seeded-site-template") {
         return {
@@ -254,6 +248,16 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
           parentId: "p",
           name: "ccl",
           path: "/templates/seeded-site-template",
+          fields: [],
+        };
+      }
+      if (selector.path === expectedSitePath) {
+        return {
+          itemId: "newly-assigned-site-id",
+          templateId: "site-tpl",
+          parentId: "p",
+          name: op.siteName,
+          path: expectedSitePath,
           fields: [],
         };
       }

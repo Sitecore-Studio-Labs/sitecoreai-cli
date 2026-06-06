@@ -141,16 +141,17 @@ export const resolveRecipeRefs = (
       // only resolves the media item correctly when the value is this
       // XML wrapper; a raw GUID silently no-ops.
       //
-      // Executor-side `MediaUpload` apply is sub-milestone E: the media
-      // upload op itself isn't dispatched yet, so this branch will
-      // throw at runtime until E lands. The error message points at
-      // the upcoming work so the failure is informative.
+      // Populated by `MediaUploadOp`'s apply step (sub-milestone E,
+      // 2026-06-06): the executor stamps the server-assigned media
+      // itemId into `capturedItemIds[op.id]` after the presigned-URL
+      // POST resolves. A miss here means the producer `MediaUploadOp`
+      // didn't run (or ran-and-skipped without capturing) — surface a
+      // clear error so operators see the gap rather than a silent
+      // empty `__Thumbnail`.
       const itemId = capturedItemIds.get(value.refKey);
       if (!itemId) {
-        // TODO (sub-milestone E): wire `MediaUploadOp` apply path so
-        // the captured map carries media itemIds before this resolves.
         throw createScaiError(
-          `media-xml-ref refKey ${value.refKey} not in captured map — MediaUploadOp executor is not yet implemented (sub-milestone E in docs/plans/site-template-modules-and-picker.md).`,
+          `media-xml-ref refKey ${value.refKey} not in captured map — the producer MediaUploadOp didn't capture an itemId for this push. Check the plan/event stream for the upstream MediaUpload op's outcome.`,
           "UNKNOWN"
         );
       }

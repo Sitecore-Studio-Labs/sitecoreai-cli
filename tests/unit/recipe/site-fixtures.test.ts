@@ -508,7 +508,9 @@ describe("compileSiteTemplateRecipe — module synthesis", () => {
       kind: "ref-path",
       value: SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM,
     });
-    expect(actionCreate?.name).toBe("Add page@1");
+    // Compiler sanitizes the handle for Sitecore item-name validation
+    // (`@` is illegal). `@1` becomes ` v1`.
+    expect(actionCreate?.name).toBe("Add page v1");
   });
 
   it("emits the right action template per source field (AddItem / EditSiteItem / EditTenantTemplate)", () => {

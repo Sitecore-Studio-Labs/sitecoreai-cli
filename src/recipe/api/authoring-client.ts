@@ -16,7 +16,10 @@ import {
   type MoveItemInput,
   type RemoteItem,
   type UpdateItemInput,
+  type UploadMediaInput,
+  type UploadMediaResult,
 } from "./client";
+import { getAccessToken } from "./auth";
 import { runAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
 
 /** Sitecore itemIds are uuids — bare or wrapped in curly braces. Anything
@@ -242,6 +245,13 @@ mutation($input: AddItemVersionInput!) {
     item {
       version
     }
+  }
+}`;
+
+const UPLOAD_MEDIA_MUTATION = `
+mutation($input: UploadMediaInput!) {
+  uploadMedia(input: $input) {
+    presignedUploadUrl
   }
 }`;
 
@@ -1020,6 +1030,80 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         const node = data[`r${i}`];
         return node ? toRemoteItem(node) : null;
       });
+    },
+
+    async uploadMedia(input: UploadMediaInput): Promise<UploadMediaResult> {
+      // Step 1: presign. The `uploadMedia` mutation accepts an `itemPath`
+      // relative to `/sitecore/media library` (no prefix, no extension —
+      // Sitecore's `InvalidItemNameChars` rejects `.`/`/` in item names;
+      // file extension is stored on the underlying Blob field, not the
+      // item name). Intermediate folders are auto-created.
+      const presignResponse = await runAuthoringGraphQL<{
+        uploadMedia: { presignedUploadUrl: string } | null;
+      }>(
+        environment,
+        UPLOAD_MEDIA_MUTATION,
+        {
+          input: {
+            itemPath: input.itemPath,
+            ...(input.alt !== undefined && { alt: input.alt }),
+            overwriteExisting: input.overwriteExisting ?? true,
+          },
+        },
+        writeRequest
+      );
+      const presignedUrl = presignResponse.uploadMedia?.presignedUploadUrl;
+      if (!presignedUrl) {
+        throw createScaiError(
+          `uploadMedia returned no presignedUploadUrl for itemPath '${input.itemPath}'.`,
+          "UNKNOWN"
+        );
+      }
+
+      // Step 2: POST multipart bytes to the presigned URL. The presigned
+      // URL still requires the Bearer token (verified 2026-06-06 against
+      // TestDemo — unauthenticated POSTs return a 200 with an OAuth
+      // login HTML body, NOT an upload). The response body is JSON
+      // `{Id, Name, ItemPath}` on success.
+      const token = await getAccessToken(environment);
+      const form = new FormData();
+      const blob = new Blob([new Uint8Array(input.bytes)], {
+        type: input.mimeType ?? "image/png",
+      });
+      form.append("file", blob, input.fileName ?? "media");
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "POST",
+        body: form,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!uploadResponse.ok) {
+        const detail = await uploadResponse.text().catch(() => "");
+        throw createScaiError(
+          `uploadMedia presigned POST failed (${uploadResponse.status}): ${detail.substring(0, 200)}`,
+          "UNKNOWN"
+        );
+      }
+      const responseText = await uploadResponse.text();
+      let parsed: { Id?: string; Name?: string; ItemPath?: string };
+      try {
+        parsed = JSON.parse(responseText) as typeof parsed;
+      } catch {
+        throw createScaiError(
+          `uploadMedia presigned POST returned non-JSON body (likely auth challenge): ${responseText.substring(0, 200)}`,
+          "UNKNOWN"
+        );
+      }
+      if (!parsed.Id) {
+        throw createScaiError(
+          `uploadMedia presigned POST response missing Id: ${responseText.substring(0, 200)}`,
+          "UNKNOWN"
+        );
+      }
+      return {
+        itemId: parsed.Id,
+        itemPath: parsed.ItemPath ?? input.itemPath,
+        name: parsed.Name ?? input.itemPath.split("/").pop() ?? "",
+      };
     },
 
     async getTenantLanguages(): Promise<string[]> {

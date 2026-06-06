@@ -205,7 +205,12 @@ export interface ExecuteOptions {
  * longer. The 90s budget covers worst-case sandbox cold-starts; in
  * production we'd surface a slow-job event so operators see progress.
  */
-const SITES_JOB_POLL_BUDGET_MS = 90_000;
+// 5 minutes — cold tenants (and tenants with heavy SiteTemplate Module
+// composition) routinely run 1-2 minutes; verified empirically against
+// TestDemo 2026-06-06 during sub-milestone E (a `createSite` job
+// resolving cleanly in ~110s). The shorter 90s ceiling was timing out
+// the executor on jobs the tenant was still completing.
+const SITES_JOB_POLL_BUDGET_MS = 5 * 60_000;
 const SITES_JOB_POLL_INTERVAL_MS = 1_000;
 
 const awaitSitesJob = async (
@@ -215,8 +220,31 @@ const awaitSitesJob = async (
 ): Promise<void> => {
   const start = Date.now();
   const deadline = start + SITES_JOB_POLL_BUDGET_MS;
+  // The Sites API garbage-collects completed jobs aggressively — the
+  // returned `jobHandle` from `createSite`/`deleteSite` may have
+  // already lapsed by the time our first poll runs (verified
+  // 2026-06-06 against TestDemo during sub-milestone E). A
+  // `"X job was not found"` response on a never-observed job is
+  // therefore treated the same as a `"Done"` poll: the caller's
+  // subsequent `listSites` confirms the materialised site, and we
+  // never saw a `Failed`/`Errored` state in between.
   while (Date.now() < deadline) {
-    const job = await sitesClient.getJobStatus(jobHandle);
+    let job: Awaited<ReturnType<SitesApiClient["getJobStatus"]>>;
+    try {
+      job = await sitesClient.getJobStatus(jobHandle);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/job was not found/i.test(message)) {
+        emit?.({
+          kind: "site-job-poll",
+          jobHandle,
+          phase: "Done (gc'd)",
+          elapsedMs: Date.now() - start,
+        });
+        return;
+      }
+      throw error;
+    }
     // Sites API deployments return either `state` (runtime) or `status`
     // (OpenAPI-spec) — accept either. See `Job` type in src/sites/api/jobs.ts.
     const phase = job.state ?? job.status ?? "";
@@ -326,6 +354,29 @@ const dispatchMutation = async (
     }
     return;
   }
+  if (action.mutation.kind === "mediaUpload") {
+    // Idempotency: try to read the resulting absolute path BEFORE
+    // uploading; if a media item already exists at the same path, skip
+    // the upload and just capture its itemId. This makes a re-push
+    // a no-op once the media item exists, matching the rest of the IR
+    // ops' idempotency model.
+    const absolutePath = `/sitecore/media library/${action.mutation.itemPath}`;
+    const existing = await client.getItem({ path: absolutePath });
+    if (existing) {
+      capturedItemIds.set(action.mutation.mediaRefKey, existing.itemId);
+      return;
+    }
+    const result = await client.uploadMedia({
+      itemPath: action.mutation.itemPath,
+      bytes: action.mutation.bytes,
+      mimeType: action.mutation.mimeType,
+      ...(action.mutation.fileName !== undefined && { fileName: action.mutation.fileName }),
+      ...(action.mutation.altText !== undefined && { alt: action.mutation.altText }),
+      overwriteExisting: true,
+    });
+    capturedItemIds.set(action.mutation.mediaRefKey, result.itemId);
+    return;
+  }
   if (action.mutation.kind === "pruneChildren") {
     // mode "warn": the planner surfaced the prune list (action.prunedItems)
     // for the operator to review — but apply intentionally does nothing.
@@ -380,13 +431,25 @@ const dispatchMutation = async (
   // Re-list and capture the new site's itemId. The Sites API doesn't
   // return the materialised site object from createSite directly —
   // listSites is the canonical way to get the assigned id.
-  const sites = await sitesClient.listSites();
-  const created = sites.find((s) => s.name === input.siteName);
+  //
+  // Retry with linear backoff: when `awaitSitesJob` returns via the
+  // "job not found / gc'd" path, the listSites index can still trail
+  // the actual site materialisation by a few seconds (verified
+  // 2026-06-06 against TestDemo during sub-milestone E). A short
+  // bounded retry absorbs that lag without hand-tuning per tenant.
+  const LIST_SITES_RETRY_DELAYS_MS = [0, 1_000, 2_000, 5_000, 10_000, 15_000];
+  let created: { id?: string | null; name?: string | null } | undefined;
+  for (const delay of LIST_SITES_RETRY_DELAYS_MS) {
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    const sites = await sitesClient.listSites();
+    created = sites.find((s) => s.name === input.siteName);
+    if (created?.id) break;
+  }
   if (created?.id) {
     capturedItemIds.set(siteRefKey, created.id);
   } else {
     throw createScaiError(
-      `createSite for '${input.siteName}' completed but the site is not present in listSites — cannot capture itemId.`,
+      `createSite for '${input.siteName}' completed but the site is not present in listSites after retries — cannot capture itemId.`,
       "SITES_API_FAILED"
     );
   }

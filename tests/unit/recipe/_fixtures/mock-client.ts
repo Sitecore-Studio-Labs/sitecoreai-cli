@@ -10,6 +10,8 @@ import type {
   RemoteFieldValue,
   RemoteItem,
   UpdateItemInput,
+  UploadMediaInput,
+  UploadMediaResult,
 } from "../../../../src/recipe/api/client";
 import { renderRefValue } from "../../../../src/recipe/api/ref-encoding";
 
@@ -277,5 +279,26 @@ export class MockAuthoringClient implements AuthoringApiClient {
       throw new Error("Cannot query field 'languages' on type 'Query' (simulated).");
     }
     return [...this.tenantLanguages];
+  }
+
+  /** Inputs the executor handed to `uploadMedia` — assertable from tests. */
+  public readonly mediaUploads: UploadMediaInput[] = [];
+
+  async uploadMedia(input: UploadMediaInput): Promise<UploadMediaResult> {
+    this.mediaUploads.push(input);
+    const absolutePath = `/sitecore/media library/${input.itemPath}`;
+    const itemId = randomUUID().replace(/-/g, "");
+    const item: MockItem = {
+      itemId,
+      templateId: "f1828a2c7e5d4bbd98ca320474871548", // Unversioned/Jpeg or similar
+      parentId: "",
+      name: input.itemPath.split("/").pop() ?? "media",
+      path: absolutePath,
+      fields: input.alt
+        ? [{ fieldId: "65885c44-8fcd-4a7f-94f1-ee63703fe193", name: "Alt", value: input.alt }]
+        : [],
+    };
+    this.preload(item);
+    return { itemId, itemPath: absolutePath, name: item.name };
   }
 }

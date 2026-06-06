@@ -5,6 +5,7 @@ import type {
   CreateItemOp,
   CreateSiteFromTemplateOp,
   FieldValue,
+  MediaUploadOp,
   Operation,
   OperationIr,
   PruneChildrenOp,
@@ -176,6 +177,26 @@ export interface PlannedAction {
         language: string;
         /** How many versions to add to reach the op's declared `version`. */
         addCount: number;
+      }
+    | {
+        kind: "mediaUpload";
+        /** Resolved media-library-relative path (no `/sitecore/media library/` prefix). */
+        itemPath: string;
+        /** Source bytes the executor will POST to Sitecore's presigned URL. */
+        bytes: Uint8Array;
+        /** MIME type for the multipart form. */
+        mimeType: string;
+        /** Optional file name surfaced in the multipart form `file` part. */
+        fileName?: string;
+        /** Optional alt text applied to the resulting media item. */
+        altText?: string;
+        /**
+         * RefKey of the MediaUpload op — the executor stamps the
+         * server-assigned media item GUID under this key in
+         * `capturedItemIds`, so subsequent SetField ops with a
+         * `media-xml-ref` value resolve.
+         */
+        mediaRefKey: string;
       }
     | {
         kind: "pruneChildren";
@@ -1179,17 +1200,7 @@ export const buildAction = async (
       case "PruneChildren":
         return planPruneChildren(index, op, capturedItemIds, client, snapshotLanguages);
       case "MediaUpload":
-        // Sub-milestone E wires the live media-library upload + the
-        // captured-itemId stamp. Until then, plan as a deferred skip
-        // with an explicit reason so callers see the gap rather than a
-        // silent no-op. The compile-side wiring (D) emits this op so
-        // the IR shape is stable; the executor catches up next.
-        return {
-          index,
-          operation: op,
-          status: "skip",
-          reason: `MediaUpload executor not yet implemented (sub-milestone E in docs/plans/site-template-modules-and-picker.md).`,
-        };
+        return planMediaUpload(index, op, capturedItemIds);
     }
   })();
   return { ...action, snapshot: remote };
@@ -1647,6 +1658,142 @@ const planAddItemVersion = async (
       itemId: remote.itemId,
       language: op.language,
       addCount: op.version - currentMax,
+    },
+  };
+};
+
+/**
+ * Plan a `MediaUpload` op.
+ *
+ * Idempotency: if a media item already exists at the destination
+ * `capturedItemIds.has(op.id)` — populated by an earlier plan-pass
+ * lookup or a prior push — the planner emits `skip`. Otherwise it
+ * resolves the byte source (URL fetch or local file read) and emits a
+ * `mediaUpload` mutation carrying the bytes for the executor to POST
+ * to Sitecore's presigned URL.
+ *
+ * **Path resolution.** `MediaUploadOp.destinationPath` is the absolute
+ * content-tree path under `/sitecore/media library/...` the compiler
+ * emits. Authoring GraphQL's `uploadMedia` input takes a media-library-
+ * RELATIVE path (no `/sitecore/media library/` prefix, no file
+ * extension on the leaf — Sitecore's `InvalidItemNameChars` rejects
+ * `.` and `/` in item names). The planner strips both for the wire
+ * call and asserts the planner-recoverable absolute path round-trips
+ * to the server-returned `ItemPath`.
+ *
+ * **Idempotency lookup** happens at apply time inside `dispatchMutation`
+ * — we'd otherwise pay an extra `getItem({path})` per op that the
+ * `pathSnapshotCache` doesn't cover for media-library items. Compile
+ * always emits `MediaUpload` even on re-pushes; the dispatcher reads
+ * remote state and short-circuits if the item exists.
+ */
+const planMediaUpload = async (
+  index: number,
+  op: MediaUploadOp,
+  capturedItemIds: Map<string, string>
+): Promise<PlannedAction> => {
+  // If a prior plan-pass or cross-recipe pre-seeding already captured
+  // an itemId for this MediaUpload's refKey, skip without re-uploading.
+  // The compile-time `MediaUploadOp.id` is the same uuidv5 the
+  // `media-xml-ref` SetField uses as its refKey, so a captured value
+  // is enough for downstream SetField resolution.
+  if (capturedItemIds.has(op.id)) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Media item refKey ${op.id} already captured — skipping re-upload.`,
+    };
+  }
+
+  let bytes: Uint8Array;
+  let mimeType = "image/png";
+  let fileName: string | undefined;
+  try {
+    if (op.source.kind === "external-url") {
+      const url = op.source.url;
+      const res = await fetch(url);
+      if (!res.ok) {
+        return {
+          index,
+          operation: op,
+          status: "error",
+          reason: `MediaUpload: fetch ${url} → ${res.status} ${res.statusText}`,
+        };
+      }
+      const buf = await res.arrayBuffer();
+      bytes = new Uint8Array(buf);
+      const headerMime = res.headers.get("content-type");
+      if (headerMime) {
+        // Strip charset suffix (e.g. `image/svg+xml; charset=utf-8`).
+        mimeType = headerMime.split(";")[0].trim() || mimeType;
+      }
+      const tail = new URL(url).pathname.split("/").filter(Boolean).pop();
+      if (tail) fileName = tail;
+    } else {
+      // kind === "asset" — read from disk relative to cwd. The compiler
+      // already resolved relative paths against the recipe file's
+      // directory (see compile/site-template.ts), but for safety the
+      // executor treats `op.source.path` as an absolute file path OR a
+      // cwd-relative path. Recipe authors who want recipe-file-relative
+      // paths should let the compiler resolve them.
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const absPath = path.isAbsolute(op.source.path)
+        ? op.source.path
+        : path.resolve(op.source.path);
+      bytes = await fs.readFile(absPath);
+      const ext = path.extname(absPath).slice(1).toLowerCase();
+      if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
+      else if (ext === "png") mimeType = "image/png";
+      else if (ext === "svg") mimeType = "image/svg+xml";
+      else if (ext === "webp") mimeType = "image/webp";
+      else if (ext === "gif") mimeType = "image/gif";
+      fileName = path.basename(absPath);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      index,
+      operation: op,
+      status: "error",
+      reason: `MediaUpload: failed to source bytes (${op.source.kind}): ${message}`,
+    };
+  }
+
+  // destinationPath is the SXA-rooted absolute path the compiler emits
+  // (`/sitecore/media library/SiteTemplates/<recipe>/<basename>`). The
+  // Authoring GraphQL mutation rejects both the `/sitecore/media library/`
+  // prefix AND any leaf with a `.` in it. Strip both for the wire call;
+  // the file extension is stored on the underlying blob field, not on
+  // the item name.
+  const absolutePath = op.destinationPath ?? `/sitecore/media library/${op.label}`;
+  const MEDIA_LIBRARY_PREFIX = "/sitecore/media library/";
+  let mediaLibraryRelative = absolutePath.startsWith(MEDIA_LIBRARY_PREFIX)
+    ? absolutePath.slice(MEDIA_LIBRARY_PREFIX.length)
+    : absolutePath.replace(/^\/+/, "");
+  // Drop trailing extension on the leaf only (intermediate folder names
+  // are unaffected). Sitecore stores the extension on the underlying
+  // blob, not the item name.
+  const lastSlash = mediaLibraryRelative.lastIndexOf("/");
+  const leaf = lastSlash >= 0 ? mediaLibraryRelative.slice(lastSlash + 1) : mediaLibraryRelative;
+  const folder = lastSlash >= 0 ? mediaLibraryRelative.slice(0, lastSlash + 1) : "";
+  const dot = leaf.lastIndexOf(".");
+  const sanitizedLeaf = dot > 0 ? leaf.slice(0, dot) : leaf;
+  mediaLibraryRelative = `${folder}${sanitizedLeaf}`;
+
+  return {
+    index,
+    operation: op,
+    status: "create",
+    mutation: {
+      kind: "mediaUpload",
+      itemPath: mediaLibraryRelative,
+      bytes,
+      mimeType,
+      ...(fileName !== undefined && { fileName }),
+      ...(op.altText !== undefined && { altText: op.altText }),
+      mediaRefKey: op.id,
     },
   };
 };

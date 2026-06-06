@@ -233,6 +233,18 @@ export const inverseOf = (
     return null;
   }
 
+  if (action.mutation.kind === "mediaUpload") {
+    // Media upload rollback is warn-only. A precise inverse would
+    // `deleteItem` the freshly-uploaded media item using the captured
+    // itemId — safe enough on a clean first-push abort, but the
+    // upload's idempotent re-use of an existing path means a rollback
+    // could delete an item the recipe didn't create (it merely
+    // re-captured). Deferred until a per-op "did we create this?"
+    // flag lands; until then a half-failed push leaves the media
+    // item present (idempotent re-push converges).
+    return null;
+  }
+
   if (action.mutation.kind === "pruneChildren") {
     // Warn-mode prunes do nothing at apply time — there's nothing to
     // undo. Same for delete-mode prunes that the executor skipped

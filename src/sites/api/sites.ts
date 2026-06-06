@@ -101,10 +101,21 @@ export const listSites = (options: SitesApiClientOptions): Promise<Site[]> =>
  * Delete a site permanently — removes pages, settings, media,
  * datasources, presentation elements, dictionaries, components,
  * variants, and page designs. Async; returns a job handle.
+ *
+ * `force=true` deletes a site that's already published to Edge.
+ * Without it, the Sites API refuses to delete a site whose previous
+ * publish state lingers on the edge cache. The integration-test
+ * teardown path defaults to `force: true` so cleanup never leaves
+ * an orphaned site on the tenant.
  */
-export const deleteSite = (options: SitesApiClientOptions, siteId: string): Promise<JobResponse> =>
+export const deleteSite = (
+  options: SitesApiClientOptions,
+  siteId: string,
+  query?: { force?: boolean; environmentId?: string }
+): Promise<JobResponse> =>
   sitesRequest<JobResponse>(options, `/api/v1/sites/${encodeURIComponent(siteId)}`, {
     method: "DELETE",
+    ...(query && { query }),
   });
 
 /**

@@ -101,6 +101,23 @@ function listPopulatedDroppedFields(recipe: SiteTemplateRecipe): string[] {
   });
 }
 
+/**
+ * Sanitize a recipe handle (`my-page@1`) into a Sitecore-valid item
+ * name. Sitecore's `ItemNameValidation` setting rejects names containing
+ * `@`, `:`, `/`, etc. — the legal class is roughly `^[\w*$][\w\s\-$]*`
+ * (verified against the regex error 2026-06-06). The handle's
+ * `@<version>` suffix becomes ` v<version>`; other illegal chars
+ * collapse to spaces. Empty results fall back to `Item`.
+ */
+function sanitizeHandleForItemName(handle: string): string {
+  const versioned = handle.replace(/@(\d+)$/, " v$1");
+  const cleaned = versioned
+    .replace(/[^\w\s\-$]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 0 ? cleaned : "Item";
+}
+
 function basenameForMediaSource(
   source: { kind: "external-url"; url: string } | { kind: "asset"; path: string }
 ): string {
@@ -339,19 +356,24 @@ export function compileSiteTemplateRecipe(
       emitAction(
         "add-page-template",
         handle,
-        `Add ${handle}`,
+        `Add ${sanitizeHandleForItemName(handle)}`,
         SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM
       );
     }
     for (const handle of recipe.pageDesigns) {
-      emitAction("add-page-design", handle, `Add ${handle}`, SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM);
+      emitAction(
+        "add-page-design",
+        handle,
+        `Add ${sanitizeHandleForItemName(handle)}`,
+        SETUP_ACTION_TEMPLATE_PATHS.ADD_ITEM
+      );
     }
     if (recipe.insertOptionsMatrix) {
       for (const parentHandle of Object.keys(recipe.insertOptionsMatrix).sort()) {
         emitAction(
           "insert-options",
           parentHandle,
-          `Insert Options ${parentHandle}`,
+          `Insert Options ${sanitizeHandleForItemName(parentHandle)}`,
           SETUP_ACTION_TEMPLATE_PATHS.EDIT_SITE_ITEM
         );
       }
@@ -361,7 +383,7 @@ export function compileSiteTemplateRecipe(
         emitAction(
           "templates-to-designs",
           tplHandle,
-          `Map ${tplHandle} to Design`,
+          `Map ${sanitizeHandleForItemName(tplHandle)} to Design`,
           SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
         );
       }
@@ -371,7 +393,7 @@ export function compileSiteTemplateRecipe(
         emitAction(
           "dictionary",
           entry.phrase,
-          `Dictionary ${entry.phrase}`,
+          `Dictionary ${sanitizeHandleForItemName(entry.phrase)}`,
           SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
         );
       }
@@ -381,7 +403,7 @@ export function compileSiteTemplateRecipe(
         emitAction(
           "taxonomy",
           entry.root,
-          `Taxonomy ${entry.root}`,
+          `Taxonomy ${sanitizeHandleForItemName(entry.root)}`,
           SETUP_ACTION_TEMPLATE_PATHS.EDIT_TENANT_TEMPLATE
         );
       }

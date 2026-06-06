@@ -3,6 +3,7 @@ import { getJobStatus, type Job } from "../../sites/api/jobs";
 import { addLanguage, listLanguages, type Language } from "../../sites/api/languages";
 import {
   createSite,
+  deleteSite,
   listSites,
   listSiteTemplates,
   type JobResponse,
@@ -37,6 +38,13 @@ import type { SitesApiClientOptions as RawSitesApiClientOptions } from "../../si
  */
 export interface SitesApiClient {
   createSite(input: NewSiteInput): Promise<JobResponse>;
+  /**
+   * Delete a site permanently. Async — returns a job handle the caller
+   * polls via `getJobStatus`. Exposed so integration-test cleanup can
+   * remove RUN_ID-namespaced sites without reaching past the typed
+   * client interface.
+   */
+  deleteSite(siteId: string): Promise<JobResponse>;
   getJobStatus(jobHandle: string): Promise<Job>;
   listSites(): Promise<Site[]>;
   listSiteTemplates(): Promise<SiteTemplate[]>;
@@ -59,6 +67,11 @@ export interface SitesApiClient {
  */
 export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesApiClient => ({
   createSite: (input) => createSite(options, input),
+  // `force: true` lets cleanup remove sites the createSite job already
+  // published to Edge — otherwise the Sites API refuses to delete and
+  // leaves orphans on the tenant. Integration-test teardowns always
+  // want this; the recipe push path doesn't dispatch deleteSite at all.
+  deleteSite: (siteId) => deleteSite(options, siteId, { force: true }),
   getJobStatus: (jobHandle) => getJobStatus(options, jobHandle),
   listSites: () => listSites(options),
   listSiteTemplates: () => listSiteTemplates(options),

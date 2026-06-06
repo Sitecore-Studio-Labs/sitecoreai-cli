@@ -526,16 +526,27 @@ export const SYSTEM_THUMBNAIL_FIELD_ID = "c7c26117-dbb1-42b2-ab5e-f7223845cca3";
  * direct GUID for slightly cheaper executor resolution.
  */
 export const SETUP_ACTION_TEMPLATE_PATHS = {
+  /**
+   * Sub-milestone E (2026-06-06) verified path is `Actions/Site/AddItem`
+   * — NOT `Templates/AddItem` as sub-milestone A surmised. The
+   * `Templates` folder doesn't exist under SXA's Scaffolding tree;
+   * action templates live under `Actions/Site/` (per-site setup
+   * actions) or `Actions/Tenant/` (per-tenant setup actions),
+   * mirroring the SITE_MODULES / TENANT_MODULES split on the parent
+   * Module roots. There's also a `Foundation/Experience Accelerator/`
+   * branch (classic SXA, .NET-rendering) alongside the JSS branch;
+   * the JSS branch matches HeadlessSiteSetupRoot, so we use it here.
+   */
   ADD_ITEM:
-    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/AddItem",
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Actions/Site/AddItem",
   EDIT_SITE_ITEM:
-    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/EditSiteItem",
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Actions/Site/EditSiteItem",
   EDIT_TENANT_TEMPLATE:
-    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/EditTenantTemplate",
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Actions/Tenant/EditTenantTemplate",
   EXECUTE_SCRIPT:
-    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/ExecuteScript",
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Actions/Site/ExecuteScript",
   POST_SETUP_STEP:
-    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Templates/PostSetupStep",
+    "/sitecore/templates/Foundation/JSS Experience Accelerator/Scaffolding/Actions/Site/PostSetupStep",
 } as const;
 
 /**

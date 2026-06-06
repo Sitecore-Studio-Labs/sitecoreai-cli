@@ -106,6 +106,43 @@ export interface MoveItemInput {
   targetParent: ItemSelector;
 }
 
+export interface UploadMediaInput {
+  /**
+   * Media-library-relative path of the destination item — no
+   * `/sitecore/media library/` prefix, no file extension on the leaf.
+   * Sitecore's `InvalidItemNameChars` setting forbids `.`/`/` in item
+   * names; the file extension is stored on the underlying blob, not
+   * the item name. Example: `SiteTemplates/MyTemplate/thumbnail`.
+   * Intermediate folders are auto-created by Sitecore as Media folder
+   * items.
+   */
+  itemPath: string;
+  /** Image bytes to upload — read locally or fetched at apply time. */
+  bytes: Uint8Array | Buffer;
+  /** Optional MIME type for the multipart POST. Defaults to `image/png`. */
+  mimeType?: string;
+  /** Optional file name surfaced in the multipart `file` part. */
+  fileName?: string;
+  /** Optional Alt text applied to the resulting media item. */
+  alt?: string;
+  /**
+   * When true, overwrites an existing media item at the same path. The
+   * recipe push always sets this true so re-running over an existing
+   * media library item updates it (matches `CreateAndUpdate` policy
+   * semantics for SetField writes).
+   */
+  overwriteExisting?: boolean;
+}
+
+export interface UploadMediaResult {
+  /** Sitecore-assigned media item GUID (UUID without curly braces). */
+  itemId: string;
+  /** Absolute content-tree path the media item now lives at. */
+  itemPath: string;
+  /** Leaf name Sitecore stamped on the item (may differ from input). */
+  name: string;
+}
+
 export interface AddItemVersionInput {
   /** Sitecore itemId of the target item. */
   itemId: string;
@@ -239,6 +276,31 @@ export interface AuthoringApiClient {
     selector: ItemSelector,
     requests: ReadonlyArray<{ language: string; version: number }>
   ): Promise<Array<RemoteItem | null>>;
+  /**
+   * Upload a binary asset to Sitecore's media library and return the
+   * resulting item's GUID + content-tree path.
+   *
+   * Sitecore's Authoring GraphQL splits the upload across two round
+   * trips: the `uploadMedia(input)` mutation returns a `presignedUploadUrl`
+   * (a per-upload signed handle on the same XM Cloud host); the bytes
+   * then POST as `multipart/form-data` (`file` field) to that URL with
+   * the Bearer token attached. The POST returns
+   * `{Id, Name, ItemPath}` — `Id` is the freshly-assigned media-item
+   * GUID, which the caller stamps into `capturedItemIds` so a sibling
+   * `SetField` op can resolve a `media-xml-ref` against it.
+   *
+   * `destinationPath` is media-library-relative (no `/sitecore/media library/`
+   * prefix, no file extension on the leaf — Sitecore's `InvalidItemNameChars`
+   * setting rejects `.`/`/`/etc. in item names; the file extension
+   * lives on the underlying blob, not the item name). Example: pass
+   * `SiteTemplates/MyTemplate/thumbnail`. Authoring stamps the leaf
+   * item there and returns the absolute `ItemPath` Sitecore actually
+   * created it at.
+   *
+   * Throws on a failed presign mutation, a failed POST (non-2xx), or
+   * a missing `Id` in the response body.
+   */
+  uploadMedia(input: UploadMediaInput): Promise<UploadMediaResult>;
   /**
    * Every language ISO code configured on the tenant (the connection
    * the GraphQL schema exposes as the root `languages { nodes { name } }`

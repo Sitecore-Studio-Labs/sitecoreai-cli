@@ -17,6 +17,7 @@
     "recipe-unified-layout-shape",
     "registry-tracked-sitecore-ids",
     "site-template-dictionary-and-executor",
-    "sync-merge-cells-baseline-bridge"
+    "sync-merge-cells-baseline-bridge",
+    "variant-recipe-kind"
   ]
 }

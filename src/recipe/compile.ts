@@ -151,6 +151,36 @@ export const AVAILABLE_RENDERINGS_AGGREGATE_HANDLE = "__available-renderings__";
 export const SHARED_DATA_FOLDERS_AGGREGATE_HANDLE = "__shared-data-folders__";
 
 /**
+ * Stable handle for the synthetic IR carrying the SHARED Data Folder
+ * templates' Insert Options `SetField` ops.
+ *
+ * Split out from `SHARED_DATA_FOLDERS_AGGREGATE_HANDLE` (which now
+ * carries ONLY the template/SV/base-template creation) because the two
+ * halves have opposite ordering requirements relative to the per-recipe
+ * IRs:
+ *
+ *   - Template creation must run BEFORE the per-recipe IRs — each
+ *     recipe's `site-data-folder:<site>:<subfolder>` folder ITEM is
+ *     created with `templateOf = sharedDataFolderTemplateId(...)`, so
+ *     the template must already exist on the tenant (Authoring GraphQL
+ *     rejects a createItem whose template GUID is unknown). Emitted at
+ *     the FRONT of the IR list.
+ *   - Insert Options must run AFTER the per-recipe IRs — the SetField's
+ *     `ref-recipe-list` references each contributing recipe's datasource
+ *     template (`templateId(site, handle)`), which the per-recipe IRs
+ *     create. Emitted near the end of the IR list.
+ *
+ * Keeping both in one IR (the pre-fix shape) made the second
+ * requirement win and the first lose: the shared template landed after
+ * the folder items that referenced it, so the push aborted with
+ * "Cannot find a template with the <id> id" — which then rolled back
+ * the owning recipe and cascaded to every sibling sharing the section's
+ * Presentation Parameters bucket.
+ */
+export const SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE =
+  "__shared-data-folder-insert-options__";
+
+/**
  * Stable handle for the synthetic IR `compileRecipeSet` emits to
  * materialise the site Data folder ROOT's `__Standard Values` item +
  * Insert Options aggregate. The SV restricts right-click → Insert at
@@ -779,9 +809,14 @@ const detectSharedSubfolders = (
 
 /**
  * Build the synthetic IR materialising the SHARED Data Folder template
- * tree — one template + SV + base-templates link + Insert Options
- * SetField per shared `(site, subfolder)` pair detected by
- * `detectSharedSubfolders`.
+ * tree — one template + SV + base-templates link + SetStandardValues
+ * per shared `(site, subfolder)` pair detected by
+ * `detectSharedSubfolders`. The Insert Options `SetField` is emitted
+ * separately by `buildSharedDataFolderInsertOptionsAggregate` so the two
+ * halves can sit on opposite sides of the per-recipe IRs (see
+ * `SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE`). This IR is
+ * prepended to the IR list so the templates exist before any per-recipe
+ * folder ITEM references them via `templateOf`.
  *
  * Path layout: `<componentsRoot>/Data Folders/<…intermediates>/<leaf> Data Folder`.
  * Multi-segment subfolders (`ui/badges`) split on `/`; the leaf becomes
@@ -811,7 +846,6 @@ const buildSharedDataFoldersAggregate = (
   const sortedKeys = [...shared.keys()].sort((a, b) => a.localeCompare(b));
 
   for (const key of sortedKeys) {
-    const contributions = shared.get(key)!;
     // Key is `${site}::${subfolder}`; the subfolder may itself contain
     // `::` if authored that way (unlikely but legal), so split on the
     // FIRST `::` only.
@@ -886,6 +920,59 @@ const buildSharedDataFoldersAggregate = (
       standardValuesRefKey: svRefKey,
     } satisfies SetStandardValuesOp);
 
+    // NOTE: the Insert Options `SetField` is emitted separately by
+    // `buildSharedDataFolderInsertOptionsAggregate` so it can run AFTER
+    // the per-recipe IRs (its `ref-recipe-list` references each
+    // contributing recipe's datasource template). This template-creation
+    // IR runs BEFORE the per-recipe IRs so their folder ITEMs (whose
+    // `templateOf` is this template) resolve.
+  }
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
+    operations,
+  });
+};
+
+/**
+ * Build the synthetic IR carrying the Insert Options `SetField` for each
+ * shared `(site, subfolder)` Data Folder template's `__Standard Values`.
+ *
+ * Separated from `buildSharedDataFoldersAggregate` (template creation)
+ * because it must be ordered AFTER the per-recipe IRs: the
+ * `ref-recipe-list` references each contributing recipe's datasource
+ * template (`templateId(site, handle)`), created by those recipes. The
+ * `itemRefKey` (the shared SV) is created by the template-creation IR
+ * that runs at the front of the list, so it is already captured by the
+ * time this SetField resolves.
+ *
+ * Returns null when no shared subfolders exist.
+ */
+const buildSharedDataFolderInsertOptionsAggregate = (
+  shared: Map<string, SharedSubfolderContribution[]>,
+  site: string
+): OperationIr | null => {
+  if (shared.size === 0) return null;
+
+  const operations: Operation[] = [];
+  const policy = defaultPolicyForRecipe("component-template");
+
+  const sortedKeys = [...shared.keys()].sort((a, b) => a.localeCompare(b));
+
+  for (const key of sortedKeys) {
+    const contributions = shared.get(key)!;
+    const sepIdx = key.indexOf("::");
+    const subfolder = key.slice(sepIdx + 2);
+
+    const segments = subfolder
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (segments.length === 0) continue;
+
+    const svRefKey = sharedDataFolderStandardValuesId(site, subfolder);
+
     // Insert Options aggregates every contributing recipe's datasource
     // template, sorted by handle so re-pushes don't drift the field
     // value across runs (the executor would otherwise diff-then-write
@@ -906,9 +993,11 @@ const buildSharedDataFoldersAggregate = (
     } satisfies SetFieldOp);
   }
 
+  if (operations.length === 0) return null;
+
   return OperationIrSchema.parse({
     schemaVersion: "1",
-    recipeHandle: SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
+    recipeHandle: SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE,
     operations,
   });
 };
@@ -1541,13 +1630,31 @@ export function compileRecipeSet(
   // datasource template `CreateItem` ops also need to land before the
   // Insert Options SetField resolves; per-recipe IRs come earlier in
   // the returned list so the executor processes them first.
-  const sharedDataFolders = buildSharedDataFoldersAggregate(
+  // Shared Data Folder TEMPLATE creation must run BEFORE the per-recipe
+  // IRs: each recipe's `site-data-folder` folder ITEM is created with
+  // `templateOf = sharedDataFolderTemplateId(...)`, so the template must
+  // already exist or Authoring GraphQL aborts with "Cannot find a
+  // template with the <id> id" (which rolls back the owning recipe and
+  // cascades to siblings sharing the section bucket). Prepend it.
+  const sharedDataFolderTemplates = buildSharedDataFoldersAggregate(
     sharedSubfolderContributions,
     context,
     setSiteForShared
   );
-  if (sharedDataFolders) {
-    irs.push(sharedDataFolders);
+  if (sharedDataFolderTemplates) {
+    irs.unshift(sharedDataFolderTemplates);
+  }
+
+  // The matching Insert Options `SetField` runs AFTER the per-recipe IRs
+  // (it references each contributing recipe's datasource template, which
+  // those recipes create). The shared SV it targets was already created
+  // by the prepended template IR above.
+  const sharedDataFolderInsertOptions = buildSharedDataFolderInsertOptionsAggregate(
+    sharedSubfolderContributions,
+    setSiteForShared
+  );
+  if (sharedDataFolderInsertOptions) {
+    irs.push(sharedDataFolderInsertOptions);
   }
 
   // Site Data folder ROOT Standard Values aggregator — emits the

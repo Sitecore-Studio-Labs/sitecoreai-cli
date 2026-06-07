@@ -620,7 +620,7 @@ describe("compileRecipeSet — Shared Data Folders aggregate", () => {
     expect(irs.find((ir) => ir.recipeHandle === "__shared-data-folders__")).toBeUndefined();
   });
 
-  it("emits a shared template + SV + base-templates + Insert Options for a subfolder shared by 2 recipes", () => {
+  it("emits a shared template + SV + base-templates for a subfolder shared by 2 recipes", () => {
     const irs = compileRecipeSet(
       [
         componentWithSiteSubfolder("badge@1", "Badge", "ui/badges"),
@@ -630,27 +630,89 @@ describe("compileRecipeSet — Shared Data Folders aggregate", () => {
     );
     const aggregate = irs.find((ir) => ir.recipeHandle === "__shared-data-folders__");
     expect(aggregate).toBeDefined();
-    // Per shared (site, subfolder): CreateItem template, SetBaseTemplates,
-    // CreateItem __Standard Values, SetStandardValues, SetField insert-options.
+    // Template-creation IR (Insert Options SetField is split into a
+    // separate, later IR — see the ordering test below):
+    // CreateItem template, SetBaseTemplates, CreateItem __Standard
+    // Values, SetStandardValues.
     const opKinds = aggregate!.operations.map((op) => op.op);
     expect(opKinds).toEqual([
       "CreateItem",
       "SetBaseTemplates",
       "CreateItem",
       "SetStandardValues",
-      "SetField",
     ]);
     // Multi-segment subfolder `ui/badges`: leaf becomes `badges Data Folder`.
     const tpl = aggregate!.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name.endsWith("Data Folder")
     );
     expect(tpl!.name).toBe("badges Data Folder");
-    // Insert Options aggregates both contributing recipes' datasource
-    // templates, sorted by handle (badge@1 before tag@1).
-    const insertOptions = aggregate!.operations.find(
+  });
+
+  it("emits the shared Insert Options SetField in a separate IR with both datasource templates", () => {
+    const irs = compileRecipeSet(
+      [
+        componentWithSiteSubfolder("badge@1", "Badge", "ui/badges"),
+        componentWithSiteSubfolder("tag@1", "Tag", "ui/badges"),
+      ],
+      CTX
+    );
+    const insertOptionsIr = irs.find(
+      (ir) => ir.recipeHandle === "__shared-data-folder-insert-options__"
+    );
+    expect(insertOptionsIr).toBeDefined();
+    expect(insertOptionsIr!.operations.map((op) => op.op)).toEqual(["SetField"]);
+    const insertOptions = insertOptionsIr!.operations.find(
       (op): op is SetFieldOp => op.op === "SetField"
     );
+    // Insert Options aggregates both contributing recipes' datasource
+    // templates, sorted by handle (badge@1 before tag@1).
     expect((insertOptions!.value as { refKeys: string[] }).refKeys).toHaveLength(2);
+  });
+
+  it("creates the shared Data Folder template BEFORE any folder item that references it", () => {
+    // Regression: a shared family datasource folder (e.g. cards-and-lists
+    // "Articles", shared by article-card + articles-list-grid +
+    // articles-carousel) is created with `templateOf =
+    // sharedDataFolderTemplateId(...)`. If the shared template lands
+    // AFTER the per-recipe folder items, Authoring GraphQL aborts the
+    // push with "Cannot find a template with the <id> id", which rolls
+    // back the owning recipe and cascades to its siblings. The
+    // template-creation IR must come before every per-recipe IR.
+    const irs = compileRecipeSet(
+      [
+        componentWithSiteSubfolder("badge@1", "Badge", "ui/badges"),
+        componentWithSiteSubfolder("tag@1", "Tag", "ui/badges"),
+      ],
+      CTX
+    );
+
+    const sharedTemplateIrIndex = irs.findIndex(
+      (ir) => ir.recipeHandle === "__shared-data-folders__"
+    );
+    expect(sharedTemplateIrIndex).toBeGreaterThanOrEqual(0);
+
+    // Every IR that creates a `site-data-folder:` ITEM referencing the
+    // shared template must appear AFTER the template-creation IR.
+    const folderItemIrIndexes = irs
+      .map((ir, i) => ({ ir, i }))
+      .filter(({ ir }) =>
+        ir.operations.some(
+          (op) => op.op === "CreateItem" && op.label.startsWith("site-data-folder:")
+        )
+      )
+      .map(({ i }) => i);
+
+    expect(folderItemIrIndexes.length).toBeGreaterThan(0);
+    for (const folderIdx of folderItemIrIndexes) {
+      expect(folderIdx).toBeGreaterThan(sharedTemplateIrIndex);
+    }
+
+    // And the Insert Options IR (which depends on per-recipe datasource
+    // templates) must come AFTER those per-recipe folder IRs.
+    const insertOptionsIrIndex = irs.findIndex(
+      (ir) => ir.recipeHandle === "__shared-data-folder-insert-options__"
+    );
+    expect(insertOptionsIrIndex).toBeGreaterThan(Math.max(...folderItemIrIndexes));
   });
 });
 

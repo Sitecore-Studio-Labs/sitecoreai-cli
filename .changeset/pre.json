@@ -16,6 +16,7 @@
     "drop-registry-shims",
     "recipe-unified-layout-shape",
     "registry-tracked-sitecore-ids",
+    "shared-data-folder-template-ordering",
     "site-template-dictionary-and-executor",
     "sync-merge-cells-baseline-bridge",
     "variant-recipe-kind"

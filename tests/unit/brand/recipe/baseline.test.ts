@@ -30,10 +30,15 @@ const fullKit = () =>
   });
 
 describe("hashBrandCells", () => {
-  it("emits kit-level cells for description + industry", () => {
+  it("does NOT emit cells for description / industry (Sitecore-owned kit metadata)", () => {
+    // description + industry are written once at createBrandKit time and
+    // never by the converge loop; the registry renders them read-only and
+    // omits them from the pushed recipe. Including them in the merge made
+    // `desired` (undefined) perpetually diverge from `current` (live
+    // value), blocking every error-policy push. They stay out of the diff.
     const cells = hashBrandCells(fullKit());
-    expect(cells["kit.description"]).toBe(hashJsonValue("Vehicle brand"));
-    expect(cells["kit.industry"]).toBe(hashJsonValue("Automotive"));
+    expect(cells["kit.description"]).toBeUndefined();
+    expect(cells["kit.industry"]).toBeUndefined();
   });
 
   it("emits one cell per section × field", () => {
@@ -59,8 +64,8 @@ describe("hashBrandCells", () => {
   it("handles an empty sections graph (degenerate case)", () => {
     const empty = recipe({ name: "Acme", documents: [], sections: {} });
     const cells = hashBrandCells(empty);
-    // Only the two kit-level cells survive.
-    expect(Object.keys(cells).sort()).toEqual(["kit.description", "kit.industry"]);
+    // No sections, and kit metadata is no longer a merge cell → no cells.
+    expect(Object.keys(cells)).toEqual([]);
   });
 });
 
@@ -111,7 +116,8 @@ describe("classifyBrandCells", () => {
     expect(classifications["sections.Brand Context.Mission"]).toBe("cms-edit");
     // Other cells unchanged.
     expect(classifications["sections.Brand Context.Values"]).toBe("recipe-change");
-    expect(classifications["kit.description"]).toBe("recipe-change");
+    // Kit metadata never classifies — it's out of the merge surface.
+    expect(classifications["kit.description"]).toBeUndefined();
   });
 
   it("classifies a recipe-only edit (recipe moved, tenant = baseline) as recipe-change", () => {
@@ -119,19 +125,28 @@ describe("classifyBrandCells", () => {
     const baseline = captureBrandBaselinePayload(original);
     const desired = recipe({
       ...original,
-      description: "New description",
+      sections: {
+        ...original.sections,
+        "Tone of Voice": { Voice: "Recipe-edited voice" },
+      },
     });
     const classifications = classifyBrandCells(desired, original, baseline);
-    expect(classifications["kit.description"]).toBe("recipe-change");
+    expect(classifications["sections.Tone of Voice.Voice"]).toBe("recipe-change");
   });
 
   it("classifies both-moved as conflict", () => {
     const original = fullKit();
     const baseline = captureBrandBaselinePayload(original);
-    const desired = recipe({ ...original, description: "Recipe edit" });
-    const current = recipe({ ...original, description: "Tenant edit" });
+    const desired = recipe({
+      ...original,
+      sections: { ...original.sections, "Tone of Voice": { Voice: "Recipe edit" } },
+    });
+    const current = recipe({
+      ...original,
+      sections: { ...original.sections, "Tone of Voice": { Voice: "Tenant edit" } },
+    });
     const classifications = classifyBrandCells(desired, current, baseline);
-    expect(classifications["kit.description"]).toBe("conflict");
+    expect(classifications["sections.Tone of Voice.Voice"]).toBe("conflict");
   });
 
   // Tenant has a cell the recipe doesn't (a section field added in
@@ -221,13 +236,28 @@ describe("mergeBrandByPolicy", () => {
     expect(merged.sections["Brand Context"].Mission).toBe("Build durable vehicles");
   });
 
-  it("error policy surfaces a policyError for a kit-level cms-edit", () => {
-    const desired = fullKit();
+  // Regression: a pushed recipe omits description/industry (registry
+  // renders them read-only), but the live kit always carries them. This
+  // must NOT surface a policyError under the strict `error` policy —
+  // otherwise every push of otherwise-unchanged content is blocked.
+  it("does not block an error-policy push when only Sitecore-owned metadata differs", () => {
+    const desired = recipe({
+      name: "Acme",
+      documents: [],
+      sections: { "Tone of Voice": { Voice: "Confident" } },
+    });
     const baseline = captureBrandBaselinePayload(desired);
-    const current = recipe({ ...desired, description: "Tenant override" });
+    // Live kit (as readCurrent builds it) carries description + industry.
+    const current = recipe({
+      name: "Acme",
+      description: "Sitecore-owned description",
+      industry: "Automotive",
+      documents: [],
+      sections: { "Tone of Voice": { Voice: "Confident" } },
+    });
     const classifications = classifyBrandCells(desired, current, baseline);
     const { policyErrors } = mergeBrandByPolicy(desired, current, classifications, "error");
-    expect(policyErrors.find((e) => e.path === "kit.description")).toBeDefined();
+    expect(policyErrors).toEqual([]);
   });
 
   // The merged recipe MUST NOT contain a section the recipe didn't

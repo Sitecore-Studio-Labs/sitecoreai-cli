@@ -38,14 +38,25 @@ const kitCellPath = (element: "description" | "industry"): string => `kit.${elem
 const fieldCellPath = (section: string, field: string): string => `sections.${section}.${field}`;
 
 /**
- * Walk a brand-kit recipe and emit per-cell hashes. `documents` is
- * deliberately omitted — it's input-only ingestion fuel, not a
- * write-back surface.
+ * Walk a brand-kit recipe and emit per-cell hashes.
+ *
+ * `documents` is deliberately omitted — it's input-only ingestion fuel,
+ * not a write-back surface.
+ *
+ * `description` and `industry` are ALSO omitted. They are Sitecore-owned
+ * kit metadata: written once at `createBrandKit` time and never again by
+ * the converge loop (there is no field-write path for them). But
+ * `readCurrent` always populates them from the live kit, while a pushed
+ * recipe omits them (the registry renders them read-only). Hashing them
+ * here made `desired` (undefined) perpetually diverge from `current`
+ * (live value), so the three-way merge classified both as a `cms-edit`
+ * on every push — and under `--conflict-policy error` the planner
+ * refuses before any writes, breaking push entirely for content that is
+ * otherwise unchanged. They have no business in a write-back diff, so
+ * keep them out of the merge surface.
  */
 export const hashBrandCells = (recipe: BrandKitRecipe): Record<string, string> => {
   const cells: Record<string, string> = {};
-  cells[kitCellPath("description")] = hashJsonValue(recipe.description);
-  cells[kitCellPath("industry")] = hashJsonValue(recipe.industry);
   for (const [section, fields] of Object.entries(recipe.sections)) {
     for (const [field, value] of Object.entries(fields)) {
       cells[fieldCellPath(section, field)] = hashJsonValue(value);

@@ -25,7 +25,6 @@
  *                     panel/editor render the resolve buttons.
  */
 
-import { createScaiError } from "@/shared/errors";
 import type { PushConflictPolicy } from "./baseline";
 import type { KindRef, SyncContext } from "./kind";
 import type { RecipePlan } from "./plan";
@@ -65,19 +64,16 @@ export const resolveMissingCurrentPlan = async (params: {
   if (!hadBaseline) return params.recreate();
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
-  if (policy === "recipe-wins") return params.recreate();
-  // Honor the tenant deletion: empty plan = no-op, so syncPush writes
-  // nothing and the baseline is left intact (stable across re-pushes).
+  // `cms-wins` (background autosave) is the ONLY policy that honors the
+  // deletion — an empty plan is a no-op, so an unrelated edit never
+  // silently resurrects a kit you deliberately deleted on the tenant.
   if (policy === "cms-wins") return { changes: [] };
-
-  // error → block, same shape/code as a field-level conflict so the
-  // existing resolve UI (recipe-wins re-run / cms-wins re-run) applies.
-  throw createScaiError(
-    `${params.entityLabel} "${ref.id}" was deleted on Sitecore (1 unresolved deletion conflict).`,
-    "POLICY_DENIED",
-    {
-      hint: "Re-run with conflictPolicy 'recipe-wins' to recreate it, or 'cms-wins' to accept the deletion.",
-      details: [`${ref.id} → deleted-on-tenant`],
-    }
+  // Every other policy recreates. A whole entity that's gone on the
+  // tenant isn't a field-level conflict to resolve — when you EXPLICITLY
+  // resync it (error / recipe-wins), the intent is unambiguous: put it
+  // back. (To accept the deletion instead, delete it in the registry.)
+  ctx.logger?.info(
+    `${params.entityLabel} "${ref.id}" is gone on Sitecore (deleted on tenant); recreating it from the recipe.`
   );
+  return params.recreate();
 };

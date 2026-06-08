@@ -50,15 +50,13 @@ describe("resolveMissingCurrentPlan", () => {
     ).toEqual({ changes: [] });
   });
 
-  it("blocks with POLICY_DENIED under error policy", async () => {
-    await expect(
-      call({ baselineStorage: makeStorage(true), pushConflictPolicy: "error" })
-    ).rejects.toMatchObject({ code: "POLICY_DENIED" });
+  it("recreates a deleted entity under error policy (explicit resync = put it back)", async () => {
+    expect(await call({ baselineStorage: makeStorage(true), pushConflictPolicy: "error" })).toBe(
+      recreatePlan
+    );
   });
 
-  it("defaults to error (blocks) when no policy is set", async () => {
-    await expect(call({ baselineStorage: makeStorage(true) })).rejects.toMatchObject({
-      code: "POLICY_DENIED",
-    });
+  it("recreates a deleted entity when no policy is set (defaults to recreate)", async () => {
+    expect(await call({ baselineStorage: makeStorage(true) })).toBe(recreatePlan);
   });
 });

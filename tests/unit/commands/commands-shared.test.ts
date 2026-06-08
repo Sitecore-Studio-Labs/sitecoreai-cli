@@ -374,6 +374,22 @@ describe("markUnstable", () => {
     expect(stderr).not.toHaveBeenCalled();
   });
 
+  it("suppresses the stderr warning for machine-readable output (--json)", async () => {
+    // A --json consumer often captures merged stdout+stderr (e.g. the
+    // orchestrator's spawn), where the banner would corrupt the parse.
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const action = vi.fn();
+    const command = new Command("brief").description("Brief operations.");
+    markUnstable(command, "scai ops brief");
+    const list = new Command("list").action(action);
+    addVerbosityOptions(list); // provides --json
+    command.addCommand(list);
+    command.exitOverride();
+    await command.parseAsync(["node", "scai", "list", "--json"]);
+    expect(action).toHaveBeenCalledOnce();
+    expect(stderr).not.toHaveBeenCalled();
+  });
+
   it("returns the same command for chaining", () => {
     const command = new Command("brief").description("Brief operations.");
     expect(markUnstable(command, "scai ops brief")).toBe(command);

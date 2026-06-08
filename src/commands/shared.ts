@@ -239,8 +239,10 @@ export const withApplyGate = <T extends { apply?: boolean; whatIf?: boolean }>(
  *
  * The `preAction` hook is inherited by every subcommand, so the warning
  * fires once for `scai <area> <verb>` regardless of nesting depth. It
- * writes to stderr — leaving `--json` stdout clean — and honors
- * `--quiet`.
+ * writes to stderr and is suppressed for machine-readable output
+ * (`--json` / `--format json`) and `--quiet` — a JSON consumer often
+ * captures the merged stdout+stderr stream (e.g. the orchestrator's
+ * spawn), where this banner would corrupt the parse.
  *
  * `surface` is the user-facing command path (e.g. `"scai ops brief"`),
  * used verbatim in both the help note and the runtime warning.
@@ -254,7 +256,10 @@ export const markUnstable = (command: Command, surface: string): Command => {
       "any release without notice. See the SDK stability section in the README.\n"
   );
   command.hook("preAction", (_thisCommand, actionCommand) => {
-    if (actionCommand.opts().quiet) {
+    const opts = actionCommand.optsWithGlobals();
+    // Suppress for machine-readable output (so a merged-stream consumer
+    // gets pure JSON) and for --quiet.
+    if (opts.quiet || opts.json === true || opts.format === "json") {
       return;
     }
     process.stderr.write(

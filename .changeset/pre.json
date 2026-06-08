@@ -24,6 +24,7 @@
     "shared-data-folder-template-ordering",
     "site-template-dictionary-and-executor",
     "sync-merge-cells-baseline-bridge",
+    "unstable-banner-suppress-json",
     "variant-recipe-kind"
   ]
 }

@@ -153,6 +153,79 @@ describe("apply", () => {
     expect(result.skipped).toHaveLength(0);
   });
 
+  it("coerces a stray string into a richArray field's object-array shape", async () => {
+    // An LLM-generated recipe can hand a plain string to a richArray
+    // field ("Tone scenarios" / "Image style scenarios"). Writing it raw
+    // corrupts the field so the Sitecore app's section page throws. The
+    // write must wrap it as `[{ name }]` to match the live field type.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-1", name: "Tone of Voice" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([
+      { id: "fld-9", name: "Tone scenarios", type: "richArray" },
+    ]);
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "update",
+            path: "sections.Tone of Voice.Tone scenarios",
+            summary: "Tone scenarios",
+            after: "Be warm but precise.",
+            meta: {
+              stage: "field",
+              section: "Tone of Voice",
+              field: "Tone scenarios",
+            },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldId: "fld-9",
+        value: [{ name: "Be warm but precise." }],
+      })
+    );
+  });
+
+  it("flattens an object-array into a text field's string shape", async () => {
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-1", name: "Tone of Voice" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([{ id: "fld-1", name: "Voice", type: "text" }]);
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "update",
+            path: "sections.Tone of Voice.Voice",
+            summary: "Voice",
+            after: [{ name: "Confident" }, { name: "Warm" }],
+            meta: { stage: "field", section: "Tone of Voice", field: "Voice" },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldId: "fld-1", value: "Confident\nWarm" })
+    );
+  });
+
   it("skips a field change that does not resolve to a kit field", async () => {
     brandApi.listBrandKits.mockResolvedValue({
       totalCount: 1,

@@ -21,6 +21,7 @@
     "drop-registry-shims",
     "policy-driven-entity-deletion",
     "recipe-unified-layout-shape",
+    "recreate-deleted-on-resync",
     "registry-tracked-sitecore-ids",
     "shared-data-folder-template-ordering",
     "site-template-dictionary-and-executor",

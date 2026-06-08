@@ -260,6 +260,40 @@ describe("mergeBrandByPolicy", () => {
     expect(policyErrors).toEqual([]);
   });
 
+  // Regression: a baseline captured under the OLD hash still carries
+  // kit.description / kit.industry cells. Stripping them makes a stale
+  // baseline behave like a freshly-captured one, so an error-policy push
+  // isn't blocked on phantom conflicts — no re-baseline required.
+  it("strips retired kit-metadata cells from a stale baseline (no phantom conflict)", () => {
+    const desired = recipe({
+      name: "Acme",
+      documents: [],
+      sections: { "Tone of Voice": { Voice: "Confident" } },
+    });
+    const current = recipe({
+      name: "Acme",
+      description: "Sitecore-owned description",
+      industry: "Automotive",
+      documents: [],
+      sections: { "Tone of Voice": { Voice: "Confident" } },
+    });
+    // A stale baseline: current cells PLUS the legacy kit.* cells the
+    // old hashBrandCells used to emit.
+    const staleBaseline = {
+      schemaVersion: "1" as const,
+      cells: {
+        ...captureBrandBaselinePayload(desired).cells,
+        "kit.description": hashJsonValue("Older description"),
+        "kit.industry": hashJsonValue("Older industry"),
+      },
+    };
+    const classifications = classifyBrandCells(desired, current, staleBaseline);
+    expect(classifications["kit.description"]).toBeUndefined();
+    expect(classifications["kit.industry"]).toBeUndefined();
+    const { policyErrors } = mergeBrandByPolicy(desired, current, classifications, "error");
+    expect(policyErrors).toEqual([]);
+  });
+
   // The merged recipe MUST NOT contain a section the recipe didn't
   // declare (the recipe owns the section graph) — even when tenant
   // has one and cms-wins is in force.

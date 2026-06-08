@@ -75,6 +75,29 @@ export const captureBrandBaselinePayload = (
 });
 
 /**
+ * Cells that `hashBrandCells` once emitted but no longer manages. A
+ * baseline captured under the old hash still carries these; left in,
+ * they classify as `conflict` against the now-absent desired/current
+ * cells (both sides "moved off baseline") and block an `error`-policy
+ * push. Strip them from a stale baseline so old baselines behave like
+ * a freshly-captured one — no re-baseline required.
+ */
+const RETIRED_BASELINE_CELLS: ReadonlySet<string> = new Set([
+  kitCellPath("description"),
+  kitCellPath("industry"),
+]);
+
+const stripRetiredCells = (
+  cells: Record<string, string> | undefined
+): Record<string, string> | undefined => {
+  if (!cells) return cells;
+  const kept = Object.fromEntries(
+    Object.entries(cells).filter(([path]) => !RETIRED_BASELINE_CELLS.has(path))
+  );
+  return kept;
+};
+
+/**
  * Three-way classify every cell across desired / current / baseline.
  * Cells present in only one side classify against `hashJsonValue(undefined)`
  * on the other.
@@ -84,7 +107,11 @@ export const classifyBrandCells = (
   current: BrandKitRecipe,
   baselinePayload: BrandBaselinePayload | undefined
 ): Record<string, FieldClassification> =>
-  classifyCellHashMaps(hashBrandCells(desired), hashBrandCells(current), baselinePayload?.cells);
+  classifyCellHashMaps(
+    hashBrandCells(desired),
+    hashBrandCells(current),
+    stripRetiredCells(baselinePayload?.cells)
+  );
 
 /**
  * Merge desired vs current per the policy and return a brand-kit

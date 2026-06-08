@@ -8,6 +8,7 @@
     "brand-field-write-coerce",
     "brand-kit-identity-surface",
     "brand-merge-drop-kit-metadata",
+    "brand-strip-retired-baseline-cells",
     "brief-delete-pre-unlink-references",
     "brief-type-boolean-field",
     "brief-type-three-way-merge",

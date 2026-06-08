@@ -203,3 +203,45 @@ export const updateBrandKitField = async (
     signal: options.signal,
   });
 };
+
+export interface CreateBrandKitSectionFieldOptions {
+  client: BrandApiClientOptions;
+  brandKitId: string;
+  sectionId: string;
+  /** Field (subsection) name. For Glossary this is the term itself. */
+  name: string;
+  /** Field type — must match the `value` shape. */
+  type: BrandKitFieldType;
+  /** Initial content. Shape must match `type` (string / object-array). */
+  value?: BrandKitFieldValue;
+  intent?: string;
+  order?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Create a new subsection (field) inside a brand kit section.
+ *
+ * Wraps `POST /api/brands/v2/.../sections/{sectionId}/fields`
+ * (`create_brand_kit_section_field`). Needed because some fields are
+ * never produced by the enrichment pipeline — notably Glossary &
+ * Localization terms, where each term IS a field. Without a create
+ * call those terms can't exist; `updateBrandKitField` only patches
+ * fields that already resolve to an id.
+ */
+export const createBrandKitSectionField = async (
+  options: CreateBrandKitSectionFieldOptions
+): Promise<BrandKitFieldSummary> => {
+  const body: Record<string, unknown> = { name: options.name, type: options.type };
+  if (options.value !== undefined) body.value = options.value;
+  if (options.intent !== undefined) body.intent = options.intent;
+  if (options.order !== undefined) body.order = options.order;
+
+  return requestBrandApi<BrandKitFieldSummary>(options.client, {
+    basePath: BRAND_MANAGEMENT_BASE_PATH,
+    path: `/api/brands/v2/organizations/${options.client.orgId}/brandkits/${options.brandKitId}/sections/${options.sectionId}/fields`,
+    method: "POST",
+    body,
+    signal: options.signal,
+  });
+};

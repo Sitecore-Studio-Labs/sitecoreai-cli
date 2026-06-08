@@ -19,6 +19,7 @@ import {
   listBrandKits,
   seedBrandKit,
   updateBrandKitField,
+  createBrandKitSectionField,
   type BrandApiClientOptions,
   type BrandKitFieldSummary,
   type BrandKitFieldType,
@@ -179,8 +180,17 @@ const toTextValue = (value: BrandFieldValue): string => {
 /**
  * Normalise any field value to the object-array shape Sitecore expects
  * for `array` / `richArray` fields: `[{ name }]` or
- * `[{ name, tags?, restrictions? }]`. A stray string is wrapped as a
+ * `[{ name, tags, restrictions }]`. A stray string is wrapped as a
  * single entry; off-schema entries are coerced to at least carry `name`.
+ *
+ * `richArray` entries ALWAYS carry `tags` (an array) and `restrictions`
+ * (a string), even when empty. The Sitecore AI section page renders each
+ * entry with `entry.tags.map(...)` and an UNGUARDED read of
+ * `restrictions` — omit `tags` and it throws
+ * `Cannot read properties of undefined (reading 'map')`, taking the whole
+ * Tone of Voice / Image Style page down. Emitting `tags: []` /
+ * `restrictions: ""` keeps the render safe. (The registry editor guards
+ * with `?? []`, so this only manifests in the Sitecore AI app.)
  */
 const toObjectArrayValue = (value: BrandFieldValue, rich: boolean): BrandKitFieldValue => {
   const raw: unknown[] = Array.isArray(value)
@@ -196,12 +206,12 @@ const toObjectArrayValue = (value: BrandFieldValue, rich: boolean): BrandKitFiel
       const o = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const tags = Array.isArray(o.tags)
         ? (o.tags.filter((t) => typeof t === "string") as string[])
-        : undefined;
-      const restrictions = typeof o.restrictions === "string" ? o.restrictions : undefined;
+        : [];
+      const restrictions = typeof o.restrictions === "string" ? o.restrictions : "";
       return {
         name,
-        ...(tags && tags.length > 0 ? { tags } : {}),
-        ...(restrictions ? { restrictions } : {}),
+        tags,
+        restrictions,
       };
     })
     .filter((e): e is NonNullable<typeof e> => e !== null);
@@ -222,6 +232,31 @@ const toObjectArrayValue = (value: BrandFieldValue, rich: boolean): BrandKitFiel
  * API response without the discriminator) we fall back to the legacy
  * passthrough.
  */
+/**
+ * True when an array value carries Glossary/Localization rows. These
+ * live in `array`-typed fields but use `{term, locale, displayName?}`,
+ * NOT `{name}` — so the plain `array` coercion would destroy them.
+ */
+const isGlossaryValue = (value: BrandFieldValue): boolean =>
+  Array.isArray(value) &&
+  value.some((e) => e !== null && typeof e === "object" && ("term" in e || "locale" in e));
+
+/** Normalise glossary rows to the `{term, locale, displayName?}` write shape. */
+const toGlossaryValue = (value: BrandFieldValue): BrandKitFieldValue => {
+  if (!Array.isArray(value)) return [] as unknown as BrandKitFieldValue;
+  const rows = value
+    .map((entry) => {
+      const o = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+      const term = typeof o.term === "string" ? o.term : "";
+      const locale = typeof o.locale === "string" ? o.locale : "";
+      if (!term && !locale) return null;
+      const displayName = typeof o.displayName === "string" ? o.displayName : undefined;
+      return { term, locale, ...(displayName ? { displayName } : {}) };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
+  return rows as unknown as BrandKitFieldValue;
+};
+
 const toApiValue = (
   value: BrandFieldValue,
   fieldType: BrandKitFieldType | undefined
@@ -230,7 +265,9 @@ const toApiValue = (
     case "text":
       return toTextValue(value);
     case "array":
-      return toObjectArrayValue(value, false);
+      // Glossary rows are stored in `array`-typed fields but carry
+      // `{term, locale, displayName}`, not `{name}` — preserve them.
+      return isGlossaryValue(value) ? toGlossaryValue(value) : toObjectArrayValue(value, false);
     case "richArray":
       return toObjectArrayValue(value, true);
     default:
@@ -533,11 +570,39 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   );
   if (writes.length > 0) {
     const index = await indexFields(client, brandKitId, ctx.signal);
+    // Section name → id, so a missing glossary term (a field the
+    // enrichment pipeline never creates) can be created in the right
+    // section. Cheap extra GET; keeps `indexFields`/its other callers
+    // unchanged.
+    const sectionIdByName = new Map<string, string>();
+    for (const s of await listBrandKitSections({ client, brandKitId, signal: ctx.signal })) {
+      sectionIdByName.set(s.name, s.id);
+    }
     for (const change of writes) {
       const section = String(change.meta?.section);
       const field = String(change.meta?.field);
       const target = index.get(fieldKey(section, field));
       if (!target) {
+        // Glossary & Localization terms are fields the enrichment
+        // pipeline never produces — each term IS a field. Create it so
+        // terms actually land (detected by the `{term, locale}` row
+        // shape). Any OTHER missing field stays skipped: enrichment
+        // owns creation for the predefined sections, and blindly
+        // creating fields there would diverge from the kit's schema.
+        const sectionId = sectionIdByName.get(section);
+        if (sectionId && isGlossaryValue(change.after as BrandFieldValue)) {
+          await createBrandKitSectionField({
+            client,
+            brandKitId,
+            sectionId,
+            name: field,
+            type: "array",
+            value: toApiValue(change.after as BrandFieldValue, "array"),
+            signal: ctx.signal,
+          });
+          applied.push(change);
+          continue;
+        }
         // The field is not on the kit — enrichment never created it.
         // Surfaced as skipped, not silently dropped.
         skipped.push(change);

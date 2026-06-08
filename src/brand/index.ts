@@ -95,6 +95,7 @@ export {
   listBrandKitSections,
   listBrandKitFields,
   updateBrandKitField,
+  createBrandKitSectionField,
   type BrandKitSectionSummary,
   type BrandKitFieldSummary,
   type BrandKitFieldType,

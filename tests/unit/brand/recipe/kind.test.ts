@@ -13,6 +13,7 @@ const brandApi = vi.hoisted(() => ({
   listBrandKitSections: vi.fn(),
   listBrandKitFields: vi.fn(),
   updateBrandKitField: vi.fn(),
+  createBrandKitSectionField: vi.fn(),
   seedBrandKit: vi.fn(),
   createBrandKit: vi.fn(),
   enrichBrandKitWithDocuments: vi.fn(),
@@ -191,7 +192,10 @@ describe("apply", () => {
     expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
       expect.objectContaining({
         fieldId: "fld-9",
-        value: [{ name: "Be warm but precise." }],
+        // richArray entries always carry tags + restrictions so the
+        // Sitecore AI section render's `entry.tags.map(...)` never hits
+        // undefined.
+        value: [{ name: "Be warm but precise.", tags: [], restrictions: "" }],
       })
     );
   });
@@ -224,6 +228,85 @@ describe("apply", () => {
     expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
       expect.objectContaining({ fieldId: "fld-1", value: "Confident\nWarm" })
     );
+  });
+
+  it("creates a Glossary term field that does not exist yet", async () => {
+    // Glossary terms are FIELDS the enrichment pipeline never creates,
+    // so the section starts empty. A term change must CREATE the field
+    // (name = term, type = array, value = locale rows) rather than skip.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([
+      { id: "sec-g", name: "Glossary and Localization" },
+    ]);
+    brandApi.listBrandKitFields.mockResolvedValue([]); // empty glossary section
+    brandApi.createBrandKitSectionField.mockResolvedValue({});
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "sections.Glossary and Localization.Sync",
+            summary: "Sync",
+            after: [{ term: "Sync", locale: "ja-JP", displayName: "Japanese (Japan)" }],
+            meta: { stage: "field", section: "Glossary and Localization", field: "Sync" },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.createBrandKitSectionField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sectionId: "sec-g",
+        name: "Sync",
+        type: "array",
+        value: [{ term: "Sync", locale: "ja-JP", displayName: "Japanese (Japan)" }],
+      })
+    );
+    expect(result.applied).toHaveLength(1);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it("preserves {term, locale, displayName} when writing an existing glossary field", async () => {
+    // The array-type coercion must NOT flatten glossary rows to {name}.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([
+      { id: "sec-g", name: "Glossary and Localization" },
+    ]);
+    brandApi.listBrandKitFields.mockResolvedValue([{ id: "fld-g", name: "Sync", type: "array" }]);
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "update",
+            path: "sections.Glossary and Localization.Sync",
+            summary: "Sync",
+            after: [{ term: "Sync", locale: "fr-FR", displayName: "French (France)" }],
+            meta: { stage: "field", section: "Glossary and Localization", field: "Sync" },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldId: "fld-g",
+        value: [{ term: "Sync", locale: "fr-FR", displayName: "French (France)" }],
+      })
+    );
+    expect(brandApi.createBrandKitSectionField).not.toHaveBeenCalled();
   });
 
   it("skips a field change that does not resolve to a kit field", async () => {
@@ -760,7 +843,9 @@ describe("apply", () => {
     );
 
     expect(brandApi.updateBrandKitField).toHaveBeenCalledWith(
-      expect.objectContaining({ value: [{ name: "Fast", tags: ["Marketing"] }] })
+      // tags preserved; restrictions filled to "" so the Sitecore AI
+      // render never reads an undefined field.
+      expect.objectContaining({ value: [{ name: "Fast", tags: ["Marketing"], restrictions: "" }] })
     );
   });
 

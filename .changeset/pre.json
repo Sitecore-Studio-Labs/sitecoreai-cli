@@ -5,6 +5,7 @@
     "@sitecoreai-labs/sitecoreai-cli": "0.2.5"
   },
   "changesets": [
+    "brand-field-write-coerce",
     "brand-kit-identity-surface",
     "brief-delete-pre-unlink-references",
     "brief-type-boolean-field",

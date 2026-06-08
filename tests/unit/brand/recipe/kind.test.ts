@@ -121,6 +121,46 @@ describe("readCurrent", () => {
   });
 });
 
+describe("plan — canonicalize repair", () => {
+  const planFor = (
+    fieldValue: unknown
+  ): Promise<{ changes: Array<{ kind: string; summary: string; meta?: unknown }> }> => {
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-1", name: "Tone of Voice" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([
+      { id: "fld-1", name: "Tone scenarios", type: "richArray", value: fieldValue },
+    ]);
+    const desired = {
+      name: "Acme",
+      documents: [],
+      sections: { "Tone of Voice": { "Tone scenarios": fieldValue } },
+      sectionProperties: {},
+    };
+    return brandKitKind.plan(desired as never, ref, ctx) as never;
+  };
+
+  it("forces an update for a richArray field whose live entries lack tags/restrictions", async () => {
+    // The broken shape an older scai wrote — crashes the Sitecore render.
+    const plan = await planFor([{ name: "Be warm." }]);
+    const change = plan.changes.find(
+      (c) => (c.meta as { field?: string })?.field === "Tone scenarios"
+    );
+    expect(change?.kind).toBe("update"); // NOT noop — forced canonicalize
+    expect(change?.summary).toContain("canonicalize");
+  });
+
+  it("leaves an already-canonical richArray field as a noop (idempotent)", async () => {
+    const plan = await planFor([{ name: "Be warm.", tags: [], restrictions: "" }]);
+    const change = plan.changes.find(
+      (c) => (c.meta as { field?: string })?.field === "Tone scenarios"
+    );
+    expect(change?.kind).toBe("noop");
+  });
+});
+
 describe("apply", () => {
   it("updates a field on an existing kit", async () => {
     brandApi.listBrandKits.mockResolvedValue({

@@ -309,8 +309,28 @@ const indexFields = async (
   return index;
 };
 
-/** Capture a live brand kit as a recipe. `null` when no kit has the name. */
-const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitRecipe | null> => {
+/** A live `richArray` field whose entries are missing the canonical
+ *  `tags` / `restrictions` keys. The Sitecore AI section render does an
+ *  UNGUARDED `entry.tags.map(...)`, so such a field crashes the Tone of
+ *  Voice / Image Style page until it's rewritten in canonical shape. */
+type NonCanonicalRichArray = { section: string; field: string; value: BrandFieldValue };
+
+const richArrayNeedsCanonicalize = (field: BrandKitFieldSummary): boolean =>
+  field.type === "richArray" &&
+  Array.isArray(field.value) &&
+  field.value.some(
+    (e) => e !== null && typeof e === "object" && (!("tags" in e) || !("restrictions" in e))
+  );
+
+/**
+ * Read the live kit AND flag any `richArray` field whose entries lack
+ * the canonical tags/restrictions. `readCurrent` (the kind method)
+ * returns just the recipe; `plan` uses the flags to force a repair.
+ */
+const readCurrentInternal = async (
+  ref: KindRef,
+  ctx: SyncContext
+): Promise<{ recipe: BrandKitRecipe; nonCanonicalRichArray: NonCanonicalRichArray[] } | null> => {
   const client = resolveBrandClient(ctx);
   // Prefer the baseline-stored tenant id when available so a kit
   // rename between pushes doesn't lose the resolution.
@@ -332,6 +352,7 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitReci
 
   const sections: BrandKitRecipe["sections"] = {};
   const sectionProperties: BrandKitRecipe["sectionProperties"] = {};
+  const nonCanonicalRichArray: NonCanonicalRichArray[] = [];
   for (const section of await listBrandKitSections({
     client,
     brandKitId: kit.id,
@@ -346,6 +367,9 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitReci
     })) {
       const value = toRecipeValue(field);
       if (value !== undefined) fields[field.name] = value;
+      if (value !== undefined && richArrayNeedsCanonicalize(field)) {
+        nonCanonicalRichArray.push({ section: section.name, field: field.name, value });
+      }
     }
     if (Object.keys(fields).length > 0) sections[section.name] = fields;
 
@@ -359,13 +383,22 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitReci
   }
 
   return {
-    name: kit.name,
-    description: kit.description ?? undefined,
-    industry: kit.industry ?? undefined,
-    documents: [],
-    sections,
-    sectionProperties,
+    recipe: {
+      name: kit.name,
+      description: kit.description ?? undefined,
+      industry: kit.industry ?? undefined,
+      documents: [],
+      sections,
+      sectionProperties,
+    },
+    nonCanonicalRichArray,
   };
+};
+
+/** Capture a live brand kit as a recipe. `null` when no kit has the name. */
+const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitRecipe | null> => {
+  const internal = await readCurrentInternal(ref, ctx);
+  return internal ? internal.recipe : null;
 };
 
 /** Apply a plan — full orchestration: create/ingest the kit, then converge values. */
@@ -720,8 +753,8 @@ const plan = async (
   ref: KindRef,
   ctx: SyncContext
 ): Promise<RecipePlan> => {
-  const current = await readCurrent(ref, ctx);
-  if (current === null) {
+  const internal = await readCurrentInternal(ref, ctx);
+  if (internal === null) {
     return resolveMissingCurrentPlan({
       kindName: BRAND_KIT_KIND_NAME,
       ref,
@@ -730,6 +763,7 @@ const plan = async (
       recreate: () => diffBrandKit(desired, null),
     });
   }
+  const current = internal.recipe;
 
   let baselinePayload: BrandBaselinePayload | undefined;
   if (ctx.baselineStorage) {
@@ -761,6 +795,34 @@ const plan = async (
     if (carrier) {
       carrier.meta = { ...carrier.meta, policyError: true, policyErrors };
     }
+  }
+
+  // Canonicalize-repair: a `richArray` field whose LIVE entries lack
+  // tags/restrictions was written by an older scai and crashes the
+  // Sitecore section render (`entry.tags.map(...)` on undefined). The
+  // recipe value usually equals the broken live value, so the field
+  // diffs as `noop` and a normal sync never rewrites it. Force an
+  // `update` so the next sync repairs the live data — `apply`'s
+  // `toApiValue` re-adds `tags: []` / `restrictions: ""`. Idempotent:
+  // once the field is canonical, `readCurrentInternal` stops flagging it.
+  for (const repair of internal.nonCanonicalRichArray) {
+    const path = `sections.${repair.section}.${repair.field}`;
+    const existing = basePlan.changes.find((c) => c.path === path);
+    if (!existing) {
+      basePlan.changes.push({
+        kind: "update",
+        path,
+        summary: `${repair.section} / ${repair.field} (canonicalize richArray shape)`,
+        after: repair.value,
+        meta: { stage: "field", section: repair.section, field: repair.field },
+      });
+    } else if (existing.kind === "noop") {
+      existing.kind = "update";
+      existing.after = repair.value;
+      existing.summary = `${repair.section} / ${repair.field} (canonicalize richArray shape)`;
+    }
+    // An existing create/update already writes the canonical shape via
+    // `toApiValue` — leave it untouched.
   }
 
   return basePlan;

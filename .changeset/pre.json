@@ -18,6 +18,7 @@
     "campaign-task-identity-stamp",
     "cli-force-exit-stderr-drain",
     "drop-registry-shims",
+    "policy-driven-entity-deletion",
     "recipe-unified-layout-shape",
     "registry-tracked-sitecore-ids",
     "shared-data-folder-template-ordering",

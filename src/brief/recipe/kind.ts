@@ -32,6 +32,7 @@ import {
   type CreateBriefTypeInput,
 } from "@/brief";
 import { createScaiError } from "@/shared/errors";
+import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
   Baseline,
@@ -334,8 +335,17 @@ const plan = async (
 
   let current = await readCurrentByIdOrName(desired, ref, ctx, baselinePayload?.tenantId);
 
-  // Fresh create — no baseline needed, no tenant state to merge.
-  if (current === null) return diffBriefType(desired, null);
+  // Whole-entity deletion (or fresh create) — resolved by policy via the
+  // shared helper: recreate / honor-deletion / surface.
+  if (current === null) {
+    return resolveMissingCurrentPlan({
+      kindName: BRIEF_TYPE_KIND_NAME,
+      ref,
+      ctx,
+      entityLabel: "Brief type",
+      recreate: () => diffBriefType(desired, null),
+    });
+  }
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const classifications = classifyBriefTypeCells(desired, current, baselinePayload);

@@ -27,6 +27,7 @@ import {
   type BrandKitSummary,
 } from "@/brand";
 import { createScaiError } from "@/shared/errors";
+import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
   Baseline,
@@ -720,7 +721,15 @@ const plan = async (
   ctx: SyncContext
 ): Promise<RecipePlan> => {
   const current = await readCurrent(ref, ctx);
-  if (current === null) return diffBrandKit(desired, null);
+  if (current === null) {
+    return resolveMissingCurrentPlan({
+      kindName: BRAND_KIT_KIND_NAME,
+      ref,
+      ctx,
+      entityLabel: "Brand kit",
+      recreate: () => diffBrandKit(desired, null),
+    });
+  }
 
   let baselinePayload: BrandBaselinePayload | undefined;
   if (ctx.baselineStorage) {

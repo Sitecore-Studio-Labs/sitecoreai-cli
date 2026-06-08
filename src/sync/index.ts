@@ -23,6 +23,8 @@ export { classifyHashes, hashJsonValue, stableStringify } from "./baseline";
 
 export { classifyCellHashMaps, resolveCellByPolicy } from "./merge-cells";
 
+export { resolveMissingCurrentPlan } from "./missing-on-tenant";
+
 export {
   HttpBaselineStorage,
   SYNC_BASELINE_ENV_VARS,

@@ -32,6 +32,7 @@ import {
   type Task,
 } from "@/campaigns";
 import { createScaiError } from "@/shared/errors";
+import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
   Baseline,
@@ -276,9 +277,7 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     // (a recipe doesn't necessarily want to lock a project's
     // membership). Future: project them with a flag.
     members: [],
-    deliverables: (project.deliverables ?? []).map((d) =>
-      toRecipeDeliverable(d, handleByTaskId)
-    ),
+    deliverables: (project.deliverables ?? []).map((d) => toRecipeDeliverable(d, handleByTaskId)),
   };
 };
 
@@ -842,8 +841,17 @@ const plan = async (
 ): Promise<RecipePlan> => {
   const current = await readCurrent(ref, ctx);
 
-  // Fresh create — no baseline + no tenant to merge against.
-  if (current === null) return diffCampaign(desired, null);
+  // Whole-entity deletion (or fresh create) — resolved by policy via the
+  // shared helper: recreate / honor-deletion / surface.
+  if (current === null) {
+    return resolveMissingCurrentPlan({
+      kindName: CAMPAIGN_KIND_NAME,
+      ref,
+      ctx,
+      entityLabel: "Campaign",
+      recreate: () => diffCampaign(desired, null),
+    });
+  }
 
   let baselinePayload: CampaignBaselinePayload | undefined;
   if (ctx.baselineStorage) {

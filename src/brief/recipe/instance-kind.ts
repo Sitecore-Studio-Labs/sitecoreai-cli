@@ -39,6 +39,7 @@ import {
   type CreateBriefInput,
 } from "@/brief";
 import { createScaiError } from "@/shared/errors";
+import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
   Baseline,
@@ -171,9 +172,7 @@ const list = async (ctx: SyncContext): Promise<KindRef[]> => {
  * to project pulled tasks into the recipe and to compare existing-vs-
  * desired todos under the full-replace apply path.
  */
-const taskToTodo = (
-  task: BriefTask
-): { title: string; assigneeIds?: string[] } => {
+const taskToTodo = (task: BriefTask): { title: string; assigneeIds?: string[] } => {
   const assigneeIds = (task.assignees ?? [])
     .map((a) => a.id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -674,9 +673,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
           ? { assigneeIds: [...t.assigneeIds].sort() }
           : {}),
       }));
-      const canonical = (
-        items: Array<{ title: string; assigneeIds?: string[] }>
-      ): string =>
+      const canonical = (items: Array<{ title: string; assigneeIds?: string[] }>): string =>
         JSON.stringify(
           items
             .map((i) => ({
@@ -686,9 +683,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
             .sort((a, b) => a.title.localeCompare(b.title))
         );
       if (canonical(existingTodos) === canonical(desiredTodos)) {
-        ctx.logger?.info(
-          `To-dos on brief "${recipe.name}" already match recipe — no changes.`
-        );
+        ctx.logger?.info(`To-dos on brief "${recipe.name}" already match recipe — no changes.`);
       } else {
         ctx.logger?.info(
           `Replacing ${existing.data.length} to-do(s) on brief "${recipe.name}" with ${recipe.todos.length} from recipe.`
@@ -912,8 +907,17 @@ const plan = async (
   const tenantIdForLookup = ref.tenantId ?? baselinePayload?.tenantId;
   const current = await readCurrentByIdOrName(ref, ctx, tenantIdForLookup);
 
-  // Fresh create — no baseline needed, no tenant state to merge.
-  if (current === null) return diffBriefInstance(desired, null);
+  // Whole-entity deletion (or fresh create) — resolved by policy via the
+  // shared helper: recreate / honor-deletion / surface.
+  if (current === null) {
+    return resolveMissingCurrentPlan({
+      kindName: BRIEF_KIND_NAME,
+      ref,
+      ctx,
+      entityLabel: "Brief",
+      recreate: () => diffBriefInstance(desired, null),
+    });
+  }
 
   const policy: PushConflictPolicy = ctx.pushConflictPolicy ?? "error";
   const outcome = mergeWithPolicy(desired, current, baselinePayload, policy);

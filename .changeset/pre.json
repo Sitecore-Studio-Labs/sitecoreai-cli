@@ -17,6 +17,7 @@
     "brief-type-three-way-merge",
     "campaign-conflict-policy-flag",
     "campaign-pull-by-id-and-dep-reverse-map",
+    "campaign-rename-identity-match",
     "campaign-task-identity-stamp",
     "cli-force-exit-stderr-drain",
     "drop-registry-shims",

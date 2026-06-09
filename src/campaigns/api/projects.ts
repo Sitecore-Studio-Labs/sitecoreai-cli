@@ -81,6 +81,31 @@ export const createProject = (
   });
 
 /**
+ * Update an existing campaign's labels (`PUT /api/orchestrate/v1/projects/{id}`).
+ *
+ * Used to RE-STAMP identity labels (`story:`/`handle:`) onto a project that
+ * was created before label-stamping landed, or whose first push failed to
+ * stamp them — without these the project can't be matched on pull
+ * (handle lookup) or kept idempotent on re-push. The Orchestrate API's PUT
+ * on `/projects/{id}` was not captured during reverse-engineering, so callers
+ * treat this as BEST-EFFORT: on a 4xx/5xx the heal is skipped, not fatal.
+ *
+ * Only `labels` is sent — the heal is purely about identity markers; project
+ * metadata (name/description/etc.) has no verified update path and is left
+ * untouched.
+ */
+export const updateProjectLabels = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  labels: string[]
+): Promise<Project> =>
+  campaignRequest<Project>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}`,
+    { method: "PUT", body: { labels } }
+  );
+
+/**
  * Delete a campaign (`DELETE /api/orchestrate/v1/projects/{id}`).
  * Returns void — a 204 is expected on success.
  *

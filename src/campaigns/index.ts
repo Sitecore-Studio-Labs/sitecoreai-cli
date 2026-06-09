@@ -41,6 +41,7 @@ export {
   listProjects,
   getProject,
   createProject,
+  updateProjectLabels,
   deleteProject,
   addProjectMember,
   type ListProjectsQuery,

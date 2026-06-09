@@ -25,6 +25,7 @@ import {
   createTask,
   getProject,
   listProjects,
+  updateProjectLabels,
   updateTask,
   type CampaignApiClientOptions,
   type Deliverable,
@@ -384,6 +385,31 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         `Adopting existing campaign "${adopted.name}" (id ${adopted.id}) — recipe name "${name}" was a rename or recipe-handle drift.`
       );
       project = adopted;
+      // Heal identity labels. A project adopted by id/baseline may predate
+      // label-stamping, or its first push may have failed to stamp the
+      // `story:`/`handle:` markers — which leaves it unfindable on pull
+      // (handle lookup) and matchable only by a stamped id. Re-stamp the
+      // missing identity labels so the next pull resolves it by handle.
+      // Best-effort: PUT on `/projects/{id}` is unverified on the tenant,
+      // so a failure is logged and skipped, never fatal.
+      const identityLabels = desiredLabels.filter(
+        (l) => l.startsWith("story:") || l.startsWith("handle:")
+      );
+      const existingLabels = adopted.labels ?? [];
+      const missing = identityLabels.filter((l) => !existingLabels.includes(l));
+      if (missing.length > 0) {
+        const merged = Array.from(new Set([...existingLabels, ...identityLabels]));
+        try {
+          await updateProjectLabels(client, adopted.id, merged);
+          ctx.logger?.info(
+            `Re-stamped ${missing.length} identity label(s) on campaign "${adopted.name}" so pull can resolve it by handle.`
+          );
+        } catch (error) {
+          ctx.logger?.info(
+            `Could not re-stamp identity labels on "${adopted.name}" (PUT /projects may be unsupported on this tenant): ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
       applied.push(projectChange);
     } else {
       ctx.logger?.info(`Creating campaign "${name}".`);

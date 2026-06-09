@@ -91,6 +91,31 @@ describe("campaign runners — read verbs", () => {
     expect(empty.totalCount).toBe(0);
   });
 
+  it("runCampaignList --lean emits compact, projected JSON without heavy bodies", async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue(
+      page([makeProject({ labels: ["story:abc", "handle:spring"] })]) as never
+    );
+
+    await runners.runCampaignList({ json: true, lean: true });
+
+    const raw = String(stdout.mock.calls.at(-1)?.[0] ?? "");
+    // Compact: no two-space indentation from pretty-printing.
+    expect(raw).not.toContain('\n  "');
+    const data = jsonOut() as { data: Array<Record<string, unknown>> };
+    expect(data.data).toEqual([
+      {
+        id: "proj-1",
+        name: "Spring Launch",
+        labels: ["story:abc", "handle:spring"],
+        brandkit_id: "bk-1",
+        status: "IN_PROGRESS",
+      },
+    ]);
+    // Heavy bodies are dropped from the lean projection.
+    expect(data.data[0]).not.toHaveProperty("deliverables");
+    expect(data.data[0]).not.toHaveProperty("members");
+  });
+
   it("runCampaignGet prints JSON and human detail with deliverables", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(makeProject() as never);
     await runners.runCampaignGet({ json: true, campaignId: "proj-1" });

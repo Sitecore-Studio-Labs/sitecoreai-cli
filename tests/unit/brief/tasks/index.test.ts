@@ -97,6 +97,45 @@ describe("brief runners — read verbs", () => {
     expect(jsonOut()).toMatchObject({ totalCount: 1 });
   });
 
+  it("runBriefList --lean emits compact, projected JSON without heavy bodies", async () => {
+    const ref = {
+      type: "campaign",
+      relatedSystem: "orchestrate",
+      relatedType: "project",
+      id: "proj-9",
+    };
+    vi.mocked(briefsApi.listBriefs).mockResolvedValue(
+      page([
+        makeBrief({
+          references: [ref],
+          tasks: [{ id: "todo-1" }],
+          comments: [{ id: "c-1" }],
+          fields: { Goal: { type: "RichText", value: { huge: "doc" } } },
+        }),
+      ]) as never
+    );
+
+    await runners.runBriefList({ json: true, lean: true });
+
+    const raw = String(stdout.mock.calls.at(-1)?.[0] ?? "");
+    // Compact: no two-space indentation from pretty-printing.
+    expect(raw).not.toContain('\n  "');
+    const data = jsonOut() as { data: Array<Record<string, unknown>> };
+    expect(data.data).toEqual([
+      {
+        id: "brief-1",
+        name: "Spring Launch",
+        status: "Draft",
+        locale: "en",
+        references: [ref],
+      },
+    ]);
+    // Heavy bodies are dropped from the lean projection.
+    expect(data.data[0]).not.toHaveProperty("tasks");
+    expect(data.data[0]).not.toHaveProperty("comments");
+    expect(data.data[0]).not.toHaveProperty("fields");
+  });
+
   it("runBriefList renders a human table when briefs exist", async () => {
     vi.mocked(briefsApi.listBriefs).mockResolvedValue(page([makeBrief(), makeBrief()]) as never);
 
@@ -331,11 +370,9 @@ describe("brief runners — write verbs honour --what-if", () => {
 
     // Unlink: PUT { references: [] } so Orchestrate clears its
     // project.briefs[] reverse view before the brief is gone.
-    expect(vi.mocked(briefsApi.updateBrief)).toHaveBeenCalledWith(
-      client,
-      "brief-1",
-      { references: [] },
-    );
+    expect(vi.mocked(briefsApi.updateBrief)).toHaveBeenCalledWith(client, "brief-1", {
+      references: [],
+    });
     expect(vi.mocked(briefsApi.deleteBrief)).toHaveBeenCalledWith(client, "brief-1");
 
     // Order matters — unlink before delete, not after.

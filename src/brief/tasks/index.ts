@@ -95,12 +95,18 @@ const prepareBriefClient = async (
  * org-scoped, not env-scoped on the wire; we still pass the resolved
  * env name through `environment` so consumers can tell what config
  * profile produced the output.
+ *
+ * `compact` switches off pretty-printing — used by the `--lean` list
+ * path, where the consumer is automation (not a human reading the
+ * terminal) and the doubled byte cost of two-space indentation matters
+ * for large pages.
  */
 const writeBriefEnvelope = (
   command: string,
   options: RunBriefBaseOptions,
   data: unknown,
-  extra?: Record<string, unknown>
+  extra?: Record<string, unknown>,
+  compact = false
 ): void => {
   const envelope = buildScaiEnvelope({
     command: `brief.${command}`,
@@ -108,15 +114,42 @@ const writeBriefEnvelope = (
     data,
     extra,
   });
-  process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+  const json = compact ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2);
+  process.stdout.write(`${json}\n`);
 };
 
+/**
+ * Identity + linkage fields of a brief — everything a tenant scan or
+ * delete cascade needs to match and act on a brief, without the heavy
+ * `fields` (RichText ProseMirror docs), `tasks`, and `comments` bodies
+ * that dominate a full `Brief`. Emitted by `runBriefList({ lean })`.
+ */
+export type LeanBrief = Pick<Brief, "id" | "name" | "status" | "locale" | "references">;
+
+const projectLeanBrief = (brief: Brief): LeanBrief => ({
+  id: brief.id,
+  name: brief.name,
+  status: brief.status,
+  locale: brief.locale,
+  references: brief.references,
+});
+
 export const runBriefList = async (
-  options: RunBriefBaseOptions & { limit?: number; locale?: string }
+  options: RunBriefBaseOptions & { limit?: number; locale?: string; lean?: boolean }
 ): Promise<PagedResult<Brief>> => {
   const { logger, client } = await prepareBriefClient(options);
   const result = await listBriefs(client, { limit: options.limit, locale: options.locale });
   if (logger.isJson()) {
+    if (options.lean) {
+      writeBriefEnvelope(
+        "list",
+        options,
+        { ...result, data: result.data.map(projectLeanBrief) },
+        { totalCount: result.totalCount },
+        true
+      );
+      return result;
+    }
     writeBriefEnvelope("list", options, result, {
       totalCount: result.totalCount,
     });

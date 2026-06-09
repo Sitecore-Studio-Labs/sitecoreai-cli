@@ -84,7 +84,8 @@ const writeCampaignEnvelope = (
   command: string,
   options: RunCampaignBaseOptions,
   data: unknown,
-  extra?: Record<string, unknown>
+  extra?: Record<string, unknown>,
+  compact = false
 ): void => {
   const envelope = buildScaiEnvelope({
     command: `campaign.${command}`,
@@ -92,15 +93,42 @@ const writeCampaignEnvelope = (
     data,
     extra,
   });
-  process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+  const json = compact ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2);
+  process.stdout.write(`${json}\n`);
 };
 
+/**
+ * Identity + linkage fields of a project ("campaign") — everything a
+ * tenant scan needs to match and route a project, without the heavy
+ * `deliverables`, `members`, `attachments`, and `context` arrays that
+ * dominate a full `Project`. Emitted by `runCampaignList({ lean })`.
+ */
+export type LeanProject = Pick<Project, "id" | "name" | "labels" | "brandkit_id" | "status">;
+
+const projectLeanCampaign = (p: Project): LeanProject => ({
+  id: p.id,
+  name: p.name,
+  labels: p.labels,
+  brandkit_id: p.brandkit_id,
+  status: p.status,
+});
+
 export const runCampaignList = async (
-  options: RunCampaignBaseOptions & { limit?: number }
+  options: RunCampaignBaseOptions & { limit?: number; lean?: boolean }
 ): Promise<PagedResult<Project>> => {
   const { logger, client } = await prepareCampaignClient(options);
   const result = await listProjects(client, { limit: options.limit });
   if (logger.isJson()) {
+    if (options.lean) {
+      writeCampaignEnvelope(
+        "list",
+        options,
+        { ...result, data: result.data.map(projectLeanCampaign) },
+        { totalCount: result.totalCount },
+        true
+      );
+      return result;
+    }
     writeCampaignEnvelope("list", options, result, { totalCount: result.totalCount });
     return result;
   }

@@ -51,6 +51,12 @@ const createListCommand = (): Command => {
   addConfigOption(command);
   addVerbosityOptions(command);
   command.addOption(new Option("--limit <n>", "Page size").argParser(Number));
+  command.addOption(
+    new Option(
+      "--lean",
+      "Emit only identity + linkage fields (id, name, labels, brandkit_id, status) as compact JSON. Drops the heavy deliverables/members/attachments bodies. --json only."
+    )
+  );
   command.action(async (options) => {
     await runCampaignList(options);
   });

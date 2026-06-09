@@ -38,7 +38,7 @@ import {
   type BriefType,
   type CreateBriefInput,
 } from "@/brief";
-import { createScaiError } from "@/shared/errors";
+import { createScaiError, toMergeConflicts } from "@/shared/errors";
 import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
@@ -510,6 +510,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       {
         hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the brief first to converge the recipe against the tenant.",
         details: errors.map((e) => `${e.path} → ${e.classification}`),
+        conflicts: toMergeConflicts(errors),
       }
     );
   }

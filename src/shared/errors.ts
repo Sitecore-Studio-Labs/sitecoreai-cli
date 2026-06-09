@@ -63,12 +63,44 @@ export interface Remediation {
   detail?: string;
 }
 
+/**
+ * A three-way-merge cell that diverged on the tenant. Carried on a
+ * `POLICY_DENIED` {@link ScaiError} so a consumer can route a conflict
+ * block structurally instead of regexing `details` strings. Shape is
+ * kept inline (not imported from `@/sync/contract`) because `sync`
+ * depends on this module — importing back would cycle. It is
+ * structurally identical to `SyncConflictCell` and validated against it
+ * at the contract boundary.
+ */
+export interface MergeConflictCell {
+  path: string;
+  classification: "cms-edit" | "conflict";
+}
+
+/**
+ * Narrow a kind's loosely-typed `policyErrors` bag (carried on
+ * `RecipeChange.meta` as `Array<{ path, classification: string }>`) into
+ * the structured {@link MergeConflictCell}[] the error envelope ships.
+ * Drops any entry whose classification isn't a gating one — only
+ * `cms-edit` / `conflict` block a push, so only those are conflicts.
+ */
+export const toMergeConflicts = (
+  policyErrors: ReadonlyArray<{ path: string; classification: string }> | undefined
+): MergeConflictCell[] =>
+  (policyErrors ?? []).flatMap((entry) =>
+    entry.classification === "cms-edit" || entry.classification === "conflict"
+      ? [{ path: entry.path, classification: entry.classification }]
+      : []
+  );
+
 export class ScaiError extends Error {
   code: ScaiErrorCode;
   exitCode: number;
   hint?: string;
   details?: string[];
   remediation?: Remediation;
+  /** Structured three-way-merge conflicts on a `POLICY_DENIED` block. */
+  conflicts?: MergeConflictCell[];
 
   constructor(
     message: string,
@@ -78,6 +110,7 @@ export class ScaiError extends Error {
       hint?: string;
       details?: string[];
       remediation?: Remediation;
+      conflicts?: MergeConflictCell[];
       cause?: unknown;
     } = {}
   ) {
@@ -88,6 +121,7 @@ export class ScaiError extends Error {
     this.hint = options.hint;
     this.details = options.details;
     this.remediation = options.remediation;
+    this.conflicts = options.conflicts;
     if (options.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
     }
@@ -141,12 +175,18 @@ export const withHint = (error: ScaiError, hint: string): ScaiError =>
     hint,
     details: error.details,
     remediation: error.remediation,
+    conflicts: error.conflicts,
   });
 
 export const createScaiError = (
   message: string,
   code: ScaiErrorCode,
-  options: { hint?: string; details?: string[]; remediation?: Remediation } = {}
+  options: {
+    hint?: string;
+    details?: string[];
+    remediation?: Remediation;
+    conflicts?: MergeConflictCell[];
+  } = {}
 ): ScaiError =>
   new ScaiError(message, {
     code,
@@ -154,6 +194,7 @@ export const createScaiError = (
     hint: options.hint,
     details: options.details,
     remediation: options.remediation,
+    conflicts: options.conflicts,
   });
 
 /**

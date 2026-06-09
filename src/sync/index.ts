@@ -34,6 +34,35 @@ export {
 export type { PullOptions, PushOptions, PushOutcome, SyncMode } from "./engine";
 export { syncDiff, syncPull, syncPush } from "./engine";
 
+// --- Typed sync contract (scai ↔ orchestrator) --------------------------
+export {
+  SYNC_CONTRACT_VERSION,
+  SYNC_FEATURES,
+  SYNC_CONTRACT_KINDS,
+  SYNC_CONFLICT_POLICIES,
+  FieldClassificationSchema,
+  ChangeKindSchema,
+  SyncChangeSchema,
+  SyncConflictCellSchema,
+  ResolvedIdentitySchema,
+  SyncRefSchema,
+  PlanSummarySchema,
+  SyncResultSchema,
+  SyncErrorSchema,
+  SyncCapabilitiesSchema,
+  buildSyncResult,
+  buildPullResult,
+} from "./contract";
+export type {
+  SyncContractVersion,
+  SyncChange,
+  SyncConflictCell,
+  SyncResult,
+  SyncError,
+  SyncFeature,
+  SyncCapabilities,
+} from "./contract";
+
 export { loadRecipe, writeRecipe } from "./io";
 
 export { eraseKind, getKind, listKinds, registerKind } from "./registry";

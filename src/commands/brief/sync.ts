@@ -14,6 +14,7 @@ import { writeFile } from "node:fs/promises";
 
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
+import { emitPullResultJson, emitPushResultJson } from "../sync-json";
 import { briefInstanceKind, briefTypeKind } from "@/brief/recipe";
 import { readRootConfiguration } from "@/config/root-config";
 import { inputError, toLogger } from "@/shared/cli-tasks";
@@ -192,8 +193,23 @@ const createPullCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const { recipeKind, suffix, humanName } = kindFor(options.kind);
     const name = options.name ?? "";
-    const recipe = await syncPull(recipeKind, { kind: recipeKind.name, id: name }, ctx);
+    const ref = { kind: recipeKind.name, id: name };
+    const recipe = await syncPull(recipeKind, ref, ctx);
     if (!recipe) {
+      // Under --json, "not found" is a structured found:false result the
+      // orchestrator reads off the envelope — never a regex on a thrown
+      // message. Humans still get a clear error.
+      if (logger.isJson()) {
+        emitPullResultJson({
+          logger,
+          command: "brief.sync.pull",
+          environment: ctx.environmentName,
+          kind: recipeKind.name,
+          ref,
+          found: false,
+        });
+        return;
+      }
       throw inputError(
         `${humanName.charAt(0).toUpperCase()}${humanName.slice(1)} "${name}" not found.`,
         recipeKind === (briefTypeKind as RecipeKind<unknown>)
@@ -204,6 +220,14 @@ const createPullCommand = (): Command => {
     const file = options.file ?? `${slug(name, humanName.replace(/\s+/g, "-"))}.${suffix}`;
     writeRecipe(file, recipe);
     logger.info(`Pulled "${name}" -> ${file}`, "green");
+    emitPullResultJson({
+      logger,
+      command: "brief.sync.pull",
+      environment: ctx.environmentName,
+      kind: recipeKind.name,
+      ref,
+      found: true,
+    });
   });
   return command;
 };
@@ -221,8 +245,19 @@ const createDiffCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const { recipeKind } = kindFor(options.kind);
     const recipe = (await loadRecipe(options.file ?? "", recipeKind.schema)) as NamedRecipe;
-    const plan = await syncDiff(recipeKind, recipe, refFor(recipeKind.name, recipe), ctx);
+    const ref = refFor(recipeKind.name, recipe);
+    const plan = await syncDiff(recipeKind, recipe, ref, ctx);
     printPlan(logger, plan);
+    emitPushResultJson({
+      logger,
+      command: "brief.sync.diff",
+      environment: ctx.environmentName,
+      operation: "diff",
+      kind: recipeKind.name,
+      ref,
+      mode: "what-if",
+      outcome: { plan, result: null },
+    });
   });
   return command;
 };
@@ -255,7 +290,8 @@ const createPushCommand = (): Command => {
     const { recipeKind } = kindFor(options.kind);
     const recipe = (await loadRecipe(options.file ?? "", recipeKind.schema)) as NamedRecipe;
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
-    const outcome = await syncPush(recipeKind, recipe, refFor(recipeKind.name, recipe), ctx, {
+    const ref = refFor(recipeKind.name, recipe);
+    const outcome = await syncPush(recipeKind, recipe, ref, ctx, {
       mode,
       prune: options.prune,
     });
@@ -270,9 +306,21 @@ const createPushCommand = (): Command => {
     } else {
       logger.info("Dry-run. Re-run with --allow-write to apply.");
     }
+    // Back-compat side-channel; new consumers read identities from the
+    // `--json` envelope (identities-in-envelope).
     if (options.identitiesOut && outcome.result?.identities) {
       await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
+    emitPushResultJson({
+      logger,
+      command: "brief.sync.push",
+      environment: ctx.environmentName,
+      operation: "push",
+      kind: recipeKind.name,
+      ref,
+      mode,
+      outcome,
+    });
   });
   return command;
 };

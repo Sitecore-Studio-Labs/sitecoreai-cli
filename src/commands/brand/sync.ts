@@ -10,6 +10,7 @@ import { writeFile } from "node:fs/promises";
 
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
+import { emitPullResultJson, emitPushResultJson } from "../sync-json";
 import { brandKitKind } from "@/brand/recipe";
 import { readRootConfiguration } from "@/config/root-config";
 import { inputError, toLogger } from "@/shared/cli-tasks";
@@ -32,7 +33,7 @@ import {
 
 const writeIdentitiesOut = async (
   path: string,
-  identities: ReadonlyArray<ResolvedIdentity>,
+  identities: ReadonlyArray<ResolvedIdentity>
 ): Promise<void> => {
   const body = JSON.stringify({ identities }, null, 2);
   await writeFile(path, body, "utf8");
@@ -137,8 +138,23 @@ const createPullCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const kitName = options.kit ?? "";
-    const recipe = await syncPull(brandKitKind, { kind: brandKitKind.name, id: kitName }, ctx);
+    const ref = { kind: brandKitKind.name, id: kitName };
+    const recipe = await syncPull(brandKitKind, ref, ctx);
     if (!recipe) {
+      // Under --json, "not found" is a structured result (found:false,
+      // exit 0) the orchestrator reads off the envelope — never a regex
+      // on a thrown error message. Humans still get a clear error.
+      if (logger.isJson()) {
+        emitPullResultJson({
+          logger,
+          command: "brand.sync.pull",
+          environment: ctx.environmentName,
+          kind: brandKitKind.name,
+          ref,
+          found: false,
+        });
+        return;
+      }
       throw inputError(
         `Brand kit "${kitName}" not found.`,
         "List kits with `scai brand kits list`."
@@ -147,6 +163,14 @@ const createPullCommand = (): Command => {
     const file = options.file ?? `${slug(kitName)}.brandkit.yaml`;
     writeRecipe(file, recipe);
     logger.info(`Pulled "${kitName}" -> ${file}`, "green");
+    emitPullResultJson({
+      logger,
+      command: "brand.sync.pull",
+      environment: ctx.environmentName,
+      kind: brandKitKind.name,
+      ref,
+      found: true,
+    });
   });
   return command;
 };
@@ -162,16 +186,22 @@ const createDiffCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const recipe = await loadRecipe(options.file ?? "", brandKitKind.schema);
-    const plan = await syncDiff(
-      brandKitKind,
-      recipe,
-      { kind: brandKitKind.name, id: recipe.name },
-      ctx
-    );
+    const ref = { kind: brandKitKind.name, id: recipe.name };
+    const plan = await syncDiff(brandKitKind, recipe, ref, ctx);
     printPlan(logger, plan);
     if (hasPaidPipeline(plan)) {
       logger.warn("On push this recipe triggers paid AI pipeline runs (~5-15 min).");
     }
+    emitPushResultJson({
+      logger,
+      command: "brand.sync.diff",
+      environment: ctx.environmentName,
+      operation: "diff",
+      kind: brandKitKind.name,
+      ref,
+      mode: "what-if",
+      outcome: { plan, result: null },
+    });
   });
   return command;
 };
@@ -208,13 +238,11 @@ const createPushCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const recipe = await loadRecipe(options.file ?? "", brandKitKind.schema);
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
-    const outcome = await syncPush(
-      brandKitKind,
-      recipe,
-      { kind: brandKitKind.name, id: recipe.name },
-      ctx,
-      { mode, prune: options.prune }
-    );
+    const ref = { kind: brandKitKind.name, id: recipe.name };
+    const outcome = await syncPush(brandKitKind, recipe, ref, ctx, {
+      mode,
+      prune: options.prune,
+    });
     printPlan(logger, outcome.plan);
     if (outcome.result) {
       logger.info(
@@ -229,9 +257,22 @@ const createPushCommand = (): Command => {
       }
       logger.info("Dry-run. Re-run with --allow-write to apply.");
     }
+    // Back-compat side-channel: kept so an orchestrator pinned to the
+    // pre-envelope contract still gets identities. New consumers read
+    // them from the `--json` envelope instead (identities-in-envelope).
     if (options.identitiesOut && outcome.result?.identities) {
       await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
+    emitPushResultJson({
+      logger,
+      command: "brand.sync.push",
+      environment: ctx.environmentName,
+      operation: "push",
+      kind: brandKitKind.name,
+      ref,
+      mode,
+      outcome,
+    });
   });
   return command;
 };

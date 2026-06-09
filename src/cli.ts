@@ -102,6 +102,11 @@ const shouldSkipAutoWizard = (args: string[]): boolean => {
   if (parent === "mcp") {
     return true;
   }
+  // `capabilities` is a credential-free contract handshake — it must
+  // answer instantly without triggering auto-init/auto-login.
+  if (parent === "capabilities") {
+    return true;
+  }
   // `policy` manages the workspace guardrails — it must not trigger
   // auto-init/auto-login (e.g. `scai policy show` on an unconfigured dir).
   if (parent === "policy") {
@@ -377,6 +382,9 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         hint: finalError.hint,
         details: finalError.details,
         remediation: finalError.remediation,
+        // Structured three-way-merge conflicts on a POLICY_DENIED block,
+        // so consumers route the conflict UI without regexing `message`.
+        ...(finalError.conflicts ? { conflicts: finalError.conflicts } : {}),
         exitCode: finalError.exitCode,
       });
     } else {

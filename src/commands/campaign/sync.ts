@@ -11,6 +11,7 @@ import { writeFile } from "node:fs/promises";
 
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "../shared";
+import { emitPullResultJson, emitPushResultJson } from "../sync-json";
 import { campaignKind } from "@/campaigns/recipe";
 import { readRootConfiguration } from "@/config/root-config";
 import { inputError, toLogger } from "@/shared/cli-tasks";
@@ -129,16 +130,27 @@ const createPullCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const campaignName = options.campaign ?? "";
-    const recipe = await syncPull(
-      campaignKind,
-      {
-        kind: campaignKind.name,
-        id: campaignName,
-        ...(options.sitecoreId ? { tenantId: options.sitecoreId } : {}),
-      },
-      ctx
-    );
+    const ref = {
+      kind: campaignKind.name,
+      id: campaignName,
+      ...(options.sitecoreId ? { tenantId: options.sitecoreId } : {}),
+    };
+    const recipe = await syncPull(campaignKind, ref, ctx);
     if (!recipe) {
+      // Under --json, "not found" is a structured found:false result the
+      // orchestrator reads off the envelope — never a regex on a thrown
+      // message. Humans still get a clear error.
+      if (logger.isJson()) {
+        emitPullResultJson({
+          logger,
+          command: "campaign.sync.pull",
+          environment: ctx.environmentName,
+          kind: campaignKind.name,
+          ref,
+          found: false,
+        });
+        return;
+      }
       throw inputError(
         `Campaign "${campaignName}"${options.sitecoreId ? ` (sitecoreId=${options.sitecoreId})` : ""} not found.`,
         "List campaigns with `scai ops campaign list`."
@@ -147,6 +159,14 @@ const createPullCommand = (): Command => {
     const file = options.file ?? `${slug(campaignName)}.campaign.yaml`;
     writeRecipe(file, recipe);
     logger.info(`Pulled "${campaignName}" -> ${file}`, "green");
+    emitPullResultJson({
+      logger,
+      command: "campaign.sync.pull",
+      environment: ctx.environmentName,
+      kind: campaignKind.name,
+      ref,
+      found: true,
+    });
   });
   return command;
 };
@@ -162,18 +182,24 @@ const createDiffCommand = (): Command => {
     const logger = toLogger(options);
     const ctx = buildContext(options, logger);
     const recipe = await loadRecipe(options.file ?? "", campaignKind.schema);
-    const plan = await syncDiff(
-      campaignKind,
-      recipe,
-      {
-        kind: campaignKind.name,
-        id: recipe.name,
-        ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
-        ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
-      },
-      ctx
-    );
+    const ref = {
+      kind: campaignKind.name,
+      id: recipe.name,
+      ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+      ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
+    };
+    const plan = await syncDiff(campaignKind, recipe, ref, ctx);
     printPlan(logger, plan);
+    emitPushResultJson({
+      logger,
+      command: "campaign.sync.diff",
+      environment: ctx.environmentName,
+      operation: "diff",
+      kind: campaignKind.name,
+      ref,
+      mode: "what-if",
+      outcome: { plan, result: null },
+    });
   });
   return command;
 };
@@ -204,18 +230,16 @@ const createPushCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const recipe = await loadRecipe(options.file ?? "", campaignKind.schema);
     const mode: SyncMode = options.allowWrite ? "apply" : "what-if";
-    const outcome = await syncPush(
-      campaignKind,
-      recipe,
-      {
-        kind: campaignKind.name,
-        id: recipe.name,
-        ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
-        ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
-      },
-      ctx,
-      { mode, prune: options.prune }
-    );
+    const ref = {
+      kind: campaignKind.name,
+      id: recipe.name,
+      ...(recipe.handle ? { baselineKey: recipe.handle } : {}),
+      ...(recipe.sitecoreId ? { tenantId: recipe.sitecoreId } : {}),
+    };
+    const outcome = await syncPush(campaignKind, recipe, ref, ctx, {
+      mode,
+      prune: options.prune,
+    });
     printPlan(logger, outcome.plan);
     if (outcome.result) {
       logger.info(
@@ -227,9 +251,21 @@ const createPushCommand = (): Command => {
     } else {
       logger.info("Dry-run. Re-run with --allow-write to apply.");
     }
+    // Back-compat side-channel; new consumers read identities from the
+    // `--json` envelope (identities-in-envelope).
     if (options.identitiesOut && outcome.result?.identities) {
       await writeIdentitiesOut(options.identitiesOut, outcome.result.identities);
     }
+    emitPushResultJson({
+      logger,
+      command: "campaign.sync.push",
+      environment: ctx.environmentName,
+      operation: "push",
+      kind: campaignKind.name,
+      ref,
+      mode,
+      outcome,
+    });
   });
   return command;
 };

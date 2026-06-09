@@ -52,6 +52,9 @@ interface SyncOptions extends CommonOptions {
    * UUID onto the registry's recipe.
    */
   sitecoreId?: string;
+  /** Stable campaign handle — matches the project by its `handle:` label
+   *  on pull so a renamed campaign still resolves (see `--handle`). */
+  handle?: string;
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
@@ -121,6 +124,12 @@ const createPullCommand = (): Command => {
       )
     )
     .addOption(
+      new Option(
+        "--handle <handle>",
+        "Stable campaign handle. When set, the read path matches the project by its `handle:` label so a renamed campaign still resolves even before a `sitecoreId` has been stamped. Falls back to display-name match when omitted."
+      )
+    )
+    .addOption(
       new Option("--file <path>", "Output recipe file (default: <campaign>.campaign.yaml)")
     );
   addEnvironmentOption(command);
@@ -133,6 +142,7 @@ const createPullCommand = (): Command => {
     const ref = {
       kind: campaignKind.name,
       id: campaignName,
+      ...(options.handle ? { baselineKey: options.handle } : {}),
       ...(options.sitecoreId ? { tenantId: options.sitecoreId } : {}),
     };
     const recipe = await syncPull(campaignKind, ref, ctx);

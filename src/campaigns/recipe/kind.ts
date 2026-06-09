@@ -102,7 +102,13 @@ const findProjectByName = async (
   identityLabels: ReadonlyArray<string> = []
 ): Promise<Project | null> => {
   const { story, handle } = extractIdentityLabels(identityLabels);
-  const useLabelMatch = story !== null && handle !== null;
+  // Match by the stable `handle:` label ALONE (it's unique per campaign)
+  // — or by both `story:` + `handle:` when story is also supplied. This
+  // is what lets PULL find a project whose displayName drifted (a rename)
+  // by its handle, mirroring how briefs match by their name-marker —
+  // instead of only by exact name or a stamped `sitecoreId`. Exact-name
+  // remains the fallback for ad-hoc recipes without identity markers.
+  const useLabelMatch = handle !== null;
   let cursor: string | undefined;
   let nameFallback: Project | null = null;
   for (;;) {
@@ -113,7 +119,9 @@ const findProjectByName = async (
       }
       if (useLabelMatch) {
         const labels = project.labels ?? [];
-        if (labels.includes(story) && labels.includes(handle)) {
+        const handleHit = labels.includes(handle);
+        const storyHit = story === null || labels.includes(story);
+        if (handleHit && storyHit) {
           return project;
         }
       }
@@ -261,7 +269,13 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     }
   }
   if (!project) {
-    const found = await findProjectByName(client, ref.id);
+    // Pull-by-identity: when the caller knows the campaign's stable
+    // handle (ref.baselineKey, set from `--handle`), match the project by
+    // its `handle:` label so a renamed campaign still resolves — not just
+    // by exact display name. Falls back to name match inside
+    // findProjectByName when no handle is supplied.
+    const identityLabels = ref.baselineKey ? [`handle:${ref.baselineKey}`] : [];
+    const found = await findProjectByName(client, ref.id, identityLabels);
     if (!found) return null;
     // The list endpoint omits inlined children; re-read by id to get
     // the full deliverable + task tree.

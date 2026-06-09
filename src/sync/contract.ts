@@ -194,6 +194,9 @@ export const SYNC_FEATURES = [
   "structured-conflicts",
   /** `scai ... pull --sitecore-id` id-first lookup (campaign + brief). */
   "campaign-pull-sitecore-id",
+  /** `scai ops campaign sync pull --handle` matches by the `handle:`
+   *  label so a renamed campaign resolves before a sitecoreId is stamped. */
+  "campaign-pull-handle",
   /** `--lean` list projection (strays scan). */
   "list-lean",
 ] as const;

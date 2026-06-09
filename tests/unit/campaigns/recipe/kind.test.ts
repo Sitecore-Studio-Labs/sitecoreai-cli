@@ -102,6 +102,47 @@ describe("readCurrent", () => {
     });
   });
 
+  it("matches a RENAMED campaign by its handle: label when ref.baselineKey is set (pull-by-identity)", async () => {
+    // The tenant project still has its old name + the stable handle label.
+    // The recipe was renamed, so id (display name) no longer matches — but
+    // the handle does. Without this, pull silently finds nothing.
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 1,
+      next: null,
+      data: [{ id: "proj-9", name: "Old Name", labels: ["story:s1", "handle:spring@1"] }],
+    });
+    campaignApi.getProject.mockResolvedValue({
+      id: "proj-9",
+      name: "Old Name",
+      labels: ["story:s1", "handle:spring@1"],
+      deliverables: [],
+    });
+
+    const recipe = await campaignKind.readCurrent(
+      // id is the NEW (renamed) display name; baselineKey carries the handle.
+      { kind: "campaign", id: "New Name", baselineKey: "spring@1" },
+      ctx
+    );
+    expect(recipe?.sitecoreId).toBe("proj-9");
+    // Resolved by handle label, not by name (no name in the list matches "New Name").
+    expect(campaignApi.getProject).toHaveBeenCalledWith(expect.anything(), "proj-9");
+  });
+
+  it("does NOT match by name alone when a baselineKey handle is given but no label matches", async () => {
+    // Guards the relaxation: a handle that matches nothing must not silently
+    // fall through to an unrelated name — it returns the name fallback only.
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 1,
+      next: null,
+      data: [{ id: "proj-x", name: "Unrelated", labels: ["handle:other@1"] }],
+    });
+    const recipe = await campaignKind.readCurrent(
+      { kind: "campaign", id: "Missing", baselineKey: "spring@1" },
+      ctx
+    );
+    expect(recipe).toBeNull();
+  });
+
   it("reads by sitecoreId (ref.tenantId) and skips findProjectByName", async () => {
     campaignApi.getProject.mockResolvedValue({
       id: "proj-direct",

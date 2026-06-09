@@ -16,6 +16,7 @@
     "brief-type-boolean-field",
     "brief-type-three-way-merge",
     "campaign-conflict-policy-flag",
+    "campaign-pull-by-handle-label",
     "campaign-pull-by-id-and-dep-reverse-map",
     "campaign-rename-identity-match",
     "campaign-task-identity-stamp",

@@ -162,6 +162,98 @@ describe("diffCampaign — campaign present", () => {
     ]);
   });
 
+  it("treats a renamed task (same sitecoreId) as an update, not a create", () => {
+    const withIds = recipe({
+      name: "Spring Launch",
+      deliverables: [
+        {
+          name: "Landing page",
+          sitecoreId: "11111111-1111-4111-8111-111111111111",
+          tasks: [{ name: "Draft copy", sitecoreId: "22222222-2222-4222-8222-222222222222" }],
+        },
+      ],
+    });
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        deliverables: [
+          {
+            name: "Landing page",
+            sitecoreId: "11111111-1111-4111-8111-111111111111",
+            tasks: [
+              // Same id, new display name — a rename.
+              { name: "Draft hero copy", sitecoreId: "22222222-2222-4222-8222-222222222222" },
+            ],
+          },
+        ],
+      }),
+      withIds
+    );
+    const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
+    expect(taskChange?.kind).toBe("update");
+    expect((taskChange?.before as { name: string }).name).toBe("Draft copy");
+    expect((taskChange?.after as { name: string }).name).toBe("Draft hero copy");
+    // No stray create for the new name.
+    expect(plan.changes.filter((c) => c.kind === "create")).toHaveLength(0);
+  });
+
+  it("treats a renamed task (same handle, no id) as an update", () => {
+    const withHandles = recipe({
+      name: "Spring Launch",
+      deliverables: [
+        { name: "Landing page", tasks: [{ name: "Draft copy", handle: "draft-copy@1" }] },
+      ],
+    });
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        deliverables: [
+          { name: "Landing page", tasks: [{ name: "Draft hero copy", handle: "draft-copy@1" }] },
+        ],
+      }),
+      withHandles
+    );
+    const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
+    expect(taskChange?.kind).toBe("update");
+    expect(plan.changes.filter((c) => c.kind === "create")).toHaveLength(0);
+  });
+
+  it("treats a renamed deliverable (same id) as an update of its tasks, not a new deliverable", () => {
+    const withIds = recipe({
+      name: "Spring Launch",
+      deliverables: [
+        {
+          name: "Landing page",
+          sitecoreId: "11111111-1111-4111-8111-111111111111",
+          tasks: [{ name: "Draft copy", sitecoreId: "22222222-2222-4222-8222-222222222222" }],
+        },
+      ],
+    });
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        deliverables: [
+          {
+            // Renamed deliverable, same id.
+            name: "Hero landing page",
+            sitecoreId: "11111111-1111-4111-8111-111111111111",
+            tasks: [{ name: "Draft copy", sitecoreId: "22222222-2222-4222-8222-222222222222" }],
+          },
+        ],
+      }),
+      withIds
+    );
+    // No deliverable create — it matched the existing one by id.
+    expect(
+      plan.changes.some(
+        (c) => c.path.startsWith("deliverables.Hero landing page") && c.kind === "create"
+      )
+    ).toBe(false);
+    // The unchanged task under the renamed deliverable is a noop, not a create.
+    const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
+    expect(taskChange?.kind).toBe("noop");
+  });
+
   it("is a no-op when desired matches current exactly", () => {
     const plan = diffCampaign(
       recipe({

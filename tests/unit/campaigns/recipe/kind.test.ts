@@ -45,7 +45,7 @@ describe("readCurrent", () => {
     expect(await campaignKind.readCurrent({ kind: "campaign", id: "Nope" }, ctx)).toBeNull();
   });
 
-  it("builds a recipe from project + deliverables + tasks, dropping server ids", async () => {
+  it("builds a recipe from project + deliverables + tasks, surfacing server ids as sitecoreId", async () => {
     campaignApi.listProjects.mockResolvedValue({
       totalCount: 1,
       next: null,
@@ -85,20 +85,21 @@ describe("readCurrent", () => {
 
     const recipe = await campaignKind.readCurrent(ref, ctx);
     expect(recipe).toMatchObject({
+      // Server UUIDs round-trip onto the recipe as `sitecoreId` so the
+      // diff/merge can match by id (rename-safe) on the next push.
+      sitecoreId: "proj-1",
       name: "Spring Launch",
       description: "Q2",
       brandKitId: "kit-1",
       deliverables: [
         {
+          sitecoreId: "del-1",
           name: "Landing page",
           funnelStage: "TOP",
-          tasks: [{ name: "Draft copy", status: "NOT_STARTED" }],
+          tasks: [{ sitecoreId: "task-1", name: "Draft copy", status: "NOT_STARTED" }],
         },
       ],
     });
-    // Server ids never leak into the recipe.
-    expect(JSON.stringify(recipe)).not.toContain("proj-1");
-    expect(JSON.stringify(recipe)).not.toContain("task-1");
   });
 
   it("reads by sitecoreId (ref.tenantId) and skips findProjectByName", async () => {
@@ -337,6 +338,101 @@ describe("apply", () => {
     expect(campaignApi.createTask).toHaveBeenCalledOnce();
     expect(result.applied).toHaveLength(2);
     expect(result.skipped).toHaveLength(0);
+  });
+
+  it("surfaces an identity for every deliverable and task — handle-less included — with parentName", async () => {
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 1,
+      next: null,
+      data: [{ id: "proj-1", name: "Spring Launch" }],
+    });
+    // First read (resolution) sees an empty project; the converged
+    // re-read at the end of apply returns the created tree.
+    campaignApi.getProject
+      .mockResolvedValueOnce({ id: "proj-1", name: "Spring Launch", deliverables: [] })
+      .mockResolvedValue({
+        id: "proj-1",
+        name: "Spring Launch",
+        deliverables: [
+          {
+            id: "del-9",
+            name: "Email blast",
+            labels: [],
+            tasks: [
+              // Handle-less task — the case the old emission dropped.
+              { id: "task-9", name: "Write subject line", labels: [] },
+              { id: "task-10", name: "Draft body", labels: ["handle:draft-body@1"] },
+            ],
+          },
+        ],
+      });
+    campaignApi.createDeliverable.mockResolvedValue({
+      id: "del-9",
+      name: "Email blast",
+      tasks: [],
+    });
+    campaignApi.createTask
+      .mockResolvedValueOnce({ id: "task-9", name: "Write subject line" })
+      .mockResolvedValueOnce({ id: "task-10", name: "Draft body" });
+
+    const result = await campaignKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "deliverables.Email blast",
+            summary: 'Create deliverable "Email blast"',
+            after: "Email blast",
+            meta: {
+              stage: "deliverable",
+              deliverableName: "Email blast",
+              deliverable: { name: "Email blast", funnelTactics: [], tasks: [] },
+            },
+          },
+          {
+            kind: "create",
+            path: "deliverables.Email blast.tasks.Write subject line",
+            summary: "Email blast / Write subject line",
+            after: { name: "Write subject line" },
+            meta: {
+              stage: "task",
+              deliverableName: "Email blast",
+              taskName: "Write subject line",
+              task: { name: "Write subject line" },
+            },
+          },
+          {
+            kind: "create",
+            path: "deliverables.Email blast.tasks.Draft body",
+            summary: "Email blast / Draft body",
+            after: { name: "Draft body", handle: "draft-body@1" },
+            meta: {
+              stage: "task",
+              deliverableName: "Email blast",
+              taskName: "Draft body",
+              task: { name: "Draft body", handle: "draft-body@1" },
+            },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    const ids = result.identities ?? [];
+    const handleLess = ids.find((i) => i.scope === "task" && i.sitecoreId === "task-9");
+    expect(handleLess).toMatchObject({ name: "Write subject line", parentName: "Email blast" });
+    expect(handleLess?.handle).toBeUndefined();
+
+    const handled = ids.find((i) => i.scope === "task" && i.sitecoreId === "task-10");
+    expect(handled).toMatchObject({
+      name: "Draft body",
+      handle: "draft-body@1",
+      parentName: "Email blast",
+    });
+
+    const deliverable = ids.find((i) => i.scope === "deliverable" && i.sitecoreId === "del-9");
+    expect(deliverable).toMatchObject({ name: "Email blast", parentName: "Spring Launch" });
   });
 
   it("converges a created task's update-only fields with a follow-up updateTask", async () => {

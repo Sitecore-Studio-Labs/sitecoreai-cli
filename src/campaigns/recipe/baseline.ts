@@ -20,6 +20,7 @@
  */
 import type { Baseline, FieldClassification } from "@/sync";
 import { classifyCellHashMaps, hashJsonValue, resolveCellByPolicy } from "@/sync";
+import { matchByIdentity } from "./diff";
 import type { CampaignDeliverable, CampaignRecipe, CampaignTask } from "./schema";
 
 /** Per-cell hash map. Key shape is per the doc comment above. */
@@ -152,10 +153,6 @@ export const mergeCampaignByPolicy = (
 } => {
   const policyErrors: Array<{ path: string; classification: FieldClassification }> = [];
 
-  const currentDeliverableByName = new Map<string, CampaignDeliverable>(
-    current.deliverables.map((d) => [d.name, d])
-  );
-
   const pickProject = <K extends keyof CampaignRecipe>(element: K): CampaignRecipe[K] => {
     const path = projectCellPath(element);
     const res = resolveCellByPolicy(classifications[path] ?? "first-push", policy);
@@ -167,11 +164,12 @@ export const mergeCampaignByPolicy = (
   };
 
   const mergedDeliverables: CampaignDeliverable[] = desired.deliverables.map((desiredDel) => {
-    const currentDel = currentDeliverableByName.get(desiredDel.name);
+    // Identity-first match (sitecoreId → handle → name) so a renamed
+    // deliverable still aligns with its current counterpart for cell
+    // merging instead of being treated as brand-new.
+    const currentDel = matchByIdentity(desiredDel, current.deliverables);
     if (!currentDel) return desiredDel;
-    const currentTasksByName = new Map<string, CampaignTask>(
-      (currentDel.tasks ?? []).map((t) => [t.name, t])
-    );
+    const currentTasks = currentDel.tasks ?? [];
 
     const pickDel = <K extends keyof CampaignDeliverable>(element: K): CampaignDeliverable[K] => {
       const path = deliverableCellPath(desiredDel.name, element);
@@ -184,7 +182,7 @@ export const mergeCampaignByPolicy = (
     };
 
     const mergedTasks: CampaignTask[] = (desiredDel.tasks ?? []).map((desiredTask) => {
-      const currentTask = currentTasksByName.get(desiredTask.name);
+      const currentTask = matchByIdentity(desiredTask, currentTasks);
       if (!currentTask) return desiredTask;
 
       const pickTask = <K extends keyof CampaignTask>(element: K): CampaignTask[K] => {
@@ -199,7 +197,11 @@ export const mergeCampaignByPolicy = (
 
       return {
         name: desiredTask.name,
+        // Carry stable identity through the merge so the downstream diff
+        // and apply can match by it — dropping these here is what made
+        // renames re-create tasks even when an id was stamped.
         handle: desiredTask.handle,
+        sitecoreId: desiredTask.sitecoreId,
         status: pickTask("status"),
         dueDate: pickTask("dueDate"),
         priority: pickTask("priority"),
@@ -215,6 +217,11 @@ export const mergeCampaignByPolicy = (
 
     return {
       name: desiredDel.name,
+      // Preserve deliverable identity through the merge (previously
+      // dropped, so the diff fell back to name-matching and renamed
+      // deliverables duplicated).
+      handle: desiredDel.handle,
+      sitecoreId: desiredDel.sitecoreId,
       status: pickDel("status"),
       dueDate: pickDel("dueDate"),
       funnelStage: pickDel("funnelStage"),
@@ -226,6 +233,10 @@ export const mergeCampaignByPolicy = (
 
   const merged: CampaignRecipe = {
     name: desired.name,
+    // Campaign identity flows through the merge unchanged so readCurrent
+    // and apply can resolve the project by id/handle on the next push.
+    handle: desired.handle,
+    sitecoreId: desired.sitecoreId,
     description: pickProject("description"),
     status: pickProject("status"),
     startDate: pickProject("startDate"),

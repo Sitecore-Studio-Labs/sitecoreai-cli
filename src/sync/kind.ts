@@ -154,8 +154,12 @@ export interface ResolvedIdentity {
    */
   name?: string;
   /** Parent entity handle for nested scopes — `deliverable` → campaign;
-   *  `task` → deliverable. */
+   *  `task` → deliverable. Absent when the parent has no handle. */
   parentHandle?: string;
+  /** Parent entity display name for nested scopes. The fallback key the
+   *  caller uses to place a task whose parent deliverable has no handle
+   *  (so handle-less subtrees still get their id stamped back). */
+  parentName?: string;
   /** Resolved Sitecore UUID. Always present (that's the point). */
   sitecoreId: string;
 }

@@ -194,6 +194,10 @@ const toRecipeTask = (task: Task, handleByTaskId: Map<string, string>): Campaign
   const { handle, labels } = splitHandleFromLabels(task.labels);
   return {
     ...(handle ? { handle } : {}),
+    // Surface the server UUID so it round-trips back onto the recipe.
+    // The diff/merge match on it before name, so a later rename
+    // converges onto this task instead of creating a duplicate.
+    ...(task.id ? { sitecoreId: task.id } : {}),
     name: task.name,
     status: task.status,
     dueDate: task.due_date ?? undefined,
@@ -218,6 +222,8 @@ const toRecipeDeliverable = (
   const { handle, labels } = splitHandleFromLabels(deliverable.labels);
   return {
     ...(handle ? { handle } : {}),
+    // Round-trip the server UUID — see toRecipeTask.
+    ...(deliverable.id ? { sitecoreId: deliverable.id } : {}),
     name: deliverable.name,
     status: deliverable.status,
     dueDate: deliverable.due_date ?? undefined,
@@ -265,6 +271,8 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
   const handleByTaskId = indexHandlesByTaskId(project);
 
   return {
+    // Round-trip the project UUID so the next push can resolve by id.
+    ...(project.id ? { sitecoreId: project.id } : {}),
     name: project.name,
     description: project.description || undefined,
     status: project.status || undefined,
@@ -451,6 +459,10 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const findExistingDeliverable = (
     recipeDeliverable: CampaignDeliverable
   ): Deliverable | undefined => {
+    if (recipeDeliverable.sitecoreId) {
+      const byId = (project.deliverables ?? []).find((d) => d.id === recipeDeliverable.sitecoreId);
+      if (byId) return byId;
+    }
     if (recipeDeliverable.handle) {
       const byHandle = deliverablesByHandle.get(recipeDeliverable.handle);
       if (byHandle) return byHandle;
@@ -577,10 +589,18 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     let taskId: string | null = null;
     if (change.kind === "create") {
       // Adopt instead of duplicate when an existing task on this
-      // deliverable carries our recipe's `handle:<x>` label.
-      const existingByHandle = task.handle
-        ? (parent.tasks ?? []).find((t) => (t.labels ?? []).includes(`handle:${task.handle}`))
+      // deliverable matches our recipe's identity — by server UUID
+      // first, then the `handle:<x>` label. This is the safety net for
+      // a rename the planner classified as a create (no name match):
+      // the existing item is updated in place rather than duplicated.
+      const existingById = task.sitecoreId
+        ? (parent.tasks ?? []).find((t) => t.id === task.sitecoreId)
         : undefined;
+      const existingByHandle =
+        existingById ??
+        (task.handle
+          ? (parent.tasks ?? []).find((t) => (t.labels ?? []).includes(`handle:${task.handle}`))
+          : undefined);
       const labelsWithHandle = task.handle
         ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
         : (task.labels ?? []);
@@ -755,43 +775,48 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
   // Surface resolved Sitecore UUIDs so the caller (orchestrator →
   // registry) can persist them onto the recipe and skip scai's
-  // baseline / label fallback on subsequent pushes. We surface every
-  // entity scai resolved a UUID for during this run — the project, plus
-  // each handled deliverable + handled task. Entities without a handle
-  // can't be back-referenced by the caller, so they're omitted.
+  // baseline / label fallback on subsequent pushes.
+  //
+  // Re-read the converged project so we emit an identity for EVERY
+  // deliverable + task — including handle-less ones and unchanged
+  // (noop) ones, which the old handle-keyed emission silently dropped.
+  // That gap is why renames duplicated: a task whose id never reached
+  // the recipe could only be re-matched by its (volatile) name. Each
+  // nested identity carries `parentName` so the caller can place it even
+  // when the parent deliverable has no handle. Best-effort: fall back to
+  // the pre-apply snapshot if the re-read fails (identities are an
+  // optimization, not a correctness gate).
+  const converged = await getProject(client, project.id).catch(() => project);
   const identities: ResolvedIdentity[] = [];
   // Campaign-level identity. `ref.baselineKey` carries the recipe's
-  // stable handle; `ref.id` is the display name at push time. Both are
-  // useful to the caller for round-tripping the id back onto its
-  // model.
+  // stable handle; `ref.id` is the display name at push time.
   identities.push({
     scope: "campaign",
-    sitecoreId: project.id,
+    sitecoreId: converged.id,
     ...(ref.baselineKey ? { handle: ref.baselineKey } : {}),
-    name: ref.id,
+    name: converged.name,
   });
-  // Reverse-map deliverable.id → handle so each task identity can
-  // declare its parentHandle without a second pass through the recipe.
-  const deliverableHandleById = new Map<string, string>();
-  for (const [handle, deliverable] of deliverablesByHandle.entries()) {
+  for (const deliverable of converged.deliverables ?? []) {
+    const delHandle = handleFromLabels(deliverable.labels) ?? undefined;
     identities.push({
       scope: "deliverable",
       sitecoreId: deliverable.id,
-      handle,
+      ...(delHandle ? { handle: delHandle } : {}),
       name: deliverable.name,
       ...(ref.baselineKey ? { parentHandle: ref.baselineKey } : {}),
+      parentName: converged.name,
     });
-    deliverableHandleById.set(deliverable.id, handle);
-  }
-  for (const [handle, taskRef] of tasksByHandle.entries()) {
-    identities.push({
-      scope: "task",
-      sitecoreId: taskRef.taskId,
-      handle,
-      ...(deliverableHandleById.get(taskRef.deliverableId)
-        ? { parentHandle: deliverableHandleById.get(taskRef.deliverableId) }
-        : {}),
-    });
+    for (const task of deliverable.tasks ?? []) {
+      const taskHandle = handleFromLabels(task.labels) ?? undefined;
+      identities.push({
+        scope: "task",
+        sitecoreId: task.id,
+        ...(taskHandle ? { handle: taskHandle } : {}),
+        name: task.name,
+        ...(delHandle ? { parentHandle: delHandle } : {}),
+        parentName: deliverable.name,
+      });
+    }
   }
 
   return { applied, skipped, identities };
@@ -804,6 +829,12 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
  * the deliverable matcher uses.
  */
 const resolveTaskId = (deliverable: Deliverable, task: CampaignTask): string => {
+  // Server UUID is the strongest identity — resolve by it first so a
+  // renamed task's UPDATE still targets the right server item.
+  if (task.sitecoreId) {
+    const byId = (deliverable.tasks ?? []).find((candidate) => candidate.id === task.sitecoreId);
+    if (byId) return byId.id;
+  }
   if (task.handle) {
     const handleLabel = `handle:${task.handle}`;
     const byLabel = (deliverable.tasks ?? []).find((candidate) =>

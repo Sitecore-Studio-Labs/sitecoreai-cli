@@ -1,5 +1,416 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.3.0
+
+### Minor Changes
+
+- 00bd58f: `brand sync push`: surface the resolved Sitecore brand-kit UUID via `--identities-out` + a new `"brand-kit"` scope on `ResolvedIdentity`.
+
+  Three coordinated changes so the orchestrator can stamp the real SAI-side brand-kit UUID onto its `brand_kits` row instead of carrying the recipe handle as a placeholder (and breaking downstream campaign pushes that need `brandkit_id`).
+  1. **`ResolvedIdentity.scope`** gains a `"brand-kit"` member. Previously the type-doc said brand-kit applies had nothing to surface ("the kit is identified by the brand UUID the caller already supplied") — but the caller is the orchestrator, and it identifies the kit by its own brand handle, not by the SAI UUID. Without surfacing the UUID, the orchestrator can't link it back.
+  2. **`brandKitKind.apply`** emits a single `"brand-kit"` identity in its `ApplyResult.identities` with the resolved kit UUID (and the kit's display name + the recipe handle, mirroring the campaign/brief identity shape).
+  3. **`scai brand sync push --identities-out <path>`** flag writes the apply outcome's identities as JSON to `<path>`, matching the campaign / brief sync surface. Operators reading the file get `{ identities: [{scope: "brand-kit", id: "<uuid>", name: "<display>", handle: "<recipe>"}] }`.
+
+  No behaviour change when the flag is omitted; brand-kit dry-runs continue to surface no identities. Mirrors the campaign-sync identity flow already wired through the orchestrator's brand-kit-deploy worker.
+
+- 81bd57d: `ops brief list` and `ops campaign list`: add `--lean` flag.
+
+  Under `--lean` (JSON mode only) the list verbs emit a compact, projected envelope carrying only the identity + linkage fields a tenant scan or delete cascade needs:
+  - brief → `{ id, name, status, locale, references }`
+  - campaign → `{ id, name, labels, brandkit_id, status }`
+
+  The heavy bodies that dominate a full record — the brief's `fields` (RichText ProseMirror docs), `tasks`, and `comments`; the project's `deliverables`, `members`, `attachments`, and `context` — are dropped, and the JSON is emitted without two-space pretty-printing. This keeps a `--limit 1000` page small enough that downstream consumers capturing the output to a bounded buffer don't truncate the envelope mid-stream (which surfaced as the orchestrator's "scai ops brief list returned unparseable --json output" strays-scan failure on content-rich tenants).
+
+- 23790c2: `brief delete`: clear `brief.references[]` before issuing the DELETE.
+
+  `runBriefDelete` now PUTs `{references: []}` against the brief immediately before calling `deleteBrief`. The Orchestrate `deleteProject` reverse-view machinery tries to detach `project.briefs[]` entries before completing — and 403s when those briefs have already been deleted without first clearing their references. Doing the unlink at the source (brief side) gives Orchestrate's reverse view a chance to clean up while the brief is still alive, eliminating the dangling-reference state that the project-delete path can't recover from.
+
+  Best-effort: a failure on the unlink step is logged but does not block the delete (the brief still ends up gone — that's the caller's goal; only the downstream project might carry a dangling ref, which is no worse than the prior behaviour). Verified empirically 2026-06-04 that PUT-ing an empty `references` array on a brief with no references is a clean no-op, so the unlink step is safe to apply unconditionally.
+
+  Consumers: the showcase-orchestrater's `brand-delete-mode` (and `story-delete-mode`) cascade now drives this fix automatically — no orchestrator-side changes required to pick it up.
+
+- d9ddc5d: Brief-type schema: accept `type: "Boolean"` field definitions.
+
+  Adds `BooleanFieldSchema` to `BriefFieldSchema`'s discriminated union and the corresponding `BooleanField` type to the API schema. Required to round-trip Sitecore's built-in `SitecoreAIEvaluation` brief type — its `QualifiedBANT` field is `type: "Boolean"`, the only Boolean field observed across the tenant's 11 brief types (verified 2026-06-04). Without this, `BriefTypeRecipeSchema.parse()` rejected the recipe at push time with "failed schema validation".
+
+  The Brief API server-side has always accepted Boolean (proven by `SitecoreAIEvaluation` existing on every tenant); this change unblocks scai's local validation gate.
+
+  Note: Boolean is treated as a Sitecore-internal field type — the SitecoreAI brief-type authoring UI does not currently expose it as a creatable field-type option. Use only when round-tripping types Sitecore owns; don't author new Boolean fields in user-created types unless the UI gains support.
+
+- ef4240b: `brief-type`: three-way merge with baseline classification.
+
+  `briefTypeKind` is upgraded from a straight two-way diff to baseline-aware
+  three-way merge, matching `briefInstanceKind` and `brandKitKind`. The
+  `--conflict-policy` flag (`error` | `recipe-wins` | `cms-wins`) on
+  `scai ops brief sync push --kind brief-type` is now honoured — it was a
+  no-op before because the kind never consulted `ctx.baselineStorage`.
+
+  **`src/brief/recipe/baseline.ts` (new export):** `BriefTypeBaselinePayload`
+  (flat cell map: scalars `name`/`label`/`description`/`icon`/`iconColor` +
+  `fields.<codename>`), `hashBriefTypeCells`, `captureBriefTypeBaselinePayload`,
+  `classifyBriefTypeCells` (per-cell `first-push` / `recipe-change` /
+  `cms-edit` / `conflict` against the previous baseline),
+  `mergeBriefTypeByPolicy` (policy-aware resolution; recipe owns the
+  field-graph — tenant-only fields are not pulled in, matching brand-kit
+  semantics).
+
+  **`briefTypeKind.plan()`**: loads baseline via `ctx.baselineStorage`,
+  classifies each cell, merges per `ctx.pushConflictPolicy`, annotates
+  each `RecipeChange.meta` with `classification` +
+  `perFieldClassification`, surfaces a `policyError` on the lead
+  `stage: "type"` change when `error` policy + conflicts.
+
+  **`briefTypeKind.apply()`**: refuses with `POLICY_DENIED` when the plan
+  carries an unresolved `policyError`. Writes a fresh baseline reflecting
+  the merged (post-policy) state after a successful push. Synthesizes a
+  noop `stage: "type"` change when the diff would otherwise emit none, so
+  a `cms-wins` full-resolution still refreshes the baseline (otherwise
+  the same drift re-classifies as `cms-edit` on the next push —
+  `briefInstanceKind` has this same gap, flagged for a future port-back).
+
+  No `RecipeKind` interface change. The behaviour change is opt-in via
+  `ctx.baselineStorage` — callers without a baseline store get the same
+  two-way diff behaviour they had before.
+
+  43 new unit tests across `tests/unit/brief/recipe/baseline.test.ts` and
+  `tests/unit/brief/recipe/kind.test.ts` cover hashing, the four
+  classifications, all three policies, field add/remove, field-graph
+  ownership, and degradation when `ctx.baselineStorage` is absent.
+
+- 0b1c57e: `campaign sync push`: add `--conflict-policy` flag (mirrors brief sync).
+
+  `scai ops campaign sync push` accepts `--conflict-policy <error | recipe-wins | cms-wins>` and threads it into `ctx.pushConflictPolicy`, identical to `scai ops brief sync push --conflict-policy` (shipped earlier).
+
+  Closes a gap that forced the orchestrator to swallow the field — `campaignKind.plan()` defaults `pushConflictPolicy` to `"error"`, which blocks every cms-edit / conflict cell with `POLICY_DENIED`. Hand-driven CLI use can now pick `"cms-wins"` to preserve Sitecore AI edits or `"recipe-wins"` to clobber; automation flows (e.g. the showcase-orchestrater's `recipe_sync` campaign mode) forward whatever the caller's plan specifies so a story autosync doesn't hard-fail on the first tenant-side edit.
+
+  No `RecipeKind` interface change; behaviour identical to the brief flag.
+
+- 8ae3f3a: campaign: sync field updates at EVERY level (project, deliverable, task)
+
+  scai under-discovered the Orchestrate API: it had no update path for a project
+  or a deliverable (only create/delete), so campaign- and deliverable-level edits
+  could never be pushed, and only tasks updated. Verified against the live tenant
+  and the Sitecore AI Symphony frontend that full-object PUTs exist at all three
+  levels.
+  - Add `updateProject` (`PUT /projects/{id}`) and `updateDeliverable`
+    (`PUT .../deliverables/{id}`); `updateTask` now sends the full task object
+    (incl. `id`) — a partial body was silently ignored by the API.
+  - The diff now emits `update` changes for project- and deliverable-level field
+    drift (date-portion-aware so a bare-date vs datetime reformat isn't perpetual
+    churn). `status` is excluded from the deliverable diff — deliverables have no
+    status field on the wire.
+  - Apply converges each level via its own full-object PUT. Two critical fixes
+    found via end-to-end testing: (1) adopt an existing campaign on ANY match,
+    not only on rename — the old guard spawned a DUPLICATE empty project on a
+    re-push without a stamped sitecoreId (the core "edits don't stick" bug);
+    (2) never overwrite the in-memory project/deliverable tree with the LEAN PUT
+    response, which dropped the inline children and skipped every child update.
+
+  Verified end to end against TestDemo: project description, deliverable
+  funnelTactics, and task dueDate all round-trip. tsc clean; 207 campaign/sync
+  tests pass.
+
+- 3cbb5df: `campaign sync pull`: add `--sitecore-id` for id-first lookup, and reverse-map task `dependencies` back to handles.
+
+  Two coordinated fixes so a campaign round-trip stays lossless when SAI-side edits land via the registry's auto-pull-on-load.
+  1. **`--sitecore-id <uuid>` on `scai ops campaign sync pull`** — when present, `campaignKind.readCurrent` resolves the Orchestrate project by id via `getProject` directly and skips the paged display-name search. Falls back to the legacy name search if the id resolves to nothing (stale UUID survives without permanently blocking pull). Mirrors the push side, which already used `recipe.sitecoreId` as `KindRef.tenantId`. Without this, any rename on either the registry or SAI side surfaced as "Campaign 'X' not found" and the orchestrator's not-found heuristic silently treated the pull as "no-tenant-state" — appearing as if pull did nothing at all.
+  2. **Reverse-map task `dependencies` UUID triples → handles on pull.** `toRecipeTask` previously hardcoded `dependencies: []` because the Orchestrate wire stores deps as `{project_id, project_deliverable_id, task_id}` triples and the recipe shape carries them as handle arrays. The orchestrator's auto-pull then wrote that empty list back to the registry's recipe, wiping every LLM-generated dependency on the first push-pull cycle; the next edit re-pushed empty deps and SAI lost them too. `readCurrent` now builds a `taskId → handle` index from `handle:<x>` labels and projects each dep entry through it; tasks without a handle label are silently dropped from the dep list (can't be addressed by handle on the recipe side).
+
+  No `RecipeKind` interface change. New tests cover `ref.tenantId` direct-load, stale-id fallback to name search, and dep reverse-mapping including the legacy-task drop case.
+
+- d8f0179: `campaign sync`: stamp `handle:<x>` identity labels on task updates, not just creates.
+
+  Two related fixes so a task that gains identity in a re-push actually carries it to the tenant:
+  1. **Diff (`tasksEqual`)**: treats a desired task as "different from current" when the recipe carries a `handle` AND the current task's labels lack `handle:<handle>`. Without this, a recipe that added identity via the orchestrator's lazy backfill (or a hand-edit) would diff as noop and stop short of writing — the tenant would stay unidentified, so the next rename on Sitecore AI would create a duplicate instead of matching back.
+  2. **Apply (UPDATE branch)**: writes `[...task.labels, handle:<handle>]` to the wire, mirroring what the CREATE branch already does. The UPDATE path used to push the raw operator-authored labels directly, dropping the recipe's identity on every PUT.
+
+  Net effect: a story whose tasks were authored before per-row handle minting (LLM-generated or seeded campaigns) can re-establish wire identity via a no-op push. Subsequent tenant-side renames then round-trip cleanly instead of surfacing as duplicates.
+
+  No schema changes; deliverables are unaffected (no UPDATE path on that resource — separate follow-up).
+
+- 3f5c7fe: `recipe`: drop three registry-compat shims (breaking).
+
+  Three shims that 0.2.5 added for the Sitecore Showcase Design System
+  have been removed. The registry recipes have been authoring against the
+  canonical shape for a while, so none of the shim paths were exercised
+  in practice — but anyone who was relying on them needs to migrate.
+
+  **Removed:**
+  - `loadRecipe` no longer accepts `kind: "parameters-template"` as an
+    alias for `"design-parameters-template"`. Recipes must spell the kind
+    canonically. (Was added in 0.2.5; never used by the registry.)
+  - `resolveSitecoreType` no longer defaults `shape: "enum"` fields with
+    inline `values: [...]` and no `enumHandle` to `type: "droplist"`.
+    Authors must declare `sitecore.type: "droplist"` explicitly. (The
+    inline-Droplink rejection — "neither droplist nor enumHandle" — that
+    was already in `resolveFieldSource` is the new behavior.)
+  - `ComponentTemplateRecipe` no longer combines an external
+    `parameters: { handle }` with `dynamicPlaceholders: true`. The
+    per-recipe wrapper template synthesis that 0.2.5 added has been
+    removed; the validator now surfaces this combination as
+    `INPUT_INVALID` with a clear remediation hint. Inline the params via
+    `params:` (the `_IDynamicPlaceholder` base chains onto the
+    synthesised per-recipe template directly) or drop
+    `dynamicPlaceholders` from the consumer.
+
+  **Migration:**
+  - `kind: "parameters-template"` → `kind: "design-parameters-template"`
+  - inline-values enum params without `sitecore.type` → add `sitecore.type: "droplist"`
+  - external `parameters: { handle }` + `dynamicPlaceholders: true` → inline `params: [...]` on the consumer
+
+  Recipes using only canonical shapes (the registry's recipes today) are
+  unaffected.
+
+- 0370043: `recipe`: unify `Layout` shape across Partial / Page / PageDesign and inline scoped datasource fields.
+
+  Symmetric with the registry's 2026-06-06 reconciliation: scai now models the same `Layout` shape regardless of carrier recipe kind, and a scoped placement carries its materialised `<page>/Data/<slot>` field values inline.
+
+  **`ComponentPlacement.datasourceRef.scoped.fields: Record<string, unknown>`** (new, defaults to `{}`).
+
+  The slot item the compiler materialises under `<page>/Data/<slot>` now gets its field values from the same placement that names the slot, rather than from a sibling content-item recipe. `compilePageRecipe` reads the placement's `fields` and emits one `SetField` per key against the slot item's refKey, scoped to the resolved datasource template for fieldId derivation. Pull-side `placementFromParsed` carries `fields: {}` on scoped placements (round-trip of the materialised slot-item field values is not modelled here — `readCurrent` doesn't reconstruct them).
+
+  **`PageRecipeSchema.itemPath?: string`** (new optional).
+
+  Explicit content-tree path override that must match `/^\/sitecore\/content\/\{site\}\/.+/`. `{site}` is the only supported placeholder and is replaced with the active site name at compile time so the same recipe installs cleanly across sites. The path's parent directory becomes the page's parent ref; the leaf segment supersedes `name` for path emission. `compilePageRecipe` falls back to `joinPath(context.pagesRoot, name)` when `itemPath` is omitted, so the legacy behavior is preserved — `context.pagesRoot` is now required only on the fallback path.
+
+  **`PageRecipeSchema.fields: Record<string, unknown>`** (loosened from `Record<string, ContentFieldValueSchema>`).
+
+  Page-level fields now accept both the scai-native discriminated `ContentFieldValue` shape and the registry's flat shape — plain strings (text), booleans, numbers, `{src, alt, width?, height?}` for images, `{href, text?, target?, title?}` for external links. A new `normalizeFieldValue` helper in `compile/page.ts` maps the flat shape into `ContentFieldValue` and then delegates to the shared `encodeContentFieldValue` for the Sitecore wire form. `extractRecipeDependencies` and `validateRecipeSet` defensively sniff `shape` on the unknown-typed values so only scai-native shapes participate in cross-recipe handle ref checks.
+
+  The registry's `page.recipe.ts` / `homepage-demo.recipe.ts` round-trip end-to-end against this shape without needing a translation layer on the orchestrator's side.
+
+- 47d69f1: `sync`, `brief`, `campaign`: registry-tracked Sitecore UUID identity, URL-safe baseline keys, and a `--identities-out` write-back surface.
+
+  Three related changes that work together to let a registry-backed caller
+  (the showcase-orchestrater) skip scai's marker-in-name / handle-label
+  fallbacks and read tenant entities by id directly.
+
+  **`KindRef.baselineKey?: string`** (new optional field on the shared
+  sync interface).
+
+  Lets the caller pass a stable, URL-safe key for remote baseline storage
+  that's decoupled from `ref.id`. `ref.id` keeps the lookup semantics each
+  kind already had — full marked display name for briefs, display name +
+  labels for campaigns. `ref.baselineKey` rides through to the third path
+  segment of the `HttpBaselineStorage` URL (`/<env>/<key>`), so
+  URL-significant characters in display names (`&`, `?`, `#`, `%`,
+  whitespace) no longer crash the baseline GET/PUT regex on the orchestrator
+  end. The `campaigns/recipe/kind.ts` and `brief/recipe/instance-kind.ts`
+  baseline calls fall back to `ref.id` when `baselineKey` is absent, so
+  nothing changes for CLI invocations that don't supply it.
+
+  **`KindRef.tenantId?: string`** (new optional field).
+
+  Lets a registry-backed caller pin the tenant resource UUID
+  authoritatively. When present, the brief + campaign kinds' apply paths
+  prefer `getBrief(ref.tenantId)` / `getProject(ref.tenantId)` over the
+  baseline-stored tenant id, which in turn beats the marker-in-name /
+  label-search fallback. First-push behaviour is unchanged (the caller
+  doesn't have a UUID yet); subsequent pushes resolve in O(1) instead of
+  paging the tenant list.
+
+  **`CampaignRecipeSchema.handle`, `CampaignRecipeSchema.sitecoreId`,
+  `BriefInstanceRecipeSchema.handle`, `BriefInstanceRecipeSchema.sitecoreId`,
+  `CampaignDeliverableSchema.sitecoreId`, `CampaignTaskSchema.sitecoreId`**
+  (new optional fields).
+
+  The sync commands (`commands/{brief,campaign}/sync.ts`) and the MCP
+  tools (`mcp/tools/{brief,campaign}-recipe.ts`) lift `recipe.handle` into
+  `KindRef.baselineKey` and `recipe.sitecoreId` into `KindRef.tenantId`.
+  Deliverables and tasks gain their own `sitecoreId` on the wire (round-
+  tripped through the campaign apply outcome) so callers can persist UUIDs
+  for every nested entity, not just the top-level project.
+
+  **`ApplyResult.identities?: ResolvedIdentity[]`** (new optional field
+  on the shared `ApplyResult`; `ResolvedIdentity` exported from `@/sync`).
+
+  Surfaces every Sitecore UUID scai resolved during apply, scoped by
+  kind. The brief kind emits one identity per pushed brief. The campaign
+  kind emits one for the project plus one per handled deliverable and per
+  handled task, with `parentHandle` for nesting. Callers persist these
+  back onto their own model so subsequent pushes ride the by-id path.
+
+  **`scai ops brief sync push --identities-out <path>`** and
+  **`scai ops campaign sync push --identities-out <path>`** (new CLI flag).
+
+  Writes the apply outcome's `identities` to a JSON file at the given
+  path (`{ identities: [...] }`). The orchestrator passes a temp path,
+  reads the file after a successful push, and stamps the UUIDs into its
+  own recipe row. CLI-only invocations can leave the flag unset.
+
+  Composes cleanly with the brief-type three-way merge already shipped
+  on `briefTypeKind` and the brief / campaign three-way merges in
+  `briefInstanceKind` / `campaignKind`. No `RecipeKind` interface
+  breakage — every change is opt-in via the new fields.
+
+- aa0fc1e: SiteTemplate compile is now lossless — `compileSiteTemplateRecipe` writes
+  every field the schema accepts. Adds Module synthesis + picker SetField
+  ops (project paths, action templates, setup actions, picker UX fields),
+  a new MediaUpload IR op for thumbnails, and DictionaryRecipe with
+  `siteRole: shared` + cross-recipe shared-site validation. Live-verified
+  end-to-end against the sandbox tenant with integration coverage and
+  cleanup sweeps.
+- 8649ace: sync: emit a typed `--json` contract for push/pull/diff + add `scai capabilities`
+
+  Recipe sync (brand-kit, brief, brief-type, campaign) previously flattened its
+  already-typed plan / conflict / identity data to human text at the CLI boundary,
+  forcing the orchestrator to regex stdout, read resolved Sitecore UUIDs from a
+  side-channel file (`--identities-out`), and gate features behind `SCAI_HAS_*`
+  env booleans. This adds a single versioned contract
+  (`src/sync/contract.ts`, `SYNC_CONTRACT_VERSION = "1"`):
+  - `brand|brief|campaign sync push/pull/diff --json` now emit one `ScaiEnvelope`
+    whose `data` is a typed `SyncResult` — the plan with per-cell `classification`,
+    the resolved three-way-merge `conflicts`, and the resolved Sitecore
+    `identities`. Under `--json` the entire stdout is the envelope, so consumers
+    `JSON.parse` it instead of scraping prose.
+  - A pull that finds nothing on the tenant now emits `meta.found:false` (exit 0)
+    instead of throwing, so callers stop regexing `/not found/`.
+  - Three-way-merge `POLICY_DENIED` errors now carry structured
+    `conflicts: [{ path, classification }]` (in addition to the existing
+    `details` strings).
+  - New top-level `scai capabilities --json` handshake (contract version +
+    advertised `features` + `kinds` + conflict policies) so an orchestrator can
+    read the capability set once and gate on it, replacing the scatter of
+    `SCAI_HAS_*` env probes.
+
+  `--identities-out` is retained as a back-compat side-channel. The merge engine
+  and per-kind logic are unchanged — this is a serialization-boundary change.
+
+- 3956779: Add `variant` recipe kind — brand-scoped sidecar variants for canonical renderings.
+
+  Implements the scai side of the `VariantRecipe` contract the registry schema defined. A `VariantRecipe` is a standalone recipe that adds **one** new variant to an existing rendering without mutating the canonical — schema-level enforcement of "recipe is sacred." It carries the canonical's handle + a PascalCase variant name + the TSX source for the head-repo sidecar file.
+
+  `compileVariantRecipe` emits exactly two Sitecore writes: the per-rendering `HEADLESS_VARIANTS` folder (idempotent — converges on the same folder the canonical's inline-variant emitter uses) and the `VARIANT_DEFINITION` item at `<headlessVariantsRoot>/<targetRendering.name>/<name>`. The tree is flat — section-grouping intermediaries break Pages chrome's two-level folder walk (verified live tenant 2026-05-31, see `emitVariants` in `component-template.ts`).
+
+  The `content` field on the recipe is **not** consumed by scai. It carries the TSX source through to the install descriptor / head-repo file-drop pipeline that writes the sidecar at `<canonical-dir>/<canonical-prefix>.<kebab(name)>.tsx`, where the Sitecore Content SDK's component-map generator (`prepareComponentsForMap`) auto-groups it with the canonical under one map entry. Keeping `content` on the recipe means one shape covers the orchestrator DB row, the install descriptor, and this recipe.
+
+  Wired into `compileRecipeSet` dispatch + the `compileRecipe` catch-all, with rank 1 (after rank-0 component templates so the topo sort runs the variant after its canonical when both happen to be in the same set) and `composition-structure` policy (`CreateAndUpdate` — re-pushes can update the variant's displayName; the canonical is untouched by the op set this kind emits).
+
+  11 unit tests cover IR shape, the flat-tree invariant, deterministic ids across compiles, the content-not-emitted contract, the `headlessVariantsRoot`-required behavior, and dispatch through the public `compileRecipe` entry point.
+
+### Patch Changes
+
+- c507fb1: Fix `brand sync push` corrupting brand-kit fields by writing the wrong value shape.
+
+  Each recipe field value was written to Sitecore raw, ignoring the live field's `type`. The recipe value union is permissive (`string | object-array`), so an LLM-generated recipe can hand a plain string to a `richArray` field ("Tone scenarios", "Image style scenarios") or an object-array to a `text` field. Writing the mismatched shape corrupts the field — the Sitecore AI app then maps over a string (or renders an object as text) and the whole section page throws ("Tone of Voice / Image Style pages are broken").
+
+  `indexFields` already reads each field's `type` from the v2 fields API but dropped it. Thread it into `FieldTarget` and coerce in `toApiValue`:
+  - `text` → newline-joined string (flattens object-arrays)
+  - `array` → `[{ name }]`
+  - `richArray` → `[{ name, tags?, restrictions? }]`
+
+  A stray string is wrapped as a single entry; off-schema entries normalise to at least carry `name`. Unknown type (older API response without the discriminator) falls back to the legacy passthrough. Adds coercion tests for string → richArray wrap and object-array → text flatten.
+
+- 7928a01: Fix `brand sync push` aborting on phantom three-way-merge conflicts.
+
+  `hashBrandCells` emitted `kit.description` and `kit.industry` cells, but those are Sitecore-owned kit metadata — written once at `createBrandKit` time and never by the converge loop. `readCurrent` always populates them from the live kit, while a pushed recipe omits them (the registry renders them read-only). So `desired` (undefined) perpetually diverged from `current` (live value): the planner classified both as a `cms-edit` on every push, and under `--conflict-policy error` it refused before any writes — breaking push entirely for otherwise-unchanged content. `cms-wins`/`recipe-wins` masked it; `error` (the registry's manual "Sync to Sitecore AI" default) exposed it. Pull has no merge gate, so pull kept working while push failed.
+
+  Omit `description`/`industry` from `hashBrandCells`, exactly as `documents` is omitted — they are not a write-back surface, so they have no place in the diff. Adds a regression test asserting an `error`-policy push is not blocked when only Sitecore-owned metadata differs.
+
+- b3a2b83: Repair non-canonical `richArray` brand-kit fields on sync (Tone of Voice / Image Style).
+
+  The earlier fix stopped scai from writing scenario entries without `tags`/`restrictions`, but only on an actual write — kits written by an older scai still hold the broken `[{name}]` shape, and since the recipe value equals the broken live value the field diffs as a no-op, so a normal re-sync never rewrites it and the Sitecore section render keeps crashing on `entry.tags.map(undefined)`. `plan` now detects any live `richArray` field whose entries lack `tags`/`restrictions` and force-emits an `update`, so the next sync rewrites the canonical shape (idempotent once repaired). Fixes broken Tone of Voice / Image Style pages on existing brands via a normal re-sync.
+
+- fce345e: Repair three brand-kit sections that were broken in the Sitecore AI app.
+
+  **Tone of Voice / Image Style** (`richArray` scenarios): scai wrote scenario entries as bare `{name}`, dropping empty `tags`/`restrictions`. The Sitecore AI section page renders each entry with an unguarded `entry.tags.map(...)`, so a missing `tags` threw `Cannot read properties of undefined (reading 'map')` and the whole page failed to load. `toObjectArrayValue` now always emits `tags: []` and `restrictions: ""` for `richArray` entries.
+
+  **Glossary terms**: each term is a _field_ the enrichment pipeline never creates, so the section stayed empty and term changes were skipped (no field id to PATCH). The Brand Management API exposes `POST .../sections/{id}/fields` (`create_brand_kit_section_field`) — it was just never wrapped. Adds `createBrandKitSectionField` and, in `apply`, creates the field for a glossary-shaped change (name = term, type = `array`, value = locale rows) instead of skipping. Also fixes the `array` coercion that flattened glossary rows `{term, locale, displayName}` to `{name}`, corrupting existing glossary fields.
+
+- 0390b2c: Fix `brand sync push` still aborting on phantom conflicts against pre-existing baselines.
+
+  The previous fix stopped emitting `kit.description`/`kit.industry` cells, but baselines already stored (e.g. in the orchestrator DB) were captured under the old hash and still carry them. `classifyCellHashMaps` unions in baseline keys, so against a stale baseline those retired cells classified as a `conflict` (desired absent, current absent, baseline value — both sides "moved off baseline") and `--conflict-policy error` refused the push. Existing brands therefore stayed broken until re-baselined.
+
+  Strip the retired `kit.*` cells from a baseline before classification so a stale baseline behaves like a freshly-captured one — no re-baseline required. Scoped to the brand kind; the shared `classifyHashes` both-moved-is-conflict decision is left intact. Adds a regression test.
+
+- 913019f: campaign: pull resolves a renamed campaign by its `handle:` label
+
+  Campaign pull located the tenant project by exact display name (or a stamped
+  `sitecoreId`) only — it ignored the `handle:`/`story:` identity labels the
+  push already stamps. So a campaign whose name drifted, or one that never got a
+  `sitecoreId` stamped (e.g. its first push failed), silently failed to pull:
+  `findProjectByName` returned nothing and the orchestrator left the recipe
+  unchanged. Briefs never had this problem because they pin identity with a
+  name-embedded marker.
+  - `ops campaign sync pull` gains `--handle <handle>`; when set, `readCurrent`
+    builds an identity-label hint and matches the project by its `handle:` label.
+  - `findProjectByName` now matches by the `handle:` label ALONE (it's unique per
+    campaign), or by both `story:` + `handle:` when story is also present, before
+    falling back to exact-name. This mirrors how briefs match by their marker, so
+    a renamed campaign resolves on pull without a stamped `sitecoreId`.
+  - New `campaign-pull-handle` capability token so the orchestrator only passes
+    `--handle` to a binary that understands it.
+
+- 2eae618: campaign: re-stamp identity labels on an adopted project so pull can find it
+
+  A campaign project created before label-stamping (or whose first push failed to
+  stamp `story:`/`handle:` markers) was unfindable on pull (handle lookup) and
+  matchable only by a stamped id. When apply ADOPTS such a project it now
+  re-stamps the missing identity labels as part of the full-object
+  `PUT /projects/{id}` (verified supported) — so the next pull resolves it by
+  handle. Rides the same update path as project field convergence.
+
+- 8e18e0c: campaign: match deliverables/tasks by stable identity, not just name
+
+  Renaming a deliverable or task in a campaign recipe created a duplicate on Sitecore instead of updating in place — the diff/merge/apply all keyed on the display name, so a rename read as delete-old + add-new. Now they match on `sitecoreId` → `handle` → `name`: the merge stops stripping identity, pull surfaces server UUIDs as `sitecoreId` so the id round-trips, apply resolves targets by id first, and every deliverable/task emits an identity (handle-less and unchanged included) carrying `parentName` so callers can stamp the id back even when a parent has no handle.
+
+- 3f5c7fe: `cli`: drain stderr alongside stdout on force-exit.
+
+  The force-exit path drained only stdout before calling `process.exit`.
+  Parent processes that captured stderr — the orchestrator's recipe-sync
+  workers do, to surface scai exit details — could lose the trailing log
+  line, most visibly the error message the `runCli` catch block prints
+  right before exit. Adding a symmetric stderr drain after the stdout
+  drain makes both streams flush before the process tears down.
+
+  No behavior change for callers that consume stdout only or that read
+  both streams via line buffering.
+
+- d58f36d: Resolve whole-entity deletion by conflict policy, consistently across all kinds.
+
+  Every kind's `plan()` hardcoded `if (current === null) return diff(desired, null)` — an unconditional recreate when the entity is gone on the tenant, ignoring both the baseline and the push conflict policy. So a kit/brief/campaign deleted on Sitecore silently reappeared on the next background sync, and the behaviour diverged from how field-level cms-edits are handled (and between brand and stories).
+
+  A missing entity with a stored baseline is the extreme case of a cms-edit (the tenant changed it from exists→gone), so it's now resolved by the same policy via one shared helper `resolveMissingCurrentPlan`: no baseline → first-push recreate; `recipe-wins` → recreate; `cms-wins` → honor the deletion (no-op, don't resurrect); `error` → `POLICY_DENIED` into the same resolve flow as a field conflict ("Use my changes" → recipe-wins recreate, "Use Sitecore's changes" → cms-wins accept). Wired into brand-kit, brief-type, brief, and campaign so all four behave identically. No UI changes needed.
+
+- 42027ab: Recreate a deleted-on-tenant entity on explicit resync instead of blocking.
+
+  `resolveMissingCurrentPlan` previously threw `POLICY_DENIED` under the `error` policy when the whole entity was gone on the tenant, forcing a "Use my changes" resolve click. A missing entity isn't a field-level conflict — an explicit resync means "put it back". It now recreates under every policy except `cms-wins`; `cms-wins` (background autosave) still honors the deletion (no-op) so an unrelated edit never silently resurrects a deliberately-deleted entity.
+
+- 8bd9383: Fix recipe-push abort when ≥2 component recipes share a site-scoped datasource subfolder.
+
+  The shared Data Folder coalescer (`buildSharedDataFoldersAggregate`) emitted the SHARED `<Subfolder> Data Folder` template AND its Insert Options `SetField` in a single synthetic IR placed AFTER the per-recipe IRs. But each recipe's `site-data-folder:<site>:<subfolder>` folder ITEM is created with `templateOf = sharedDataFolderTemplateId(...)`, so at apply time Authoring GraphQL aborted with "Cannot find a template with the `<id>` id" — the shared template hadn't been created yet. That rolled back the owning recipe (the alphabetically-first contributor), which also owns the section's Presentation Parameters bucket it created, cascading "item not found" into every sibling recipe sharing the section.
+
+  Split the aggregate so its two halves sit on opposite sides of the per-recipe IRs:
+  - Template creation (CreateItem template + SV + base-templates + SetStandardValues) is **prepended** to the IR list — `__shared-data-folders__` now runs before any folder ITEM that references the shared template via `templateOf`.
+  - Insert Options `SetField` moves to a new `__shared-data-folder-insert-options__` IR **appended** after the per-recipe IRs, because its `ref-recipe-list` references each contributing recipe's datasource template (created by those recipes).
+
+  Manifests as a real failure in the registry's cards-and-lists families (e.g. `Articles`, shared by `article-card` + `articles-list-grid` + `articles-carousel`). Adds a regression test asserting the shared-template IR precedes every `site-data-folder:` folder-item IR and the Insert Options IR follows them.
+
+- 3f5c7fe: `sync` + `recipe/runtime/baseline`: two internal seams for multi-kind
+  baseline + per-cell-merge sharing.
+
+  **`src/sync/merge-cells.ts` (new export):** `classifyCellHashMaps` +
+  `resolveCellByPolicy` — generic per-cell three-way classifier + push
+  policy resolver, factored out of the brand and campaign baseline
+  modules (which each carried character-identical copies). Brand and
+  campaign now delegate; brief stays standalone (single-cell helper, no
+  shape to share).
+
+  **`adaptSyncBaselineStorage(sync) -> BaselineStorage` (new export):**
+  adapter that pins `kind: "content-recipe"` so a multi-kind sync
+  `BaselineStorage` (e.g. `HttpBaselineStorage`) can back the
+  content-recipe 2-arg surface. One orchestrator-side store can now
+  serve brand / brief / campaign / story AND content recipes without
+  recipe-side callsite changes. `CONTENT_RECIPE_BASELINE_KIND` is
+  exported as the stable discriminator (serialised into orchestrator
+  URLs / column values).
+
+  No behavior change for existing consumers.
+
+- 008c730: Suppress the `⚠ … unstable surface` banner for `--json` / `--format json` output.
+
+  `markUnstable`'s preAction hook wrote the banner to stderr on every unstable-surface invocation (`scai ops brief`, `ops campaign`, `brand`, `agents`). stdout JSON was clean, but a consumer capturing the merged stdout+stderr stream — the orchestrator's spawn, or a `2>&1 | jq` pipe — got the banner prepended and couldn't parse the JSON. The banner is now suppressed for machine-readable output, exactly as it already honors `--quiet`; the human path is unchanged.
+
 ## 0.3.0-canary.24
 
 ### Minor Changes

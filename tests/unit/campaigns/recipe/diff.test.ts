@@ -89,11 +89,27 @@ describe("diffCampaign — campaign present", () => {
     ],
   });
 
-  it("never emits a project change for an existing campaign", () => {
+  it("emits a project UPDATE when an existing campaign's fields drift", () => {
     const plan = diffCampaign(
       recipe({
         name: "Spring Launch",
         description: "changed metadata",
+        deliverables: [{ name: "Landing page", tasks: [{ name: "Draft copy" }] }],
+      }),
+      current
+    );
+    const projectChange = plan.changes.find((c) => c.meta?.stage === "project");
+    expect(projectChange?.kind).toBe("update");
+    expect(projectChange?.meta).toMatchObject({
+      update: true,
+      description: "changed metadata",
+    });
+  });
+
+  it("emits NO project change when an existing campaign's fields are unchanged", () => {
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
         deliverables: [{ name: "Landing page", tasks: [{ name: "Draft copy" }] }],
       }),
       current

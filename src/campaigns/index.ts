@@ -42,6 +42,7 @@ export {
   getProject,
   createProject,
   updateProjectLabels,
+  updateProject,
   deleteProject,
   addProjectMember,
   type ListProjectsQuery,
@@ -51,6 +52,7 @@ export {
 
 export {
   createDeliverable,
+  updateDeliverable,
   deleteDeliverable,
   type CreateDeliverableInput,
 } from "./api/deliverables";

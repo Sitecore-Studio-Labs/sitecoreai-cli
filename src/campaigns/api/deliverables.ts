@@ -66,6 +66,29 @@ export const createDeliverable = (
   );
 
 /**
+ * Full-replace a deliverable
+ * (`PUT /api/orchestrate/v1/projects/{projectId}/deliverables/{deliverableId}`).
+ *
+ * VERIFIED 2026-06-10 against TestDemo and the Sitecore AI Symphony frontend
+ * (`actions/deliverables.ts updateDeliverable`): takes the WHOLE deliverable
+ * object and requires `project_id`, `name`, `due_date`. Does NOT cascade to
+ * tasks. Callers pass the current wire object spread with field overrides so
+ * server-managed fields survive.
+ */
+export const updateDeliverable = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  deliverableId: string,
+  body: Record<string, unknown>
+): Promise<Deliverable> =>
+  campaignRequest<Deliverable>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}` +
+      `/deliverables/${encodeURIComponent(deliverableId)}`,
+    { method: "PUT", body }
+  );
+
+/**
  * Delete a deliverable
  * (`DELETE /api/orchestrate/v1/projects/{projectId}/deliverables/{deliverableId}`).
  * Returns void — a 204 is expected on success.

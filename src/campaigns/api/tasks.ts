@@ -96,6 +96,10 @@ export type UpdateTaskInput = {
   labels?: string[];
   dependencies?: unknown[];
   archived?: boolean;
+  // The PUT is a full-replace — pass the rest of the wire task through
+  // (id, org_id, start_date, …) so the server has the complete object;
+  // a cherry-picked partial body is silently ignored.
+  [key: string]: unknown;
 };
 
 /** Full-replacement update of a task (PUT). Returns the persisted record. */
@@ -112,6 +116,11 @@ export const updateTask = (
     {
       method: "PUT",
       body: {
+        // Pass the full wire task through (id, org_id, start_date, …); the
+        // PUT is a full-replace and a partial body is silently ignored
+        // (verified against TestDemo 2026-06-10).
+        ...(input as Record<string, unknown>),
+        id: taskId,
         project_id: projectId,
         project_deliverable_id: deliverableId,
         name: input.name,

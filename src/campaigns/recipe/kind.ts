@@ -25,7 +25,8 @@ import {
   createTask,
   getProject,
   listProjects,
-  updateProjectLabels,
+  updateDeliverable,
+  updateProject,
   updateTask,
   type CampaignApiClientOptions,
   type Deliverable,
@@ -376,7 +377,14 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     }
     if (!adopted) {
       const labelMatch = await findProjectByName(client, name, desiredLabels);
-      if (labelMatch && labelMatch.name !== name) {
+      // Adopt whenever an existing project matches (by identity label OR
+      // exact name) — NOT only on a rename. The old `name !== name` guard
+      // meant a re-push of an UNCHANGED campaign that lacks a stamped
+      // sitecoreId fell through to createProject and spawned a DUPLICATE
+      // empty project — the root cause of "campaign edits don't stick":
+      // every update landed on a fresh duplicate while the real campaign
+      // (with the deliverables) was orphaned.
+      if (labelMatch) {
         adopted = await getProject(client, labelMatch.id);
       }
     }
@@ -385,28 +393,65 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         `Adopting existing campaign "${adopted.name}" (id ${adopted.id}) — recipe name "${name}" was a rename or recipe-handle drift.`
       );
       project = adopted;
-      // Heal identity labels. A project adopted by id/baseline may predate
-      // label-stamping, or its first push may have failed to stamp the
-      // `story:`/`handle:` markers — which leaves it unfindable on pull
-      // (handle lookup) and matchable only by a stamped id. Re-stamp the
-      // missing identity labels so the next pull resolves it by handle.
-      // Best-effort: PUT on `/projects/{id}` is unverified on the tenant,
-      // so a failure is logged and skipped, never fatal.
+      // The campaign already exists. Converge it onto the recipe with ONE
+      // full-object `PUT /projects/{id}` (verified supported 2026-06-10),
+      // covering two things:
+      //   - identity labels (`story:`/`handle:`) an early push may never
+      //     have stamped — without them pull can't resolve it by handle;
+      //   - project-level field drift (name/description/status/dates) when
+      //     the diff emitted an `update` change.
+      // Spread the wire object first so server-managed fields (id, org_id,
+      // members, timestamps) survive; override only what the recipe owns.
       const identityLabels = desiredLabels.filter(
         (l) => l.startsWith("story:") || l.startsWith("handle:")
       );
       const existingLabels = adopted.labels ?? [];
-      const missing = identityLabels.filter((l) => !existingLabels.includes(l));
-      if (missing.length > 0) {
-        const merged = Array.from(new Set([...existingLabels, ...identityLabels]));
+      const missingLabels = identityLabels.filter((l) => !existingLabels.includes(l));
+      const fieldUpdate = projectChange.meta?.update === true;
+      if (missingLabels.length > 0 || fieldUpdate) {
+        const m = projectChange.meta ?? {};
+        // Full-object PUT — spread the WHOLE wire project (incl. the inline
+        // `deliverables` view) so the API preserves the child associations;
+        // omitting them makes a full-replace clear them. Override only the
+        // recipe-owned scalar fields. Dates are special: the recipe authors
+        // a bare `YYYY-MM-DD` while the wire stores a datetime, so override
+        // a date ONLY when its day actually changed — pushing a bare date
+        // that merely reformats the same day corrupts the PUT and drops the
+        // deliverables.
+        const dayChanged = (recipeVal: unknown, wireVal: unknown): boolean =>
+          String(recipeVal ?? "").slice(0, 10) !== String(wireVal ?? "").slice(0, 10);
+        const body: Record<string, unknown> = {
+          ...(adopted as unknown as Record<string, unknown>),
+          labels: Array.from(new Set([...existingLabels, ...desiredLabels])),
+        };
+        if (fieldUpdate) {
+          if (m.name !== undefined) body.name = m.name;
+          if (m.description !== undefined) body.description = m.description;
+          if (m.status !== undefined) body.status = m.status;
+          if (m.startDate !== undefined && dayChanged(m.startDate, adopted.start_date))
+            body.start_date = m.startDate;
+          if (m.dueDate !== undefined && dayChanged(m.dueDate, adopted.due_date))
+            body.due_date = m.dueDate;
+          if (m.brandKitId !== undefined) body.brandkit_id = m.brandKitId;
+        }
         try {
-          await updateProjectLabels(client, adopted.id, merged);
+          // Do NOT reassign `project` from the PUT response — it returns a
+          // LEAN project with no inline `deliverables`, which would wipe the
+          // in-memory tree the deliverable/task matching below depends on
+          // (findExistingDeliverable would then miss and skip every child
+          // update). Keep the full `adopted` tree; the PUT's side effect on
+          // the tenant is all we need.
+          await updateProject(client, adopted.id, body);
           ctx.logger?.info(
-            `Re-stamped ${missing.length} identity label(s) on campaign "${adopted.name}" so pull can resolve it by handle.`
+            `Updated campaign "${adopted.name}"${fieldUpdate ? " fields" : ""}${
+              missingLabels.length > 0 ? ` (+${missingLabels.length} identity label(s))` : ""
+            }.`
           );
         } catch (error) {
-          ctx.logger?.info(
-            `Could not re-stamp identity labels on "${adopted.name}" (PUT /projects may be unsupported on this tenant): ${error instanceof Error ? error.message : String(error)}`
+          ctx.logger?.warn?.(
+            `Could not update project "${adopted.name}" via PUT /projects: ${
+              error instanceof Error ? error.message : String(error)
+            }`
           );
         }
       }
@@ -514,12 +559,70 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // Create missing deliverables. Their tasks are created in the task
   // pass below, which resolves against this freshly-populated index.
   for (const change of deliverableChanges) {
-    if (change.kind !== "create") {
+    const deliverable = change.meta?.deliverable as CampaignDeliverable | undefined;
+    if (!deliverable) {
       skipped.push(change);
       continue;
     }
-    const deliverable = change.meta?.deliverable as CampaignDeliverable | undefined;
-    if (!deliverable) {
+
+    // Update branch: an existing deliverable whose own fields drifted.
+    // Full-object PUT — spread the wire deliverable so server-managed
+    // fields survive, override the recipe-owned ones.
+    if (change.kind === "update") {
+      const existing = findExistingDeliverable(deliverable);
+      if (!existing) {
+        skipped.push(change);
+        continue;
+      }
+      const labelsWithHandle = deliverable.handle
+        ? [
+            ...(deliverable.labels ?? []).filter((l) => !l.startsWith("handle:")),
+            `handle:${deliverable.handle}`,
+          ]
+        : (deliverable.labels ?? []);
+      // Full-object PUT — spread the whole wire deliverable (incl. its
+      // inline `tasks` view) so the API preserves the task associations;
+      // omitting them clears them. Override only the deliverable's own
+      // scalars; guard the date so a bare reformat of the same day doesn't
+      // corrupt the PUT and drop the tasks (same trap as the project PUT).
+      const delDayChanged = (r: unknown, w: unknown): boolean =>
+        String(r ?? "").slice(0, 10) !== String(w ?? "").slice(0, 10);
+      const { tasks: _omitDelTasks, ...deliverableWire } = existing as unknown as Record<
+        string,
+        unknown
+      >;
+      const delBody: Record<string, unknown> = {
+        ...deliverableWire,
+        name: deliverable.name,
+        status: deliverable.status,
+        funnel_stage: deliverable.funnelStage,
+        funnel_tactics: deliverable.funnelTactics ?? [],
+        labels: labelsWithHandle,
+      };
+      if (delDayChanged(deliverable.dueDate, (existing as { due_date?: string }).due_date))
+        delBody.due_date = deliverable.dueDate;
+      try {
+        await updateDeliverable(client, project.id, existing.id, delBody);
+        // Re-index under the (possibly renamed) recipe name + handle, but
+        // keep `existing` (which carries the inline `tasks`) as the value —
+        // NOT the lean PUT response — so the task loop below can still
+        // resolve task ids against this deliverable.
+        deliverablesByName.set(deliverable.name, existing);
+        if (deliverable.handle) deliverablesByHandle.set(deliverable.handle, existing);
+        ctx.logger?.info(`Updated deliverable "${deliverable.name}".`);
+        applied.push(change);
+      } catch (error) {
+        ctx.logger?.warn?.(
+          `Failed to update deliverable "${deliverable.name}": ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        skipped.push(change);
+      }
+      continue;
+    }
+
+    if (change.kind !== "create") {
       skipped.push(change);
       continue;
     }
@@ -701,9 +804,16 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       const labelsWithHandle = task.handle
         ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
         : (task.labels ?? []);
+      // Full-replace PUT — spread the current wire task so server-managed
+      // fields (id, org_id, start_date, …) are present, then override the
+      // recipe-owned fields. A partial body is silently ignored.
+      const wireTask = (parent.tasks ?? []).find((t) => t.id === taskId) as
+        | Record<string, unknown>
+        | undefined;
       await updateTask(client, project.id, parent.id, taskId, {
+        ...(wireTask ?? {}),
         name: task.name,
-        due_date: task.dueDate,
+        due_date: task.dueDate ?? (wireTask?.due_date as string | undefined),
         status: task.status,
         priority: task.priority ?? null,
         description: task.description ?? null,

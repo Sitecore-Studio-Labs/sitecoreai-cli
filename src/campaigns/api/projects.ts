@@ -106,6 +106,28 @@ export const updateProjectLabels = (
   );
 
 /**
+ * Full-replace a campaign project (`PUT /api/orchestrate/v1/projects/{id}`).
+ *
+ * VERIFIED 2026-06-10 against TestDemo and the Sitecore AI Symphony frontend
+ * (`actions/projects.ts updateProject`): the API takes the WHOLE project
+ * object and updates project-level fields. It does NOT cascade to
+ * deliverables/tasks — those have their own update endpoints. Callers pass
+ * the current wire object (from `getProject`) spread with their field
+ * overrides so server-managed fields (id, org_id, members, timestamps)
+ * survive the round-trip.
+ */
+export const updateProject = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  body: Record<string, unknown>
+): Promise<Project> =>
+  campaignRequest<Project>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}`,
+    { method: "PUT", body }
+  );
+
+/**
  * Delete a campaign (`DELETE /api/orchestrate/v1/projects/{id}`).
  * Returns void — a 204 is expected on success.
  *

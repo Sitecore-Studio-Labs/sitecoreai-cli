@@ -5,15 +5,16 @@ import type { CampaignApiClientOptions, CampaignQueryRecord } from "./types";
 /**
  * Projects resource — CRUD on campaigns.
  *
- * Endpoint surface (HAR-derived 2026-05-15):
+ * Endpoint surface (HAR-derived 2026-05-15; PUT verified 2026-06-10):
  *   GET    /api/orchestrate/v1/projects        — list (paged)
  *   GET    /api/orchestrate/v1/projects/{id}   — read one (deliverables + tasks inline)
  *   POST   /api/orchestrate/v1/projects        — create (201)
+ *   PUT    /api/orchestrate/v1/projects/{id}   — full-object update (VERIFIED)
  *   DELETE /api/orchestrate/v1/projects/{id}   — delete (UNVERIFIED)
  *
- * Update was not exercised in the capture — `PUT` on `/projects/{id}` is
- * likely (the task resource has it) but unverified. `deleteProject` is
- * wired optimistically per REST conventions; see its doc comment.
+ * `updateProject` (full PUT) is verified against TestDemo + the Sitecore AI
+ * Symphony frontend. `deleteProject` is wired optimistically per REST
+ * conventions; see its doc comment.
  */
 
 export type ListProjectsQuery = {

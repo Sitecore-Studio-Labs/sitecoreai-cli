@@ -7,14 +7,21 @@
  * campaign's display NAME — recipes identify a campaign by name, not
  * UUID, exactly as `brand-kit` identifies a kit.
  *
- * `apply` is straight CRUD — `createProject` when the campaign is
- * absent, `createDeliverable` / `createTask` for missing children, and
- * `updateTask` to converge existing tasks. There is no ingestion or
- * pipeline orchestration (unlike brand). Per docs/campaigns-followups.md
- * (A3), the Orchestrate API has no verified project-metadata update, so
- * the project is create-only: deliverables and tasks are converged, and
- * anything inapplicable (a task whose parent deliverable never resolves)
- * is surfaced as `skipped`, never silently dropped.
+ * `apply` is straight CRUD with a full-object update at every level:
+ * `createProject` when the campaign is absent; `createDeliverable` /
+ * `createTask` for missing children; and `updateProject` /
+ * `updateDeliverable` / `updateTask` to converge existing entities (each
+ * a full-object PUT — verified supported 2026-06-10, see diff.ts). There
+ * is no ingestion or pipeline orchestration (unlike brand). Anything
+ * inapplicable (a task whose parent deliverable never resolves) is
+ * surfaced as `skipped`, never silently dropped.
+ *
+ * Two non-obvious invariants the apply MUST preserve (both were silent
+ * "edits don't stick" bugs): (1) adopt an existing campaign on ANY identity
+ * match, not only a rename — else a re-push without a stamped sitecoreId
+ * spawns a DUPLICATE empty project; (2) never overwrite the in-memory
+ * project/deliverable tree with a PUT's LEAN response — it omits the inline
+ * children the child-update matching depends on.
  *
  * See docs/recipe-sync-architecture.md.
  */

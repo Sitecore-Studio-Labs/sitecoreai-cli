@@ -1,5 +1,19 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.3.1
+
+### Patch Changes
+
+- HttpBaselineStorage: send `x-vercel-protection-bypass` on baseline calls so
+  three-way-merge sync works against an orchestrator endpoint behind Vercel
+  Deployment Protection. Without it, the protected preview returns a `401`
+  auth wall at the edge and scai treats it as a fatal `AUTH_DENIED` — which is
+  exactly why brandkit (and other) pushes failed while pulls succeeded. The
+  bypass value is read from the new optional `SYNC_BASELINE_PROTECTION_BYPASS`
+  env var, falling back to the standard `VERCEL_AUTOMATION_BYPASS_SECRET` that
+  a spawned scai inherits from the orchestrator's function env. Absent both,
+  no header is sent (operator-local and unprotected deployments unchanged).
+
 ## 0.3.0
 
 ### Minor Changes

@@ -90,6 +90,23 @@ describe("HttpBaselineStorage.load", () => {
     expect(result).toBeNull();
   });
 
+  it("sends the x-vercel-protection-bypass header when a bypass is set", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 404 }));
+    const storage = new HttpBaselineStorage(BASE, TOKEN, "secret-xyz");
+    await storage.load("brief", "story-sync", "abc");
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      authorization: `Bearer ${TOKEN}`,
+      "x-vercel-protection-bypass": "secret-xyz",
+    });
+  });
+
+  it("omits the bypass header when no bypass is set", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 404 }));
+    const storage = new HttpBaselineStorage(BASE, TOKEN);
+    await storage.load("brief", "story-sync", "abc");
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty("x-vercel-protection-bypass");
+  });
+
   it("throws AUTH_DENIED on 401", async () => {
     fetchMock.mockResolvedValueOnce(new Response("expired", { status: 401 }));
     const storage = new HttpBaselineStorage(BASE, TOKEN);
@@ -165,12 +182,19 @@ describe("constructor invariants", () => {
 describe("resolveHttpBaselineStorageFromEnv", () => {
   const originalUrl = process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL];
   const originalToken = process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN];
+  const originalBypass = process.env[SYNC_BASELINE_ENV_VARS.PROTECTION_BYPASS];
+  const originalVercelBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
+  const restore = (key: string, value: string | undefined) => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  };
 
   afterEach(() => {
-    if (originalUrl === undefined) delete process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL];
-    else process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL] = originalUrl;
-    if (originalToken === undefined) delete process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN];
-    else process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN] = originalToken;
+    restore(SYNC_BASELINE_ENV_VARS.ENDPOINT_URL, originalUrl);
+    restore(SYNC_BASELINE_ENV_VARS.AUTH_TOKEN, originalToken);
+    restore(SYNC_BASELINE_ENV_VARS.PROTECTION_BYPASS, originalBypass);
+    restore("VERCEL_AUTOMATION_BYPASS_SECRET", originalVercelBypass);
   });
 
   it("returns an HttpBaselineStorage instance when both env vars are set", () => {
@@ -192,5 +216,41 @@ describe("resolveHttpBaselineStorageFromEnv", () => {
     process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL] = BASE;
     delete process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN];
     expect(resolveHttpBaselineStorageFromEnv()).toBeUndefined();
+  });
+
+  it("picks up an explicit SYNC_BASELINE_PROTECTION_BYPASS over the Vercel system var", async () => {
+    process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL] = BASE;
+    process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN] = TOKEN;
+    process.env[SYNC_BASELINE_ENV_VARS.PROTECTION_BYPASS] = "explicit-secret";
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = "vercel-secret";
+    const storage = resolveHttpBaselineStorageFromEnv();
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("{}", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await storage?.load("brief", "story-sync", "abc");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "x-vercel-protection-bypass": "explicit-secret",
+    });
+  });
+
+  it("falls back to VERCEL_AUTOMATION_BYPASS_SECRET when the explicit var is unset", async () => {
+    process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL] = BASE;
+    process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN] = TOKEN;
+    delete process.env[SYNC_BASELINE_ENV_VARS.PROTECTION_BYPASS];
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = "vercel-secret";
+    const storage = resolveHttpBaselineStorageFromEnv();
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("{}", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await storage?.load("brief", "story-sync", "abc");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "x-vercel-protection-bypass": "vercel-secret",
+    });
   });
 });

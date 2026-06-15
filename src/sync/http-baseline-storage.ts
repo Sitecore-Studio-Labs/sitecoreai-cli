@@ -8,8 +8,22 @@
  * Activation is opt-in via env vars that the orchestrator's worker
  * sets before spawning scai:
  *
- *   SYNC_BASELINE_ENDPOINT_URL   Base URL like https://orch/api/v1/sync-baselines
- *   SYNC_BASELINE_AUTH_TOKEN     HMAC-signed bearer scoped to (job, kind, env)
+ *   SYNC_BASELINE_ENDPOINT_URL       Base URL like https://orch/api/v1/sync-baselines
+ *   SYNC_BASELINE_AUTH_TOKEN         HMAC-signed bearer scoped to (job, kind, env)
+ *   SYNC_BASELINE_PROTECTION_BYPASS  (optional) value for the
+ *                                    `x-vercel-protection-bypass` header
+ *
+ * When the orchestrator endpoint sits behind Vercel Deployment Protection
+ * (every preview deployment), the `authorization` bearer alone is not
+ * enough — Vercel's auth wall returns a `401 Authentication Required` HTML
+ * page at the edge before the request reaches the orchestrator, which this
+ * storage would (correctly) treat as a fatal `AUTH_DENIED`. Sending the
+ * deployment's "Protection Bypass for Automation" secret as
+ * `x-vercel-protection-bypass` lets the call through. The value comes from
+ * `SYNC_BASELINE_PROTECTION_BYPASS` if set, else the standard
+ * `VERCEL_AUTOMATION_BYPASS_SECRET` system var (which a spawned scai
+ * inherits from the orchestrator's Vercel function env). Absent both, no
+ * header is sent — operator-local and unprotected deployments are unchanged.
  *
  * Operator CLI invocations don't have these set — they keep using
  * `FileBaselineStorage` against `<configDir>/.scai/baseline/`. Two
@@ -38,7 +52,13 @@ const ENV_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 export class HttpBaselineStorage implements BaselineStorage {
   constructor(
     readonly endpointUrl: string,
-    readonly authToken: string
+    readonly authToken: string,
+    /**
+     * Optional Vercel Deployment Protection bypass secret, sent as the
+     * `x-vercel-protection-bypass` header so calls reach an orchestrator
+     * endpoint behind Vercel's auth wall. Omitted when empty.
+     */
+    private readonly protectionBypass?: string
   ) {
     if (!endpointUrl) {
       throw createScaiError(
@@ -69,10 +89,14 @@ export class HttpBaselineStorage implements BaselineStorage {
   }
 
   private headers(): Record<string, string> {
-    return {
+    const headers: Record<string, string> = {
       authorization: `Bearer ${this.authToken}`,
       accept: "application/json",
     };
+    if (this.protectionBypass) {
+      headers["x-vercel-protection-bypass"] = this.protectionBypass;
+    }
+    return headers;
   }
 
   locator(kind: string, envName: string, recipeHandle: string): string {
@@ -157,6 +181,8 @@ export class HttpBaselineStorage implements BaselineStorage {
 export const SYNC_BASELINE_ENV_VARS = {
   ENDPOINT_URL: "SYNC_BASELINE_ENDPOINT_URL",
   AUTH_TOKEN: "SYNC_BASELINE_AUTH_TOKEN",
+  /** Optional Vercel Deployment Protection bypass secret. */
+  PROTECTION_BYPASS: "SYNC_BASELINE_PROTECTION_BYPASS",
 } as const;
 
 /**
@@ -164,10 +190,20 @@ export const SYNC_BASELINE_ENV_VARS = {
  * both are set, `undefined` otherwise. CLI verbs use this to inject
  * the remote storage when the orchestrator drives them; operator
  * invocations from a terminal fall through to local file storage.
+ *
+ * The protection-bypass value is optional: an explicit
+ * `SYNC_BASELINE_PROTECTION_BYPASS` wins; otherwise the standard Vercel
+ * `VERCEL_AUTOMATION_BYPASS_SECRET` (inherited from the orchestrator's
+ * function env) is used so a protected preview endpoint works with no
+ * extra orchestrator config. Empty/unset → no bypass header.
  */
 export const resolveHttpBaselineStorageFromEnv = (): HttpBaselineStorage | undefined => {
   const url = process.env[SYNC_BASELINE_ENV_VARS.ENDPOINT_URL];
   const token = process.env[SYNC_BASELINE_ENV_VARS.AUTH_TOKEN];
   if (!url || !token) return undefined;
-  return new HttpBaselineStorage(url, token);
+  const bypass =
+    process.env[SYNC_BASELINE_ENV_VARS.PROTECTION_BYPASS]?.trim() ||
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim() ||
+    undefined;
+  return new HttpBaselineStorage(url, token, bypass);
 };

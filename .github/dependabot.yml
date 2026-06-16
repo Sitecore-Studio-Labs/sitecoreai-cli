@@ -16,6 +16,20 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      # Keep the eslint stack together (incl. majors). eslint, @eslint/js, and
+      # @typescript-eslint/* are peer-coupled — an eslint major needs its
+      # companion bumps in the SAME PR or it fails the peer check. Listed before
+      # dev-minor so the eslint packages match here first.
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+          - "eslint-*"
+        update-types:
+          - major
+          - minor
+          - patch
       # Group minor + patch dev-tree bumps. Production deps get their own
       # PR per package so reviewers can scrutinize.
       dev-minor:

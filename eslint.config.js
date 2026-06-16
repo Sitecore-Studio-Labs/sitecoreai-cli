@@ -38,6 +38,14 @@ module.exports = [
           ignoreRestSiblings: true,
         },
       ],
+      // eslint 10 promoted these two into `js.configs.recommended` as errors.
+      // They flag a defensive `let x = <init>` idiom (initialise, then reassign
+      // inside a try/if) and re-throws that don't attach the caught error as
+      // `cause`. Kept at "warn" so the eslint-10 bump doesn't block on a
+      // control-flow refactor across ~10 sites — promote to "error" and fix in a
+      // dedicated cleanup PR.
+      "no-useless-assignment": "warn",
+      "preserve-caught-error": "warn",
     },
   },
   {

@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.3.2
+
+### Patch Changes
+
+- 2449bd3: Export the `ComponentSectionRecipe`, `EnumerationRecipe`, `EnumerationValue`, `VariantRecipe`, `SitecoreFieldSource`, `RecipeMetaTax`, and `ContentTranslation` schemas (and their types) from the public `./recipe` entry. These stable recipe kinds and shared building blocks were defined in the recipe schema and already handled by the compiler, but were never re-exported, so downstream consumers couldn't import them. Export-only change — no schema or compiler behavior changes.
+
 ## 0.3.1
 
 ### Patch Changes

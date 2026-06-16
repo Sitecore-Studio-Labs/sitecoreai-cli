@@ -13,18 +13,12 @@
  *   ...probe-brief-type-icon-format.ts \
  *     80288b0a-a926-4b05-a1ff-c2985a00f9b7 mdi-lightbulb-on
  */
-import {
-  getBriefType,
-  resolveBriefClient,
-  updateBriefType,
-} from "@/brief";
+import { getBriefType, resolveBriefClient, updateBriefType } from "@/brief";
 
 async function main(): Promise<void> {
   const [typeId, newIcon] = process.argv.slice(2);
   if (!typeId || !newIcon) {
-    console.error(
-      "Usage: probe-brief-type-icon-format.ts <briefTypeId> <newIconString>",
-    );
+    console.error("Usage: probe-brief-type-icon-format.ts <briefTypeId> <newIconString>");
     process.exit(2);
   }
   const { client } = await resolveBriefClient({});

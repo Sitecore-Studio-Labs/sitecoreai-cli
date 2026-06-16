@@ -69,10 +69,7 @@ export const getBriefTask = (options: BriefApiClientOptions, taskId: string): Pr
  * task disappears from the subsequent list response while sibling tasks
  * on the same brief survive). See `scripts/probe-delete-brief-task.ts`.
  */
-export const deleteBriefTask = (
-  options: BriefApiClientOptions,
-  taskId: string
-): Promise<void> =>
+export const deleteBriefTask = (options: BriefApiClientOptions, taskId: string): Promise<void> =>
   briefRequest<void>(options, `/api/brief/v1/tasks/${encodeURIComponent(taskId)}`, {
     method: "DELETE",
   });

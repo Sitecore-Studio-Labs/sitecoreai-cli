@@ -25,9 +25,7 @@ async function main(): Promise<void> {
   let briefId = cliBriefId;
   if (!briefId) {
     const briefs = await listBriefs(client, { limit: 10 });
-    const withTasks = briefs.data.find(
-      (b) => Array.isArray(b.tasks) && b.tasks.length > 0,
-    );
+    const withTasks = briefs.data.find((b) => Array.isArray(b.tasks) && b.tasks.length > 0);
     briefId = withTasks?.id ?? briefs.data[0]?.id;
     if (!briefId) throw new Error("No briefs on tenant — nothing to probe.");
     console.log(`Picked brief ${briefId} (${withTasks?.name ?? "no tasks"})`);
@@ -60,9 +58,7 @@ async function main(): Promise<void> {
     console.log(`DELETE /api/brief/v1/tasks/${probe.id} returned 2xx.`);
   } catch (err) {
     deleteErr = err;
-    console.error(
-      `DELETE failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    console.error(`DELETE failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Re-list and report.
@@ -74,9 +70,7 @@ async function main(): Promise<void> {
   const probeGone = !afterIds.has(probe.id);
   const originalsIntact = [...beforeIds].every((id) => afterIds.has(id));
 
-  console.log(
-    `\nAfter delete: ${after.data.length} task(s) (was ${before.data.length}).`,
-  );
+  console.log(`\nAfter delete: ${after.data.length} task(s) (was ${before.data.length}).`);
   console.log(`Probe task ${probe.id} still present? ${!probeGone}`);
   console.log(`All original tasks survived? ${originalsIntact}`);
 
@@ -87,7 +81,7 @@ async function main(): Promise<void> {
 
   if (!deleteOk) {
     console.error(
-      `\nResult: DELETE call failed. Attempting cleanup is moot — probe task may still exist.`,
+      `\nResult: DELETE call failed. Attempting cleanup is moot — probe task may still exist.`
     );
     if (deleteErr) throw deleteErr;
     process.exit(1);
@@ -95,16 +89,14 @@ async function main(): Promise<void> {
 
   if (!probeGone) {
     console.error(
-      `\nResult: DELETE returned success but task ${probe.id} is still listed. Endpoint may be a no-op.`,
+      `\nResult: DELETE returned success but task ${probe.id} is still listed. Endpoint may be a no-op.`
     );
     process.exit(1);
   }
 
   if (!originalsIntact) {
     const lost = [...beforeIds].filter((id) => !afterIds.has(id));
-    console.error(
-      `\nResult: DELETE removed unintended tasks: ${lost.join(", ")}. ABORT.`,
-    );
+    console.error(`\nResult: DELETE removed unintended tasks: ${lost.join(", ")}. ABORT.`);
     process.exit(1);
   }
 }

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 "use strict";
- 
 
 /**
  * Sub-milestone A introspection (docs/plans/site-template-modules-and-picker.md).

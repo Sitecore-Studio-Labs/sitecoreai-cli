@@ -25,7 +25,7 @@ async function main(): Promise<void> {
       console.log(`✓ Deleted ${name} (${id})`);
     } catch (err) {
       console.error(
-        `✗ Failed ${name} (${id}): ${err instanceof Error ? err.message.slice(0, 200) : String(err)}`,
+        `✗ Failed ${name} (${id}): ${err instanceof Error ? err.message.slice(0, 200) : String(err)}`
       );
     }
   }

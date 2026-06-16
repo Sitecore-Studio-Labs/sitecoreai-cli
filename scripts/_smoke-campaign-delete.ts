@@ -47,9 +47,7 @@ type StepRecord = {
 const main = async (): Promise<void> => {
   const envName = process.argv[2];
 
-  process.stderr.write(
-    `> resolving campaign client${envName ? ` for '${envName}'` : ""}\n`,
-  );
+  process.stderr.write(`> resolving campaign client${envName ? ` for '${envName}'` : ""}\n`);
   let client;
   let orgId: string;
   try {
@@ -79,9 +77,7 @@ const main = async (): Promise<void> => {
     const project = await createProject(client, {
       name: `scai-smoke-delete ${stamp}`,
       description: "Throwaway project created by _smoke-campaign-delete.ts — safe to delete.",
-      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10),
+      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     });
     projectId = project.id;
     push("create project", true, `id=${projectId}`);

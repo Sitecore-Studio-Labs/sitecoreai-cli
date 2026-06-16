@@ -17,12 +17,7 @@
  *   pnpm exec tsx -r tsconfig-paths/register \
  *     scripts/probe-brief-update-impersonation.ts <briefTypeId> <auth0Sub>
  */
-import {
-  createBrief,
-  deleteBrief,
-  getBrief,
-  resolveBriefClient,
-} from "@/brief";
+import { createBrief, deleteBrief, getBrief, resolveBriefClient } from "@/brief";
 import type { BriefApiClientOptions } from "@/brief/api/types";
 
 const SUB = process.argv[3];
@@ -54,11 +49,10 @@ const putWithExtras = async (
   client: BriefApiClientOptions,
   briefId: string,
   candidate: Candidate,
-  baseBody: Record<string, unknown>,
+  baseBody: Record<string, unknown>
 ): Promise<void> => {
   const url = `${client.baseUrl}/api/brief/v1/briefs/${encodeURIComponent(briefId)}`;
-  const body =
-    candidate.kind === "body" ? { ...baseBody, ...candidate.extras } : baseBody;
+  const body = candidate.kind === "body" ? { ...baseBody, ...candidate.extras } : baseBody;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${client.accessToken}`,
     "Content-Type": "application/json",
@@ -72,7 +66,7 @@ const putWithExtras = async (
   });
   if (!res.ok) {
     throw new Error(
-      `PUT ${url} → ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`,
+      `PUT ${url} → ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`
     );
   }
 };
@@ -80,9 +74,7 @@ const putWithExtras = async (
 async function main(): Promise<void> {
   const briefTypeId = process.argv[2];
   if (!briefTypeId || !SUB) {
-    console.error(
-      "Usage: probe-brief-update-impersonation.ts <briefTypeId> <auth0Sub>",
-    );
+    console.error("Usage: probe-brief-update-impersonation.ts <briefTypeId> <auth0Sub>");
     process.exit(2);
   }
 
@@ -115,7 +107,7 @@ async function main(): Promise<void> {
         }
       } catch (err) {
         console.log(
-          `  PUT failed: ${err instanceof Error ? err.message.slice(0, 250) : String(err)}`,
+          `  PUT failed: ${err instanceof Error ? err.message.slice(0, 250) : String(err)}`
         );
       }
       console.log();
@@ -125,9 +117,7 @@ async function main(): Promise<void> {
       await deleteBrief(client, created.id);
       console.log(`Deleted probe brief.`);
     } catch (err) {
-      console.warn(
-        `Cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.warn(`Cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

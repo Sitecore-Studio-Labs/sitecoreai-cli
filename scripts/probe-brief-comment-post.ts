@@ -14,19 +14,12 @@
  *   pnpm exec tsx -r tsconfig-paths/register \
  *     scripts/probe-brief-comment-post.ts <briefId> <authorAuth0Sub>
  */
-import {
-  createBriefComment,
-  getBrief,
-  listBriefComments,
-  resolveBriefClient,
-} from "@/brief";
+import { createBriefComment, getBrief, listBriefComments, resolveBriefClient } from "@/brief";
 
 async function main(): Promise<void> {
   const [briefId, authorId] = process.argv.slice(2);
   if (!briefId || !authorId) {
-    console.error(
-      "Usage: probe-brief-comment-post.ts <briefId> <authorAuth0Sub>",
-    );
+    console.error("Usage: probe-brief-comment-post.ts <briefId> <authorAuth0Sub>");
     process.exit(2);
   }
 
@@ -45,9 +38,7 @@ async function main(): Promise<void> {
     });
     console.log(`POST returned: ${JSON.stringify(posted).slice(0, 500)}`);
   } catch (err) {
-    console.error(
-      `POST failed: ${err instanceof Error ? err.message.slice(0, 400) : String(err)}`,
-    );
+    console.error(`POST failed: ${err instanceof Error ? err.message.slice(0, 400) : String(err)}`);
     process.exit(1);
   }
 
@@ -64,7 +55,7 @@ async function main(): Promise<void> {
   // List endpoint.
   const list = await listBriefComments(client, { briefId });
   console.log(
-    `\nlistBriefComments({briefId}) → ${list.data.length} item(s) (totalCount=${list.totalCount})`,
+    `\nlistBriefComments({briefId}) → ${list.data.length} item(s) (totalCount=${list.totalCount})`
   );
   for (const c of list.data) {
     if (String(JSON.stringify(c)).includes("probe-comment")) {

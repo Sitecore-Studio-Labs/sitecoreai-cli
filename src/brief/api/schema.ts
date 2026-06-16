@@ -84,12 +84,7 @@ export type BudgetField = BriefFieldBase & {
 };
 
 /** Union of every observed field kind. New kinds will widen this union. */
-export type BriefField =
-  | RichTextField
-  | DateTimeField
-  | BooleanField
-  | TimelineField
-  | BudgetField;
+export type BriefField = RichTextField | DateTimeField | BooleanField | TimelineField | BudgetField;
 
 /** BriefType — the schema template a brief instance is built against. */
 export type BriefType = {

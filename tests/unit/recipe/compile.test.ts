@@ -635,12 +635,7 @@ describe("compileRecipeSet — Shared Data Folders aggregate", () => {
     // CreateItem template, SetBaseTemplates, CreateItem __Standard
     // Values, SetStandardValues.
     const opKinds = aggregate!.operations.map((op) => op.op);
-    expect(opKinds).toEqual([
-      "CreateItem",
-      "SetBaseTemplates",
-      "CreateItem",
-      "SetStandardValues",
-    ]);
+    expect(opKinds).toEqual(["CreateItem", "SetBaseTemplates", "CreateItem", "SetStandardValues"]);
     // Multi-segment subfolder `ui/badges`: leaf becomes `badges Data Folder`.
     const tpl = aggregate!.operations.find(
       (op): op is CreateItemOp => op.op === "CreateItem" && op.name.endsWith("Data Folder")

@@ -24,8 +24,7 @@ import {
 } from "@/brief";
 import type { BriefApiClientOptions } from "@/brief/api/types";
 
-const probeMarker = (n: number) =>
-  `[probe-shape-${n}-${Date.now().toString(36)}]`;
+const probeMarker = (n: number) => `[probe-shape-${n}-${Date.now().toString(36)}]`;
 
 const PM_DOC = (text: string) => ({
   type: "doc",
@@ -74,7 +73,7 @@ const CANDIDATES = (n: number): Candidate[] => [
 
 const tryListAfter = async (
   client: BriefApiClientOptions,
-  briefId: string,
+  briefId: string
 ): Promise<{ status: number; body: string }> => {
   const u = new URL(`${client.baseUrl}/api/brief/v1/comments`);
   u.searchParams.set("BriefId", briefId);
@@ -90,9 +89,7 @@ const tryListAfter = async (
 async function main(): Promise<void> {
   const [briefTypeId, authorId] = process.argv.slice(2);
   if (!briefTypeId || !authorId) {
-    console.error(
-      "Usage: probe-comment-text-shape.ts <briefTypeId> <authorAuth0Sub>",
-    );
+    console.error("Usage: probe-comment-text-shape.ts <briefTypeId> <authorAuth0Sub>");
     process.exit(2);
   }
 
@@ -108,49 +105,46 @@ async function main(): Promise<void> {
   const briefId = fresh.id;
   console.log(`Created disposable brief ${briefId}\n`);
   try {
+    const listBefore = await tryListAfter(client, briefId);
+    console.log(`Before any probe writes:`);
+    console.log(`  list endpoint status: ${listBefore.status}`);
+    console.log(`  body: ${listBefore.body}`);
 
-  const listBefore = await tryListAfter(client, briefId);
-  console.log(`Before any probe writes:`);
-  console.log(`  list endpoint status: ${listBefore.status}`);
-  console.log(`  body: ${listBefore.body}`);
+    for (const [i, c] of CANDIDATES(0).entries()) {
+      console.log(`\n=== ${i + 1}/${CANDIDATES(0).length}: ${c.label} ===`);
+      try {
+        const posted = await createBriefComment(client, {
+          briefId,
+          text: c.text as never,
+          authorId,
+        });
+        console.log(`  POST returned: ${JSON.stringify(posted).slice(0, 600)}`);
+      } catch (err) {
+        console.log(
+          `  POST FAILED: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`
+        );
+        continue;
+      }
 
-  for (const [i, c] of CANDIDATES(0).entries()) {
-    console.log(`\n=== ${i + 1}/${CANDIDATES(0).length}: ${c.label} ===`);
-    try {
-      const posted = await createBriefComment(client, {
-        briefId,
-        text: c.text as never,
-        authorId,
-      });
-      console.log(`  POST returned: ${JSON.stringify(posted).slice(0, 600)}`);
-    } catch (err) {
-      console.log(
-        `  POST FAILED: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`,
-      );
-      continue;
+      // Re-read brief inline comments to confirm count.
+      const brief = await getBrief(client, briefId);
+      console.log(`  brief.comments.length now: ${brief.comments.length}`);
+
+      // Try the list endpoint again.
+      const list = await tryListAfter(client, briefId);
+      console.log(`  list endpoint after this write: ${list.status}`);
+      if (list.status !== 200) {
+        console.log(`  body: ${list.body}`);
+      } else {
+        console.log(`  body sample: ${list.body}`);
+      }
     }
-
-    // Re-read brief inline comments to confirm count.
-    const brief = await getBrief(client, briefId);
-    console.log(`  brief.comments.length now: ${brief.comments.length}`);
-
-    // Try the list endpoint again.
-    const list = await tryListAfter(client, briefId);
-    console.log(`  list endpoint after this write: ${list.status}`);
-    if (list.status !== 200) {
-      console.log(`  body: ${list.body}`);
-    } else {
-      console.log(`  body sample: ${list.body}`);
-    }
-  }
   } finally {
     try {
       await deleteBrief(client, briefId);
       console.log(`\nDeleted disposable brief.`);
     } catch (err) {
-      console.warn(
-        `Cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.warn(`Cleanup delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

@@ -76,9 +76,7 @@ const main = async (): Promise<void> => {
     project = await createProject(campaignClient, {
       name: `scai-probe-unlink ${stamp}`,
       description: "Throwaway — _probe-project-update.ts.",
-      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10),
+      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     });
     push("create project", true, `id=${project.id}`);
   } catch (error) {
@@ -125,11 +123,7 @@ const main = async (): Promise<void> => {
     const refreshed = await getProject(campaignClient, project.id);
     const briefIds = (refreshed.briefs ?? []).map((b) => b.id);
     const hasBrief = briefIds.includes(briefId ?? "");
-    push(
-      "read project after link",
-      hasBrief,
-      `briefs=${JSON.stringify(briefIds)}`,
-    );
+    push("read project after link", hasBrief, `briefs=${JSON.stringify(briefIds)}`);
   } catch (error) {
     push("read project after link", false, String(error));
   }
@@ -154,7 +148,7 @@ const main = async (): Promise<void> => {
     push(
       "read project after unlink",
       !stillHasBrief,
-      `briefs=${JSON.stringify(briefIds)} (cleared=${!stillHasBrief})`,
+      `briefs=${JSON.stringify(briefIds)} (cleared=${!stillHasBrief})`
     );
   } catch (error) {
     push("read project after unlink", false, String(error));

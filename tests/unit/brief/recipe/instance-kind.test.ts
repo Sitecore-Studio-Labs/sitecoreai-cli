@@ -167,7 +167,7 @@ describe("readCurrent", () => {
     ]);
     expect(briefApi.listBriefTasks).toHaveBeenCalledWith(
       { accessToken: "tok" },
-      { briefId: "brief-1", metadataToLoad: ["assignees"] },
+      { briefId: "brief-1", metadataToLoad: ["assignees"] }
     );
   });
 

@@ -106,9 +106,7 @@ export const BriefFieldSchema = z
     TimelineFieldSchema,
     BudgetFieldSchema,
   ])
-  .describe(
-    "A field definition: one of RichText, DateTime, Boolean, Timeline, or Budget.",
-  );
+  .describe("A field definition: one of RichText, DateTime, Boolean, Timeline, or Budget.");
 
 /** The full brief-type recipe. */
 export const BriefTypeRecipeSchema = z.object({

@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     const before = await getBriefType(client, id);
     if (before.name !== name) {
       console.warn(
-        `Skipping ${name} — id ${id} returned name ${before.name} (refresh script with current ids)`,
+        `Skipping ${name} — id ${id} returned name ${before.name} (refresh script with current ids)`
       );
       continue;
     }
@@ -45,9 +45,7 @@ async function main(): Promise<void> {
     });
     console.log(`✓ ${name}: iconColor → ${color}`);
   }
-  console.log(
-    "\nRefresh SitecoreAI's brief-types view; report which icons render in colour.",
-  );
+  console.log("\nRefresh SitecoreAI's brief-types view; report which icons render in colour.");
 }
 
 main().catch((err) => {

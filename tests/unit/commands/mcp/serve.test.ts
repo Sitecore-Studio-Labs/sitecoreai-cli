@@ -104,7 +104,7 @@ describe("createMcpServeCommand — option parsing", () => {
 
   it("defaults transport to stdio, port to 3399, host to loopback", () => {
     const command = createMcpServeCommand();
-    const parsed = command.exitOverride().parse(["node", "scai", "serve"], { from: "user" }).opts();
+    const parsed = command.exitOverride().parse([], { from: "user" }).opts();
     expect(parsed.transport).toBe("stdio");
     expect(parsed.port).toBe(3399);
     expect(parsed.host).toBe("127.0.0.1");
@@ -112,23 +112,21 @@ describe("createMcpServeCommand — option parsing", () => {
 
   it("rejects a non-numeric --port via the argParser", () => {
     const command = createMcpServeCommand().exitOverride();
-    expect(() =>
-      command.parse(["node", "scai", "serve", "--port", "abc"], { from: "user" })
-    ).toThrow(/integer between 1 and 65535/);
+    expect(() => command.parse(["--port", "abc"], { from: "user" })).toThrow(
+      /integer between 1 and 65535/
+    );
   });
 
   it("rejects an out-of-range --port", () => {
     const command = createMcpServeCommand().exitOverride();
-    expect(() =>
-      command.parse(["node", "scai", "serve", "--port", "70000"], { from: "user" })
-    ).toThrow(/integer between 1 and 65535/);
+    expect(() => command.parse(["--port", "70000"], { from: "user" })).toThrow(
+      /integer between 1 and 65535/
+    );
   });
 
   it("rejects an unknown --transport choice", () => {
     const command = createMcpServeCommand().exitOverride();
-    expect(() =>
-      command.parse(["node", "scai", "serve", "--transport", "grpc"], { from: "user" })
-    ).toThrow();
+    expect(() => command.parse(["--transport", "grpc"], { from: "user" })).toThrow();
   });
 });
 

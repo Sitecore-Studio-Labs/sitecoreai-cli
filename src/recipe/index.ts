@@ -36,6 +36,15 @@ export {
   RenderingDatasourceLocationSchema,
   RenderingVariantDefinitionSchema,
   SitecoreFieldAugmentSchema,
+  // Stable recipe kinds + shared building blocks that were defined but not
+  // previously re-exported (the registry consumes these directly).
+  ComponentSectionRecipeSchema,
+  ContentTranslationSchema,
+  EnumerationRecipeSchema,
+  EnumerationValueSchema,
+  RecipeMetaTaxSchema,
+  SitecoreFieldSourceSchema,
+  VariantRecipeSchema,
   type ComponentPlacement,
   type ComponentTemplateRecipe,
   type ContentFieldValue,
@@ -54,6 +63,12 @@ export {
   type RenderingDatasourceLocation,
   type RenderingVariantDefinition,
   type SitecoreFieldAugment,
+  type ComponentSectionRecipe,
+  type ContentTranslation,
+  type EnumerationRecipe,
+  type EnumerationValue,
+  type SitecoreFieldSource,
+  type VariantRecipe,
 } from "./schema/recipe";
 
 export {

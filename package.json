@@ -26,6 +26,10 @@
       "types": "./dist/recipe/unstable.d.ts",
       "default": "./dist/recipe/unstable.js"
     },
+    "./recipe/schema": {
+      "types": "./dist/recipe/schema.d.ts",
+      "default": "./dist/recipe/schema.js"
+    },
     "./deploy": {
       "types": "./dist/deploy/index.d.ts",
       "default": "./dist/deploy/index.js"

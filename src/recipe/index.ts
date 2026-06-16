@@ -14,6 +14,12 @@
  * The recipe composition kinds (`ContentItem`, `PageDesign`, `PartialDesign`,
  * `SiteRecipe`, `SiteTemplate`) are NOT part of the 0.1.0 stability promise
  * and live on the separate `./recipe/unstable` entry (`src/recipe/unstable.ts`).
+ *
+ * Importing this entry pulls the compiler chain (`./compile` →
+ * `./sandbox/transpile` → esbuild). Consumers that want ONLY the Zod schemas
+ * and field-type tables — no compiler, no esbuild — should import the
+ * schema-only entry `./recipe/schema` (`src/recipe/schema.ts`) instead, which
+ * re-exports the stable AND unstable kind schemas with a zod-only graph.
  */
 
 // Recipe author surface ---------------------------------------------------

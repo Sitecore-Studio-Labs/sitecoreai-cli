@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as recipe from "../../../src/recipe";
+import * as recipeSchema from "../../../src/recipe/schema";
 import * as recipeUnstable from "../../../src/recipe/unstable";
 
 /**
@@ -175,5 +176,70 @@ describe("unstable recipe composition surface", () => {
 
   it.each(COMPOSITION_EXPORTS)("./recipe does NOT export %s", (name) => {
     expect((recipe as Record<string, unknown>)[name]).toBeUndefined();
+  });
+});
+
+/**
+ * Schema-only entry `./recipe/schema` — re-exports every kind schema (stable
+ * AND unstable) plus the field-type tables, with NO compiler. Schema-only
+ * consumers (e.g. the registry's client-reachable `sitecore-recipes` shim)
+ * import here so their module graph never pulls `./compile` → `sandbox/
+ * transpile` → esbuild. This pins both halves of that contract: the schemas
+ * are present, and the compiler/IR symbols are absent.
+ */
+describe("schema-only recipe surface (./recipe/schema)", () => {
+  const SCHEMA_EXPORTS = [
+    // stable kinds
+    "ComponentTemplateRecipeSchema",
+    "ContentTemplateRecipeSchema",
+    "DesignParametersTemplateRecipeSchema",
+    "EnumerationRecipeSchema",
+    "ComponentSectionRecipeSchema",
+    "VariantRecipeSchema",
+    "RecipeSchema",
+    // unstable composition kinds (also reachable here — schema/recipe owns them)
+    "ContentItemRecipeSchema",
+    "PageDesignRecipeSchema",
+    "PartialDesignRecipeSchema",
+    "SiteRecipeSchema",
+    "SiteTemplateRecipeSchema",
+    "DictionaryRecipeSchema",
+    // field-type tables
+    "FIELD_SHAPES",
+    "FieldShapeSchema",
+    "SITECORE_FIELD_TYPES",
+    "SitecoreFieldTypeSchema",
+  ] as const;
+
+  // Compiler / IR / GUID symbols that MUST NOT leak into the schema entry —
+  // their presence would mean the esbuild-bearing compile chain is reachable.
+  const COMPILER_SYMBOLS = [
+    "compileRecipe",
+    "compileRecipeSet",
+    "compileComponentTemplateRecipe",
+    "buildPlan",
+    "executeIr",
+    "emitLayoutXml",
+    "templateId",
+  ] as const;
+
+  it.each(SCHEMA_EXPORTS)("./recipe/schema exports %s", (name) => {
+    expect((recipeSchema as Record<string, unknown>)[name]).toBeDefined();
+  });
+
+  it.each(COMPILER_SYMBOLS)("./recipe/schema does NOT export compiler symbol %s", (name) => {
+    expect((recipeSchema as Record<string, unknown>)[name]).toBeUndefined();
+  });
+
+  it("validates a recipe via the schema-only surface", () => {
+    const result = recipeSchema.ComponentTemplateRecipeSchema.safeParse({
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "smoke@1",
+      name: "Smoke",
+      displayName: "Smoke",
+      fields: [{ name: "Title", shape: "text" }],
+    });
+    expect(result.success).toBe(true);
   });
 });

@@ -17,12 +17,7 @@ describe("writeAgentsEnvelope", () => {
       return true;
     });
 
-    writeAgentsEnvelope(
-      "agent.list",
-      { environmentName: "prod" },
-      [{ id: "a1" }],
-      { count: 1 }
-    );
+    writeAgentsEnvelope("agent.list", { environmentName: "prod" }, [{ id: "a1" }], { count: 1 });
 
     expect(writes).toHaveLength(1);
     const envelope = JSON.parse(writes[0]);

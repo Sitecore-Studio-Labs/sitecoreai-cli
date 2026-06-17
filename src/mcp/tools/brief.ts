@@ -36,6 +36,7 @@ import { createScaiError } from "@/shared/errors";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
 import { allowWriteShape, environmentBindingShape, whatIfShape } from "../schemas/common";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const baseTaskOptions = (
   config: string,
@@ -48,6 +49,269 @@ const baseTaskOptions = (
   json: false,
   ...overrides,
 });
+
+type TaskOpts = Record<string, unknown>;
+
+type BriefStatus = "Draft" | "InReview" | "Approved" | "Canceled" | "Archived";
+
+/** The validated `brief_manage` input fields the write sub-flows read. */
+interface ManageInput {
+  resource: "brief-type" | "brief" | "comment";
+  verb: "create" | "update" | "delete";
+  briefTypeId?: string;
+  briefId?: string;
+  status?: BriefStatus;
+  commentText?: string;
+  body?: {
+    name: string;
+    label: Record<string, string>;
+    description: string;
+    icon: string;
+    iconColor: string;
+    fields: Array<Record<string, unknown>>;
+  };
+  brief?: {
+    name: string;
+    locale?: string;
+    fields?: Record<string, unknown>;
+    isTemplate?: boolean;
+  };
+}
+
+const isPlanResult = (result: unknown): boolean => "plan" in (result as Record<string, unknown>);
+
+/** resource='brief' create/update/delete. */
+const manageBrief = async (
+  input: ManageInput,
+  taskOpts: TaskOpts,
+  whatIf: boolean | undefined
+): Promise<CallToolResult> => {
+  if (input.verb === "create") {
+    if (!input.brief) {
+      throw createScaiError("verb='create' on resource='brief' requires `brief`.", "INPUT_INVALID");
+    }
+    if (!input.briefTypeId) {
+      throw createScaiError(
+        "verb='create' on resource='brief' requires `briefTypeId`.",
+        "INPUT_INVALID"
+      );
+    }
+    const createInput: CreateBriefInput = {
+      name: input.brief.name,
+      briefTypeId: input.briefTypeId,
+      ...(input.brief.locale !== undefined && { locale: input.brief.locale }),
+      ...(input.brief.fields !== undefined && { fields: input.brief.fields }),
+      ...(input.brief.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
+    };
+    const result = await runBriefCreate({
+      ...taskOpts,
+      input: createInput,
+      whatIf,
+    } as never);
+    return {
+      content: [
+        {
+          type: "text",
+          text: isPlanResult(result)
+            ? `Plan: create brief '${input.brief.name}'.`
+            : `Created brief '${input.brief.name}'.`,
+        },
+      ],
+      structuredContent: { resource: input.resource, verb: input.verb, result },
+    };
+  }
+  if (input.verb === "update") {
+    if (!input.briefId) {
+      throw createScaiError(
+        "verb='update' on resource='brief' requires `briefId`.",
+        "INPUT_INVALID"
+      );
+    }
+    const patch: Partial<CreateBriefInput> & { status?: typeof input.status } = {
+      ...(input.brief?.name !== undefined && { name: input.brief.name }),
+      ...(input.brief?.locale !== undefined && { locale: input.brief.locale }),
+      ...(input.brief?.fields !== undefined && { fields: input.brief.fields }),
+      ...(input.brief?.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
+      ...(input.status !== undefined && { status: input.status }),
+    };
+    if (Object.keys(patch).length === 0) {
+      throw createScaiError(
+        "verb='update' on resource='brief' requires at least one field in `brief` or a top-level `status`.",
+        "INPUT_INVALID"
+      );
+    }
+    const result = await runBriefUpdate({
+      ...taskOpts,
+      briefId: input.briefId,
+      patch,
+      whatIf,
+    } as never);
+    return {
+      content: [
+        {
+          type: "text",
+          text: isPlanResult(result)
+            ? `Plan: update brief ${input.briefId} (${Object.keys(patch).join(", ")}).`
+            : `Updated brief ${input.briefId}.`,
+        },
+      ],
+      structuredContent: { resource: input.resource, verb: input.verb, result },
+    };
+  }
+  if (input.verb === "delete") {
+    if (!input.briefId) {
+      throw createScaiError(
+        "verb='delete' on resource='brief' requires `briefId`.",
+        "INPUT_INVALID"
+      );
+    }
+    const result = await runBriefDelete({
+      ...taskOpts,
+      briefId: input.briefId,
+      whatIf,
+    } as never);
+    return {
+      content: [
+        {
+          type: "text",
+          text: result.deleted
+            ? `Deleted brief ${input.briefId}.`
+            : `Plan: delete brief ${input.briefId}.`,
+        },
+      ],
+      structuredContent: { resource: input.resource, verb: input.verb, result },
+    };
+  }
+  throw createScaiError(
+    "resource='brief' supports verbs 'create', 'update', and 'delete'.",
+    "INPUT_INVALID"
+  );
+};
+
+/** resource='comment' create. */
+const manageComment = async (
+  input: ManageInput,
+  taskOpts: TaskOpts,
+  whatIf: boolean | undefined
+): Promise<CallToolResult> => {
+  if (input.verb !== "create") {
+    throw createScaiError("resource='comment' supports only verb='create'.", "INPUT_INVALID");
+  }
+  if (!input.briefId) {
+    throw createScaiError(
+      "verb='create' on resource='comment' requires `briefId`.",
+      "INPUT_INVALID"
+    );
+  }
+  if (!input.commentText) {
+    throw createScaiError(
+      "verb='create' on resource='comment' requires `commentText`.",
+      "INPUT_INVALID"
+    );
+  }
+  const result = await runBriefCommentAdd({
+    ...taskOpts,
+    briefId: input.briefId,
+    text: input.commentText,
+    whatIf,
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: isPlanResult(result)
+          ? `Plan: post a comment to brief ${input.briefId}.`
+          : `Posted a comment to brief ${input.briefId}.`,
+      },
+    ],
+    structuredContent: { resource: input.resource, verb: input.verb, result },
+  };
+};
+
+/** resource='brief-type' verb='create'. */
+const createBriefType = async (
+  input: ManageInput,
+  taskOpts: TaskOpts,
+  whatIf: boolean | undefined
+): Promise<CallToolResult> => {
+  if (!input.body) {
+    throw createScaiError("verb='create' requires `body`.", "INPUT_INVALID");
+  }
+  const result = await runBriefTypeCreate({
+    ...taskOpts,
+    input: input.body as CreateBriefTypeInput,
+    whatIf,
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: isPlanResult(result)
+          ? `Plan: create brief type '${input.body.name}'.`
+          : `Created brief type '${input.body.name}'.`,
+      },
+    ],
+    structuredContent: { resource: input.resource, verb: input.verb, result },
+  };
+};
+
+/** resource='brief-type' verb='update'. */
+const updateBriefType = async (
+  input: ManageInput,
+  taskOpts: TaskOpts,
+  whatIf: boolean | undefined
+): Promise<CallToolResult> => {
+  if (!input.briefTypeId) {
+    throw createScaiError("verb='update' requires `briefTypeId`.", "INPUT_INVALID");
+  }
+  if (!input.body) {
+    throw createScaiError("verb='update' requires `body`.", "INPUT_INVALID");
+  }
+  const result = await runBriefTypeUpdate({
+    ...taskOpts,
+    briefTypeId: input.briefTypeId,
+    input: input.body as CreateBriefTypeInput,
+    whatIf,
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: isPlanResult(result)
+          ? `Plan: PUT-replace brief type ${input.briefTypeId}.`
+          : `Updated brief type ${input.briefTypeId}.`,
+      },
+    ],
+    structuredContent: { resource: input.resource, verb: input.verb, result },
+  };
+};
+
+/** resource='brief-type' verb='delete'. */
+const deleteBriefType = async (
+  input: ManageInput,
+  taskOpts: TaskOpts,
+  whatIf: boolean | undefined
+): Promise<CallToolResult> => {
+  if (!input.briefTypeId) {
+    throw createScaiError("verb='delete' requires `briefTypeId`.", "INPUT_INVALID");
+  }
+  const result = await runBriefTypeDelete({
+    ...taskOpts,
+    briefTypeId: input.briefTypeId,
+    whatIf,
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: result.deleted
+          ? `Deleted brief type ${input.briefTypeId}.`
+          : `Plan: delete brief type ${input.briefTypeId}.`,
+      },
+    ],
+    structuredContent: { resource: input.resource, verb: input.verb, result },
+  };
+};
 
 export const registerBriefTools = (registry: McpRegistry): void => {
   registry.registerTool({
@@ -295,219 +559,23 @@ export const registerBriefTools = (registry: McpRegistry): void => {
       const whatIf = input.whatIf;
 
       if (input.resource === "brief") {
-        if (input.verb === "create") {
-          if (!input.brief) {
-            throw createScaiError(
-              "verb='create' on resource='brief' requires `brief`.",
-              "INPUT_INVALID"
-            );
-          }
-          if (!input.briefTypeId) {
-            throw createScaiError(
-              "verb='create' on resource='brief' requires `briefTypeId`.",
-              "INPUT_INVALID"
-            );
-          }
-          const createInput: CreateBriefInput = {
-            name: input.brief.name,
-            briefTypeId: input.briefTypeId,
-            ...(input.brief.locale !== undefined && { locale: input.brief.locale }),
-            ...(input.brief.fields !== undefined && { fields: input.brief.fields }),
-            ...(input.brief.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
-          };
-          const result = await runBriefCreate({
-            ...taskOpts,
-            input: createInput,
-            whatIf,
-          } as never);
-          const isPlan = "plan" in (result as Record<string, unknown>);
-          return {
-            content: [
-              {
-                type: "text",
-                text: isPlan
-                  ? `Plan: create brief '${input.brief.name}'.`
-                  : `Created brief '${input.brief.name}'.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
-        if (input.verb === "update") {
-          if (!input.briefId) {
-            throw createScaiError(
-              "verb='update' on resource='brief' requires `briefId`.",
-              "INPUT_INVALID"
-            );
-          }
-          const patch: Partial<CreateBriefInput> & { status?: typeof input.status } = {
-            ...(input.brief?.name !== undefined && { name: input.brief.name }),
-            ...(input.brief?.locale !== undefined && { locale: input.brief.locale }),
-            ...(input.brief?.fields !== undefined && { fields: input.brief.fields }),
-            ...(input.brief?.isTemplate !== undefined && { isTemplate: input.brief.isTemplate }),
-            ...(input.status !== undefined && { status: input.status }),
-          };
-          if (Object.keys(patch).length === 0) {
-            throw createScaiError(
-              "verb='update' on resource='brief' requires at least one field in `brief` or a top-level `status`.",
-              "INPUT_INVALID"
-            );
-          }
-          const result = await runBriefUpdate({
-            ...taskOpts,
-            briefId: input.briefId,
-            patch,
-            whatIf,
-          } as never);
-          const isPlan = "plan" in (result as Record<string, unknown>);
-          return {
-            content: [
-              {
-                type: "text",
-                text: isPlan
-                  ? `Plan: update brief ${input.briefId} (${Object.keys(patch).join(", ")}).`
-                  : `Updated brief ${input.briefId}.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
-        if (input.verb === "delete") {
-          if (!input.briefId) {
-            throw createScaiError(
-              "verb='delete' on resource='brief' requires `briefId`.",
-              "INPUT_INVALID"
-            );
-          }
-          const result = await runBriefDelete({
-            ...taskOpts,
-            briefId: input.briefId,
-            whatIf,
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: result.deleted
-                  ? `Deleted brief ${input.briefId}.`
-                  : `Plan: delete brief ${input.briefId}.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
-        throw createScaiError(
-          "resource='brief' supports verbs 'create', 'update', and 'delete'.",
-          "INPUT_INVALID"
-        );
+        return manageBrief(input, taskOpts, whatIf);
       }
 
       if (input.resource === "comment") {
-        if (input.verb !== "create") {
-          throw createScaiError("resource='comment' supports only verb='create'.", "INPUT_INVALID");
-        }
-        if (!input.briefId) {
-          throw createScaiError(
-            "verb='create' on resource='comment' requires `briefId`.",
-            "INPUT_INVALID"
-          );
-        }
-        if (!input.commentText) {
-          throw createScaiError(
-            "verb='create' on resource='comment' requires `commentText`.",
-            "INPUT_INVALID"
-          );
-        }
-        const result = await runBriefCommentAdd({
-          ...taskOpts,
-          briefId: input.briefId,
-          text: input.commentText,
-          whatIf,
-        } as never);
-        const isPlan = "plan" in (result as Record<string, unknown>);
-        return {
-          content: [
-            {
-              type: "text",
-              text: isPlan
-                ? `Plan: post a comment to brief ${input.briefId}.`
-                : `Posted a comment to brief ${input.briefId}.`,
-            },
-          ],
-          structuredContent: { resource: input.resource, verb: input.verb, result },
-        };
+        return manageComment(input, taskOpts, whatIf);
       }
 
+      // resource === "brief-type". Switch left inline (matching the
+      // original fall-through-to-undefined for any out-of-band verb);
+      // each arm delegates to a per-verb helper.
       switch (input.verb) {
-        case "create": {
-          if (!input.body) {
-            throw createScaiError("verb='create' requires `body`.", "INPUT_INVALID");
-          }
-          const result = await runBriefTypeCreate({
-            ...taskOpts,
-            input: input.body as CreateBriefTypeInput,
-            whatIf,
-          } as never);
-          const isPlan = "plan" in (result as Record<string, unknown>);
-          return {
-            content: [
-              {
-                type: "text",
-                text: isPlan
-                  ? `Plan: create brief type '${input.body.name}'.`
-                  : `Created brief type '${input.body.name}'.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
-        case "update": {
-          if (!input.briefTypeId) {
-            throw createScaiError("verb='update' requires `briefTypeId`.", "INPUT_INVALID");
-          }
-          if (!input.body) {
-            throw createScaiError("verb='update' requires `body`.", "INPUT_INVALID");
-          }
-          const result = await runBriefTypeUpdate({
-            ...taskOpts,
-            briefTypeId: input.briefTypeId,
-            input: input.body as CreateBriefTypeInput,
-            whatIf,
-          } as never);
-          const isPlan = "plan" in (result as Record<string, unknown>);
-          return {
-            content: [
-              {
-                type: "text",
-                text: isPlan
-                  ? `Plan: PUT-replace brief type ${input.briefTypeId}.`
-                  : `Updated brief type ${input.briefTypeId}.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
-        case "delete": {
-          if (!input.briefTypeId) {
-            throw createScaiError("verb='delete' requires `briefTypeId`.", "INPUT_INVALID");
-          }
-          const result = await runBriefTypeDelete({
-            ...taskOpts,
-            briefTypeId: input.briefTypeId,
-            whatIf,
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: result.deleted
-                  ? `Deleted brief type ${input.briefTypeId}.`
-                  : `Plan: delete brief type ${input.briefTypeId}.`,
-              },
-            ],
-            structuredContent: { resource: input.resource, verb: input.verb, result },
-          };
-        }
+        case "create":
+          return createBriefType(input, taskOpts, whatIf);
+        case "update":
+          return updateBriefType(input, taskOpts, whatIf);
+        case "delete":
+          return deleteBriefType(input, taskOpts, whatIf);
       }
     },
   });

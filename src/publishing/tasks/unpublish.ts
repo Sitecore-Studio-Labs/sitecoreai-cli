@@ -129,6 +129,192 @@ const printScope = (logger: Logger, scope: PublishAuditScope): void => {
   logger.info(`Include rel.:  ${Boolean(scope.includeRelated)}`, "gray");
 };
 
+interface WhatIfParams {
+  logger: Logger;
+  envName: string;
+  scope: PublishAuditScope;
+  strategy: UnpublishStrategy;
+  itemIds: string[];
+  productionTier: boolean;
+}
+
+/**
+ * Emit the dry-run (`whatIf`) output — JSON envelope or the human-readable
+ * scope + scope-token block — and return. Mirrors the original inline
+ * branch byte-for-byte.
+ */
+const emitWhatIf = (params: WhatIfParams): void => {
+  const { logger, envName, scope, strategy, itemIds, productionTier } = params;
+  const token = mintScopeToken(scope);
+  if (logger.isJson()) {
+    const envelope = buildScaiEnvelope({
+      command: "publish.unpublish",
+      environment: envName,
+      data: {
+        scope,
+        strategy,
+        scopeToken: token,
+        scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
+        productionTier,
+      },
+      extra: { whatIf: true },
+    });
+    process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+    return;
+  }
+  logger.warn(
+    `What-if: would unpublish ${itemIds.length} item(s) via strategy '${strategy}'.`,
+    "yellow"
+  );
+  printScope(logger, scope);
+  logger.info("", "gray");
+  if (productionTier) {
+    logger.info(
+      `Production-tier env. Real call requires --allow-write AND --confirm-token.`,
+      "yellow"
+    );
+  }
+  logger.info(`Scope token (TTL ${SCOPE_TOKEN_TTL_MS / 1000}s):`, "gray");
+  process.stdout.write(`${token}\n`);
+  logger.info("", "gray");
+  logger.info(
+    `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
+    "gray"
+  );
+};
+
+interface RealCallGateParams {
+  options: RunPublishUnpublishOptions;
+  logger: Logger;
+  envName: string;
+  scope: PublishAuditScope;
+  strategy: UnpublishStrategy;
+  itemIds: string[];
+  productionTier: boolean;
+}
+
+/**
+ * Enforce the real-call safety gate: production-tier envs require a valid
+ * `--confirm-token`; non-prod envs require `--yes` or an interactive
+ * confirmation. Returns `false` when an interactive prompt was declined
+ * (caller should abort); throws for the hard-failure gates.
+ */
+const enforceRealCallGate = async (params: RealCallGateParams): Promise<boolean> => {
+  const { options, logger, envName, scope, strategy, itemIds, productionTier } = params;
+  if (productionTier) {
+    if (!options.confirmToken) {
+      throw createScaiError(
+        `Production-tier env '${envName}' requires --confirm-token.`,
+        "INPUT_INVALID",
+        {
+          hint: "Run the same command without --allow-write to mint a scope token, then pass it back as --confirm-token <token>.",
+        }
+      );
+    }
+    const verification = verifyScopeToken(options.confirmToken, scope);
+    if (!verification.ok) {
+      throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
+        hint: "Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.",
+      });
+    }
+    return true;
+  }
+  if (!options.yes) {
+    if (options.nonInteractive) {
+      throw createScaiError(
+        "Non-interactive mode requires --yes (or --confirm-token on prod envs).",
+        "INPUT_INVALID"
+      );
+    }
+    logger.info(
+      `About to unpublish ${itemIds.length} item(s) via strategy '${strategy}' in env '${envName}'.`,
+      "yellow"
+    );
+    printScope(logger, scope);
+    const ok = await promptConfirm("Proceed with unpublish?", false);
+    if (!ok) {
+      logger.info("Aborted.", "yellow");
+      return false;
+    }
+  }
+  return true;
+};
+
+interface FieldWriteParams {
+  environment: ReturnType<typeof resolveEnvironment>["environment"];
+  logger: Logger;
+  itemIds: string[];
+  writeLanguages: string[];
+  strategy: UnpublishStrategy;
+  scope: PublishAuditScope;
+  scopeHash: string;
+  caller: PublishAuditCaller;
+  confirmToken: string | undefined;
+}
+
+/**
+ * Step 1 of the real call: per-(item, language) field writes. Audits every
+ * mutation BEFORE issuing the publish job so the trail is durable even if
+ * the publish job submission fails afterward. Returns the accumulated
+ * field changes; re-throws (after recording an error audit) on failure.
+ */
+const applyFieldWrites = async (params: FieldWriteParams): Promise<PublishAuditFieldChange[]> => {
+  const {
+    environment,
+    logger,
+    itemIds,
+    writeLanguages,
+    strategy,
+    scope,
+    scopeHash,
+    caller,
+    confirmToken,
+  } = params;
+  const allFieldChanges: PublishAuditFieldChange[] = [];
+  for (const itemId of itemIds) {
+    for (const language of writeLanguages) {
+      try {
+        const changes = await applyStrategy(environment, itemId, language, strategy, false);
+        allFieldChanges.push(...changes);
+        recordPublishAudit({
+          ts: new Date().toISOString(),
+          command: "publish unpublish",
+          caller,
+          scope: { ...scope, itemIds: [itemId], languages: [language] },
+          // strategy narrowed to "never-publish" | "expire-now" (delete
+          // was thrown earlier); both are reversible, so "normal" risk.
+          risk: "normal",
+          scopeHash,
+          scopeToken: confirmToken,
+          outcome: "ok",
+          fieldChanges: changes,
+        });
+        logger.info(`  ${itemId} (${language}): ${strategy} applied.`, "gray");
+      } catch (err) {
+        recordPublishAudit({
+          ts: new Date().toISOString(),
+          command: "publish unpublish",
+          caller,
+          scope: { ...scope, itemIds: [itemId], languages: [language] },
+          // strategy narrowed to "never-publish" | "expire-now" (delete
+          // was thrown earlier); both are reversible, so "normal" risk.
+          risk: "normal",
+          scopeHash,
+          scopeToken: confirmToken,
+          outcome: "error",
+          errorCode:
+            err instanceof Error && "code" in err
+              ? String((err as { code: unknown }).code)
+              : "UNKNOWN",
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+    }
+  }
+  return allFieldChanges;
+};
+
 export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): Promise<void> => {
   const logger = toLogger(options);
 
@@ -207,79 +393,22 @@ export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): 
   const productionTier = isProductionTier(environment);
 
   if (whatIf) {
-    const token = mintScopeToken(scope);
-    if (logger.isJson()) {
-      const envelope = buildScaiEnvelope({
-        command: "publish.unpublish",
-        environment: envName,
-        data: {
-          scope,
-          strategy,
-          scopeToken: token,
-          scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
-          productionTier,
-        },
-        extra: { whatIf: true },
-      });
-      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
-      return;
-    }
-    logger.warn(
-      `What-if: would unpublish ${itemIds.length} item(s) via strategy '${strategy}'.`,
-      "yellow"
-    );
-    printScope(logger, scope);
-    logger.info("", "gray");
-    if (productionTier) {
-      logger.info(
-        `Production-tier env. Real call requires --allow-write AND --confirm-token.`,
-        "yellow"
-      );
-    }
-    logger.info(`Scope token (TTL ${SCOPE_TOKEN_TTL_MS / 1000}s):`, "gray");
-    process.stdout.write(`${token}\n`);
-    logger.info("", "gray");
-    logger.info(
-      `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
-      "gray"
-    );
+    emitWhatIf({ logger, envName, scope, strategy, itemIds, productionTier });
     return;
   }
 
   // Real call from here on. Layer the safety checks.
-  if (productionTier) {
-    if (!options.confirmToken) {
-      throw createScaiError(
-        `Production-tier env '${envName}' requires --confirm-token.`,
-        "INPUT_INVALID",
-        {
-          hint: "Run the same command without --allow-write to mint a scope token, then pass it back as --confirm-token <token>.",
-        }
-      );
-    }
-    const verification = verifyScopeToken(options.confirmToken, scope);
-    if (!verification.ok) {
-      throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
-        hint: "Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.",
-      });
-    }
-  } else if (!options.yes) {
-    if (options.nonInteractive) {
-      throw createScaiError(
-        "Non-interactive mode requires --yes (or --confirm-token on prod envs).",
-        "INPUT_INVALID"
-      );
-    }
-    logger.info(
-      `About to unpublish ${itemIds.length} item(s) via strategy '${strategy}' in env '${envName}'.`,
-      "yellow"
-    );
-    printScope(logger, scope);
-    const ok = await promptConfirm("Proceed with unpublish?", false);
-    if (!ok) {
-      logger.info("Aborted.", "yellow");
-      return;
-    }
+  const proceed = await enforceRealCallGate({
+    options,
+    logger,
+    envName,
+    scope,
+    strategy,
+    itemIds,
+    productionTier,
+  });
+  if (!proceed) {
+    return;
   }
 
   // Delete strategy branches into its own flow — it's item-scoped
@@ -320,48 +449,17 @@ export const runPublishUnpublish = async (options: RunPublishUnpublishOptions): 
   // Step 1: per-(item, language) field writes. Audit every mutation
   // BEFORE issuing the publish job so the trail is durable even if
   // the publish job submission fails afterward.
-  const allFieldChanges: PublishAuditFieldChange[] = [];
-  for (const itemId of itemIds) {
-    for (const language of writeLanguages) {
-      try {
-        const changes = await applyStrategy(environment, itemId, language, strategy, false);
-        allFieldChanges.push(...changes);
-        recordPublishAudit({
-          ts: new Date().toISOString(),
-          command: "publish unpublish",
-          caller,
-          scope: { ...scope, itemIds: [itemId], languages: [language] },
-          // strategy narrowed to "never-publish" | "expire-now" (delete
-          // was thrown earlier); both are reversible, so "normal" risk.
-          risk: "normal",
-          scopeHash,
-          scopeToken: options.confirmToken,
-          outcome: "ok",
-          fieldChanges: changes,
-        });
-        logger.info(`  ${itemId} (${language}): ${strategy} applied.`, "gray");
-      } catch (err) {
-        recordPublishAudit({
-          ts: new Date().toISOString(),
-          command: "publish unpublish",
-          caller,
-          scope: { ...scope, itemIds: [itemId], languages: [language] },
-          // strategy narrowed to "never-publish" | "expire-now" (delete
-          // was thrown earlier); both are reversible, so "normal" risk.
-          risk: "normal",
-          scopeHash,
-          scopeToken: options.confirmToken,
-          outcome: "error",
-          errorCode:
-            err instanceof Error && "code" in err
-              ? String((err as { code: unknown }).code)
-              : "UNKNOWN",
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
-        throw err;
-      }
-    }
-  }
+  const allFieldChanges = await applyFieldWrites({
+    environment,
+    logger,
+    itemIds,
+    writeLanguages,
+    strategy,
+    scope,
+    scopeHash,
+    caller,
+    confirmToken: options.confirmToken,
+  });
 
   // Step 2: submit a publish job so Edge sees the state change. The
   // Publishing API is the same one `scai content publish item` uses; we

@@ -35,6 +35,7 @@ import { resolveToolBinding } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
 import { allowWriteShape, environmentBindingShape, whatIfShape } from "../schemas/common";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 const baseTaskOptions = (
   config: string,
@@ -47,6 +48,179 @@ const baseTaskOptions = (
   json: false,
   ...overrides,
 });
+
+/** Common fields the `workflow_lifecycle` verbs read off the validated input. */
+interface LifecycleInput {
+  item?: string;
+  command?: string;
+  comments?: string;
+  workflow?: string;
+  state?: string;
+  template?: string;
+  reattach?: boolean;
+  maxApplies?: number;
+  root?: string;
+  commandName?: string;
+  fromState?: string;
+  staleDays?: number;
+  maxAdvances?: number;
+  whatIf?: boolean;
+  allowWrite?: boolean;
+}
+
+type TaskOpts = Record<string, unknown>;
+
+const lifecycleAdvance = async (
+  input: LifecycleInput,
+  taskOpts: TaskOpts
+): Promise<CallToolResult> => {
+  if (!input.item || !input.command) {
+    throw createScaiError("verb='advance' requires `item` and `command`.", "INPUT_INVALID");
+  }
+  const result = await runWorkflowAdvance({
+    ...taskOpts,
+    item: input.item,
+    command: input.command,
+    ...(input.comments !== undefined && { comments: input.comments }),
+    ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+    ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          result.status === "advanced"
+            ? `Advanced ${result.path ?? result.itemId} via '${result.commandUsed}' → ${result.toState ?? "(unspecified)"}.`
+            : result.status === "what-if"
+              ? `Would execute '${result.commandUsed}' on ${result.path ?? result.itemId}.`
+              : `${result.status}: ${result.message ?? ""}`,
+      },
+    ],
+    structuredContent: { verb: "advance", result },
+  };
+};
+
+const lifecycleReset = async (
+  input: LifecycleInput,
+  taskOpts: TaskOpts
+): Promise<CallToolResult> => {
+  if (!input.item) {
+    throw createScaiError("verb='reset' requires `item`.", "INPUT_INVALID");
+  }
+  const result = await runWorkflowReset({
+    ...taskOpts,
+    item: input.item,
+    ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+    ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+  } as never);
+  return {
+    content: [{ type: "text", text: result.message ?? `reset → ${result.status}` }],
+    structuredContent: { verb: "reset", result },
+  };
+};
+
+const lifecycleApplyWorkflow = async (
+  input: LifecycleInput,
+  taskOpts: TaskOpts
+): Promise<CallToolResult> => {
+  if (!input.item || !input.workflow) {
+    throw createScaiError("verb='apply-workflow' requires `item` and `workflow`.", "INPUT_INVALID");
+  }
+  const result = await runWorkflowApply({
+    ...taskOpts,
+    item: input.item,
+    workflow: input.workflow,
+    ...(input.state !== undefined && { state: input.state }),
+    ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+    ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+  } as never);
+  return {
+    content: [{ type: "text", text: result.message ?? `apply-workflow → ${result.status}` }],
+    structuredContent: { verb: "apply-workflow", result },
+  };
+};
+
+const lifecycleBulkAdvance = async (
+  input: LifecycleInput,
+  taskOpts: TaskOpts
+): Promise<CallToolResult> => {
+  if (!input.commandName) {
+    throw createScaiError("verb='bulk-advance' requires `commandName`.", "INPUT_INVALID");
+  }
+  // Delegates to the existing `runCleanupWorkflowAdvance` task
+  // — same semantics as `scai hygiene cleanup workflow advance`. Kept
+  // MCP-only (no `scai content workflow bulk-advance` CLI alias) per
+  // the "leave cleanup verbs in place" decision.
+  const actions = await runCleanupWorkflowAdvance({
+    ...taskOpts,
+    commandName: input.commandName,
+    ...(input.fromState !== undefined && { fromState: input.fromState }),
+    ...(input.root !== undefined && { root: input.root }),
+    ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
+    ...(input.maxAdvances !== undefined && { maxAdvances: input.maxAdvances }),
+    ...(input.comments !== undefined && { comments: input.comments }),
+    ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+    ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+  } as never);
+  const advanced = actions.filter((a) => a.status === "advanced").length;
+  const failed = actions.filter((a) => a.status === "failed").length;
+  const skipped = actions.filter((a) => a.status === "skipped-no-command").length;
+  const whatIfCount = actions.filter((a) => a.status === "what-if").length;
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          input.whatIf === true
+            ? `bulk-advance plan: ${whatIfCount} item(s) would advance.`
+            : `bulk-advance: advanced ${advanced}, failed ${failed}, skipped ${skipped}.`,
+      },
+    ],
+    structuredContent: { verb: "bulk-advance", actions },
+  };
+};
+
+const lifecycleBulkApply = async (
+  input: LifecycleInput,
+  taskOpts: TaskOpts
+): Promise<CallToolResult> => {
+  if (!input.workflow) {
+    throw createScaiError("verb='bulk-apply' requires `workflow`.", "INPUT_INVALID");
+  }
+  // Delegates to `runCleanupWorkflowApply` — same semantics as
+  // `scai hygiene cleanup workflow apply`. Workflow-shaped here for
+  // discovery; the cleanup tool also exposes it as
+  // `verb: 'workflow-apply'` for symmetry with `workflow-advance`.
+  const actions = await runCleanupWorkflowApply({
+    ...taskOpts,
+    workflow: input.workflow,
+    ...(input.state !== undefined && { state: input.state }),
+    ...(input.template !== undefined && { template: input.template }),
+    ...(input.reattach !== undefined && { reattach: input.reattach }),
+    ...(input.root !== undefined && { root: input.root }),
+    ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
+    ...(input.maxApplies !== undefined && { maxApplies: input.maxApplies }),
+    ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
+    ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
+  } as never);
+  const applied = actions.filter((a) => a.status === "applied").length;
+  const failed = actions.filter((a) => a.status === "failed").length;
+  const skippedAttached = actions.filter((a) => a.status === "skipped-already-attached").length;
+  const whatIfCount = actions.filter((a) => a.status === "what-if").length;
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          input.whatIf === true
+            ? `bulk-apply plan: ${whatIfCount} item(s) would attach to '${input.workflow}'.`
+            : `bulk-apply: attached ${applied}, failed ${failed}, ${skippedAttached} already attached.`,
+      },
+    ],
+    structuredContent: { verb: "bulk-apply", actions },
+  };
+};
 
 export const registerWorkflowTools = (registry: McpRegistry): void => {
   registry.registerTool({
@@ -331,157 +505,16 @@ export const registerWorkflowTools = (registry: McpRegistry): void => {
       ensureMcpElevationAllowed(binding.resolved.root, binding.envName);
       const taskOpts = baseTaskOptions(context.configPath, binding.envName);
       switch (input.verb) {
-        case "advance": {
-          if (!input.item || !input.command) {
-            throw createScaiError("verb='advance' requires `item` and `command`.", "INPUT_INVALID");
-          }
-          const result = await runWorkflowAdvance({
-            ...taskOpts,
-            item: input.item,
-            command: input.command,
-            ...(input.comments !== undefined && { comments: input.comments }),
-            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
-            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  result.status === "advanced"
-                    ? `Advanced ${result.path ?? result.itemId} via '${result.commandUsed}' → ${result.toState ?? "(unspecified)"}.`
-                    : result.status === "what-if"
-                      ? `Would execute '${result.commandUsed}' on ${result.path ?? result.itemId}.`
-                      : `${result.status}: ${result.message ?? ""}`,
-              },
-            ],
-            structuredContent: { verb: input.verb, result },
-          };
-        }
-
-        case "reset": {
-          if (!input.item) {
-            throw createScaiError("verb='reset' requires `item`.", "INPUT_INVALID");
-          }
-          const result = await runWorkflowReset({
-            ...taskOpts,
-            item: input.item,
-            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
-            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: result.message ?? `reset → ${result.status}`,
-              },
-            ],
-            structuredContent: { verb: input.verb, result },
-          };
-        }
-
-        case "apply-workflow": {
-          if (!input.item || !input.workflow) {
-            throw createScaiError(
-              "verb='apply-workflow' requires `item` and `workflow`.",
-              "INPUT_INVALID"
-            );
-          }
-          const result = await runWorkflowApply({
-            ...taskOpts,
-            item: input.item,
-            workflow: input.workflow,
-            ...(input.state !== undefined && { state: input.state }),
-            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
-            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: result.message ?? `apply-workflow → ${result.status}`,
-              },
-            ],
-            structuredContent: { verb: input.verb, result },
-          };
-        }
-
-        case "bulk-advance": {
-          if (!input.commandName) {
-            throw createScaiError("verb='bulk-advance' requires `commandName`.", "INPUT_INVALID");
-          }
-          // Delegates to the existing `runCleanupWorkflowAdvance` task
-          // — same semantics as `scai hygiene cleanup workflow advance`. Kept
-          // MCP-only (no `scai content workflow bulk-advance` CLI alias) per
-          // the "leave cleanup verbs in place" decision.
-          const actions = await runCleanupWorkflowAdvance({
-            ...taskOpts,
-            commandName: input.commandName,
-            ...(input.fromState !== undefined && { fromState: input.fromState }),
-            ...(input.root !== undefined && { root: input.root }),
-            ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
-            ...(input.maxAdvances !== undefined && { maxAdvances: input.maxAdvances }),
-            ...(input.comments !== undefined && { comments: input.comments }),
-            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
-            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
-          } as never);
-          const advanced = actions.filter((a) => a.status === "advanced").length;
-          const failed = actions.filter((a) => a.status === "failed").length;
-          const skipped = actions.filter((a) => a.status === "skipped-no-command").length;
-          const whatIfCount = actions.filter((a) => a.status === "what-if").length;
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  input.whatIf === true
-                    ? `bulk-advance plan: ${whatIfCount} item(s) would advance.`
-                    : `bulk-advance: advanced ${advanced}, failed ${failed}, skipped ${skipped}.`,
-              },
-            ],
-            structuredContent: { verb: input.verb, actions },
-          };
-        }
-
-        case "bulk-apply": {
-          if (!input.workflow) {
-            throw createScaiError("verb='bulk-apply' requires `workflow`.", "INPUT_INVALID");
-          }
-          // Delegates to `runCleanupWorkflowApply` — same semantics as
-          // `scai hygiene cleanup workflow apply`. Workflow-shaped here for
-          // discovery; the cleanup tool also exposes it as
-          // `verb: 'workflow-apply'` for symmetry with `workflow-advance`.
-          const actions = await runCleanupWorkflowApply({
-            ...taskOpts,
-            workflow: input.workflow,
-            ...(input.state !== undefined && { state: input.state }),
-            ...(input.template !== undefined && { template: input.template }),
-            ...(input.reattach !== undefined && { reattach: input.reattach }),
-            ...(input.root !== undefined && { root: input.root }),
-            ...(input.staleDays !== undefined && { staleDays: input.staleDays }),
-            ...(input.maxApplies !== undefined && { maxApplies: input.maxApplies }),
-            ...(input.whatIf !== undefined && { whatIf: input.whatIf }),
-            ...(input.allowWrite !== undefined && { allowWrite: input.allowWrite }),
-          } as never);
-          const applied = actions.filter((a) => a.status === "applied").length;
-          const failed = actions.filter((a) => a.status === "failed").length;
-          const skippedAttached = actions.filter(
-            (a) => a.status === "skipped-already-attached"
-          ).length;
-          const whatIfCount = actions.filter((a) => a.status === "what-if").length;
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  input.whatIf === true
-                    ? `bulk-apply plan: ${whatIfCount} item(s) would attach to '${input.workflow}'.`
-                    : `bulk-apply: attached ${applied}, failed ${failed}, ${skippedAttached} already attached.`,
-              },
-            ],
-            structuredContent: { verb: input.verb, actions },
-          };
-        }
+        case "advance":
+          return lifecycleAdvance(input, taskOpts);
+        case "reset":
+          return lifecycleReset(input, taskOpts);
+        case "apply-workflow":
+          return lifecycleApplyWorkflow(input, taskOpts);
+        case "bulk-advance":
+          return lifecycleBulkAdvance(input, taskOpts);
+        case "bulk-apply":
+          return lifecycleBulkApply(input, taskOpts);
       }
     },
   });

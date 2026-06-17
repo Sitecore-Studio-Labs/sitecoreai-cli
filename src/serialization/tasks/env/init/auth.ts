@@ -134,21 +134,15 @@ const mintDeviceToken = async (params: {
   };
 };
 
-export const resolveDeployAuth = async (
-  input: ResolveDeployAuthInput
-): Promise<ResolveDeployAuthResult> => {
-  const {
-    options,
-    envName,
-    existing,
-    baseEnv,
-    runWizard,
-    isInteractive,
-    needsDeployToken,
-    logger,
-  } = input;
-  let deployToken = options.deployToken ?? existing.deployToken ?? (await getDeployToken(envName));
-  let loginAuthority =
+/**
+ * Resolve the login authority, validating it as a URL when present.
+ * Order: base env profile → existing profile → env var → public default.
+ */
+const resolveLoginAuthority = (
+  existing: EnvironmentConfiguration,
+  baseEnv: EnvironmentConfiguration
+): string => {
+  const loginAuthority =
     baseEnv.authority ??
     existing.authority ??
     process.env.SITECOREAI_AUTHORITY ??
@@ -156,31 +150,40 @@ export const resolveDeployAuth = async (
   if (loginAuthority) {
     assertValidUrl(loginAuthority, "Authority");
   }
-  // The secret never lives on the env profile: it comes from the
-  // `--client-secret` flag or the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
-  // env var (resolved by `resolveEnvClientSecret`), else an interactive
-  // prompt below.
-  let loginClientSecret = options.clientSecret ?? resolveEnvClientSecret(envName);
-  let wantsClientCredentials = Boolean(
-    options.useClientCredentials || baseEnv.useClientCredentials || existing.useClientCredentials
-  );
-  const deviceClientId =
-    options.clientId ?? process.env.SITECOREAI_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID;
-  const clientCredentialsClientId =
-    options.clientId ?? baseEnv.clientId ?? existing.clientId ?? process.env.SITECOREAI_CLIENT_ID;
-  if (needsDeployToken && runWizard && options.useClientCredentials === undefined) {
-    const useDeviceLogin = await promptConfirm("Log in with Deploy (browser)?", true);
-    wantsClientCredentials = !useDeviceLogin;
-  }
-  let loginClientId = wantsClientCredentials ? (clientCredentialsClientId ?? "") : deviceClientId;
+  return loginAuthority;
+};
+
+/**
+ * Pick the effective login client id for the chosen credential mode.
+ * Device flow always uses the public/device id; client-credentials falls
+ * back through the profile chain.
+ */
+const selectLoginClientId = (params: {
+  wantsClientCredentials: boolean;
+  deviceClientId: string;
+  clientCredentialsClientId?: string;
+}): string => {
+  const { wantsClientCredentials, deviceClientId, clientCredentialsClientId } = params;
   if (!wantsClientCredentials) {
-    loginClientId = deviceClientId;
-  } else if (!loginClientId) {
-    loginClientId = clientCredentialsClientId ?? "";
+    return deviceClientId;
   }
-  const shouldPersistClientId = wantsClientCredentials
-    ? Boolean(loginClientId)
-    : Boolean(options.clientId);
+  return clientCredentialsClientId ?? "";
+};
+
+/**
+ * Prompt for any missing client-credentials inputs (client id + secret)
+ * when a deploy token still needs minting. Throws INPUT_INVALID in a
+ * non-interactive context. Returns the resolved id + secret.
+ */
+const promptForClientCredentials = async (params: {
+  needsDeployToken: boolean;
+  wantsClientCredentials: boolean;
+  isInteractive: boolean;
+  loginClientId: string;
+  loginClientSecret?: string;
+}): Promise<{ loginClientId: string; loginClientSecret?: string }> => {
+  const { needsDeployToken, wantsClientCredentials, isInteractive } = params;
+  let { loginClientId, loginClientSecret } = params;
   if (needsDeployToken && wantsClientCredentials && !loginClientId) {
     if (!isInteractive) {
       throw createScaiError("Client ID is required for client credentials.", "INPUT_INVALID", {
@@ -199,9 +202,57 @@ export const resolveDeployAuth = async (
         }
       );
     }
-    const entered = await promptSecret("Client secret: ");
-    loginClientSecret = entered;
+    loginClientSecret = await promptSecret("Client secret: ");
   }
+  return { loginClientId, loginClientSecret };
+};
+
+export const resolveDeployAuth = async (
+  input: ResolveDeployAuthInput
+): Promise<ResolveDeployAuthResult> => {
+  const {
+    options,
+    envName,
+    existing,
+    baseEnv,
+    runWizard,
+    isInteractive,
+    needsDeployToken,
+    logger,
+  } = input;
+  let deployToken = options.deployToken ?? existing.deployToken ?? (await getDeployToken(envName));
+  const loginAuthority = resolveLoginAuthority(existing, baseEnv);
+  // The secret never lives on the env profile: it comes from the
+  // `--client-secret` flag or the `SITECOREAI_ENV_<ENV>_CLIENT_SECRET`
+  // env var (resolved by `resolveEnvClientSecret`), else an interactive
+  // prompt below.
+  let loginClientSecret = options.clientSecret ?? resolveEnvClientSecret(envName);
+  let wantsClientCredentials = Boolean(
+    options.useClientCredentials || baseEnv.useClientCredentials || existing.useClientCredentials
+  );
+  const deviceClientId =
+    options.clientId ?? process.env.SITECOREAI_CLIENT_ID ?? DEFAULT_PUBLIC_CLIENT_ID;
+  const clientCredentialsClientId =
+    options.clientId ?? baseEnv.clientId ?? existing.clientId ?? process.env.SITECOREAI_CLIENT_ID;
+  if (needsDeployToken && runWizard && options.useClientCredentials === undefined) {
+    const useDeviceLogin = await promptConfirm("Log in with Deploy (browser)?", true);
+    wantsClientCredentials = !useDeviceLogin;
+  }
+  let loginClientId = selectLoginClientId({
+    wantsClientCredentials,
+    deviceClientId,
+    clientCredentialsClientId,
+  });
+  const shouldPersistClientId = wantsClientCredentials
+    ? Boolean(loginClientId)
+    : Boolean(options.clientId);
+  ({ loginClientId, loginClientSecret } = await promptForClientCredentials({
+    needsDeployToken,
+    wantsClientCredentials,
+    isInteractive,
+    loginClientId,
+    loginClientSecret,
+  }));
   let deployTokenMeta: ResolveDeployAuthResult["deployTokenMeta"];
 
   if (needsDeployToken && !deployToken && wantsClientCredentials) {

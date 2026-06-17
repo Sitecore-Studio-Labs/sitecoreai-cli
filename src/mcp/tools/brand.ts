@@ -25,6 +25,7 @@
  * this MCP layer only forwards routing + structured-content envelopes.
  */
 
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { readRootConfiguration } from "@/config/root-config";
 import {
@@ -53,7 +54,7 @@ import {
 import { createScaiError } from "@/shared/errors";
 import type { McpContext } from "../auth";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
-import type { McpRegistry } from "../registry";
+import type { McpRegistry, ToolExtra } from "../registry";
 import { allowWriteShape, environmentBindingShape } from "../schemas/common";
 
 /**
@@ -84,6 +85,260 @@ const resolveBrandClient = (
     );
   }
   return { orgId, credential };
+};
+
+/**
+ * Validated input for `brand_manage`. The Zod schema is the source of
+ * truth; this loose mirror lets each per-action runner be a small named
+ * function so the tool `handler` collapses to a dispatch lookup.
+ */
+type BrandManageInput = {
+  action: string;
+  name?: string;
+  description?: string;
+  industry?: string;
+  brandName?: string;
+  brandKitId?: string;
+  url?: string;
+  bytesBase64?: string;
+  mimeType?: string;
+  title?: string;
+  summary?: string;
+  documentId?: string;
+  documentIds?: string[];
+  populateSections?: boolean;
+  sectionIds?: string[];
+  fieldIds?: string[];
+  timeoutSec?: number;
+  sectionId?: string;
+  fieldId?: string;
+  value?: BrandKitFieldValue;
+  intent?: string;
+  verified?: boolean;
+  aiEditable?: boolean;
+};
+
+/** Per-action runner shape for `brand_manage`. */
+type BrandManageRunner = (
+  input: BrandManageInput,
+  client: BrandApiClientOptions,
+  extra: ToolExtra
+) => Promise<CallToolResult>;
+
+const brandCreateKit: BrandManageRunner = async (input, client) => {
+  if (!input.name) {
+    throw createScaiError("action='create-kit' requires `name`.", "INPUT_INVALID");
+  }
+  const kit = await createBrandKit({
+    client,
+    name: input.name,
+    description: input.description,
+    industry: input.industry,
+    brandName: input.brandName,
+  });
+  return {
+    content: [{ type: "text", text: `Created kit ${kit.id} (status: ${kit.status}).` }],
+    structuredContent: { action: input.action, kit },
+  };
+};
+
+const brandPublishKit: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId) {
+    throw createScaiError("action='publish-kit' requires `brandKitId`.", "INPUT_INVALID");
+  }
+  const kit = await publishBrandKit({ client, brandKitId: input.brandKitId });
+  return {
+    content: [{ type: "text", text: `Kit ${kit.id} status: ${kit.status}.` }],
+    structuredContent: { action: input.action, kit },
+  };
+};
+
+const brandDeleteKit: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId) {
+    throw createScaiError("action='delete-kit' requires `brandKitId`.", "INPUT_INVALID");
+  }
+  await deleteBrandKit({ client, brandKitId: input.brandKitId });
+  return {
+    content: [{ type: "text", text: `Deleted kit ${input.brandKitId}.` }],
+    structuredContent: { action: input.action, brandKitId: input.brandKitId, deleted: true },
+  };
+};
+
+const brandUploadDoc: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId) {
+    throw createScaiError("action='upload-doc' requires `brandKitId`.", "INPUT_INVALID");
+  }
+  if (input.bytesBase64) {
+    throw createScaiError(LOCAL_UPLOAD_UNSUPPORTED_MESSAGE, "INPUT_INVALID", {
+      hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
+    });
+  }
+  if (!input.url) {
+    throw createScaiError("action='upload-doc' requires `url`.", "INPUT_INVALID", {
+      hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
+    });
+  }
+  const doc = await uploadDocument({
+    client,
+    brandKitId: input.brandKitId,
+    source: { url: input.url },
+    title: input.title,
+    summary: input.summary,
+    fileType: input.mimeType ?? "application/pdf",
+  });
+  return {
+    content: [{ type: "text", text: `Uploaded ${doc.id} (status: ${doc.status}).` }],
+    structuredContent: { action: input.action, document: doc },
+  };
+};
+
+const brandDeleteDoc: BrandManageRunner = async (input, client) => {
+  if (!input.documentId) {
+    throw createScaiError("action='delete-doc' requires `documentId`.", "INPUT_INVALID");
+  }
+  await deleteDocument({ client, documentId: input.documentId });
+  return {
+    content: [{ type: "text", text: `Deleted document ${input.documentId}.` }],
+    structuredContent: { action: input.action, documentId: input.documentId, deleted: true },
+  };
+};
+
+const brandRunIngestion: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId) {
+    throw createScaiError("action='run-ingestion' requires `brandKitId`.", "INPUT_INVALID");
+  }
+  const run = await runBrandIngestionPipeline({
+    client,
+    brandKitId: input.brandKitId,
+    populateSections: input.populateSections,
+    documentIds: input.documentIds,
+  });
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Started BrandIngestionPipeline run ${run.id}. Follow up with run-enrichment to populate sections.`,
+      },
+    ],
+    structuredContent: { action: input.action, run },
+  };
+};
+
+const brandRunEnrichment: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId) {
+    throw createScaiError("action='run-enrichment' requires `brandKitId`.", "INPUT_INVALID");
+  }
+  const run = await runEnrichSectionsPipeline({
+    client,
+    brandKitId: input.brandKitId,
+    sectionIds: input.sectionIds,
+    fieldIds: input.fieldIds,
+  });
+  return {
+    content: [{ type: "text", text: `Started EnrichSectionsPipeline run ${run.id}.` }],
+    structuredContent: { action: input.action, run },
+  };
+};
+
+const brandUpdateField: BrandManageRunner = async (input, client) => {
+  if (!input.brandKitId || !input.sectionId || !input.fieldId) {
+    throw createScaiError(
+      "action='update-field' requires `brandKitId`, `sectionId`, and `fieldId`.",
+      "INPUT_INVALID"
+    );
+  }
+  if (
+    input.value === undefined &&
+    input.intent === undefined &&
+    input.verified === undefined &&
+    input.aiEditable === undefined
+  ) {
+    throw createScaiError(
+      "action='update-field' requires at least one of `value`, `intent`, `verified`, or `aiEditable`.",
+      "INPUT_INVALID"
+    );
+  }
+  const field = await updateBrandKitField({
+    client,
+    brandKitId: input.brandKitId,
+    sectionId: input.sectionId,
+    fieldId: input.fieldId,
+    value: input.value,
+    intent: input.intent,
+    verified: input.verified,
+    aiEditable: input.aiEditable,
+  });
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Updated field ${field.name} (${field.id}). verified=${field.verified === true ? "true" : "false"}.`,
+      },
+    ],
+    structuredContent: { action: input.action, field },
+  };
+};
+
+const brandSeed: BrandManageRunner = async (input, client, extra) => {
+  if (!input.name) {
+    throw createScaiError("action='seed' requires `name`.", "INPUT_INVALID");
+  }
+  if (input.bytesBase64) {
+    throw createScaiError(LOCAL_UPLOAD_UNSUPPORTED_MESSAGE, "INPUT_INVALID", {
+      hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
+    });
+  }
+  if (!input.url) {
+    throw createScaiError("action='seed' requires `url`.", "INPUT_INVALID", {
+      hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
+    });
+  }
+  const source = { url: input.url };
+  // Forward progress to the client via MCP progress notifications. The
+  // seed composite emits ~10 events; mapping each tick to a progress
+  // numerator lets the client render a bar.
+  let progressN = 0;
+  const onProgress = async (event: SeedProgressEvent): Promise<void> => {
+    progressN += 1;
+    await extra.sendProgress(progressN, undefined, `${event.stage}: ${event.message}`);
+  };
+  const result = await seedBrandKit({
+    client,
+    name: input.name,
+    source,
+    description: input.description,
+    industry: input.industry,
+    timeoutSec: input.timeoutSec,
+    onProgress: (event) => {
+      void onProgress(event);
+    },
+    signal: extra.signal,
+  });
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Seeded kit ${result.kit.id} with ${result.sections.length} section(s) in ${result.elapsedSec}s.`,
+      },
+    ],
+    structuredContent: { action: input.action, ...result },
+  };
+};
+
+/**
+ * action → runner dispatch table for `brand_manage`. Keeps the tool
+ * `handler` a one-line lookup + call instead of a giant switch.
+ */
+const BRAND_MANAGE_RUNNERS: Record<string, BrandManageRunner> = {
+  "create-kit": brandCreateKit,
+  "publish-kit": brandPublishKit,
+  "delete-kit": brandDeleteKit,
+  "upload-doc": brandUploadDoc,
+  "delete-doc": brandDeleteDoc,
+  "run-ingestion": brandRunIngestion,
+  "run-enrichment": brandRunEnrichment,
+  "update-field": brandUpdateField,
+  seed: brandSeed,
 };
 
 export const registerBrandTools = (registry: McpRegistry): void => {
@@ -346,210 +601,8 @@ export const registerBrandTools = (registry: McpRegistry): void => {
     },
     handler: async (input, context, extra) => {
       const client = resolveBrandClient(context, input.environmentName);
-      switch (input.action) {
-        case "create-kit": {
-          if (!input.name) {
-            throw createScaiError("action='create-kit' requires `name`.", "INPUT_INVALID");
-          }
-          const kit = await createBrandKit({
-            client,
-            name: input.name,
-            description: input.description,
-            industry: input.industry,
-            brandName: input.brandName,
-          });
-          return {
-            content: [{ type: "text", text: `Created kit ${kit.id} (status: ${kit.status}).` }],
-            structuredContent: { action: input.action, kit },
-          };
-        }
-        case "publish-kit": {
-          if (!input.brandKitId) {
-            throw createScaiError("action='publish-kit' requires `brandKitId`.", "INPUT_INVALID");
-          }
-          const kit = await publishBrandKit({ client, brandKitId: input.brandKitId });
-          return {
-            content: [{ type: "text", text: `Kit ${kit.id} status: ${kit.status}.` }],
-            structuredContent: { action: input.action, kit },
-          };
-        }
-        case "delete-kit": {
-          if (!input.brandKitId) {
-            throw createScaiError("action='delete-kit' requires `brandKitId`.", "INPUT_INVALID");
-          }
-          await deleteBrandKit({ client, brandKitId: input.brandKitId });
-          return {
-            content: [{ type: "text", text: `Deleted kit ${input.brandKitId}.` }],
-            structuredContent: {
-              action: input.action,
-              brandKitId: input.brandKitId,
-              deleted: true,
-            },
-          };
-        }
-        case "upload-doc": {
-          if (!input.brandKitId) {
-            throw createScaiError("action='upload-doc' requires `brandKitId`.", "INPUT_INVALID");
-          }
-          if (input.bytesBase64) {
-            throw createScaiError(LOCAL_UPLOAD_UNSUPPORTED_MESSAGE, "INPUT_INVALID", {
-              hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
-            });
-          }
-          if (!input.url) {
-            throw createScaiError("action='upload-doc' requires `url`.", "INPUT_INVALID", {
-              hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
-            });
-          }
-          const doc = await uploadDocument({
-            client,
-            brandKitId: input.brandKitId,
-            source: { url: input.url },
-            title: input.title,
-            summary: input.summary,
-            fileType: input.mimeType ?? "application/pdf",
-          });
-          return {
-            content: [{ type: "text", text: `Uploaded ${doc.id} (status: ${doc.status}).` }],
-            structuredContent: { action: input.action, document: doc },
-          };
-        }
-        case "delete-doc": {
-          if (!input.documentId) {
-            throw createScaiError("action='delete-doc' requires `documentId`.", "INPUT_INVALID");
-          }
-          await deleteDocument({ client, documentId: input.documentId });
-          return {
-            content: [{ type: "text", text: `Deleted document ${input.documentId}.` }],
-            structuredContent: {
-              action: input.action,
-              documentId: input.documentId,
-              deleted: true,
-            },
-          };
-        }
-        case "run-ingestion": {
-          if (!input.brandKitId) {
-            throw createScaiError("action='run-ingestion' requires `brandKitId`.", "INPUT_INVALID");
-          }
-          const run = await runBrandIngestionPipeline({
-            client,
-            brandKitId: input.brandKitId,
-            populateSections: input.populateSections,
-            documentIds: input.documentIds,
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Started BrandIngestionPipeline run ${run.id}. Follow up with run-enrichment to populate sections.`,
-              },
-            ],
-            structuredContent: { action: input.action, run },
-          };
-        }
-        case "run-enrichment": {
-          if (!input.brandKitId) {
-            throw createScaiError(
-              "action='run-enrichment' requires `brandKitId`.",
-              "INPUT_INVALID"
-            );
-          }
-          const run = await runEnrichSectionsPipeline({
-            client,
-            brandKitId: input.brandKitId,
-            sectionIds: input.sectionIds,
-            fieldIds: input.fieldIds,
-          });
-          return {
-            content: [{ type: "text", text: `Started EnrichSectionsPipeline run ${run.id}.` }],
-            structuredContent: { action: input.action, run },
-          };
-        }
-        case "update-field": {
-          if (!input.brandKitId || !input.sectionId || !input.fieldId) {
-            throw createScaiError(
-              "action='update-field' requires `brandKitId`, `sectionId`, and `fieldId`.",
-              "INPUT_INVALID"
-            );
-          }
-          if (
-            input.value === undefined &&
-            input.intent === undefined &&
-            input.verified === undefined &&
-            input.aiEditable === undefined
-          ) {
-            throw createScaiError(
-              "action='update-field' requires at least one of `value`, `intent`, `verified`, or `aiEditable`.",
-              "INPUT_INVALID"
-            );
-          }
-          const field = await updateBrandKitField({
-            client,
-            brandKitId: input.brandKitId,
-            sectionId: input.sectionId,
-            fieldId: input.fieldId,
-            value: input.value as BrandKitFieldValue | undefined,
-            intent: input.intent,
-            verified: input.verified,
-            aiEditable: input.aiEditable,
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Updated field ${field.name} (${field.id}). verified=${field.verified === true ? "true" : "false"}.`,
-              },
-            ],
-            structuredContent: { action: input.action, field },
-          };
-        }
-        case "seed": {
-          if (!input.name) {
-            throw createScaiError("action='seed' requires `name`.", "INPUT_INVALID");
-          }
-          if (input.bytesBase64) {
-            throw createScaiError(LOCAL_UPLOAD_UNSUPPORTED_MESSAGE, "INPUT_INVALID", {
-              hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
-            });
-          }
-          if (!input.url) {
-            throw createScaiError("action='seed' requires `url`.", "INPUT_INVALID", {
-              hint: LOCAL_UPLOAD_UNSUPPORTED_HINT,
-            });
-          }
-          const source = { url: input.url };
-          // Forward progress to the client via MCP progress notifications.
-          // The seed composite emits ~10 events; mapping `pollSections`
-          // ticks to progress numerator lets the client render a bar.
-          let progressN = 0;
-          const onProgress = async (event: SeedProgressEvent): Promise<void> => {
-            progressN += 1;
-            await extra.sendProgress(progressN, undefined, `${event.stage}: ${event.message}`);
-          };
-          const result = await seedBrandKit({
-            client,
-            name: input.name,
-            source,
-            description: input.description,
-            industry: input.industry,
-            timeoutSec: input.timeoutSec,
-            onProgress: (event) => {
-              void onProgress(event);
-            },
-            signal: extra.signal,
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Seeded kit ${result.kit.id} with ${result.sections.length} section(s) in ${result.elapsedSec}s.`,
-              },
-            ],
-            structuredContent: { action: input.action, ...result },
-          };
-        }
-      }
+      const runner = BRAND_MANAGE_RUNNERS[input.action];
+      return runner(input as BrandManageInput, client, extra);
     },
   });
 

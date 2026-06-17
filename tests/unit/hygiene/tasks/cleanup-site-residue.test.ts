@@ -25,7 +25,7 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
 vi.mock("../../../../src/hygiene/tasks/audit/site-residue", () => ({
   runAuditSiteResidue: vi.fn(),
 }));
-vi.mock("../../../../src/recipe/api/site-discovery", () => ({
+vi.mock("../../../../src/authoring/site-discovery", () => ({
   discoverSites: vi.fn().mockResolvedValue([
     {
       name: "content-modelling",
@@ -313,7 +313,7 @@ describe("cleanup site-residue — failure + multi-finding + text mode", () => {
   });
 
   it("falls back to the content root when no active sites are discovered", async () => {
-    const { discoverSites } = await import("../../../../src/recipe/api/site-discovery");
+    const { discoverSites } = await import("../../../../src/authoring/site-discovery");
     vi.mocked(discoverSites).mockResolvedValueOnce([]);
     const client = setup({
       scannedItems: [

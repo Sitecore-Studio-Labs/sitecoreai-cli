@@ -203,121 +203,145 @@ const pushDatabase = async (
   const destDataMap = buildItemDataMap(destData.items);
   enrichCreateCommands(commands, sourceDataMap);
   enrichUpdateCommands(commands, sourceDataMap, destDataMap, true);
-  await applySitecoreCommands(root, destName, database, commands, logger, Boolean(options.whatIf));
+  await applySitecoreCommands({
+    root,
+    environmentName: destName,
+    database,
+    commands,
+    logger,
+    whatIf: Boolean(options.whatIf),
+  });
 };
 
-export const runDiff = async (options: DiffOptions): Promise<void> => {
-  const logger = toLogger(options);
-  const { root, modules } = await loadConfigAndModules(options);
-  const sourceName = options.source ?? root.defaultEnvironment;
-  const destName = options.destination ?? root.defaultEnvironment;
-  const apiTimeoutMs = resolveApiTimeoutMs(root);
+interface DiffSummary {
+  command: string;
+  mode: DiffMode;
+  source: string;
+  destination: string;
+  path: string | null;
+  push: boolean;
+  whatIf: boolean;
+  totalDifferences: number;
+  databases: DatabaseDiffSummary[];
+}
 
-  if (!root.environments[sourceName]) {
-    throw inputError(`Source environment '${sourceName}' is not defined in sitecoreai.cli.json.`);
-  }
-  if (!root.environments[destName]) {
-    throw inputError(`Target environment '${destName}' is not defined in sitecoreai.cli.json.`);
-  }
-
-  const mode: DiffMode = sourceName === destName ? "local-vs-instance" : "instance-vs-instance";
-  // Same-env diff is a legacy/legitimate no-op (both default to
-  // root.defaultEnvironment). Surface a friendly note in non-JSON mode
-  // so users aren't confused by zero differences.
-  if (mode === "local-vs-instance" && !logger.isJson()) {
-    if (options.source && options.destination) {
-      logger.info(
-        `Source and target are the same environment ('${sourceName}'). Diff will report zero differences. ` +
-          "Pass distinct --source-env / --target-env to diff two environments.",
-        "yellow"
-      );
-    }
-  }
-
-  if (options.push) {
-    // Mirror push.ts: --allow-write flag mutates the in-memory env so
-    // ensureAllowWrite passes; --what-if skips the write gate entirely.
-    if (options.allowWrite) {
-      const destEnvCfg = root.environments[destName];
-      if (destEnvCfg) {
-        destEnvCfg.allowWrite = true;
-      }
-    }
-    if (!options.whatIf) {
-      ensureAllowWrite(root, destName);
-    }
-  }
-
-  // Hoist filter: excludedFields is invariant across all subtrees and dbs.
-  const filter = createFieldFilterSet(root.serialization.excludedFields, []);
-
-  const summary: {
-    command: string;
-    mode: DiffMode;
-    source: string;
-    destination: string;
-    path: string | null;
-    push: boolean;
-    whatIf: boolean;
-    totalDifferences: number;
-    databases: DatabaseDiffSummary[];
-  } = {
-    command: "serialization.diff",
-    mode,
-    source: sourceName,
-    destination: destName,
-    path: options.path ?? null,
-    push: Boolean(options.push),
-    whatIf: Boolean(options.push && options.whatIf),
-    totalDifferences: 0,
-    databases: [],
-  };
-
-  // Path mode: a single subtree explicitly requested via -p.
-  if (options.path) {
-    const sourceDatabase = options.sourceDatabase ?? "master";
-    const destinationDatabase = options.destinationDatabase ?? sourceDatabase;
-    const subtree = new FilesystemTreeSpec();
-    subtree.name = "diff";
-    subtree.database = destinationDatabase;
-    subtree.path = ItemPath.fromPathString(options.path);
-    subtree.scope = TreeScope.ItemAndChildren;
-    subtree.allowedPushOperations = AllowedPushOperations.CreateUpdateAndDelete;
-    subtree.physicalPath = path.join(process.cwd(), "diff");
-
-    const args: DiffDatabaseArgs = {
-      root,
-      sourceName,
-      destName,
-      database: destinationDatabase,
-      subtrees: [subtree],
-      filter,
-      apiTimeoutMs,
-      options,
-    };
-    const { commands, summary: dbSummary } = await diffDatabase(args);
-    summary.databases.push(dbSummary);
-    summary.totalDifferences += dbSummary.differences;
-    if (!logger.isJson()) {
-      logger.info(
-        `Discovered ${dbSummary.differences} differences for ${destinationDatabase}.`,
-        "green"
-      );
-    }
-
-    if (options.push) {
-      await pushDatabase(args, commands, logger);
-    }
-
-    if (logger.isJson()) {
-      logger.json(summary);
-    }
+/** Warn (non-JSON) when an explicit same-environment diff was requested. */
+const warnSameEnvironment = (
+  options: DiffOptions,
+  mode: DiffMode,
+  sourceName: string,
+  logger: ReturnType<typeof toLogger>
+): void => {
+  if (mode !== "local-vs-instance" || logger.isJson()) {
     return;
   }
+  if (options.source && options.destination) {
+    logger.info(
+      `Source and target are the same environment ('${sourceName}'). Diff will report zero differences. ` +
+        "Pass distinct --source-env / --target-env to diff two environments.",
+      "yellow"
+    );
+  }
+};
 
-  // Module mode: walk subtrees grouped by database. Databases stay
-  // sequential — typically only master+core, and serializing them
-  // keeps spinner output / partial-failure semantics predictable.
+/** Apply the push write-gate (mirror of push.ts) before any destination mutation. */
+const applyPushWriteGate = (
+  options: DiffOptions,
+  root: RootConfiguration,
+  destName: string
+): void => {
+  if (!options.push) {
+    return;
+  }
+  // Mirror push.ts: --allow-write flag mutates the in-memory env so
+  // ensureAllowWrite passes; --what-if skips the write gate entirely.
+  if (options.allowWrite) {
+    const destEnvCfg = root.environments[destName];
+    if (destEnvCfg) {
+      destEnvCfg.allowWrite = true;
+    }
+  }
+  if (!options.whatIf) {
+    ensureAllowWrite(root, destName);
+  }
+};
+
+/**
+ * Run diff for a single database, folding results into the summary. The
+ * caller passes `beforePush` to interleave its own emit between the diff
+ * and the optional push (module mode needs `database-changes-detected`
+ * emitted there, exactly as the original sequential code did).
+ */
+const runDatabaseDiff = async (
+  args: DiffDatabaseArgs,
+  summary: DiffSummary,
+  logger: ReturnType<typeof toLogger>,
+  beforePush?: (dbSummary: DatabaseDiffSummary) => void
+): Promise<void> => {
+  const { commands, summary: dbSummary } = await diffDatabase(args);
+  summary.databases.push(dbSummary);
+  summary.totalDifferences += dbSummary.differences;
+  beforePush?.(dbSummary);
+  if (!logger.isJson()) {
+    logger.info(`Discovered ${dbSummary.differences} differences for ${args.database}.`, "green");
+  }
+  if (args.options.push) {
+    await pushDatabase(args, commands, logger);
+  }
+};
+
+/** Path mode: diff a single subtree explicitly requested via `-p`. */
+const runPathModeDiff = async (params: {
+  options: DiffOptions;
+  root: RootConfiguration;
+  sourceName: string;
+  destName: string;
+  filter: FieldFilterSet;
+  apiTimeoutMs: number | undefined;
+  summary: DiffSummary;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<void> => {
+  const { options, root, sourceName, destName, filter, apiTimeoutMs, summary, logger } = params;
+  const sourceDatabase = options.sourceDatabase ?? "master";
+  const destinationDatabase = options.destinationDatabase ?? sourceDatabase;
+  const subtree = new FilesystemTreeSpec();
+  subtree.name = "diff";
+  subtree.database = destinationDatabase;
+  subtree.path = ItemPath.fromPathString(options.path!);
+  subtree.scope = TreeScope.ItemAndChildren;
+  subtree.allowedPushOperations = AllowedPushOperations.CreateUpdateAndDelete;
+  subtree.physicalPath = path.join(process.cwd(), "diff");
+
+  const args: DiffDatabaseArgs = {
+    root,
+    sourceName,
+    destName,
+    database: destinationDatabase,
+    subtrees: [subtree],
+    filter,
+    apiTimeoutMs,
+    options,
+  };
+  await runDatabaseDiff(args, summary, logger);
+};
+
+/** Module mode: walk subtrees grouped by database, sequentially. */
+const runModuleModeDiff = async (params: {
+  options: DiffOptions;
+  root: RootConfiguration;
+  modules: Parameters<typeof groupSubtreesByDatabase>[0];
+  sourceName: string;
+  destName: string;
+  filter: FieldFilterSet;
+  apiTimeoutMs: number | undefined;
+  summary: DiffSummary;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<void> => {
+  const { options, root, modules, sourceName, destName, filter, apiTimeoutMs, summary, logger } =
+    params;
+  // Databases stay sequential — typically only master+core, and
+  // serializing them keeps spinner output / partial-failure semantics
+  // predictable.
   const subtreesByDb = groupSubtreesByDatabase(modules);
   for (const [database, subtrees] of subtreesByDb) {
     if (options.signal?.aborted) {
@@ -335,27 +359,82 @@ export const runDiff = async (options: DiffOptions): Promise<void> => {
       apiTimeoutMs,
       options,
     };
-    const { commands, summary: dbSummary } = await diffDatabase(args);
-    summary.databases.push(dbSummary);
-    summary.totalDifferences += dbSummary.differences;
-    options.emit?.({
-      kind: "database-changes-detected",
-      database,
-      changes: dbSummary.differences,
+    let differences = 0;
+    await runDatabaseDiff(args, summary, logger, (dbSummary) => {
+      differences = dbSummary.differences;
+      options.emit?.({
+        kind: "database-changes-detected",
+        database,
+        changes: dbSummary.differences,
+      });
     });
-    if (!logger.isJson()) {
-      logger.info(`Discovered ${dbSummary.differences} differences for ${database}.`, "green");
-    }
-
     if (options.push) {
-      await pushDatabase(args, commands, logger);
       options.emit?.({
         kind: "database-applied",
         database,
-        changes: dbSummary.differences,
+        changes: differences,
         whatIf: Boolean(options.whatIf),
       });
     }
+  }
+};
+
+export const runDiff = async (options: DiffOptions): Promise<void> => {
+  const logger = toLogger(options);
+  const { root, modules } = await loadConfigAndModules(options);
+  const sourceName = options.source ?? root.defaultEnvironment;
+  const destName = options.destination ?? root.defaultEnvironment;
+  const apiTimeoutMs = resolveApiTimeoutMs(root);
+
+  if (!root.environments[sourceName]) {
+    throw inputError(`Source environment '${sourceName}' is not defined in sitecoreai.cli.json.`);
+  }
+  if (!root.environments[destName]) {
+    throw inputError(`Target environment '${destName}' is not defined in sitecoreai.cli.json.`);
+  }
+
+  const mode: DiffMode = sourceName === destName ? "local-vs-instance" : "instance-vs-instance";
+  warnSameEnvironment(options, mode, sourceName, logger);
+  applyPushWriteGate(options, root, destName);
+
+  // Hoist filter: excludedFields is invariant across all subtrees and dbs.
+  const filter = createFieldFilterSet(root.serialization.excludedFields, []);
+
+  const summary: DiffSummary = {
+    command: "serialization.diff",
+    mode,
+    source: sourceName,
+    destination: destName,
+    path: options.path ?? null,
+    push: Boolean(options.push),
+    whatIf: Boolean(options.push && options.whatIf),
+    totalDifferences: 0,
+    databases: [],
+  };
+
+  if (options.path) {
+    await runPathModeDiff({
+      options,
+      root,
+      sourceName,
+      destName,
+      filter,
+      apiTimeoutMs,
+      summary,
+      logger,
+    });
+  } else {
+    await runModuleModeDiff({
+      options,
+      root,
+      modules,
+      sourceName,
+      destName,
+      filter,
+      apiTimeoutMs,
+      summary,
+      logger,
+    });
   }
 
   if (logger.isJson()) {

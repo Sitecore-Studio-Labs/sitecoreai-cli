@@ -24,6 +24,7 @@
  * MCP layer only forwards routing + the structured-content envelope.
  */
 
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { auditNames, runAuditAll } from "@/hygiene/tasks/audit/all";
 import { runAuditAltTextMissing } from "@/hygiene/tasks/audit/alt-text-missing";
@@ -136,6 +137,335 @@ const baseTaskOptions = (
   ...overrides,
 });
 
+/**
+ * Per-verb handlers for `audit_inspect`. Each verb's input-marshalling
+ * and result-shaping is its own small function so the tool `handler`
+ * collapses to: look up the verb runner, call it. The `input` arg is
+ * the validated tool input; `envName`/`configPath` are pre-resolved so
+ * each verb runner sees the same context-derived values.
+ */
+type AuditInspectInput = {
+  verb: string;
+  audit?: string;
+  root?: string;
+  limit?: number;
+  includeSystem?: boolean;
+  exclude?: string[];
+  since?: string;
+  owner?: string;
+  baseline?: boolean;
+  from?: string;
+  to?: string;
+  auditOptions?: Record<string, unknown>;
+};
+
+const auditInspectList = (input: AuditInspectInput): CallToolResult => {
+  const names = auditNames();
+  return {
+    content: [{ type: "text", text: `${names.length} audit(s) registered.` }],
+    structuredContent: { verb: input.verb, audits: names },
+  };
+};
+
+/** Build the shared option bag honored by every single-audit runner. */
+const buildAuditRunShared = (
+  input: AuditInspectInput,
+  configPath: string,
+  envName: string
+): Record<string, unknown> => {
+  // `site-residue` is the lone audit whose `root` is `string[]` (extra
+  // SXA Project roots) instead of a content-tree string. Forwarding the
+  // top-level `root` (string) here would corrupt the array spread.
+  // Callers extend the SXA defaults via `auditOptions: { root: [...] }`.
+  const forwardRoot = input.audit !== "site-residue";
+  return baseTaskOptions(configPath, envName, {
+    ...(forwardRoot && input.root !== undefined && { root: input.root }),
+    ...(input.limit !== undefined && { limit: input.limit }),
+    ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
+    ...(input.exclude !== undefined && { exclude: input.exclude }),
+    ...(input.since !== undefined && { since: input.since }),
+    ...(input.owner !== undefined && { owner: input.owner }),
+    ...(input.baseline !== undefined && { baseline: input.baseline }),
+    ...(input.auditOptions ?? {}),
+  });
+};
+
+/** verb='run' with audit='all' — pipe runAuditAll through a tmpfile. */
+const auditInspectRunAll = async (
+  input: AuditInspectInput,
+  shared: Record<string, unknown>
+): Promise<CallToolResult> => {
+  // runAuditAll prints + writes; it doesn't return the envelope. Pipe
+  // through a tmpfile so the MCP client gets structured output (matches
+  // the pattern in audit-history).
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tmpFile = path.join(
+    os.tmpdir(),
+    `scai-audit-all-mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`
+  );
+  await runAuditAll({ ...shared, output: tmpFile, format: "json" } as never);
+  let envelope: Record<string, unknown>;
+  try {
+    envelope = JSON.parse(fs.readFileSync(tmpFile, "utf8"));
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {
+      /* ignore */
+    }
+  }
+  const count = (envelope.counts as { totalFindings?: number } | undefined)?.totalFindings;
+  return {
+    content: [
+      {
+        type: "text",
+        text: `audit all: ${count ?? "?"} finding(s) across ${Object.keys(envelope.audits ?? {}).length} audit(s).`,
+      },
+    ],
+    structuredContent: { verb: input.verb, audit: "all", envelope },
+  };
+};
+
+const auditInspectRun = async (
+  input: AuditInspectInput,
+  configPath: string,
+  envName: string
+): Promise<CallToolResult> => {
+  if (!input.audit) {
+    throw createScaiError(
+      "verb='run' requires `audit`. Use `audit: 'all'` for the consolidated run, or one of the names from verb='list'.",
+      "INPUT_INVALID"
+    );
+  }
+  const shared = buildAuditRunShared(input, configPath, envName);
+  if (input.audit === "all") {
+    return auditInspectRunAll(input, shared);
+  }
+  const runner = SINGLE_AUDIT_RUNNERS[input.audit];
+  if (!runner) {
+    throw createScaiError(
+      `Unknown audit '${input.audit}'. Run verb='list' to see registered audits.`,
+      "INPUT_INVALID"
+    );
+  }
+  const findings = await runner(shared);
+  return {
+    content: [{ type: "text", text: `audit ${input.audit}: ${findings.length} finding(s).` }],
+    structuredContent: {
+      verb: input.verb,
+      audit: input.audit,
+      count: findings.length,
+      findings,
+    },
+  };
+};
+
+const auditInspectHistoryCapture = async (
+  input: AuditInspectInput,
+  configPath: string,
+  envName: string
+): Promise<CallToolResult> => {
+  await runHistoryCapture(
+    baseTaskOptions(configPath, envName, {
+      ...(input.root !== undefined && { root: input.root }),
+      ...(input.limit !== undefined && { limit: input.limit }),
+      ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
+      ...(input.exclude !== undefined && { exclude: input.exclude }),
+      ...(input.since !== undefined && { since: input.since }),
+    }) as never
+  );
+  return {
+    content: [{ type: "text", text: "Captured audit history snapshot." }],
+    structuredContent: { verb: input.verb, captured: true },
+  };
+};
+
+/** Resolve the config directory the history primitives read snapshots from. */
+const historyConfigDir = async (configPath: string | undefined): Promise<string> => {
+  const path = await import("node:path");
+  return configPath?.endsWith(".json") ? path.dirname(configPath) : (configPath ?? process.cwd());
+};
+
+const auditInspectHistoryList = async (
+  input: AuditInspectInput,
+  configPath: string,
+  envName: string
+): Promise<CallToolResult> => {
+  // runHistoryList prints; reconstruct by reading directly. Re-use the
+  // same module so we don't duplicate the path layout.
+  const { listHistory } = await import("@/hygiene/history");
+  const configDir = await historyConfigDir(configPath);
+  const snapshots = listHistory({ envName, configDir });
+  // Invoke the task runner too, so the logger trail mirrors the CLI
+  // (no-op when quiet=true; included for parity with other tools).
+  await runHistoryList(baseTaskOptions(configPath, envName) as never);
+  return {
+    content: [{ type: "text", text: `${snapshots.length} snapshot(s) on disk.` }],
+    structuredContent: { verb: input.verb, count: snapshots.length, snapshots },
+  };
+};
+
+const auditInspectHistoryDiff = async (
+  input: AuditInspectInput,
+  configPath: string,
+  envName: string
+): Promise<CallToolResult> => {
+  // runHistoryDiff prints; we need the structured diff too. Re-implement
+  // against the same primitives.
+  const { listHistory, loadSnapshot, diffSnapshots } = await import("@/hygiene/history");
+  const configDir = await historyConfigDir(configPath);
+  const snapshots = listHistory({ envName, configDir });
+  if (snapshots.length < 2 && (!input.from || !input.to)) {
+    throw createScaiError(
+      `Need at least 2 snapshots to diff (have ${snapshots.length}).`,
+      "INPUT_INVALID"
+    );
+  }
+  const toPath = input.to ?? snapshots[0].filePath;
+  const fromPath = input.from ?? snapshots[1].filePath;
+  const diff = diffSnapshots(loadSnapshot(fromPath), loadSnapshot(toPath));
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Diff: +${diff.totals.added} added, -${diff.totals.removed} removed (net ${diff.totals.net >= 0 ? "+" : ""}${diff.totals.net}).`,
+      },
+    ],
+    structuredContent: { verb: input.verb, fromFile: fromPath, toFile: toPath, ...diff },
+  };
+};
+
+/**
+ * verb → handler dispatch table for `audit_inspect`. Each entry takes
+ * the validated input plus the resolved config path + env name. Keeps
+ * the tool `handler` itself a one-line lookup + call (no switch).
+ */
+const AUDIT_INSPECT_RUNNERS: Record<
+  string,
+  (
+    input: AuditInspectInput,
+    configPath: string,
+    envName: string
+  ) => Promise<CallToolResult> | CallToolResult
+> = {
+  list: (input) => auditInspectList(input),
+  run: auditInspectRun,
+  "history-capture": auditInspectHistoryCapture,
+  "history-list": auditInspectHistoryList,
+  "history-diff": auditInspectHistoryDiff,
+};
+
+/**
+ * Per-verb handlers for `audit_baseline`. Same shape as the inspect
+ * runners: validated input + resolved config/env, returning the tool
+ * result. Keeps the tool `handler` a one-line table lookup.
+ */
+type AuditBaselineInput = {
+  verb: string;
+  audit?: string;
+  audits?: string[];
+  fingerprint?: string;
+  resetFirst?: boolean;
+  root?: string;
+  limit?: number;
+  includeSystem?: boolean;
+};
+
+const auditBaselineShow = async (
+  input: AuditBaselineInput,
+  configPath: string,
+  envName: string,
+  shared: Record<string, unknown>
+): Promise<CallToolResult> => {
+  // runBaselineShow prints; re-derive the structure for the
+  // structuredContent envelope.
+  const { openBaseline } = await import("@/hygiene/baseline");
+  const configDir = await historyConfigDir(configPath);
+  const baseline = openBaseline({ envName, configDir, logger: undefined as never });
+  const snapshot = baseline.snapshot();
+  const totalEntries = Object.values(snapshot.ignored).reduce((n, list) => n + list.length, 0);
+  await runBaselineShow(shared as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Baseline ${baseline.filePath}: ${totalEntries} entr${totalEntries === 1 ? "y" : "ies"}.`,
+      },
+    ],
+    structuredContent: {
+      verb: input.verb,
+      filePath: baseline.filePath,
+      totalEntries,
+      ignored: snapshot.ignored,
+    },
+  };
+};
+
+const auditBaselineUpdate = async (
+  input: AuditBaselineInput,
+  shared: Record<string, unknown>
+): Promise<CallToolResult> => {
+  await runBaselineCreate({
+    ...shared,
+    ...(input.audits !== undefined && { audits: input.audits }),
+    ...(input.audit !== undefined && !input.audits && { audits: [input.audit] }),
+    ...(input.resetFirst !== undefined && { reset: input.resetFirst }),
+    ...(input.root !== undefined && { root: input.root }),
+    ...(input.limit !== undefined && { limit: input.limit }),
+    ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
+  } as never);
+  return {
+    content: [{ type: "text", text: "Baseline updated." }],
+    structuredContent: { verb: input.verb, updated: true },
+  };
+};
+
+const auditBaselineRemove = async (
+  input: AuditBaselineInput,
+  shared: Record<string, unknown>
+): Promise<CallToolResult> => {
+  if (!input.audit || !input.fingerprint) {
+    throw createScaiError("verb='remove' requires `audit` and `fingerprint`.", "INPUT_INVALID");
+  }
+  await runBaselineRemove({
+    ...shared,
+    audit: input.audit,
+    fingerprint: input.fingerprint,
+  } as never);
+  return {
+    content: [{ type: "text", text: `Removed ${input.audit}/${input.fingerprint} from baseline.` }],
+    structuredContent: {
+      verb: input.verb,
+      audit: input.audit,
+      fingerprint: input.fingerprint,
+      removed: true,
+    },
+  };
+};
+
+const auditBaselineReset = async (
+  input: AuditBaselineInput,
+  shared: Record<string, unknown>
+): Promise<CallToolResult> => {
+  await runBaselineReset({
+    ...shared,
+    ...(input.audit !== undefined && { audit: input.audit }),
+  } as never);
+  return {
+    content: [
+      {
+        type: "text",
+        text: input.audit
+          ? `Reset baseline entries for ${input.audit}.`
+          : "Reset every baseline entry.",
+      },
+    ],
+    structuredContent: { verb: input.verb, audit: input.audit ?? null, reset: true },
+  };
+};
+
 export const registerAuditTools = (registry: McpRegistry): void => {
   registry.registerTool({
     name: "audit_inspect",
@@ -219,178 +549,8 @@ export const registerAuditTools = (registry: McpRegistry): void => {
     },
     handler: async (input, context) => {
       const envName = input.environmentName ?? context.envName;
-      switch (input.verb) {
-        case "list": {
-          const names = auditNames();
-          return {
-            content: [{ type: "text", text: `${names.length} audit(s) registered.` }],
-            structuredContent: { verb: input.verb, audits: names },
-          };
-        }
-        case "run": {
-          if (!input.audit) {
-            throw createScaiError(
-              "verb='run' requires `audit`. Use `audit: 'all'` for the consolidated run, or one of the names from verb='list'.",
-              "INPUT_INVALID"
-            );
-          }
-          // `site-residue` is the lone audit whose `root` is `string[]`
-          // (extra SXA Project roots) instead of a content-tree string.
-          // Forwarding the top-level `root` (string) here would corrupt
-          // the array spread. Callers extend the SXA defaults via
-          // `auditOptions: { root: [...] }`.
-          const forwardRoot = input.audit !== "site-residue";
-          const shared = baseTaskOptions(context.configPath, envName, {
-            ...(forwardRoot && input.root !== undefined && { root: input.root }),
-            ...(input.limit !== undefined && { limit: input.limit }),
-            ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
-            ...(input.exclude !== undefined && { exclude: input.exclude }),
-            ...(input.since !== undefined && { since: input.since }),
-            ...(input.owner !== undefined && { owner: input.owner }),
-            ...(input.baseline !== undefined && { baseline: input.baseline }),
-            ...(input.auditOptions ?? {}),
-          });
-          if (input.audit === "all") {
-            // runAuditAll prints + writes; it doesn't return the
-            // envelope. Pipe through a tmpfile so the MCP client gets
-            // structured output (matches the pattern in audit-history).
-            const fs = await import("node:fs");
-            const os = await import("node:os");
-            const path = await import("node:path");
-            const tmpFile = path.join(
-              os.tmpdir(),
-              `scai-audit-all-mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`
-            );
-            await runAuditAll({
-              ...shared,
-              output: tmpFile,
-              format: "json",
-            } as never);
-            let envelope: Record<string, unknown>;
-            try {
-              envelope = JSON.parse(fs.readFileSync(tmpFile, "utf8"));
-            } finally {
-              try {
-                fs.unlinkSync(tmpFile);
-              } catch {
-                /* ignore */
-              }
-            }
-            const count = (envelope.counts as { totalFindings?: number } | undefined)
-              ?.totalFindings;
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `audit all: ${count ?? "?"} finding(s) across ${Object.keys(envelope.audits ?? {}).length} audit(s).`,
-                },
-              ],
-              structuredContent: { verb: input.verb, audit: "all", envelope },
-            };
-          }
-          const runner = SINGLE_AUDIT_RUNNERS[input.audit];
-          if (!runner) {
-            throw createScaiError(
-              `Unknown audit '${input.audit}'. Run verb='list' to see registered audits.`,
-              "INPUT_INVALID"
-            );
-          }
-          const findings = await runner(shared);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `audit ${input.audit}: ${findings.length} finding(s).`,
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              audit: input.audit,
-              count: findings.length,
-              findings,
-            },
-          };
-        }
-        case "history-capture": {
-          await runHistoryCapture(
-            baseTaskOptions(context.configPath, envName, {
-              ...(input.root !== undefined && { root: input.root }),
-              ...(input.limit !== undefined && { limit: input.limit }),
-              ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
-              ...(input.exclude !== undefined && { exclude: input.exclude }),
-              ...(input.since !== undefined && { since: input.since }),
-            }) as never
-          );
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Captured audit history snapshot.",
-              },
-            ],
-            structuredContent: { verb: input.verb, captured: true },
-          };
-        }
-        case "history-list": {
-          // runHistoryList prints; reconstruct by reading directly.
-          // Re-use the same module so we don't duplicate the path layout.
-          const { listHistory } = await import("@/hygiene/history");
-          const path = await import("node:path");
-          const configDir = context.configPath?.endsWith(".json")
-            ? path.dirname(context.configPath)
-            : (context.configPath ?? process.cwd());
-          const snapshots = listHistory({ envName, configDir });
-          // Invoke the task runner too, so the logger trail mirrors the CLI
-          // (no-op when quiet=true; included for parity with other tools).
-          await runHistoryList(baseTaskOptions(context.configPath, envName) as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `${snapshots.length} snapshot(s) on disk.`,
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              count: snapshots.length,
-              snapshots,
-            },
-          };
-        }
-        case "history-diff": {
-          // runHistoryDiff prints; we need the structured diff too.
-          // Re-implement against the same primitives.
-          const { listHistory, loadSnapshot, diffSnapshots } = await import("@/hygiene/history");
-          const path = await import("node:path");
-          const configDir = context.configPath?.endsWith(".json")
-            ? path.dirname(context.configPath)
-            : (context.configPath ?? process.cwd());
-          const snapshots = listHistory({ envName, configDir });
-          if (snapshots.length < 2 && (!input.from || !input.to)) {
-            throw createScaiError(
-              `Need at least 2 snapshots to diff (have ${snapshots.length}).`,
-              "INPUT_INVALID"
-            );
-          }
-          const toPath = input.to ?? snapshots[0].filePath;
-          const fromPath = input.from ?? snapshots[1].filePath;
-          const diff = diffSnapshots(loadSnapshot(fromPath), loadSnapshot(toPath));
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Diff: +${diff.totals.added} added, -${diff.totals.removed} removed (net ${diff.totals.net >= 0 ? "+" : ""}${diff.totals.net}).`,
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              fromFile: fromPath,
-              toFile: toPath,
-              ...diff,
-            },
-          };
-        }
-      }
+      const runner = AUDIT_INSPECT_RUNNERS[input.verb];
+      return runner(input as AuditInspectInput, context.configPath, envName);
     },
   });
 
@@ -455,104 +615,16 @@ export const registerAuditTools = (registry: McpRegistry): void => {
     handler: async (input, context) => {
       const envName = input.environmentName ?? context.envName;
       const shared = baseTaskOptions(context.configPath, envName);
-      switch (input.verb) {
-        case "show": {
-          // runBaselineShow prints; re-derive the structure for the
-          // structuredContent envelope.
-          const { openBaseline } = await import("@/hygiene/baseline");
-          const path = await import("node:path");
-          const configDir = context.configPath?.endsWith(".json")
-            ? path.dirname(context.configPath)
-            : (context.configPath ?? process.cwd());
-          const baseline = openBaseline({
-            envName,
-            configDir,
-            logger: undefined as never,
-          });
-          const snapshot = baseline.snapshot();
-          const totalEntries = Object.values(snapshot.ignored).reduce(
-            (n, list) => n + list.length,
-            0
-          );
-          await runBaselineShow(shared as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Baseline ${baseline.filePath}: ${totalEntries} entr${totalEntries === 1 ? "y" : "ies"}.`,
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              filePath: baseline.filePath,
-              totalEntries,
-              ignored: snapshot.ignored,
-            },
-          };
-        }
-        case "update": {
-          await runBaselineCreate({
-            ...shared,
-            ...(input.audits !== undefined && { audits: input.audits }),
-            ...(input.audit !== undefined && !input.audits && { audits: [input.audit] }),
-            ...(input.resetFirst !== undefined && { reset: input.resetFirst }),
-            ...(input.root !== undefined && { root: input.root }),
-            ...(input.limit !== undefined && { limit: input.limit }),
-            ...(input.includeSystem !== undefined && { includeSystem: input.includeSystem }),
-          } as never);
-          return {
-            content: [{ type: "text", text: "Baseline updated." }],
-            structuredContent: { verb: input.verb, updated: true },
-          };
-        }
-        case "remove": {
-          if (!input.audit || !input.fingerprint) {
-            throw createScaiError(
-              "verb='remove' requires `audit` and `fingerprint`.",
-              "INPUT_INVALID"
-            );
-          }
-          await runBaselineRemove({
-            ...shared,
-            audit: input.audit,
-            fingerprint: input.fingerprint,
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Removed ${input.audit}/${input.fingerprint} from baseline.`,
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              audit: input.audit,
-              fingerprint: input.fingerprint,
-              removed: true,
-            },
-          };
-        }
-        case "reset": {
-          await runBaselineReset({
-            ...shared,
-            ...(input.audit !== undefined && { audit: input.audit }),
-          } as never);
-          return {
-            content: [
-              {
-                type: "text",
-                text: input.audit
-                  ? `Reset baseline entries for ${input.audit}.`
-                  : "Reset every baseline entry.",
-              },
-            ],
-            structuredContent: {
-              verb: input.verb,
-              audit: input.audit ?? null,
-              reset: true,
-            },
-          };
-        }
+      const args = input as AuditBaselineInput;
+      switch (args.verb) {
+        case "show":
+          return auditBaselineShow(args, context.configPath, envName, shared);
+        case "update":
+          return auditBaselineUpdate(args, shared);
+        case "remove":
+          return auditBaselineRemove(args, shared);
+        default:
+          return auditBaselineReset(args, shared);
       }
     },
   });

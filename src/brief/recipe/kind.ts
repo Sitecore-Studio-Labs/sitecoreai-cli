@@ -126,31 +126,168 @@ const readCurrentByIdOrName = async (
   return readCurrent(ref, ctx);
 };
 
+/**
+ * Refuse to write when the plan stamped a `meta.policyError` — any cell
+ * classified `cms-edit` / `conflict` under the `"error"` policy. Throws
+ * before any I/O so the operator resolves before retry.
+ */
+const assertNoPolicyError = (plan: RecipePlan, ref: KindRef): void => {
+  const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
+  if (!policyErrorChange) return;
+  const errors =
+    (policyErrorChange.meta?.policyErrors as
+      | Array<{ path: string; classification: string }>
+      | undefined) ?? [];
+  throw createScaiError(
+    `Brief type "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
+    "POLICY_DENIED",
+    {
+      hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the brief type first to converge the recipe against the tenant.",
+      details: errors.map((e) => `${e.path} → ${e.classification}`),
+    }
+  );
+};
+
+/**
+ * Best-effort read of the prior baseline's captured tenant id. Used to
+ * resolve the existing row by id (robust to a codename rename) before
+ * falling back to a name lookup. `undefined` when storage is absent or
+ * the load fails.
+ */
+const loadPriorBaselineTenantId = async (
+  ctx: SyncContext,
+  ref: KindRef
+): Promise<string | undefined> => {
+  if (!ctx.baselineStorage) return undefined;
+  try {
+    const prior = await ctx.baselineStorage.load<BriefTypeBaselinePayload>(
+      BRIEF_TYPE_KIND_NAME,
+      ctx.environmentName,
+      ref.id
+    );
+    return prior?.payload?.tenantId;
+  } catch {
+    // Best-effort — baseline load failure just disables id-first.
+    return undefined;
+  }
+};
+
+/** Fetch a brief type by id, swallowing 404 / network errors as `null`. */
+const tryGetBriefTypeById = async (
+  client: BriefApiClientOptions,
+  id: string
+): Promise<BriefType | null> => {
+  try {
+    return await getBriefType(client, id);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Apply a `create` type change. A prior baseline-stored id wins even
+ * for a fresh-create plan — the row exists, the recipe just forgot it —
+ * so this adopts via update when the id resolves. Returns the written
+ * tenant id.
+ */
+const applyCreate = async (
+  client: BriefApiClientOptions,
+  ctx: SyncContext,
+  recipe: BriefTypeRecipe,
+  input: CreateBriefTypeInput,
+  priorBaselineTenantId: string | undefined
+): Promise<string> => {
+  const adopted = priorBaselineTenantId
+    ? await tryGetBriefTypeById(client, priorBaselineTenantId)
+    : null;
+  if (adopted) {
+    ctx.logger?.info(
+      `Adopting existing brief type "${adopted.name}" (id ${adopted.id}) via baseline tenantId — recipe codename "${recipe.name}" was a rename.`
+    );
+    await updateBriefType(client, adopted.id, input);
+    return adopted.id;
+  }
+  ctx.logger?.info(`Creating brief type "${recipe.name}".`);
+  const created = await createBriefType(client, input);
+  return created.id;
+};
+
+/**
+ * Apply an `update` type change. Prefers the baseline-stored tenant id
+ * over a name lookup (robust to a codename rename), throwing when no row
+ * resolves. Returns the written tenant id.
+ */
+const applyUpdate = async (args: {
+  client: BriefApiClientOptions;
+  ctx: SyncContext;
+  ref: KindRef;
+  recipe: BriefTypeRecipe;
+  input: CreateBriefTypeInput;
+  priorBaselineTenantId: string | undefined;
+}): Promise<string> => {
+  const { client, ctx, ref, recipe, input, priorBaselineTenantId } = args;
+  let existing = priorBaselineTenantId
+    ? await tryGetBriefTypeById(client, priorBaselineTenantId)
+    : null;
+  if (!existing) {
+    existing = await findTypeByName(client, ref.id);
+  }
+  if (!existing) {
+    throw createScaiError(`Brief type "${ref.id}" not found.`, "INPUT_INVALID", {
+      hint: "The type was expected to exist for an update — check the name or push a create.",
+    });
+  }
+  ctx.logger?.info(`Updating brief type "${recipe.name}" (${existing.id}).`);
+  await updateBriefType(client, existing.id, input);
+  return existing.id;
+};
+
+/**
+ * Three-way merge baseline capture: write the post-apply hash map so the
+ * next push can classify drift. Opt-in via `ctx.baselineStorage`. Hashes
+ * the merged recipe the kind actually wrote (so a cms-wins downgrade
+ * lands an accurate baseline), falling back to the prior baseline id on
+ * a noop run. Write failures are logged, never thrown.
+ */
+const captureBaseline = async (
+  ctx: SyncContext,
+  ref: KindRef,
+  recipe: BriefTypeRecipe,
+  tenantId: string | undefined
+): Promise<void> => {
+  if (!ctx.baselineStorage) return;
+  const payload = captureBriefTypeBaselinePayload(recipe, tenantId);
+  const baseline: Baseline<BriefTypeBaselinePayload> = {
+    envelopeVersion: "1",
+    kind: BRIEF_TYPE_KIND_NAME,
+    recipeHandle: ref.id,
+    envName: ctx.environmentName,
+    capturedAt: new Date().toISOString(),
+    payload,
+  };
+  try {
+    await ctx.baselineStorage.write(BRIEF_TYPE_KIND_NAME, ctx.environmentName, ref.id, baseline);
+  } catch (err) {
+    // Baseline write failures must not silently fall back to two-way
+    // mode on the next push — that re-introduces silent-clobber. Log
+    // but don't throw: the type WAS successfully written, and the
+    // caller can decide whether to surface this. Mirrors the brief
+    // instance + brand-kit behaviour.
+    ctx.logger?.error?.(
+      `Brief-type baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+};
+
 /** Apply a plan — straight CRUD: create the type, or PUT-replace it. */
 const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
   const client = await resolveBriefClient(ctx);
   const applied: RecipeChange[] = [];
   const skipped: RecipeChange[] = [];
 
-  // Plan stamps `meta.policyError = true` on the lead `stage: "type"`
-  // change when any cell classified as `cms-edit` / `conflict` and the
-  // policy is `"error"`. Refuse to write before any I/O so the operator
-  // resolves before retry.
-  const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
-  if (policyErrorChange) {
-    const errors =
-      (policyErrorChange.meta?.policyErrors as
-        | Array<{ path: string; classification: string }>
-        | undefined) ?? [];
-    throw createScaiError(
-      `Brief type "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
-      "POLICY_DENIED",
-      {
-        hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the brief type first to converge the recipe against the tenant.",
-        details: errors.map((e) => `${e.path} → ${e.classification}`),
-      }
-    );
-  }
+  assertNoPolicyError(plan, ref);
 
   // The single `stage: "type"` change carries the full desired recipe;
   // per-element `stage: "field"` changes are descriptive only.
@@ -171,75 +308,20 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
   const input = toApiInput(recipe);
 
-  // Capture the tenant id of whichever row this apply lands on, so
-  // the baseline write below can stamp it. Survives a future codename
-  // rename — the next push can find the same row by id even if `name`
-  // drifts.
-  let writtenTenantId: string | undefined;
   // If the baseline already carries a tenantId from a prior push,
   // resolve the row by id first — handles the codename-rename case
   // (the recipe's `ref.id` is the NEW codename, but the existing
   // tenant row still carries the OLD one).
-  let priorBaselineTenantId: string | undefined;
-  if (ctx.baselineStorage) {
-    try {
-      const prior = await ctx.baselineStorage.load<BriefTypeBaselinePayload>(
-        BRIEF_TYPE_KIND_NAME,
-        ctx.environmentName,
-        ref.id
-      );
-      priorBaselineTenantId = prior?.payload?.tenantId;
-    } catch {
-      // Best-effort — baseline load failure just disables id-first.
-    }
-  }
+  const priorBaselineTenantId = await loadPriorBaselineTenantId(ctx, ref);
 
+  // Capture the tenant id of whichever row this apply lands on, so the
+  // baseline write below can stamp it.
+  let writtenTenantId: string | undefined;
   if (typeChange.kind === "create") {
-    // Even when the plan classified this as a fresh create, a prior
-    // baseline-stored id wins: the row exists, just the recipe forgot.
-    // Resolve, treat as update.
-    let adopted: BriefType | null = null;
-    if (priorBaselineTenantId) {
-      try {
-        adopted = await getBriefType(client, priorBaselineTenantId);
-      } catch {
-        adopted = null;
-      }
-    }
-    if (adopted) {
-      ctx.logger?.info(
-        `Adopting existing brief type "${adopted.name}" (id ${adopted.id}) via baseline tenantId — recipe codename "${recipe.name}" was a rename.`
-      );
-      await updateBriefType(client, adopted.id, input);
-      writtenTenantId = adopted.id;
-    } else {
-      ctx.logger?.info(`Creating brief type "${recipe.name}".`);
-      const created = await createBriefType(client, input);
-      writtenTenantId = created.id;
-    }
+    writtenTenantId = await applyCreate(client, ctx, recipe, input, priorBaselineTenantId);
     applied.push(typeChange);
   } else if (typeChange.kind === "update") {
-    // Prefer the baseline-stored tenant id over a name lookup —
-    // robust to a codename rename between pushes.
-    let existing: BriefType | null = null;
-    if (priorBaselineTenantId) {
-      try {
-        existing = await getBriefType(client, priorBaselineTenantId);
-      } catch {
-        existing = null;
-      }
-    }
-    if (!existing) {
-      existing = await findTypeByName(client, ref.id);
-    }
-    if (!existing) {
-      throw createScaiError(`Brief type "${ref.id}" not found.`, "INPUT_INVALID", {
-        hint: "The type was expected to exist for an update — check the name or push a create.",
-      });
-    }
-    ctx.logger?.info(`Updating brief type "${recipe.name}" (${existing.id}).`);
-    await updateBriefType(client, existing.id, input);
-    writtenTenantId = existing.id;
+    writtenTenantId = await applyUpdate({ client, ctx, ref, recipe, input, priorBaselineTenantId });
     applied.push(typeChange);
   } else {
     // `noop` typeChange — surfaces a post-merge state that equals the
@@ -257,43 +339,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     else applied.push(change);
   }
 
-  // Three-way merge baseline capture: write the post-apply hash map so
-  // the next push can classify drift. Storage opt-in via
-  // `ctx.baselineStorage`; without it, the kind operates in two-way
-  // mode and never writes baselines. Hash the recipe the kind actually
-  // wrote (the merged value), not the raw operator-authored desired,
-  // so a cms-wins downgrade lands an accurate baseline.
-  if (ctx.baselineStorage) {
-    // Fall back to the prior baseline's tenantId when this run was a
-    // noop (no createBriefType / updateBriefType call to learn from).
-    // Preserves the captured id across pushes.
-    const payload = captureBriefTypeBaselinePayload(
-      recipe,
-      writtenTenantId ?? priorBaselineTenantId
-    );
-    const baseline: Baseline<BriefTypeBaselinePayload> = {
-      envelopeVersion: "1",
-      kind: BRIEF_TYPE_KIND_NAME,
-      recipeHandle: ref.id,
-      envName: ctx.environmentName,
-      capturedAt: new Date().toISOString(),
-      payload,
-    };
-    try {
-      await ctx.baselineStorage.write(BRIEF_TYPE_KIND_NAME, ctx.environmentName, ref.id, baseline);
-    } catch (err) {
-      // Baseline write failures must not silently fall back to two-way
-      // mode on the next push — that re-introduces silent-clobber. Log
-      // but don't throw: the type WAS successfully written, and the
-      // caller can decide whether to surface this. Mirrors the brief
-      // instance + brand-kit behaviour.
-      ctx.logger?.error?.(
-        `Brief-type baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
-  }
+  // Fall back to the prior baseline's tenantId when this run was a noop
+  // (no create/update call to learn from) — preserves the captured id.
+  await captureBaseline(ctx, ref, recipe, writtenTenantId ?? priorBaselineTenantId);
 
   return { applied, skipped };
 };
@@ -313,6 +361,32 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
  * still surface the policy error on the first available change so
  * the apply throws rather than silently no-oping past the conflict.
  */
+/**
+ * Annotate a single `stage: "field"` change with its per-cell
+ * classification. The coarse `briefType.fields` array change gets a
+ * per-field map; a named single-field change gets its scalar
+ * classification. Mutates `change.meta` in place.
+ */
+const annotateFieldChangeClassification = (
+  change: RecipeChange,
+  classifications: ReturnType<typeof classifyBriefTypeCells>
+): void => {
+  const element = change.meta?.element;
+  if (element === "fields") {
+    // The diff emits a single coarse `briefType.fields` change for
+    // the whole array; surface the per-field map so callers can
+    // drill in without re-hashing.
+    const perField: Record<string, string> = {};
+    for (const [path, cls] of Object.entries(classifications)) {
+      if (path.startsWith("fields.")) perField[path.slice("fields.".length)] = cls;
+    }
+    change.meta = { ...change.meta, perFieldClassification: perField };
+  } else if (typeof element === "string") {
+    const cls = classifications[element];
+    if (cls) change.meta = { ...change.meta, classification: cls };
+  }
+};
+
 const plan = async (
   desired: BriefTypeRecipe,
   ref: KindRef,
@@ -379,20 +453,7 @@ const plan = async (
   // structured output) can read these without re-running the merge.
   for (const change of basePlan.changes) {
     if (change.meta?.stage === "field") {
-      const element = change.meta.element;
-      if (element === "fields") {
-        // The diff emits a single coarse `briefType.fields` change for
-        // the whole array; surface the per-field map so callers can
-        // drill in without re-hashing.
-        const perField: Record<string, string> = {};
-        for (const [path, cls] of Object.entries(classifications)) {
-          if (path.startsWith("fields.")) perField[path.slice("fields.".length)] = cls;
-        }
-        change.meta = { ...change.meta, perFieldClassification: perField };
-      } else if (typeof element === "string") {
-        const cls = classifications[element];
-        if (cls) change.meta = { ...change.meta, classification: cls };
-      }
+      annotateFieldChangeClassification(change, classifications);
     }
   }
 

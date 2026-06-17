@@ -1,8 +1,5 @@
-import {
-  DEFAULT_SITECORE_API_AUDIENCE,
-  requestClientCredentialsToken,
-} from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { DEFAULT_SITECORE_API_AUDIENCE, requestClientCredentialsToken } from "./client-credentials";
+import type { SitecoreApiClientOptions } from "./types";
 import { createScaiError, type ScaiErrorCode } from "@/shared/errors";
 import { extractScopes as extractScopesShared } from "@/shared/jwt";
 

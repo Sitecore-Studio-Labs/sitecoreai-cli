@@ -101,7 +101,14 @@ describe("applySitecoreCommands", () => {
       { messages: [{ message: "ok", logLevel: "Info" }] },
     ]);
 
-    const result = await applySitecoreCommands(root, "demo", "master", commands, logger, false);
+    const result = await applySitecoreCommands({
+      root,
+      environmentName: "demo",
+      database: "master",
+      commands,
+      logger,
+      whatIf: false,
+    });
 
     expect(result).toEqual(["create-1", "update-1", "move-1", "rename-1"]);
     expect(apiMocks.executeSerializationCommands).toHaveBeenCalledTimes(1);
@@ -154,7 +161,14 @@ describe("applySitecoreCommands", () => {
     const logger = { info: vi.fn() };
     const commands: ItemCommand[] = [];
 
-    const result = await applySitecoreCommands(root, "demo", "master", commands, logger, true);
+    const result = await applySitecoreCommands({
+      root,
+      environmentName: "demo",
+      database: "master",
+      commands,
+      logger,
+      whatIf: true,
+    });
 
     expect(result).toEqual([]);
     expect(apiMocks.executeSerializationCommands).not.toHaveBeenCalled();

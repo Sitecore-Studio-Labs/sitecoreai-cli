@@ -10,7 +10,7 @@ import { ScaiError } from "../../../src/shared/errors";
 
 const noopLogger = new Logger(false, false, false, true);
 
-vi.mock("../../../src/serialization/api/auth", () => ({
+vi.mock("../../../src/auth/client-credentials", () => ({
   getAccessToken: vi.fn(async () => "test-token"),
 }));
 

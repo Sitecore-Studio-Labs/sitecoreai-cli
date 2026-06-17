@@ -3,7 +3,7 @@ import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { resolveSiteRoot } from "../../../src/publishing/api/sites";
 import { ScaiError } from "../../../src/shared/errors";
 
-vi.mock("../../../src/recipe/api/site-discovery", () => ({
+vi.mock("../../../src/authoring/site-discovery", () => ({
   discoverSites: vi.fn(),
 }));
 
@@ -11,7 +11,7 @@ vi.mock("../../../src/publishing/api/path-resolver", () => ({
   resolveItemPathsToIds: vi.fn(),
 }));
 
-import { discoverSites } from "../../../src/recipe/api/site-discovery";
+import { discoverSites } from "../../../src/authoring/site-discovery";
 import { resolveItemPathsToIds } from "../../../src/publishing/api/path-resolver";
 
 const mockDiscoverSites = discoverSites as unknown as ReturnType<typeof vi.fn>;

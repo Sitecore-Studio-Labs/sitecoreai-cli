@@ -26,7 +26,7 @@ const authMocks = vi.hoisted(() => ({
   requestClientCredentialsToken: vi.fn(),
 }));
 
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth/client-credentials", () => ({
   DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
   requestClientCredentialsToken: authMocks.requestClientCredentialsToken,
 }));

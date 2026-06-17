@@ -77,6 +77,151 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *  - **`image.mediaPath`** is an opaque path — no media-item upload.
  *    Recipes ship images by referencing existing media-library items.
  */
+/**
+ * The per-(language, version) emit closures + op accumulators a story-mode
+ * content item writes into, bundled so the per-version emission can be
+ * extracted out of `compileContentItemRecipe`'s nested loop (keeps the loop
+ * body shallow instead of nesting workflow/date/layout branches five deep).
+ */
+interface ContentItemStoryEmitters {
+  recipe: ContentItemRecipe;
+  policy: ReturnType<typeof defaultPolicyForRecipe>;
+  itemRefKey: string;
+  site: string;
+  versionOps: Operation[];
+  fieldOps: Operation[];
+  emitFields: (
+    fields: Record<string, ContentFieldValue>,
+    language: string | undefined,
+    version: number | undefined,
+    labelTag: string
+  ) => void;
+}
+
+/** Append the per-version `__Workflow state` SetField when the entry sets one. */
+const emitStoryWorkflowState = (
+  e: ContentItemStoryEmitters,
+  language: string,
+  entry: NonNullable<ContentItemRecipe["versions"]>[string][number],
+  versionTag: string
+): void => {
+  if (entry.workflowState === undefined) return;
+  const { recipe, policy, itemRefKey } = e;
+  // A workflow state can't exist without a workflow on the item.
+  if (!recipe.workflow) {
+    throw createScaiError(
+      `ContentItemRecipe '${recipe.handle}': version ${versionTag} sets workflowState ` +
+        `'${entry.workflowState}' but the recipe has no \`workflow\`.`,
+      "INPUT_INVALID",
+      {
+        hint: "Set the item-level `workflow` (a WorkflowRecipe handle) so the state resolves.",
+      }
+    );
+  }
+  e.fieldOps.push({
+    op: "SetField",
+    policy,
+    label: `content-item-workflow-state:${recipe.handle}:${versionTag}`,
+    itemRefKey,
+    fieldId: deriveStandardFieldId(itemRefKey, "__Workflow state"),
+    fieldName: "__Workflow state",
+    language,
+    version: entry.version,
+    value: {
+      kind: "ref-recipe",
+      refKey: workflowStateId(recipe.workflow, entry.workflowState),
+    },
+  } satisfies SetFieldOp);
+};
+
+/** Append the per-version `__Final Renderings` SetField when the entry sets a layout. */
+const emitStoryLayout = (
+  e: ContentItemStoryEmitters,
+  language: string,
+  entry: NonNullable<ContentItemRecipe["versions"]>[string][number],
+  versionTag: string
+): void => {
+  if (entry.layout === undefined) return;
+  const { recipe, policy, itemRefKey, site } = e;
+  // A content item has no `Data` home, so scoped datasources are
+  // disallowed — a version layout references shared datasources by handle.
+  const layoutXml = emitLayoutXml(entry.layout, {
+    parentItemId: itemRefKey,
+    deviceId: DEFAULT_DEVICE_ID,
+    renderingIdFor: (handle) => renderingId(site, handle),
+    contentItemIdFor: (handle) => contentItemId(site, handle),
+    allowScoped: false,
+    mode: "canonical",
+  });
+  if (layoutXml.length === 0) return;
+  e.fieldOps.push({
+    op: "SetField",
+    policy,
+    label: `content-item-layout:${recipe.handle}:${versionTag}`,
+    itemRefKey,
+    fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
+    language,
+    version: entry.version,
+    value: { kind: "string", value: layoutXml },
+  } satisfies SetFieldOp);
+};
+
+/**
+ * Emit one story-mode (language, version) cell — `AddItemVersion` (except
+ * the default-language v1 the `CreateItem` already made), fields, optional
+ * `__Workflow state` + `__Created` date, and per-version layout.
+ */
+const emitStoryVersionEntry = (
+  e: ContentItemStoryEmitters,
+  language: string,
+  entry: NonNullable<ContentItemRecipe["versions"]>[string][number]
+): void => {
+  const { recipe, policy, itemRefKey } = e;
+  if ((entry.variants?.length ?? 0) > 0) {
+    throw createScaiError(
+      `ContentItemRecipe '${recipe.handle}': per-version personalization variants are not yet compiled.`,
+      "INPUT_INVALID",
+      {
+        hint: 'Author per-version fields, workflowState, date and layout for now — see docs/recipe-sync-architecture.md, "Content versioning — seeding a story".',
+      }
+    );
+  }
+  // `CreateItem` already made the default-language version 1; every
+  // other (language, version) cell needs an explicit AddItemVersion.
+  if (!(language === DEFAULT_LANGUAGE && entry.version === DEFAULT_VERSION)) {
+    e.versionOps.push({
+      op: "AddItemVersion",
+      policy,
+      label: `content-item-version:${recipe.handle}:${language}:${entry.version}`,
+      itemRefKey,
+      language,
+      version: entry.version,
+    } satisfies AddItemVersionOp);
+  }
+  const versionTag = `${language}.v${entry.version}`;
+  e.emitFields(entry.fields, language, entry.version, versionTag);
+  // The version's `__Workflow state` — resolved against the item's
+  // workflow (a workflow state can't exist without a workflow).
+  emitStoryWorkflowState(e, language, entry, versionTag);
+  // The version's narrative date → `__Created`, backdating the
+  // version so a seeded story's history reads true.
+  if (entry.date !== undefined) {
+    e.fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `content-item-version-date:${recipe.handle}:${versionTag}`,
+      itemRefKey,
+      fieldId: deriveStandardFieldId(itemRefKey, "__Created"),
+      fieldName: "__Created",
+      language,
+      version: entry.version,
+      value: { kind: "string", value: toSitecoreDate(entry.date, "datetime") },
+    } satisfies SetFieldOp);
+  }
+  // The version's `__Final Renderings` (per-version layout).
+  emitStoryLayout(e, language, entry, versionTag);
+};
+
 export function compileContentItemRecipe(
   input: ContentItemRecipe,
   context: CompileContext
@@ -158,99 +303,18 @@ export function compileContentItemRecipe(
   emitFields(recipe.shared ?? {}, undefined, undefined, "shared");
 
   if (isStory) {
+    const storyEmitters: ContentItemStoryEmitters = {
+      recipe,
+      policy,
+      itemRefKey,
+      site,
+      versionOps,
+      fieldOps,
+      emitFields,
+    };
     for (const [language, entries] of Object.entries(recipe.versions ?? {})) {
       for (const entry of [...entries].sort((a, b) => a.version - b.version)) {
-        if ((entry.variants?.length ?? 0) > 0) {
-          throw createScaiError(
-            `ContentItemRecipe '${recipe.handle}': per-version personalization variants are not yet compiled.`,
-            "INPUT_INVALID",
-            {
-              hint: 'Author per-version fields, workflowState, date and layout for now — see docs/recipe-sync-architecture.md, "Content versioning — seeding a story".',
-            }
-          );
-        }
-        // `CreateItem` already made the default-language version 1; every
-        // other (language, version) cell needs an explicit AddItemVersion.
-        if (!(language === DEFAULT_LANGUAGE && entry.version === DEFAULT_VERSION)) {
-          versionOps.push({
-            op: "AddItemVersion",
-            policy,
-            label: `content-item-version:${recipe.handle}:${language}:${entry.version}`,
-            itemRefKey,
-            language,
-            version: entry.version,
-          } satisfies AddItemVersionOp);
-        }
-        const versionTag = `${language}.v${entry.version}`;
-        emitFields(entry.fields, language, entry.version, versionTag);
-        // The version's `__Workflow state` — resolved against the item's
-        // workflow (a workflow state can't exist without a workflow).
-        if (entry.workflowState !== undefined) {
-          if (!recipe.workflow) {
-            throw createScaiError(
-              `ContentItemRecipe '${recipe.handle}': version ${versionTag} sets workflowState ` +
-                `'${entry.workflowState}' but the recipe has no \`workflow\`.`,
-              "INPUT_INVALID",
-              {
-                hint: "Set the item-level `workflow` (a WorkflowRecipe handle) so the state resolves.",
-              }
-            );
-          }
-          fieldOps.push({
-            op: "SetField",
-            policy,
-            label: `content-item-workflow-state:${recipe.handle}:${versionTag}`,
-            itemRefKey,
-            fieldId: deriveStandardFieldId(itemRefKey, "__Workflow state"),
-            fieldName: "__Workflow state",
-            language,
-            version: entry.version,
-            value: {
-              kind: "ref-recipe",
-              refKey: workflowStateId(recipe.workflow, entry.workflowState),
-            },
-          } satisfies SetFieldOp);
-        }
-        // The version's narrative date → `__Created`, backdating the
-        // version so a seeded story's history reads true.
-        if (entry.date !== undefined) {
-          fieldOps.push({
-            op: "SetField",
-            policy,
-            label: `content-item-version-date:${recipe.handle}:${versionTag}`,
-            itemRefKey,
-            fieldId: deriveStandardFieldId(itemRefKey, "__Created"),
-            fieldName: "__Created",
-            language,
-            version: entry.version,
-            value: { kind: "string", value: toSitecoreDate(entry.date, "datetime") },
-          } satisfies SetFieldOp);
-        }
-        // The version's `__Final Renderings` (per-version layout). A content
-        // item has no `Data` home, so scoped datasources are disallowed — a
-        // version layout references shared datasources by handle.
-        if (entry.layout !== undefined) {
-          const layoutXml = emitLayoutXml(entry.layout, {
-            parentItemId: itemRefKey,
-            deviceId: DEFAULT_DEVICE_ID,
-            renderingIdFor: (handle) => renderingId(site, handle),
-            contentItemIdFor: (handle) => contentItemId(site, handle),
-            allowScoped: false,
-            mode: "canonical",
-          });
-          if (layoutXml.length > 0) {
-            fieldOps.push({
-              op: "SetField",
-              policy,
-              label: `content-item-layout:${recipe.handle}:${versionTag}`,
-              itemRefKey,
-              fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
-              language,
-              version: entry.version,
-              value: { kind: "string", value: layoutXml },
-            } satisfies SetFieldOp);
-          }
-        }
+        emitStoryVersionEntry(storyEmitters, language, entry);
       }
     }
   } else {

@@ -1,4 +1,5 @@
 import { createScaiError } from "@/shared/errors";
+import { runSitecoreRest } from "@/shared/rest";
 import type {
   CreatePublishJobRequest,
   ListPublishJobsQuery,
@@ -35,55 +36,59 @@ const buildQueryString = (query?: PublishingFetchOptions["query"]): string => {
   return parts.length > 0 ? `?${parts.join("&")}` : "";
 };
 
+/**
+ * Render an already-parsed error body back to the raw text the original
+ * hint logic sliced. `parseJsonIfPossible` hands back a string for a
+ * non-JSON body (used verbatim) or an object for JSON (re-stringified, so
+ * the field-level detail still shows up in the 400 hint).
+ */
+const errorBodyText = (body: unknown): string => {
+  if (body === undefined) return "";
+  return typeof body === "string" ? body : JSON.stringify(body);
+};
+
 const fetchPublishingApi = async (
   client: PublishingApiClientOptions,
   options: PublishingFetchOptions
 ): Promise<unknown> => {
   const baseUrl = client.baseUrl ?? DEFAULT_BASE_URL;
   const url = `${baseUrl}${JOBS_PATH}${options.path}${buildQueryString(options.query)}`;
-  const controller = client.timeoutMs ? new AbortController() : undefined;
-  const timer =
-    controller && client.timeoutMs
-      ? setTimeout(() => controller.abort(), client.timeoutMs)
-      : undefined;
 
-  try {
-    const response = await fetch(url, {
-      method: options.method,
-      headers: {
-        Authorization: `Bearer ${client.accessToken}`,
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller?.signal,
-    });
-
-    if (response.status === 202 || response.status === 204) {
-      return undefined;
-    }
-
-    const text = await response.text().catch(() => "");
-    if (!response.ok) {
+  return runSitecoreRest<unknown>({
+    url,
+    method: options.method,
+    headers: {
+      Authorization: `Bearer ${client.accessToken}`,
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    // Only guard with a timeout when the caller set one (preserves the
+    // prior behavior of no AbortController otherwise).
+    timeoutMs: client.timeoutMs,
+    label: "Publishing API",
+    // 202 Accepted (async submit) and 204 No Content carry no body.
+    emptyStatuses: new Set([202, 204]),
+    // Preserve the prior behavior of letting a raw fetch rejection
+    // propagate unmapped rather than wrapping it in a NETWORK ScaiError.
+    mapNetworkError: (error) => {
+      throw error;
+    },
+    mapHttpError: (response, body) => {
+      const text = errorBodyText(body);
       const code = response.status === 401 || response.status === 403 ? "AUTH_REQUIRED" : "NETWORK";
       const hint =
         response.status === 403
           ? "The token is valid but the API refused the call. Verify the env-level automation client has xmcpub.jobs.t:r/w grants. Body: " +
             text.slice(0, 400)
           : text.slice(0, 400) || response.statusText || undefined;
-      throw createScaiError(
+      return createScaiError(
         `Publishing API ${options.method} ${url} returned ${response.status}.`,
         code,
         { hint }
       );
-    }
-    if (!text) return undefined;
-    return JSON.parse(text);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
+    },
+  });
 };
 
 const STATUS_TO_STATE: Record<PublishJobStatusWire, PublishJobState> = {

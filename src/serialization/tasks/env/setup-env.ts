@@ -114,6 +114,95 @@ export type SetupEnvOptions = CommonOptions & {
   rotate?: boolean;
 };
 
+/** Resolve the deploy token for CM-client provisioning, or throw. */
+const resolveCmDeployToken = async (
+  envName: string,
+  env: { deployToken?: string }
+): Promise<string> => {
+  const deployToken =
+    (await getDeployToken(envName)) ?? env.deployToken ?? process.env.SITECOREAI_DEPLOY_TOKEN;
+  if (!deployToken) {
+    throw createScaiError(
+      `No deploy token is available for environment '${envName}'.`,
+      "AUTH_REQUIRED",
+      {
+        hint: `Run \`scai setup login -n ${envName}\` first — minting a CM client needs a token with the xmclouddeploy.clients:manage scope.`,
+      }
+    );
+  }
+  return deployToken;
+};
+
+/** List the env's existing CM client id (by stable name), mapping list failures. */
+const findExistingCmClientId = async (params: {
+  deployClient: { accessToken: string };
+  organizationId: string;
+  clientName: string;
+  envName: string;
+}): Promise<string | undefined> => {
+  const { deployClient, organizationId, clientName, envName } = params;
+  try {
+    const listed = await listEnvironmentClients(deployClient, organizationId);
+    return (listed.items ?? []).find((client) => client.name === clientName)?.id;
+  } catch (error) {
+    const scaiError = toScaiError(error);
+    throw createScaiError(
+      `Could not list environment clients for organization '${organizationId}'.`,
+      "DEPLOY_FAILED",
+      {
+        hint: `The deploy token may lack the xmclouddeploy.clients:manage scope. Re-run \`scai setup login -n ${envName}\`. Underlying error: ${scaiError.message}`,
+      }
+    );
+  }
+};
+
+/** Emit the "already provisioned, nothing to do" result. Returns true when it handled the run. */
+const reportCmAlreadyProvisioned = (params: {
+  alreadyProvisioned: boolean;
+  rotate: boolean | undefined;
+  logger: Logger;
+  envName: string;
+  clientName: string;
+}): boolean => {
+  const { alreadyProvisioned, rotate, logger, envName, clientName } = params;
+  if (!(alreadyProvisioned && !rotate)) {
+    return false;
+  }
+  if (logger.isJson()) {
+    logger.json({ environment: envName, client: clientName, action: "none", provisioned: true });
+    return true;
+  }
+  logger.info(`Environment '${envName}' already has its CM client (${clientName}).`, "green");
+  logger.info("  Nothing to do. Pass --rotate to delete and re-mint.");
+  return true;
+};
+
+/** Emit the `--what-if` preview. Returns true when it handled the run. */
+const reportCmWhatIf = (params: {
+  whatIf: boolean | undefined;
+  replaceExisting: boolean;
+  logger: Logger;
+  envName: string;
+  clientName: string;
+}): boolean => {
+  const { whatIf, replaceExisting, logger, envName, clientName } = params;
+  if (!whatIf) {
+    return false;
+  }
+  const verb = replaceExisting ? "delete the existing client and re-mint" : "mint";
+  if (logger.isJson()) {
+    logger.json({
+      environment: envName,
+      client: clientName,
+      action: replaceExisting ? "replace" : "mint",
+      whatIf: true,
+    });
+    return true;
+  }
+  logger.info(`[what-if] Would ${verb} CM client '${clientName}' for '${envName}'.`);
+  return true;
+};
+
 export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
@@ -136,17 +225,7 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
     );
   }
 
-  const deployToken =
-    (await getDeployToken(envName)) ?? env.deployToken ?? process.env.SITECOREAI_DEPLOY_TOKEN;
-  if (!deployToken) {
-    throw createScaiError(
-      `No deploy token is available for environment '${envName}'.`,
-      "AUTH_REQUIRED",
-      {
-        hint: `Run \`scai setup login -n ${envName}\` first — minting a CM client needs a token with the xmclouddeploy.clients:manage scope.`,
-      }
-    );
-  }
+  const deployToken = await resolveCmDeployToken(envName, env);
 
   const deployClient = { accessToken: deployToken };
   const clientName = buildScaiClientName("cm", envName);
@@ -157,29 +236,23 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
   // keychain. Either alone is incomplete.
   const storedSecret = await getCmClientSecret(envName);
   const stored = Boolean(env.automationClient?.clientId) && Boolean(storedSecret);
-  let existingId: string | undefined;
-  try {
-    const listed = await listEnvironmentClients(deployClient, organizationId);
-    existingId = (listed.items ?? []).find((client) => client.name === clientName)?.id;
-  } catch (error) {
-    const scaiError = toScaiError(error);
-    throw createScaiError(
-      `Could not list environment clients for organization '${organizationId}'.`,
-      "DEPLOY_FAILED",
-      {
-        hint: `The deploy token may lack the xmclouddeploy.clients:manage scope. Re-run \`scai setup login -n ${envName}\`. Underlying error: ${scaiError.message}`,
-      }
-    );
-  }
+  const existingId = await findExistingCmClientId({
+    deployClient,
+    organizationId,
+    clientName,
+    envName,
+  });
 
   const alreadyProvisioned = Boolean(stored) && Boolean(existingId);
-  if (alreadyProvisioned && !options.rotate) {
-    if (logger.isJson()) {
-      logger.json({ environment: envName, client: clientName, action: "none", provisioned: true });
-      return;
-    }
-    logger.info(`Environment '${envName}' already has its CM client (${clientName}).`, "green");
-    logger.info("  Nothing to do. Pass --rotate to delete and re-mint.");
+  if (
+    reportCmAlreadyProvisioned({
+      alreadyProvisioned,
+      rotate: options.rotate,
+      logger,
+      envName,
+      clientName,
+    })
+  ) {
     return;
   }
 
@@ -187,18 +260,7 @@ export const runSetupEnv = async (options: SetupEnvOptions): Promise<void> => {
   // orphan — the secret is unrecoverable, so it must be replaced.
   const replaceExisting = Boolean(existingId) && (!stored || Boolean(options.rotate));
 
-  if (options.whatIf) {
-    const verb = replaceExisting ? "delete the existing client and re-mint" : "mint";
-    if (logger.isJson()) {
-      logger.json({
-        environment: envName,
-        client: clientName,
-        action: replaceExisting ? "replace" : "mint",
-        whatIf: true,
-      });
-      return;
-    }
-    logger.info(`[what-if] Would ${verb} CM client '${clientName}' for '${envName}'.`);
+  if (reportCmWhatIf({ whatIf: options.whatIf, replaceExisting, logger, envName, clientName })) {
     return;
   }
 

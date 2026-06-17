@@ -35,6 +35,7 @@ import type {
 } from "../api/client";
 import type { NewSiteInput, SitesApiClient } from "../api/sites-client";
 import { hashFieldValueForBaseline, type BaselineIndex } from "./baseline";
+import { classifyPushDrift } from "./merge";
 
 /**
  * `scai provision recipe plan` and `scai provision recipe push` share this read-then-diff path:
@@ -468,13 +469,11 @@ const classifyAgainstBaseline = ({
   baselineIndex,
 }: ClassifyAgainstBaselineOptions): FieldDiffEntry["classification"] | undefined => {
   if (!baselineIndex || itemRefKey === undefined) return undefined;
+  // Delegate the actual recipe/tenant/baseline who-moved decision to the
+  // shared three-way core (mirrors the pull-side `classifyPullField`).
+  // This layer only owns the baseline lookup + the no-baseline guard.
   const baselineHash = baselineIndex.lookup(itemRefKey, fieldId, fieldName, language, version);
-  if (baselineHash === undefined) return "first-push";
-  const tenantMatchesBaseline = baselineHash === tenantHash;
-  const recipeMatchesBaseline = baselineHash === recipeHash;
-  if (tenantMatchesBaseline) return "recipe-change";
-  if (recipeMatchesBaseline) return "cms-edit";
-  return "conflict";
+  return classifyPushDrift(recipeHash, tenantHash, baselineHash);
 };
 
 const computeFieldDrift = (
@@ -701,6 +700,39 @@ const resolveParentItemIdForFallback = (
 };
 
 /**
+ * Sibling fallback for a CreateItem whose path lookup returned null —
+ * find the live item the planner would otherwise duplicate. Two cases:
+ *
+ *   1. Path-index lag — a repeat push within the index-propagation window
+ *      sees `getItem({path})` return null for a path the tenant has. A
+ *      name match among the parent's children is the lag-immune fix.
+ *   2. Rename — a CMS user renamed the item, so neither path nor sibling
+ *      NAME matches. The `Scai Handle` marker survives a rename. The
+ *      marker carries the *recipe* handle (shared across siblings one
+ *      recipe creates), so the match is trusted only when exactly one
+ *      sibling carries it; >1 falls through to no match, never risking a
+ *      wrong rebind.
+ *
+ * Returns `null` when the parent itemId isn't known yet (true first push)
+ * or no sibling matches — the caller then plans a create as normal.
+ */
+const findCreateItemSibling = async (
+  op: CreateItemOp,
+  capturedItemIds: ReadonlyMap<string, string>,
+  client: AuthoringApiClient
+): Promise<RemoteItem | null> => {
+  const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
+  if (!parentItemId) return null;
+  const siblings = await client.getChildren({ itemId: parentItemId });
+  const byName = siblings.find((s) => s.name === op.name);
+  if (byName) return byName;
+  const handle = opHandleMarker(op);
+  if (handle === undefined) return null;
+  const marked = siblings.filter((s) => remoteHandleMarker(s) === handle);
+  return marked.length === 1 ? marked[0] : null;
+};
+
+/**
  * The `Scai Handle` recipe-identity marker `injectHandleMarker` stamped on a
  * CreateItem op, or `undefined` for an op that carries none (e.g. an IR that
  * never went through `injectHandleMarker`).
@@ -754,14 +786,23 @@ const resolveTemplateOf = (
   };
 };
 
-const planCreateItem = (
-  op: CreateItemOp,
-  remote: RemoteItem | null,
-  index: number,
-  capturedItemIds: ReadonlyMap<string, string>,
-  baselineIndex?: BaselineIndex,
-  conflictPolicy?: PlanOptions["conflictPolicy"]
-): PlannedAction => {
+interface PlanCreateItemOptions {
+  op: CreateItemOp;
+  remote: RemoteItem | null;
+  index: number;
+  capturedItemIds: ReadonlyMap<string, string>;
+  baselineIndex?: BaselineIndex;
+  conflictPolicy?: PlanOptions["conflictPolicy"];
+}
+
+const planCreateItem = ({
+  op,
+  remote,
+  index,
+  capturedItemIds,
+  baselineIndex,
+  conflictPolicy,
+}: PlanCreateItemOptions): PlannedAction => {
   if (!remote) {
     const parent = resolveCreateItemParent(op, capturedItemIds);
     if ("unresolvedRefKey" in parent) {
@@ -1167,29 +1208,25 @@ export const buildAction = async ({
   // Gated on parent-itemId-known so we don't pay an extra getChildren round
   // trip on a true first push (where the parent itself is null too).
   if (op.op === "CreateItem" && !remote) {
-    const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
-    if (parentItemId) {
-      const siblings = await client.getChildren({ itemId: parentItemId });
-      let match = siblings.find((s) => s.name === op.name);
-      if (!match) {
-        const handle = opHandleMarker(op);
-        if (handle !== undefined) {
-          const marked = siblings.filter((s) => remoteHandleMarker(s) === handle);
-          if (marked.length === 1) match = marked[0];
-        }
-      }
-      if (match) {
-        remote = match;
-        capturedItemIds.set(op.id, match.itemId);
-        pathSnapshotCache?.set(op.path, match);
-      }
+    const match = await findCreateItemSibling(op, capturedItemIds, client);
+    if (match) {
+      remote = match;
+      capturedItemIds.set(op.id, match.itemId);
+      pathSnapshotCache?.set(op.path, match);
     }
   }
 
   const action = await (async (): Promise<PlannedAction> => {
     switch (op.op) {
       case "CreateItem":
-        return planCreateItem(op, remote, index, capturedItemIds, baselineIndex, conflictPolicy);
+        return planCreateItem({
+          op,
+          remote,
+          index,
+          capturedItemIds,
+          baselineIndex,
+          conflictPolicy,
+        });
       case "SetField":
         return planUpdateOp({
           index,

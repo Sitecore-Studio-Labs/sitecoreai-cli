@@ -37,14 +37,14 @@ const findByName = (agents: Agent[], name: string): Agent | undefined =>
 
 export const runAgentList = async (options: RunAgentsBaseOptions): Promise<void> => {
   const { logger, session } = await prepare(options);
-  renderList(
+  renderList({
     logger,
-    "agent.list",
+    command: "agent.list",
     options,
-    "agent(s)",
-    await listAgents(session),
-    (agent: Agent) => `${agent.slug.padEnd(30)} ${agent.name ?? ""}`
-  );
+    label: "agent(s)",
+    items: await listAgents(session),
+    line: (agent: Agent) => `${agent.slug.padEnd(30)} ${agent.name ?? ""}`,
+  });
 };
 
 export const runAgentGet = async (

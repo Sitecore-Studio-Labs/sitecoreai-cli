@@ -134,20 +134,36 @@ const resolveConfigDir = (config: string | undefined): string => {
   return config;
 };
 
-export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
-  const { logger, command, envName, formatLine, summary, extra, options, auditName } = params;
+interface BaselineResolution<T> {
+  results: T[];
+  ignoredCount: number;
+  /**
+   * Total accepted entries for this audit across all runs — surfaced
+   * even when --baseline isn't set, so operators discover the baseline
+   * exists and know how many findings are already accepted.
+   */
+  baselineAcceptedTotal: number | undefined;
+}
+
+/**
+ * Open the baseline once (cheap when absent) and resolve both behaviors
+ * that share the handle: filtering on `--baseline` and surfacing the
+ * accepted-count on every run. `auditName` absent ⇒ baseline is a no-op
+ * (warns if `--baseline` was requested).
+ */
+const resolveBaseline = <T>(
+  params: Pick<
+    FinishAuditOptions<T>,
+    "logger" | "command" | "envName" | "options" | "auditName"
+  > & {
+    results: T[];
+  }
+): BaselineResolution<T> => {
+  const { logger, command, envName, options, auditName } = params;
   let results = params.results;
   let ignoredCount = 0;
-  // Total accepted entries for this audit across all runs — surfaced
-  // even when --baseline isn't set, so operators discover the baseline
-  // exists and know how many findings are already accepted.
   let baselineAcceptedTotal: number | undefined;
 
-  // Open the baseline once if we know the audit name. `openBaseline`
-  // is cheap when the file doesn't exist (returns an empty in-memory
-  // baseline), so the unconditional open here costs ~ms on the warm
-  // path. Both behaviors — filtering on `--baseline` and surfacing
-  // accepted counts on every run — share the same handle.
   if (auditName) {
     try {
       const baseline = openBaseline({
@@ -177,6 +193,60 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
       `--baseline requested but the audit command name '${command}' doesn't map to a baseline key.`
     );
   }
+
+  return { results, ignoredCount, baselineAcceptedTotal };
+};
+
+interface PrintStdoutParams<T> {
+  logger: Logger;
+  envelope: ReturnType<typeof buildScaiEnvelope>;
+  results: T[];
+  formatLine: (item: T) => string;
+  summary?: string;
+  ignoredCount: number;
+  baselineAcceptedTotal: number | undefined;
+  auditName?: string;
+  baselineRequested: boolean;
+}
+
+/** Stdout path — JSON envelope under `--json`, else heading + items table. */
+const printAuditStdout = <T>(p: PrintStdoutParams<T>): void => {
+  const { logger, results, formatLine, summary, ignoredCount, baselineAcceptedTotal } = p;
+  if (logger.isJson()) {
+    logger.json(p.envelope);
+    return;
+  }
+  const headline = summary ?? `${results.length} item${results.length === 1 ? "" : "s"} found.`;
+  logger.info(headline, results.length === 0 ? "green" : "yellow");
+  if (ignoredCount > 0) {
+    logger.info(`  (${ignoredCount} ignored by baseline)`, "gray");
+  }
+  // Always surface the per-audit baseline size — even when the operator
+  // didn't pass --baseline. The agent feedback called out that baseline
+  // is underused because it's invisible; showing the count nudges
+  // operators toward it. Skip when --baseline is on (the ignoredCount
+  // line above already says what got filtered).
+  if (baselineAcceptedTotal !== undefined && !p.baselineRequested) {
+    logger.info(
+      `  (${baselineAcceptedTotal} finding${baselineAcceptedTotal === 1 ? "" : "s"} in baseline; pass --baseline to filter, or 'scai hygiene audit baseline accept --audit ${p.auditName} --from-stdin' to add more)`,
+      "gray"
+    );
+  }
+  for (const item of results) {
+    logger.info(`  - ${formatLine(item)}`);
+  }
+};
+
+export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
+  const { logger, command, envName, formatLine, summary, extra, options, auditName } = params;
+  const { results, ignoredCount, baselineAcceptedTotal } = resolveBaseline({
+    logger,
+    command,
+    envName,
+    options,
+    auditName,
+    results: params.results,
+  });
 
   // Build the canonical `ScaiEnvelope` shape — `data` (not `results`)
   // for the primary payload; `meta` collects command-specific extras
@@ -217,29 +287,17 @@ export const finishAudit = <T>(params: FinishAuditOptions<T>): void => {
   }
 
   // Stdout path — same as the original printReport behavior.
-  if (logger.isJson()) {
-    logger.json(envelope);
-    return;
-  }
-  const headline = summary ?? `${results.length} item${results.length === 1 ? "" : "s"} found.`;
-  logger.info(headline, results.length === 0 ? "green" : "yellow");
-  if (ignoredCount > 0) {
-    logger.info(`  (${ignoredCount} ignored by baseline)`, "gray");
-  }
-  // Always surface the per-audit baseline size — even when the operator
-  // didn't pass --baseline. The agent feedback called out that baseline
-  // is underused because it's invisible; showing the count nudges
-  // operators toward it. Skip when --baseline is on (the ignoredCount
-  // line above already says what got filtered).
-  if (baselineAcceptedTotal !== undefined && !options?.baseline) {
-    logger.info(
-      `  (${baselineAcceptedTotal} finding${baselineAcceptedTotal === 1 ? "" : "s"} in baseline; pass --baseline to filter, or 'scai hygiene audit baseline accept --audit ${auditName} --from-stdin' to add more)`,
-      "gray"
-    );
-  }
-  for (const item of results) {
-    logger.info(`  - ${formatLine(item)}`);
-  }
+  printAuditStdout({
+    logger,
+    envelope,
+    results,
+    formatLine,
+    summary,
+    ignoredCount,
+    baselineAcceptedTotal,
+    auditName,
+    baselineRequested: Boolean(options?.baseline),
+  });
 };
 
 export type { BaselineHandle };
@@ -652,43 +710,45 @@ export const matchesScanFilters = (
   return true;
 };
 
-export const scanItemsAndFields = async ({
-  client,
-  envName,
-  root,
-  logger,
-  options,
-  latestVersionOnly = true,
-  skipFields = false,
-}: ScanItemsAndFieldsParams): Promise<ScanFieldsResult> => {
-  const knobs = resolveHygieneKnobs(options);
-  const cacheEnabled = options.cache ?? isAuditCacheEnabled();
-  const cache = cacheEnabled ? createFieldCache({ envName, logger }) : null;
-  const limit = options.limit ?? 5000;
-  const includeSystem = Boolean(options.includeSystem);
-  const filters = resolveScanFilters({
-    exclude: options.exclude,
-    since: options.since,
-    owner: options.owner,
+type ScanClient = ScanItemsAndFieldsParams["client"];
+
+/** Resolve the root content path to an itemId via one search call. */
+const resolveScanRootItemId = async (
+  client: ScanClient,
+  root: string,
+  index: string | undefined,
+  logger: Logger
+): Promise<string | undefined> => {
+  if (!root) return undefined;
+  const r = await client.search({
+    index,
+    paging: { pageSize: 1 },
+    searchStatement: {
+      criteria: { field: "_fullpath", value: root.toLowerCase(), criteriaType: "EXACT" },
+    },
   });
-
-  // Resolve root path → itemId.
-  let rootItemId: string | undefined;
-  if (root) {
-    const r = await client.search({
-      index: options.index,
-      paging: { pageSize: 1 },
-      searchStatement: {
-        criteria: { field: "_fullpath", value: root.toLowerCase(), criteriaType: "EXACT" },
-      },
-    });
-    rootItemId = r.results[0]?.itemId;
-    if (!rootItemId) {
-      logger.warn(`Root path '${root}' not found in search index — scanning entire master DB.`);
-    }
+  const rootItemId = r.results[0]?.itemId;
+  if (!rootItemId) {
+    logger.warn(`Root path '${root}' not found in search index — scanning entire master DB.`);
   }
+  return rootItemId;
+};
 
-  // Paged enumeration with optional parallel page-windows.
+interface EnumerateScanParams {
+  client: ScanClient;
+  options: ScanItemsAndFieldsParams["options"];
+  latestVersionOnly: boolean;
+  rootItemId: string | undefined;
+  knobs: HygienePerfKnobs;
+  limit: number;
+  includeSystem: boolean;
+  filters: ScanFilters;
+}
+
+/** Paged enumeration with optional parallel page-windows + system/filters. */
+const enumerateScanItems = async (p: EnumerateScanParams): Promise<ScanItem[]> => {
+  const { client, options, latestVersionOnly, rootItemId, knobs, limit, includeSystem, filters } =
+    p;
   const scanned: ScanItem[] = [];
   for await (const r of client.searchAll(
     {
@@ -715,15 +775,20 @@ export const scanItemsAndFields = async ({
     });
     if (scanned.length >= limit) break;
   }
-  logger.verbose(
-    `Scanned ${scanned.length} items (concurrency=${knobs.concurrency}, batchSize=${knobs.batchSize}, pageParallel=${knobs.pageParallelism}${cache ? ", cache=on" : ""}).`
-  );
+  return scanned;
+};
 
-  // Skip the field-fetch phase if caller doesn't need fields.
-  if (skipFields) {
-    return { scanned, fieldsByItemId: new Map(), cache, knobs };
-  }
-
+/**
+ * Batched field reads with bounded concurrency, optionally cache-wrapped.
+ * Returns the fields-by-itemId map; logs cache stats when caching is on.
+ */
+const fetchScanFields = async (
+  client: ScanClient,
+  scanned: ScanItem[],
+  cache: FieldCache | null,
+  knobs: HygienePerfKnobs,
+  logger: Logger
+): Promise<Map<string, ItemFieldRecord[] | null>> => {
   // Build per-item updatedDate map for cache freshness.
   const updatedDateByItemId = new Map<string, string | null>();
   for (const s of scanned) updatedDateByItemId.set(s.itemId, s.updatedDate);
@@ -753,6 +818,51 @@ export const scanItemsAndFields = async ({
       `Cache stats: ${stats.hits} hits / ${stats.misses} misses (${stats.size} stored).`
     );
   }
+  return fieldsByItemId;
+};
+
+export const scanItemsAndFields = async ({
+  client,
+  envName,
+  root,
+  logger,
+  options,
+  latestVersionOnly = true,
+  skipFields = false,
+}: ScanItemsAndFieldsParams): Promise<ScanFieldsResult> => {
+  const knobs = resolveHygieneKnobs(options);
+  const cacheEnabled = options.cache ?? isAuditCacheEnabled();
+  const cache = cacheEnabled ? createFieldCache({ envName, logger }) : null;
+  const limit = options.limit ?? 5000;
+  const includeSystem = Boolean(options.includeSystem);
+  const filters = resolveScanFilters({
+    exclude: options.exclude,
+    since: options.since,
+    owner: options.owner,
+  });
+
+  const rootItemId = await resolveScanRootItemId(client, root, options.index, logger);
+
+  const scanned = await enumerateScanItems({
+    client,
+    options,
+    latestVersionOnly,
+    rootItemId,
+    knobs,
+    limit,
+    includeSystem,
+    filters,
+  });
+  logger.verbose(
+    `Scanned ${scanned.length} items (concurrency=${knobs.concurrency}, batchSize=${knobs.batchSize}, pageParallel=${knobs.pageParallelism}${cache ? ", cache=on" : ""}).`
+  );
+
+  // Skip the field-fetch phase if caller doesn't need fields.
+  if (skipFields) {
+    return { scanned, fieldsByItemId: new Map(), cache, knobs };
+  }
+
+  const fieldsByItemId = await fetchScanFields(client, scanned, cache, knobs, logger);
   return { scanned, fieldsByItemId, cache, knobs };
 };
 

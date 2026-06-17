@@ -39,6 +39,105 @@ export type SetupOrgClientOptions = CommonOptions & {
   rotate?: boolean;
 };
 
+/** Resolve the deploy token for org-client provisioning, or throw. */
+const resolveOrgDeployToken = async (
+  envName: string,
+  env: { deployToken?: string }
+): Promise<string> => {
+  const deployToken =
+    (await getDeployToken(envName)) ?? env.deployToken ?? process.env.SITECOREAI_DEPLOY_TOKEN;
+  if (!deployToken) {
+    throw createScaiError(
+      `No deploy token is available for environment '${envName}'.`,
+      "AUTH_REQUIRED",
+      {
+        hint: `Run \`scai setup login -n ${envName}\` first — minting a client needs a token with the xmclouddeploy.clients:manage scope.`,
+      }
+    );
+  }
+  return deployToken;
+};
+
+/** List the org's existing automation client id (by stable name), mapping list failures. */
+const findExistingOrgClientId = async (params: {
+  deployClient: { accessToken: string };
+  organizationId: string;
+  clientName: string;
+  envName: string;
+}): Promise<string | undefined> => {
+  const { deployClient, organizationId, clientName, envName } = params;
+  try {
+    const listed = await listOrganizationClients(deployClient, organizationId);
+    return (listed.items ?? []).find((client) => client.name === clientName)?.id;
+  } catch (error) {
+    const scaiError = toScaiError(error);
+    throw createScaiError(
+      `Could not list organization clients for organization '${organizationId}'.`,
+      "DEPLOY_FAILED",
+      {
+        hint: `The deploy token may lack the xmclouddeploy.clients:manage scope. Re-run \`scai setup login -n ${envName}\`. Underlying error: ${scaiError.message}`,
+      }
+    );
+  }
+};
+
+/** Emit the "already provisioned, nothing to do" result. Returns true when it handled the run. */
+const reportAlreadyProvisioned = (params: {
+  alreadyProvisioned: boolean;
+  rotate: boolean | undefined;
+  logger: ReturnType<typeof toLogger>;
+  organizationId: string;
+  clientName: string;
+}): boolean => {
+  const { alreadyProvisioned, rotate, logger, organizationId, clientName } = params;
+  if (!(alreadyProvisioned && !rotate)) {
+    return false;
+  }
+  if (logger.isJson()) {
+    logger.json({
+      organization: organizationId,
+      client: clientName,
+      action: "none",
+      provisioned: true,
+    });
+    return true;
+  }
+  logger.info(
+    `Organization '${organizationId}' already has its automation client (${clientName}).`,
+    "green"
+  );
+  logger.info("  Nothing to do. Pass --rotate to delete and re-mint.");
+  return true;
+};
+
+/** Emit the `--what-if` preview. Returns true when it handled the run. */
+const reportWhatIf = (params: {
+  whatIf: boolean | undefined;
+  replaceExisting: boolean;
+  logger: ReturnType<typeof toLogger>;
+  organizationId: string;
+  clientName: string;
+}): boolean => {
+  const { whatIf, replaceExisting, logger, organizationId, clientName } = params;
+  if (!whatIf) {
+    return false;
+  }
+  const verb = replaceExisting ? "delete the existing client and re-mint" : "mint";
+  if (logger.isJson()) {
+    logger.json({
+      organization: organizationId,
+      client: clientName,
+      action: replaceExisting ? "replace" : "mint",
+      whatIf: true,
+    });
+    return true;
+  }
+  logger.info(
+    `[what-if] Would ${verb} org client '${clientName}' for organization '${organizationId}'.`
+  );
+  return true;
+};
+
 export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise<void> => {
   const logger = toLogger(options);
   const configPath = options.config ?? process.cwd();
@@ -61,17 +160,7 @@ export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise
     );
   }
 
-  const deployToken =
-    (await getDeployToken(envName)) ?? env.deployToken ?? process.env.SITECOREAI_DEPLOY_TOKEN;
-  if (!deployToken) {
-    throw createScaiError(
-      `No deploy token is available for environment '${envName}'.`,
-      "AUTH_REQUIRED",
-      {
-        hint: `Run \`scai setup login -n ${envName}\` first — minting a client needs a token with the xmclouddeploy.clients:manage scope.`,
-      }
-    );
-  }
+  const deployToken = await resolveOrgDeployToken(envName, env);
 
   const deployClient = { accessToken: deployToken };
   const clientName = buildScaiClientName("deploy");
@@ -84,37 +173,23 @@ export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise
   const storedSecret = await getOrgClientSecret(organizationId);
   const stored =
     Boolean(rootFile.config.orgClients?.[organizationId]?.clientId) && Boolean(storedSecret);
-  let existingId: string | undefined;
-  try {
-    const listed = await listOrganizationClients(deployClient, organizationId);
-    existingId = (listed.items ?? []).find((client) => client.name === clientName)?.id;
-  } catch (error) {
-    const scaiError = toScaiError(error);
-    throw createScaiError(
-      `Could not list organization clients for organization '${organizationId}'.`,
-      "DEPLOY_FAILED",
-      {
-        hint: `The deploy token may lack the xmclouddeploy.clients:manage scope. Re-run \`scai setup login -n ${envName}\`. Underlying error: ${scaiError.message}`,
-      }
-    );
-  }
+  const existingId = await findExistingOrgClientId({
+    deployClient,
+    organizationId,
+    clientName,
+    envName,
+  });
 
   const alreadyProvisioned = Boolean(stored) && Boolean(existingId);
-  if (alreadyProvisioned && !options.rotate) {
-    if (logger.isJson()) {
-      logger.json({
-        organization: organizationId,
-        client: clientName,
-        action: "none",
-        provisioned: true,
-      });
-      return;
-    }
-    logger.info(
-      `Organization '${organizationId}' already has its automation client (${clientName}).`,
-      "green"
-    );
-    logger.info("  Nothing to do. Pass --rotate to delete and re-mint.");
+  if (
+    reportAlreadyProvisioned({
+      alreadyProvisioned,
+      rotate: options.rotate,
+      logger,
+      organizationId,
+      clientName,
+    })
+  ) {
     return;
   }
 
@@ -122,20 +197,9 @@ export const runSetupOrgClient = async (options: SetupOrgClientOptions): Promise
   // the secret is unrecoverable, so it must be replaced.
   const replaceExisting = Boolean(existingId) && (!stored || Boolean(options.rotate));
 
-  if (options.whatIf) {
-    const verb = replaceExisting ? "delete the existing client and re-mint" : "mint";
-    if (logger.isJson()) {
-      logger.json({
-        organization: organizationId,
-        client: clientName,
-        action: replaceExisting ? "replace" : "mint",
-        whatIf: true,
-      });
-      return;
-    }
-    logger.info(
-      `[what-if] Would ${verb} org client '${clientName}' for organization '${organizationId}'.`
-    );
+  if (
+    reportWhatIf({ whatIf: options.whatIf, replaceExisting, logger, organizationId, clientName })
+  ) {
     return;
   }
 

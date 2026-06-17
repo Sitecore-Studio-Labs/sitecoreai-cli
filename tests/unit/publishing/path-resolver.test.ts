@@ -3,11 +3,11 @@ import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { resolveItemPathsToIds } from "../../../src/publishing/api/path-resolver";
 import { ScaiError } from "../../../src/shared/errors";
 
-vi.mock("../../../src/recipe/api/graphql", () => ({
+vi.mock("../../../src/authoring/graphql", () => ({
   runAuthoringGraphQL: vi.fn(),
 }));
 
-import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
+import { runAuthoringGraphQL } from "../../../src/authoring/graphql";
 const mockRun = runAuthoringGraphQL as unknown as ReturnType<typeof vi.fn>;
 
 const env: EnvironmentConfiguration = {

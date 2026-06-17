@@ -30,10 +30,21 @@ import type { McpContext } from "./auth";
  *   - `read`               — no `allowWrite` required.
  *   - `write`              — `allowWrite: true` required at dispatch.
  *   - `verb-discriminated` — handler decides per `verb` / `direction`
- *     discriminator. Dispatch does NOT auto-require `allowWrite`; the
- *     handler must enforce it (plus `ensureMcpElevationAllowed`) on the
- *     writing verbs. Use only for tools whose verb space mixes read
- *     verbs and write verbs and whose write verbs are clearly named.
+ *     discriminator. Use for tools whose verb space mixes read verbs and
+ *     write verbs and whose write verbs are clearly named.
+ *
+ *     Declare the writing verbs on the descriptor via `writeVerbs` (and
+ *     `verbField` when the discriminator isn't named `verb`). Dispatch
+ *     then centrally enforces `allowWrite: true` whenever the call's verb
+ *     is in that list — plus the same retargeted-env elevation gate the
+ *     `write` class gets. This closes the foot-gun where a NEW write verb
+ *     could slip through unguarded if a handler forgot its own check.
+ *     Handlers may still add CONDITIONAL gating that a flat verb list
+ *     can't express (e.g. serialization's `diff` is a write only when
+ *     `pushOnDiff` is set), and remain responsible for the bound-env
+ *     elevation check; the dispatch gate is a necessary floor, not the
+ *     whole policy. When `writeVerbs` is omitted, dispatch adds no gate
+ *     (legacy behavior — the handler owns all enforcement).
  */
 export type ToolAuth = "read" | "write" | "verb-discriminated";
 
@@ -72,6 +83,20 @@ export interface ToolDescriptor<TShape extends ZodRawShape = ZodRawShape> {
   annotations: ToolAnnotations;
   /** Discriminator that drives the dispatch-time `allowWrite` gate. */
   auth: ToolAuth;
+  /**
+   * For `auth: "verb-discriminated"` tools: the verbs that mutate the
+   * tenant. When the call's discriminator value is in this list, dispatch
+   * enforces `allowWrite: true` and the retargeted-env elevation gate
+   * centrally (mirroring the `write` class). Ignored for `read` / `write`
+   * tools. Omit to keep the legacy "handler owns all enforcement" behavior.
+   */
+  writeVerbs?: readonly string[];
+  /**
+   * Field name carrying the verb discriminator for `writeVerbs` matching.
+   * Defaults to `"verb"`; set to `"direction"` (etc.) when the tool names
+   * its discriminator differently.
+   */
+  verbField?: string;
   /** Zod raw shape for the SDK's input validation. May be empty. */
   inputSchema: TShape;
   /** Tool handler. Receives the typed input, bound context, and per-call extras. */

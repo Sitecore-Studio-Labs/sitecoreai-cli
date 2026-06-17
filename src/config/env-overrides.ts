@@ -45,203 +45,128 @@ const getEnvOverride = (
   return undefined;
 };
 
+/**
+ * Plain string-valued env overrides: each maps `SITECOREAI_<KEY>` (and
+ * the env-scoped variant) straight onto a config field of the same
+ * string type. Kept as a table so the merge loop stays flat — the
+ * per-field rationale comments live with their consumers, not here.
+ *
+ * Notably absent: CLIENT_SECRET (secrets never live on the env profile;
+ * the auth layer reads `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` directly).
+ */
+const STRING_OVERRIDE_FIELDS = [
+  ["CM_HOST", "host"],
+  ["AUTHORITY", "authority"],
+  ["AUDIENCE", "audience"],
+  ["CLIENT_ID", "clientId"],
+  ["DEPLOY_TOKEN", "deployToken"],
+  ["ACCESS_TOKEN", "accessToken"],
+  ["TEMPLATES_ROOT", "templatesRoot"],
+  ["RENDERINGS_ROOT", "renderingsRoot"],
+  ["COMPONENTS_ROOT", "componentsRoot"],
+  ["CONTENT_MODELS_ROOT", "contentModelsRoot"],
+  ["PARTIAL_DESIGNS_ROOT", "partialDesignsRoot"],
+  ["PAGE_DESIGNS_ROOT", "pageDesignsRoot"],
+  ["CONTENT_ITEMS_ROOT", "contentItemsRoot"],
+  ["HEADLESS_VARIANTS_ROOT", "headlessVariantsRoot"],
+  ["AVAILABLE_RENDERINGS_ROOT", "availableRenderingsRoot"],
+  ["PRESENTATION_STYLES_ROOT", "presentationStylesRoot"],
+  ["ENUMERATIONS_ROOT", "enumerationsRoot"],
+  ["PAGE_TEMPLATES_ROOT", "pageTemplatesRoot"],
+  ["PAGES_ROOT", "pagesRoot"],
+  ["PLACEHOLDER_SETTINGS_ROOT", "placeholderSettingsRoot"],
+  ["ORGANIZATION_ID", "organizationId"],
+  ["TENANT_ID", "tenantId"],
+  ["PROJECT_ID", "projectId"],
+  ["ENVIRONMENT_ID", "environmentId"],
+] as const satisfies ReadonlyArray<readonly [string, keyof EnvironmentConfiguration]>;
+
+/** Boolean env overrides parsed through `toBoolean`. */
+const BOOLEAN_OVERRIDE_FIELDS = [
+  ["ALLOW_WRITE", "allowWrite"],
+  ["USE_CLIENT_CREDENTIALS", "useClientCredentials"],
+  ["PRODUCTION", "production"],
+  ["ALLOW_FULL_REPUBLISH", "allowFullRepublish"],
+] as const satisfies ReadonlyArray<readonly [string, keyof EnvironmentConfiguration]>;
+
+/** Comma-separated env overrides split into a trimmed, non-empty list. */
+const LIST_OVERRIDE_FIELDS = [
+  ["PLACEHOLDER_SETTINGS_ROOTS", "placeholderSettingsRoots"],
+  ["ALLOWED_CI_PIPELINES", "allowedCiPipelines"],
+] as const satisfies ReadonlyArray<readonly [string, keyof EnvironmentConfiguration]>;
+
+const splitList = (value: string): string[] =>
+  value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+const applyStringOverrides = (
+  overrides: Record<string, unknown>,
+  envName: string,
+  includeGlobal: boolean
+): void => {
+  for (const [key, field] of STRING_OVERRIDE_FIELDS) {
+    const value = getEnvOverride(envName, key, includeGlobal);
+    if (value !== undefined) {
+      overrides[field] = value;
+    }
+  }
+};
+
+const applyBooleanOverrides = (
+  overrides: Record<string, unknown>,
+  envName: string,
+  includeGlobal: boolean
+): void => {
+  for (const [key, field] of BOOLEAN_OVERRIDE_FIELDS) {
+    const value = toBoolean(getEnvOverride(envName, key, includeGlobal));
+    if (value !== undefined) {
+      overrides[field] = value;
+    }
+  }
+};
+
+const applyListOverrides = (
+  overrides: Record<string, unknown>,
+  envName: string,
+  includeGlobal: boolean
+): void => {
+  for (const [key, field] of LIST_OVERRIDE_FIELDS) {
+    const value = getEnvOverride(envName, key, includeGlobal);
+    if (value !== undefined) {
+      overrides[field] = splitList(value);
+    }
+  }
+};
+
+const applyEnvironmentTypeOverride = (
+  overrides: Partial<EnvironmentConfiguration>,
+  envName: string,
+  includeGlobal: boolean
+): void => {
+  const environmentType = getEnvOverride(envName, "ENVIRONMENT_TYPE", includeGlobal);
+  if (environmentType === undefined) {
+    return;
+  }
+  const normalized = environmentType.trim().toLowerCase();
+  if (normalized === "cm" || normalized === "eh") {
+    overrides.environmentType = normalized as EnvironmentConfiguration["environmentType"];
+  }
+};
+
 export const applyEnvOverrides = (
   envName: string,
   env: EnvironmentConfiguration,
   includeGlobal: boolean
 ): EnvironmentConfiguration => {
   const overrides: Partial<EnvironmentConfiguration> = {};
-  const allowWrite = toBoolean(getEnvOverride(envName, "ALLOW_WRITE", includeGlobal));
-  if (allowWrite !== undefined) {
-    overrides.allowWrite = allowWrite;
-  }
-  const useClientCredentials = toBoolean(
-    getEnvOverride(envName, "USE_CLIENT_CREDENTIALS", includeGlobal)
-  );
-  if (useClientCredentials !== undefined) {
-    overrides.useClientCredentials = useClientCredentials;
-  }
+  const bag = overrides as Record<string, unknown>;
 
-  const host = getEnvOverride(envName, "CM_HOST", includeGlobal);
-  if (host !== undefined) {
-    overrides.host = host;
-  }
-  const authority = getEnvOverride(envName, "AUTHORITY", includeGlobal);
-  if (authority !== undefined) {
-    overrides.authority = authority;
-  }
-  const audience = getEnvOverride(envName, "AUDIENCE", includeGlobal);
-  if (audience !== undefined) {
-    overrides.audience = audience;
-  }
-  const clientId = getEnvOverride(envName, "CLIENT_ID", includeGlobal);
-  if (clientId !== undefined) {
-    overrides.clientId = clientId;
-  }
-  // SITECOREAI_ENV_<ENV>_CLIENT_SECRET is NOT merged into a config field:
-  // secrets never live on the env profile. The auth layer reads that env
-  // var directly as tier 1 of secret resolution — see
-  // `resolveEnvClientSecret` in `shared/client-credential.ts`.
-  const deployToken = getEnvOverride(envName, "DEPLOY_TOKEN", includeGlobal);
-  if (deployToken !== undefined) {
-    overrides.deployToken = deployToken;
-  }
-  // CM/admin access token override — useful when keychain storage is
-  // unreliable (e.g. headless CI, sandboxed shells) or for one-off
-  // debugging. Read by `getAccessToken` in serialization/api/auth.ts
-  // before falling through to client-credentials.
-  const accessToken = getEnvOverride(envName, "ACCESS_TOKEN", includeGlobal);
-  if (accessToken !== undefined) {
-    overrides.accessToken = accessToken;
-  }
-  // Recipe parent paths — read by `resolveRecipeRoots` in
-  // src/recipe/tasks/shared.ts when --templates-root / --renderings-root
-  // CLI flags are absent.
-  const templatesRoot = getEnvOverride(envName, "TEMPLATES_ROOT", includeGlobal);
-  if (templatesRoot !== undefined) {
-    overrides.templatesRoot = templatesRoot;
-  }
-  const renderingsRoot = getEnvOverride(envName, "RENDERINGS_ROOT", includeGlobal);
-  if (renderingsRoot !== undefined) {
-    overrides.renderingsRoot = renderingsRoot;
-  }
-  // Phase 2 per-site folder layout roots — read by `runRecipePush` /
-  // `runRecipeCompile` to wire
-  // `CompileContext.{componentsRoot, contentModelsRoot}` so recipes
-  // with `section:` land at `<componentsRoot>/<section>/<Component>`
-  // and content templates land under `<contentModelsRoot>`.
-  const componentsRoot = getEnvOverride(envName, "COMPONENTS_ROOT", includeGlobal);
-  if (componentsRoot !== undefined) {
-    overrides.componentsRoot = componentsRoot;
-  }
-  const contentModelsRoot = getEnvOverride(envName, "CONTENT_MODELS_ROOT", includeGlobal);
-  if (contentModelsRoot !== undefined) {
-    overrides.contentModelsRoot = contentModelsRoot;
-  }
-  // Phase 4 composition roots — read by `runRecipePush` to wire
-  // `CompileContext.{partialDesignsRoot, pageDesignsRoot, contentItemsRoot}`
-  // and to seed `crossRecipeRefs[PAGE_DESIGNS_ROOT_REF_KEY]`.
-  const partialDesignsRoot = getEnvOverride(envName, "PARTIAL_DESIGNS_ROOT", includeGlobal);
-  if (partialDesignsRoot !== undefined) {
-    overrides.partialDesignsRoot = partialDesignsRoot;
-  }
-  const pageDesignsRoot = getEnvOverride(envName, "PAGE_DESIGNS_ROOT", includeGlobal);
-  if (pageDesignsRoot !== undefined) {
-    overrides.pageDesignsRoot = pageDesignsRoot;
-  }
-  const contentItemsRoot = getEnvOverride(envName, "CONTENT_ITEMS_ROOT", includeGlobal);
-  if (contentItemsRoot !== undefined) {
-    overrides.contentItemsRoot = contentItemsRoot;
-  }
-  // SXA Headless variants root — read by `runRecipePush` to wire
-  // `CompileContext.headlessVariantsRoot` so component recipes' variants
-  // land under `<headlessVariantsRoot>/<section>/<rendering>/<variant>`
-  // (SXA Headless tree) instead of the legacy "under the rendering
-  // item" location.
-  const headlessVariantsRoot = getEnvOverride(envName, "HEADLESS_VARIANTS_ROOT", includeGlobal);
-  if (headlessVariantsRoot !== undefined) {
-    overrides.headlessVariantsRoot = headlessVariantsRoot;
-  }
-  // SXA Available Renderings root — read by `compileRecipeSet` to
-  // emit one Available Renderings section per `recipe.section` with
-  // every rendering in that section listed.
-  const availableRenderingsRoot = getEnvOverride(
-    envName,
-    "AVAILABLE_RENDERINGS_ROOT",
-    includeGlobal
-  );
-  if (availableRenderingsRoot !== undefined) {
-    overrides.availableRenderingsRoot = availableRenderingsRoot;
-  }
-  // SXA Headless Styles root — read by `runRecipePruneDefaults` to
-  // wire the fourth prune group (OOTB style buckets that SXA seeds at
-  // `<presentationStylesRoot>/<bucket>`).
-  const presentationStylesRoot = getEnvOverride(envName, "PRESENTATION_STYLES_ROOT", includeGlobal);
-  if (presentationStylesRoot !== undefined) {
-    overrides.presentationStylesRoot = presentationStylesRoot;
-  }
-  // Enumerations root — required for EnumerationRecipe compilation
-  // and for any field that carries `sitecore.enumHandle`.
-  const enumerationsRoot = getEnvOverride(envName, "ENUMERATIONS_ROOT", includeGlobal);
-  if (enumerationsRoot !== undefined) {
-    overrides.enumerationsRoot = enumerationsRoot;
-  }
-  // Placeholder Settings roots — read by recipe push's placeholder
-  // resolver to find items by `Placeholder Key` and append the
-  // recipe's rendering to their `Allowed Controls`. Comma-separated.
-  const placeholderSettingsRoots = getEnvOverride(
-    envName,
-    "PLACEHOLDER_SETTINGS_ROOTS",
-    includeGlobal
-  );
-  if (placeholderSettingsRoots !== undefined) {
-    overrides.placeholderSettingsRoots = placeholderSettingsRoots
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  }
-  // Page-template create root → `CompileContext.pageTemplatesRoot`.
-  const pageTemplatesRoot = getEnvOverride(envName, "PAGE_TEMPLATES_ROOT", includeGlobal);
-  if (pageTemplatesRoot !== undefined) {
-    overrides.pageTemplatesRoot = pageTemplatesRoot;
-  }
-  // Pages content-tree root → `CompileContext.pagesRoot`.
-  const pagesRoot = getEnvOverride(envName, "PAGES_ROOT", includeGlobal);
-  if (pagesRoot !== undefined) {
-    overrides.pagesRoot = pagesRoot;
-  }
-  // Placeholder Settings CREATE root → `CompileContext.placeholderSettingsRoot`.
-  // Distinct from PLACEHOLDER_SETTINGS_ROOTS (the plural walk list).
-  const placeholderSettingsRoot = getEnvOverride(
-    envName,
-    "PLACEHOLDER_SETTINGS_ROOT",
-    includeGlobal
-  );
-  if (placeholderSettingsRoot !== undefined) {
-    overrides.placeholderSettingsRoot = placeholderSettingsRoot;
-  }
-  const organizationId = getEnvOverride(envName, "ORGANIZATION_ID", includeGlobal);
-  if (organizationId !== undefined) {
-    overrides.organizationId = organizationId;
-  }
-  const tenantId = getEnvOverride(envName, "TENANT_ID", includeGlobal);
-  if (tenantId !== undefined) {
-    overrides.tenantId = tenantId;
-  }
-  const projectId = getEnvOverride(envName, "PROJECT_ID", includeGlobal);
-  if (projectId !== undefined) {
-    overrides.projectId = projectId;
-  }
-  const environmentId = getEnvOverride(envName, "ENVIRONMENT_ID", includeGlobal);
-  if (environmentId !== undefined) {
-    overrides.environmentId = environmentId;
-  }
-  const environmentType = getEnvOverride(envName, "ENVIRONMENT_TYPE", includeGlobal);
-  if (environmentType !== undefined) {
-    const normalized = environmentType.trim().toLowerCase();
-    if (normalized === "cm" || normalized === "eh") {
-      overrides.environmentType = normalized as EnvironmentConfiguration["environmentType"];
-    }
-  }
-  // Publishing safety flags — read by `scai content publish` to decide
-  // production-tier gating and CI eligibility.
-  const production = toBoolean(getEnvOverride(envName, "PRODUCTION", includeGlobal));
-  if (production !== undefined) {
-    overrides.production = production;
-  }
-  const allowFullRepublish = toBoolean(
-    getEnvOverride(envName, "ALLOW_FULL_REPUBLISH", includeGlobal)
-  );
-  if (allowFullRepublish !== undefined) {
-    overrides.allowFullRepublish = allowFullRepublish;
-  }
-  const allowedCiPipelines = getEnvOverride(envName, "ALLOWED_CI_PIPELINES", includeGlobal);
-  if (allowedCiPipelines !== undefined) {
-    overrides.allowedCiPipelines = allowedCiPipelines
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  }
+  applyStringOverrides(bag, envName, includeGlobal);
+  applyBooleanOverrides(bag, envName, includeGlobal);
+  applyListOverrides(bag, envName, includeGlobal);
+  applyEnvironmentTypeOverride(overrides, envName, includeGlobal);
 
   return { ...env, ...overrides };
 };

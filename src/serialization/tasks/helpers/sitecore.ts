@@ -5,14 +5,15 @@ import { Logger } from "@/shared/logger";
 import { ItemCommand } from "../../commands";
 import { resolveApiTimeoutMs } from "../shared";
 
-export const applySitecoreCommands = async (
-  root: ReturnType<typeof readRootConfiguration>,
-  environmentName: string,
-  database: string,
-  commands: ItemCommand[],
-  logger: Logger,
-  whatIf?: boolean
-): Promise<string[]> => {
+export const applySitecoreCommands = async (args: {
+  root: ReturnType<typeof readRootConfiguration>;
+  environmentName: string;
+  database: string;
+  commands: ItemCommand[];
+  logger: Logger;
+  whatIf?: boolean;
+}): Promise<string[]> => {
+  const { root, environmentName, database, commands, logger, whatIf } = args;
   if (whatIf || commands.length === 0) {
     return [];
   }

@@ -53,11 +53,19 @@ module.exports = [
       //
       // These ERROR ceilings are the hard, no-backsliding gate: `pnpm lint`
       // (CI + the lint-staged pre-commit hook) FAILS on anything worse than
-      // today's worst, so the numbers can only ever be ratcheted DOWN. They
-      // are set at the current post-refactor maxima (complexity 40, depth 5,
-      // params 6); the public, contract-stable `fetchItemMetadata` keeps its
-      // 7-arg signature via an inline disable (an options object would break
-      // SDK consumers).
+      // today's worst, so the numbers can only ever be ratcheted DOWN.
+      //
+      // The 2026-06-17 god-file decomposition pass cleared every function
+      // over cyclomatic complexity 30 (the worst were `compileRecipeSet` at
+      // 38 and several MCP/cli-task handlers at 33-40), then a follow-up pass
+      // cleared the max-params (6) and max-depth (5) debt too — internal
+      // high-arity functions became options objects and deep blocks were
+      // extracted into named helpers. So all three ceilings are now at the
+      // debt-warn thresholds (complexity 30 / depth 4 / params 5); every
+      // worklist is empty. The public, contract-stable `fetchItemMetadata`
+      // and `fetchItemData` keep their >5-arg signatures via inline
+      // `eslint-disable-next-line max-params` (an options object would break
+      // SDK consumers); those are the only exemptions.
       //
       // The lower WARNING tier — the chip-away worklist — lives in the
       // `pnpm lint:complexity-debt` script (src-only, non-blocking) at
@@ -68,10 +76,10 @@ module.exports = [
       // is a separate script rather than a second threshold here. (Cyclomatic
       // only; cognitive-complexity via eslint-plugin-sonarjs is a later
       // upgrade.)
-      complexity: ["error", 40],
-      "max-depth": ["error", 5],
+      complexity: ["error", 30],
+      "max-depth": ["error", 4],
       "max-nested-callbacks": ["error", 4],
-      "max-params": ["error", 6],
+      "max-params": ["error", 5],
     },
   },
   {

@@ -55,6 +55,51 @@ const cancelledEnvelope = (toolName: string): CallToolResult =>
     })
   );
 
+/**
+ * Enforce the write gate for a side-effecting call: require
+ * `allowWrite: true`, then — when the call is retargeted at another
+ * environment via `environmentName` — honor the TARGET env's per-env
+ * `denyMcpElevation` opt-out. Shared by the `write` class and the
+ * declared write verbs of `verb-discriminated` tools so both get the
+ * identical floor. Resolving against the bound env (no `environmentName`)
+ * is intentionally NOT gated here: the handler keeps doing its own
+ * bound-env elevation check, exactly as before.
+ */
+const enforceWriteGate = async (
+  descriptor: ToolDescriptor,
+  input: Record<string, unknown>,
+  context: McpContext
+): Promise<void> => {
+  if (input["allowWrite"] !== true) {
+    throw createScaiError(
+      `Tool '${descriptor.name}' is a write operation. Set 'allowWrite: true' to authorize the change.`,
+      "INPUT_INVALID",
+      { hint: ALLOW_WRITE_ERROR_HINT }
+    );
+  }
+  const target = input["environmentName"];
+  if (typeof target === "string" && target !== context.envName) {
+    const binding = await resolveEnvBinding(context.configPath, target);
+    ensureMcpElevationAllowed(binding.resolved.root, binding.envName);
+  }
+};
+
+/**
+ * Whether a `verb-discriminated` call lands on a declared write verb.
+ * Returns false (no central gate) when the tool didn't declare
+ * `writeVerbs` — legacy behavior where the handler owns all enforcement.
+ */
+const isDeclaredWriteVerb = (
+  descriptor: ToolDescriptor,
+  input: Record<string, unknown>
+): boolean => {
+  if (!descriptor.writeVerbs || descriptor.writeVerbs.length === 0) {
+    return false;
+  }
+  const verb = input[descriptor.verbField ?? "verb"];
+  return typeof verb === "string" && descriptor.writeVerbs.includes(verb);
+};
+
 export const dispatchTool = async (
   descriptor: ToolDescriptor,
   input: Record<string, unknown>,
@@ -67,28 +112,12 @@ export const dispatchTool = async (
       return cancelledEnvelope(descriptor.name);
     }
     try {
-      if (descriptor.auth === "write") {
-        const allowWrite = input["allowWrite"] === true;
-        if (!allowWrite) {
-          throw createScaiError(
-            `Tool '${descriptor.name}' is a write operation. Set 'allowWrite: true' to authorize the change.`,
-            "INPUT_INVALID",
-            { hint: ALLOW_WRITE_ERROR_HINT }
-          );
-        }
-        // Multi-env ("Option B") boundary gate: when a write tool is
-        // retargeted at another environment via `environmentName`, the
-        // per-env `denyMcpElevation` opt-out of the TARGET env must be
-        // honored — the handler's own `ensureMcpElevationAllowed` call
-        // (where present) uses the bound context's root, so it would
-        // otherwise check the wrong environment. Resolving against the
-        // bound env (no `environmentName`) is unchanged: dispatch adds
-        // no gate, the handler keeps doing its own check as before.
-        const target = input["environmentName"];
-        if (typeof target === "string" && target !== options.context.envName) {
-          const binding = await resolveEnvBinding(options.context.configPath, target);
-          ensureMcpElevationAllowed(binding.resolved.root, binding.envName);
-        }
+      // `write` tools always gate; `verb-discriminated` tools gate only
+      // when the call lands on a declared write verb (see ToolDescriptor
+      // .writeVerbs). The gate is the same floor for both: require
+      // allowWrite + honor the retargeted env's denyMcpElevation opt-out.
+      if (descriptor.auth === "write" || isDeclaredWriteVerb(descriptor, input)) {
+        await enforceWriteGate(descriptor, input, options.context);
       }
       const result = await descriptor.handler(input as never, options.context, options.extra);
       // If the handler returned a non-error result but the client

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration } from "../../../../src/config/types";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
 
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth/client-credentials", () => ({
   getAccessToken: vi.fn().mockResolvedValue("test-token"),
 }));
 

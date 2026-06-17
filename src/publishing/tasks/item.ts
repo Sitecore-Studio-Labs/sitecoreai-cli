@@ -121,30 +121,22 @@ const printScope = (logger: Logger, scope: PublishAuditScope): void => {
   logger.info(`Include rel.:  ${Boolean(scope.includeRelated)}`, "gray");
 };
 
-export const runPublishItem = async (options: RunPublishItemOptions): Promise<void> => {
-  const logger = toLogger(options);
+type PublishEnvironment = ReturnType<typeof resolveEnvironment>["environment"];
 
-  const directItemIds = options.itemIds ?? [];
-  const paths = options.paths ?? [];
-  if (directItemIds.length === 0 && paths.length === 0 && !options.site) {
-    throw createScaiError(
-      "Publish requires at least one --items <guid>, --paths <path>, or --site <name>.",
-      "INPUT_INVALID",
-      {
-        hint: "Pass --items <guid> (repeatable), --paths <path> (repeatable), and/or --site <name>. --site resolves the site's content-tree root via Sites API; add --include-subitems for the whole site.",
-      }
-    );
-  }
-
-  const { envName, environment, timeoutMs } = resolveEnvironment(options);
-  const itemType = options.itemType ?? "item";
-  const target = "Edge";
-  const mode: PublishItemsMode = options.mode ?? "Smart";
-  const languages = await resolvePublishingLocales(logger, environment, options);
-
-  // Resolve paths → IDs up front so the dry-run scope (and the scope
-  // hash) reflects the actual items the API will see. Resolution
-  // errors fail the whole call before any publish-API write.
+/**
+ * Resolve `--paths` and `--site` to item IDs up front (before any publish
+ * write) so the dry-run scope and hash reflect the actual targets.
+ * Resolution errors fail the whole call. Returns the union of direct IDs,
+ * path-resolved IDs, and the site-root ID. Logs each resolution the same
+ * way the inline blocks did.
+ */
+const resolvePublishTargetIds = async (
+  options: RunPublishItemOptions,
+  environment: PublishEnvironment,
+  directItemIds: string[],
+  paths: string[],
+  logger: Logger
+): Promise<string[]> => {
   let resolvedFromPaths: Array<{ path: string; itemId: string }> = [];
   if (paths.length > 0) {
     logger.info(`Resolving ${paths.length} path(s) via Authoring GraphQL...`, "gray");
@@ -171,11 +163,138 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
     }
   }
 
-  const itemIds = [
+  return [
     ...directItemIds,
     ...resolvedFromPaths.map((r) => r.itemId),
     ...(resolvedSite ? [resolvedSite.itemId] : []),
   ];
+};
+
+/** Dry-run path — JSON envelope (agents) or human scope + scope token. */
+const runPublishItemDryRun = (args: {
+  logger: Logger;
+  envName: string;
+  target: string;
+  itemCount: number;
+  scope: PublishAuditScope;
+  productionTier: boolean;
+}): void => {
+  const { logger, envName, target, itemCount, scope, productionTier } = args;
+  const token = mintScopeToken(scope);
+  if (logger.isJson()) {
+    // JSON-mode contract: emit the canonical envelope ONLY. The raw
+    // token lives in `data.scopeToken`; agents reuse it via
+    // `--confirm-token`. No bare stdout writes here — they'd corrupt
+    // any downstream JSON parser.
+    const envelope = buildScaiEnvelope({
+      command: "publish.item",
+      environment: envName,
+      data: {
+        scope,
+        scopeToken: token,
+        scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
+        productionTier,
+      },
+      extra: { whatIf: true },
+    });
+    process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
+    return;
+  }
+  logger.info(`What-if: would publish ${itemCount} item(s) to ${target}.`, "yellow");
+  printScope(logger, scope);
+  logger.info("", "gray");
+  if (productionTier) {
+    logger.info(
+      `Production-tier env. Real call requires --allow-write AND --confirm-token.`,
+      "yellow"
+    );
+  }
+  logger.info(`Scope token (TTL ${SCOPE_TOKEN_TTL_MS / 1000}s):`, "gray");
+  process.stdout.write(`${token}\n`);
+  logger.info("", "gray");
+  logger.info(
+    `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
+    "gray"
+  );
+};
+
+/**
+ * Real-call consent gates: prod tier requires + verifies a confirm-token;
+ * non-prod requires --yes or an interactive [y/N]. Returns `false` when the
+ * operator aborts the interactive prompt (caller should return early);
+ * throws on any gate violation.
+ */
+const enforcePublishItemConsent = async (args: {
+  options: RunPublishItemOptions;
+  scope: PublishAuditScope;
+  envName: string;
+  target: string;
+  itemCount: number;
+  productionTier: boolean;
+  logger: Logger;
+}): Promise<boolean> => {
+  const { options, scope, envName, target, itemCount, productionTier, logger } = args;
+  if (productionTier) {
+    if (!options.confirmToken) {
+      throw createScaiError(
+        `Production-tier env '${envName}' requires --confirm-token.`,
+        "INPUT_INVALID",
+        {
+          hint: "Run the same command without --allow-write to get a scope token, then pass it back as --confirm-token <token>.",
+        }
+      );
+    }
+    const verification = verifyScopeToken(options.confirmToken, scope);
+    if (!verification.ok) {
+      throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
+        hint: `Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.`,
+      });
+    }
+    return true;
+  }
+  if (!options.yes) {
+    if (options.nonInteractive) {
+      throw createScaiError(
+        "Non-interactive mode requires --yes (or --confirm-token on prod envs).",
+        "INPUT_INVALID"
+      );
+    }
+    logger.info(
+      `About to publish ${itemCount} item(s) to ${target} in env '${envName}'.`,
+      "yellow"
+    );
+    printScope(logger, scope);
+    const ok = await promptConfirm("Proceed with publish?", false);
+    if (!ok) {
+      logger.info("Aborted.", "yellow");
+      return false;
+    }
+  }
+  return true;
+};
+
+export const runPublishItem = async (options: RunPublishItemOptions): Promise<void> => {
+  const logger = toLogger(options);
+
+  const directItemIds = options.itemIds ?? [];
+  const paths = options.paths ?? [];
+  if (directItemIds.length === 0 && paths.length === 0 && !options.site) {
+    throw createScaiError(
+      "Publish requires at least one --items <guid>, --paths <path>, or --site <name>.",
+      "INPUT_INVALID",
+      {
+        hint: "Pass --items <guid> (repeatable), --paths <path> (repeatable), and/or --site <name>. --site resolves the site's content-tree root via Sites API; add --include-subitems for the whole site.",
+      }
+    );
+  }
+
+  const { envName, environment, timeoutMs } = resolveEnvironment(options);
+  const itemType = options.itemType ?? "item";
+  const target = "Edge";
+  const mode: PublishItemsMode = options.mode ?? "Smart";
+  const languages = await resolvePublishingLocales(logger, environment, options);
+
+  const itemIds = await resolvePublishTargetIds(options, environment, directItemIds, paths, logger);
 
   const scope: PublishAuditScope = {
     envName,
@@ -196,80 +315,29 @@ export const runPublishItem = async (options: RunPublishItemOptions): Promise<vo
   const productionTier = isProductionTier(environment);
 
   if (whatIf) {
-    // Dry-run path — print the scope, mint a scope token, exit.
-    const token = mintScopeToken(scope);
-    if (logger.isJson()) {
-      // JSON-mode contract: emit the canonical envelope ONLY. The raw
-      // token lives in `data.scopeToken`; agents reuse it via
-      // `--confirm-token`. No bare stdout writes here — they'd corrupt
-      // any downstream JSON parser.
-      const envelope = buildScaiEnvelope({
-        command: "publish.item",
-        environment: envName,
-        data: {
-          scope,
-          scopeToken: token,
-          scopeTokenTtlSeconds: SCOPE_TOKEN_TTL_MS / 1000,
-          productionTier,
-        },
-        extra: { whatIf: true },
-      });
-      process.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
-      return;
-    }
-    logger.info(`What-if: would publish ${itemIds.length} item(s) to ${target}.`, "yellow");
-    printScope(logger, scope);
-    logger.info("", "gray");
-    if (productionTier) {
-      logger.info(
-        `Production-tier env. Real call requires --allow-write AND --confirm-token.`,
-        "yellow"
-      );
-    }
-    logger.info(`Scope token (TTL ${SCOPE_TOKEN_TTL_MS / 1000}s):`, "gray");
-    process.stdout.write(`${token}\n`);
-    logger.info("", "gray");
-    logger.info(
-      `To execute: rerun with --allow-write${productionTier ? ` --confirm-token ${token}` : ""}`,
-      "gray"
-    );
+    runPublishItemDryRun({
+      logger,
+      envName,
+      target,
+      itemCount: itemIds.length,
+      scope,
+      productionTier,
+    });
     return;
   }
 
   // Real call from here on. Layer the safety checks.
-  if (productionTier) {
-    if (!options.confirmToken) {
-      throw createScaiError(
-        `Production-tier env '${envName}' requires --confirm-token.`,
-        "INPUT_INVALID",
-        {
-          hint: "Run the same command without --allow-write to get a scope token, then pass it back as --confirm-token <token>.",
-        }
-      );
-    }
-    const verification = verifyScopeToken(options.confirmToken, scope);
-    if (!verification.ok) {
-      throw createScaiError(`Scope token rejected (${verification.reason}).`, "INPUT_INVALID", {
-        hint: `Re-run the dry-run to mint a fresh token; the scope or env may have changed since the token was issued.`,
-      });
-    }
-  } else if (!options.yes) {
-    if (options.nonInteractive) {
-      throw createScaiError(
-        "Non-interactive mode requires --yes (or --confirm-token on prod envs).",
-        "INPUT_INVALID"
-      );
-    }
-    logger.info(
-      `About to publish ${itemIds.length} item(s) to ${target} in env '${envName}'.`,
-      "yellow"
-    );
-    printScope(logger, scope);
-    const ok = await promptConfirm("Proceed with publish?", false);
-    if (!ok) {
-      logger.info("Aborted.", "yellow");
-      return;
-    }
+  const proceed = await enforcePublishItemConsent({
+    options,
+    scope,
+    envName,
+    target,
+    itemCount: itemIds.length,
+    productionTier,
+    logger,
+  });
+  if (!proceed) {
+    return;
   }
 
   const accessToken = await acquirePublishingToken({ envName, environment });

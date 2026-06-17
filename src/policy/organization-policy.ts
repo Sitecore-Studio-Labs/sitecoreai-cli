@@ -69,6 +69,76 @@ const UNMANAGED: EffectiveOrganizationPolicy = {
   enrolledVia: null,
 };
 
+type WorkspacePolicy = NonNullable<ReturnType<typeof readWorkspacePolicy>>;
+type RepoPolicy = ReturnType<typeof readRepoPolicy>;
+type ExplicitOrgEntry = NonNullable<WorkspacePolicy["organizations"]>[string];
+
+const MANAGED_UNENROLLED: EffectiveOrganizationPolicy = { ...UNMANAGED, managed: true };
+
+const isAllowedByRepo = (repo: RepoPolicy, orgId: string): boolean =>
+  !repo?.allowOrganizations || repo.allowOrganizations.includes(orgId);
+
+/**
+ * Build the enrolled verdict for an explicit `organizations[orgId]` entry,
+ * layering the repo-policy entry (which may only narrow). Returns the
+ * managed-but-unenrolled verdict when the repo `allowOrganizations`
+ * intersect excludes the org.
+ */
+const explicitVerdict = (
+  explicit: ExplicitOrgEntry,
+  repo: RepoPolicy,
+  orgId: string
+): EffectiveOrganizationPolicy => {
+  if (!isAllowedByRepo(repo, orgId)) {
+    return MANAGED_UNENROLLED;
+  }
+  const repoEntry = repo?.organizations?.[orgId];
+  return {
+    managed: true,
+    enrolled: true,
+    ceiling: repoEntry?.ceiling ? minTier(explicit.ceiling, repoEntry.ceiling) : explicit.ceiling,
+    identity: explicit.identity,
+    mintCredentials: explicit.mintCredentials === true && repoEntry?.mintCredentials !== false,
+    ciWrites: explicit.ciWrites === true && repoEntry?.ciWrites !== false,
+    stepUpMinutes: minDefined(explicit.stepUpMinutes, repoEntry?.stepUpMinutes),
+    enrolledVia: "explicit",
+  };
+};
+
+/**
+ * Lenient fall-through: any enrolled env profile carrying this orgId
+ * implies the org is enrolled at that env's ceiling. When multiple envs
+ * reference the same org, take the LOOSEST ceiling — the env-scoped gate
+ * already enforces its own per-env ceiling on the env-scoped path, so the
+ * org-scoped gate should not be stricter than the env-scoped one.
+ */
+const transitiveVerdict = (
+  workspace: WorkspacePolicy,
+  orgId: string
+): EffectiveOrganizationPolicy => {
+  let transitive: { ceiling: RiskTier; identity: OrgIdentity } | undefined;
+  for (const [, envEntry] of Object.entries(workspace.environments)) {
+    if (envEntry.identity?.organizationId !== orgId) continue;
+    // looser ceiling wins (max rank); first match seeds it
+    if (!transitive || minTier(transitive.ceiling, envEntry.ceiling) === transitive.ceiling) {
+      transitive = { ceiling: envEntry.ceiling, identity: { organizationId: orgId } };
+    }
+  }
+  if (!transitive) {
+    return MANAGED_UNENROLLED;
+  }
+  return {
+    managed: true,
+    enrolled: true,
+    ceiling: transitive.ceiling,
+    identity: transitive.identity,
+    mintCredentials: false,
+    ciWrites: false,
+    stepUpMinutes: undefined,
+    enrolledVia: "transitive",
+  };
+};
+
 /** Compute the effective org-policy verdict. Sync, mirrors `resolveEffectivePolicy`. */
 export const resolveEffectiveOrganizationPolicy = (
   orgId: string,
@@ -86,81 +156,18 @@ export const resolveEffectiveOrganizationPolicy = (
   // may narrow further.
   if (workspace.strictOrgs) {
     if (!explicit) {
-      return { ...UNMANAGED, managed: true };
+      return MANAGED_UNENROLLED;
     }
-    const allowedByRepo = !repo?.allowOrganizations || repo.allowOrganizations.includes(orgId);
-    if (!allowedByRepo) {
-      return { ...UNMANAGED, managed: true };
-    }
-    const repoEntry = repo?.organizations?.[orgId];
-    return {
-      managed: true,
-      enrolled: true,
-      ceiling: repoEntry?.ceiling ? minTier(explicit.ceiling, repoEntry.ceiling) : explicit.ceiling,
-      identity: explicit.identity,
-      mintCredentials: explicit.mintCredentials === true && repoEntry?.mintCredentials !== false,
-      ciWrites: explicit.ciWrites === true && repoEntry?.ciWrites !== false,
-      stepUpMinutes: minDefined(explicit.stepUpMinutes, repoEntry?.stepUpMinutes),
-      enrolledVia: "explicit",
-    };
+    return explicitVerdict(explicit, repo, orgId);
   }
 
   // Lenient mode. Explicit wins over transitive — only fall through when
   // there is no `organizations[orgId]` entry.
   if (explicit) {
-    const repoEntry = repo?.organizations?.[orgId];
-    const allowedByRepo = !repo?.allowOrganizations || repo.allowOrganizations.includes(orgId);
-    if (!allowedByRepo) {
-      return { ...UNMANAGED, managed: true };
-    }
-    return {
-      managed: true,
-      enrolled: true,
-      ceiling: repoEntry?.ceiling ? minTier(explicit.ceiling, repoEntry.ceiling) : explicit.ceiling,
-      identity: explicit.identity,
-      mintCredentials: explicit.mintCredentials === true && repoEntry?.mintCredentials !== false,
-      ciWrites: explicit.ciWrites === true && repoEntry?.ciWrites !== false,
-      stepUpMinutes: minDefined(explicit.stepUpMinutes, repoEntry?.stepUpMinutes),
-      enrolledVia: "explicit",
-    };
+    return explicitVerdict(explicit, repo, orgId);
   }
 
-  // Transitive: any enrolled env profile carrying this orgId implies the
-  // org is enrolled at that env's ceiling. When multiple envs reference
-  // the same org, take the LOOSEST ceiling — the env-scoped gate already
-  // enforces its own per-env ceiling on the env-scoped path, so the
-  // org-scoped gate should not be stricter than the env-scoped one.
-  let transitive: { ceiling: RiskTier; identity: OrgIdentity } | undefined;
-  for (const [, envEntry] of Object.entries(workspace.environments)) {
-    if (envEntry.identity?.organizationId !== orgId) continue;
-    if (!transitive) {
-      transitive = {
-        ceiling: envEntry.ceiling,
-        identity: { organizationId: orgId },
-      };
-      continue;
-    }
-    // looser ceiling wins (max rank)
-    if (minTier(transitive.ceiling, envEntry.ceiling) === transitive.ceiling) {
-      transitive = {
-        ceiling: envEntry.ceiling,
-        identity: { organizationId: orgId },
-      };
-    }
-  }
-  if (!transitive) {
-    return { ...UNMANAGED, managed: true };
-  }
-  return {
-    managed: true,
-    enrolled: true,
-    ceiling: transitive.ceiling,
-    identity: transitive.identity,
-    mintCredentials: false,
-    ciWrites: false,
-    stepUpMinutes: undefined,
-    enrolledVia: "transitive",
-  };
+  return transitiveVerdict(workspace, orgId);
 };
 
 const minDefined = (a: number | undefined, b: number | undefined): number | undefined => {

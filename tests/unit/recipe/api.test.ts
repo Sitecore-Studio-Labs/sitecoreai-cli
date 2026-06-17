@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration } from "../../../src/config/types";
 import { ScaiError } from "../../../src/shared/errors";
-import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
+import { runAuthoringGraphQL } from "../../../src/authoring/graphql";
 import { createAuthoringClient } from "../../../src/recipe/api/authoring-client";
 import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
 
-vi.mock("../../../src/recipe/api/auth", () => ({
+vi.mock("../../../src/auth/client-credentials", () => ({
   getAccessToken: vi.fn(),
 }));
 
-import { getAccessToken } from "../../../src/recipe/api/auth";
+import { getAccessToken } from "../../../src/auth/client-credentials";
 const getAccessTokenMock = vi.mocked(getAccessToken);
 
 const baseEnv: EnvironmentConfiguration = {

@@ -200,7 +200,7 @@ export function compileComponentTemplateRecipe(
   //     Parameters bucket (or templatesRoot for legacy).
   const hasInlineParams = recipe.params.length > 0 && !recipe.parameters;
   if (hasInlineParams) {
-    emitParamsTemplate(operations, recipe, context, icon, policy, emittedFolders);
+    emitParamsTemplate({ operations, recipe, context, icon, policy, emittedFolders });
   }
 
   if (sectionName) {
@@ -218,7 +218,7 @@ export function compileComponentTemplateRecipe(
   });
 
   if (recipe.variants.length > 0) {
-    emitVariants(operations, recipe, context, icon, policy, emittedFolders);
+    emitVariants({ operations, recipe, context, icon, policy, emittedFolders });
   }
 
   return OperationIrSchema.parse({
@@ -561,14 +561,21 @@ function emitSiteDataFolderTemplate(
   } satisfies SetFieldOp);
 }
 
-function emitParamsTemplate(
-  operations: Operation[],
-  recipe: ComponentTemplateRecipe,
-  context: CompileContext,
-  icon: string,
-  policy: PushPolicy,
-  emittedFolders: Set<string>
-): void {
+function emitParamsTemplate({
+  operations,
+  recipe,
+  context,
+  icon,
+  policy,
+  emittedFolders,
+}: {
+  operations: Operation[];
+  recipe: ComponentTemplateRecipe;
+  context: CompileContext;
+  icon: string;
+  policy: PushPolicy;
+  emittedFolders: Set<string>;
+}): void {
   const site = siteOf(context);
   const paramsTplRefKey = designParametersTemplateId(site, recipe.handle);
   const paramsName = `${recipe.name} Parameters`;
@@ -724,40 +731,7 @@ function emitRendering({
   const sectionName = resolveSectionName(recipe, context);
   const renderingParentPath = resolveRenderingParent(context, sectionName);
   const renderingPath = joinPath(renderingParentPath, recipe.name);
-  // Datasource template ref. Four cases:
-  //   1. Explicit `datasource.templates` array (≥ 1 handle) → multi-template
-  //      "compatible-datasources" pattern. Emit a `ref-recipe-list` so the
-  //      executor pipe-joins each template's GUID into the rendering's
-  //      Datasource Template shared field. The Pages picker then surfaces
-  //      items conforming to ANY of the listed templates.
-  //   2. Explicit `datasource.template` handle → reference the separate
-  //      ContentTemplateRecipe (single compatible-data-source).
-  //   3. Inline `fields:` (recipe has ≥ 1 field) → the component template
-  //      IS the datasource template (legacy inline-fields pattern).
-  //   4. Neither — a pure-layout rendering (Container, ColumnSplitter,
-  //      RowSplitter, …). Emit no Datasource Template field at all so
-  //      the rendering item's shared field stays empty. Sitecore Pages
-  //      gates its "create or pick a datasource" prompt on this field
-  //      being non-empty, so an empty value is what makes a layout-only
-  //      rendering droppable without an authoring prompt.
-  const hasInlineFields = (recipe.fields?.length ?? 0) > 0;
-  const datasourceTemplates = recipe.datasource?.templates;
-  const datasourceField: FieldValue | undefined = datasourceTemplates?.length
-    ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-        kind: "ref-recipe-list",
-        refKeys: datasourceTemplates.map((t) => templateId(site, t.handle)),
-      })
-    : recipe.datasource?.template
-      ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-          kind: "ref-recipe",
-          refKey: templateId(site, recipe.datasource.template.handle),
-        })
-      : hasInlineFields
-        ? sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
-            kind: "ref-recipe",
-            refKey: templateId(site, recipe.handle),
-          })
-        : undefined;
+  const datasourceField = resolveDatasourceTemplateField(recipe, site);
 
   const fields: FieldValue[] = [
     sharedField(RENDERING_FIELDS.COMPONENT_NAME, { kind: "string", value: recipe.name }),
@@ -783,163 +757,22 @@ function emitRendering({
     );
   }
 
-  // Datasource: build the rendering's `Datasource Location`,
-  // `Open Properties After Add`, and `OtherProperties` fields from the
-  // top-level `recipe.datasource` block. The block is optional — a
-  // static rendering (no author-pickable datasource) just omits it,
-  // and only `OtherProperties` gets written (so `dynamicPlaceholders`
-  // and free-form `recipe.otherProperties` still take effect).
+  // Datasource: build the rendering's `Datasource Location` + `Open
+  // Properties After Add` from the top-level `recipe.datasource` block.
+  // Optional — a static rendering (no author-pickable datasource) omits
+  // it; only `OtherProperties` (below) is unconditional.
   const ds = recipe.datasource;
   if (ds) {
-    const segments: string[] = [];
-    for (const location of ds.locations) {
-      if (location.scope === "page") {
-        segments.push(location.subfolder ? `./Data/${location.subfolder}` : "./Data");
-        continue;
-      }
-      // location.scope === "site"
-      if (!context.contentItemsRoot) {
-        throw createScaiError(
-          `Recipe '${recipe.handle}' declares a site-scoped datasource location but no contentItemsRoot is configured.`,
-          "INPUT_INVALID",
-          {
-            hint: "Set `contentItemsRoot` on the active envProfile in sitecoreai.cli.json (e.g. `/sitecore/content/<siteCollection>/<site>/Data`).",
-          }
-        );
-      }
-      const base = context.contentItemsRoot;
-      segments.push(location.subfolder ? joinPath(base, location.subfolder) : base);
-
-      // For site+subfolder: emit a CreateOnly folder item so the
-      // shared pool exists before any rendering tries to read from
-      // it. Dedupe across recipes via `emittedFolders` keyed on the
-      // refKey, mirroring section-folder emission.
-      //
-      // Multi-segment subfolders (e.g. `"ui/badges"`) emit only the
-      // LEAF folder explicitly — the executor's path-walker
-      // auto-creates intermediate segments (`ui`) when it materialises
-      // the leaf, so we don't need (and shouldn't try) to track them
-      // via deterministic refKeys. Sitecore's `createItem` rejects
-      // names with `/`, so the op's `name` is always the leaf segment;
-      // `parent` points at the intermediate path so the walker fills
-      // in any missing segments before parenting.
-      if (location.subfolder) {
-        const folderRefKey = siteDataFolderId(site, location.subfolder);
-        if (!emittedFolders.has(folderRefKey)) {
-          emittedFolders.add(folderRefKey);
-          const subfolderSegments = location.subfolder
-            .split("/")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          if (subfolderSegments.length === 0) {
-            throw createScaiError(
-              `Recipe '${recipe.handle}' declares a site-scoped datasource subfolder that is empty after trimming.`,
-              "INPUT_INVALID",
-              {
-                hint: "Use a non-empty subfolder string like 'Badges' or 'ui/badges'.",
-              }
-            );
-          }
-          const leafName = subfolderSegments[subfolderSegments.length - 1];
-          const intermediateSegments = subfolderSegments.slice(0, -1);
-          const parentPath =
-            intermediateSegments.length > 0 ? joinPath(base, intermediateSegments.join("/")) : base;
-          const folderPath = joinPath(base, subfolderSegments.join("/"));
-          // Template selection per subfolder:
-          //   1. Shared-subfolder coalescer (≥2 recipes target same
-          //      subfolder) → SHARED template (Insert Options =
-          //      union of contributing recipes' datasource templates).
-          //   2. Singleton WITH allowedTemplates on this location →
-          //      per-LOCATION template (Insert Options = this
-          //      location's `allowedTemplates`).
-          //   3. Singleton WITHOUT allowedTemplates → legacy per-recipe
-          //      template (Insert Options = recipe's own datasource
-          //      template). Preserves the original behavior for
-          //      consumers that haven't adopted allowedTemplates.
-          const isShared = context.sharedSubfolders?.has(location.subfolder) === true;
-          const folderTemplateOf = isShared
-            ? sharedDataFolderTemplateId(site, location.subfolder)
-            : (location.allowedTemplates ?? []).length > 0
-              ? siteDataFolderTemplateIdForLocation(site, recipe.handle, location.subfolder)
-              : siteDataFolderTemplateId(site, recipe.handle);
-          operations.push({
-            op: "CreateItem",
-            policy: "CreateOnly",
-            label: `site-data-folder:${site}:${location.subfolder}`,
-            id: folderRefKey,
-            path: folderPath,
-            parent: { kind: "ref-path", value: parentPath },
-            // Conform to the per-component Data Folder template (emitted
-            // by `emitSiteDataFolderTemplate`) so the SV's Insert
-            // Options restrict right-click → Insert to this recipe's
-            // own datasource template. For multi-segment subfolders
-            // (e.g. `ui/badges`), only the LEAF folder gets this
-            // template; intermediate segments stay as auto-created
-            // plain folders via the executor's path-walker.
-            templateOf: folderTemplateOf,
-            name: leafName,
-            fields: [
-              sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: "office/16x16/folder.png" }),
-              versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
-                kind: "string",
-                value: leafName,
-              }),
-            ],
-          } satisfies CreateItemOp);
-        }
-      }
-    }
-
-    // Raw query/source segments are appended verbatim. Each entry is a
-    // complete Sitecore Source segment (e.g. `query:$site/...` or
-    // `fast:/sitecore/content//*[@@templatename='Foo']`).
-    for (const raw of ds.query) {
-      segments.push(raw);
-    }
-
-    fields.push(
-      sharedField(RENDERING_FIELDS.DATASOURCE_LOCATION, {
-        kind: "string",
-        value: segments.join("|"),
-      })
-    );
-
-    fields.push(
-      sharedField(RENDERING_FIELDS.OPEN_PROPERTIES_AFTER_ADD, {
-        kind: "bool",
-        value: ds.openPropertiesAfterAdd,
-      })
-    );
+    emitDatasourceLocationFields({ fields, operations, recipe, context, site, emittedFolders });
   }
 
   // OtherProperties is always emitted — `dynamicPlaceholders` and the
   // free-form `recipe.otherProperties` apply regardless of whether the
-  // rendering has a datasource block. Authors' explicit keys override
-  // the auto-set values.
-  const otherProperties: Record<string, string> = {};
-  if (ds?.autoCreate) {
-    otherProperties.IsAutoDatasourceRendering = "true";
-  }
-  if (recipe.dynamicPlaceholders) {
-    otherProperties.IsRenderingsWithDynamicPlaceholders = "true";
-    // Pair: tells SXA's layout-service serialiser that children inside
-    // this rendering's dynamic placeholders should inherit the
-    // rendering's datasource as their context (so child relative-
-    // datasource resolution works). Without it, children dropped into
-    // a Container / Section Wrapper / partial-design slot can fail to
-    // resolve their own datasource because the layout service ships
-    // no parent-context binding alongside the placeholder array.
-    // Pairs with the IDynamicPlaceholder base template + the
-    // Placeholders shared field — all three are required halves of
-    // the dynamic-placeholder chain on XM Cloud / SXA Headless
-    // starter renderings (Container et al carry this property).
-    otherProperties.UsePlaceholderDatasourceContext = "true";
-  }
-  Object.assign(otherProperties, recipe.otherProperties ?? {});
+  // rendering has a datasource block.
   fields.push(
     sharedField(RENDERING_FIELDS.OTHER_PROPERTIES, {
       kind: "url-string-map",
-      entries: otherProperties,
+      entries: buildOtherProperties(recipe),
     })
   );
 
@@ -987,6 +820,199 @@ function emitRendering({
 }
 
 /**
+ * Resolve the rendering's `Datasource Template` shared field. Four cases:
+ *   1. Explicit `datasource.templates` array (≥1 handle) → multi-template
+ *      "compatible-datasources" pattern (`ref-recipe-list`; the Pages
+ *      picker surfaces items conforming to ANY listed template).
+ *   2. Explicit `datasource.template` handle → the separate
+ *      ContentTemplateRecipe (single compatible-data-source).
+ *   3. Inline `fields:` (recipe has ≥1 field) → the component template IS
+ *      the datasource template (legacy inline-fields pattern).
+ *   4. Neither — a pure-layout rendering (Container, ColumnSplitter, …) →
+ *      `undefined`, so the shared field stays empty. Sitecore Pages gates
+ *      its "create or pick a datasource" prompt on this field being
+ *      non-empty, so an empty value makes a layout-only rendering
+ *      droppable without an authoring prompt.
+ */
+const resolveDatasourceTemplateField = (
+  recipe: ComponentTemplateRecipe,
+  site: string
+): FieldValue | undefined => {
+  const datasourceTemplates = recipe.datasource?.templates;
+  if (datasourceTemplates?.length) {
+    return sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+      kind: "ref-recipe-list",
+      refKeys: datasourceTemplates.map((t) => templateId(site, t.handle)),
+    });
+  }
+  if (recipe.datasource?.template) {
+    return sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+      kind: "ref-recipe",
+      refKey: templateId(site, recipe.datasource.template.handle),
+    });
+  }
+  if ((recipe.fields?.length ?? 0) > 0) {
+    return sharedField(RENDERING_FIELDS.DATASOURCE_TEMPLATE, {
+      kind: "ref-recipe",
+      refKey: templateId(site, recipe.handle),
+    });
+  }
+  return undefined;
+};
+
+/**
+ * Assemble the rendering's `OtherProperties` map. `dynamicPlaceholders`
+ * and the free-form `recipe.otherProperties` apply regardless of whether
+ * the rendering has a datasource block; authors' explicit keys override
+ * the auto-set values.
+ */
+const buildOtherProperties = (recipe: ComponentTemplateRecipe): Record<string, string> => {
+  const otherProperties: Record<string, string> = {};
+  if (recipe.datasource?.autoCreate) otherProperties.IsAutoDatasourceRendering = "true";
+  if (recipe.dynamicPlaceholders) {
+    otherProperties.IsRenderingsWithDynamicPlaceholders = "true";
+    // Tells SXA's layout-service serialiser that children inside this
+    // rendering's dynamic placeholders inherit the rendering's datasource
+    // as their context (child relative-datasource resolution). Pairs with
+    // the IDynamicPlaceholder base template + the Placeholders shared
+    // field — all three are required halves of the dynamic-placeholder
+    // chain on XM Cloud / SXA Headless starter renderings.
+    otherProperties.UsePlaceholderDatasourceContext = "true";
+  }
+  Object.assign(otherProperties, recipe.otherProperties ?? {});
+  return otherProperties;
+};
+
+interface DatasourceLocationOptions {
+  fields: FieldValue[];
+  operations: Operation[];
+  recipe: ComponentTemplateRecipe;
+  context: CompileContext;
+  site: string;
+  emittedFolders: Set<string>;
+}
+
+/** A single entry in a component-template recipe's `datasource.locations`. */
+type DatasourceLocation = NonNullable<ComponentTemplateRecipe["datasource"]>["locations"][number];
+
+/**
+ * Emit a CreateOnly folder item for a site-scoped `(base, subfolder)`
+ * datasource pool, deduped across recipes via `emittedFolders`.
+ * Multi-segment subfolders (`ui/badges`) emit only the LEAF folder
+ * explicitly — the executor's path-walker auto-creates the intermediate
+ * segments.
+ */
+const emitSiteSubfolderPool = (
+  opts: DatasourceLocationOptions,
+  base: string,
+  subfolder: string,
+  allowedTemplates: readonly unknown[] | undefined
+): void => {
+  const { recipe, context, site, emittedFolders, operations } = opts;
+  const folderRefKey = siteDataFolderId(site, subfolder);
+  if (emittedFolders.has(folderRefKey)) return;
+  emittedFolders.add(folderRefKey);
+
+  const subfolderSegments = subfolder
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (subfolderSegments.length === 0) {
+    throw createScaiError(
+      `Recipe '${recipe.handle}' declares a site-scoped datasource subfolder that is empty after trimming.`,
+      "INPUT_INVALID",
+      { hint: "Use a non-empty subfolder string like 'Badges' or 'ui/badges'." }
+    );
+  }
+  const leafName = subfolderSegments[subfolderSegments.length - 1];
+  const intermediateSegments = subfolderSegments.slice(0, -1);
+  const parentPath =
+    intermediateSegments.length > 0 ? joinPath(base, intermediateSegments.join("/")) : base;
+  const folderPath = joinPath(base, subfolderSegments.join("/"));
+  // Template selection per subfolder:
+  //   1. Shared-subfolder coalescer (≥2 recipes target same subfolder) →
+  //      SHARED template (Insert Options = union of contributors).
+  //   2. Singleton WITH allowedTemplates → per-LOCATION template.
+  //   3. Singleton WITHOUT allowedTemplates → legacy per-recipe template.
+  const isShared = context.sharedSubfolders?.has(subfolder) === true;
+  const folderTemplateOf = isShared
+    ? sharedDataFolderTemplateId(site, subfolder)
+    : (allowedTemplates ?? []).length > 0
+      ? siteDataFolderTemplateIdForLocation(site, recipe.handle, subfolder)
+      : siteDataFolderTemplateId(site, recipe.handle);
+  operations.push({
+    op: "CreateItem",
+    policy: "CreateOnly",
+    label: `site-data-folder:${site}:${subfolder}`,
+    id: folderRefKey,
+    path: folderPath,
+    parent: { kind: "ref-path", value: parentPath },
+    // Conform to the per-component Data Folder template so the SV's Insert
+    // Options restrict right-click → Insert to this recipe's own
+    // datasource template. For multi-segment subfolders only the LEAF
+    // folder gets this template; intermediates stay auto-created plain
+    // folders via the executor's path-walker.
+    templateOf: folderTemplateOf,
+    name: leafName,
+    fields: [
+      sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: "office/16x16/folder.png" }),
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: leafName }),
+    ],
+  } satisfies CreateItemOp);
+};
+
+/** Resolve one datasource location to its Source segment, emitting any site pool folder. */
+const datasourceLocationSegment = (
+  opts: DatasourceLocationOptions,
+  location: DatasourceLocation
+): string => {
+  if (location.scope === "page") {
+    return location.subfolder ? `./Data/${location.subfolder}` : "./Data";
+  }
+  // location.scope === "site"
+  if (!opts.context.contentItemsRoot) {
+    throw createScaiError(
+      `Recipe '${opts.recipe.handle}' declares a site-scoped datasource location but no contentItemsRoot is configured.`,
+      "INPUT_INVALID",
+      {
+        hint: "Set `contentItemsRoot` on the active envProfile in sitecoreai.cli.json (e.g. `/sitecore/content/<siteCollection>/<site>/Data`).",
+      }
+    );
+  }
+  const base = opts.context.contentItemsRoot;
+  if (location.subfolder) {
+    emitSiteSubfolderPool(opts, base, location.subfolder, location.allowedTemplates);
+    return joinPath(base, location.subfolder);
+  }
+  return base;
+};
+
+/**
+ * Emit the rendering's `Datasource Location` + `Open Properties After Add`
+ * fields (and any site-scoped pool folders) from `recipe.datasource`.
+ */
+const emitDatasourceLocationFields = (opts: DatasourceLocationOptions): void => {
+  const ds = opts.recipe.datasource!;
+  const segments: string[] = [];
+  for (const location of ds.locations) {
+    segments.push(datasourceLocationSegment(opts, location));
+  }
+  // Raw query/source segments are appended verbatim — each is a complete
+  // Sitecore Source segment (`query:$site/...`, `fast:/sitecore/...`).
+  for (const raw of ds.query) segments.push(raw);
+
+  opts.fields.push(
+    sharedField(RENDERING_FIELDS.DATASOURCE_LOCATION, { kind: "string", value: segments.join("|") })
+  );
+  opts.fields.push(
+    sharedField(RENDERING_FIELDS.OPEN_PROPERTIES_AFTER_ADD, {
+      kind: "bool",
+      value: ds.openPropertiesAfterAdd,
+    })
+  );
+};
+
+/**
  * Emit ops to materialise SXA Headless rendering variants for a
  * component-template recipe.
  *
@@ -1013,14 +1039,24 @@ function emitRendering({
  * variant op. The orchestrator's ephemeral-cli-config sets this from
  * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants`.
  */
-function emitVariants(
-  operations: Operation[],
-  recipe: ComponentTemplateRecipe,
-  context: CompileContext,
-  icon: string,
-  policy: PushPolicy,
-  emittedFolders: Set<string>
-): void {
+function emitVariants({
+  operations,
+  recipe,
+  context,
+  // `icon` is part of the emitter call contract (callers pass it for
+  // symmetry with emitParamsTemplate) but variant items don't carry an
+  // icon field — retained, unused, to keep the caller signature uniform.
+  icon: _icon,
+  policy,
+  emittedFolders,
+}: {
+  operations: Operation[];
+  recipe: ComponentTemplateRecipe;
+  context: CompileContext;
+  icon: string;
+  policy: PushPolicy;
+  emittedFolders: Set<string>;
+}): void {
   if (!context.headlessVariantsRoot) {
     throw createScaiError(
       `Recipe '${recipe.handle}' declares ${recipe.variants.length} variants but no headlessVariantsRoot is configured.`,

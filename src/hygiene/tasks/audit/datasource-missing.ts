@@ -81,32 +81,41 @@ export const runAuditDatasourceMissing = async (
   const pending: Pending[] = [];
   const idsToResolve = new Set<string>();
   const pathsToResolve = new Set<string>();
+  // Collect every datasource ref on a single rendering field, pushing
+  // onto `pending` and the id/path resolution sets. Extracted to keep
+  // the scan loop nesting shallow.
+  const collectFieldDatasources = (
+    item: (typeof scanned)[number],
+    field: { name: string; value: string }
+  ): void => {
+    for (const ds of extractRenderingDatasources(field.value)) {
+      if (!ds.datasource) continue;
+      if (ds.datasource.startsWith("query:") || ds.datasource.startsWith("local:")) {
+        if (!options.reportQueryDatasources) continue;
+      }
+      pending.push({
+        itemId: item.itemId,
+        path: item.path,
+        templateName: item.templateName,
+        language: item.language,
+        fieldName: field.name,
+        renderingId: ds.renderingId,
+        datasource: ds.datasource,
+      });
+      if (ds.datasource.startsWith("/")) {
+        pathsToResolve.add(ds.datasource);
+      } else {
+        const norm = normalizeItemId(ds.datasource);
+        if (norm.length === 32) idsToResolve.add(norm);
+      }
+    }
+  };
   for (const item of scanned) {
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
     for (const field of fields) {
       if (!isRenderingField(field.name) || !field.value) continue;
-      for (const ds of extractRenderingDatasources(field.value)) {
-        if (!ds.datasource) continue;
-        if (ds.datasource.startsWith("query:") || ds.datasource.startsWith("local:")) {
-          if (!options.reportQueryDatasources) continue;
-        }
-        pending.push({
-          itemId: item.itemId,
-          path: item.path,
-          templateName: item.templateName,
-          language: item.language,
-          fieldName: field.name,
-          renderingId: ds.renderingId,
-          datasource: ds.datasource,
-        });
-        if (ds.datasource.startsWith("/")) {
-          pathsToResolve.add(ds.datasource);
-        } else {
-          const norm = normalizeItemId(ds.datasource);
-          if (norm.length === 32) idsToResolve.add(norm);
-        }
-      }
+      collectFieldDatasources(item, field);
     }
   }
   logger.verbose(

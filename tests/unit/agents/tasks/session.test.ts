@@ -21,7 +21,7 @@ vi.mock("../../../../src/shared/region", () => ({
 }));
 
 const authMocks = vi.hoisted(() => ({ requestClientCredentialsToken: vi.fn() }));
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth/client-credentials", () => ({
   requestClientCredentialsToken: authMocks.requestClientCredentialsToken,
 }));
 

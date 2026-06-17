@@ -347,14 +347,14 @@ describe("serialization package tasks", () => {
     expect(sharedMocks.ensureAllowWrite).toHaveBeenCalledWith(root, "demo");
     expect(commandMocks.enrichCreateCommands).toHaveBeenCalled();
     expect(commandMocks.enrichUpdateCommands).toHaveBeenCalled();
-    expect(helperMocks.applySitecoreCommands).toHaveBeenCalledWith(
+    expect(helperMocks.applySitecoreCommands).toHaveBeenCalledWith({
       root,
-      "demo",
-      "master",
-      [{ id: "cmd-1" }],
+      environmentName: "demo",
+      database: "master",
+      commands: [{ id: "cmd-1" }],
       logger,
-      false
-    );
+      whatIf: false,
+    });
     expect(logger.json).toHaveBeenCalledWith(
       expect.objectContaining({
         command: "serialization.package.install",

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentConfiguration } from "../../../src/config/types";
-import { discoverSites } from "../../../src/recipe/api/site-discovery";
+import { discoverSites } from "../../../src/authoring/site-discovery";
 
-vi.mock("../../../src/recipe/api/auth", () => ({
+vi.mock("../../../src/auth/client-credentials", () => ({
   getAccessToken: vi.fn(),
 }));
 
-import { getAccessToken } from "../../../src/recipe/api/auth";
+import { getAccessToken } from "../../../src/auth/client-credentials";
 const getAccessTokenMock = vi.mocked(getAccessToken);
 
 const env: EnvironmentConfiguration = {

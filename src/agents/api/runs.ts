@@ -13,6 +13,21 @@ import { createSpace } from "./spaces";
 import type { AgentsSession } from "../session/types";
 import type { RunEvent } from "./schema";
 
+/** Parse a single SSE frame into zero or more typed run events. */
+function* parseRunFrame(frame: string): Iterable<RunEvent> {
+  for (const line of frame.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const event = JSON.parse(payload) as RunEvent;
+      if (event && typeof event.type === "string") yield event;
+    } catch {
+      /* skip an unparseable frame rather than abort the run */
+    }
+  }
+}
+
 /** Parse a stream of raw SSE text chunks into typed run events. */
 export async function* parseRunEvents(chunks: AsyncIterable<string>): AsyncIterable<RunEvent> {
   let buffer = "";
@@ -22,17 +37,7 @@ export async function* parseRunEvents(chunks: AsyncIterable<string>): AsyncItera
     while ((boundary = buffer.indexOf("\n\n")) !== -1) {
       const frame = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
-      for (const line of frame.split("\n")) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
-        try {
-          const event = JSON.parse(payload) as RunEvent;
-          if (event && typeof event.type === "string") yield event;
-        } catch {
-          /* skip an unparseable frame rather than abort the run */
-        }
-      }
+      yield* parseRunFrame(frame);
     }
   }
 }

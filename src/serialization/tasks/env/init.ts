@@ -244,6 +244,97 @@ const handleSetDefaultOnly = (params: {
   return true;
 };
 
+/**
+ * Persist a freshly-minted deploy token into the keychain (warning on
+ * failure) and copy its freshness metadata onto the env profile. No-op
+ * when this run did not need or produce a token.
+ */
+const persistDeployToken = async (params: {
+  needsDeployToken: boolean;
+  deployToken?: string;
+  envName: string;
+  updated: EnvironmentConfiguration;
+  deployTokenMeta?: { expiresIn: number | null; lastUpdated: string };
+  logger: ReturnType<typeof toLogger>;
+}): Promise<void> => {
+  const { needsDeployToken, deployToken, envName, updated, deployTokenMeta, logger } = params;
+  if (!(needsDeployToken && deployToken)) {
+    return;
+  }
+  const stored = await setDeployToken(envName, deployToken);
+  if (!stored) {
+    logger.warn(
+      "Unable to store the Deploy token in the OS keychain. Use SITECOREAI_DEPLOY_TOKEN if needed."
+    );
+  }
+  // Deploy-token freshness metadata lives on the env profile in the
+  // config file (see docs/credentials.md). Only present when this run
+  // actually performed a login.
+  if (deployTokenMeta) {
+    updated.deployTokenExpiresIn = deployTokenMeta.expiresIn;
+    updated.deployTokenLastUpdated = deployTokenMeta.lastUpdated;
+  }
+};
+
+/**
+ * Resolve the final CM host: keep the resolved value, prompt in the
+ * wizard when empty, else error. Validates the chosen host.
+ */
+const resolveFinalHost = async (params: { host?: string; runWizard: boolean }): Promise<string> => {
+  let { host } = params;
+  if (!host && params.runWizard) {
+    host = await promptText("CM host (base URL)", host);
+  }
+  if (!host) {
+    throw inputError("Environment host is required. Use --cm/--host or select it via Deploy.");
+  }
+  assertValidHost(host, "CM host");
+  return host;
+};
+
+/**
+ * Write the resolved auth + flag fields onto the env profile, mirroring
+ * the original field-by-field application order.
+ */
+const applyResolvedEnvFields = async (params: {
+  updated: EnvironmentConfiguration;
+  host: string;
+  options: ConnectOptions;
+  runWizard: boolean;
+  loginAuthority: string;
+  loginClientId?: string;
+  wantsClientCredentials: boolean;
+  shouldPersistClientId: boolean;
+}): Promise<void> => {
+  const {
+    updated,
+    host,
+    options,
+    runWizard,
+    loginAuthority,
+    loginClientId,
+    wantsClientCredentials,
+    shouldPersistClientId,
+  } = params;
+  updated.host = host;
+  if (!updated.authority) {
+    updated.authority = loginAuthority;
+  }
+  applyClientId(updated, { loginClientId, wantsClientCredentials, shouldPersistClientId });
+  applyIfDefined(updated, "ref", options.ref);
+  if (options.allowWrite !== undefined) {
+    updated.allowWrite = options.allowWrite;
+  } else if (runWizard) {
+    updated.allowWrite = await promptConfirm("Allow write operations?", false);
+  }
+  applyIfDefined(updated, "organizationId", options.organizationId);
+  applyIfDefined(updated, "tenantId", options.tenantId);
+  applyIfDefined(updated, "clientId", options.clientId);
+  if (wantsClientCredentials) {
+    updated.useClientCredentials = true;
+  }
+};
+
 /** Apply the `--set-default` decision to the config (flag, non-wizard default, or wizard prompt). */
 const applyDefaultEnvProfile = async (params: {
   options: ConnectOptions;
@@ -367,11 +458,8 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     needsDeployToken,
     logger,
   });
-  let deployToken = auth.deployToken;
-  const loginAuthority = auth.loginAuthority;
-  const loginClientId = auth.loginClientId;
-  const wantsClientCredentials = auth.wantsClientCredentials;
-  const shouldPersistClientId = auth.shouldPersistClientId;
+  const deployToken = auth.deployToken;
+  const { loginAuthority, loginClientId, wantsClientCredentials, shouldPersistClientId } = auth;
 
   if (needsDeployLookup) {
     const lookup = await resolveDeployLookup({
@@ -389,47 +477,27 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     host = lookup.host;
   }
 
-  if (needsDeployToken && deployToken) {
-    const stored = await setDeployToken(envName, deployToken);
-    if (!stored) {
-      logger.warn(
-        "Unable to store the Deploy token in the OS keychain. Use SITECOREAI_DEPLOY_TOKEN if needed."
-      );
-    }
-    // Deploy-token freshness metadata lives on the env profile in the
-    // config file (see docs/credentials.md). Only present when this run
-    // actually performed a login.
-    if (auth.deployTokenMeta) {
-      updated.deployTokenExpiresIn = auth.deployTokenMeta.expiresIn;
-      updated.deployTokenLastUpdated = auth.deployTokenMeta.lastUpdated;
-    }
-  }
+  await persistDeployToken({
+    needsDeployToken,
+    deployToken,
+    envName,
+    updated,
+    deployTokenMeta: auth.deployTokenMeta,
+    logger,
+  });
 
-  if (!host && runWizard) {
-    host = await promptText("CM host (base URL)", host);
-  }
-  if (!host) {
-    throw inputError("Environment host is required. Use --cm/--host or select it via Deploy.");
-  }
-  assertValidHost(host, "CM host");
+  host = await resolveFinalHost({ host, runWizard });
 
-  updated.host = host;
-  if (!updated.authority) {
-    updated.authority = loginAuthority;
-  }
-  applyClientId(updated, { loginClientId, wantsClientCredentials, shouldPersistClientId });
-  applyIfDefined(updated, "ref", options.ref);
-  if (options.allowWrite !== undefined) {
-    updated.allowWrite = options.allowWrite;
-  } else if (runWizard) {
-    updated.allowWrite = await promptConfirm("Allow write operations?", false);
-  }
-  applyIfDefined(updated, "organizationId", options.organizationId);
-  applyIfDefined(updated, "tenantId", options.tenantId);
-  applyIfDefined(updated, "clientId", options.clientId);
-  if (wantsClientCredentials) {
-    updated.useClientCredentials = true;
-  }
+  await applyResolvedEnvFields({
+    updated,
+    host,
+    options,
+    runWizard,
+    loginAuthority,
+    loginClientId,
+    wantsClientCredentials,
+    shouldPersistClientId,
+  });
 
   rootConfigFile.config.envProfiles = {
     ...envProfiles,

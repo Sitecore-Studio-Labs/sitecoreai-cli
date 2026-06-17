@@ -99,6 +99,26 @@ const valueLooksLikeLinkField = (value: string): boolean => {
   return /<link\b/i.test(value);
 };
 
+/**
+ * Count the `<link>` tags in a field value that carry a `linktype`
+ * attribute but no meaningful target — one finding per such tag.
+ * Extracted from the scan loop to keep nesting shallow; returns the
+ * number of `empty-attributes` findings to push for this field.
+ */
+const countEmptyTargetedLinks = (value: string): number => {
+  const matches = value.match(LINK_TAG_PATTERN);
+  if (!matches) return 0;
+  let count = 0;
+  for (const tag of matches) {
+    // Ignore tags with no linktype attribute — they're not real
+    // General Link payloads (matched by accident on raw <link>
+    // tags in RichText/HTML, e.g. `<link rel="stylesheet" …>`).
+    if (!LINKTYPE_ATTR_PATTERN.exec(tag)) continue;
+    if (!hasMeaningfulTarget(tag)) count += 1;
+  }
+  return count;
+};
+
 export const runAuditEmptyLinks = async (
   options: AuditEmptyLinksOptions
 ): Promise<EmptyLinkReport[]> => {
@@ -134,17 +154,9 @@ export const runAuditEmptyLinks = async (
       // on every Single-Line Text field that happens to be empty.
       const value = field.value ?? "";
       if (valueLooksLikeLinkField(value)) {
-        const matches = value.match(LINK_TAG_PATTERN);
-        if (!matches) continue;
-        for (const tag of matches) {
-          // Ignore tags with no linktype attribute — they're not real
-          // General Link payloads (matched by accident on raw <link>
-          // tags in RichText/HTML, e.g. `<link rel="stylesheet" …>`).
-          const linktypeMatch = LINKTYPE_ATTR_PATTERN.exec(tag);
-          if (!linktypeMatch) continue;
-          if (!hasMeaningfulTarget(tag)) {
-            offending.push({ fieldName: field.name, reason: "empty-attributes" });
-          }
+        const emptyCount = countEmptyTargetedLinks(value);
+        for (let i = 0; i < emptyCount; i += 1) {
+          offending.push({ fieldName: field.name, reason: "empty-attributes" });
         }
       } else if (
         // Field-name hint: ends in (or equals) "Link" / "Cta" / "CallToAction" / "Url" /

@@ -56,9 +56,12 @@ export const registerRecipeSyncTools = (registry: McpRegistry): void => {
     name: "recipe_sync",
     description: TOOL_DESCRIPTIONS.recipe_sync,
     // Verb-discriminated: `status` is a pure read, `pull` writes only
-    // to the local workspace. Only `push` mutates the tenant — gated
-    // inside the handler. See ToolAuth doc in registry.ts.
+    // to the local workspace. Only `push` mutates the tenant. Declaring
+    // `writeVerbs` makes dispatch enforce allowWrite + retargeted-env
+    // elevation centrally for `push`; the handler keeps its bound-env
+    // elevation check below. See ToolAuth doc in registry.ts.
     auth: "verb-discriminated",
+    writeVerbs: ["push"],
     annotations: {
       title: "Pull, diff, and push every enumerable recipe kind at once",
       readOnlyHint: false,

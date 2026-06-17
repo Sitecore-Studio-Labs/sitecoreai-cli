@@ -9,32 +9,43 @@
  * `serialization/api/auth` a de facto shared module — confusing to
  * find for someone not already familiar with scai's history.
  *
- * This barrel is the canonical cross-domain seam. The implementation
- * still lives in `serialization/api/auth.ts` (move-without-rewire
- * left as a follow-up); cross-area callers should import from here:
+ * This barrel is the canonical cross-domain seam AND the home of the
+ * implementation: every domain area outside `serialization` imports
+ * these primitives from `@/auth`, and a boundary test keeps it that way.
  *
  *     import { requestClientCredentialsToken } from "@/auth";
  *
- * The `serialization/api/auth` path stays valid for direct
- * `serialization` SDK consumers — both ways resolve to the same
- * exports.
+ * The OAuth/token implementation lives next door in
+ * `./client-credentials` and the shared option shape in `./types`. The
+ * old `serialization/api/auth.ts` and `serialization/api/types.ts` are
+ * now thin published-API forwarders that re-export from here, so SDK
+ * consumers of `@sitecoreai-labs/sitecoreai-cli/serialization` keep
+ * resolving the same symbols. There is one internal home (`@/auth`) and
+ * one published alias (`./serialization`) — no third path.
  *
  * What lives here:
  *   - {@link requestClientCredentialsToken} — OAuth M2M mint
  *   - {@link getAccessToken} — env-profile-keyed mint+cache loop
+ *   - the password + device-authorization flows
  *   - {@link DEFAULT_SITECORE_API_AUDIENCE} — `api.sitecorecloud.io`
- *   - The shared {@link SitecoreApiClientOptions} shape
+ *   - the shared {@link SitecoreApiClientOptions} shape (`./types`)
  *   - JWT decode helpers (re-exported from {@link "@/shared/jwt"})
- *   - The per-domain {@link createApiAuth} factory (already here)
+ *   - the per-domain {@link createApiAuth} factory
  */
 
 export {
+  acquireAccessToken,
   DEFAULT_SITECORE_API_AUDIENCE,
   getAccessToken,
+  pollDeviceToken,
   requestClientCredentialsToken,
-} from "@/serialization/api/auth";
+  requestDeviceAuthorization,
+  requestPasswordToken,
+  type AccessTokenResult,
+  type DeviceAuthorizationResult,
+} from "./client-credentials";
 
-export type { SitecoreApiClientOptions } from "@/serialization/api/types";
+export type { SitecoreApiClientOptions } from "./types";
 
 export { decodeJwtPayload, extractScopes } from "@/shared/jwt";
 

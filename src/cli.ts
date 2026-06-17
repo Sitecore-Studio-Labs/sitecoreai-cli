@@ -257,18 +257,15 @@ const runAutoWizardIfNeeded = async (
   await runDeployToken({ config: configBasePath, environmentName: need.envName });
 };
 
-const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
-  const argv = normalizeArgs(inputArgv);
-  const args = argv.slice(2);
-  const command = args.join(" ") || "(no command)";
-  const telemetryCommand = formatTelemetryCommand(args);
-  const configPath = resolveConfigPathFromArgs(argv);
-  const telemetryConfigPath = configPath ?? process.cwd();
-  const startTime = Date.now();
-  setTelemetryVersion(packageJson.version);
-  const outputOptions = resolveOutputOptionsFromArgs(argv);
-
-  applyBaseEnv(options.baseEnv);
+/**
+ * Bridge CLI output/flag args to the process env so layers without a
+ * Logger (config loader, transports) observe the same intent. Mutates
+ * `process.env` only — no behavior beyond the original inline cascade.
+ */
+const applyEnvFlagsFromArgs = (
+  args: string[],
+  outputOptions: ReturnType<typeof resolveOutputOptionsFromArgs>
+): void => {
   const nonInteractive = args.includes("--non-interactive");
   if (nonInteractive || !process.stdin.isTTY || !process.stdout.isTTY) {
     process.env.SITECOREAI_NON_INTERACTIVE = "1";
@@ -287,6 +284,86 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
   if (args.includes("--verbose") || args.includes("-v")) {
     process.env.SITECOREAI_VERBOSE = "1";
   }
+};
+
+/**
+ * In shell mode, Commander throws a typed `commander.*` error (e.g.
+ * `commander.unknownCommand`) instead of exiting the process. We swallow
+ * those to keep the interactive shell alive — narrows `error` so the
+ * caller can read `error.code`.
+ */
+const isShellModeCommanderError = (
+  error: unknown,
+  shellMode: boolean | undefined
+): error is { code: string } =>
+  Boolean(shellMode) &&
+  !!error &&
+  typeof error === "object" &&
+  "code" in error &&
+  typeof (error as { code: unknown }).code === "string" &&
+  (error as { code: string }).code.startsWith("commander.");
+
+/**
+ * Render a settled CLI error to the operator. JSON mode emits a single
+ * structured envelope; text mode prints message + details + hint +
+ * remediation. Identical output ordering to the original inline block.
+ */
+const reportCliError = (
+  cliError: ReturnType<typeof toScaiError>,
+  outputOptions: ReturnType<typeof resolveOutputOptionsFromArgs>
+): void => {
+  const baseLogger = new Logger(
+    false,
+    false,
+    Boolean(outputOptions.json),
+    Boolean(outputOptions.quiet),
+    outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
+  );
+  const redactedMessage = redactSecrets(cliError.message);
+  const finalError = cliError;
+  if (baseLogger.isJson()) {
+    baseLogger.json({
+      message: redactedMessage,
+      code: finalError.code,
+      hint: finalError.hint,
+      details: finalError.details,
+      remediation: finalError.remediation,
+      // Structured three-way-merge conflicts on a POLICY_DENIED block,
+      // so consumers route the conflict UI without regexing `message`.
+      ...(finalError.conflicts ? { conflicts: finalError.conflicts } : {}),
+      exitCode: finalError.exitCode,
+    });
+  } else {
+    baseLogger.error(redactedMessage);
+    if (finalError.details && finalError.details.length > 0) {
+      for (const detail of finalError.details) {
+        baseLogger.verbose(`  - ${detail}`);
+      }
+    }
+    if (finalError.hint) {
+      baseLogger.warn(`Hint: ${finalError.hint}`);
+    }
+    if (finalError.remediation) {
+      const { actor, fix, detail } = finalError.remediation;
+      baseLogger.warn(`Fix (${actor}): ${fix}${detail ? ` — ${detail}` : ""}`);
+    }
+  }
+  process.exitCode = finalError.exitCode;
+};
+
+const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
+  const argv = normalizeArgs(inputArgv);
+  const args = argv.slice(2);
+  const command = args.join(" ") || "(no command)";
+  const telemetryCommand = formatTelemetryCommand(args);
+  const configPath = resolveConfigPathFromArgs(argv);
+  const telemetryConfigPath = configPath ?? process.cwd();
+  const startTime = Date.now();
+  setTelemetryVersion(packageJson.version);
+  const outputOptions = resolveOutputOptionsFromArgs(argv);
+
+  applyBaseEnv(options.baseEnv);
+  applyEnvFlagsFromArgs(args, outputOptions);
   // The Deploy transport (`deployRequest`) stays silent for SDK
   // consumers; this is the CLI opting in to a spinner + HTTP trace.
   installDeployTransportSpinner();
@@ -331,14 +408,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
       configPath: telemetryConfigPath,
     });
   } catch (error) {
-    if (
-      options.shellMode &&
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      typeof error.code === "string" &&
-      error.code.startsWith("commander.")
-    ) {
+    if (isShellModeCommanderError(error, options.shellMode)) {
       if (error.code === "commander.unknownCommand") {
         console.log("Unknown command. Available commands:\n");
         program.outputHelp();
@@ -365,44 +435,7 @@ const runCli: RunCli = async (inputArgv, options = {}): Promise<void> => {
         configPath: telemetryConfigPath,
       })
     ).catch(logSwallowedObservabilityWrite("telemetry"));
-    const baseLogger = new Logger(
-      false,
-      false,
-      Boolean(outputOptions.json),
-      Boolean(outputOptions.quiet),
-      outputOptions.logFile ?? process.env.SITECOREAI_LOG_FILE
-    );
-    const cliError = toScaiError(error);
-    const redactedMessage = redactSecrets(cliError.message);
-    const finalError = cliError;
-    if (baseLogger.isJson()) {
-      baseLogger.json({
-        message: redactedMessage,
-        code: finalError.code,
-        hint: finalError.hint,
-        details: finalError.details,
-        remediation: finalError.remediation,
-        // Structured three-way-merge conflicts on a POLICY_DENIED block,
-        // so consumers route the conflict UI without regexing `message`.
-        ...(finalError.conflicts ? { conflicts: finalError.conflicts } : {}),
-        exitCode: finalError.exitCode,
-      });
-    } else {
-      baseLogger.error(redactedMessage);
-      if (finalError.details && finalError.details.length > 0) {
-        for (const detail of finalError.details) {
-          baseLogger.verbose(`  - ${detail}`);
-        }
-      }
-      if (finalError.hint) {
-        baseLogger.warn(`Hint: ${finalError.hint}`);
-      }
-      if (finalError.remediation) {
-        const { actor, fix, detail } = finalError.remediation;
-        baseLogger.warn(`Fix (${actor}): ${fix}${detail ? ` — ${detail}` : ""}`);
-      }
-    }
-    process.exitCode = finalError.exitCode;
+    reportCliError(toScaiError(error), outputOptions);
   }
 };
 

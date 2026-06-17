@@ -8,7 +8,7 @@ vi.mock("../../../src/shared/keychain", () => ({
   setBrandToken: vi.fn(),
   clearBrandToken: vi.fn(),
 }));
-vi.mock("../../../src/serialization/api/auth", () => ({
+vi.mock("../../../src/auth/client-credentials", () => ({
   requestClientCredentialsToken: vi.fn(),
 }));
 
@@ -99,7 +99,7 @@ describe("brand/api/auth — acquireBrandToken env-var fallback", () => {
       delete process.env[key];
     }
     const keychain = await import("../../../src/shared/keychain");
-    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const serializationAuth = await import("../../../src/auth/client-credentials");
     vi.mocked(keychain.getBrandClientSecret).mockReset();
     vi.mocked(keychain.getBrandToken).mockReset();
     vi.mocked(keychain.setBrandToken).mockReset();
@@ -118,7 +118,7 @@ describe("brand/api/auth — acquireBrandToken env-var fallback", () => {
     process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
 
     const keychain = await import("../../../src/shared/keychain");
-    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const serializationAuth = await import("../../../src/auth/client-credentials");
     const { acquireBrandToken } = await import("../../../src/brand/api/auth");
 
     vi.mocked(keychain.getBrandToken).mockResolvedValue(undefined);
@@ -175,7 +175,7 @@ describe("brand/api/auth — acquireBrandToken cache expiry gate", () => {
       delete process.env[key];
     }
     const keychain = await import("../../../src/shared/keychain");
-    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const serializationAuth = await import("../../../src/auth/client-credentials");
     vi.mocked(keychain.getBrandClientSecret).mockReset();
     vi.mocked(keychain.getBrandToken).mockReset();
     vi.mocked(keychain.setBrandToken).mockReset();
@@ -208,7 +208,7 @@ describe("brand/api/auth — acquireBrandToken cache expiry gate", () => {
     process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
 
     const keychain = await import("../../../src/shared/keychain");
-    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const serializationAuth = await import("../../../src/auth/client-credentials");
     const { acquireBrandToken } = await import("../../../src/brand/api/auth");
 
     vi.mocked(keychain.getBrandToken).mockResolvedValue(makeJwtWithExp(-60));
@@ -229,7 +229,7 @@ describe("brand/api/auth — acquireBrandToken cache expiry gate", () => {
     process.env.SITECOREAI_BRAND_CLIENT_SECRET = "env-secret";
 
     const keychain = await import("../../../src/shared/keychain");
-    const serializationAuth = await import("../../../src/serialization/api/auth");
+    const serializationAuth = await import("../../../src/auth/client-credentials");
     const { acquireBrandToken } = await import("../../../src/brand/api/auth");
 
     // 30s left — inside the 60s margin, so this should re-mint even

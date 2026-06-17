@@ -538,14 +538,15 @@ const loadPriorTenantId = async (
  * brief and converge status. Pushes `instanceChange` to `applied` and
  * returns the written brief id.
  */
-const applyCreate = async (
-  client: BriefApiClientOptions,
-  recipe: BriefInstanceRecipe,
-  effectiveTenantId: string | undefined,
-  instanceChange: RecipeChange,
-  applied: RecipeChange[],
-  ctx: SyncContext
-): Promise<string> => {
+const applyCreate = async (args: {
+  client: BriefApiClientOptions;
+  recipe: BriefInstanceRecipe;
+  effectiveTenantId: string | undefined;
+  instanceChange: RecipeChange;
+  applied: RecipeChange[];
+  ctx: SyncContext;
+}): Promise<string> => {
+  const { client, recipe, effectiveTenantId, instanceChange, applied, ctx } = args;
   // If the baseline has a stored tenant id, try to adopt the
   // existing row before re-creating. The plan classified this as
   // a create because readCurrent couldn't find the brief by name,
@@ -920,7 +921,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
   const writtenBriefId: string =
     instanceChange.kind === "create"
-      ? await applyCreate(client, recipe, effectiveTenantId, instanceChange, applied, ctx)
+      ? await applyCreate({ client, recipe, effectiveTenantId, instanceChange, applied, ctx })
       : await applyUpdate(client, recipe, effectiveTenantId, ref, ctx);
   applied.push(instanceChange);
 

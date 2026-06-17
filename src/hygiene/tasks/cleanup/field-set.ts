@@ -2,6 +2,8 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
+  type ScanFieldsResult,
+  type ScanItem,
   dashifyItemId,
   ensureAllowWrite,
   printReport,
@@ -214,10 +216,21 @@ const computeFieldSetValue = (
  *     idempotent re-runs: "set Field X to V on every item where X is
  *     currently empty").
  */
-export const runCleanupFieldSet = async (
-  options: CleanupFieldSetOptions
-): Promise<FieldSetAction[]> => {
-  const logger = toLogger(options);
+interface FieldSetSetup {
+  mode: FieldSetMode;
+  maxMutations: number;
+  templateRegex: RegExp | null;
+  currentRegex: RegExp | null;
+  fieldNameLc: string;
+  guidList: string[] | null;
+}
+
+/**
+ * Validate options and derive the resolved knobs (mode, regexes, GUID
+ * list, caps). Throws the same INPUT_INVALID errors the inline checks
+ * did, in the same order.
+ */
+const setupFieldSet = (options: CleanupFieldSetOptions): FieldSetSetup => {
   if (!options.field || !options.field.trim()) {
     throw createScaiError("--field is required.", "INPUT_INVALID");
   }
@@ -225,44 +238,47 @@ export const runCleanupFieldSet = async (
   if (mode !== "clear" && (options.value === undefined || options.value === null)) {
     throw createScaiError(`--value is required for mode='${mode}'.`, "INPUT_INVALID");
   }
-  const maxMutations = options.maxMutations ?? 100;
-  const templateRegex = options.templatePattern ? new RegExp(options.templatePattern, "i") : null;
-  const currentRegex = options.whereCurrentMatches ? new RegExp(options.whereCurrentMatches) : null;
   const fieldNameLc = options.field.toLowerCase();
-  const includeSystemFields = Boolean(options.includeSystemFields);
-  if (fieldNameLc.startsWith("__") && !includeSystemFields) {
+  if (fieldNameLc.startsWith("__") && !options.includeSystemFields) {
     throw createScaiError(
       "Refusing to write a `__`-prefixed system field without --include-system-fields.",
       "INPUT_INVALID"
     );
   }
-
   // For add/remove, parse the GUID list up-front so a bad input fails
   // before the search crawl.
   const guidList = mode === "add" || mode === "remove" ? parseGuidList(options.value!) : null;
-
-  const { envName, root: rootConfig, client } = resolveTenant(options);
-  if (!options.whatIf) {
-    ensureAllowWrite(rootConfig, envName, options.allowWrite);
-  } else if (!logger.isJson()) {
-    logger.info("What-if mode active — no items will be modified.", "yellow");
-  }
-
-  const { scanned, fieldsByItemId, cache, knobs } = await scanItemsAndFields({
-    client,
-    envName,
-    root: options.root ?? "/sitecore/content",
-    logger,
-    options,
-  });
-
-  type Plan = {
-    item: (typeof scanned)[number];
-    field: { name: string; oldValue: string };
-    newValue: string;
-    skip?: FieldSetAction["status"];
+  return {
+    mode,
+    maxMutations: options.maxMutations ?? 100,
+    templateRegex: options.templatePattern ? new RegExp(options.templatePattern, "i") : null,
+    currentRegex: options.whereCurrentMatches ? new RegExp(options.whereCurrentMatches) : null,
+    fieldNameLc,
+    guidList,
   };
-  const plans: Plan[] = [];
+};
+
+type FieldSetPlan = {
+  item: ScanItem;
+  field: { name: string; oldValue: string };
+  newValue: string;
+  skip?: FieldSetAction["status"];
+};
+
+/**
+ * Walk the scanned items, filter by template / current-value, compute the
+ * new value per item, and stop at the mutation cap. Behavior-identical to
+ * the original inline loop (same continue/skip/cap/log ordering).
+ */
+const buildFieldSetPlans = (
+  scanned: ScanItem[],
+  fieldsByItemId: ScanFieldsResult["fieldsByItemId"],
+  options: CleanupFieldSetOptions,
+  setup: FieldSetSetup,
+  logger: ReturnType<typeof toLogger>
+): FieldSetPlan[] => {
+  const { mode, maxMutations, templateRegex, currentRegex, fieldNameLc, guidList } = setup;
+  const plans: FieldSetPlan[] = [];
   for (const item of scanned) {
     if (templateRegex && !templateRegex.test(item.templateName ?? "")) continue;
     const fields = fieldsByItemId.get(item.itemId);
@@ -291,6 +307,46 @@ export const runCleanupFieldSet = async (
       break;
     }
   }
+  return plans;
+};
+
+/** Build the human summary line shown above the report. */
+const buildFieldSetSummary = (
+  actions: FieldSetAction[],
+  mode: FieldSetMode,
+  whatIf: boolean
+): string => {
+  const applied = actions.filter((a) => a.status === "applied").length;
+  const failed = actions.filter((a) => a.status === "failed").length;
+  const skippedShape = actions.filter((a) => a.status === "skipped-shape").length;
+  return whatIf
+    ? `Plan: would update ${actions.filter((a) => a.status === "what-if").length} item(s) [mode=${mode}].`
+    : `Applied ${applied} update(s) [mode=${mode}]${failed > 0 ? `; ${failed} failed` : ""}${skippedShape > 0 ? `; ${skippedShape} skipped (incompatible shape)` : ""}.`;
+};
+
+export const runCleanupFieldSet = async (
+  options: CleanupFieldSetOptions
+): Promise<FieldSetAction[]> => {
+  const logger = toLogger(options);
+  const setup = setupFieldSet(options);
+  const { mode, maxMutations } = setup;
+
+  const { envName, root: rootConfig, client } = resolveTenant(options);
+  if (!options.whatIf) {
+    ensureAllowWrite(rootConfig, envName, options.allowWrite);
+  } else if (!logger.isJson()) {
+    logger.info("What-if mode active — no items will be modified.", "yellow");
+  }
+
+  const { scanned, fieldsByItemId, cache, knobs } = await scanItemsAndFields({
+    client,
+    envName,
+    root: options.root ?? "/sitecore/content",
+    logger,
+    options,
+  });
+
+  const plans = buildFieldSetPlans(scanned, fieldsByItemId, options, setup, logger);
   logger.verbose(
     `${plans.length} item(s) considered; ${plans.filter((p) => !p.skip).length} will mutate.`
   );
@@ -332,9 +388,7 @@ export const runCleanupFieldSet = async (
   const applied = actions.filter((a) => a.status === "applied").length;
   const failed = actions.filter((a) => a.status === "failed").length;
   const skippedShape = actions.filter((a) => a.status === "skipped-shape").length;
-  const summary = options.whatIf
-    ? `Plan: would update ${actions.filter((a) => a.status === "what-if").length} item(s) [mode=${mode}].`
-    : `Applied ${applied} update(s) [mode=${mode}]${failed > 0 ? `; ${failed} failed` : ""}${skippedShape > 0 ? `; ${skippedShape} skipped (incompatible shape)` : ""}.`;
+  const summary = buildFieldSetSummary(actions, mode, Boolean(options.whatIf));
 
   printReport({
     logger,

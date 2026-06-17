@@ -96,33 +96,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   const site = siteOf(context);
   const itemRefKey = pageItemId(site, recipe.handle);
 
-  // Path resolution: explicit `itemPath` (registry shape) wins —
-  // substitute `{site}` with the active site name, parent the page at
-  // the path's parent dir. Fall back to `pagesRoot + name` for legacy
-  // recipes that don't carry `itemPath`. `pagesRoot` is required only
-  // in the fallback path.
-  let itemPath: string;
-  let parentPath: string;
-  let itemName: string;
-  if (recipe.itemPath) {
-    itemPath = recipe.itemPath.replace(/\{site\}/g, site);
-    const lastSlash = itemPath.lastIndexOf("/");
-    parentPath = itemPath.slice(0, lastSlash);
-    itemName = itemPath.slice(lastSlash + 1);
-  } else {
-    if (!context.pagesRoot) {
-      throw createScaiError(
-        `compilePageRecipe requires context.pagesRoot or an explicit \`itemPath\`; tenant-side path missing for recipe ${recipe.handle}`,
-        "INPUT_INVALID",
-        {
-          hint: "Set `pagesRoot` on the active envProfile in sitecoreai.cli.json — e.g. `/sitecore/content/<tenant>/<site>/Home` — or author `itemPath: '/sitecore/content/{site}/...'` on the recipe.",
-        }
-      );
-    }
-    itemPath = joinPath(context.pagesRoot, recipe.name);
-    parentPath = context.pagesRoot;
-    itemName = recipe.name;
-  }
+  const { itemPath, parentPath, itemName } = resolvePagePath(recipe, context, site);
 
   const createItem: CreateItemOp = {
     op: "CreateItem",
@@ -155,14 +129,21 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
    * `{href, text}`) — normalised through `normalizeFieldValue` before
    * delegating to the shared `encodeContentFieldValue`.
    */
-  const emitFields = (
-    fields: Record<string, unknown>,
-    language: string | undefined,
-    version: number | undefined,
-    labelTag: string,
-    targetItemRefKey: string = itemRefKey,
-    templateHandle: string = recipe.template
-  ): void => {
+  const emitFields = ({
+    fields,
+    language,
+    version,
+    labelTag,
+    targetItemRefKey = itemRefKey,
+    templateHandle = recipe.template,
+  }: {
+    fields: Record<string, unknown>;
+    language: string | undefined;
+    version: number | undefined;
+    labelTag: string;
+    targetItemRefKey?: string;
+    templateHandle?: string;
+  }): void => {
     for (const [fieldName, rawValue] of Object.entries(fields)) {
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
@@ -221,7 +202,12 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
 
   // Item-level `storage: shared` fields — one value, no language/version.
   // Mirrors `compileContentItemRecipe`.
-  emitFields(recipe.shared ?? {}, undefined, undefined, "shared");
+  emitFields({
+    fields: recipe.shared ?? {},
+    language: undefined,
+    version: undefined,
+    labelTag: "shared",
+  });
 
   // Scoped-slot collection runs across EVERY layout the recipe declares
   // (item-level + every per-version). The scoped Data folder + slot items
@@ -230,104 +216,17 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   const scopedSlots = collectScopedSlots(recipe);
   const dataFolderRefKey = datasourceId(itemRefKey, "Data");
 
-  if (isStory) {
-    for (const [language, entries] of Object.entries(recipe.versions ?? {})) {
-      for (const entry of [...entries].sort((a, b) => a.version - b.version)) {
-        if ((entry.variants?.length ?? 0) > 0) {
-          throw createScaiError(
-            `PageRecipe '${recipe.handle}': per-version personalization variants are not yet compiled.`,
-            "INPUT_INVALID",
-            {
-              hint: "Author per-version fields, workflowState, date and layout for now.",
-            }
-          );
-        }
-        // `CreateItem` already made the default-language version 1; every
-        // other (language, version) cell needs an explicit AddItemVersion.
-        if (!(language === DEFAULT_LANGUAGE && entry.version === DEFAULT_VERSION)) {
-          versionOps.push({
-            op: "AddItemVersion",
-            policy,
-            label: `page-version:${recipe.handle}:${language}:${entry.version}`,
-            itemRefKey,
-            language,
-            version: entry.version,
-          } satisfies AddItemVersionOp);
-        }
-        const versionTag = `${language}.v${entry.version}`;
-        emitFields(entry.fields, language, entry.version, versionTag);
-        // The version's `__Workflow state` — resolved against the item's
-        // workflow (a workflow state can't exist without a workflow).
-        if (entry.workflowState !== undefined) {
-          if (!recipe.workflow) {
-            throw createScaiError(
-              `PageRecipe '${recipe.handle}': version ${versionTag} sets workflowState ` +
-                `'${entry.workflowState}' but the recipe has no \`workflow\`.`,
-              "INPUT_INVALID",
-              {
-                hint: "Set the item-level `workflow` (a WorkflowRecipe handle) so the state resolves.",
-              }
-            );
-          }
-          fieldOps.push({
-            op: "SetField",
-            policy,
-            label: `page-workflow-state:${recipe.handle}:${versionTag}`,
-            itemRefKey,
-            fieldId: deriveStandardFieldId(itemRefKey, "__Workflow state"),
-            fieldName: "__Workflow state",
-            language,
-            version: entry.version,
-            value: {
-              kind: "ref-recipe",
-              refKey: workflowStateId(recipe.workflow, entry.workflowState),
-            },
-          } satisfies SetFieldOp);
-        }
-        if (entry.date !== undefined) {
-          fieldOps.push({
-            op: "SetField",
-            policy,
-            label: `page-version-date:${recipe.handle}:${versionTag}`,
-            itemRefKey,
-            fieldId: deriveStandardFieldId(itemRefKey, "__Created"),
-            fieldName: "__Created",
-            language,
-            version: entry.version,
-            value: { kind: "string", value: toSitecoreDate(entry.date, "datetime") },
-          } satisfies SetFieldOp);
-        }
-        if (entry.layout !== undefined) {
-          emitLayout(entry.layout, language, entry.version, versionTag);
-        }
-      }
-    }
-  } else {
-    // Simple mode — primary language at version 1, then a version per
-    // translation language. The item-level `layout` lands on every
-    // language's `__Final Renderings`.
-    emitFields(recipe.fields, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
-    if (recipe.layout !== undefined) {
-      emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
-    }
-    for (const [language, translation] of Object.entries(recipe.translations ?? {})) {
-      versionOps.push({
-        op: "AddItemVersion",
-        policy,
-        label: `page-version:${recipe.handle}:${language}:${DEFAULT_VERSION}`,
-        itemRefKey,
-        language,
-        version: DEFAULT_VERSION,
-      } satisfies AddItemVersionOp);
-      emitFields(translation.fields, language, DEFAULT_VERSION, language);
-      // The translation's layout defaults to the item-level layout — the
-      // simple-mode contract is that every language sees the same layout
-      // (per-language layout is what story mode is for).
-      if (recipe.layout !== undefined) {
-        emitLayout(recipe.layout, language, DEFAULT_VERSION, language);
-      }
-    }
-  }
+  const emitters: PageEmitters = {
+    recipe,
+    policy,
+    itemRefKey,
+    versionOps,
+    fieldOps,
+    emitFields,
+    emitLayout,
+  };
+  if (isStory) emitStoryVersions(emitters);
+  else emitSimpleMode(emitters);
 
   // Compose: CreateItem → AddItemVersion…s → Data folder + scoped
   // slots → SetFields → workflow. Scoped infrastructure has to land
@@ -416,14 +315,14 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       // `encodeContentFieldValue`). Fields land on the slot item's own
       // refKey, scoped to that item's template for fieldId derivation.
       if (Object.keys(info.fields).length > 0) {
-        emitFields(
-          info.fields,
-          DEFAULT_LANGUAGE,
-          DEFAULT_VERSION,
-          `scoped:${slot}`,
-          slotItemRefKey,
-          datasourceTemplateHandle
-        );
+        emitFields({
+          fields: info.fields,
+          language: DEFAULT_LANGUAGE,
+          version: DEFAULT_VERSION,
+          labelTag: `scoped:${slot}`,
+          targetItemRefKey: slotItemRefKey,
+          templateHandle: datasourceTemplateHandle,
+        });
       }
     }
   }
@@ -447,6 +346,182 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     operations,
   });
 }
+
+/** The page item's resolved tenant path, parent path, and leaf name. */
+interface PagePath {
+  itemPath: string;
+  parentPath: string;
+  itemName: string;
+}
+
+/**
+ * Resolve a page's tenant path. Explicit `itemPath` (registry shape)
+ * wins — `{site}` is substituted with the active site name and the page
+ * is parented at the path's parent dir. Falls back to `pagesRoot + name`
+ * for legacy recipes without `itemPath` (`pagesRoot` is required only in
+ * the fallback path).
+ */
+const resolvePagePath = (recipe: PageRecipe, context: CompileContext, site: string): PagePath => {
+  if (recipe.itemPath) {
+    const itemPath = recipe.itemPath.replace(/\{site\}/g, site);
+    const lastSlash = itemPath.lastIndexOf("/");
+    return {
+      itemPath,
+      parentPath: itemPath.slice(0, lastSlash),
+      itemName: itemPath.slice(lastSlash + 1),
+    };
+  }
+  if (!context.pagesRoot) {
+    throw createScaiError(
+      `compilePageRecipe requires context.pagesRoot or an explicit \`itemPath\`; tenant-side path missing for recipe ${recipe.handle}`,
+      "INPUT_INVALID",
+      {
+        hint: "Set `pagesRoot` on the active envProfile in sitecoreai.cli.json — e.g. `/sitecore/content/<tenant>/<site>/Home` — or author `itemPath: '/sitecore/content/{site}/...'` on the recipe.",
+      }
+    );
+  }
+  return {
+    itemPath: joinPath(context.pagesRoot, recipe.name),
+    parentPath: context.pagesRoot,
+    itemName: recipe.name,
+  };
+};
+
+/**
+ * The per-cell field/layout emit closures + the op accumulators they
+ * write into, bundled so the two mode emitters (story / simple) can be
+ * extracted out of `compilePageRecipe` without re-threading every
+ * captured variable.
+ */
+interface PageEmitters {
+  recipe: PageRecipe;
+  policy: ReturnType<typeof defaultPolicyForRecipe>;
+  itemRefKey: string;
+  versionOps: Operation[];
+  fieldOps: Operation[];
+  emitFields: (args: {
+    fields: Record<string, unknown>;
+    language: string | undefined;
+    version: number | undefined;
+    labelTag: string;
+    targetItemRefKey?: string;
+    templateHandle?: string;
+  }) => void;
+  emitLayout: (layout: Layout, language: string, version: number, labelTag: string) => void;
+}
+
+/** One `AddItemVersion` op for a (language, version) cell. */
+const addVersionOp = (e: PageEmitters, language: string, version: number): AddItemVersionOp => ({
+  op: "AddItemVersion",
+  policy: e.policy,
+  label: `page-version:${e.recipe.handle}:${language}:${version}`,
+  itemRefKey: e.itemRefKey,
+  language,
+  version,
+});
+
+/**
+ * Emit one story-mode version cell — `AddItemVersion` (except the
+ * default-language v1 the `CreateItem` already made), fields, optional
+ * `__Workflow state` + `__Created` date, and per-version layout.
+ */
+const emitStoryVersionEntry = (
+  e: PageEmitters,
+  language: string,
+  entry: NonNullable<PageRecipe["versions"]>[string][number]
+): void => {
+  const { recipe, itemRefKey, policy } = e;
+  if ((entry.variants?.length ?? 0) > 0) {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': per-version personalization variants are not yet compiled.`,
+      "INPUT_INVALID",
+      { hint: "Author per-version fields, workflowState, date and layout for now." }
+    );
+  }
+  if (!(language === DEFAULT_LANGUAGE && entry.version === DEFAULT_VERSION)) {
+    e.versionOps.push(addVersionOp(e, language, entry.version));
+  }
+  const versionTag = `${language}.v${entry.version}`;
+  e.emitFields({ fields: entry.fields, language, version: entry.version, labelTag: versionTag });
+
+  if (entry.workflowState !== undefined) {
+    // A workflow state can't exist without a workflow on the item.
+    if (!recipe.workflow) {
+      throw createScaiError(
+        `PageRecipe '${recipe.handle}': version ${versionTag} sets workflowState ` +
+          `'${entry.workflowState}' but the recipe has no \`workflow\`.`,
+        "INPUT_INVALID",
+        { hint: "Set the item-level `workflow` (a WorkflowRecipe handle) so the state resolves." }
+      );
+    }
+    e.fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `page-workflow-state:${recipe.handle}:${versionTag}`,
+      itemRefKey,
+      fieldId: deriveStandardFieldId(itemRefKey, "__Workflow state"),
+      fieldName: "__Workflow state",
+      language,
+      version: entry.version,
+      value: { kind: "ref-recipe", refKey: workflowStateId(recipe.workflow, entry.workflowState) },
+    } satisfies SetFieldOp);
+  }
+  if (entry.date !== undefined) {
+    e.fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `page-version-date:${recipe.handle}:${versionTag}`,
+      itemRefKey,
+      fieldId: deriveStandardFieldId(itemRefKey, "__Created"),
+      fieldName: "__Created",
+      language,
+      version: entry.version,
+      value: { kind: "string", value: toSitecoreDate(entry.date, "datetime") },
+    } satisfies SetFieldOp);
+  }
+  if (entry.layout !== undefined) {
+    e.emitLayout(entry.layout, language, entry.version, versionTag);
+  }
+};
+
+/** Story mode — emit every (language, numbered-version) cell, sorted by version. */
+const emitStoryVersions = (e: PageEmitters): void => {
+  for (const [language, entries] of Object.entries(e.recipe.versions ?? {})) {
+    for (const entry of [...entries].sort((a, b) => a.version - b.version)) {
+      emitStoryVersionEntry(e, language, entry);
+    }
+  }
+};
+
+/**
+ * Simple mode — primary language at version 1, then a version per
+ * translation language. The item-level `layout` lands on every
+ * language's `__Final Renderings` (per-language layout is story mode).
+ */
+const emitSimpleMode = (e: PageEmitters): void => {
+  const { recipe } = e;
+  e.emitFields({
+    fields: recipe.fields,
+    language: DEFAULT_LANGUAGE,
+    version: DEFAULT_VERSION,
+    labelTag: DEFAULT_LANGUAGE,
+  });
+  if (recipe.layout !== undefined) {
+    e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+  }
+  for (const [language, translation] of Object.entries(recipe.translations ?? {})) {
+    e.versionOps.push(addVersionOp(e, language, DEFAULT_VERSION));
+    e.emitFields({
+      fields: translation.fields,
+      language,
+      version: DEFAULT_VERSION,
+      labelTag: language,
+    });
+    if (recipe.layout !== undefined) {
+      e.emitLayout(recipe.layout, language, DEFAULT_VERSION, language);
+    }
+  }
+};
 
 /**
  * Format a recipe `date` (ISO `YYYY-MM-DD`) or `datetime` (ISO 8601 with

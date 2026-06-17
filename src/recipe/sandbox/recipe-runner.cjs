@@ -27,21 +27,31 @@ const report = (result, exitCode) => {
   }
 };
 
+/**
+ * Pick the recipe export from a required module: prefer `default`, else the
+ * first non-`default`, non-`undefined` named export. Returns `undefined`
+ * when nothing usable is exported. Extracted to keep the lookup loop out of
+ * the try-block's nesting.
+ */
+const pickRecipeExport = (mod) => {
+  if (!mod) return undefined;
+  if (mod.default !== undefined) return mod.default;
+  if (typeof mod !== "object") return undefined;
+  for (const key of Object.keys(mod)) {
+    if (key !== "default" && mod[key] !== undefined) {
+      return mod[key];
+    }
+  }
+  return undefined;
+};
+
 try {
   const bundlePath = process.argv[2];
   if (!bundlePath) {
     report({ ok: false, error: "no compiled-recipe path argument" }, 2);
   } else {
     const mod = require(bundlePath);
-    let recipe = mod && mod.default !== undefined ? mod.default : undefined;
-    if (recipe === undefined && mod && typeof mod === "object") {
-      for (const key of Object.keys(mod)) {
-        if (key !== "default" && mod[key] !== undefined) {
-          recipe = mod[key];
-          break;
-        }
-      }
-    }
+    const recipe = pickRecipeExport(mod);
     report({ ok: true, recipe: recipe === undefined ? null : recipe }, 0);
   }
 } catch (error) {

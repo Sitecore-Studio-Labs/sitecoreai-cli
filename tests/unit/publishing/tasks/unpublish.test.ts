@@ -15,7 +15,7 @@ import path from "node:path";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../../src/config/types";
 
 vi.mock("../../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
-vi.mock("../../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
+vi.mock("../../../../src/authoring/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 vi.mock("../../../../src/publishing/api/auth", () => ({
   acquirePublishingToken: vi.fn(),
 }));
@@ -47,7 +47,7 @@ vi.mock("../../../../src/content/api/version-fields", async () => {
 
 import { runPublishUnpublish } from "../../../../src/publishing/tasks/unpublish";
 import { resolveEnvironment } from "../../../../src/policy/environment";
-import { runAuthoringGraphQL } from "../../../../src/recipe/api/graphql";
+import { runAuthoringGraphQL } from "../../../../src/authoring/graphql";
 import { acquirePublishingToken } from "../../../../src/publishing/api/auth";
 import { submitPublishJob } from "../../../../src/publishing/api/client";
 import { resolvePublishingLocales } from "../../../../src/publishing/api/languages";

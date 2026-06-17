@@ -16,13 +16,13 @@ vi.mock("../../../../src/hygiene/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/hygiene/api/client")>();
   return { ...actual, createHygieneApiClient: vi.fn() };
 });
-vi.mock("../../../../src/recipe/api/site-discovery", () => ({
+vi.mock("../../../../src/authoring/site-discovery", () => ({
   discoverSites: vi.fn(),
 }));
 
 import { resolveEnvironment } from "../../../../src/policy/environment";
 import { createHygieneApiClient } from "../../../../src/hygiene/api/client";
-import { discoverSites } from "../../../../src/recipe/api/site-discovery";
+import { discoverSites } from "../../../../src/authoring/site-discovery";
 import { runAuditSiteResidue } from "../../../../src/hygiene/tasks/audit/site-residue";
 
 type Child = { itemId: string; name: string; path: string };

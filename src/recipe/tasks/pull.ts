@@ -9,6 +9,7 @@ import { loadRecipe } from "../io";
 import { readCurrentRecipes, type ReadCurrentRoots } from "../items/read-current";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import { FileBaselineStorage } from "../runtime/baseline";
+import { classifyPullField } from "../runtime/merge";
 import type { OperationIr } from "../ir/operations";
 import type {
   ComponentTemplateRecipe,
@@ -267,56 +268,39 @@ export interface RecipePullResult {
 
 const slugifyHandle = (handle: string): string => handle.replace(/@/g, "_v");
 
-const resolveRoots = (
-  options: RecipePullOptions,
-  environment: {
-    templatesRoot?: string;
-    renderingsRoot?: string;
-    componentsRoot?: string;
-    contentModelsRoot?: string;
-    pageTemplatesRoot?: string;
-    partialDesignsRoot?: string;
-    pageDesignsRoot?: string;
-    pagesRoot?: string;
-    enumerationsRoot?: string;
-    placeholderSettingsRoot?: string;
-    contentItemsRoot?: string;
+/**
+ * Optional content-tree roots: each is included in `ReadCurrentRoots`
+ * only when set on the CLI options OR the env profile (so `read-current`
+ * can distinguish "unset" from an explicit empty string). `templatesRoot`
+ * + `renderingsRoot` are required and default to `""`; everything else
+ * is data-driven here so adding a root is a one-line list edit.
+ */
+const OPTIONAL_ROOT_KEYS = [
+  "componentsRoot",
+  "contentModelsRoot",
+  "pageTemplatesRoot",
+  "partialDesignsRoot",
+  "pageDesignsRoot",
+  "pagesRoot",
+  "enumerationsRoot",
+  "placeholderSettingsRoot",
+  "contentItemsRoot",
+] as const;
+
+type OptionalRootKey = (typeof OPTIONAL_ROOT_KEYS)[number];
+type RootSource = Partial<Record<OptionalRootKey | "templatesRoot" | "renderingsRoot", string>>;
+
+const resolveRoots = (options: RecipePullOptions, environment: RootSource): ReadCurrentRoots => {
+  const roots: ReadCurrentRoots = {
+    templatesRoot: options.templatesRoot ?? environment.templatesRoot ?? "",
+    renderingsRoot: options.renderingsRoot ?? environment.renderingsRoot ?? "",
+  };
+  for (const key of OPTIONAL_ROOT_KEYS) {
+    const resolved = options[key] ?? environment[key];
+    if (resolved !== undefined) roots[key] = resolved;
   }
-): ReadCurrentRoots => ({
-  templatesRoot: options.templatesRoot ?? environment.templatesRoot ?? "",
-  renderingsRoot: options.renderingsRoot ?? environment.renderingsRoot ?? "",
-  ...(options.componentsRoot !== undefined || environment.componentsRoot !== undefined
-    ? { componentsRoot: options.componentsRoot ?? environment.componentsRoot }
-    : {}),
-  ...(options.contentModelsRoot !== undefined || environment.contentModelsRoot !== undefined
-    ? { contentModelsRoot: options.contentModelsRoot ?? environment.contentModelsRoot }
-    : {}),
-  ...(options.pageTemplatesRoot !== undefined || environment.pageTemplatesRoot !== undefined
-    ? { pageTemplatesRoot: options.pageTemplatesRoot ?? environment.pageTemplatesRoot }
-    : {}),
-  ...(options.partialDesignsRoot !== undefined || environment.partialDesignsRoot !== undefined
-    ? { partialDesignsRoot: options.partialDesignsRoot ?? environment.partialDesignsRoot }
-    : {}),
-  ...(options.pageDesignsRoot !== undefined || environment.pageDesignsRoot !== undefined
-    ? { pageDesignsRoot: options.pageDesignsRoot ?? environment.pageDesignsRoot }
-    : {}),
-  ...(options.pagesRoot !== undefined || environment.pagesRoot !== undefined
-    ? { pagesRoot: options.pagesRoot ?? environment.pagesRoot }
-    : {}),
-  ...(options.enumerationsRoot !== undefined || environment.enumerationsRoot !== undefined
-    ? { enumerationsRoot: options.enumerationsRoot ?? environment.enumerationsRoot }
-    : {}),
-  ...(options.placeholderSettingsRoot !== undefined ||
-  environment.placeholderSettingsRoot !== undefined
-    ? {
-        placeholderSettingsRoot:
-          options.placeholderSettingsRoot ?? environment.placeholderSettingsRoot,
-      }
-    : {}),
-  ...(options.contentItemsRoot !== undefined || environment.contentItemsRoot !== undefined
-    ? { contentItemsRoot: options.contentItemsRoot ?? environment.contentItemsRoot }
-    : {}),
-});
+  return roots;
+};
 
 /**
  * Classify one recipe's merge state from per-(itemRefKey, fieldKey)
@@ -342,48 +326,10 @@ export const classifyMergeStatus = (
   if (tenantHashes === null) {
     return { status: "disk-only", diskChanged: 0, tenantChanged: 0 };
   }
-  // Union of field keys across both sides.
-  const allKeys = new Set<string>([...diskHashes.keys(), ...tenantHashes.keys()]);
-  let diskChanged = 0;
-  let tenantChanged = 0;
-  let anyDiff = false;
-  let anyConflict = false;
-  for (const key of allKeys) {
-    const d = diskHashes.get(key);
-    const t = tenantHashes.get(key);
-    const b = baselineHashes?.get(key);
-    if (d === t) continue;
-    anyDiff = true;
-    if (b !== undefined) {
-      if (d !== b) diskChanged += 1;
-      if (t !== b) tenantChanged += 1;
-      if (d !== b && t !== b) anyConflict = true;
-    } else {
-      // No baseline coverage for this field. Mirror perFieldStatuses'
-      // first-pull-friendly classification (audit R4):
-      //   - field only on disk → disk-ahead (local addition)
-      //   - field only on tenant → tenant-edited (CMS addition)
-      //   - both sides have it but differ → conflict (can't tell who moved)
-      if (d === undefined) tenantChanged += 1;
-      else if (t === undefined) diskChanged += 1;
-      else {
-        diskChanged += 1;
-        tenantChanged += 1;
-        anyConflict = true;
-      }
-    }
-  }
-  if (!anyDiff) return { status: "in-sync", diskChanged: 0, tenantChanged: 0 };
-  if (anyConflict) return { status: "conflict", diskChanged, tenantChanged };
-  if (diskChanged > 0 && tenantChanged === 0) {
-    return { status: "disk-ahead", diskChanged, tenantChanged };
-  }
-  if (tenantChanged > 0 && diskChanged === 0) {
-    return { status: "tenant-edited", diskChanged, tenantChanged };
-  }
-  // Both diverged from baseline (matching each other coincidentally is
-  // covered by the d===t short-circuit above). Treat as conflict.
-  return { status: "conflict", diskChanged, tenantChanged };
+  // Per-field classify via the shared three-way core, then roll up. Keeps
+  // the per-recipe verdict and the per-field map (`perFieldStatuses`)
+  // derived from a single classification rule.
+  return rollupPerFieldStatuses(perFieldStatuses(diskHashes, tenantHashes, baselineHashes));
 };
 
 /**
@@ -458,39 +404,10 @@ export const perFieldStatuses = (
   const out: PerFieldStatuses = new Map();
   const allKeys = new Set<string>([...(diskHashes?.keys() ?? []), ...(tenantHashes?.keys() ?? [])]);
   for (const key of allKeys) {
-    const d = diskHashes?.get(key);
-    const t = tenantHashes?.get(key);
-    const b = baselineHashes?.get(key);
-    if (d === t && d !== undefined) {
-      out.set(key, "in-sync");
-      continue;
-    }
-    if (b !== undefined) {
-      const diskMoved = d !== b;
-      const tenantMoved = t !== b;
-      if (diskMoved && tenantMoved) out.set(key, "conflict");
-      else if (diskMoved) out.set(key, "disk-ahead");
-      else out.set(key, "tenant-edited");
-    } else {
-      // No baseline coverage for this field. Three sub-cases:
-      //   - field only on disk → most likely a local addition the
-      //     operator hasn't pushed yet → "disk-ahead"
-      //   - field only on tenant → most likely a CMS-authored addition
-      //     → "tenant-edited"
-      //   - both sides have it but differ → genuinely ambiguous (we
-      //     can't tell who moved without a baseline) → "conflict"
-      //
-      // The first two cases used to bucket as "conflict" which produced
-      // a wall of conflicts on the first pull against a tenant with no
-      // baseline files yet — `--policy=error` would block by default,
-      // forcing the operator into `--no-baseline` or `--policy=tenant-wins`
-      // to get any output. The narrower classification matches the
-      // operator's mental model: "field present on only one side" is
-      // an addition, not a conflict.
-      if (d === undefined) out.set(key, "tenant-edited");
-      else if (t === undefined) out.set(key, "disk-ahead");
-      else out.set(key, "conflict");
-    }
+    out.set(
+      key,
+      classifyPullField(diskHashes?.get(key), tenantHashes?.get(key), baselineHashes?.get(key))
+    );
   }
   return out;
 };
@@ -553,6 +470,26 @@ const fieldKey = (
   version?: number
 ): string =>
   `${itemRefKey.toLowerCase()}|name:${fieldName.toLowerCase()}|${language ?? ""}|${version ?? ""}`;
+
+/**
+ * Pick the winning layout for one cell and write it onto `target.layout`
+ * (or delete the key). When neither side carries a layout, leaves the
+ * target untouched. `choose()` is evaluated lazily — only when at least
+ * one side has a layout to merge — so we don't compute a winner for a
+ * cell that has no layout at all. Shared by the per-version merge and the
+ * page item-level merge.
+ */
+const applyLayoutPick = (
+  target: { layout?: Layout },
+  diskLayout: Layout | undefined,
+  tenantLayout: Layout | undefined,
+  choose: () => "disk" | "tenant"
+): void => {
+  if (diskLayout === undefined && tenantLayout === undefined) return;
+  const layout = choose() === "disk" ? (diskLayout ?? tenantLayout) : (tenantLayout ?? diskLayout);
+  if (layout !== undefined) target.layout = layout;
+  else delete target.layout;
+};
 
 /**
  * Per-field merge for content-value-bearing recipes (ContentItem, Page).
@@ -701,6 +638,29 @@ export const mergeContentValueRecipe = (
     merged.translations = mergedTranslations;
   }
 
+  // Merge one (lang, version) entry: per-field merge + per-cell layout pick.
+  const mergeVersionEntry = (
+    lang: string,
+    versionN: number,
+    dEntry: ContentVersion | undefined,
+    tEntry: ContentVersion | undefined
+  ): ContentVersion => {
+    // Base preserves per-version metadata (workflowState, date) from the
+    // tenant when present; falls back to disk only when the tenant lacks
+    // the version (disk-only at the version level).
+    const base = tEntry ?? dEntry!;
+    const entry: ContentVersion = {
+      ...base,
+      fields: mergeFieldMap(dEntry?.fields, tEntry?.fields, lang, versionN),
+    };
+    // Layout merge: classify the per-(lang, version) `__Final Renderings`
+    // cell via the canonical-XML baseline hash, and pick the disk-side
+    // layout only when it's `disk-ahead`. Both sides may carry a layout —
+    // when neither does, the field is omitted entirely.
+    applyLayoutPick(entry, dEntry?.layout, tEntry?.layout, () => layoutWinner(lang, versionN));
+    return entry;
+  };
+
   // Story-mode versions — per (language, numbered version). Merge the
   // version-stack union; for versions present on both sides, do per-field
   // merge inside the entry. For versions present on only one side, keep
@@ -719,33 +679,14 @@ export const mergeContentValueRecipe = (
         ...tenantEntries.map((e) => e.version),
       ]);
       const sorted = [...allVersionNumbers].sort((a, b) => a - b);
-      mergedVersions[lang] = sorted.map((versionN) => {
-        const dEntry = diskEntries.find((e) => e.version === versionN);
-        const tEntry = tenantEntries.find((e) => e.version === versionN);
-        // Base preserves per-version metadata (workflowState, date)
-        // from the tenant when present; falls back to disk only when
-        // the tenant lacks the version (disk-only at the version level).
-        const base = tEntry ?? dEntry!;
-        const merged: ContentVersion = {
-          ...base,
-          fields: mergeFieldMap(dEntry?.fields, tEntry?.fields, lang, versionN),
-        };
-        // Layout merge: classify the per-(lang, version) `__Final
-        // Renderings` cell via the canonical-XML baseline hash, and
-        // pick the disk-side layout only when it's `disk-ahead`. Both
-        // sides may carry a layout — when neither does, the field is
-        // omitted entirely.
-        const diskLayout = dEntry?.layout;
-        const tenantLayout = tEntry?.layout;
-        if (diskLayout !== undefined || tenantLayout !== undefined) {
-          const choose = layoutWinner(lang, versionN);
-          const layout =
-            choose === "disk" ? (diskLayout ?? tenantLayout) : (tenantLayout ?? diskLayout);
-          if (layout !== undefined) merged.layout = layout;
-          else delete merged.layout;
-        }
-        return merged;
-      });
+      mergedVersions[lang] = sorted.map((versionN) =>
+        mergeVersionEntry(
+          lang,
+          versionN,
+          diskEntries.find((e) => e.version === versionN),
+          tenantEntries.find((e) => e.version === versionN)
+        )
+      );
     }
     merged.versions = mergedVersions;
   }
@@ -756,18 +697,12 @@ export const mergeContentValueRecipe = (
   // applies to PageRecipe; ContentItemRecipe doesn't carry an
   // item-level layout.
   if (diskRecipe.kind === "page" && tenantRecipe.kind === "page") {
-    const diskPage = diskRecipe as PageRecipe;
-    const tenantPage = tenantRecipe as PageRecipe;
-    const diskLayout: Layout | undefined = diskPage.layout;
-    const tenantLayout: Layout | undefined = tenantPage.layout;
-    if (diskLayout !== undefined || tenantLayout !== undefined) {
-      const choose = layoutWinner(DEFAULT_LANGUAGE, DEFAULT_VERSION);
-      const mergedPage = merged as PageRecipe;
-      const layout =
-        choose === "disk" ? (diskLayout ?? tenantLayout) : (tenantLayout ?? diskLayout);
-      if (layout !== undefined) mergedPage.layout = layout;
-      else delete mergedPage.layout;
-    }
+    applyLayoutPick(
+      merged as PageRecipe,
+      (diskRecipe as PageRecipe).layout,
+      (tenantRecipe as PageRecipe).layout,
+      () => layoutWinner(DEFAULT_LANGUAGE, DEFAULT_VERSION)
+    );
   }
 
   return merged;
@@ -896,15 +831,22 @@ const templateFieldRollup = (
  * Returns the tenantRecipe untouched when the IR maps couldn't be
  * built (defensive).
  */
-export const mergeTemplateRecipe = (
-  diskRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-  tenantRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-  statuses: PerFieldStatuses,
-  diskIr: OperationIr,
-  tenantIr: OperationIr,
+export const mergeTemplateRecipe = ({
+  diskRecipe,
+  tenantRecipe,
+  statuses,
+  diskIr,
+  tenantIr,
+  winnerOverrides,
+}: {
+  diskRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe;
+  tenantRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe;
+  statuses: PerFieldStatuses;
+  diskIr: OperationIr;
+  tenantIr: OperationIr;
   /** Per-(rawKey) override for the winner decision (merge-plan file). */
-  winnerOverrides?: Map<string, "disk" | "tenant">
-): ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe => {
+  winnerOverrides?: Map<string, "disk" | "tenant">;
+}): ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe => {
   const diskIndex = templateFieldRefKeyIndex(diskIr);
   const tenantIndex = templateFieldRefKeyIndex(tenantIr);
   // Pre-group the statuses map ONCE — without this, every per-field
@@ -1516,14 +1458,20 @@ const selectRecipeToWrite = (args: {
     const diskIr = diskIrByHandle.get(handle);
     const tenantIr = tenantIrByHandle.get(handle);
     if (diskIr !== undefined && tenantIr !== undefined) {
-      return mergeTemplateRecipe(
-        diskRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-        tenantRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-        fieldStatuses,
+      return mergeTemplateRecipe({
+        diskRecipe: diskRecipe as
+          | ComponentTemplateRecipe
+          | ContentTemplateRecipe
+          | PageTemplateRecipe,
+        tenantRecipe: tenantRecipe as
+          | ComponentTemplateRecipe
+          | ContentTemplateRecipe
+          | PageTemplateRecipe,
+        statuses: fieldStatuses,
         diskIr,
         tenantIr,
-        overridesForRecipe
-      );
+        winnerOverrides: overridesForRecipe,
+      });
     }
     // Defensive: IR missing for one side → fall back to tenant.
     return tenantRecipe;
@@ -1537,14 +1485,21 @@ const selectRecipeToWrite = (args: {
  * `mergeTemplateRecipe.winnerFor` agree on the key shape); content kinds use
  * the raw field-level map.
  */
-const buildPlanSourceEntry = (
-  handle: string,
-  kind: string,
-  status: RecipeMergeStatus,
-  fieldStatuses: PerFieldStatuses,
-  tenantIrByHandle: ReadonlyMap<string, OperationIr>,
-  diskIrByHandle: ReadonlyMap<string, OperationIr>
-): {
+const buildPlanSourceEntry = ({
+  handle,
+  kind,
+  status,
+  fieldStatuses,
+  tenantIrByHandle,
+  diskIrByHandle,
+}: {
+  handle: string;
+  kind: string;
+  status: RecipeMergeStatus;
+  fieldStatuses: PerFieldStatuses;
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>;
+  diskIrByHandle: ReadonlyMap<string, OperationIr>;
+}): {
   handle: string;
   kind: string;
   rollupStatus: RecipeMergeStatus;
@@ -1687,6 +1642,123 @@ const resolveRecipeFilePath = async (args: {
     diskIrByHandle,
   });
   return dryRun ? null : writeRecipeJson(outputDir, recipeToWrite as Recipe & { handle: string });
+};
+
+/**
+ * Classify one handle in merge mode and produce its result entry,
+ * plan-source entry, and CLI error-gate verdict. Extracted from
+ * `runRecipePull`'s per-handle loop so the body stays a thin
+ * accumulate-into-arrays pass.
+ */
+interface ClassifyHandleArgs {
+  handle: string;
+  diskRecipeByHandle: ReadonlyMap<string, Recipe>;
+  tenantRecipeByHandle: ReadonlyMap<string, Recipe>;
+  diskHashByHandle: ReadonlyMap<string, Map<string, string>>;
+  tenantHashByHandle: ReadonlyMap<string, Map<string, string>>;
+  baselineHashesByHandle: ReadonlyMap<string, Map<string, string> | null>;
+  appliedPlan: MergePlan | null;
+  policy: "error" | "disk-wins" | "tenant-wins";
+  winnerOverridesByHandle: ReadonlyMap<string, Map<string, "disk" | "tenant">>;
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>;
+  diskIrByHandle: ReadonlyMap<string, OperationIr>;
+  dryRun: boolean;
+  outputDir: string;
+}
+
+interface ClassifyHandleOutcome {
+  kind: string;
+  entry: RecipePullEntry;
+  planSourceEntry: {
+    handle: string;
+    kind: string;
+    rollupStatus: RecipeMergeStatus;
+    fieldStatuses: PerFieldStatuses;
+    labels?: Map<string, string>;
+  };
+  blocked: boolean;
+}
+
+const classifyHandle = async (args: ClassifyHandleArgs): Promise<ClassifyHandleOutcome> => {
+  const { handle, appliedPlan, policy, dryRun, outputDir } = args;
+  const diskRecipe = args.diskRecipeByHandle.get(handle);
+  const tenantRecipe = args.tenantRecipeByHandle.get(handle);
+  const diskHashes = args.diskHashByHandle.get(handle) ?? null;
+  const tenantHashes = args.tenantHashByHandle.get(handle) ?? null;
+  const baselineHashes = args.baselineHashesByHandle.get(handle) ?? null;
+
+  // Per-field statuses first, then roll up. Both sides of the diff share
+  // the same status; the rollup gates write decisions + the CLI error
+  // gate, the per-field map drives the tenant-wins merge synthesis.
+  const fieldStatuses = perFieldStatuses(diskHashes, tenantHashes, baselineHashes);
+
+  // Disk-only / tenant-only short-circuits — these aren't per-field
+  // classifiable since one side has no fields to compare to.
+  const { status, diskChanged, tenantChanged } = classifyRecipeStatus(
+    diskHashes,
+    tenantHashes,
+    fieldStatuses
+  );
+
+  // Per-field statuses surfaced on the result for JSON consumers / verbose
+  // human output. Convert the opaque baselineLookupKey to a readable label.
+  const perFieldList = [...fieldStatuses].map(([key, fieldStatus]) => ({
+    key: humanizeFieldKey(key),
+    status: fieldStatus,
+  }));
+
+  // Decide whether to write a recipe file for this handle, then resolve the
+  // on-disk path. Per-field merge applies under `tenant-wins` for
+  // content-bearing kinds when both sides exist; other kinds adopt the
+  // tenant projection wholesale.
+  const shouldWrite = shouldWriteRecipe({ appliedPlan, policy, status, diskRecipe, tenantRecipe });
+  const filePath = await resolveRecipeFilePath({
+    shouldWrite,
+    appliedPlan,
+    policy,
+    handle,
+    diskRecipe,
+    tenantRecipe,
+    fieldStatuses,
+    winnerOverridesByHandle: args.winnerOverridesByHandle,
+    tenantIrByHandle: args.tenantIrByHandle,
+    diskIrByHandle: args.diskIrByHandle,
+    dryRun,
+    outputDir,
+  });
+
+  const kind = (tenantRecipe ?? diskRecipe)!.kind;
+  const entry: RecipePullEntry = {
+    handle,
+    kind,
+    path: filePath,
+    status,
+    diskChangedFields: diskChanged,
+    tenantChangedFields: tenantChanged,
+    ...(perFieldList.length > 0 && { fieldStatuses: perFieldList }),
+  };
+
+  // Apply-plan mode short-circuits the error gate — the operator already
+  // reviewed + committed their picks by editing the plan; exit non-zero
+  // would defeat the purpose of running --apply-plan.
+  const blocked =
+    appliedPlan === null &&
+    policy === "error" &&
+    (status === "tenant-edited" || status === "conflict");
+
+  return {
+    kind,
+    entry,
+    planSourceEntry: buildPlanSourceEntry({
+      handle,
+      kind,
+      status,
+      fieldStatuses,
+      tenantIrByHandle: args.tenantIrByHandle,
+      diskIrByHandle: args.diskIrByHandle,
+    }),
+    blocked,
+  };
 };
 
 /** Human-readable merge-mode summary rendering (skipped in JSON mode). */
@@ -1906,96 +1978,26 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     labels?: Map<string, string>;
   }> = [];
   for (const handle of allHandles) {
-    const diskRecipe = diskRecipeByHandle.get(handle);
-    const tenantRecipe = tenantRecipeByHandle.get(handle);
-    const diskHashes = diskHashByHandle.get(handle) ?? null;
-    const tenantHashes = tenantHashByHandle.get(handle) ?? null;
-    const baselineHashes = baselineHashesByHandle.get(handle) ?? null;
-
-    // Per-field statuses first, then roll up. Both sides of the diff
-    // share the same status; the rollup is what gates write decisions
-    // + the CLI error gate, the per-field map is what drives the
-    // tenant-wins merge synthesis below.
-    const fieldStatuses = perFieldStatuses(diskHashes, tenantHashes, baselineHashes);
-
-    // Disk-only / tenant-only short-circuits — these aren't per-field
-    // classifiable since one side has no fields to compare to. Roll up
-    // by structural presence first.
-    const { status, diskChanged, tenantChanged } = classifyRecipeStatus(
-      diskHashes,
-      tenantHashes,
-      fieldStatuses
-    );
-
-    // Per-field statuses surfaced on the result for JSON consumers /
-    // verbose human output. Convert the opaque baselineLookupKey to a
-    // pair of (fieldName, lang?, version?) for readability.
-    const perFieldList: Array<{
-      key: string;
-      status: FieldMergeStatus;
-    }> = [];
-    for (const [key, fieldStatus] of fieldStatuses) {
-      perFieldList.push({ key: humanizeFieldKey(key), status: fieldStatus });
-    }
-
-    // Decide whether to write a recipe file for this handle, then resolve
-    // the on-disk path. Per-field merge applies under `tenant-wins` for
-    // content-bearing kinds (ContentItem, Page) when both sides exist; other
-    // kinds adopt the tenant projection wholesale (their "fields" are schema
-    // definitions, not values, so a field-level merge would risk a malformed
-    // template).
-    const shouldWrite = shouldWriteRecipe({
-      appliedPlan,
-      policy,
-      status,
-      diskRecipe,
-      tenantRecipe,
-    });
-    const filePath = await resolveRecipeFilePath({
-      shouldWrite,
-      appliedPlan,
-      policy,
+    const outcome = await classifyHandle({
       handle,
-      diskRecipe,
-      tenantRecipe,
-      fieldStatuses,
+      diskRecipeByHandle,
+      tenantRecipeByHandle,
+      diskHashByHandle,
+      tenantHashByHandle,
+      baselineHashesByHandle,
+      appliedPlan,
+      policy,
       winnerOverridesByHandle,
       tenantIrByHandle,
       diskIrByHandle,
       dryRun,
       outputDir,
     });
-
-    const kind = (tenantRecipe ?? diskRecipe)!.kind;
-    byKind[kind] = (byKind[kind] ?? 0) + 1;
-    byStatus[status] += 1;
-    files.push({
-      handle,
-      kind,
-      path: filePath,
-      status,
-      diskChangedFields: diskChanged,
-      tenantChangedFields: tenantChanged,
-      ...(perFieldList.length > 0 && { fieldStatuses: perFieldList }),
-    });
-
-    // Templates need their per-property statuses rolled up to one
-    // entry per field for the merge plan; content kinds use the raw
-    // map (already at field-level resolution).
-    planSourceEntries.push(
-      buildPlanSourceEntry(handle, kind, status, fieldStatuses, tenantIrByHandle, diskIrByHandle)
-    );
-
-    // Apply-plan mode short-circuits the error gate — the operator
-    // already reviewed + committed their picks by editing the plan;
-    // exit non-zero would defeat the purpose of running --apply-plan.
-    if (
-      appliedPlan === null &&
-      policy === "error" &&
-      (status === "tenant-edited" || status === "conflict")
-    ) {
-      blocked = true;
-    }
+    byKind[outcome.kind] = (byKind[outcome.kind] ?? 0) + 1;
+    byStatus[outcome.entry.status] += 1;
+    files.push(outcome.entry);
+    planSourceEntries.push(outcome.planSourceEntry);
+    if (outcome.blocked) blocked = true;
   }
 
   // Write the merge plan when --write-plan is set. Done after the loop

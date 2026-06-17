@@ -1,5 +1,6 @@
 import { createScaiError } from "@/shared/errors";
 import { clearBrandToken } from "@/shared/keychain";
+import { runSitecoreRest } from "@/shared/rest";
 import { acquireBrandToken } from "./auth";
 import { BRAND_API_HOST } from "./types";
 import type { BrandCredential } from "@/config/types";
@@ -47,10 +48,19 @@ const buildUrl = (
   return url.toString();
 };
 
-const parseErrorBody = async (response: Response): Promise<string> => {
-  const text = await response.text();
-  try {
-    const parsed = JSON.parse(text) as {
+/**
+ * Pull the server's human-readable detail out of an error body. The body
+ * has already been read + JSON-parsed by the shared transport
+ * (`parseJsonIfPossible`): a JSON object exposes the Brand-API field
+ * priority (`error_description` → `detail` → `message` → `error` →
+ * `title`); a non-JSON body arrives as a raw string and is used verbatim.
+ */
+const parseErrorBody = (body: unknown): string => {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body && typeof body === "object") {
+    const parsed = body as {
       error?: string;
       error_description?: string;
       message?: string;
@@ -63,11 +73,10 @@ const parseErrorBody = async (response: Response): Promise<string> => {
       parsed.message ??
       parsed.error ??
       parsed.title ??
-      text
+      JSON.stringify(body)
     );
-  } catch {
-    return text;
   }
+  return "";
 };
 
 /**
@@ -91,43 +100,45 @@ export const requestBrandApi = async <TResponse>(
   const host = client.host ?? BRAND_API_HOST;
   const url = buildUrl(host, request.basePath, request.path, request.query);
 
-  const fire = async (token: string): Promise<Response> =>
-    fetch(url, {
-      method: request.method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        ...(request.body !== undefined ? { "Content-Type": "application/json" } : {}),
+  // Headers minus auth — the shared transport fills `Authorization`
+  // per-attempt from `auth.getAuthHeader` so the 401 retry below carries a
+  // freshly-minted token.
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(request.body !== undefined ? { "Content-Type": "application/json" } : {}),
+  };
+
+  const getToken = (): Promise<string> =>
+    acquireBrandToken({ orgId: client.orgId, credential: client.credential });
+
+  return runSitecoreRest<TResponse>({
+    url,
+    method: request.method,
+    headers,
+    body: request.body !== undefined ? JSON.stringify(request.body) : undefined,
+    signal: request.signal,
+    label: `Brand API ${request.method} ${request.path}`,
+    auth: {
+      getAuthHeader: async () => `Bearer ${await getToken()}`,
+      // On 401, clear the cached token and retry once with a fresh one —
+      // the documented 24h token-expiry recovery.
+      refreshOnStatus: 401,
+      onAuthFailure: async () => {
+        await clearBrandToken(client.orgId);
       },
-      body: request.body !== undefined ? JSON.stringify(request.body) : undefined,
-      signal: request.signal,
-    });
-
-  let token = await acquireBrandToken({
-    orgId: client.orgId,
-    credential: client.credential,
+    },
+    // Preserve the pre-refactor behavior of letting a raw fetch rejection
+    // (network error) propagate unmapped — brand callers never relied on a
+    // structured NETWORK ScaiError here.
+    mapNetworkError: (error) => {
+      throw error;
+    },
+    mapHttpError: (response, body) => {
+      const detail = parseErrorBody(body);
+      return createScaiError(
+        `Brand API ${request.method} ${request.path} failed (${response.status}): ${detail || "Unknown error"}`,
+        "BRAND_API_FAILED"
+      );
+    },
   });
-  let response = await fire(token);
-
-  if (response.status === 401) {
-    await clearBrandToken(client.orgId);
-    token = await acquireBrandToken({
-      orgId: client.orgId,
-      credential: client.credential,
-    });
-    response = await fire(token);
-  }
-
-  if (!response.ok) {
-    const detail = await parseErrorBody(response);
-    throw createScaiError(
-      `Brand API ${request.method} ${request.path} failed (${response.status}): ${detail || "Unknown error"}`,
-      "BRAND_API_FAILED"
-    );
-  }
-
-  if (response.status === 204) {
-    return undefined as TResponse;
-  }
-  return (await response.json()) as TResponse;
 };

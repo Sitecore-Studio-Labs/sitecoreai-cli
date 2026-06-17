@@ -12,7 +12,7 @@ vi.mock("../../../../src/workflow/tasks/shared", async () => {
   return { ...actual, resolveWorkflowTenant: vi.fn() };
 });
 
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth/client-credentials", () => ({
   getAccessToken: vi.fn().mockResolvedValue("test-token"),
 }));
 
@@ -21,7 +21,7 @@ vi.mock("../../../../src/sites/api/sites", () => ({
 }));
 
 import { retrieveWorkflowStatistics } from "../../../../src/sites/api/sites";
-import { getAccessToken } from "../../../../src/serialization/api/auth";
+import { getAccessToken } from "../../../../src/auth/client-credentials";
 
 const stubClient = (overrides: Partial<WorkflowApiClient> = {}): WorkflowApiClient => ({
   getItemWorkflow: vi.fn(),

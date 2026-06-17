@@ -196,6 +196,126 @@ describe("dispatchTool — multi-env retargeting gate", () => {
   });
 });
 
+describe("dispatchTool — verb-discriminated writeVerbs gate", () => {
+  beforeEach(() => {
+    gateMocks.resolveEnvBinding.mockReset();
+    gateMocks.ensureMcpElevationAllowed.mockReset();
+  });
+
+  const verbDescriptor = (handler: ToolDescriptor["handler"]): ToolDescriptor => ({
+    name: "demo_verb",
+    description: minDescription,
+    annotations: { ...baseAnnotations, destructiveHint: true },
+    auth: "verb-discriminated",
+    writeVerbs: ["push"],
+    inputSchema: {
+      verb: z.enum(["status", "push"]),
+      allowWrite: z.boolean().optional(),
+      environmentName: z.string().optional(),
+    },
+    handler,
+  });
+
+  it("does NOT require allowWrite for a read verb", async () => {
+    const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+    const result = await dispatchTool(
+      verbDescriptor(handler),
+      { verb: "status" },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(result.isError).toBeUndefined();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a declared write verb when allowWrite is not true", async () => {
+    const handler = vi.fn();
+    const result = await dispatchTool(
+      verbDescriptor(handler),
+      { verb: "push" },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { code: string }).code).toBe("INPUT_INVALID");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("admits a declared write verb when allowWrite is true", async () => {
+    const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+    const result = await dispatchTool(
+      verbDescriptor(handler),
+      { verb: "push", allowWrite: true },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(result.isError).toBeUndefined();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("checks the TARGET env elevation when a write verb is retargeted", async () => {
+    gateMocks.resolveEnvBinding.mockResolvedValue({
+      envName: "prod",
+      resolved: {
+        root: { environments: {} },
+        environment: {},
+        envName: "prod",
+        timeoutMs: undefined,
+      },
+      allowWriteEnabled: true,
+      deployToken: "tok",
+    });
+    const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+    await dispatchTool(
+      verbDescriptor(handler),
+      { verb: "push", allowWrite: true, environmentName: "prod" },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(gateMocks.resolveEnvBinding).toHaveBeenCalledWith("/tmp", "prod");
+    expect(gateMocks.ensureMcpElevationAllowed).toHaveBeenCalledWith({ environments: {} }, "prod");
+  });
+
+  it("honors a custom verbField (e.g. direction)", async () => {
+    const handler = vi.fn();
+    const descriptor: ToolDescriptor = {
+      name: "demo_direction",
+      description: minDescription,
+      annotations: { ...baseAnnotations, destructiveHint: true },
+      auth: "verb-discriminated",
+      writeVerbs: ["push"],
+      verbField: "direction",
+      inputSchema: { direction: z.enum(["pull", "push"]), allowWrite: z.boolean().optional() },
+      handler,
+    };
+    const result = await dispatchTool(
+      descriptor,
+      { direction: "push" },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { code: string }).code).toBe("INPUT_INVALID");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("adds no gate when writeVerbs is omitted (legacy behavior)", async () => {
+    const handler = vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+    const descriptor: ToolDescriptor = {
+      name: "demo_legacy",
+      description: minDescription,
+      annotations: { ...baseAnnotations, destructiveHint: true },
+      auth: "verb-discriminated",
+      inputSchema: { verb: z.enum(["status", "push"]), allowWrite: z.boolean().optional() },
+      handler,
+    };
+    // No writeVerbs declared — even `push` reaches the handler without a
+    // dispatch-level allowWrite gate (the handler owns enforcement).
+    const result = await dispatchTool(
+      descriptor,
+      { verb: "push" },
+      { context: baseContext, extra: makeExtra() }
+    );
+    expect(result.isError).toBeUndefined();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+});
+
 describe("dispatchTool — error envelope", () => {
   it("wraps thrown errors in the typed envelope", async () => {
     const descriptor: ToolDescriptor = {

@@ -116,14 +116,14 @@ const makeResourceTasks = <
 
   const runList: ResourceTasks["runList"] = async (options) => {
     const { logger, session } = await prepare(options);
-    renderList(
+    renderList({
       logger,
-      `${config.resource}.list`,
+      command: `${config.resource}.list`,
       options,
-      config.pluralLabel,
-      await config.list(session),
-      config.line
-    );
+      label: config.pluralLabel,
+      items: await config.list(session),
+      line: config.line,
+    });
   };
 
   const runGet: ResourceTasks["runGet"] = async (options) => {
@@ -341,13 +341,13 @@ export const htmlTemplateTasks = makeResourceTasks({
 /** `scai agents tool list` — the tool catalog is read-only (no write path). */
 export const runToolList = async (options: RunAgentsBaseOptions): Promise<void> => {
   const { logger, session } = await prepare(options);
-  renderList(
+  renderList({
     logger,
-    "tool.list",
+    command: "tool.list",
     options,
-    "tool(s)",
-    await listTools(session),
-    (tool: { toolKey: string; category: string; label: string }) =>
-      `${tool.toolKey.padEnd(30)} ${tool.category.padEnd(12)} ${tool.label}`
-  );
+    label: "tool(s)",
+    items: await listTools(session),
+    line: (tool: { toolKey: string; category: string; label: string }) =>
+      `${tool.toolKey.padEnd(30)} ${tool.category.padEnd(12)} ${tool.label}`,
+  });
 };

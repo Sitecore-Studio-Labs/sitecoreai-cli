@@ -77,6 +77,33 @@ const buildPatterns = (
 };
 
 /**
+ * Find the most-specific GUID form the target appears as in a field
+ * value, or null if it doesn't appear. Extracted from the scan loop to
+ * keep nesting shallow. Curly forms outrank dashed, dashed outranks
+ * flat — once a curly form matches we stop, since it's the most
+ * specific.
+ */
+const matchBestForm = (
+  fieldValue: string,
+  patterns: ReturnType<typeof buildPatterns>
+): ReferenceReport["matches"][number]["form"] | null => {
+  let bestForm: ReferenceReport["matches"][number]["form"] | null = null;
+  const lower = fieldValue.toLowerCase();
+  for (const { pattern, form } of patterns) {
+    const target = form === "curly-upper" ? fieldValue : lower;
+    const needle = form === "curly-upper" ? pattern : pattern.toLowerCase();
+    if (target.includes(needle)) {
+      bestForm = form;
+      // Curly forms are more specific than dashed; dashed is more
+      // specific than flat. Keep the more specific one when both
+      // would match a substring.
+      if (form.startsWith("curly")) break;
+    }
+  }
+  return bestForm;
+};
+
+/**
  * Inbound-reference scan: walk items + fields under `--root` and
  * report every field whose value mentions the target item id in any
  * of the canonical Sitecore GUID forms. The companion primitive to
@@ -149,19 +176,7 @@ export const runAuditReferences = async (
       // most specific form seen so the report tells the operator
       // "this is a curly-wrapped GUID, probably a multi-list" vs.
       // "this is a flat 32-char id, probably an index-only mirror."
-      let bestForm: ReferenceReport["matches"][number]["form"] | null = null;
-      const lower = field.value.toLowerCase();
-      for (const { pattern, form } of patterns) {
-        const target = form === "curly-upper" ? field.value : lower;
-        const needle = form === "curly-upper" ? pattern : pattern.toLowerCase();
-        if (target.includes(needle)) {
-          bestForm = form;
-          // Curly forms are more specific than dashed; dashed is more
-          // specific than flat. Keep the more specific one when both
-          // would match a substring.
-          if (form.startsWith("curly")) break;
-        }
-      }
+      const bestForm = matchBestForm(field.value, patterns);
       if (bestForm) {
         fieldMatches.push({ fieldName: field.name, form: bestForm });
       }

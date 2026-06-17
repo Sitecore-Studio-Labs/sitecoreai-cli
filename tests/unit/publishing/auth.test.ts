@@ -6,7 +6,7 @@ vi.mock("../../../src/shared/keychain", () => ({
   getPublishingToken: vi.fn(),
   setPublishingToken: vi.fn().mockResolvedValue(true),
 }));
-vi.mock("../../../src/serialization/api/auth", () => ({
+vi.mock("../../../src/auth/client-credentials", () => ({
   requestClientCredentialsToken: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ import {
   getPublishingToken,
   setPublishingToken,
 } from "../../../src/shared/keychain";
-import { requestClientCredentialsToken } from "../../../src/serialization/api/auth";
+import { requestClientCredentialsToken } from "../../../src/auth/client-credentials";
 
 const mockGetPublishing = getPublishingToken as unknown as ReturnType<typeof vi.fn>;
 const mockGetDeploy = getDeployToken as unknown as ReturnType<typeof vi.fn>;

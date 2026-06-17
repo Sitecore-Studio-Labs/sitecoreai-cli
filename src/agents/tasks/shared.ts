@@ -67,14 +67,17 @@ export const prepare = async (
  * (e.g. `agent.list`) — the helper prefixes `agents.` for the
  * envelope.
  */
-export const renderList = <T>(
-  logger: Logger,
-  command: string,
-  options: RunAgentsBaseOptions,
-  label: string,
-  items: T[],
-  line: (item: T) => string
-): void => {
+export interface RenderListArgs<T> {
+  logger: Logger;
+  command: string;
+  options: RunAgentsBaseOptions;
+  label: string;
+  items: T[];
+  line: (item: T) => string;
+}
+
+export const renderList = <T>(args: RenderListArgs<T>): void => {
+  const { logger, command, options, label, items, line } = args;
   if (logger.isJson()) {
     writeAgentsEnvelope(command, options, items);
     return;

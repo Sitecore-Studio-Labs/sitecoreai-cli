@@ -56,119 +56,37 @@ export interface WorkflowAdvanceResult {
  * `--what-if` skips the gate and reports the planned action without
  * issuing the mutation.
  */
-export const runWorkflowAdvance = async (
-  options: WorkflowAdvanceOptions
-): Promise<WorkflowAdvanceResult> => {
-  const logger = toLogger(options);
-  if (!options.command) {
-    throw createScaiError("--command is required.", "INPUT_INVALID");
-  }
-  const selector = parseItemReference(options.item);
-  const { envName, root, client } = resolveWorkflowTenant(options);
-  if (!options.whatIf) {
-    ensureAllowWrite(root, envName, options.allowWrite);
-  } else if (!logger.isJson()) {
-    logger.info("What-if mode — no workflow command will be executed.", "yellow");
-  }
+type ItemWorkflow = Awaited<ReturnType<WorkflowClient["getItemWorkflow"]>>;
+type WorkflowClient = ReturnType<typeof resolveWorkflowTenant>["client"];
+type ResolvedCommand = NonNullable<Awaited<ReturnType<typeof resolveWorkflowCommandId>>>;
 
-  const wf = await client.getItemWorkflow(selector);
-  if (!wf || !wf.workflowId) {
-    const result: WorkflowAdvanceResult = {
-      itemId: wf?.itemId ?? null,
-      path: wf?.path ?? selector.path ?? null,
-      workflowName: null,
-      fromState: null,
-      toState: null,
-      commandRequested: options.command,
-      commandUsed: null,
-      status: "skipped-no-workflow",
-      message: `Item ${selector.path ?? selector.itemId} is not under workflow.`,
-    };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [result.message ?? ""],
-    });
-    return result;
-  }
-  if (wf.stateIsFinal) {
-    const result: WorkflowAdvanceResult = {
-      itemId: wf.itemId,
-      path: wf.path,
-      workflowName: wf.workflowName,
-      fromState: wf.stateName,
-      toState: null,
-      commandRequested: options.command,
-      commandUsed: null,
-      status: "skipped-final",
-      message: `Item is already in a final workflow state ('${wf.stateName ?? "?"}'); no transition needed.`,
-    };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [result.message ?? ""],
-    });
-    return result;
-  }
+/**
+ * Print a workflow-advance result (JSON or human) and return it. Centralises
+ * the otherwise-repeated `printWorkflowResult` + `return result` tail so each
+ * phase only constructs the result shape.
+ */
+const reportAdvance = (
+  logger: ReturnType<typeof toLogger>,
+  envName: string,
+  result: WorkflowAdvanceResult,
+  humanLines: string[]
+): WorkflowAdvanceResult => {
+  printWorkflowResult({ logger, command: "workflow.advance", envName, result, humanLines });
+  return result;
+};
 
-  const command = await resolveWorkflowCommandId(client, {
-    workflowId: wf.workflowId,
-    itemId: dashifyItemId(wf.itemId),
-    commandName: options.command,
-  });
-  if (!command) {
-    const result: WorkflowAdvanceResult = {
-      itemId: wf.itemId,
-      path: wf.path,
-      workflowName: wf.workflowName,
-      fromState: wf.stateName,
-      toState: null,
-      commandRequested: options.command,
-      commandUsed: null,
-      status: "skipped-no-command",
-      message: `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. Run 'scai content workflow commands ${selector.path ?? selector.itemId}' to see available commands.`,
-    };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [result.message ?? ""],
-    });
-    return result;
-  }
-  if (command.duplicateMatches > 1) {
-    logger.warn(
-      `Workflow '${wf.workflowName}' has ${command.duplicateMatches} commands named '${options.command}' at this state — using the first match (${command.commandId}). Disambiguate if this is wrong.`
-    );
-  }
+interface ExecuteAdvanceArgs {
+  client: WorkflowClient;
+  wf: NonNullable<ItemWorkflow>;
+  command: ResolvedCommand;
+  options: WorkflowAdvanceOptions;
+  logger: ReturnType<typeof toLogger>;
+  envName: string;
+}
 
-  if (options.whatIf) {
-    const result: WorkflowAdvanceResult = {
-      itemId: wf.itemId,
-      path: wf.path,
-      workflowName: wf.workflowName,
-      fromState: wf.stateName,
-      toState: null,
-      commandRequested: options.command,
-      commandUsed: command.displayName,
-      status: "what-if",
-      message: `Would execute '${command.displayName}' (${command.commandId}) on ${wf.path ?? wf.itemId}.`,
-    };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [result.message ?? ""],
-    });
-    return result;
-  }
-
+/** Execute the resolved command and build the success/failure result. */
+const executeAdvance = async (args: ExecuteAdvanceArgs): Promise<WorkflowAdvanceResult> => {
+  const { client, wf, command, options, logger, envName } = args;
   try {
     const exec = await client.executeWorkflowCommand({
       commandId: command.commandId,
@@ -188,18 +106,11 @@ export const runWorkflowAdvance = async (
         ? {}
         : { message: exec.message ?? "Workflow command returned successful=false." }),
     };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [
-        exec.successful
-          ? `Advanced ${wf.path ?? wf.itemId} via '${command.displayName}' — next state: ${exec.nextStateId ?? "(unspecified)"}.`
-          : `Failed to advance ${wf.path ?? wf.itemId}: ${result.message}`,
-      ],
-    });
-    return result;
+    return reportAdvance(logger, envName, result, [
+      exec.successful
+        ? `Advanced ${wf.path ?? wf.itemId} via '${command.displayName}' — next state: ${exec.nextStateId ?? "(unspecified)"}.`
+        : `Failed to advance ${wf.path ?? wf.itemId}: ${result.message}`,
+    ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const result: WorkflowAdvanceResult = {
@@ -213,13 +124,115 @@ export const runWorkflowAdvance = async (
       status: "failed",
       message,
     };
-    printWorkflowResult({
-      logger,
-      command: "workflow.advance",
-      envName,
-      result,
-      humanLines: [`Failed to advance ${wf.path ?? wf.itemId}: ${message}`],
-    });
-    return result;
+    return reportAdvance(logger, envName, result, [
+      `Failed to advance ${wf.path ?? wf.itemId}: ${message}`,
+    ]);
   }
+};
+
+export const runWorkflowAdvance = async (
+  options: WorkflowAdvanceOptions
+): Promise<WorkflowAdvanceResult> => {
+  const logger = toLogger(options);
+  if (!options.command) {
+    throw createScaiError("--command is required.", "INPUT_INVALID");
+  }
+  const selector = parseItemReference(options.item);
+  const { envName, root, client } = resolveWorkflowTenant(options);
+  if (!options.whatIf) {
+    ensureAllowWrite(root, envName, options.allowWrite);
+  } else if (!logger.isJson()) {
+    logger.info("What-if mode — no workflow command will be executed.", "yellow");
+  }
+
+  const wf = await client.getItemWorkflow(selector);
+  if (!wf || !wf.workflowId) {
+    return reportAdvance(
+      logger,
+      envName,
+      {
+        itemId: wf?.itemId ?? null,
+        path: wf?.path ?? selector.path ?? null,
+        workflowName: null,
+        fromState: null,
+        toState: null,
+        commandRequested: options.command,
+        commandUsed: null,
+        status: "skipped-no-workflow",
+        message: `Item ${selector.path ?? selector.itemId} is not under workflow.`,
+      },
+      [`Item ${selector.path ?? selector.itemId} is not under workflow.`]
+    );
+  }
+  if (wf.stateIsFinal) {
+    const message = `Item is already in a final workflow state ('${wf.stateName ?? "?"}'); no transition needed.`;
+    return reportAdvance(
+      logger,
+      envName,
+      {
+        itemId: wf.itemId,
+        path: wf.path,
+        workflowName: wf.workflowName,
+        fromState: wf.stateName,
+        toState: null,
+        commandRequested: options.command,
+        commandUsed: null,
+        status: "skipped-final",
+        message,
+      },
+      [message]
+    );
+  }
+
+  const command = await resolveWorkflowCommandId(client, {
+    workflowId: wf.workflowId,
+    itemId: dashifyItemId(wf.itemId),
+    commandName: options.command,
+  });
+  if (!command) {
+    const message = `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. Run 'scai content workflow commands ${selector.path ?? selector.itemId}' to see available commands.`;
+    return reportAdvance(
+      logger,
+      envName,
+      {
+        itemId: wf.itemId,
+        path: wf.path,
+        workflowName: wf.workflowName,
+        fromState: wf.stateName,
+        toState: null,
+        commandRequested: options.command,
+        commandUsed: null,
+        status: "skipped-no-command",
+        message,
+      },
+      [message]
+    );
+  }
+  if (command.duplicateMatches > 1) {
+    logger.warn(
+      `Workflow '${wf.workflowName}' has ${command.duplicateMatches} commands named '${options.command}' at this state — using the first match (${command.commandId}). Disambiguate if this is wrong.`
+    );
+  }
+
+  if (options.whatIf) {
+    const message = `Would execute '${command.displayName}' (${command.commandId}) on ${wf.path ?? wf.itemId}.`;
+    return reportAdvance(
+      logger,
+      envName,
+      {
+        itemId: wf.itemId,
+        path: wf.path,
+        workflowName: wf.workflowName,
+        fromState: wf.stateName,
+        toState: null,
+        commandRequested: options.command,
+        commandUsed: command.displayName,
+        status: "what-if",
+        message,
+      },
+      [message]
+    );
+  }
+
+  return executeAdvance({ client, wf, command, options, logger, envName });
 };

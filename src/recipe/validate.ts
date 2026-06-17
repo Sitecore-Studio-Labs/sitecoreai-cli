@@ -1,16 +1,7 @@
 import { createScaiError } from "@/shared/errors";
-import type { Recipe, SitecoreFieldAugment } from "./schema/recipe";
+import type { Recipe } from "./schema/recipe";
 import { resolveAllowedHandles } from "./schema/recipe";
-
-/**
- * The picker-scope handles to validate on a `SitecoreFieldAugment`.
- * Empty when the augment is absent OR uses the `raw` source mode
- * (verbatim Source string; nothing to resolve).
- */
-const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readonly string[] => {
-  if (augment?.source?.kind !== "filter") return [];
-  return augment.source.types ?? [];
-};
+import { recipeReferences } from "./references";
 
 /**
  * Cross-recipe validation: walks every handle reference in a recipe set
@@ -86,34 +77,6 @@ const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readonly stri
  */
 
 export type RecipeKind = Recipe["kind"];
-
-const TEMPLATE_KINDS: readonly RecipeKind[] = [
-  "component-template",
-  "content-template",
-  "page-template",
-];
-const COMPONENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["component-template"];
-const CONTENT_TEMPLATE_KINDS: readonly RecipeKind[] = ["content-template"];
-const PAGE_TEMPLATE_KINDS: readonly RecipeKind[] = ["page-template"];
-const PAGE_KINDS: readonly RecipeKind[] = ["page"];
-const CONTENT_ITEM_KINDS: readonly RecipeKind[] = ["content-item"];
-const PARAMETERS_TEMPLATE_KINDS: readonly RecipeKind[] = ["design-parameters-template"];
-const PARTIAL_DESIGN_KINDS: readonly RecipeKind[] = ["partial-design"];
-const PAGE_DESIGN_KINDS: readonly RecipeKind[] = ["page-design"];
-const SITE_TEMPLATE_KINDS: readonly RecipeKind[] = ["site-template"];
-const SITE_KINDS: readonly RecipeKind[] = ["site"];
-const DICTIONARY_KINDS: readonly RecipeKind[] = ["dictionary"];
-const ANY_KINDS: readonly RecipeKind[] = [
-  "component-template",
-  "content-template",
-  "content-item",
-  "page-template",
-  "page",
-  "placeholder",
-  "design-parameters-template",
-  "partial-design",
-  "page-design",
-];
 
 /** A handle reference that doesn't resolve, or resolves to the wrong kind. */
 export interface UnresolvedHandle {
@@ -252,91 +215,38 @@ type CheckLayout = (
   placeholders: Record<string, ReadonlyArray<{ componentHandle: string }>>
 ) => void;
 
-/** A layout shape carrying placement placeholders, as on partial/page/design recipes. */
-type LayoutWithPlaceholders = {
-  placeholders: Record<
-    string,
-    ReadonlyArray<{
-      componentHandle: string;
-      datasourceRef?: { kind: "shared"; handle: string } | { kind: "scoped" } | { kind: "none" };
-    }>
-  >;
+/**
+ * Reference-check every outbound handle a recipe carries.
+ *
+ * The reference inventory comes from the shared `recipeReferences()`
+ * accessor (`./references`) — the same one the apply-ordering topo-sort
+ * consumes, so the two never drift. Each reference tagged with
+ * `expectedKinds` is resolved + kind-checked; references without
+ * `expectedKinds` are topo-sort-only (today only a variant's
+ * `targetRendering.handle`) and skipped, preserving the pre-refactor
+ * behavior where `validate.ts` had no `case "variant"`.
+ */
+const checkRecipeHandleReferences = (recipe: Recipe, checkRef: CheckRef): void => {
+  for (const ref of recipeReferences(recipe)) {
+    if (ref.expectedKinds === undefined) continue;
+    checkRef(recipe.handle, ref.field, ref.handle, ref.expectedKinds);
+  }
 };
 
 /**
- * Reference-check every placement in a layout: each `componentHandle`
- * must resolve to a ComponentTemplateRecipe, and each shared
- * `datasourceRef.handle` to a ContentItemRecipe. Shared by the four
- * layout-bearing recipe kinds (partial-design, page-design,
- * page-template, page).
+ * Kind-specific shape constraints Zod can't enforce — emitted as
+ * `FieldShapeError`s rather than handle-resolution failures. These are
+ * NOT cross-recipe references, so they stay out of `recipeReferences()`.
+ *
+ *   - component-template: external `parameters` + `dynamicPlaceholders`
+ *     are mutually exclusive (the IDynamicPlaceholder base must chain
+ *     onto the consumer's OWN params template).
+ *   - site: `collectionId` XOR `collectionName` (discriminated-union
+ *     members can't carry a `.refine()`).
  */
-const checkLayoutPlacementRefs = (
-  checkRef: CheckRef,
-  fromRecipe: string,
-  layout: LayoutWithPlaceholders
-): void => {
-  for (const [phKey, placements] of Object.entries(layout.placeholders)) {
-    placements.forEach((placement, idx) => {
-      checkRef(
-        fromRecipe,
-        `layout.placeholders.${phKey}.${idx}.componentHandle`,
-        placement.componentHandle,
-        COMPONENT_TEMPLATE_KINDS
-      );
-      if (placement.datasourceRef?.kind === "shared") {
-        checkRef(
-          fromRecipe,
-          `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
-          placement.datasourceRef.handle,
-          CONTENT_ITEM_KINDS
-        );
-      }
-    });
-  }
-};
-
-/** Reference-check a list of source-picker `types` on `field`/`param` augments. */
-const checkSourceTypeRefs = (
-  checkRef: CheckRef,
-  fromRecipe: string,
-  prefix: string,
-  augmented: readonly { sitecore?: SitecoreFieldAugment }[],
-  expectedKinds: readonly RecipeKind[]
-): void => {
-  augmented.forEach((entry, idx) => {
-    sourceTypesOf(entry.sitecore).forEach((handle, sIdx) => {
-      checkRef(fromRecipe, `${prefix}.${idx}.sitecore.source.types.${sIdx}`, handle, expectedKinds);
-    });
-  });
-};
-
-/** Validate a ComponentTemplateRecipe's cross-recipe references + shape constraints. */
-const checkComponentTemplateRefs = (
-  recipe: Extract<Recipe, { kind: "component-template" }>,
-  checkRef: CheckRef,
-  fieldShapeErrors: FieldShapeError[]
-): void => {
-  checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields, TEMPLATE_KINDS);
-  checkSourceTypeRefs(checkRef, recipe.handle, "params", recipe.params, TEMPLATE_KINDS);
-  recipe.insertOptions?.forEach((handle, idx) => {
-    checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
-  });
-  if (recipe.datasource?.template) {
-    checkRef(
-      recipe.handle,
-      "datasource.template.handle",
-      recipe.datasource.template.handle,
-      CONTENT_TEMPLATE_KINDS
-    );
-  }
-  if (recipe.parameters) {
-    checkRef(
-      recipe.handle,
-      "parameters.handle",
-      recipe.parameters.handle,
-      PARAMETERS_TEMPLATE_KINDS
-    );
-    if (recipe.dynamicPlaceholders) {
+const checkRecipeShapeErrors = (recipe: Recipe, fieldShapeErrors: FieldShapeError[]): void => {
+  if (recipe.kind === "component-template") {
+    if (recipe.parameters && recipe.dynamicPlaceholders) {
       fieldShapeErrors.push({
         fromRecipe: recipe.handle,
         fromField: "parameters",
@@ -344,225 +254,58 @@ const checkComponentTemplateRefs = (
           "Cannot combine external 'parameters' with 'dynamicPlaceholders: true'. The IDynamicPlaceholder base must chain onto the consumer's own params template; chaining it onto a shared external template would silently affect every other consumer. Inline the params via 'params:' or drop 'dynamicPlaceholders'.",
       });
     }
+    return;
   }
-  recipe.children?.allowedHandles.forEach((handle, idx) => {
-    checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);
-  });
-  (recipe.placeholders ?? []).forEach((slot, idx) => {
-    // Both `allowedComponents` and the registry-side alias
-    // `allowedRenderingHandles` flow through `resolveAllowedHandles`;
-    // reference-check the merged set so handles authored under either
-    // name still validate.
-    resolveAllowedHandles(slot).forEach((handle, aIdx) => {
-      checkRef(
-        recipe.handle,
-        `placeholders.${idx}.allowedRenderingHandles.${aIdx}`,
-        handle,
-        COMPONENT_TEMPLATE_KINDS
-      );
-    });
-  });
-};
-
-/** Validate a ContentItemRecipe's templateType + field cross-recipe references. */
-const checkContentItemRefs = (
-  recipe: Extract<Recipe, { kind: "content-item" }>,
-  checkRef: CheckRef
-): void => {
-  checkRef(recipe.handle, "templateType", recipe.templateType, TEMPLATE_KINDS);
-  for (const [fieldName, value] of Object.entries(recipe.fields)) {
-    if (value.shape === "link-internal") {
-      checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
-    } else if (value.shape === "reference") {
-      value.refs.forEach((handle, idx) => {
-        checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
+  if (recipe.kind === "site") {
+    if (recipe.collectionId && recipe.collectionName) {
+      fieldShapeErrors.push({
+        fromRecipe: recipe.handle,
+        fromField: "collectionId, collectionName",
+        message: "collectionId and collectionName are mutually exclusive — provide one, not both",
+      });
+    }
+    if (!recipe.collectionId && !recipe.collectionName) {
+      fieldShapeErrors.push({
+        fromRecipe: recipe.handle,
+        fromField: "collectionId, collectionName",
+        message: "either collectionId (existing) or collectionName (new) must be provided",
       });
     }
   }
 };
 
-/** Validate a PageRecipe's template + loosely-typed field references. */
-const checkPageRefs = (
-  recipe: Extract<Recipe, { kind: "page" }>,
-  checkRef: CheckRef,
-  checkLayoutPlacements: CheckLayout
-): void => {
-  checkRef(recipe.handle, "template", recipe.template, PAGE_TEMPLATE_KINDS);
-  // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
-  // shape alongside scai-native ContentFieldValue). Only scai-native
-  // shapes carry cross-recipe handle refs; sniff `shape` defensively.
-  for (const [fieldName, raw] of Object.entries(recipe.fields ?? {})) {
-    if (raw === null || typeof raw !== "object" || !("shape" in raw)) continue;
-    const value = raw as { shape: string; ref?: string; refs?: readonly string[] };
-    if (value.shape === "link-internal" && typeof value.ref === "string") {
-      checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
-    } else if (value.shape === "reference" && Array.isArray(value.refs)) {
-      value.refs.forEach((handle: string, idx: number) => {
-        checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
-      });
-    }
-  }
-  if (recipe.layout) {
-    checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
-    checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-  }
-};
-
-/** Validate a SiteTemplateRecipe's template/design/dictionary/matrix references. */
-const checkSiteTemplateRefs = (
-  recipe: Extract<Recipe, { kind: "site-template" }>,
-  checkRef: CheckRef
-): void => {
-  recipe.pageTemplates.forEach((handle, idx) => {
-    checkRef(recipe.handle, `pageTemplates.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-  });
-  recipe.pageDesigns.forEach((handle, idx) => {
-    checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
-  });
-  // `.default([])` on the schema only applies during Zod parse; test
-  // fixtures that hand-construct Recipe objects can leave the field
-  // undefined. Defensive `?? []` keeps it tolerant.
-  (recipe.dictionaries ?? []).forEach((handle, idx) => {
-    checkRef(recipe.handle, `dictionaries.${idx}`, handle, DICTIONARY_KINDS);
-  });
-  if (recipe.insertOptionsMatrix) {
-    for (const [parentHandle, allowedChildren] of Object.entries(recipe.insertOptionsMatrix)) {
-      // The KEY is itself a page-template handle. Validate it too — a
-      // typo in the key would silently never apply at apply time.
-      checkRef(
-        recipe.handle,
-        `insertOptionsMatrix.${parentHandle}`,
-        parentHandle,
-        PAGE_TEMPLATE_KINDS
-      );
-      allowedChildren.forEach((childHandle, idx) => {
-        checkRef(
-          recipe.handle,
-          `insertOptionsMatrix.${parentHandle}.${idx}`,
-          childHandle,
-          PAGE_TEMPLATE_KINDS
-        );
-      });
-    }
-  }
-  if (recipe.templatesToDesigns) {
-    for (const [templateHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
-      checkRef(
-        recipe.handle,
-        `templatesToDesigns.${templateHandle} (key)`,
-        templateHandle,
-        PAGE_TEMPLATE_KINDS
-      );
-      checkRef(
-        recipe.handle,
-        `templatesToDesigns.${templateHandle}`,
-        designHandle,
-        PAGE_DESIGN_KINDS
-      );
-    }
-  }
-};
-
-/** Validate a SiteRecipe's references + collection-identity XOR shape. */
-const checkSiteRefs = (
-  recipe: Extract<Recipe, { kind: "site" }>,
-  checkRef: CheckRef,
-  fieldShapeErrors: FieldShapeError[]
-): void => {
-  checkRef(recipe.handle, "siteTemplate", recipe.siteTemplate, SITE_TEMPLATE_KINDS);
-  if (recipe.initialHome !== undefined) {
-    checkRef(recipe.handle, "initialHome", recipe.initialHome, PAGE_KINDS);
-  }
-  // Cross-field shape: SiteRecipe must specify exactly one of
-  // collectionId or collectionName. The Zod schema can't enforce it
-  // (discriminated union members can't carry refines), so it lives here.
-  if (recipe.collectionId && recipe.collectionName) {
-    fieldShapeErrors.push({
-      fromRecipe: recipe.handle,
-      fromField: "collectionId, collectionName",
-      message: "collectionId and collectionName are mutually exclusive — provide one, not both",
-    });
-  }
-  if (!recipe.collectionId && !recipe.collectionName) {
-    fieldShapeErrors.push({
-      fromRecipe: recipe.handle,
-      fromField: "collectionId, collectionName",
-      message: "either collectionId (existing) or collectionName (new) must be provided",
-    });
+/** The layout a recipe carries for placement-legality checks, if any. */
+const layoutPlaceholdersOf = (
+  recipe: Recipe
+): Record<string, ReadonlyArray<{ componentHandle: string }>> | undefined => {
+  switch (recipe.kind) {
+    case "partial-design":
+      return recipe.layout.placeholders;
+    case "page":
+    case "page-design":
+    case "page-template":
+      return recipe.layout?.placeholders;
+    default:
+      return undefined;
   }
 };
 
 /**
- * Dispatch one recipe to its kind-specific reference/shape checks.
- * Pure routing — all accumulation happens through the passed-in
- * `checkRef` / `checkLayoutPlacements` closures and the error arrays.
+ * Run all per-recipe checks: cross-recipe handle resolution (shared
+ * inventory), Zod-inexpressible shape constraints, and placement
+ * legality. Pure routing — accumulation happens through the passed-in
+ * closures and error arrays.
  */
-const checkRecipeReferences = (
+const checkRecipe = (
   recipe: Recipe,
   checkRef: CheckRef,
   checkLayoutPlacements: CheckLayout,
   fieldShapeErrors: FieldShapeError[]
 ): void => {
-  switch (recipe.kind) {
-    case "component-template":
-      checkComponentTemplateRefs(recipe, checkRef, fieldShapeErrors);
-      break;
-    case "design-parameters-template":
-      checkSourceTypeRefs(checkRef, recipe.handle, "params", recipe.params, TEMPLATE_KINDS);
-      break;
-    case "content-template":
-      checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields, TEMPLATE_KINDS);
-      recipe.insertOptions?.forEach((handle, idx) => {
-        checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
-      });
-      break;
-    case "content-item":
-      checkContentItemRefs(recipe, checkRef);
-      break;
-    case "partial-design":
-      checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
-      checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-      break;
-    case "page-design":
-      recipe.appliesTo.forEach((handle, idx) => {
-        checkRef(recipe.handle, `appliesTo.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-      });
-      recipe.partials.forEach((handle, idx) => {
-        checkRef(recipe.handle, `partials.${idx}`, handle, PARTIAL_DESIGN_KINDS);
-      });
-      if (recipe.layout) {
-        checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
-        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-      }
-      break;
-    case "page-template":
-      checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields ?? [], TEMPLATE_KINDS);
-      recipe.insertOptions?.forEach((handle, idx) => {
-        checkRef(recipe.handle, `insertOptions.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-      });
-      if (recipe.layout) {
-        checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
-        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-      }
-      break;
-    case "placeholder":
-      (recipe.allowedComponents ?? []).forEach((handle, idx) => {
-        checkRef(recipe.handle, `allowedComponents.${idx}`, handle, COMPONENT_TEMPLATE_KINDS);
-      });
-      break;
-    case "page":
-      checkPageRefs(recipe, checkRef, checkLayoutPlacements);
-      break;
-    case "site-template":
-      checkSiteTemplateRefs(recipe, checkRef);
-      break;
-    case "site":
-      checkSiteRefs(recipe, checkRef, fieldShapeErrors);
-      break;
-    case "dictionary":
-      checkRef(recipe.handle, "site", recipe.site, SITE_KINDS);
-      break;
-  }
+  checkRecipeHandleReferences(recipe, checkRef);
+  checkRecipeShapeErrors(recipe, fieldShapeErrors);
+  const placeholders = layoutPlaceholdersOf(recipe);
+  if (placeholders) checkLayoutPlacements(recipe.handle, placeholders);
 };
 
 /**
@@ -751,7 +494,7 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
   };
 
   for (const recipe of recipes) {
-    checkRecipeReferences(recipe, checkRef, checkLayoutPlacements, fieldShapeErrors);
+    checkRecipe(recipe, checkRef, checkLayoutPlacements, fieldShapeErrors);
   }
 
   checkSharedSiteUniqueness(recipes, fieldShapeErrors);

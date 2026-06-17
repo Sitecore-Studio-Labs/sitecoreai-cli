@@ -729,13 +729,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
       [fieldPropKey("body-ref", "Type"), "tenant-edited" as const],
     ]);
 
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       statuses,
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     // Title (disk-ahead) → disk's FieldDefinition (with source).
     expect(merged.fields[0]).toEqual(disk.fields[0]);
     // Body (tenant-edited) → tenant's FieldDefinition.
@@ -754,13 +754,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
     });
     const diskIr = stubTemplateIr("hero@1", { Title: "t", OnlyDisk: "d" });
     const tenantIr = stubTemplateIr("hero@1", { Title: "t" });
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
-      new Map(),
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
+      statuses: new Map(),
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     expect(merged.fields.map((f) => f.name)).toEqual(["Title", "OnlyDisk"]);
     expect(merged.fields[1].shape).toBe("richText");
   });
@@ -777,13 +777,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
     });
     const diskIr = stubTemplateIr("hero@1", { Title: "t" });
     const tenantIr = stubTemplateIr("hero@1", { Title: "t", OnlyTenant: "ot" });
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
-      new Map(),
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
+      statuses: new Map(),
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     expect(merged.fields.map((f) => f.name)).toEqual(["Title", "OnlyTenant"]);
     expect(merged.fields[1].shape).toBe("image");
   });
@@ -812,13 +812,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
       [fieldPropKey("title-ref", "Source"), "disk-ahead" as const],
       [fieldPropKey("title-ref", "__Sortorder"), "tenant-edited" as const],
     ]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       statuses,
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     // Field-level rollup is conflict (mixed disk-ahead + tenant-edited
     // within one field's property set) → tenant wins.
     expect(merged.fields[0]).toEqual(tenant.fields[0]);
@@ -840,13 +840,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
     const diskIr = stubTemplateIr("hero@1", {}, { Size: "size-ref" });
     const tenantIr = stubTemplateIr("hero@1", {}, { Size: "size-ref" });
     const statuses = new Map([[fieldPropKey("size-ref", "Source"), "disk-ahead" as const]]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       statuses,
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     // Disk-ahead → disk's Size param preserved.
     expect(merged.params?.[0].sitecore?.source).toBe("disk-list");
   });
@@ -862,13 +862,13 @@ describe("mergeTemplateRecipe — ComponentTemplate per-field merge", () => {
       displayName: "Tenant Hero",
       variants: [],
     });
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
-      new Map(),
-      stubTemplateIr("hero@1", {}),
-      stubTemplateIr("hero@1", {})
-    ) as ComponentTemplateRecipe;
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
+      statuses: new Map(),
+      diskIr: stubTemplateIr("hero@1", {}),
+      tenantIr: stubTemplateIr("hero@1", {}),
+    }) as ComponentTemplateRecipe;
     expect(merged.displayName).toBe("Tenant Hero");
   });
 });
@@ -884,13 +884,13 @@ describe("mergeTemplateRecipe — ContentTemplate works the same as ComponentTem
     const diskIr = stubTemplateIr("article@1", { Body: "body-ref" });
     const tenantIr = stubTemplateIr("article@1", { Body: "body-ref" });
     const statuses = new Map([[fieldPropKey("body-ref", "Type"), "disk-ahead" as const]]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       statuses,
       diskIr,
-      tenantIr
-    ) as ContentTemplateRecipe;
+      tenantIr,
+    }) as ContentTemplateRecipe;
     expect(merged.fields[0].shape).toBe("richText");
   });
 });
@@ -1047,14 +1047,14 @@ describe("winnerOverrides — per-field overrides beat default policy", () => {
     // Classification says disk-ahead (would pick disk). Override flips to tenant.
     const statuses = new Map([[fieldPropKey("title-ref", "Source"), "disk-ahead" as const]]);
     const overrides = new Map<string, "disk" | "tenant">([["title-ref", "tenant"]]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       statuses,
       diskIr,
       tenantIr,
-      overrides
-    ) as ComponentTemplateRecipe;
+      winnerOverrides: overrides,
+    }) as ComponentTemplateRecipe;
     expect(merged.fields[0].sitecore?.source).toBe("tenant-src");
   });
 });
@@ -1101,14 +1101,14 @@ describe("audit B2 — tenant-side deletions accepted via merge-plan override", 
     const tenantIr = stubTemplateIr("hero@1", { Title: "t" });
     // Override: operator picked tenant for Body (= accept deletion).
     const overrides = new Map<string, "disk" | "tenant">([["b", "tenant"]]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
-      new Map(),
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
+      statuses: new Map(),
       diskIr,
       tenantIr,
-      overrides
-    ) as ComponentTemplateRecipe;
+      winnerOverrides: overrides,
+    }) as ComponentTemplateRecipe;
     expect(merged.fields.map((f) => f.name)).toEqual(["Title"]);
   });
 
@@ -1122,13 +1122,13 @@ describe("audit B2 — tenant-side deletions accepted via merge-plan override", 
     const tenant = componentTemplate({ fields: [{ name: "Title", shape: "text" }] });
     const diskIr = stubTemplateIr("hero@1", { Title: "t", OnlyDisk: "od" });
     const tenantIr = stubTemplateIr("hero@1", { Title: "t" });
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
-      new Map(),
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
+      statuses: new Map(),
       diskIr,
-      tenantIr
-    ) as ComponentTemplateRecipe;
+      tenantIr,
+    }) as ComponentTemplateRecipe;
     expect(merged.fields.map((f) => f.name)).toEqual(["Title", "OnlyDisk"]);
   });
 });
@@ -1177,15 +1177,15 @@ describe("audit B1 — template merge-plan rollup produces field-level rawKeys",
     const tenantIr = stubTemplateIr("hero@1", { Title: "title-ref" });
     // Plan-style override using BARE refKey (what composeMergePlan now emits).
     const overrides = new Map<string, "disk" | "tenant">([["title-ref", "tenant"]]);
-    const merged = mergeTemplateRecipe(
-      disk,
-      tenant,
+    const merged = mergeTemplateRecipe({
+      diskRecipe: disk,
+      tenantRecipe: tenant,
       // statuses say disk-ahead — would default to disk without override
-      new Map([[fieldPropKey("title-ref", "Source"), "disk-ahead" as const]]),
+      statuses: new Map([[fieldPropKey("title-ref", "Source"), "disk-ahead" as const]]),
       diskIr,
       tenantIr,
-      overrides
-    ) as ComponentTemplateRecipe;
+      winnerOverrides: overrides,
+    }) as ComponentTemplateRecipe;
     // Override forces tenant.
     expect(merged.fields[0].sitecore?.source).toBe("tenant-source");
   });

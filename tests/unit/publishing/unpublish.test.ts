@@ -5,7 +5,7 @@ import path from "node:path";
 import type { EnvironmentConfiguration, RootConfiguration } from "../../../src/config/types";
 
 vi.mock("../../../src/policy/environment", () => ({ resolveEnvironment: vi.fn() }));
-vi.mock("../../../src/recipe/api/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
+vi.mock("../../../src/authoring/graphql", () => ({ runAuthoringGraphQL: vi.fn() }));
 vi.mock("../../../src/publishing/api/auth", () => ({
   acquirePublishingToken: vi.fn().mockResolvedValue("test-token"),
 }));
@@ -22,7 +22,7 @@ vi.mock("../../../src/publishing/api/languages", () => ({
 
 import { runPublishUnpublish } from "../../../src/publishing/tasks/unpublish";
 import { resolveEnvironment } from "../../../src/policy/environment";
-import { runAuthoringGraphQL } from "../../../src/recipe/api/graphql";
+import { runAuthoringGraphQL } from "../../../src/authoring/graphql";
 import { submitPublishJob } from "../../../src/publishing/api/client";
 
 const mockRun = runAuthoringGraphQL as unknown as ReturnType<typeof vi.fn>;

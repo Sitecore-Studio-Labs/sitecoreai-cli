@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
 import { compileRecipe } from "../compile";
@@ -10,6 +11,41 @@ import {
   toLogger,
   type RecipeCompileOptions,
 } from "./shared";
+
+/**
+ * Resolve every optional compile root from CLI flag → active env
+ * profile. `templatesRoot` / `renderingsRoot` are resolved separately
+ * (they carry a required-ness signal); everything here is a pure
+ * flag-or-profile fallback, so this stays a flat property map.
+ */
+const resolveOptionalRoots = (
+  options: RecipeCompileOptions,
+  environment: EnvironmentConfiguration | undefined
+) => ({
+  // Per-site folder layout roots — optional. When unset the
+  // compiler falls back to `templatesRoot` for both, which means
+  // section-aware components nest under templatesRoot (mid-migration
+  // fallback) and content templates land mixed in with components.
+  componentsRoot: options.componentsRoot ?? environment?.componentsRoot,
+  contentModelsRoot: options.contentModelsRoot ?? environment?.contentModelsRoot,
+  // Composition roots — optional. The per-recipe compile fns
+  // throw with their own clear messages when a partial-design /
+  // page-design / content-item recipe is in play but the corresponding
+  // root is missing.
+  partialDesignsRoot: options.partialDesignsRoot ?? environment?.partialDesignsRoot,
+  pageDesignsRoot: options.pageDesignsRoot ?? environment?.pageDesignsRoot,
+  contentItemsRoot: options.contentItemsRoot ?? environment?.contentItemsRoot,
+  headlessVariantsRoot: options.headlessVariantsRoot ?? environment?.headlessVariantsRoot,
+  availableRenderingsRoot: options.availableRenderingsRoot ?? environment?.availableRenderingsRoot,
+  enumerationsRoot: options.enumerationsRoot ?? environment?.enumerationsRoot,
+  // Page-level roots. `pageTemplatesRoot` falls back to `templatesRoot`
+  // inside the compiler; `placeholderSettingsRoot` has no fallback —
+  // `buildPlaceholderSettingsAggregate` errors when a set declares
+  // placeholders but the root is unset.
+  pageTemplatesRoot: environment?.pageTemplatesRoot,
+  placeholderSettingsRoot: environment?.placeholderSettingsRoot,
+  pagesRoot: environment?.pagesRoot,
+});
 
 /**
  * `scai provision recipe compile` — pure-logic: recipe (.ts or .json) → Operation IR JSON.
@@ -52,30 +88,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     envName ?? "(no environment)",
     recipeSetNeedsRoots(loaded.map((entry) => entry.recipe))
   );
-  // Per-site folder layout roots — optional. When unset the
-  // compiler falls back to `templatesRoot` for both, which means
-  // section-aware components nest under templatesRoot (mid-migration
-  // fallback) and content templates land mixed in with components.
-  const componentsRoot = options.componentsRoot ?? environment?.componentsRoot;
-  const contentModelsRoot = options.contentModelsRoot ?? environment?.contentModelsRoot;
-  // Composition roots — optional. The per-recipe compile fns
-  // throw with their own clear messages when a partial-design /
-  // page-design / content-item recipe is in play but the corresponding
-  // root is missing.
-  const partialDesignsRoot = options.partialDesignsRoot ?? environment?.partialDesignsRoot;
-  const pageDesignsRoot = options.pageDesignsRoot ?? environment?.pageDesignsRoot;
-  const contentItemsRoot = options.contentItemsRoot ?? environment?.contentItemsRoot;
-  const headlessVariantsRoot = options.headlessVariantsRoot ?? environment?.headlessVariantsRoot;
-  const availableRenderingsRoot =
-    options.availableRenderingsRoot ?? environment?.availableRenderingsRoot;
-  const enumerationsRoot = options.enumerationsRoot ?? environment?.enumerationsRoot;
-  // Page-level roots. `pageTemplatesRoot` falls back to `templatesRoot`
-  // inside the compiler; `placeholderSettingsRoot` has no fallback —
-  // `buildPlaceholderSettingsAggregate` errors when a set declares
-  // placeholders but the root is unset.
-  const pageTemplatesRoot = environment?.pageTemplatesRoot;
-  const placeholderSettingsRoot = environment?.placeholderSettingsRoot;
-  const pagesRoot = environment?.pagesRoot;
+  const optionalRoots = resolveOptionalRoots(options, environment);
 
   const results: Array<{
     recipeHandle: string;
@@ -88,17 +101,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     const ir = compileRecipe(recipe, {
       templatesRoot,
       renderingsRoot,
-      componentsRoot,
-      contentModelsRoot,
-      partialDesignsRoot,
-      pageDesignsRoot,
-      contentItemsRoot,
-      headlessVariantsRoot,
-      availableRenderingsRoot,
-      enumerationsRoot,
-      pageTemplatesRoot,
-      placeholderSettingsRoot,
-      pagesRoot,
+      ...optionalRoots,
       marketplacePluginOverrides: root.marketplacePluginOverrides,
     });
 

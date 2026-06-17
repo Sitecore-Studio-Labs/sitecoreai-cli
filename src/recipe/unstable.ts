@@ -6,7 +6,8 @@
  * and usable, but they are NOT part of the 0.1.0 stability promise. Their
  * schemas, types, and compilers may change shape between minor releases
  * without a major bump. They graduate to the stable `./recipe` entry in a
- * follow-up release (see `.changeset/recipes-graduation.md`).
+ * future release once their shapes settle; that graduation will ship its
+ * own changeset and a deprecation window on this entry.
  *
  * The five stable recipe kinds — `ComponentTemplate`, `ContentTemplate`,
  * `ComponentSection`, `DesignParametersTemplate`, `Enumeration` — and all

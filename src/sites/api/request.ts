@@ -1,6 +1,6 @@
 import { createScaiError } from "@/shared/errors";
 import { redactSecrets } from "@/shared/redact";
-import { extractErrorMessage, parseJsonIfPossible } from "@/deploy/api/common/request";
+import { extractErrorMessage, runSitecoreRest } from "@/shared/rest";
 import {
   DEFAULT_SITES_API_BASE,
   type SitesApiClientOptions,
@@ -11,11 +11,13 @@ import {
 /**
  * Sites API transport — `sitesRequest()`.
  *
- * Mirrors `deployRequest()` from `src/deploy/api/common/request.ts` in
+ * A thin wrapper over the shared REST transport (`@/shared/rest`),
+ * mirroring `deployRequest()` from `src/deploy/api/common/request.ts` in
  * shape: bearer auth, JSON request/response, error mapping that surfaces
  * Sitecore's structured error bodies. Differences from Deploy:
  *
  *  - Different base URL (`xmapps-api.sitecorecloud.io`)
+ *  - No retry — single attempt, fail fast (Deploy retries GETs)
  *  - Type generics — the path + method + body + response shapes come
  *    from the OpenAPI codegen output (`schema.d.ts`). Helpers in
  *    `sites.ts` / `collections.ts` / `languages.ts` pick the right
@@ -88,40 +90,23 @@ export const sitesRequest = async <TResponse>(
   // Default 60s timeout. Override via SITECOREAI_REQUEST_TIMEOUT_MS (0 disables).
   // Defends against slowloris / black-hole upstreams.
   const timeoutMs = Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
-  const controller = timeoutMs > 0 ? new AbortController() : undefined;
-  const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
 
-  let response: Response;
-  try {
-    response = await fetch(url, { method, headers, body, signal: controller?.signal });
-  } catch (error) {
-    throw createScaiError(
-      redactSecrets(
-        `Sites API request failed: ${error instanceof Error ? error.message : String(error)}`
-      ),
-      "NETWORK",
-      { hint: "Check network connectivity or try again later." }
-    );
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
-
-  if (!response.ok) {
-    const responseBody = await parseJsonIfPossible(response);
-    const message = extractErrorMessage(responseBody);
-    const sanitized = message ? redactSecrets(message) : undefined;
-    throw createScaiError(
-      sanitized ?? `Sites API request failed (${response.status})`,
-      "SITES_API_FAILED"
-    );
-  }
-
-  // 204 No Content responses (e.g. DELETE) have no body — return
-  // `undefined as TResponse` and let helpers type their return as `void`
-  // or the appropriate result.
-  if (response.status === 204) {
-    return undefined as TResponse;
-  }
-
-  return (await parseJsonIfPossible(response)) as TResponse;
+  return runSitecoreRest<TResponse>({
+    url,
+    method,
+    headers,
+    body,
+    timeoutMs,
+    label: "Sites API",
+    // 204 No Content responses (e.g. DELETE) have no body — resolve to
+    // `undefined as TResponse` and let helpers type their return as `void`.
+    mapHttpError: (response, parsedBody) => {
+      const message = extractErrorMessage(parsedBody);
+      const sanitized = message ? redactSecrets(message) : undefined;
+      return createScaiError(
+        sanitized ?? `Sites API request failed (${response.status})`,
+        "SITES_API_FAILED"
+      );
+    },
+  });
 };

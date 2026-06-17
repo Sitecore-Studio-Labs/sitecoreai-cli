@@ -143,98 +143,111 @@ const baseTaskOptions = (
   ...overrides,
 });
 
+/**
+ * Per-verb input validators. Each entry checks the fields its runner
+ * would otherwise reject later (with a less actionable error). Verbs
+ * absent from the table have safe defaults and need no pre-flight check.
+ * Split out as a table — instead of one giant switch — so the dispatch
+ * handler stays a flat lookup and each verb's contract reads in isolation.
+ */
+type VerbValidator = (input: Record<string, unknown>) => void;
+
+const requireVersionsScope =
+  (verb: string): VerbValidator =>
+  (input) => {
+    if (input.keep === undefined) {
+      throw createScaiError(`verb='${verb}' requires \`keep\`.`, "INPUT_INVALID");
+    }
+    if (!input.root) {
+      throw createScaiError(`verb='${verb}' requires \`root\`.`, "INPUT_INVALID");
+    }
+  };
+
+const requirePatternReplacement =
+  (verb: string): VerbValidator =>
+  (input) => {
+    if (!input.pattern || input.replacement === undefined) {
+      throw createScaiError(
+        `verb='${verb}' requires \`pattern\` and \`replacement\`.`,
+        "INPUT_INVALID"
+      );
+    }
+  };
+
+const validateFieldSet: VerbValidator = (input) => {
+  if (!input.field) {
+    throw createScaiError("verb='field-set' requires `field`.", "INPUT_INVALID");
+  }
+  if (input.mode !== "clear" && (input.value === undefined || input.value === null)) {
+    throw createScaiError(
+      `verb='field-set' requires \`value\` (mode='${(input.mode as string) ?? "replace"}').`,
+      "INPUT_INVALID"
+    );
+  }
+};
+
+const validateMoveItem: VerbValidator = (input) => {
+  if (!input.itemId && !input.path) {
+    throw createScaiError(
+      "verb='move-item' requires a source (`itemId` or `path`).",
+      "INPUT_INVALID"
+    );
+  }
+  if (!input.toItemId && !input.toPath) {
+    throw createScaiError(
+      "verb='move-item' requires a target parent (`toItemId` or `toPath`).",
+      "INPUT_INVALID"
+    );
+  }
+};
+
+const VERB_VALIDATORS: Record<string, VerbValidator> = {
+  "versions-prune": requireVersionsScope("versions-prune"),
+  "versions-archive": requireVersionsScope("versions-archive"),
+  "empty-folders": (input) => {
+    if (!input.root) {
+      throw createScaiError("verb='empty-folders' requires `root`.", "INPUT_INVALID");
+    }
+  },
+  "find-replace": requirePatternReplacement("find-replace"),
+  rename: requirePatternReplacement("rename"),
+  "workflow-advance": (input) => {
+    if (!input.commandName) {
+      throw createScaiError("verb='workflow-advance' requires `commandName`.", "INPUT_INVALID");
+    }
+  },
+  "workflow-apply": (input) => {
+    if (!input.workflow) {
+      throw createScaiError("verb='workflow-apply' requires `workflow`.", "INPUT_INVALID");
+    }
+  },
+  "field-set": validateFieldSet,
+  "language-versions-add": (input) => {
+    if (!input.languages) {
+      throw createScaiError("verb='language-versions-add' requires `languages`.", "INPUT_INVALID");
+    }
+  },
+  "delete-item": (input) => {
+    if (!input.path) {
+      throw createScaiError("verb='delete-item' requires `path`.", "INPUT_INVALID", {
+        hint: "Pass the content-tree path of the item to delete.",
+      });
+    }
+  },
+  "multilist-remove-ref": (input) => {
+    if (!input.itemId || !input.fieldName || !input.refToRemove) {
+      throw createScaiError(
+        "verb='multilist-remove-ref' requires `itemId`, `fieldName`, and `refToRemove`.",
+        "INPUT_INVALID"
+      );
+    }
+  },
+  "move-item": validateMoveItem,
+};
+
 /** Validate verb-specific required inputs that the runner would otherwise reject later. */
 const validateVerbInputs = (verb: string, input: Record<string, unknown>): void => {
-  switch (verb) {
-    case "versions-prune":
-    case "versions-archive":
-      if (input.keep === undefined) {
-        throw createScaiError(`verb='${verb}' requires \`keep\`.`, "INPUT_INVALID");
-      }
-      if (!input.root) {
-        throw createScaiError(`verb='${verb}' requires \`root\`.`, "INPUT_INVALID");
-      }
-      break;
-    case "empty-folders":
-      if (!input.root) {
-        throw createScaiError("verb='empty-folders' requires `root`.", "INPUT_INVALID");
-      }
-      break;
-    case "find-replace":
-      if (!input.pattern || input.replacement === undefined) {
-        throw createScaiError(
-          "verb='find-replace' requires `pattern` and `replacement`.",
-          "INPUT_INVALID"
-        );
-      }
-      break;
-    case "workflow-advance":
-      if (!input.commandName) {
-        throw createScaiError("verb='workflow-advance' requires `commandName`.", "INPUT_INVALID");
-      }
-      break;
-    case "workflow-apply":
-      if (!input.workflow) {
-        throw createScaiError("verb='workflow-apply' requires `workflow`.", "INPUT_INVALID");
-      }
-      break;
-    case "field-set":
-      if (!input.field) {
-        throw createScaiError("verb='field-set' requires `field`.", "INPUT_INVALID");
-      }
-      if (input.mode !== "clear" && (input.value === undefined || input.value === null)) {
-        throw createScaiError(
-          `verb='field-set' requires \`value\` (mode='${(input.mode as string) ?? "replace"}').`,
-          "INPUT_INVALID"
-        );
-      }
-      break;
-    case "rename":
-      if (!input.pattern || input.replacement === undefined) {
-        throw createScaiError(
-          "verb='rename' requires `pattern` and `replacement`.",
-          "INPUT_INVALID"
-        );
-      }
-      break;
-    case "language-versions-add":
-      if (!input.languages) {
-        throw createScaiError(
-          "verb='language-versions-add' requires `languages`.",
-          "INPUT_INVALID"
-        );
-      }
-      break;
-    case "delete-item":
-      if (!input.path) {
-        throw createScaiError("verb='delete-item' requires `path`.", "INPUT_INVALID", {
-          hint: "Pass the content-tree path of the item to delete.",
-        });
-      }
-      break;
-    case "multilist-remove-ref":
-      if (!input.itemId || !input.fieldName || !input.refToRemove) {
-        throw createScaiError(
-          "verb='multilist-remove-ref' requires `itemId`, `fieldName`, and `refToRemove`.",
-          "INPUT_INVALID"
-        );
-      }
-      break;
-    case "move-item":
-      if (!input.itemId && !input.path) {
-        throw createScaiError(
-          "verb='move-item' requires a source (`itemId` or `path`).",
-          "INPUT_INVALID"
-        );
-      }
-      if (!input.toItemId && !input.toPath) {
-        throw createScaiError(
-          "verb='move-item' requires a target parent (`toItemId` or `toPath`).",
-          "INPUT_INVALID"
-        );
-      }
-      break;
-  }
+  VERB_VALIDATORS[verb]?.(input);
 };
 
 const summarizeActions = (verb: string, actions: readonly unknown[]): string => {

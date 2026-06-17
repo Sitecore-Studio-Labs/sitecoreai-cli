@@ -119,10 +119,15 @@ export const registerSerializationTools = (registry: McpRegistry): void => {
     description: TOOL_DESCRIPTIONS.serialization_sync,
     // Verb-discriminated gating: `pull` is read-only-to-tenant (writes
     // only to the local workspace) and `diff` without `pushOnDiff` is
-    // read-only-to-tenant too. The handler enforces `allowWrite` + the
-    // MCP-elevation gate only on the writing verbs (`push`, and `diff`
-    // with `pushOnDiff`). See ToolAuth doc in registry.ts.
+    // read-only-to-tenant too. `writeVerbs: ["push"]` lets dispatch
+    // enforce allowWrite + retargeted-env elevation centrally for the
+    // unconditional write verb (`direction: "push"`). The conditional
+    // `diff` + `pushOnDiff` write can't be a flat verb, so the handler
+    // still enforces allowWrite + bound-env elevation for both writing
+    // cases below. See ToolAuth doc in registry.ts.
     auth: "verb-discriminated",
+    writeVerbs: ["push"],
+    verbField: "direction",
     annotations: {
       title: "Pull / push / diff serialized items",
       readOnlyHint: false,

@@ -196,7 +196,14 @@ export const runPackageInstall = async (options: PackageInstallOptions): Promise
     enrichCreateCommands(commands, sourceDataMap);
     enrichUpdateCommands(commands, sourceDataMap, destDataMap, true);
 
-    await applySitecoreCommands(root, envName, database, commands, logger, options.whatIf);
+    await applySitecoreCommands({
+      root,
+      environmentName: envName,
+      database,
+      commands,
+      logger,
+      whatIf: options.whatIf,
+    });
   }
 
   if (logger.isJson()) {

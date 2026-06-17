@@ -287,14 +287,23 @@ const awaitSitesJob = async (
  * idempotent behavior. Real-tenant snapshots replace the synthetic on
  * the NEXT push (when the prefetch overrides it via `getItemsByPaths`).
  */
-const synthesizeCreateSnapshot = (
-  itemId: string,
-  parentItemId: string,
-  templateId: string,
-  name: string,
-  path: string,
-  fields: readonly FieldValue[]
-): RemoteItem => {
+interface SynthesizeCreateSnapshotInput {
+  itemId: string;
+  parentItemId: string;
+  templateId: string;
+  name: string;
+  path: string;
+  fields: readonly FieldValue[];
+}
+
+const synthesizeCreateSnapshot = ({
+  itemId,
+  parentItemId,
+  templateId,
+  name,
+  path,
+  fields,
+}: SynthesizeCreateSnapshotInput): RemoteItem => {
   const remoteFields: RemoteFieldValue[] = fields.map((f) => ({
     fieldId: f.fieldId,
     ...(f.fieldName !== undefined && { name: f.fieldName }),
@@ -338,14 +347,14 @@ const dispatchMutation = async ({
       // Sitecore's path-index propagation lag.
       pathSnapshotCache?.set(
         action.operation.path,
-        synthesizeCreateSnapshot(
-          result.itemId,
-          action.mutation.input.parent,
-          action.mutation.input.templateId,
-          action.mutation.input.name,
-          action.operation.path,
-          action.mutation.input.fields
-        )
+        synthesizeCreateSnapshot({
+          itemId: result.itemId,
+          parentItemId: action.mutation.input.parent,
+          templateId: action.mutation.input.templateId,
+          name: action.mutation.input.name,
+          path: action.operation.path,
+          fields: action.mutation.input.fields,
+        })
       );
     }
     return;
@@ -502,14 +511,23 @@ const resolveSiteContentPath = async (
   );
 };
 
-const buildResult = (
-  ir: OperationIr,
-  actions: PlannedAction[],
-  summary: PlanSummary,
-  aborted: boolean,
-  capturedItemIds: ReadonlyMap<string, string>,
-  rollbackResult?: RollbackResult
-): ExecutionResult => ({
+interface BuildResultInput {
+  ir: OperationIr;
+  actions: PlannedAction[];
+  summary: PlanSummary;
+  aborted: boolean;
+  capturedItemIds: ReadonlyMap<string, string>;
+  rollbackResult?: RollbackResult;
+}
+
+const buildResult = ({
+  ir,
+  actions,
+  summary,
+  aborted,
+  capturedItemIds,
+  rollbackResult,
+}: BuildResultInput): ExecutionResult => ({
   plan: { schemaVersion: "1", recipeHandle: ir.recipeHandle, actions, summary },
   summary,
   aborted,
@@ -517,14 +535,23 @@ const buildResult = (
   capturedItemIds,
 });
 
-const runRollback = async (
-  applied: PlannedAction[],
-  client: AuthoringApiClient,
-  capturedItemIds: ReadonlyMap<string, string>,
-  options: ExecuteOptions,
-  recipeHandle: string,
-  summary: { trigger: RollbackSummaryLog["trigger"]; forwardError: string }
-): Promise<RollbackResult> => {
+interface RunRollbackInput {
+  applied: PlannedAction[];
+  client: AuthoringApiClient;
+  capturedItemIds: ReadonlyMap<string, string>;
+  options: ExecuteOptions;
+  recipeHandle: string;
+  summary: { trigger: RollbackSummaryLog["trigger"]; forwardError: string };
+}
+
+const runRollback = async ({
+  applied,
+  client,
+  capturedItemIds,
+  options,
+  recipeHandle,
+  summary,
+}: RunRollbackInput): Promise<RollbackResult> => {
   const result = await rollback(applied, client, capturedItemIds, {
     emit: options.emit,
     log: options.rollbackLog ? { logger: options.rollbackLog, recipe: recipeHandle } : undefined,
@@ -687,16 +714,16 @@ export const executeIr = async (
   for (let index = 0; index < ir.operations.length; index += 1) {
     if (options.signal?.aborted) {
       const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
-      const rollbackResult = await runRollback(
+      const rollbackResult = await runRollback({
         applied,
         client,
         capturedItemIds,
         options,
-        ir.recipeHandle,
-        { trigger: "cancelled", forwardError: cancelMessage }
-      );
+        recipeHandle: ir.recipeHandle,
+        summary: { trigger: "cancelled", forwardError: cancelMessage },
+      });
       emitFailed(options, index, applied, rollbackResult, cancelMessage);
-      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
+      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
     }
     const op = ir.operations[index];
     options.emit?.({ kind: "op-start", index, operation: op });
@@ -720,16 +747,16 @@ export const executeIr = async (
       options.emit?.({ kind: "op-error", index, operation: op, error: message });
       summary.error += 1;
       actions.push(action);
-      const rollbackResult = await runRollback(
+      const rollbackResult = await runRollback({
         applied,
         client,
         capturedItemIds,
         options,
-        ir.recipeHandle,
-        { trigger: "plan-error", forwardError: message }
-      );
+        recipeHandle: ir.recipeHandle,
+        summary: { trigger: "plan-error", forwardError: message },
+      });
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
+      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
     }
 
     summary[action.status] += 1;
@@ -762,18 +789,18 @@ export const executeIr = async (
       action.status = "error";
       action.reason = message;
       options.emit?.({ kind: "apply-error", action, error: message });
-      const rollbackResult = await runRollback(
+      const rollbackResult = await runRollback({
         applied,
         client,
         capturedItemIds,
         options,
-        ir.recipeHandle,
-        { trigger: "apply-error", forwardError: message }
-      );
+        recipeHandle: ir.recipeHandle,
+        summary: { trigger: "apply-error", forwardError: message },
+      });
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult(ir, actions, summary, true, capturedItemIds, rollbackResult);
+      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
     }
   }
 
-  return buildResult(ir, actions, summary, false, capturedItemIds);
+  return buildResult({ ir, actions, summary, aborted: false, capturedItemIds });
 };

@@ -508,14 +508,15 @@ const selfHealUnreachableKit = async (
  * kit's section names. No-op unless every field-stage applied change is
  * absent and at least one change skipped.
  */
-const logFieldSkipDiagnostic = (
-  applied: RecipeChange[],
-  skipped: RecipeChange[],
-  writes: RecipeChange[],
-  index: Map<string, FieldTarget>,
-  ref: KindRef,
-  ctx: SyncContext
-): void => {
+const logFieldSkipDiagnostic = (args: {
+  applied: RecipeChange[];
+  skipped: RecipeChange[];
+  writes: RecipeChange[];
+  index: Map<string, FieldTarget>;
+  ref: KindRef;
+  ctx: SyncContext;
+}): void => {
+  const { applied, skipped, writes, index, ref, ctx } = args;
   if (applied.filter((c) => c.meta?.stage === "field").length !== 0 || skipped.length === 0) return;
   const liveSectionNames = Array.from(
     new Set(Array.from(index.keys()).map((k) => k.split("\x00")[0]))
@@ -762,7 +763,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // mismatches so the operator can reconcile the recipe with the
     // live kit's section names. Without this hint, the operator
     // stares at "Applied 0; N skipped" and has no idea why.
-    logFieldSkipDiagnostic(applied, skipped, writes, index, ref, ctx);
+    logFieldSkipDiagnostic({ applied, skipped, writes, index, ref, ctx });
   }
   for (const change of fieldChanges) {
     if (change.kind === "noop") skipped.push(change);

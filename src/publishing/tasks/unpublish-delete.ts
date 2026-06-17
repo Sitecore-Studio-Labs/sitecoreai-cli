@@ -42,7 +42,7 @@ const lookupItemPath = async (
   // readVersionFields throws if the item has no version in the requested
   // language — that's a problem for delete (we want to delete regardless
   // of language). Use a minimal GraphQL probe instead.
-  const { runAuthoringGraphQL } = await import("@/recipe/api/graphql");
+  const { runAuthoringGraphQL } = await import("@/authoring");
   type Resp = { item: { itemId: string; path: string } | null };
   const data = await runAuthoringGraphQL<Resp>(
     environment,

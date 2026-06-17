@@ -45,6 +45,185 @@ const CLOUD_PORTAL_HINT =
   "Create the credential in Cloud Portal → Stream → Admin → AI APIs keys → Create credential.";
 
 /**
+ * Confirm overwrite of an existing Brand credential. Throws in
+ * non-interactive mode (force is required); returns `false` when the
+ * operator declines interactively, `true` to proceed.
+ */
+const confirmOverwriteExistingCredential = async (
+  orgId: string,
+  isInteractive: boolean
+): Promise<boolean> => {
+  if (!isInteractive) {
+    throw createScaiError(
+      `A Brand credential is already configured for org '${orgId}'.`,
+      "INPUT_INVALID",
+      {
+        hint: "Re-run with --force to overwrite the existing credential.",
+      }
+    );
+  }
+  return promptConfirm(
+    `A Brand credential is already configured for org '${orgId}'. Overwrite?`,
+    false
+  );
+};
+
+/**
+ * Resolve the client id + secret from flags, falling back to interactive
+ * prompts. Throws `inputError` when a value is missing and we can't
+ * prompt for it.
+ */
+const acquireClientCredentials = async (
+  options: BrandLoginOptions,
+  isInteractive: boolean,
+  logger: ReturnType<typeof toLogger>
+): Promise<{ clientId: string; clientSecret: string }> => {
+  let clientId = options.clientId;
+  if (!clientId) {
+    if (!isInteractive) {
+      throw inputError(
+        "Client ID is required.",
+        `Pass --client-id <id> (and --client-secret <secret>). ${CLOUD_PORTAL_HINT}`
+      );
+    }
+    logger.info(CLOUD_PORTAL_HINT);
+    clientId = await promptText("Client ID");
+    if (!clientId) {
+      throw inputError("Client ID is required.");
+    }
+  }
+
+  let clientSecret = options.clientSecret;
+  if (!clientSecret) {
+    if (!isInteractive) {
+      throw inputError(
+        "Client secret is required.",
+        "Pass --client-secret <secret>, or run interactively."
+      );
+    }
+    clientSecret = await promptSecret("Client Secret: ");
+  }
+
+  return { clientId, clientSecret };
+};
+
+/**
+ * Validate that the granted scopes are recognizable Brand scopes —
+ * refuse (throw) when the credential is the wrong client class.
+ * Returns the scope breakdown the success path reports back.
+ */
+const validateGrantedScopes = (
+  grantedScopes: string[],
+  orgId: string
+): { hasReviewScope: boolean; knownMissing: string[] } => {
+  const hasReviewScope = grantedScopes.includes("ai.org.br:gen");
+  const knownGranted = grantedScopes.filter((s) =>
+    (KNOWN_BRAND_SCOPES as readonly string[]).includes(s)
+  );
+  const knownMissing = (KNOWN_BRAND_SCOPES as readonly string[]).filter(
+    (s) => !grantedScopes.includes(s)
+  );
+  const looksLikePagesSitesClient =
+    grantedScopes.some((s) => s.startsWith("xmclouddeploy.") || s.startsWith("xmcpub.")) &&
+    !grantedScopes.some((s) => s.startsWith("ai.org."));
+  if (looksLikePagesSitesClient) {
+    // The credential is the wrong client class entirely — refuse to
+    // persist. A typed Pages/Sites automation client never carries
+    // any `ai.org*` scope, so it will fail every Brand call.
+    throw createScaiError(
+      `Credential for org '${orgId}' looks like the Pages/Sites automation client, not an AI APIs key.`,
+      "AUTH_BRAND_REQUIRED",
+      {
+        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. ${CLOUD_PORTAL_HINT}`,
+      }
+    );
+  }
+  if (knownGranted.length === 0) {
+    // No recognizable Brand scope at all — probably the wrong
+    // client class even though it doesn't match the Pages/Sites
+    // shape. Refuse to persist to avoid storing a credential that's
+    // guaranteed to fail every operation.
+    throw createScaiError(
+      `Credential minted for org '${orgId}' but carries no recognized Brand scopes.`,
+      "AUTH_BRAND_REQUIRED",
+      {
+        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. Expected at least one of: ${KNOWN_BRAND_SCOPES.join(", ")}. ${CLOUD_PORTAL_HINT}`,
+      }
+    );
+  }
+  return { hasReviewScope, knownMissing };
+};
+
+interface PersistBrandCredentialArgs {
+  orgId: string;
+  configPath: string;
+  rootConfigFile: ReturnType<typeof readRootConfigurationFile>;
+  clientId: string;
+  clientSecret: string;
+  authority: string;
+  audience: string;
+  accessToken: string;
+  expiresIn?: number | null;
+  logger: ReturnType<typeof toLogger>;
+}
+
+/**
+ * Persist the validated credential: keychain first (secret + token),
+ * then config. Keychain-first because a config record pointing at a
+ * secret-less keychain entry is worse than no record. Verifies the
+ * secret reads back, warning (not throwing) if it silently dropped.
+ */
+const persistBrandCredential = async (args: PersistBrandCredentialArgs): Promise<void> => {
+  const {
+    orgId,
+    configPath,
+    rootConfigFile,
+    clientId,
+    clientSecret,
+    authority,
+    audience,
+    accessToken,
+    expiresIn,
+    logger,
+  } = args;
+
+  const secretStored = await setBrandClientSecret(orgId, clientSecret);
+  if (!secretStored) {
+    throw createScaiError(
+      "Failed to store the Brand client secret in the OS keychain.",
+      "AUTH_BRAND_REQUIRED",
+      {
+        hint: "Check OS keychain availability. On CI runners without a keychain, set SITECOREAI_QUIET=1 to suppress warnings and use the library surface directly.",
+      }
+    );
+  }
+  await setBrandToken(orgId, accessToken);
+
+  const credentialRecord: BrandCredential = {
+    clientId,
+    audience,
+    authority,
+    tokenExpiresIn: expiresIn ?? null,
+    tokenLastUpdated: new Date().toISOString(),
+  };
+
+  const brand = { ...(rootConfigFile.config.brand ?? {}) };
+  brand[orgId] = credentialRecord;
+  rootConfigFile.config.brand = brand;
+  writeRootConfigurationFile(configPath, rootConfigFile.config);
+
+  // Verify the credential we just wrote can be read back, in case the
+  // keychain silently dropped it.
+  const readback = await getBrandClientSecret(orgId);
+  if (!readback) {
+    logger.warn(
+      "Brand client secret was written but could not be read back. Subsequent calls may need a re-login.",
+      "yellow"
+    );
+  }
+};
+
+/**
  * Provision a Sitecore Brand credential for a Sitecore
  * organization. The flow is:
  *
@@ -99,50 +278,14 @@ export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> =
     process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
 
   if (existing && !options.force) {
-    if (!isInteractive) {
-      throw createScaiError(
-        `A Brand credential is already configured for org '${orgId}'.`,
-        "INPUT_INVALID",
-        {
-          hint: "Re-run with --force to overwrite the existing credential.",
-        }
-      );
-    }
-    const overwrite = await promptConfirm(
-      `A Brand credential is already configured for org '${orgId}'. Overwrite?`,
-      false
-    );
+    const overwrite = await confirmOverwriteExistingCredential(orgId, isInteractive);
     if (!overwrite) {
       logger.info("Aborted. Existing credential left in place.");
       return;
     }
   }
 
-  let clientId = options.clientId;
-  if (!clientId) {
-    if (!isInteractive) {
-      throw inputError(
-        "Client ID is required.",
-        `Pass --client-id <id> (and --client-secret <secret>). ${CLOUD_PORTAL_HINT}`
-      );
-    }
-    logger.info(CLOUD_PORTAL_HINT);
-    clientId = await promptText("Client ID");
-    if (!clientId) {
-      throw inputError("Client ID is required.");
-    }
-  }
-
-  let clientSecret = options.clientSecret;
-  if (!clientSecret) {
-    if (!isInteractive) {
-      throw inputError(
-        "Client secret is required.",
-        "Pass --client-secret <secret>, or run interactively."
-      );
-    }
-    clientSecret = await promptSecret("Client Secret: ");
-  }
+  const { clientId, clientSecret } = await acquireClientCredentials(options, isInteractive, logger);
 
   const authority = options.authority ?? selectedEnv?.authority ?? DEFAULT_AUTHORITY;
   const audience = options.audience ?? DEFAULT_SITECORE_API_AUDIENCE;
@@ -182,79 +325,20 @@ export const runBrandLogin = async (options: BrandLoginOptions): Promise<void> =
   }
 
   const grantedScopes = extractScopes(mintResult.accessToken);
-  const hasReviewScope = grantedScopes.includes("ai.org.br:gen");
-  const knownGranted = grantedScopes.filter((s) =>
-    (KNOWN_BRAND_SCOPES as readonly string[]).includes(s)
-  );
-  const knownMissing = (KNOWN_BRAND_SCOPES as readonly string[]).filter(
-    (s) => !grantedScopes.includes(s)
-  );
-  const looksLikePagesSitesClient =
-    grantedScopes.some((s) => s.startsWith("xmclouddeploy.") || s.startsWith("xmcpub.")) &&
-    !grantedScopes.some((s) => s.startsWith("ai.org."));
-  if (looksLikePagesSitesClient) {
-    // The credential is the wrong client class entirely — refuse to
-    // persist. A typed Pages/Sites automation client never carries
-    // any `ai.org*` scope, so it will fail every Brand call.
-    throw createScaiError(
-      `Credential for org '${orgId}' looks like the Pages/Sites automation client, not an AI APIs key.`,
-      "AUTH_BRAND_REQUIRED",
-      {
-        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. ${CLOUD_PORTAL_HINT}`,
-      }
-    );
-  }
-  if (knownGranted.length === 0) {
-    // No recognizable Brand scope at all — probably the wrong
-    // client class even though it doesn't match the Pages/Sites
-    // shape. Refuse to persist to avoid storing a credential that's
-    // guaranteed to fail every operation.
-    throw createScaiError(
-      `Credential minted for org '${orgId}' but carries no recognized Brand scopes.`,
-      "AUTH_BRAND_REQUIRED",
-      {
-        hint: `Granted scopes: ${grantedScopes.join(", ") || "(none)"}. Expected at least one of: ${KNOWN_BRAND_SCOPES.join(", ")}. ${CLOUD_PORTAL_HINT}`,
-      }
-    );
-  }
+  const { hasReviewScope, knownMissing } = validateGrantedScopes(grantedScopes, orgId);
 
-  // Persist: keychain first (secret + token), then config. If keychain
-  // fails we don't want a config record pointing at a secret-less
-  // entry.
-  const secretStored = await setBrandClientSecret(orgId, clientSecret);
-  if (!secretStored) {
-    throw createScaiError(
-      "Failed to store the Brand client secret in the OS keychain.",
-      "AUTH_BRAND_REQUIRED",
-      {
-        hint: "Check OS keychain availability. On CI runners without a keychain, set SITECOREAI_QUIET=1 to suppress warnings and use the library surface directly.",
-      }
-    );
-  }
-  await setBrandToken(orgId, mintResult.accessToken);
-
-  const credentialRecord: BrandCredential = {
+  await persistBrandCredential({
+    orgId,
+    configPath,
+    rootConfigFile,
     clientId,
-    audience,
+    clientSecret,
     authority,
-    tokenExpiresIn: mintResult.expiresIn ?? null,
-    tokenLastUpdated: new Date().toISOString(),
-  };
-
-  const brand = { ...(rootConfigFile.config.brand ?? {}) };
-  brand[orgId] = credentialRecord;
-  rootConfigFile.config.brand = brand;
-  writeRootConfigurationFile(configPath, rootConfigFile.config);
-
-  // Verify the credential we just wrote can be read back, in case the
-  // keychain silently dropped it.
-  const readback = await getBrandClientSecret(orgId);
-  if (!readback) {
-    logger.warn(
-      "Brand client secret was written but could not be read back. Subsequent calls may need a re-login.",
-      "yellow"
-    );
-  }
+    audience,
+    accessToken: mintResult.accessToken,
+    expiresIn: mintResult.expiresIn,
+    logger,
+  });
 
   logger.info(`Brand credential saved for org '${orgId}'.`, "green");
   logger.info(`Scopes granted: ${grantedScopes.join(", ") || "(none)"}`);

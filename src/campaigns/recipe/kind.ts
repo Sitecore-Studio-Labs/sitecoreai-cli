@@ -475,14 +475,15 @@ const addProjectMembers = async (
  * name fallback. Pushes `projectChange` to `applied` on the create
  * branch, exactly as the inline logic did.
  */
-const resolveProject = async (
-  client: CampaignApiClientOptions,
-  projectChange: RecipeChange | undefined,
-  effectiveTenantId: string | undefined,
-  ref: KindRef,
-  applied: RecipeChange[],
-  ctx: SyncContext
-): Promise<Project> => {
+const resolveProject = async (args: {
+  client: CampaignApiClientOptions;
+  projectChange: RecipeChange | undefined;
+  effectiveTenantId: string | undefined;
+  ref: KindRef;
+  applied: RecipeChange[];
+  ctx: SyncContext;
+}): Promise<Project> => {
+  const { client, projectChange, effectiveTenantId, ref, applied, ctx } = args;
   if (projectChange) {
     const name = String(projectChange.after);
     const desiredLabels = (projectChange.meta?.labels as string[] | undefined) ?? [];
@@ -1106,14 +1107,14 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
 
   // Resolve the campaign (project) id — creating it when the plan says so.
-  const project: Project = await resolveProject(
+  const project: Project = await resolveProject({
     client,
     projectChange,
     effectiveTenantId,
     ref,
     applied,
-    ctx
-  );
+    ctx,
+  });
 
   const run: ApplyRun = { client, applied, skipped, ctx };
 

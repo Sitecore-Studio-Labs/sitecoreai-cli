@@ -58,6 +58,11 @@ jobs:
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
+          # Run our `version` script (changeset version + lockfile sync) rather
+          # than the default bare `changeset version`, so the Version Packages
+          # PR also updates package-lock.json. Without this the lockfile stays
+          # at the old version and the `lockfile-drift` CI check goes red.
+          version: npm run version
           publish: npm run release
           createGithubReleases: true
         env:

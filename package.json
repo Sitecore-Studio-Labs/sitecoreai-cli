@@ -192,9 +192,7 @@
     "esbuild": "^0.28.1",
     "vite": "^7.3.5",
     "js-yaml": "^4.2.0",
-    "read-yaml-file": {
-      "js-yaml": "^3.6.1"
-    }
+    "read-yaml-file": "^2.1.0"
   },
   "pnpm": {
     "overrides": {
@@ -203,7 +201,8 @@
       "hono": "^4.12.25",
       "esbuild": "^0.28.1",
       "vite": "^7.3.5",
-      "js-yaml": "^4.2.0"
+      "js-yaml": "^4.2.0",
+      "read-yaml-file": "^2.1.0"
     }
   },
   "devDependencies": {

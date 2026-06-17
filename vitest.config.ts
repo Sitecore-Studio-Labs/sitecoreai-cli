@@ -41,6 +41,19 @@ export default defineConfig({
         "src/workflow/index.ts",
         "src/authoring/index.ts",
         "src/content/index.ts",
+        // Audited 2026-06-17: schema-only public entries (added so frontends
+        // can re-export the recipe Zod schemas without the compiler/clients)
+        // plus task / api / scripting / agents barrels — all pure
+        // `export … from` re-exports, tested where the symbol is DEFINED.
+        "src/recipe/schema.ts",
+        "src/brand/recipe/schema-only.ts",
+        "src/brief/recipe/schema-only.ts",
+        "src/campaigns/recipe/schema-only.ts",
+        "src/agents/index.ts",
+        "src/agents/tasks/index.ts",
+        "src/commands/deploy/environments.ts",
+        "src/recipe/api/auth.ts",
+        "src/scripting/index.ts",
       ],
       // Ratchet floor, enforced by CI via `pnpm test:coverage`. Raise as
       // coverage improves, never lower (except as part of a deliberate,

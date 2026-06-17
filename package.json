@@ -139,6 +139,7 @@
     "format:check": "prettier . --check",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "lint:complexity-debt": "eslint src --rule '{\"complexity\":[\"warn\",30],\"max-depth\":[\"warn\",4],\"max-params\":[\"warn\",5]}'",
     "mcpb:pack": "npx -y @anthropic-ai/mcpb@2 validate mcpb/manifest.json && npx -y @anthropic-ai/mcpb@2 pack mcpb scai.mcpb",
     "prepack": "npm run build",
     "prepare": "husky",

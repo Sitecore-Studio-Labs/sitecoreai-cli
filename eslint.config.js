@@ -47,22 +47,31 @@ module.exports = [
       // `{ cause }` added to the one re-throw), so both run at "error".
       "no-useless-assignment": "error",
       "preserve-caught-error": "error",
-      // Complexity guardrails (eslint built-ins, no extra dep). Introduced
-      // 2026-06-17 at "warn". Thresholds are deliberately set ABOVE the
-      // moderately-branchy tail this sync/compile CLI naturally carries and
-      // tuned to surface only the genuine outliers — at the eslint defaults
-      // (complexity 20 / max-depth 4) ~250 functions trip, which is debt
-      // wallpaper nobody reads. These numbers yield a short, actionable
-      // worklist (~30 hits) dominated by the high-complexity sync kinds
-      // (campaigns/recipe/kind.ts @175, brief/recipe/instance-kind.ts @108,
-      // recipe/tasks/pull.ts @103, ...) — the SAME functions whose untested
-      // branches block coverage at 80. Ratchet the numbers DOWN (and promote
-      // to "error") as those get refactored for testability. Cyclomatic only;
-      // cognitive-complexity (sonarjs) is a deliberate later upgrade.
-      complexity: ["warn", 40],
-      "max-depth": ["warn", 5],
-      "max-nested-callbacks": ["warn", 4],
-      "max-params": ["warn", 6],
+      // Complexity guardrails (eslint built-ins, no extra dep) — a two-tier
+      // ratchet. Introduced 2026-06-17 at "warn" 40; after the big refactor
+      // pass cleared every function past those numbers, promoted to ERROR.
+      //
+      // These ERROR ceilings are the hard, no-backsliding gate: `pnpm lint`
+      // (CI + the lint-staged pre-commit hook) FAILS on anything worse than
+      // today's worst, so the numbers can only ever be ratcheted DOWN. They
+      // are set at the current post-refactor maxima (complexity 40, depth 5,
+      // params 6); the public, contract-stable `fetchItemMetadata` keeps its
+      // 7-arg signature via an inline disable (an options object would break
+      // SDK consumers).
+      //
+      // The lower WARNING tier — the chip-away worklist — lives in the
+      // `pnpm lint:complexity-debt` script (src-only, non-blocking) at
+      // complexity 30 / depth 4 / params 5. Workflow to chip away over time:
+      // run lint:complexity-debt, refactor what it surfaces, then lower the
+      // matching ceiling here by the same step. eslint can't evaluate one
+      // rule at two severities in a single pass, which is why the warn tier
+      // is a separate script rather than a second threshold here. (Cyclomatic
+      // only; cognitive-complexity via eslint-plugin-sonarjs is a later
+      // upgrade.)
+      complexity: ["error", 40],
+      "max-depth": ["error", 5],
+      "max-nested-callbacks": ["error", 4],
+      "max-params": ["error", 6],
     },
   },
   {

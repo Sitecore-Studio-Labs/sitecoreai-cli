@@ -84,7 +84,13 @@ describe("CreateItem — sibling-name fallback under path-index lag", () => {
     const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
     const snapshotCache = new Map<string, RemoteItem | null>();
 
-    const action = await buildAction(0, newCreateOp(), client, captured, undefined, snapshotCache);
+    const action = await buildAction({
+      index: 0,
+      op: newCreateOp(),
+      client,
+      capturedItemIds: captured,
+      pathSnapshotCache: snapshotCache,
+    });
 
     // CreateAndUpdate + zero drift → skip, not create.
     expect(action.status).toBe("skip");
@@ -105,7 +111,12 @@ describe("CreateItem — sibling-name fallback under path-index lag", () => {
     const getChildrenSpy = vi.fn(client.getChildren.bind(client));
     client.getChildren = getChildrenSpy as never;
 
-    const action = await buildAction(0, newCreateOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
     expect(getChildrenSpy).not.toHaveBeenCalled();
@@ -119,7 +130,12 @@ describe("CreateItem — sibling-name fallback under path-index lag", () => {
     const getChildrenSpy = vi.fn(client.getChildren.bind(client));
     client.getChildren = getChildrenSpy as never;
 
-    const action = await buildAction(0, newCreateOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("skip");
     expect(getChildrenSpy).not.toHaveBeenCalled();
@@ -188,14 +204,13 @@ describe("CreateItem — marker-match fallback for renamed items", () => {
     const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
     const snapshotCache = new Map<string, RemoteItem | null>();
 
-    const action = await buildAction(
-      0,
-      markedCreateOp(),
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
       client,
-      captured,
-      undefined,
-      snapshotCache
-    );
+      capturedItemIds: captured,
+      pathSnapshotCache: snapshotCache,
+    });
 
     // Marker-matched → the existing item is reused, not duplicated.
     expect(action.status).toBe("skip");
@@ -213,7 +228,12 @@ describe("CreateItem — marker-match fallback for renamed items", () => {
     seedRenamedChild(client, "OldB", HANDLE, "66666666-6666-6666-6666-666666666666");
     const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(0, markedCreateOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
   });
@@ -223,7 +243,12 @@ describe("CreateItem — marker-match fallback for renamed items", () => {
     seedRenamedChild(client, "OldCtaButton", "hero@1");
     const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(0, markedCreateOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     // The only marked sibling belongs to `hero@1`, not `cta-button@1`.
     expect(action.status).toBe("create");

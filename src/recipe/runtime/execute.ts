@@ -305,16 +305,27 @@ const synthesizeCreateSnapshot = (
   return { itemId, parentId: parentItemId, templateId, name, path, fields: remoteFields };
 };
 
-const dispatchMutation = async (
-  client: AuthoringApiClient,
-  sitesClient: SitesApiClient | undefined,
-  action: PlannedAction,
-  capturedItemIds: Map<string, string>,
-  pathItemIdCache: Map<string, string> | undefined,
-  pathSnapshotCache: Map<string, RemoteItem | null> | undefined,
-  allowPrune: boolean,
-  emit?: (event: ExecutionEvent) => void
-): Promise<void> => {
+interface DispatchMutationOptions {
+  client: AuthoringApiClient;
+  sitesClient: SitesApiClient | undefined;
+  action: PlannedAction;
+  capturedItemIds: Map<string, string>;
+  pathItemIdCache: Map<string, string> | undefined;
+  pathSnapshotCache: Map<string, RemoteItem | null> | undefined;
+  allowPrune: boolean;
+  emit?: (event: ExecutionEvent) => void;
+}
+
+const dispatchMutation = async ({
+  client,
+  sitesClient,
+  action,
+  capturedItemIds,
+  pathItemIdCache,
+  pathSnapshotCache,
+  allowPrune,
+  emit,
+}: DispatchMutationOptions): Promise<void> => {
   if (!action.mutation) return;
   if (action.mutation.kind === "createItem") {
     const result = await client.createItem(action.mutation.input);
@@ -692,17 +703,17 @@ export const executeIr = async (
 
     let action: PlannedAction;
     try {
-      action = await buildAction(
+      action = await buildAction({
         index,
         op,
         client,
         capturedItemIds,
-        options.sitesClient,
-        options.pathSnapshotCache,
-        options.snapshotLanguages,
-        options.baselineIndex,
-        options.conflictPolicy
-      );
+        sitesClient: options.sitesClient,
+        pathSnapshotCache: options.pathSnapshotCache,
+        snapshotLanguages: options.snapshotLanguages,
+        baselineIndex: options.baselineIndex,
+        conflictPolicy: options.conflictPolicy,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = { index, operation: op, status: "error", reason: message };
@@ -729,16 +740,16 @@ export const executeIr = async (
 
     options.emit?.({ kind: "apply-start", action });
     try {
-      await dispatchMutation(
+      await dispatchMutation({
         client,
-        options.sitesClient,
+        sitesClient: options.sitesClient,
         action,
         capturedItemIds,
-        options.pathItemIdCache,
-        options.pathSnapshotCache,
-        options.allowPrune ?? false,
-        options.emit
-      );
+        pathItemIdCache: options.pathItemIdCache,
+        pathSnapshotCache: options.pathSnapshotCache,
+        allowPrune: options.allowPrune ?? false,
+        emit: options.emit,
+      });
       applied.push(action);
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {

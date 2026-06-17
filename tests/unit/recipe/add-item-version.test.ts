@@ -40,7 +40,12 @@ describe("AddItemVersion — planner", () => {
     preloadItem(client); // item has en v1
     const captured = new Map([[ITEM_REF_KEY, ITEM_ID]]);
 
-    const action = await buildAction(0, addVersionOp("en", 2), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: addVersionOp("en", 2),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
     expect(action.mutation).toEqual({
@@ -56,7 +61,12 @@ describe("AddItemVersion — planner", () => {
     preloadItem(client); // en v1 already present
     const captured = new Map([[ITEM_REF_KEY, ITEM_ID]]);
 
-    const action = await buildAction(0, addVersionOp("en", 1), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: addVersionOp("en", 1),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("skip");
     expect(action.mutation).toBeUndefined();
@@ -68,7 +78,12 @@ describe("AddItemVersion — planner", () => {
     preloadItem(client); // en v1, no fr versions
     const captured = new Map([[ITEM_REF_KEY, ITEM_ID]]);
 
-    const action = await buildAction(0, addVersionOp("fr", 1), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: addVersionOp("fr", 1),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
     expect(action.mutation).toMatchObject({
@@ -83,7 +98,12 @@ describe("AddItemVersion — planner", () => {
     preloadItem(client);
 
     // Empty captured map — the item's CreateItem hasn't run.
-    const action = await buildAction(0, addVersionOp("en", 2), client, new Map());
+    const action = await buildAction({
+      index: 0,
+      op: addVersionOp("en", 2),
+      client,
+      capturedItemIds: new Map(),
+    });
 
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/not yet captured/);
@@ -95,7 +115,12 @@ describe("AddItemVersion — planner", () => {
     const captured = new Map([[ITEM_REF_KEY, ITEM_ID]]);
 
     // Target version 4 against a lone v1 → add 3.
-    const action = await buildAction(0, addVersionOp("en", 4), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: addVersionOp("en", 4),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
     expect(action.mutation).toMatchObject({ kind: "addItemVersion", addCount: 3 });

@@ -446,16 +446,27 @@ const toUpdateItemInput = (itemId: string, fields: FieldValue[]): UpdateItemInpu
  * handles the "before/after" raw-XML structural compare for the diff
  * `before`/`after` strings.
  */
-const classifyAgainstBaseline = (
-  itemRefKey: string | undefined,
-  fieldId: string,
-  fieldName: string | undefined,
-  language: string | undefined,
-  version: number | undefined,
-  recipeHash: string,
-  tenantHash: string,
-  baselineIndex: BaselineIndex | undefined
-): FieldDiffEntry["classification"] | undefined => {
+interface ClassifyAgainstBaselineOptions {
+  itemRefKey: string | undefined;
+  fieldId: string;
+  fieldName: string | undefined;
+  language: string | undefined;
+  version: number | undefined;
+  recipeHash: string;
+  tenantHash: string;
+  baselineIndex: BaselineIndex | undefined;
+}
+
+const classifyAgainstBaseline = ({
+  itemRefKey,
+  fieldId,
+  fieldName,
+  language,
+  version,
+  recipeHash,
+  tenantHash,
+  baselineIndex,
+}: ClassifyAgainstBaselineOptions): FieldDiffEntry["classification"] | undefined => {
   if (!baselineIndex || itemRefKey === undefined) return undefined;
   const baselineHash = baselineIndex.lookup(itemRefKey, fieldId, fieldName, language, version);
   if (baselineHash === undefined) return "first-push";
@@ -493,18 +504,18 @@ const computeFieldDrift = (
         version: field.version,
         ...(baselineIndex && itemRefKey !== undefined
           ? {
-              classification: classifyAgainstBaseline(
+              classification: classifyAgainstBaseline({
                 itemRefKey,
-                field.fieldId,
-                field.fieldName,
-                field.language,
-                field.version,
-                hashFieldValueForBaseline(field.fieldId, want),
+                fieldId: field.fieldId,
+                fieldName: field.fieldName,
+                language: field.language,
+                version: field.version,
+                recipeHash: hashFieldValueForBaseline(field.fieldId, want),
                 // No tenant value → distinct from any hash → forces
                 // recipe-change vs first-push purely on baseline presence.
-                "",
-                baselineIndex
-              ),
+                tenantHash: "",
+                baselineIndex,
+              }),
             }
           : {}),
       });
@@ -543,16 +554,16 @@ const computeFieldDrift = (
         : layoutXmlEquivalent(found.value, want)
       : found.value === want;
     if (!equal) {
-      const classification = classifyAgainstBaseline(
+      const classification = classifyAgainstBaseline({
         itemRefKey,
-        field.fieldId,
-        field.fieldName,
-        field.language,
-        field.version,
-        hashFieldValueForBaseline(field.fieldId, want, wantParsed),
-        hashFieldValueForBaseline(field.fieldId, found.value, foundParsed),
-        baselineIndex
-      );
+        fieldId: field.fieldId,
+        fieldName: field.fieldName,
+        language: field.language,
+        version: field.version,
+        recipeHash: hashFieldValueForBaseline(field.fieldId, want, wantParsed),
+        tenantHash: hashFieldValueForBaseline(field.fieldId, found.value, foundParsed),
+        baselineIndex,
+      });
       drift.push({
         fieldId: field.fieldId,
         before: found.value,
@@ -866,17 +877,29 @@ const planCreateItem = (
   };
 };
 
-const planUpdateOp = (
-  index: number,
-  op: SetFieldOp | SetBaseTemplatesOp | SetStandardValuesOp,
-  itemRefKey: string,
-  desiredFields: FieldValue[],
-  policy: PushPolicy,
-  remote: RemoteItem | null,
-  capturedItemIds: ReadonlyMap<string, string>,
-  baselineIndex?: BaselineIndex,
-  conflictPolicy?: PlanOptions["conflictPolicy"]
-): PlannedAction => {
+interface PlanUpdateOpOptions {
+  index: number;
+  op: SetFieldOp | SetBaseTemplatesOp | SetStandardValuesOp;
+  itemRefKey: string;
+  desiredFields: FieldValue[];
+  policy: PushPolicy;
+  remote: RemoteItem | null;
+  capturedItemIds: ReadonlyMap<string, string>;
+  baselineIndex?: BaselineIndex;
+  conflictPolicy?: PlanOptions["conflictPolicy"];
+}
+
+const planUpdateOp = ({
+  index,
+  op,
+  itemRefKey,
+  desiredFields,
+  policy,
+  remote,
+  capturedItemIds,
+  baselineIndex,
+  conflictPolicy,
+}: PlanUpdateOpOptions): PlannedAction => {
   if (!remote) {
     return {
       index,
@@ -1027,27 +1050,39 @@ const lookupSelector = (
  * `RemoteItem` means "use this snapshot". Non-path lookups (by itemId)
  * still hit the wire.
  */
-export const buildAction = async (
-  index: number,
-  op: Operation,
-  client: AuthoringApiClient,
-  capturedItemIds: Map<string, string>,
-  sitesClient?: SitesApiClient,
-  pathSnapshotCache?: Map<string, RemoteItem | null>,
+export interface BuildActionOptions {
+  index: number;
+  op: Operation;
+  client: AuthoringApiClient;
+  capturedItemIds: Map<string, string>;
+  sitesClient?: SitesApiClient;
+  pathSnapshotCache?: Map<string, RemoteItem | null>;
   /**
    * Operator override for prune-rollback snapshot languages. Forwarded
    * to `planPruneChildren`. Leave undefined to let the planner
    * auto-discover via `client.getTenantLanguages` once per push.
    */
-  snapshotLanguages?: readonly string[],
+  snapshotLanguages?: readonly string[];
   /**
    * Three-way merge baseline + conflict policy. Forwarded to
    * `planCreateItem` / `planUpdateOp` so per-field drift classifies as
    * `recipe-change` / `cms-edit` / `conflict` and routes per the policy.
    */
-  baselineIndex?: BaselineIndex,
-  conflictPolicy?: PlanOptions["conflictPolicy"]
-): Promise<PlannedAction> => {
+  baselineIndex?: BaselineIndex;
+  conflictPolicy?: PlanOptions["conflictPolicy"];
+}
+
+export const buildAction = async ({
+  index,
+  op,
+  client,
+  capturedItemIds,
+  sitesClient,
+  pathSnapshotCache,
+  snapshotLanguages,
+  baselineIndex,
+  conflictPolicy,
+}: BuildActionOptions): Promise<PlannedAction> => {
   const cachedReadByPath = async (path: string): Promise<RemoteItem | null> => {
     if (pathSnapshotCache?.has(path)) {
       return pathSnapshotCache.get(path) ?? null;
@@ -1156,41 +1191,41 @@ export const buildAction = async (
       case "CreateItem":
         return planCreateItem(op, remote, index, capturedItemIds, baselineIndex, conflictPolicy);
       case "SetField":
-        return planUpdateOp(
+        return planUpdateOp({
           index,
           op,
-          op.itemRefKey,
-          setFieldDesired(op),
-          op.policy,
+          itemRefKey: op.itemRefKey,
+          desiredFields: setFieldDesired(op),
+          policy: op.policy,
           remote,
           capturedItemIds,
           baselineIndex,
-          conflictPolicy
-        );
+          conflictPolicy,
+        });
       case "SetBaseTemplates":
-        return planUpdateOp(
+        return planUpdateOp({
           index,
           op,
-          op.itemRefKey,
-          setBaseTemplatesDesired(op),
-          op.policy,
+          itemRefKey: op.itemRefKey,
+          desiredFields: setBaseTemplatesDesired(op),
+          policy: op.policy,
           remote,
           capturedItemIds,
           baselineIndex,
-          conflictPolicy
-        );
+          conflictPolicy,
+        });
       case "SetStandardValues":
-        return planUpdateOp(
+        return planUpdateOp({
           index,
           op,
-          op.templateRefKey,
-          setStandardValuesDesired(op),
-          op.policy,
+          itemRefKey: op.templateRefKey,
+          desiredFields: setStandardValuesDesired(op),
+          policy: op.policy,
           remote,
           capturedItemIds,
           baselineIndex,
-          conflictPolicy
-        );
+          conflictPolicy,
+        });
       case "CreateSiteFromTemplate":
         return planCreateSite(index, op, capturedItemIds, sitesClient);
       case "AppendToMultiList":
@@ -1893,17 +1928,17 @@ export const buildPlan = async (
     options.emit?.({ kind: "op-start", index, operation: op });
     let action: PlannedAction;
     try {
-      action = await buildAction(
+      action = await buildAction({
         index,
         op,
         client,
         capturedItemIds,
-        options.sitesClient,
-        options.pathSnapshotCache,
-        options.snapshotLanguages,
-        options.baselineIndex,
-        options.conflictPolicy
-      );
+        sitesClient: options.sitesClient,
+        pathSnapshotCache: options.pathSnapshotCache,
+        snapshotLanguages: options.snapshotLanguages,
+        baselineIndex: options.baselineIndex,
+        conflictPolicy: options.conflictPolicy,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       action = {

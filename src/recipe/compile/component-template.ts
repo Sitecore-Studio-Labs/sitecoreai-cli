@@ -207,15 +207,15 @@ export function compileComponentTemplateRecipe(
     ensureRenderingsSectionFolder(operations, context, sectionName, emittedFolders);
   }
 
-  emitRendering(
+  emitRendering({
     operations,
     recipe,
     context,
     icon,
-    hasInlineParams || recipe.parameters !== undefined,
+    hasParams: hasInlineParams || recipe.parameters !== undefined,
     policy,
-    emittedFolders
-  );
+    emittedFolders,
+  });
 
   if (recipe.variants.length > 0) {
     emitVariants(operations, recipe, context, icon, policy, emittedFolders);
@@ -700,15 +700,25 @@ function emitParamsTemplate(
   }
 }
 
-function emitRendering(
-  operations: Operation[],
-  recipe: ComponentTemplateRecipe,
-  context: CompileContext,
-  icon: string,
-  hasParams: boolean,
-  policy: PushPolicy,
-  emittedFolders: Set<string>
-): void {
+interface EmitRenderingOptions {
+  operations: Operation[];
+  recipe: ComponentTemplateRecipe;
+  context: CompileContext;
+  icon: string;
+  hasParams: boolean;
+  policy: PushPolicy;
+  emittedFolders: Set<string>;
+}
+
+function emitRendering({
+  operations,
+  recipe,
+  context,
+  icon,
+  hasParams,
+  policy,
+  emittedFolders,
+}: EmitRenderingOptions): void {
   const site = siteOf(context);
   const renderingRefKey = renderingId(site, recipe.handle);
   const sectionName = resolveSectionName(recipe, context);

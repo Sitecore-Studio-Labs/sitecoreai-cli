@@ -105,6 +105,9 @@ const parseItemData = (data: unknown, database?: string): ItemData => {
   return item;
 };
 
+// Public contract-stable API (re-exported from serialization/api/index);
+// an options-object signature would be a breaking change for SDK consumers,
+// so this stays positional and the max-params rule is suppressed for it.
 export const fetchItemMetadata = async (
   environment: SitecoreApiClientOptions,
   database: string,
@@ -113,6 +116,7 @@ export const fetchItemMetadata = async (
   fieldFilter: FieldFilterSet,
   useDebugSignatures: boolean,
   options?: GraphQLRequestOptions
+  // eslint-disable-next-line max-params -- see note above (public stable API)
 ): Promise<ItemMetadata[]> => {
   const query = `query($path: String!, $database: String!, $scope: TreeScope!, $excludedFieldIds: [String]) { ${
     useDebugSignatures ? serializeMetadataDebugFragment : serializeMetadataFragment

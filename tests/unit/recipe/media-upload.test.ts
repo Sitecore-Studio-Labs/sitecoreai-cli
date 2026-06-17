@@ -54,7 +54,12 @@ describe("MediaUpload — planner", () => {
     const client = new MockAuthoringClient();
     const captured = new Map<string, string>();
 
-    const action = await buildAction(0, externalUrlOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: externalUrlOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("create");
     if (action.mutation?.kind !== "mediaUpload") throw new Error("expected mediaUpload mutation");
@@ -71,7 +76,12 @@ describe("MediaUpload — planner", () => {
     const client = new MockAuthoringClient();
     const captured = new Map<string, string>([[MEDIA_REF_KEY, "existing-item-id"]]);
 
-    const action = await buildAction(0, externalUrlOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: externalUrlOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/already captured/);
@@ -84,7 +94,12 @@ describe("MediaUpload — planner", () => {
     const client = new MockAuthoringClient();
     const captured = new Map<string, string>();
 
-    const action = await buildAction(0, externalUrlOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: externalUrlOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("error");
     expect(action.reason).toMatch(/404/);

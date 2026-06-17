@@ -49,7 +49,7 @@ describe("AppendToMultiList — late-path seeding", () => {
     seedSectionItem(client);
     const captured = new Map<string, string>([[RENDERING_REF_KEY, RENDERING_ITEM_ID]]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(captured.get(SECTION_REF_KEY)).toBe(SECTION_ITEM_ID);
     expect(action.status).toBe("update");
@@ -65,7 +65,7 @@ describe("AppendToMultiList — merge-unique policy", () => {
       [RENDERING_REF_KEY, RENDERING_ITEM_ID],
     ]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(action.status).toBe("update");
     if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
@@ -84,7 +84,7 @@ describe("AppendToMultiList — merge-unique policy", () => {
       [RENDERING_REF_KEY, RENDERING_ITEM_ID],
     ]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/already present/);
@@ -97,7 +97,7 @@ describe("AppendToMultiList — merge-unique policy", () => {
     // cross-recipe ordering where the producer hasn't run.
     const captured = new Map<string, string>([[SECTION_REF_KEY, SECTION_ITEM_ID]]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/refKey .* not yet captured/);
   });
@@ -107,7 +107,7 @@ describe("AppendToMultiList — merge-unique policy", () => {
     // Section NOT preloaded; latePath lookup returns null.
     const captured = new Map<string, string>([[RENDERING_REF_KEY, RENDERING_ITEM_ID]]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/not yet captured/);
   });
@@ -122,7 +122,7 @@ describe("AppendToMultiList — merge-unique policy", () => {
       [RENDERING_REF_KEY, RENDERING_ITEM_ID],
     ]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
     if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
     const incoming = action.mutation.input.fields[0];
     if (incoming.value.kind !== "string") throw new Error("expected string value");
@@ -139,12 +139,12 @@ describe("AppendToMultiList — merge-unique policy", () => {
     const captured = new Map<string, string>([[SECTION_REF_KEY, SECTION_ITEM_ID]]);
     const directGuid = "12345678-1234-1234-1234-123456789012";
 
-    const action = await buildAction(
-      0,
-      newOp([{ kind: "ref-guid", value: directGuid }]),
+    const action = await buildAction({
+      index: 0,
+      op: newOp([{ kind: "ref-guid", value: directGuid }]),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
     expect(action.status).toBe("update");
     if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
     const incoming = action.mutation.input.fields[0];
@@ -173,7 +173,12 @@ describe("AppendToMultiList — replace policy", () => {
       [RENDERING_REF_KEY, RENDERING_ITEM_ID],
     ]);
 
-    const action = await buildAction(0, replaceOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: replaceOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("update");
     if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");
@@ -203,7 +208,12 @@ describe("AppendToMultiList — replace policy", () => {
       [RENDERING_REF_KEY, RENDERING_ITEM_ID],
     ]);
 
-    const action = await buildAction(0, replaceOp(), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: replaceOp(),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/already matches/);
@@ -218,7 +228,12 @@ describe("AppendToMultiList — replace policy", () => {
     );
     const captured = new Map<string, string>([[SECTION_REF_KEY, SECTION_ITEM_ID]]);
 
-    const action = await buildAction(0, replaceOp([]), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: replaceOp([]),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("update");
     if (action.mutation?.kind !== "updateItem") throw new Error("expected updateItem");

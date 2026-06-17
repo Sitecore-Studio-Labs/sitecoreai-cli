@@ -73,7 +73,7 @@ describe("PruneChildren — base behavior", () => {
       [ALLOWED_REF_KEY_B, ALLOWED_ITEM_ID_B],
     ]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(action.status).toBe("prune");
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
@@ -95,7 +95,7 @@ describe("PruneChildren — base behavior", () => {
       [ALLOWED_REF_KEY_B, ALLOWED_ITEM_ID_B],
     ]);
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(action.status).toBe("skip");
     expect(action.mutation).toBeUndefined();
@@ -106,7 +106,7 @@ describe("PruneChildren — base behavior", () => {
     // No seed — parent not in captured map.
     const captured = new Map<string, string>();
 
-    const action = await buildAction(0, newOp(), client, captured);
+    const action = await buildAction({ index: 0, op: newOp(), client, capturedItemIds: captured });
 
     expect(action.status).toBe("skip");
     expect(action.reason).toMatch(/not yet captured/i);
@@ -125,12 +125,12 @@ describe("PruneChildren — templateFilter", () => {
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [], templateFilter: [RENDERING_TEMPLATE_ID] }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [], templateFilter: [RENDERING_TEMPLATE_ID] }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("prune");
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
@@ -162,14 +162,15 @@ describe("PruneChildren — templateFilter", () => {
     });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
+    const action = await buildAction({
+      index: 0,
       // Filter uses the canonical DASHED form. The planner must
-      // normalize for the comparison to succeed.
-      newOp({ allowedHandles: [], templateFilter: [RENDERING_TEMPLATE_ID] }),
+      op:
+        // normalize for the comparison to succeed.
+        newOp({ allowedHandles: [], templateFilter: [RENDERING_TEMPLATE_ID] }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("prune");
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
@@ -194,16 +195,16 @@ describe("PruneChildren — templateFilter", () => {
     seedChild(client, ORPHAN_ITEM_ID_1, "Orphan");
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
-      newOp({
+    const action = await buildAction({
+      index: 0,
+      op: newOp({
         // Operator writes the keep itemId in DASHED form; tenant returns
         // it undashed. dashifyGuid on both sides normalizes the match.
         allowedHandles: [{ kind: "ref-guid", value: ALLOWED_ITEM_ID_A }],
       }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("prune");
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
@@ -221,12 +222,12 @@ describe("PruneChildren — mode", () => {
     seedChild(client, ORPHAN_ITEM_ID_1, "Orphan-1");
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [], mode: "warn" }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [], mode: "warn" }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
     expect(action.mutation.mode).toBe("warn");
   });
@@ -237,12 +238,12 @@ describe("PruneChildren — mode", () => {
     seedChild(client, ORPHAN_ITEM_ID_1, "Orphan-1");
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [], mode: "delete" }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [], mode: "delete" }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");
     expect(action.mutation.mode).toBe("delete");
   });
@@ -256,12 +257,12 @@ describe("PruneChildren — late-path seeding", () => {
     // Captured map empty; only latePath can resolve the parent itemId.
     const captured = new Map<string, string>();
 
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [], latePath: PARENT_PATH }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [], latePath: PARENT_PATH }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
 
     expect(captured.get(PARENT_REF_KEY)).toBe(PARENT_ITEM_ID);
     expect(action.status).toBe("prune");
@@ -301,7 +302,12 @@ describe("PruneChildren — recursive subtree snapshot", () => {
     });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(0, newOp({ allowedHandles: [] }), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("prune");
     expect(action.prunedItems).toHaveLength(1);
@@ -325,7 +331,12 @@ describe("PruneChildren — recursive subtree snapshot", () => {
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "en" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(0, newOp({ allowedHandles: [] }), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+    });
 
     // Three (language, version) entries snapshotted (en v1/v2/v3). No
     // fr/de since the operator didn't request them.
@@ -346,15 +357,13 @@ describe("PruneChildren — recursive subtree snapshot", () => {
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "fr" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [] }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
       client,
-      captured,
-      undefined,
-      undefined,
-      ["en", "fr"]
-    );
+      capturedItemIds: captured,
+      snapshotLanguages: ["en", "fr"],
+    });
 
     const snap = action.prunedItems?.[0];
     expect(snap?.versions.map((v) => `${v.language}-v${v.version}`)).toEqual([
@@ -371,15 +380,13 @@ describe("PruneChildren — recursive subtree snapshot", () => {
     // Item is en-only. Operator requested en + fr + de; only en should
     // appear in the snapshot.
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [] }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
       client,
-      captured,
-      undefined,
-      undefined,
-      ["en", "fr", "de"]
-    );
+      capturedItemIds: captured,
+      snapshotLanguages: ["en", "fr", "de"],
+    });
 
     const snap = action.prunedItems?.[0];
     expect(snap?.versions.map((v) => `${v.language}-v${v.version}`)).toEqual(["en-v1"]);
@@ -398,7 +405,12 @@ describe("PruneChildren — auto-discovery of languages (snapshotLanguages undef
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
     // snapshotLanguages omitted (undefined) → planner auto-discovers.
-    const action = await buildAction(0, newOp({ allowedHandles: [] }), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+    });
 
     const snap = action.prunedItems?.[0];
     const tuples = snap?.versions.map((v) => `${v.language}-v${v.version}`).sort();
@@ -413,7 +425,12 @@ describe("PruneChildren — auto-discovery of languages (snapshotLanguages undef
     seedChild(client, ORPHAN_ITEM_ID_1, "Orphan-EnOnly");
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(0, newOp({ allowedHandles: [] }), client, captured);
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+    });
 
     const snap = action.prunedItems?.[0];
     expect(snap?.versions.map((v) => `${v.language}-v${v.version}`)).toEqual(["en-v1"]);
@@ -432,9 +449,14 @@ describe("PruneChildren — auto-discovery of languages (snapshotLanguages undef
     // production path by using the real client surface — for now the
     // mock-throws case is exercised in the executor's catch path; the
     // planner expects the client method itself to handle failure.
-    await expect(buildAction(0, newOp({ allowedHandles: [] }), client, captured)).rejects.toThrow(
-      /simulated/
-    );
+    await expect(
+      buildAction({
+        index: 0,
+        op: newOp({ allowedHandles: [] }),
+        client,
+        capturedItemIds: captured,
+      })
+    ).rejects.toThrow(/simulated/);
   });
 
   it("explicit snapshotLanguages skips auto-discovery (operator override wins)", async () => {
@@ -446,15 +468,13 @@ describe("PruneChildren — auto-discovery of languages (snapshotLanguages undef
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "fr" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [] }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
       client,
-      captured,
-      undefined,
-      undefined,
-      ["en"]
-    );
+      capturedItemIds: captured,
+      snapshotLanguages: ["en"],
+    });
 
     const snap = action.prunedItems?.[0];
     expect(snap?.versions.map((v) => `${v.language}-v${v.version}`)).toEqual(["en-v1"]);
@@ -468,9 +488,13 @@ describe("PruneChildren — wire-call batching", () => {
     seedChild(client, ORPHAN_ITEM_ID_1, "Orphan-Simple");
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    await buildAction(0, newOp({ allowedHandles: [] }), client, captured, undefined, undefined, [
-      "en",
-    ]);
+    await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+      snapshotLanguages: ["en"],
+    });
 
     expect(client.batchCallCounts.perLanguageBatch).toBe(1);
     expect(client.batchCallCounts.atVersionsBatch).toBe(0);
@@ -484,11 +508,13 @@ describe("PruneChildren — wire-call batching", () => {
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "de" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    await buildAction(0, newOp({ allowedHandles: [] }), client, captured, undefined, undefined, [
-      "en",
-      "fr",
-      "de",
-    ]);
+    await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+      snapshotLanguages: ["en", "fr", "de"],
+    });
 
     // The whole point: 3 languages = still 1 batched call, not 3.
     expect(client.batchCallCounts.perLanguageBatch).toBe(1);
@@ -506,10 +532,13 @@ describe("PruneChildren — wire-call batching", () => {
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "fr" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    await buildAction(0, newOp({ allowedHandles: [] }), client, captured, undefined, undefined, [
-      "en",
-      "fr",
-    ]);
+    await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
+      client,
+      capturedItemIds: captured,
+      snapshotLanguages: ["en", "fr"],
+    });
 
     // 1 perLanguage batch (aliased en+fr) + 1 atVersions batch (en-v1,
     // en-v2, fr-v1 historic tuples). The naive implementation would
@@ -529,7 +558,13 @@ describe("PruneChildren — wire-call batching", () => {
     // configured. (Previous behavior silently produced a wrong-language
     // snapshot — audit Fix 7.)
     await expect(
-      buildAction(0, newOp({ allowedHandles: [] }), client, captured, undefined, undefined, [])
+      buildAction({
+        index: 0,
+        op: newOp({ allowedHandles: [] }),
+        client,
+        capturedItemIds: captured,
+        snapshotLanguages: [],
+      })
     ).rejects.toThrow(/no versions in any of/i);
     // Wire-call counters confirm no batch fired before the throw.
     expect(client.batchCallCounts.perLanguageBatch).toBe(0);
@@ -547,15 +582,13 @@ describe("PruneChildren — wire-call batching", () => {
     await client.addItemVersion({ itemId: ORPHAN_ITEM_ID_1, language: "fr" });
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
-    const action = await buildAction(
-      0,
-      newOp({ allowedHandles: [] }),
+    const action = await buildAction({
+      index: 0,
+      op: newOp({ allowedHandles: [] }),
       client,
-      captured,
-      undefined,
-      undefined,
-      ["en", "fr"]
-    );
+      capturedItemIds: captured,
+      snapshotLanguages: ["en", "fr"],
+    });
 
     const snap = action.prunedItems?.[0];
     expect(snap?.versions.map((v) => `${v.language}-v${v.version}`)).toEqual([
@@ -575,14 +608,14 @@ describe("PruneChildren — ref-guid allowedHandles", () => {
 
     const captured = new Map<string, string>([[PARENT_REF_KEY, PARENT_ITEM_ID]]);
 
-    const action = await buildAction(
-      0,
-      newOp({
+    const action = await buildAction({
+      index: 0,
+      op: newOp({
         allowedHandles: [{ kind: "ref-guid", value: ALLOWED_ITEM_ID_A }],
       }),
       client,
-      captured
-    );
+      capturedItemIds: captured,
+    });
 
     expect(action.status).toBe("prune");
     if (action.mutation?.kind !== "pruneChildren") throw new Error("expected pruneChildren");

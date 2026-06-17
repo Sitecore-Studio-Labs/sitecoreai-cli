@@ -85,7 +85,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     expect(current).not.toBeNull();
@@ -112,7 +112,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     expect(current).not.toBeNull();
@@ -129,7 +129,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitLine("scai setup status");
@@ -145,7 +145,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitLine("sitecoreai-cli deploy projects list");
@@ -161,7 +161,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitLine("init --environment-name \"demo env\" --note 'a b'");
@@ -185,7 +185,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitLine("   ");
@@ -202,7 +202,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitLine("help");
@@ -220,7 +220,7 @@ describe("shell command", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
-    const parsePromise = command.parseAsync(["node", "scai", "shell"]);
+    const parsePromise = command.parseAsync(["node", "scai"]);
 
     const current = readlineMocks.getCurrent();
     current?.emitSigint();
@@ -238,7 +238,7 @@ describe("shell command", () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const command = createShellCommand(runCli);
 
-    await expect(command.parseAsync(["node", "scai", "shell"])).rejects.toMatchObject({
+    await expect(command.parseAsync(["node", "scai"])).rejects.toMatchObject({
       code: "INPUT_INVALID",
     });
   });

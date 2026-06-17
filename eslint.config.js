@@ -39,13 +39,14 @@ module.exports = [
         },
       ],
       // eslint 10 promoted these two into `js.configs.recommended` as errors.
-      // They flag a defensive `let x = <init>` idiom (initialise, then reassign
-      // inside a try/if) and re-throws that don't attach the caught error as
-      // `cause`. Kept at "warn" so the eslint-10 bump doesn't block on a
-      // control-flow refactor across ~10 sites — promote to "error" and fix in a
-      // dedicated cleanup PR.
-      "no-useless-assignment": "warn",
-      "preserve-caught-error": "warn",
+      // `no-useless-assignment` flags a defensive `let x = <init>` idiom where
+      // the initialiser is always overwritten before use; `preserve-caught-error`
+      // flags re-throws that don't attach the caught error as `cause`. The ~10
+      // sites were cleaned up 2026-06-17 (dead initialisers dropped — TS's
+      // definite-assignment analysis confirms they were unreachable — and a
+      // `{ cause }` added to the one re-throw), so both run at "error".
+      "no-useless-assignment": "error",
+      "preserve-caught-error": "error",
     },
   },
   {

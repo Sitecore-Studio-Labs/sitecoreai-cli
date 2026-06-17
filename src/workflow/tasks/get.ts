@@ -132,7 +132,7 @@ export const runWorkflowGet = async (
   // Resolve a definition selector (itemId|path) for the workflow-def
   // attempt. For name lookups, walk the definition list first.
   let defSelector: ItemSelector | null = null;
-  let nameDuplicates = 0;
+  let nameDuplicates: number;
   if (parsed.selector) {
     defSelector = parsed.selector;
   } else if (parsed.name) {

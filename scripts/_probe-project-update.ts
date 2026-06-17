@@ -139,7 +139,7 @@ const main = async (): Promise<void> => {
   }
 
   // 7. Re-read project — did Orchestrate clean up project.briefs[]?
-  let projectBriefsAfterUnlink: Array<{ id: string }> = [];
+  let projectBriefsAfterUnlink: Array<{ id: string }>;
   try {
     const refreshed = await getProject(campaignClient, project.id);
     projectBriefsAfterUnlink = refreshed.briefs ?? [];

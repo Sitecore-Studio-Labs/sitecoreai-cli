@@ -76,9 +76,9 @@ const tryProbe = async (
   const tokenScope = typeof payload.scope === "string" ? payload.scope : "";
 
   const url = `${baseUrl.replace(/\/$/, "")}/api/brief/v1/tasks?BriefId=${encodeURIComponent(briefId)}&MetadataToLoad=assignees`;
-  let apiStatus = 0;
+  let apiStatus: number;
   let apiStatusText = "";
-  let apiBodyPreview = "";
+  let apiBodyPreview: string;
   let apiHeaders: Record<string, string> = {};
   try {
     const response = await fetch(url, {

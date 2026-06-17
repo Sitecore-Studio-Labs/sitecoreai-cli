@@ -154,7 +154,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "version": "changeset version",
+    "version": "changeset version && npm install --package-lock-only --ignore-scripts",
     "coverage:ratchet": "node scripts/check-coverage-ratchet.cjs",
     "coverage:ratchet:raise": "RAISE_RATCHET=1 node scripts/check-coverage-ratchet.cjs"
   },

@@ -22,7 +22,16 @@ const briefApi = vi.hoisted(() => ({
 }));
 vi.mock("../../../../src/brief", () => briefApi);
 
-import { briefInstanceKind } from "../../../../src/brief/recipe/instance-kind";
+import {
+  briefInstanceKind,
+  htmlToProseMirrorDoc,
+} from "../../../../src/brief/recipe/instance-kind";
+
+/** Flatten a ProseMirror doc to the concatenated text of its leaf nodes. */
+const docText = (doc: Record<string, unknown>): string => {
+  const paras = (doc.content ?? []) as Array<{ content?: Array<{ text?: string }> }>;
+  return paras.map((p) => (p.content ?? []).map((n) => n.text ?? "").join("")).join("\n");
+};
 
 const ctx: SyncContext = {
   environmentName: "test",
@@ -403,5 +412,36 @@ describe("apply — update", () => {
     expect(briefApi.updateBrief).not.toHaveBeenCalled();
     expect(result.applied).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);
+  });
+});
+
+describe("htmlToProseMirrorDoc sanitization", () => {
+  it("returns an empty doc for empty input", () => {
+    expect(htmlToProseMirrorDoc("")).toEqual({ type: "doc", content: [] });
+  });
+
+  it("converts normal HTML to block paragraphs", () => {
+    const doc = htmlToProseMirrorDoc("<p>Hello</p><p>World</p>");
+    expect(docText(doc)).toBe("Hello\nWorld");
+  });
+
+  it("fully strips nested/malformed tags (no leftover angle brackets)", () => {
+    const doc = htmlToProseMirrorDoc("<scr<script>ipt>alert()</scr<script>ipt>");
+    const text = docText(doc);
+    expect(text).not.toContain("<script>");
+    expect(text).not.toContain("<");
+    expect(text).not.toContain(">");
+  });
+
+  it("does not double-unescape: &amp;lt; becomes &lt;, not <", () => {
+    const doc = htmlToProseMirrorDoc("a &amp;lt; b");
+    const text = docText(doc);
+    expect(text).toContain("&lt;");
+    expect(text).not.toContain("< b");
+  });
+
+  it("unescapes a single &amp; to &", () => {
+    const doc = htmlToProseMirrorDoc("Tom &amp; Jerry");
+    expect(docText(doc)).toBe("Tom & Jerry");
   });
 });

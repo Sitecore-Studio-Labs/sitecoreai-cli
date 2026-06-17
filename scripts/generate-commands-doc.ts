@@ -43,7 +43,9 @@ const escapeInline = (value: string): string =>
     // Split on backtick spans, keeping them: odd indices are `code`
     // spans (left untouched), even indices are the surrounding prose.
     .split(/(`[^`]*`)/g)
-    .map((part, index) => (index % 2 === 1 ? part : part.replace(/[_*]/g, "\\$&")))
+    .map((part, index) =>
+      index % 2 === 1 ? part : part.replace(/\\/g, "\\\\").replace(/[_*]/g, "\\$&")
+    )
     .join("")
     .replace(/\|/g, "\\|");
 

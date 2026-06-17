@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { PublishAuditCaller, PublishAuditScope, PublishAuditScopeKind } from "./publish-audit";
+import { trimEndChar } from "./strings";
 
 /**
  * Consent + scope-token primitives for `scai content publish`.
@@ -81,9 +82,7 @@ interface ScopeTokenPayload {
 }
 
 const encodePayload = (payload: ScopeTokenPayload): string =>
-  Buffer.from(JSON.stringify(payload), "utf8")
-    .toString("base64")
-    .replace(/=+$/, "")
+  trimEndChar(Buffer.from(JSON.stringify(payload), "utf8").toString("base64"), "=")
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
 

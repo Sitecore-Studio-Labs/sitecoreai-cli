@@ -1,5 +1,6 @@
 import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import {
   createWorkflowApiClient,
@@ -1088,7 +1089,7 @@ export const createHygieneApiClient = (options: HygieneClientOptions): HygieneAp
     let rootItemId: string | undefined;
     let rootPrefix: string | undefined;
     if (opts.rootPath) {
-      const normalizedRoot = opts.rootPath.replace(/\/+$/, "").toLowerCase();
+      const normalizedRoot = trimEndChar(opts.rootPath, "/").toLowerCase();
       // A `pageSize: 1` `_fullpath` lookup cannot distinguish an exact hit
       // from a near-match the index ranked first; a wrong (shallower) root
       // silently widens the `_path CONTAINS` scope below. Fetch a small

@@ -19,6 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { toScaiError } from "@/shared/errors";
+import { trimEdgeChar } from "@/shared/strings";
 import { loadRecipe, writeRecipe } from "./io";
 import { planIsNoop, summarizePlan, type PlanSummary } from "./plan";
 import { syncDiff, syncPull, syncPush, type SyncMode } from "./engine";
@@ -29,10 +30,7 @@ export const DEFAULT_SYNC_DIR = ".scai/sync";
 
 /** Slugify an instance id for a recipe filename. */
 export const slugifyRecipeId = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "item";
+  trimEdgeChar(value.toLowerCase().replace(/[^a-z0-9]+/g, "-"), "-") || "item";
 
 /** Every recipe carries a `name` — its `KindRef.id`. */
 const recipeId = (recipe: unknown): string => String((recipe as { name?: unknown }).name ?? "");

@@ -1,4 +1,5 @@
 import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import { isWildcardMatch } from "./wildcard";
 
 export interface ItemPathMatchLike {
@@ -21,7 +22,7 @@ export class ItemPath implements ItemPathMatchLike {
     }
 
     const segments = pathString.split("/").filter(Boolean);
-    return new ItemPath(segments, pathString.replace(/\/+$/, ""));
+    return new ItemPath(segments, trimEndChar(pathString, "/"));
   }
 
   static fromSegments(segments: string[]): ItemPath {

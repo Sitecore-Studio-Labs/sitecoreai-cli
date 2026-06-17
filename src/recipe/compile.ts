@@ -1,4 +1,5 @@
 import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import {
   availableRenderingsSectionId,
   enumerationFolderId,
@@ -1212,12 +1213,13 @@ const buildEnumerationsRootAggregate = (
  * standalone `PlaceholderRecipe` supplies `name` explicitly.
  */
 const placeholderItemName = (key: string): string => {
-  const cleaned = key
-    .replace(/^\/+/, "")
-    .replace(/\{[^}]*\}/g, "")
-    .replace(/\/+/g, "-")
-    .replace(/-+$/g, "")
-    .trim();
+  const cleaned = trimEndChar(
+    key
+      .replace(/^\/+/, "")
+      .replace(/\{[^{}]*\}/g, "")
+      .replace(/\/+/g, "-"),
+    "-"
+  ).trim();
   return cleaned.length > 0 ? cleaned : "placeholder";
 };
 

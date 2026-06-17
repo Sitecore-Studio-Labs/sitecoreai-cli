@@ -110,7 +110,12 @@ export interface LayoutEmitContext {
 const formatGuidCurly = (guid: string): string => `{${guid.toUpperCase()}}`;
 
 const escapeXmlAttribute = (value: string): string =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 
 const encodeParams = (params: Record<string, string>): string =>
   Object.entries(params)

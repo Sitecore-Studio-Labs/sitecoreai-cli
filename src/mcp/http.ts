@@ -141,7 +141,12 @@ const handleRequest = async (
     await transport.handleRequest(req, res);
   } catch (error) {
     if (!res.headersSent) {
-      writeJsonRpcError(res, 500, -32603, error instanceof Error ? error.message : String(error));
+      // Never leak internal error detail (stack traces, file paths, upstream
+      // secrets) to the client; log server-side, return a generic message.
+      process.stderr.write(
+        `MCP HTTP request failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`
+      );
+      writeJsonRpcError(res, 500, -32603, "Internal server error");
     }
   }
 };

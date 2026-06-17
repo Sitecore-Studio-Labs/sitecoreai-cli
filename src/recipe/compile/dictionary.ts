@@ -1,4 +1,5 @@
 import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import { dictionaryFolderId, dictionaryPhraseId } from "../items/guids";
 import {
   type CreateItemOp,
@@ -218,7 +219,7 @@ const resolveHostSitePath = (
   context: CompileContext
 ): string | undefined => {
   const pre = context.crossRecipeSitePaths?.[recipe.site];
-  if (pre) return pre.replace(/\/+$/, "");
+  if (pre) return trimEndChar(pre, "/");
   const host = context.sitesByHandle?.get(recipe.site);
   if (!host) return undefined;
   return deriveSitePath(host);

@@ -74,7 +74,7 @@ const BRIEF_KIND_NAME = "brief";
  * uses this for story-generated briefs; ad-hoc recipes that don't carry a
  * marker fall back to exact-name match below.
  */
-const IDENTITY_MARKER_RE = /\[story:[^\]]+\]\s*$/;
+const IDENTITY_MARKER_RE = /\[story:[^\][]+\]\s*$/;
 
 /**
  * Find a brief by name, paging the list endpoint until a match is
@@ -289,17 +289,24 @@ const resolveBriefType = async (
  *
  * Empty input → empty doc `{type: "doc", content: []}` (also accepted).
  */
-const htmlToProseMirrorDoc = (html: string): Record<string, unknown> => {
-  const plain = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p\s*>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
+const stripHtmlTags = (input: string): string => {
+  let prev: string;
+  let out = input;
+  do {
+    prev = out;
+    out = out.replace(/<[^<>]*>/g, "");
+  } while (out !== prev);
+  return out;
+};
+
+export const htmlToProseMirrorDoc = (html: string): Record<string, unknown> => {
+  const plain = stripHtmlTags(html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p\s*>/gi, "\n"))
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
   const paragraphs = plain
     .split(/\n\s*\n|\n/g)
     .map((p) => p.trim())

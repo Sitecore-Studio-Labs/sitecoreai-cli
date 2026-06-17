@@ -284,7 +284,8 @@ const isTableable = (rows: unknown[]): boolean => {
 
 const formatMarkdownCell = (value: unknown): string => {
   if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  if (typeof value === "string")
+    return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ");
   if (Array.isArray(value))
     return value.map((v) => (typeof v === "object" ? JSON.stringify(v) : String(v))).join("; ");
   if (typeof value === "object") return JSON.stringify(value);

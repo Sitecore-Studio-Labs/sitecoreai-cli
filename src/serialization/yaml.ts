@@ -54,7 +54,7 @@ class YamlWriter {
 
     const specialChars = ['"', ":", "[", "]", "{", "}", "!", "?", "-", "\\"];
     const encoded = specialChars.some((char) => value.includes(char))
-      ? `"${value.replace(/"/g, '\\"')}"`
+      ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
       : value;
     this.chunks.push(`${prefix}${key}: ${encoded}\n`);
   }

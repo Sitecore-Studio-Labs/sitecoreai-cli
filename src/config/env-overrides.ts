@@ -1,4 +1,5 @@
 import type { EnvironmentConfiguration, RootConfigurationFile } from "./types";
+import { trimEdgeChar } from "../shared/strings";
 
 const toBoolean = (value?: string): boolean | undefined => {
   if (!value) {
@@ -15,11 +16,13 @@ const toBoolean = (value?: string): boolean | undefined => {
 };
 
 const normalizeEnvKey = (name: string): string =>
-  name
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  trimEdgeChar(
+    name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_"),
+    "_"
+  );
 
 const getEnvOverride = (
   envName: string,

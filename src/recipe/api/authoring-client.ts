@@ -1,5 +1,6 @@
 import type { SitecoreApiClientOptions } from "@/auth";
 import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
@@ -564,7 +565,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
    * haven't been scaffolded yet).
    */
   const ensurePathExists = async (rawPath: string): Promise<string> => {
-    const path = rawPath.replace(/\/+$/, "");
+    const path = trimEndChar(rawPath, "/");
     // Fast path: caller (or an earlier ensurePathExists) already resolved
     // this path. Avoids the redundant `getItem` round trip every sibling
     // createItem would otherwise pay under a shared section folder.

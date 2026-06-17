@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { RootConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
+import { trimEdgeChar } from "@/shared/strings";
 import { authorizeOperation } from "./authorize";
 import { riskTierForOperation } from "./operations";
 import type { OperationId } from "./operations";
@@ -46,11 +47,13 @@ export const ensureAllowWrite = (
     tokenLastUpdated: env?.deployTokenLastUpdated ?? undefined,
   });
   if (override || env?.allowWrite) return;
-  const envKey = envName
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const envKey = trimEdgeChar(
+    envName
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_"),
+    "_"
+  );
   throw createScaiError(
     `Environment ${envName} is not configured to allow writing data.`,
     "INPUT_INVALID",

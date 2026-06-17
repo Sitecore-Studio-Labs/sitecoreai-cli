@@ -26,6 +26,7 @@
  */
 
 import { getCmClientSecret, getOrgClientSecret } from "./keychain";
+import { trimEdgeChar } from "./strings";
 
 /**
  * Normalize an env-profile name into the `SITECOREAI_ENV_<ENV>_*` key
@@ -34,11 +35,13 @@ import { getCmClientSecret, getOrgClientSecret } from "./keychain";
  * leaf module has no `config/` dependency.
  */
 const normalizeEnvKey = (name: string): string =>
-  name
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  trimEdgeChar(
+    name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_"),
+    "_"
+  );
 
 const readEnvVar = (key: string): string | undefined => {
   const value = process.env[key];

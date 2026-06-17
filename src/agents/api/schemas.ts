@@ -15,6 +15,7 @@
  * docs/agentic-studio-har-capture.md.
  */
 import { agentsRequest, agentsServerAction, RSC_UNDEFINED } from "./request";
+import { trimEdgeChar } from "../../shared/strings";
 import type { AgentsSession } from "../session/types";
 import type { StructuredSchema } from "./schema";
 
@@ -51,10 +52,7 @@ const SCHEMA_CREATE_ROUTER_TREE =
 
 /** Derive a snake_case structured-output function name from a display name. */
 const toFunctionName = (name: string): string =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "schema";
+  trimEdgeChar(name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), "_") || "schema";
 
 export interface CreateSchemaInput {
   /** Display name and identifier of the schema. */

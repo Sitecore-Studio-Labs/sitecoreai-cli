@@ -18,6 +18,7 @@
  */
 
 import { createScaiError } from "../../shared/errors";
+import { trimEdgeChar } from "../../shared/strings";
 
 /** The `name`-field prefix that marks a client as scai-managed. */
 export const SCAI_CLIENT_PREFIX = "scai-";
@@ -45,10 +46,7 @@ const TYPE_LABELS: Record<ScaiClientType, string> = {
  * hyphen, leading/trailing hyphens trimmed.
  */
 export const slugifyEnvName = (envName: string): string =>
-  envName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  trimEdgeChar(envName.toLowerCase().replace(/[^a-z0-9]+/g, "-"), "-");
 
 /**
  * Build the canonical client name for a scai-minted client.

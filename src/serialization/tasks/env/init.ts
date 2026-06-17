@@ -18,14 +18,13 @@ import { assertInteractive, promptConfirm, promptText } from "@/shared/prompt";
 import { createScaiError, toScaiError } from "@/shared/errors";
 import { applyIfDefined, inputError, toLogger } from "../shared";
 import type { ConnectOptions } from "../types";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { resolveDeployAuth } from "./init/auth";
 import { resolveDeployLookup } from "./init/deploy-lookup";
 
-export const runInit = async (options: ConnectOptions): Promise<void> => {
-  const logger = toLogger(options);
-  const isInteractive =
-    process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
-  const hasExplicitInput = Boolean(
+/** Whether the caller supplied any explicit configuration flag (vs. a bare wizard run). */
+const hasExplicitInput = (options: ConnectOptions): boolean =>
+  Boolean(
     options.environmentName ||
     options.cm ||
     options.host ||
@@ -42,7 +41,237 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     options.useClientCredentials !== undefined ||
     options.setDefault
   );
-  const runWizard = Boolean(options.wizard || !hasExplicitInput);
+
+/** Whether the run mutates env-profile fields (anything beyond a bare `--set-default`). */
+const hasOtherChanges = (options: ConnectOptions): boolean =>
+  Boolean(
+    options.cm || options.host || options.organization || options.project || options.environment
+  ) ||
+  Boolean(options.deployToken || options.clientId || options.clientSecret) ||
+  Boolean(options.useClientCredentials || options.ref || options.allowWrite) ||
+  Boolean(options.organizationId || options.tenantId);
+
+/** Validate that a `--ref` target exists and does not itself chain to another ref. */
+const assertRefIsValid = (
+  ref: string,
+  envProfiles: Record<string, EnvironmentConfiguration>
+): void => {
+  const refEnv = envProfiles[ref];
+  if (!refEnv) {
+    throw createScaiError(`Referenced environment '${ref}' was not found.`, "ENV_NOT_FOUND");
+  }
+  if (refEnv.ref) {
+    throw inputError(
+      `Referenced environment '${ref}' cannot itself reference another environment.`
+    );
+  }
+};
+
+/** Persist the resolved client ID onto the profile per the credential mode. */
+const applyClientId = (
+  updated: EnvironmentConfiguration,
+  params: {
+    loginClientId?: string;
+    wantsClientCredentials: boolean;
+    shouldPersistClientId: boolean;
+  }
+): void => {
+  const { loginClientId, wantsClientCredentials, shouldPersistClientId } = params;
+  if (!loginClientId) {
+    return;
+  }
+  if (wantsClientCredentials) {
+    updated.clientId = loginClientId;
+  } else if (!updated.clientId && shouldPersistClientId) {
+    updated.clientId = loginClientId;
+  }
+};
+
+/**
+ * Read the root config, recovering from a CONFIG_INVALID error in the wizard
+ * by offering to back up and recreate it. Returns `null` when the user
+ * declines the recreation (caller should treat this as a cancellation).
+ */
+const loadOrRecreateConfig = async (params: {
+  configPath: string;
+  targetPath: string;
+  runWizard: boolean;
+  isInteractive: boolean;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<ReturnType<typeof readRootConfigurationFile> | null> => {
+  const { configPath, targetPath, runWizard, isInteractive, logger } = params;
+  try {
+    return readRootConfigurationFile(configPath);
+  } catch (error) {
+    const cliError = toScaiError(error);
+    if (!(cliError.code === "CONFIG_INVALID" && runWizard && isInteractive)) {
+      throw error;
+    }
+    const recreate = await promptConfirm(
+      `Configuration file at ${targetPath} is invalid. Recreate it?`,
+      false
+    );
+    if (!recreate) {
+      logger.info("Init cancelled. No changes were made.");
+      return null;
+    }
+    if (fsSync.existsSync(targetPath)) {
+      const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+      const backupPath = `${targetPath}.invalid-${timestamp}`;
+      fsSync.renameSync(targetPath, backupPath);
+      logger.warn(`Backed up invalid config to ${backupPath}`);
+    }
+    writeConfigTemplate(targetPath);
+    logger.info(`Recreated ${targetPath}`, "green");
+    return readRootConfigurationFile(configPath);
+  }
+};
+
+type WizardEnvState = {
+  envName: string;
+  root: ReturnType<typeof readRootConfiguration>;
+  existing: EnvironmentConfiguration;
+  envExists: boolean;
+  baseEnv: EnvironmentConfiguration;
+};
+
+/**
+ * In the wizard, re-prompt for an environment name until the chosen name is
+ * neither the reserved `default` nor an existing profile the user declines to
+ * overwrite. Returns `null` when the user cancels.
+ */
+const resolveEnvNameForWizard = async (params: {
+  initial: WizardEnvState;
+  configPath: string;
+  envProfiles: Record<string, EnvironmentConfiguration>;
+  reservedName: string;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<WizardEnvState | null> => {
+  const { configPath, envProfiles, reservedName, logger } = params;
+  let { envName, root, existing, envExists, baseEnv } = params.initial;
+  const reload = (name: string): WizardEnvState => {
+    const nextRoot = readRootConfiguration(configPath, name);
+    return {
+      envName: name,
+      root: nextRoot,
+      existing: envProfiles[name] ?? {},
+      envExists: Boolean(envProfiles[name]),
+      baseEnv: nextRoot.environments[name] ?? {},
+    };
+  };
+  while (envExists || envName.toLowerCase() === reservedName) {
+    if (envName.toLowerCase() === reservedName) {
+      const newName = await promptText("Environment name cannot be 'default'. Choose another name");
+      if (!newName) {
+        logger.info("Init cancelled. No changes were made.");
+        return null;
+      }
+      ({ envName, root, existing, envExists, baseEnv } = reload(newName));
+      continue;
+    }
+    const overwrite = await promptConfirm(
+      `Environment '${envName}' already exists. Overwrite?`,
+      false
+    );
+    if (overwrite) {
+      break;
+    }
+    const newName = await promptText(
+      "Choose a different environment name (local label; does not need to match SitecoreAI)"
+    );
+    if (!newName) {
+      logger.info("Init cancelled. No changes were made.");
+      return null;
+    }
+    ({ envName, root, existing, envExists, baseEnv } = reload(newName));
+  }
+  return { envName, root, existing, envExists, baseEnv };
+};
+
+/**
+ * Decide whether this run needs a deploy lookup (org/project/environment
+ * resolution) and/or a deploy token. The wizard always needs both; explicit
+ * flags drive the non-wizard path; the skip flag suppresses the lookup.
+ */
+const resolveDeployNeeds = (
+  options: ConnectOptions,
+  runWizard: boolean
+): { needsDeployLookup: boolean; needsDeployToken: boolean } => {
+  const skipDeployLookup =
+    Boolean(options.skipDeployLookup) || process.env.SITECOREAI_SKIP_DEPLOY_LOOKUP === "1";
+  let needsDeployLookup = Boolean(options.organization || options.project || options.environment);
+  if (skipDeployLookup) {
+    needsDeployLookup = false;
+  }
+  if (runWizard && !needsDeployLookup && !skipDeployLookup) {
+    needsDeployLookup = true;
+  }
+  const needsDeployToken =
+    runWizard ||
+    needsDeployLookup ||
+    Boolean(options.deployToken || options.clientId || options.clientSecret);
+  return { needsDeployLookup, needsDeployToken };
+};
+
+/**
+ * Handle a bare `--set-default` run (no other field changes): point the
+ * default at an already-configured env and persist. Returns `true` when this
+ * path handled the run (caller should return early).
+ */
+const handleSetDefaultOnly = (params: {
+  options: ConnectOptions;
+  otherChanges: boolean;
+  envProfiles: Record<string, EnvironmentConfiguration>;
+  rootConfigFile: ReturnType<typeof readRootConfigurationFile>;
+  configPath: string;
+  envName: string;
+  logger: ReturnType<typeof toLogger>;
+}): boolean => {
+  const { options, otherChanges, envProfiles, rootConfigFile, configPath, envName, logger } =
+    params;
+  if (!(options.setDefault && !otherChanges)) {
+    return false;
+  }
+  if (!envProfiles[envName]) {
+    throw createScaiError(
+      `Environment '${envName}' does not exist. Configure it before setting default.`,
+      "ENV_NOT_FOUND"
+    );
+  }
+  rootConfigFile.config.defaultEnvProfile = envName;
+  writeRootConfigurationFile(configPath, rootConfigFile.config);
+  logger.info(`Default environment set to '${envName}'.`, "green");
+  return true;
+};
+
+/** Apply the `--set-default` decision to the config (flag, non-wizard default, or wizard prompt). */
+const applyDefaultEnvProfile = async (params: {
+  options: ConnectOptions;
+  rootConfigFile: ReturnType<typeof readRootConfigurationFile>;
+  envName: string;
+  runWizard: boolean;
+}): Promise<void> => {
+  const { options, rootConfigFile, envName, runWizard } = params;
+  if (options.setDefault || (!rootConfigFile.config.defaultEnvProfile && !runWizard)) {
+    rootConfigFile.config.defaultEnvProfile = envName;
+    return;
+  }
+  if (runWizard) {
+    const shouldSetDefault = await promptConfirm(
+      "Set as default environment?",
+      !rootConfigFile.config.defaultEnvProfile
+    );
+    if (shouldSetDefault) {
+      rootConfigFile.config.defaultEnvProfile = envName;
+    }
+  }
+};
+
+export const runInit = async (options: ConnectOptions): Promise<void> => {
+  const logger = toLogger(options);
+  const isInteractive =
+    process.stdin.isTTY && process.stdout.isTTY && process.env.SITECOREAI_NON_INTERACTIVE !== "1";
+  const runWizard = Boolean(options.wizard || !hasExplicitInput(options));
   if (runWizard && !isInteractive) {
     assertInteractive(
       "Wizard mode requires a TTY. Provide flags instead.",
@@ -70,32 +299,15 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     writeConfigTemplate(targetPath);
     logger.info(`Created ${targetPath}`, "green");
   }
-  let rootConfigFile: ReturnType<typeof readRootConfigurationFile>;
-  try {
-    rootConfigFile = readRootConfigurationFile(configPath);
-  } catch (error) {
-    const cliError = toScaiError(error);
-    if (cliError.code === "CONFIG_INVALID" && runWizard && isInteractive) {
-      const recreate = await promptConfirm(
-        `Configuration file at ${targetPath} is invalid. Recreate it?`,
-        false
-      );
-      if (!recreate) {
-        logger.info("Init cancelled. No changes were made.");
-        return;
-      }
-      if (fsSync.existsSync(targetPath)) {
-        const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
-        const backupPath = `${targetPath}.invalid-${timestamp}`;
-        fsSync.renameSync(targetPath, backupPath);
-        logger.warn(`Backed up invalid config to ${backupPath}`);
-      }
-      writeConfigTemplate(targetPath);
-      logger.info(`Recreated ${targetPath}`, "green");
-      rootConfigFile = readRootConfigurationFile(configPath);
-    } else {
-      throw error;
-    }
+  const rootConfigFile = await loadOrRecreateConfig({
+    configPath,
+    targetPath,
+    runWizard,
+    isInteractive,
+    logger,
+  });
+  if (!rootConfigFile) {
+    return;
   }
   const envProfiles = rootConfigFile.config.envProfiles ?? {};
   let root = readRootConfiguration(configPath, envName);
@@ -103,101 +315,47 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   let envExists = Boolean(envProfiles[envName]);
   let baseEnv = root.environments[envName] ?? {};
 
-  const hasOtherChanges =
-    Boolean(
-      options.cm || options.host || options.organization || options.project || options.environment
-    ) ||
-    Boolean(options.deployToken || options.clientId || options.clientSecret) ||
-    Boolean(options.useClientCredentials || options.ref || options.allowWrite) ||
-    Boolean(options.organizationId || options.tenantId);
+  const otherChanges = hasOtherChanges(options);
 
   if (envExists && runWizard) {
-    while (envExists || envName.toLowerCase() === reservedName) {
-      if (envName.toLowerCase() === reservedName) {
-        const newName = await promptText(
-          "Environment name cannot be 'default'. Choose another name"
-        );
-        if (!newName) {
-          logger.info("Init cancelled. No changes were made.");
-          return;
-        }
-        envName = newName;
-        root = readRootConfiguration(configPath, envName);
-        existing = envProfiles[envName] ?? {};
-        envExists = Boolean(envProfiles[envName]);
-        baseEnv = root.environments[envName] ?? {};
-        continue;
-      }
-      const overwrite = await promptConfirm(
-        `Environment '${envName}' already exists. Overwrite?`,
-        false
-      );
-      if (overwrite) {
-        break;
-      }
-      const newName = await promptText(
-        "Choose a different environment name (local label; does not need to match SitecoreAI)"
-      );
-      if (!newName) {
-        logger.info("Init cancelled. No changes were made.");
-        return;
-      }
-      envName = newName;
-      root = readRootConfiguration(configPath, envName);
-      existing = envProfiles[envName] ?? {};
-      envExists = Boolean(envProfiles[envName]);
-      baseEnv = root.environments[envName] ?? {};
+    const resolved = await resolveEnvNameForWizard({
+      initial: { envName, root, existing, envExists, baseEnv },
+      configPath,
+      envProfiles,
+      reservedName,
+      logger,
+    });
+    if (!resolved) {
+      return;
     }
-  } else if (envExists && !runWizard && hasOtherChanges) {
+    ({ envName, existing, baseEnv } = resolved);
+  } else if (envExists && !runWizard && otherChanges) {
     logger.warn(`Environment '${envName}' already exists and will be updated.`);
   }
 
-  if (options.setDefault && !hasOtherChanges) {
-    if (!envProfiles[envName]) {
-      throw createScaiError(
-        `Environment '${envName}' does not exist. Configure it before setting default.`,
-        "ENV_NOT_FOUND"
-      );
-    }
-    rootConfigFile.config.defaultEnvProfile = envName;
-    writeRootConfigurationFile(configPath, rootConfigFile.config);
-    logger.info(`Default environment set to '${envName}'.`, "green");
+  if (
+    handleSetDefaultOnly({
+      options,
+      otherChanges,
+      envProfiles,
+      rootConfigFile,
+      configPath,
+      envName,
+      logger,
+    })
+  ) {
     return;
   }
 
   if (options.ref) {
-    const refEnv = envProfiles[options.ref];
-    if (!refEnv) {
-      throw createScaiError(
-        `Referenced environment '${options.ref}' was not found.`,
-        "ENV_NOT_FOUND"
-      );
-    }
-    if (refEnv.ref) {
-      throw inputError(
-        `Referenced environment '${options.ref}' cannot itself reference another environment.`
-      );
-    }
+    assertRefIsValid(options.ref, envProfiles);
   }
 
   const updated = { ...existing };
   let host = options.cm ?? options.host ?? existing.host;
-  let projectSelection = options.project;
-  let environmentSelection = options.environment;
-  const skipDeployLookup =
-    Boolean(options.skipDeployLookup) || process.env.SITECOREAI_SKIP_DEPLOY_LOOKUP === "1";
-  let needsDeployLookup = Boolean(options.organization || projectSelection || environmentSelection);
-  if (skipDeployLookup) {
-    needsDeployLookup = false;
-  }
-  if (runWizard && !needsDeployLookup && !skipDeployLookup) {
-    needsDeployLookup = true;
-  }
-  let needsDeployToken =
-    needsDeployLookup || Boolean(options.deployToken || options.clientId || options.clientSecret);
-  if (runWizard) {
-    needsDeployToken = true;
-  }
+  const projectSelection = options.project;
+  const environmentSelection = options.environment;
+  const { needsDeployLookup, needsDeployToken } = resolveDeployNeeds(options, runWizard);
 
   const auth = await resolveDeployAuth({
     options,
@@ -259,13 +417,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
   if (!updated.authority) {
     updated.authority = loginAuthority;
   }
-  if (loginClientId) {
-    if (wantsClientCredentials) {
-      updated.clientId = loginClientId;
-    } else if (!updated.clientId && shouldPersistClientId) {
-      updated.clientId = loginClientId;
-    }
-  }
+  applyClientId(updated, { loginClientId, wantsClientCredentials, shouldPersistClientId });
   applyIfDefined(updated, "ref", options.ref);
   if (options.allowWrite !== undefined) {
     updated.allowWrite = options.allowWrite;
@@ -283,17 +435,7 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     ...envProfiles,
     [envName]: updated,
   };
-  if (options.setDefault || (!rootConfigFile.config.defaultEnvProfile && !runWizard)) {
-    rootConfigFile.config.defaultEnvProfile = envName;
-  } else if (runWizard) {
-    const shouldSetDefault = await promptConfirm(
-      "Set as default environment?",
-      !rootConfigFile.config.defaultEnvProfile
-    );
-    if (shouldSetDefault) {
-      rootConfigFile.config.defaultEnvProfile = envName;
-    }
-  }
+  await applyDefaultEnvProfile({ options, rootConfigFile, envName, runWizard });
 
   writeRootConfigurationFile(configPath, rootConfigFile.config);
   logger.info(`Initialized environment '${envName}' in sitecoreai.cli.json`, "green");

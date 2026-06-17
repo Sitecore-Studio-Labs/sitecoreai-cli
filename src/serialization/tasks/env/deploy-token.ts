@@ -34,6 +34,74 @@ const envValue = (key: string): string | undefined => {
   return value ? value : undefined;
 };
 
+type DeployTokenResult = { accessToken: string; refreshToken?: string; expiresIn?: number };
+
+type AcquireDeployTokenInput = {
+  wantsClientCredentials: boolean;
+  authority: string;
+  clientId?: string;
+  clientSecret?: string;
+  audience: string;
+  isInteractive: boolean;
+  logger: ReturnType<typeof toLogger>;
+};
+
+/** Mint a token via client-credentials (machine) flow. */
+const acquireClientCredentialsToken = async (
+  input: AcquireDeployTokenInput
+): Promise<DeployTokenResult> => {
+  const { authority, clientId, clientSecret, audience } = input;
+  if (!authority || !clientId || !clientSecret) {
+    throw createScaiError(
+      "Client ID and client secret are required for client credentials.",
+      "AUTH_REQUIRED",
+      {
+        hint: "Provide --client-id/--client-secret with --use-client-credentials, or set SITECOREAI_CLIENT_ID and SITECOREAI_CLIENT_SECRET.",
+      }
+    );
+  }
+  return requestClientCredentialsToken(
+    { authority, clientId, clientSecret, audience },
+    SCAI_CLIENT_CREDENTIALS_SCOPES
+  );
+};
+
+/** Mint a token via the interactive device-authorization (browser) flow. */
+const acquireDeviceToken = async (input: AcquireDeployTokenInput): Promise<DeployTokenResult> => {
+  const { authority, clientId, clientSecret, audience, isInteractive, logger } = input;
+  if (!authority || !clientId) {
+    throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
+      hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
+    });
+  }
+  if (!isInteractive) {
+    assertInteractive(
+      "Interactive login requires a TTY. Use --use-client-credentials instead.",
+      "Use --use-client-credentials for non-interactive authentication."
+    );
+  }
+  const device = await requestDeviceAuthorization(
+    { authority, clientId, clientSecret, audience },
+    SCAI_DEVICE_FLOW_SCOPES
+  );
+  const verifyUrl = device.verificationUriComplete ?? device.verificationUri;
+  if (device.message) {
+    logger.info(device.message);
+  }
+  if (!openBrowser(verifyUrl)) {
+    logger.info(`Complete login at: ${verifyUrl}`);
+  } else {
+    logger.info(`Opened browser for: ${verifyUrl}`);
+  }
+  if (!device.verificationUriComplete && device.userCode) {
+    logger.info(`Enter code: ${device.userCode}`);
+  }
+  return pollDeviceToken({ authority, clientId, clientSecret, audience }, device);
+};
+
+const acquireDeployToken = (input: AcquireDeployTokenInput): Promise<DeployTokenResult> =>
+  input.wantsClientCredentials ? acquireClientCredentialsToken(input) : acquireDeviceToken(input);
+
 export const runDeployToken = async (options: DeployTokenOptions): Promise<void> => {
   const logger = toLogger(options);
   const envName = options.environmentName;
@@ -99,69 +167,15 @@ export const runDeployToken = async (options: DeployTokenOptions): Promise<void>
   }
   const audience = baseEnv.audience ?? "https://api.sitecorecloud.io";
 
-  let token: { accessToken: string; refreshToken?: string; expiresIn?: number };
-  if (wantsClientCredentials) {
-    if (!authority || !clientId || !clientSecret) {
-      throw createScaiError(
-        "Client ID and client secret are required for client credentials.",
-        "AUTH_REQUIRED",
-        {
-          hint: "Provide --client-id/--client-secret with --use-client-credentials, or set SITECOREAI_CLIENT_ID and SITECOREAI_CLIENT_SECRET.",
-        }
-      );
-    }
-    token = await requestClientCredentialsToken(
-      {
-        authority,
-        clientId,
-        clientSecret,
-        audience,
-      },
-      SCAI_CLIENT_CREDENTIALS_SCOPES
-    );
-  } else {
-    if (!authority || !clientId) {
-      throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
-        hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
-      });
-    }
-    if (!isInteractive) {
-      assertInteractive(
-        "Interactive login requires a TTY. Use --use-client-credentials instead.",
-        "Use --use-client-credentials for non-interactive authentication."
-      );
-    }
-    const device = await requestDeviceAuthorization(
-      {
-        authority,
-        clientId,
-        clientSecret,
-        audience,
-      },
-      SCAI_DEVICE_FLOW_SCOPES
-    );
-    const verifyUrl = device.verificationUriComplete ?? device.verificationUri;
-    if (device.message) {
-      logger.info(device.message);
-    }
-    if (!openBrowser(verifyUrl)) {
-      logger.info(`Complete login at: ${verifyUrl}`);
-    } else {
-      logger.info(`Opened browser for: ${verifyUrl}`);
-    }
-    if (!device.verificationUriComplete && device.userCode) {
-      logger.info(`Enter code: ${device.userCode}`);
-    }
-    token = await pollDeviceToken(
-      {
-        authority,
-        clientId,
-        clientSecret,
-        audience,
-      },
-      device
-    );
-  }
+  const token = await acquireDeployToken({
+    wantsClientCredentials,
+    authority,
+    clientId,
+    clientSecret,
+    audience,
+    isInteractive,
+    logger,
+  });
 
   const stored = await setDeployToken(envName, token.accessToken);
   if (!stored) {

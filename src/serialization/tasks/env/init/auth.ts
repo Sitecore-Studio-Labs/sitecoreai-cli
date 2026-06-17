@@ -40,6 +40,100 @@ type ResolveDeployAuthResult = {
   deployTokenMeta?: { expiresIn: number | null; lastUpdated: string };
 };
 
+const DEPLOY_AUDIENCE = "https://api.sitecorecloud.io";
+
+type MintedToken = {
+  deployToken: string;
+  deployTokenMeta: { expiresIn: number | null; lastUpdated: string };
+};
+
+/** Mint a deploy token via the client-credentials (machine) flow. */
+const mintClientCredentialsToken = async (params: {
+  loginAuthority?: string;
+  loginClientId?: string;
+  loginClientSecret?: string;
+}): Promise<MintedToken> => {
+  const { loginAuthority, loginClientId, loginClientSecret } = params;
+  if (!loginAuthority || !loginClientId || !loginClientSecret) {
+    throw createScaiError(
+      "Client ID and client secret are required for client credentials.",
+      "AUTH_REQUIRED",
+      {
+        hint: "Provide --client-id/--client-secret with --use-client-credentials, or set SITECOREAI_CLIENT_ID and SITECOREAI_CLIENT_SECRET.",
+      }
+    );
+  }
+  const token = await requestClientCredentialsToken(
+    {
+      authority: loginAuthority,
+      clientId: loginClientId,
+      clientSecret: loginClientSecret,
+      audience: DEPLOY_AUDIENCE,
+    },
+    undefined
+  );
+  return {
+    deployToken: token.accessToken,
+    deployTokenMeta: { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() },
+  };
+};
+
+/** Mint a deploy token via the interactive device-authorization (browser) flow. */
+const mintDeviceToken = async (params: {
+  loginAuthority?: string;
+  loginClientId?: string;
+  loginClientSecret?: string;
+  isInteractive: boolean;
+  logger: Logger;
+}): Promise<MintedToken> => {
+  const { loginAuthority, loginClientId, loginClientSecret, isInteractive, logger } = params;
+  if (!loginAuthority || !loginClientId) {
+    throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
+      hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
+    });
+  }
+  if (!isInteractive) {
+    assertInteractive(
+      "Interactive login requires a TTY. Use --use-client-credentials instead.",
+      "Use --use-client-credentials for non-interactive authentication."
+    );
+  }
+  const device = await requestDeviceAuthorization(
+    {
+      authority: loginAuthority,
+      clientId: loginClientId,
+      clientSecret: loginClientSecret,
+      audience: DEPLOY_AUDIENCE,
+    },
+    undefined
+  );
+  const verifyUrl = device.verificationUriComplete ?? device.verificationUri;
+  if (device.message) {
+    logger.info(device.message);
+  }
+  if (!openBrowser(verifyUrl)) {
+    logger.info(`Complete login at: ${verifyUrl}`);
+  } else {
+    logger.info(`Opened browser for: ${verifyUrl}`);
+  }
+  if (!device.verificationUriComplete && device.userCode) {
+    logger.info(`Enter code: ${device.userCode}`);
+  }
+  const token = await pollDeviceToken(
+    {
+      authority: loginAuthority,
+      clientId: loginClientId,
+      clientSecret: loginClientSecret,
+      audience: DEPLOY_AUDIENCE,
+    },
+    device
+  );
+  return {
+    deployToken: token.accessToken,
+    deployTokenMeta: { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() },
+  };
+};
+
 export const resolveDeployAuth = async (
   input: ResolveDeployAuthInput
 ): Promise<ResolveDeployAuthResult> => {
@@ -108,74 +202,26 @@ export const resolveDeployAuth = async (
     const entered = await promptSecret("Client secret: ");
     loginClientSecret = entered;
   }
-  const deployAudience = "https://api.sitecorecloud.io";
   let deployTokenMeta: ResolveDeployAuthResult["deployTokenMeta"];
 
   if (needsDeployToken && !deployToken && wantsClientCredentials) {
-    if (!loginAuthority || !loginClientId || !loginClientSecret) {
-      throw createScaiError(
-        "Client ID and client secret are required for client credentials.",
-        "AUTH_REQUIRED",
-        {
-          hint: "Provide --client-id/--client-secret with --use-client-credentials, or set SITECOREAI_CLIENT_ID and SITECOREAI_CLIENT_SECRET.",
-        }
-      );
-    }
-    const token = await requestClientCredentialsToken(
-      {
-        authority: loginAuthority,
-        clientId: loginClientId,
-        clientSecret: loginClientSecret,
-        audience: deployAudience,
-      },
-      undefined
-    );
-    deployToken = token.accessToken;
-    deployTokenMeta = { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() };
+    const minted = await mintClientCredentialsToken({
+      loginAuthority,
+      loginClientId,
+      loginClientSecret,
+    });
+    deployToken = minted.deployToken;
+    deployTokenMeta = minted.deployTokenMeta;
   } else if (needsDeployToken && !deployToken) {
-    if (!loginAuthority || !loginClientId) {
-      throw createScaiError("Client ID is required for interactive login.", "AUTH_REQUIRED", {
-        hint: "Provide --client-id or set SITECOREAI_CLIENT_ID.",
-      });
-    }
-    if (!isInteractive) {
-      assertInteractive(
-        "Interactive login requires a TTY. Use --use-client-credentials instead.",
-        "Use --use-client-credentials for non-interactive authentication."
-      );
-    }
-    const device = await requestDeviceAuthorization(
-      {
-        authority: loginAuthority,
-        clientId: loginClientId,
-        clientSecret: loginClientSecret,
-        audience: deployAudience,
-      },
-      undefined
-    );
-    const verifyUrl = device.verificationUriComplete ?? device.verificationUri;
-    if (device.message) {
-      logger.info(device.message);
-    }
-    if (!openBrowser(verifyUrl)) {
-      logger.info(`Complete login at: ${verifyUrl}`);
-    } else {
-      logger.info(`Opened browser for: ${verifyUrl}`);
-    }
-    if (!device.verificationUriComplete && device.userCode) {
-      logger.info(`Enter code: ${device.userCode}`);
-    }
-    const token = await pollDeviceToken(
-      {
-        authority: loginAuthority,
-        clientId: loginClientId,
-        clientSecret: loginClientSecret,
-        audience: deployAudience,
-      },
-      device
-    );
-    deployToken = token.accessToken;
-    deployTokenMeta = { expiresIn: token.expiresIn ?? null, lastUpdated: new Date().toISOString() };
+    const minted = await mintDeviceToken({
+      loginAuthority,
+      loginClientId,
+      loginClientSecret,
+      isInteractive,
+      logger,
+    });
+    deployToken = minted.deployToken;
+    deployTokenMeta = minted.deployTokenMeta;
   }
 
   return {

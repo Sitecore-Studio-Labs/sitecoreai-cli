@@ -74,6 +74,277 @@ const hasProjectRepository = (value: unknown): boolean => {
   return false;
 };
 
+/** Prompt for a valid tenant type, re-prompting until prod/nonprod is entered. */
+const promptTenantType = async (logger: Logger): Promise<number> => {
+  for (;;) {
+    const tenantInput = await promptText("Tenant type (prod/nonprod)", "nonprod");
+    const resolvedTenantType = resolveTenantTypeValue(tenantInput);
+    if (resolvedTenantType !== undefined) {
+      return resolvedTenantType;
+    }
+    logger.warn("Invalid tenant type. Use 'prod' or 'nonprod'.");
+  }
+};
+
+/**
+ * Resolve an environment ID from config precedence, falling back to an
+ * interactive prompt. Throws when none can be determined.
+ */
+const resolveEnvironmentId = async (params: {
+  updated: EnvironmentConfiguration;
+  existing: EnvironmentConfiguration;
+  baseEnv: EnvironmentConfiguration;
+  options: ConnectOptions;
+  errorMessage: string;
+}): Promise<string> => {
+  const { updated, existing, baseEnv, options, errorMessage } = params;
+  let environmentId =
+    updated.environmentId ?? existing.environmentId ?? baseEnv.environmentId ?? options.environment;
+  if (!environmentId) {
+    environmentId = await promptText("Environment ID (Deploy)");
+  }
+  if (!environmentId) {
+    throw inputError(errorMessage);
+  }
+  return environmentId;
+};
+
+/** Build the create-environment request body from interactive prompts. */
+const buildCreateEnvironmentBody = async (logger: Logger): Promise<Record<string, unknown>> => {
+  const name = await promptText("Environment name");
+  if (!name) {
+    throw inputError("Environment name is required. Use --name.");
+  }
+  const cmOnly = await promptConfirm("Create a CM-only environment?", true);
+  const tenantType = await promptTenantType(logger);
+  const body: Record<string, unknown> = { name };
+  if (tenantType !== undefined) {
+    body.tenantType = tenantType;
+  }
+  body.type = cmOnly ? "cm" : "combined";
+  return body;
+};
+
+/** Filter an environment list to those whose type contains the given marker. */
+const filterEnvironmentsByType = (
+  environments: DeployEnvironment[],
+  marker: string
+): DeployEnvironment[] =>
+  environments.filter((environment) => {
+    const type = getEnvironmentType(environment);
+    return type ? type.toLowerCase().includes(marker) : false;
+  });
+
+/**
+ * Pick the target environment from the candidate pool: list-select in the
+ * wizard, auto-select (announcing it) when only one candidate exists, else
+ * match by the provided selection value.
+ */
+const selectEnvironment = async (params: {
+  environmentSelection?: string;
+  runWizard: boolean;
+  selectionPool: DeployEnvironment[];
+  environmentLabel: string;
+  cmEnvironments: DeployEnvironment[];
+  resolvedProjectLabel: string;
+  logger: Logger;
+}): Promise<DeployEnvironment> => {
+  const {
+    environmentSelection,
+    runWizard,
+    selectionPool,
+    environmentLabel,
+    cmEnvironments,
+    resolvedProjectLabel,
+    logger,
+  } = params;
+  if (!environmentSelection && runWizard && selectionPool.length > 1) {
+    return selectFromList(logger, environmentLabel, selectionPool);
+  }
+  if (!environmentSelection && runWizard && selectionPool.length === 1) {
+    // Only one candidate. Auto-select it, but announce it by name —
+    // silently locking onto an environment the user never saw reads
+    // as "the project step just exited without asking anything".
+    const only = selectionPool[0];
+    const autoName = only.name ?? only.id ?? only.environmentId ?? "(unknown)";
+    const autoId = only.id ?? only.environmentId ?? "-";
+    const poolKind = cmEnvironments.length > 0 ? "CM environment" : "environment";
+    logger.info(
+      `Using the only ${poolKind} in '${resolvedProjectLabel}': ${autoName} (${autoId})`,
+      "cyan"
+    );
+    return only;
+  }
+  return selectMatch(selectionPool, "Environment", environmentSelection) as DeployEnvironment;
+};
+
+/** Apply the environment-type field to `updated` when it is a recognized CM/EH type. */
+const applyEnvironmentType = (
+  updated: EnvironmentConfiguration,
+  environment: DeployEnvironment
+): void => {
+  const resolvedType = getEnvironmentType(environment);
+  if (resolvedType === "cm" || resolvedType === "eh") {
+    updated.environmentType = resolvedType;
+  }
+};
+
+/**
+ * Recover from a failed (or unavailable) deploy lookup by resolving the
+ * environment directly from its ID — the path taken for environment-scoped
+ * credentials, which can't enumerate orgs/projects.
+ */
+const recoverFromEnvironmentScoped = async (params: {
+  error: unknown;
+  deployOptions: { accessToken: string };
+  updated: EnvironmentConfiguration;
+  existing: EnvironmentConfiguration;
+  baseEnv: EnvironmentConfiguration;
+  options: ConnectOptions;
+  nextHost?: string;
+  logger: Logger;
+}): Promise<string | undefined> => {
+  const { error, deployOptions, updated, existing, baseEnv, options, nextHost, logger } = params;
+  const cliError = toScaiError(error);
+  const isEnvScoped = /environment[- ]scoped/i.test(cliError.message);
+  const warning = isEnvScoped
+    ? "Deploy lookup failed. Environment-scoped credentials require an environment ID."
+    : `Deploy lookup failed. ${cliError.message}`;
+  logger.warn(warning);
+  const environmentId = await resolveEnvironmentId({
+    updated,
+    existing,
+    baseEnv,
+    options,
+    errorMessage:
+      "Environment ID is required for environment-scoped credentials. Use --environment <id>.",
+  });
+  const resolvedEnvironment = await fetchEnvironment(deployOptions, environmentId);
+  logger.warn(
+    "Environment-scoped credentials can limit some CLI operations (org/project lookups)."
+  );
+  updated.environmentId =
+    resolvedEnvironment.id ?? resolvedEnvironment.environmentId ?? updated.environmentId;
+  updated.projectId = resolveProjectIdValue(resolvedEnvironment.projectId) ?? updated.projectId;
+  updated.tenantId = resolvedEnvironment.tenantId ?? updated.tenantId;
+  applyEnvironmentType(updated, resolvedEnvironment);
+  return nextHost ?? resolveHostFromEnvironment(resolvedEnvironment);
+};
+
+type ProjectResolution = {
+  resolvedProject: { id?: string; projectId?: string; name?: string };
+  environments: DeployEnvironment[];
+  resolvedEnvironment?: DeployEnvironment;
+};
+
+/**
+ * Drive the interactive project-selection loop: pick a project, fetch its
+ * environments, and — when a project has none — either recover via a direct
+ * environment ID (no repository), create a fresh environment, or re-prompt
+ * for a different project. Returns once a usable project/environment is found.
+ */
+const resolveProjectAndEnvironments = async (params: {
+  projects: { id?: string; projectId?: string; name?: string }[];
+  projectSelection?: string;
+  runWizard: boolean;
+  deployOptions: { accessToken: string };
+  updated: EnvironmentConfiguration;
+  existing: EnvironmentConfiguration;
+  baseEnv: EnvironmentConfiguration;
+  options: ConnectOptions;
+  logger: Logger;
+}): Promise<ProjectResolution> => {
+  const {
+    projects,
+    projectSelection,
+    runWizard,
+    deployOptions,
+    updated,
+    existing,
+    baseEnv,
+    options,
+    logger,
+  } = params;
+  let selectedProjectValue = projectSelection;
+  let projectDetails: unknown | undefined;
+  for (;;) {
+    const resolvedProject =
+      !selectedProjectValue && runWizard && projects.length > 1
+        ? await selectFromList(logger, "Project", projects)
+        : selectMatch(projects, "Project", selectedProjectValue);
+    const resolvedProjectId = resolvedProject.id ?? resolvedProject.projectId ?? "";
+    const resolvedProjectLabel =
+      resolvedProject.name ?? resolvedProject.id ?? resolvedProject.projectId ?? "selected project";
+    const environments = await fetchProjectEnvironments(deployOptions, resolvedProjectId);
+    if (environments.length > 0) {
+      return { resolvedProject, environments };
+    }
+    if (!runWizard) {
+      throw inputError(`No environments were returned for project '${resolvedProjectLabel}'.`);
+    }
+    if (!projectDetails) {
+      try {
+        projectDetails = await fetchProject(deployOptions, resolvedProjectId);
+      } catch (error) {
+        logger.warn(`Unable to verify repository linkage. ${toScaiError(error).message}`);
+      }
+    }
+    if (!hasProjectRepository(projectDetails ?? resolvedProject)) {
+      logger.warn(
+        `Project '${resolvedProjectLabel}' is not linked to a repository. Environment creation requires a repository.`
+      );
+      if (projects.length > 1 && (await promptConfirm("Select a different project?", true))) {
+        selectedProjectValue = undefined;
+        projectDetails = undefined;
+        continue;
+      }
+      const environmentId = await resolveEnvironmentId({
+        updated,
+        existing,
+        baseEnv,
+        options,
+        errorMessage: "Environment ID is required. Use --environment <id>.",
+      });
+      const resolvedEnvironment = await fetchEnvironment(deployOptions, environmentId);
+      const projectIdFromEnvironment = resolveProjectIdValue(resolvedEnvironment.projectId);
+      const nextProject = projectIdFromEnvironment
+        ? { ...resolvedProject, id: projectIdFromEnvironment, projectId: projectIdFromEnvironment }
+        : resolvedProject;
+      return { resolvedProject: nextProject, environments, resolvedEnvironment };
+    }
+
+    const shouldCreate = await promptConfirm(
+      `No environments found for project '${resolvedProjectLabel}'. Create one now?`,
+      false
+    );
+    if (shouldCreate) {
+      const body = await buildCreateEnvironmentBody(logger);
+      let created: DeployEnvironment;
+      try {
+        created = (await createProjectEnvironment(
+          deployOptions,
+          resolvedProjectId,
+          body
+        )) as DeployEnvironment;
+      } catch (error) {
+        logger.warn(`Environment creation failed. ${toScaiError(error).message}`);
+        if (projects.length > 1 && (await promptConfirm("Select a different project?", true))) {
+          selectedProjectValue = undefined;
+          projectDetails = undefined;
+          continue;
+        }
+        throw error;
+      }
+      const refreshed = await fetchProjectEnvironments(deployOptions, resolvedProjectId);
+      return { resolvedProject, environments: refreshed, resolvedEnvironment: created };
+    }
+    if (projects.length <= 1) {
+      throw inputError(`No environments were returned for project '${resolvedProjectLabel}'.`);
+    }
+    selectedProjectValue = undefined;
+  }
+};
+
 export const resolveDeployLookup = async (
   input: ResolveDeployLookupInput
 ): Promise<ResolveDeployLookupResult> => {
@@ -108,168 +379,42 @@ export const resolveDeployLookup = async (
     const orgId = organization.id ?? organization.organizationId ?? options.organizationId;
 
     const projects = await fetchProjects(deployOptions);
-    let resolvedProject;
-    let environments: DeployEnvironment[] = [];
-    let resolvedProjectId = "";
-    let resolvedProjectLabel = "selected project";
-    let projectDetails: unknown | undefined;
-
-    let selectedProjectValue = projectSelection;
-    while (true) {
-      if (!selectedProjectValue && runWizard && projects.length > 1) {
-        resolvedProject = await selectFromList(logger, "Project", projects);
-      } else {
-        resolvedProject = selectMatch(projects, "Project", selectedProjectValue);
-      }
-      resolvedProjectId = resolvedProject.id ?? resolvedProject.projectId ?? "";
-      resolvedProjectLabel =
-        resolvedProject.name ??
-        resolvedProject.id ??
-        resolvedProject.projectId ??
-        "selected project";
-      environments = await fetchProjectEnvironments(deployOptions, resolvedProjectId);
-      if (environments.length > 0) {
-        break;
-      }
-      if (!runWizard) {
-        throw inputError(`No environments were returned for project '${resolvedProjectLabel}'.`);
-      }
-      if (!projectDetails) {
-        try {
-          projectDetails = await fetchProject(deployOptions, resolvedProjectId);
-        } catch (error) {
-          const cliError = toScaiError(error);
-          logger.warn(`Unable to verify repository linkage. ${cliError.message}`);
-        }
-      }
-      if (!hasProjectRepository(projectDetails ?? resolvedProject)) {
-        logger.warn(
-          `Project '${resolvedProjectLabel}' is not linked to a repository. Environment creation requires a repository.`
-        );
-        if (projects.length > 1) {
-          const chooseAnother = await promptConfirm("Select a different project?", true);
-          if (chooseAnother) {
-            selectedProjectValue = undefined;
-            projectDetails = undefined;
-            continue;
-          }
-        }
-        let environmentId =
-          updated.environmentId ??
-          existing.environmentId ??
-          baseEnv.environmentId ??
-          options.environment;
-        if (!environmentId) {
-          environmentId = await promptText("Environment ID (Deploy)");
-        }
-        if (!environmentId) {
-          throw inputError("Environment ID is required. Use --environment <id>.");
-        }
-        resolvedEnvironment = await fetchEnvironment(deployOptions, environmentId);
-        const projectIdFromEnvironment = resolveProjectIdValue(resolvedEnvironment.projectId);
-        if (projectIdFromEnvironment) {
-          resolvedProject = {
-            ...(resolvedProject ?? {}),
-            id: projectIdFromEnvironment,
-            projectId: projectIdFromEnvironment,
-          };
-        }
-        break;
-      }
-
-      const shouldCreate = await promptConfirm(
-        `No environments found for project '${resolvedProjectLabel}'. Create one now?`,
-        false
-      );
-      if (shouldCreate) {
-        const name = await promptText("Environment name");
-        if (!name) {
-          throw inputError("Environment name is required. Use --name.");
-        }
-        const cmOnly = await promptConfirm("Create a CM-only environment?", true);
-        let tenantType: number | undefined;
-        while (tenantType === undefined) {
-          const tenantInput = await promptText("Tenant type (prod/nonprod)", "nonprod");
-          const resolvedTenantType = resolveTenantTypeValue(tenantInput);
-          if (resolvedTenantType !== undefined) {
-            tenantType = resolvedTenantType;
-            break;
-          }
-          logger.warn("Invalid tenant type. Use 'prod' or 'nonprod'.");
-        }
-        const body: Record<string, unknown> = { name };
-        if (tenantType !== undefined) {
-          body.tenantType = tenantType;
-        }
-        body.type = cmOnly ? "cm" : "combined";
-        try {
-          const created = (await createProjectEnvironment(
-            deployOptions,
-            resolvedProjectId,
-            body
-          )) as DeployEnvironment;
-          resolvedEnvironment = created;
-          environments = await fetchProjectEnvironments(deployOptions, resolvedProjectId);
-          break;
-        } catch (error) {
-          const cliError = toScaiError(error);
-          logger.warn(`Environment creation failed. ${cliError.message}`);
-          if (projects.length > 1) {
-            const chooseAnother = await promptConfirm("Select a different project?", true);
-            if (chooseAnother) {
-              selectedProjectValue = undefined;
-              projectDetails = undefined;
-              continue;
-            }
-          }
-          throw error;
-        }
-      }
-      if (projects.length <= 1) {
-        throw inputError(`No environments were returned for project '${resolvedProjectLabel}'.`);
-      }
-      selectedProjectValue = undefined;
-    }
-    const cmEnvironments = environments.filter((environment) => {
-      const type = getEnvironmentType(environment);
-      return type ? type.toLowerCase().includes("cm") : false;
+    const projectResolution = await resolveProjectAndEnvironments({
+      projects,
+      projectSelection,
+      runWizard,
+      deployOptions,
+      updated,
+      existing,
+      baseEnv,
+      options,
+      logger,
     });
+    const resolvedProject = projectResolution.resolvedProject;
+    const environments = projectResolution.environments;
+    const resolvedProjectLabel =
+      resolvedProject.name ?? resolvedProject.id ?? resolvedProject.projectId ?? "selected project";
+    if (projectResolution.resolvedEnvironment) {
+      resolvedEnvironment = projectResolution.resolvedEnvironment;
+    }
+
+    const cmEnvironments = filterEnvironmentsByType(environments, "cm");
     const selectionPool =
       !environmentSelection && cmEnvironments.length > 0 ? cmEnvironments : environments;
     const environmentLabel =
       !environmentSelection && cmEnvironments.length > 0 ? "Environment (CM)" : "Environment";
     if (!resolvedEnvironment) {
-      if (!environmentSelection && runWizard && selectionPool.length > 1) {
-        resolvedEnvironment = await selectFromList(logger, environmentLabel, selectionPool);
-      } else if (!environmentSelection && runWizard && selectionPool.length === 1) {
-        // Only one candidate. Auto-select it, but announce it by name —
-        // silently locking onto an environment the user never saw reads
-        // as "the project step just exited without asking anything".
-        resolvedEnvironment = selectionPool[0];
-        const autoName =
-          resolvedEnvironment.name ??
-          resolvedEnvironment.id ??
-          resolvedEnvironment.environmentId ??
-          "(unknown)";
-        const autoId = resolvedEnvironment.id ?? resolvedEnvironment.environmentId ?? "-";
-        const poolKind = cmEnvironments.length > 0 ? "CM environment" : "environment";
-        logger.info(
-          `Using the only ${poolKind} in '${resolvedProjectLabel}': ${autoName} (${autoId})`,
-          "cyan"
-        );
-      } else {
-        resolvedEnvironment = selectMatch(
-          selectionPool,
-          "Environment",
-          environmentSelection
-        ) as DeployEnvironment;
-      }
+      resolvedEnvironment = await selectEnvironment({
+        environmentSelection,
+        runWizard,
+        selectionPool,
+        environmentLabel,
+        cmEnvironments,
+        resolvedProjectLabel,
+        logger,
+      });
     }
-    const editingHostEnvironmentIds = environments
-      .filter((environment) => {
-        const type = getEnvironmentType(environment);
-        return type ? type.toLowerCase().includes("eh") : false;
-      })
+    const editingHostEnvironmentIds = filterEnvironmentsByType(environments, "eh")
       .map((environment) => environment.id ?? environment.environmentId)
       .filter((value): value is string => Boolean(value));
 
@@ -278,10 +423,7 @@ export const resolveDeployLookup = async (
     updated.environmentId =
       resolvedEnvironment.id ?? resolvedEnvironment.environmentId ?? updated.environmentId;
     updated.tenantId = resolvedEnvironment.tenantId ?? updated.tenantId ?? organization.tenantId;
-    const resolvedType = getEnvironmentType(resolvedEnvironment);
-    if (resolvedType === "cm" || resolvedType === "eh") {
-      updated.environmentType = resolvedType;
-    }
+    applyEnvironmentType(updated, resolvedEnvironment);
     if (editingHostEnvironmentIds.length > 0) {
       updated.editingHostEnvironmentIds = editingHostEnvironmentIds;
     }
@@ -293,40 +435,16 @@ export const resolveDeployLookup = async (
     if (!runWizard) {
       throw error;
     }
-    const cliError = toScaiError(error);
-    const isEnvScoped = /environment[- ]scoped/i.test(cliError.message);
-    const warning = isEnvScoped
-      ? "Deploy lookup failed. Environment-scoped credentials require an environment ID."
-      : `Deploy lookup failed. ${cliError.message}`;
-    logger.warn(warning);
-    let environmentId =
-      updated.environmentId ??
-      existing.environmentId ??
-      baseEnv.environmentId ??
-      options.environment;
-    if (!environmentId) {
-      environmentId = await promptText("Environment ID (Deploy)");
-    }
-    if (!environmentId) {
-      throw inputError(
-        "Environment ID is required for environment-scoped credentials. Use --environment <id>."
-      );
-    }
-    resolvedEnvironment = await fetchEnvironment(deployOptions, environmentId);
-    logger.warn(
-      "Environment-scoped credentials can limit some CLI operations (org/project lookups)."
-    );
-    updated.environmentId =
-      resolvedEnvironment.id ?? resolvedEnvironment.environmentId ?? updated.environmentId;
-    updated.projectId = resolveProjectIdValue(resolvedEnvironment.projectId) ?? updated.projectId;
-    updated.tenantId = resolvedEnvironment.tenantId ?? updated.tenantId;
-    const resolvedType = getEnvironmentType(resolvedEnvironment);
-    if (resolvedType === "cm" || resolvedType === "eh") {
-      updated.environmentType = resolvedType;
-    }
-    if (!nextHost) {
-      nextHost = resolveHostFromEnvironment(resolvedEnvironment);
-    }
+    nextHost = await recoverFromEnvironmentScoped({
+      error,
+      deployOptions,
+      updated,
+      existing,
+      baseEnv,
+      options,
+      nextHost,
+      logger,
+    });
   }
 
   return { host: nextHost, updated };

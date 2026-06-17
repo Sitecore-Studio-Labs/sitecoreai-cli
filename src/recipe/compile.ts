@@ -321,109 +321,147 @@ const sourceTypesOfAugment = (augment: SitecoreFieldAugment | undefined): readon
  * recipe pair, which manifests as "ref-source-fields … not yet in
  * captured map" at first push.
  */
-const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
-  const deps = new Set<string>();
-  const add = (h: string | undefined) => {
-    if (h && h !== recipe.handle) deps.add(h);
-  };
+/** Sink that records a cross-recipe handle dependency (self-refs skipped). */
+type AddDep = (handle: string | undefined) => void;
+
+/** A layout placement carrying a component + optional datasource ref. */
+type LayoutPlacement = {
+  componentHandle: string;
+  datasourceRef?: { kind: "shared"; handle: string } | { kind: "scoped" } | { kind: "none" };
+};
+
+/**
+ * Add every layout-placement dependency: each `componentHandle` plus
+ * each shared `datasourceRef.handle`. Shared by the four layout-bearing
+ * recipe kinds (page-template, page, partial-design, page-design).
+ */
+const addLayoutPlacementDeps = (
+  add: AddDep,
+  placeholders: Record<string, readonly LayoutPlacement[]>
+): void => {
+  for (const placements of Object.values(placeholders)) {
+    for (const p of placements) {
+      add(p.componentHandle);
+      if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
+    }
+  }
+};
+
+/** Add source-picker `types` deps from a list of augmented fields/params. */
+const addSourceTypeDeps = (
+  add: AddDep,
+  augmented: readonly { sitecore?: SitecoreFieldAugment }[]
+): void => {
+  for (const entry of augmented) sourceTypesOfAugment(entry.sitecore).forEach(add);
+};
+
+/** Add deps from a ComponentTemplateRecipe (fields/params/inserts/datasource/children/slots). */
+const addComponentTemplateDeps = (
+  recipe: Extract<Recipe, { kind: "component-template" }>,
+  add: AddDep
+): void => {
+  addSourceTypeDeps(add, recipe.fields ?? []);
+  addSourceTypeDeps(add, recipe.params ?? []);
+  recipe.insertOptions?.forEach(add);
+  add(recipe.datasource?.template?.handle);
+  add(recipe.parameters?.handle);
+  recipe.children?.allowedHandles.forEach(add);
+  for (const slot of recipe.placeholders ?? []) {
+    resolveAllowedHandles(slot).forEach(add);
+  }
+};
+
+/** Add deps from a ContentItemRecipe's templateType + typed field refs. */
+const addContentItemDeps = (
+  recipe: Extract<Recipe, { kind: "content-item" }>,
+  add: AddDep
+): void => {
+  add(recipe.templateType);
+  for (const v of Object.values(recipe.fields)) {
+    if (v.shape === "link-internal") add(v.ref);
+    else if (v.shape === "reference") v.refs.forEach(add);
+  }
+};
+
+/** Add deps from a PageRecipe's template + loosely-typed field refs + layout. */
+const addPageDeps = (recipe: Extract<Recipe, { kind: "page" }>, add: AddDep): void => {
+  add(recipe.template);
+  // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
+  // shape + scai-native ContentFieldValue). Only scai-native shapes
+  // carry cross-recipe handle refs; sniff `shape` defensively.
+  for (const v of Object.values(recipe.fields ?? {})) {
+    if (v !== null && typeof v === "object" && "shape" in v) {
+      const sv = v as { shape: string; ref?: string; refs?: readonly string[] };
+      if (sv.shape === "link-internal" && typeof sv.ref === "string") add(sv.ref);
+      else if (sv.shape === "reference" && Array.isArray(sv.refs)) sv.refs.forEach(add);
+    }
+  }
+  if (recipe.layout) addLayoutPlacementDeps(add, recipe.layout.placeholders);
+};
+
+/** Add deps from a SiteTemplateRecipe (templates/designs/dictionaries/matrices). */
+const addSiteTemplateDeps = (
+  recipe: Extract<Recipe, { kind: "site-template" }>,
+  add: AddDep
+): void => {
+  recipe.pageTemplates.forEach(add);
+  recipe.pageDesigns.forEach(add);
+  (recipe.dictionaries ?? []).forEach(add);
+  if (recipe.insertOptionsMatrix) {
+    for (const [parent, children] of Object.entries(recipe.insertOptionsMatrix)) {
+      add(parent);
+      children.forEach(add);
+    }
+  }
+  if (recipe.templatesToDesigns) {
+    for (const [tplHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
+      add(tplHandle);
+      add(designHandle);
+    }
+  }
+};
+
+/**
+ * Collect the cross-recipe dependencies for a single recipe into `add`.
+ * Pure per-kind routing — extracted from `extractRecipeDependencies` to
+ * keep that function a thin orchestrator.
+ */
+const collectRecipeDeps = (recipe: Recipe, add: AddDep): void => {
   switch (recipe.kind) {
     case "component-template":
-      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
-      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
-      recipe.insertOptions?.forEach(add);
-      add(recipe.datasource?.template?.handle);
-      add(recipe.parameters?.handle);
-      recipe.children?.allowedHandles.forEach(add);
-      for (const slot of recipe.placeholders ?? []) {
-        resolveAllowedHandles(slot).forEach(add);
-      }
+      addComponentTemplateDeps(recipe, add);
       break;
     case "content-template":
-      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      addSourceTypeDeps(add, recipe.fields ?? []);
       recipe.insertOptions?.forEach(add);
       break;
     case "design-parameters-template":
-      for (const p of recipe.params ?? []) sourceTypesOfAugment(p.sitecore).forEach(add);
+      addSourceTypeDeps(add, recipe.params ?? []);
       break;
     case "content-item":
-      add(recipe.templateType);
-      for (const v of Object.values(recipe.fields)) {
-        if (v.shape === "link-internal") add(v.ref);
-        else if (v.shape === "reference") v.refs.forEach(add);
-      }
+      addContentItemDeps(recipe, add);
       break;
     case "page-template":
-      for (const f of recipe.fields ?? []) sourceTypesOfAugment(f.sitecore).forEach(add);
+      addSourceTypeDeps(add, recipe.fields ?? []);
       recipe.insertOptions?.forEach(add);
-      if (recipe.layout) {
-        for (const placements of Object.values(recipe.layout.placeholders)) {
-          for (const p of placements) {
-            add(p.componentHandle);
-            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
-          }
-        }
-      }
+      if (recipe.layout) addLayoutPlacementDeps(add, recipe.layout.placeholders);
       break;
     case "page":
-      add(recipe.template);
-      // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
-      // shape + scai-native ContentFieldValue). Only scai-native shapes
-      // carry cross-recipe handle refs; sniff `shape` defensively.
-      for (const v of Object.values(recipe.fields ?? {})) {
-        if (v !== null && typeof v === "object" && "shape" in v) {
-          const sv = v as { shape: string; ref?: string; refs?: readonly string[] };
-          if (sv.shape === "link-internal" && typeof sv.ref === "string") add(sv.ref);
-          else if (sv.shape === "reference" && Array.isArray(sv.refs)) sv.refs.forEach(add);
-        }
-      }
-      if (recipe.layout) {
-        for (const placements of Object.values(recipe.layout.placeholders)) {
-          for (const p of placements) {
-            add(p.componentHandle);
-            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
-          }
-        }
-      }
+      addPageDeps(recipe, add);
       break;
     case "partial-design":
-      for (const placements of Object.values(recipe.layout.placeholders)) {
-        for (const p of placements) {
-          add(p.componentHandle);
-          if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
-        }
-      }
+      addLayoutPlacementDeps(add, recipe.layout.placeholders);
       break;
     case "page-design":
       recipe.appliesTo.forEach(add);
       recipe.partials.forEach(add);
-      if (recipe.layout) {
-        for (const placements of Object.values(recipe.layout.placeholders)) {
-          for (const p of placements) {
-            add(p.componentHandle);
-            if (p.datasourceRef?.kind === "shared") add(p.datasourceRef.handle);
-          }
-        }
-      }
+      if (recipe.layout) addLayoutPlacementDeps(add, recipe.layout.placeholders);
       break;
     case "placeholder":
       (recipe.allowedComponents ?? []).forEach(add);
       break;
     case "site-template":
-      recipe.pageTemplates.forEach(add);
-      recipe.pageDesigns.forEach(add);
-      (recipe.dictionaries ?? []).forEach(add);
-      if (recipe.insertOptionsMatrix) {
-        for (const [parent, children] of Object.entries(recipe.insertOptionsMatrix)) {
-          add(parent);
-          children.forEach(add);
-        }
-      }
-      if (recipe.templatesToDesigns) {
-        for (const [tplHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
-          add(tplHandle);
-          add(designHandle);
-        }
-      }
+      addSiteTemplateDeps(recipe, add);
       break;
     case "site":
       add(recipe.siteTemplate);
@@ -448,6 +486,14 @@ const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
       // Pure definitions — no outbound recipe refs in the authored shape.
       break;
   }
+};
+
+const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
+  const deps = new Set<string>();
+  const add: AddDep = (h) => {
+    if (h && h !== recipe.handle) deps.add(h);
+  };
+  collectRecipeDeps(recipe, add);
   return [...deps];
 };
 

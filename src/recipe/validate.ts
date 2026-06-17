@@ -232,11 +232,347 @@ export function formatValidationErrors(result: ValidationResult): string {
 }
 
 /**
- * Validate cross-recipe references in a recipe set. Returns a result
- * with all detected problems — caller decides whether to throw, log,
- * or surface them in CLI output.
+ * Records an unresolved/wrong-kind handle reference. Closes over the
+ * recipe index + the `unresolved` accumulator inside `validateRecipeSet`.
  */
-export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult {
+type CheckRef = (
+  fromRecipe: string,
+  fromField: string,
+  handle: string,
+  expectedKinds: readonly RecipeKind[]
+) => void;
+
+/**
+ * Records placement-legality violations for a layout's placeholders.
+ * Closes over the placeholder allow-set + the `placementViolations`
+ * accumulator inside `validateRecipeSet`.
+ */
+type CheckLayout = (
+  fromRecipe: string,
+  placeholders: Record<string, ReadonlyArray<{ componentHandle: string }>>
+) => void;
+
+/** A layout shape carrying placement placeholders, as on partial/page/design recipes. */
+type LayoutWithPlaceholders = {
+  placeholders: Record<
+    string,
+    ReadonlyArray<{
+      componentHandle: string;
+      datasourceRef?: { kind: "shared"; handle: string } | { kind: "scoped" } | { kind: "none" };
+    }>
+  >;
+};
+
+/**
+ * Reference-check every placement in a layout: each `componentHandle`
+ * must resolve to a ComponentTemplateRecipe, and each shared
+ * `datasourceRef.handle` to a ContentItemRecipe. Shared by the four
+ * layout-bearing recipe kinds (partial-design, page-design,
+ * page-template, page).
+ */
+const checkLayoutPlacementRefs = (
+  checkRef: CheckRef,
+  fromRecipe: string,
+  layout: LayoutWithPlaceholders
+): void => {
+  for (const [phKey, placements] of Object.entries(layout.placeholders)) {
+    placements.forEach((placement, idx) => {
+      checkRef(
+        fromRecipe,
+        `layout.placeholders.${phKey}.${idx}.componentHandle`,
+        placement.componentHandle,
+        COMPONENT_TEMPLATE_KINDS
+      );
+      if (placement.datasourceRef?.kind === "shared") {
+        checkRef(
+          fromRecipe,
+          `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
+          placement.datasourceRef.handle,
+          CONTENT_ITEM_KINDS
+        );
+      }
+    });
+  }
+};
+
+/** Reference-check a list of source-picker `types` on `field`/`param` augments. */
+const checkSourceTypeRefs = (
+  checkRef: CheckRef,
+  fromRecipe: string,
+  prefix: string,
+  augmented: readonly { sitecore?: SitecoreFieldAugment }[],
+  expectedKinds: readonly RecipeKind[]
+): void => {
+  augmented.forEach((entry, idx) => {
+    sourceTypesOf(entry.sitecore).forEach((handle, sIdx) => {
+      checkRef(fromRecipe, `${prefix}.${idx}.sitecore.source.types.${sIdx}`, handle, expectedKinds);
+    });
+  });
+};
+
+/** Validate a ComponentTemplateRecipe's cross-recipe references + shape constraints. */
+const checkComponentTemplateRefs = (
+  recipe: Extract<Recipe, { kind: "component-template" }>,
+  checkRef: CheckRef,
+  fieldShapeErrors: FieldShapeError[]
+): void => {
+  checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields, TEMPLATE_KINDS);
+  checkSourceTypeRefs(checkRef, recipe.handle, "params", recipe.params, TEMPLATE_KINDS);
+  recipe.insertOptions?.forEach((handle, idx) => {
+    checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
+  });
+  if (recipe.datasource?.template) {
+    checkRef(
+      recipe.handle,
+      "datasource.template.handle",
+      recipe.datasource.template.handle,
+      CONTENT_TEMPLATE_KINDS
+    );
+  }
+  if (recipe.parameters) {
+    checkRef(
+      recipe.handle,
+      "parameters.handle",
+      recipe.parameters.handle,
+      PARAMETERS_TEMPLATE_KINDS
+    );
+    if (recipe.dynamicPlaceholders) {
+      fieldShapeErrors.push({
+        fromRecipe: recipe.handle,
+        fromField: "parameters",
+        message:
+          "Cannot combine external 'parameters' with 'dynamicPlaceholders: true'. The IDynamicPlaceholder base must chain onto the consumer's own params template; chaining it onto a shared external template would silently affect every other consumer. Inline the params via 'params:' or drop 'dynamicPlaceholders'.",
+      });
+    }
+  }
+  recipe.children?.allowedHandles.forEach((handle, idx) => {
+    checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);
+  });
+  (recipe.placeholders ?? []).forEach((slot, idx) => {
+    // Both `allowedComponents` and the registry-side alias
+    // `allowedRenderingHandles` flow through `resolveAllowedHandles`;
+    // reference-check the merged set so handles authored under either
+    // name still validate.
+    resolveAllowedHandles(slot).forEach((handle, aIdx) => {
+      checkRef(
+        recipe.handle,
+        `placeholders.${idx}.allowedRenderingHandles.${aIdx}`,
+        handle,
+        COMPONENT_TEMPLATE_KINDS
+      );
+    });
+  });
+};
+
+/** Validate a ContentItemRecipe's templateType + field cross-recipe references. */
+const checkContentItemRefs = (
+  recipe: Extract<Recipe, { kind: "content-item" }>,
+  checkRef: CheckRef
+): void => {
+  checkRef(recipe.handle, "templateType", recipe.templateType, TEMPLATE_KINDS);
+  for (const [fieldName, value] of Object.entries(recipe.fields)) {
+    if (value.shape === "link-internal") {
+      checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
+    } else if (value.shape === "reference") {
+      value.refs.forEach((handle, idx) => {
+        checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
+      });
+    }
+  }
+};
+
+/** Validate a PageRecipe's template + loosely-typed field references. */
+const checkPageRefs = (
+  recipe: Extract<Recipe, { kind: "page" }>,
+  checkRef: CheckRef,
+  checkLayoutPlacements: CheckLayout
+): void => {
+  checkRef(recipe.handle, "template", recipe.template, PAGE_TEMPLATE_KINDS);
+  // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
+  // shape alongside scai-native ContentFieldValue). Only scai-native
+  // shapes carry cross-recipe handle refs; sniff `shape` defensively.
+  for (const [fieldName, raw] of Object.entries(recipe.fields ?? {})) {
+    if (raw === null || typeof raw !== "object" || !("shape" in raw)) continue;
+    const value = raw as { shape: string; ref?: string; refs?: readonly string[] };
+    if (value.shape === "link-internal" && typeof value.ref === "string") {
+      checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
+    } else if (value.shape === "reference" && Array.isArray(value.refs)) {
+      value.refs.forEach((handle: string, idx: number) => {
+        checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
+      });
+    }
+  }
+  if (recipe.layout) {
+    checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
+    checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+  }
+};
+
+/** Validate a SiteTemplateRecipe's template/design/dictionary/matrix references. */
+const checkSiteTemplateRefs = (
+  recipe: Extract<Recipe, { kind: "site-template" }>,
+  checkRef: CheckRef
+): void => {
+  recipe.pageTemplates.forEach((handle, idx) => {
+    checkRef(recipe.handle, `pageTemplates.${idx}`, handle, PAGE_TEMPLATE_KINDS);
+  });
+  recipe.pageDesigns.forEach((handle, idx) => {
+    checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
+  });
+  // `.default([])` on the schema only applies during Zod parse; test
+  // fixtures that hand-construct Recipe objects can leave the field
+  // undefined. Defensive `?? []` keeps it tolerant.
+  (recipe.dictionaries ?? []).forEach((handle, idx) => {
+    checkRef(recipe.handle, `dictionaries.${idx}`, handle, DICTIONARY_KINDS);
+  });
+  if (recipe.insertOptionsMatrix) {
+    for (const [parentHandle, allowedChildren] of Object.entries(recipe.insertOptionsMatrix)) {
+      // The KEY is itself a page-template handle. Validate it too — a
+      // typo in the key would silently never apply at apply time.
+      checkRef(
+        recipe.handle,
+        `insertOptionsMatrix.${parentHandle}`,
+        parentHandle,
+        PAGE_TEMPLATE_KINDS
+      );
+      allowedChildren.forEach((childHandle, idx) => {
+        checkRef(
+          recipe.handle,
+          `insertOptionsMatrix.${parentHandle}.${idx}`,
+          childHandle,
+          PAGE_TEMPLATE_KINDS
+        );
+      });
+    }
+  }
+  if (recipe.templatesToDesigns) {
+    for (const [templateHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
+      checkRef(
+        recipe.handle,
+        `templatesToDesigns.${templateHandle} (key)`,
+        templateHandle,
+        PAGE_TEMPLATE_KINDS
+      );
+      checkRef(
+        recipe.handle,
+        `templatesToDesigns.${templateHandle}`,
+        designHandle,
+        PAGE_DESIGN_KINDS
+      );
+    }
+  }
+};
+
+/** Validate a SiteRecipe's references + collection-identity XOR shape. */
+const checkSiteRefs = (
+  recipe: Extract<Recipe, { kind: "site" }>,
+  checkRef: CheckRef,
+  fieldShapeErrors: FieldShapeError[]
+): void => {
+  checkRef(recipe.handle, "siteTemplate", recipe.siteTemplate, SITE_TEMPLATE_KINDS);
+  if (recipe.initialHome !== undefined) {
+    checkRef(recipe.handle, "initialHome", recipe.initialHome, PAGE_KINDS);
+  }
+  // Cross-field shape: SiteRecipe must specify exactly one of
+  // collectionId or collectionName. The Zod schema can't enforce it
+  // (discriminated union members can't carry refines), so it lives here.
+  if (recipe.collectionId && recipe.collectionName) {
+    fieldShapeErrors.push({
+      fromRecipe: recipe.handle,
+      fromField: "collectionId, collectionName",
+      message: "collectionId and collectionName are mutually exclusive — provide one, not both",
+    });
+  }
+  if (!recipe.collectionId && !recipe.collectionName) {
+    fieldShapeErrors.push({
+      fromRecipe: recipe.handle,
+      fromField: "collectionId, collectionName",
+      message: "either collectionId (existing) or collectionName (new) must be provided",
+    });
+  }
+};
+
+/**
+ * Dispatch one recipe to its kind-specific reference/shape checks.
+ * Pure routing — all accumulation happens through the passed-in
+ * `checkRef` / `checkLayoutPlacements` closures and the error arrays.
+ */
+const checkRecipeReferences = (
+  recipe: Recipe,
+  checkRef: CheckRef,
+  checkLayoutPlacements: CheckLayout,
+  fieldShapeErrors: FieldShapeError[]
+): void => {
+  switch (recipe.kind) {
+    case "component-template":
+      checkComponentTemplateRefs(recipe, checkRef, fieldShapeErrors);
+      break;
+    case "design-parameters-template":
+      checkSourceTypeRefs(checkRef, recipe.handle, "params", recipe.params, TEMPLATE_KINDS);
+      break;
+    case "content-template":
+      checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields, TEMPLATE_KINDS);
+      recipe.insertOptions?.forEach((handle, idx) => {
+        checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
+      });
+      break;
+    case "content-item":
+      checkContentItemRefs(recipe, checkRef);
+      break;
+    case "partial-design":
+      checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
+      checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+      break;
+    case "page-design":
+      recipe.appliesTo.forEach((handle, idx) => {
+        checkRef(recipe.handle, `appliesTo.${idx}`, handle, PAGE_TEMPLATE_KINDS);
+      });
+      recipe.partials.forEach((handle, idx) => {
+        checkRef(recipe.handle, `partials.${idx}`, handle, PARTIAL_DESIGN_KINDS);
+      });
+      if (recipe.layout) {
+        checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
+        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+      }
+      break;
+    case "page-template":
+      checkSourceTypeRefs(checkRef, recipe.handle, "fields", recipe.fields ?? [], TEMPLATE_KINDS);
+      recipe.insertOptions?.forEach((handle, idx) => {
+        checkRef(recipe.handle, `insertOptions.${idx}`, handle, PAGE_TEMPLATE_KINDS);
+      });
+      if (recipe.layout) {
+        checkLayoutPlacementRefs(checkRef, recipe.handle, recipe.layout);
+        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
+      }
+      break;
+    case "placeholder":
+      (recipe.allowedComponents ?? []).forEach((handle, idx) => {
+        checkRef(recipe.handle, `allowedComponents.${idx}`, handle, COMPONENT_TEMPLATE_KINDS);
+      });
+      break;
+    case "page":
+      checkPageRefs(recipe, checkRef, checkLayoutPlacements);
+      break;
+    case "site-template":
+      checkSiteTemplateRefs(recipe, checkRef);
+      break;
+    case "site":
+      checkSiteRefs(recipe, checkRef, fieldShapeErrors);
+      break;
+    case "dictionary":
+      checkRef(recipe.handle, "site", recipe.site, SITE_KINDS);
+      break;
+  }
+};
+
+/**
+ * Build the recipe handle index + duplicate-handle report. The index
+ * keeps the FIRST recipe seen per handle (matching the pre-refactor
+ * `if (!index.has(...))` guard); counts drive duplicate detection.
+ */
+const buildRecipeIndex = (
+  recipes: readonly Recipe[]
+): { index: Map<string, Recipe>; duplicateHandles: DuplicateHandle[] } => {
   const index = new Map<string, Recipe>();
   const counts = new Map<string, number>();
   for (const recipe of recipes) {
@@ -245,50 +581,24 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
       index.set(recipe.handle, recipe);
     }
   }
-
   const duplicateHandles: DuplicateHandle[] = [];
   for (const [handle, count] of counts) {
     if (count > 1) duplicateHandles.push({ handle, count });
   }
+  return { index, duplicateHandles };
+};
 
-  const unresolved: UnresolvedHandle[] = [];
-  const fieldShapeErrors: FieldShapeError[] = [];
-
-  const checkRef = (
-    fromRecipe: string,
-    fromField: string,
-    handle: string,
-    expectedKinds: readonly RecipeKind[]
-  ): void => {
-    const target = index.get(handle);
-    if (target === undefined) {
-      unresolved.push({
-        fromRecipe,
-        fromField,
-        handle,
-        expectedKinds,
-        actualKind: undefined,
-      });
-      return;
-    }
-    if (!expectedKinds.includes(target.kind)) {
-      unresolved.push({
-        fromRecipe,
-        fromField,
-        handle,
-        expectedKinds,
-        actualKind: target.kind,
-      });
-    }
-  };
-
-  const placementViolations: PlacementViolation[] = [];
-
-  // Pre-pass: collect recipe-defined placeholder keys and their resolved
-  // `Allowed Controls` whitelists — standalone `PlaceholderRecipe` plus
-  // inline `ComponentTemplateRecipe.placeholders`, then `placedIn`
-  // pushes. Mirrors `buildPlaceholderSettingsAggregate` in `compile.ts`
-  // so the legality check sees the same allow-sets the compiler emits.
+/**
+ * Pre-pass building the placeholder allow-sets the legality check uses.
+ * Collects standalone `PlaceholderRecipe` + inline
+ * `ComponentTemplateRecipe.placeholders` declarations, folds in
+ * `placedIn` contributions, and flags any key declared by 2+ recipes.
+ * Mirrors `buildPlaceholderSettingsAggregate` in `compile.ts`.
+ */
+const collectPlaceholderAllowSets = (
+  recipes: readonly Recipe[],
+  fieldShapeErrors: FieldShapeError[]
+): Map<string, Set<string>> => {
   const placeholderAllow = new Map<string, Set<string>>();
   const placeholderDefiners = new Map<string, string[]>();
   const declarePlaceholder = (key: string, byRecipe: string): Set<string> => {
@@ -331,371 +641,21 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
       });
     }
   }
+  return placeholderAllow;
+};
 
-  /**
-   * Check every placement in a layout against the placeholder allow-set.
-   * Only flags placements into recipe-defined placeholders with a
-   * non-empty whitelist — pre-existing tenant placeholders and
-   * unrestricted (empty-whitelist) ones can't be checked and pass.
-   */
-  const checkLayoutPlacements = (
-    fromRecipe: string,
-    placeholders: Record<string, ReadonlyArray<{ componentHandle: string }>>
-  ): void => {
-    for (const [phKey, placements] of Object.entries(placeholders)) {
-      const allow = placeholderAllow.get(phKey);
-      if (!allow || allow.size === 0) continue;
-      placements.forEach((placement, idx) => {
-        if (!allow.has(placement.componentHandle)) {
-          placementViolations.push({
-            fromRecipe,
-            fromField: `layout.placeholders.${phKey}.${idx}`,
-            componentHandle: placement.componentHandle,
-            placeholderKey: phKey,
-            allowedComponents: [...allow].sort((a, b) => a.localeCompare(b)),
-          });
-        }
-      });
-    }
-  };
-
-  for (const recipe of recipes) {
-    switch (recipe.kind) {
-      case "component-template":
-        recipe.fields.forEach((field, idx) => {
-          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
-            checkRef(
-              recipe.handle,
-              `fields.${idx}.sitecore.source.types.${sIdx}`,
-              handle,
-              TEMPLATE_KINDS
-            );
-          });
-        });
-        recipe.params.forEach((param, idx) => {
-          sourceTypesOf(param.sitecore).forEach((handle, sIdx) => {
-            checkRef(
-              recipe.handle,
-              `params.${idx}.sitecore.source.types.${sIdx}`,
-              handle,
-              TEMPLATE_KINDS
-            );
-          });
-        });
-        recipe.insertOptions?.forEach((handle, idx) => {
-          checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
-        });
-        if (recipe.datasource?.template) {
-          checkRef(
-            recipe.handle,
-            "datasource.template.handle",
-            recipe.datasource.template.handle,
-            CONTENT_TEMPLATE_KINDS
-          );
-        }
-        if (recipe.parameters) {
-          checkRef(
-            recipe.handle,
-            "parameters.handle",
-            recipe.parameters.handle,
-            PARAMETERS_TEMPLATE_KINDS
-          );
-          if (recipe.dynamicPlaceholders) {
-            fieldShapeErrors.push({
-              fromRecipe: recipe.handle,
-              fromField: "parameters",
-              message:
-                "Cannot combine external 'parameters' with 'dynamicPlaceholders: true'. The IDynamicPlaceholder base must chain onto the consumer's own params template; chaining it onto a shared external template would silently affect every other consumer. Inline the params via 'params:' or drop 'dynamicPlaceholders'.",
-            });
-          }
-        }
-        recipe.children?.allowedHandles.forEach((handle, idx) => {
-          checkRef(recipe.handle, `children.allowedHandles.${idx}`, handle, TEMPLATE_KINDS);
-        });
-        (recipe.placeholders ?? []).forEach((slot, idx) => {
-          // Both `allowedComponents` and the registry-side alias
-          // `allowedRenderingHandles` flow through
-          // `resolveAllowedHandles`; reference-check the merged set
-          // so handles authored under either name still validate.
-          resolveAllowedHandles(slot).forEach((handle, aIdx) => {
-            checkRef(
-              recipe.handle,
-              `placeholders.${idx}.allowedRenderingHandles.${aIdx}`,
-              handle,
-              COMPONENT_TEMPLATE_KINDS
-            );
-          });
-        });
-        break;
-      case "design-parameters-template":
-        recipe.params.forEach((param, idx) => {
-          sourceTypesOf(param.sitecore).forEach((handle, sIdx) => {
-            checkRef(
-              recipe.handle,
-              `params.${idx}.sitecore.source.types.${sIdx}`,
-              handle,
-              TEMPLATE_KINDS
-            );
-          });
-        });
-        break;
-      case "content-template":
-        recipe.fields.forEach((field, idx) => {
-          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
-            checkRef(
-              recipe.handle,
-              `fields.${idx}.sitecore.source.types.${sIdx}`,
-              handle,
-              TEMPLATE_KINDS
-            );
-          });
-        });
-        recipe.insertOptions?.forEach((handle, idx) => {
-          checkRef(recipe.handle, `insertOptions.${idx}`, handle, TEMPLATE_KINDS);
-        });
-        break;
-      case "content-item":
-        checkRef(recipe.handle, "templateType", recipe.templateType, TEMPLATE_KINDS);
-        for (const [fieldName, value] of Object.entries(recipe.fields)) {
-          if (value.shape === "link-internal") {
-            checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
-          } else if (value.shape === "reference") {
-            value.refs.forEach((handle, idx) => {
-              checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
-            });
-          }
-        }
-        break;
-      case "partial-design":
-        for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
-          placements.forEach((placement, idx) => {
-            checkRef(
-              recipe.handle,
-              `layout.placeholders.${phKey}.${idx}.componentHandle`,
-              placement.componentHandle,
-              COMPONENT_TEMPLATE_KINDS
-            );
-            if (placement.datasourceRef?.kind === "shared") {
-              checkRef(
-                recipe.handle,
-                `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
-                placement.datasourceRef.handle,
-                CONTENT_ITEM_KINDS
-              );
-            }
-          });
-        }
-        checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-        break;
-      case "page-design":
-        recipe.appliesTo.forEach((handle, idx) => {
-          checkRef(recipe.handle, `appliesTo.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-        });
-        recipe.partials.forEach((handle, idx) => {
-          checkRef(recipe.handle, `partials.${idx}`, handle, PARTIAL_DESIGN_KINDS);
-        });
-        if (recipe.layout) {
-          for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
-            placements.forEach((placement, idx) => {
-              checkRef(
-                recipe.handle,
-                `layout.placeholders.${phKey}.${idx}.componentHandle`,
-                placement.componentHandle,
-                COMPONENT_TEMPLATE_KINDS
-              );
-              if (placement.datasourceRef?.kind === "shared") {
-                checkRef(
-                  recipe.handle,
-                  `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
-                  placement.datasourceRef.handle,
-                  CONTENT_ITEM_KINDS
-                );
-              }
-            });
-          }
-          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-        }
-        break;
-
-      case "page-template":
-        (recipe.fields ?? []).forEach((field, idx) => {
-          sourceTypesOf(field.sitecore).forEach((handle, sIdx) => {
-            checkRef(
-              recipe.handle,
-              `fields.${idx}.sitecore.source.types.${sIdx}`,
-              handle,
-              TEMPLATE_KINDS
-            );
-          });
-        });
-        recipe.insertOptions?.forEach((handle, idx) => {
-          checkRef(recipe.handle, `insertOptions.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-        });
-        if (recipe.layout) {
-          for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
-            placements.forEach((placement, idx) => {
-              checkRef(
-                recipe.handle,
-                `layout.placeholders.${phKey}.${idx}.componentHandle`,
-                placement.componentHandle,
-                COMPONENT_TEMPLATE_KINDS
-              );
-              if (placement.datasourceRef?.kind === "shared") {
-                checkRef(
-                  recipe.handle,
-                  `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
-                  placement.datasourceRef.handle,
-                  CONTENT_ITEM_KINDS
-                );
-              }
-            });
-          }
-          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-        }
-        break;
-
-      case "placeholder":
-        (recipe.allowedComponents ?? []).forEach((handle, idx) => {
-          checkRef(recipe.handle, `allowedComponents.${idx}`, handle, COMPONENT_TEMPLATE_KINDS);
-        });
-        break;
-
-      case "page":
-        checkRef(recipe.handle, "template", recipe.template, PAGE_TEMPLATE_KINDS);
-        // `PageRecipe.fields` is `Record<string, unknown>` (loose registry
-        // shape alongside scai-native ContentFieldValue). Only scai-native
-        // shapes carry cross-recipe handle refs; sniff `shape` defensively.
-        for (const [fieldName, raw] of Object.entries(recipe.fields ?? {})) {
-          if (raw === null || typeof raw !== "object" || !("shape" in raw)) continue;
-          const value = raw as { shape: string; ref?: string; refs?: readonly string[] };
-          if (value.shape === "link-internal" && typeof value.ref === "string") {
-            checkRef(recipe.handle, `fields.${fieldName}.ref`, value.ref, ANY_KINDS);
-          } else if (value.shape === "reference" && Array.isArray(value.refs)) {
-            value.refs.forEach((handle: string, idx: number) => {
-              checkRef(recipe.handle, `fields.${fieldName}.refs.${idx}`, handle, ANY_KINDS);
-            });
-          }
-        }
-        if (recipe.layout) {
-          for (const [phKey, placements] of Object.entries(recipe.layout.placeholders)) {
-            placements.forEach((placement, idx) => {
-              checkRef(
-                recipe.handle,
-                `layout.placeholders.${phKey}.${idx}.componentHandle`,
-                placement.componentHandle,
-                COMPONENT_TEMPLATE_KINDS
-              );
-              if (placement.datasourceRef?.kind === "shared") {
-                checkRef(
-                  recipe.handle,
-                  `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
-                  placement.datasourceRef.handle,
-                  CONTENT_ITEM_KINDS
-                );
-              }
-            });
-          }
-          checkLayoutPlacements(recipe.handle, recipe.layout.placeholders);
-        }
-        break;
-      case "site-template":
-        recipe.pageTemplates.forEach((handle, idx) => {
-          checkRef(recipe.handle, `pageTemplates.${idx}`, handle, PAGE_TEMPLATE_KINDS);
-        });
-        recipe.pageDesigns.forEach((handle, idx) => {
-          checkRef(recipe.handle, `pageDesigns.${idx}`, handle, PAGE_DESIGN_KINDS);
-        });
-        // `.default([])` on the schema only applies during Zod parse;
-        // test fixtures that hand-construct Recipe objects can leave
-        // the field undefined. Defensive `?? []` mirrors how
-        // `pageTemplates` is also schema-`.default([])` and how
-        // existing call sites elsewhere in the codebase rely on the
-        // parse-then-validate contract — keeping it tolerant here
-        // avoids breaking happy-path tests on unrelated fixtures.
-        (recipe.dictionaries ?? []).forEach((handle, idx) => {
-          checkRef(recipe.handle, `dictionaries.${idx}`, handle, DICTIONARY_KINDS);
-        });
-        if (recipe.insertOptionsMatrix) {
-          for (const [parentHandle, allowedChildren] of Object.entries(
-            recipe.insertOptionsMatrix
-          )) {
-            // The KEY is itself a page-template handle. Validate it too —
-            // a typo in the key would silently never apply at apply time.
-            checkRef(
-              recipe.handle,
-              `insertOptionsMatrix.${parentHandle}`,
-              parentHandle,
-              PAGE_TEMPLATE_KINDS
-            );
-            allowedChildren.forEach((childHandle, idx) => {
-              checkRef(
-                recipe.handle,
-                `insertOptionsMatrix.${parentHandle}.${idx}`,
-                childHandle,
-                PAGE_TEMPLATE_KINDS
-              );
-            });
-          }
-        }
-        if (recipe.templatesToDesigns) {
-          for (const [templateHandle, designHandle] of Object.entries(recipe.templatesToDesigns)) {
-            checkRef(
-              recipe.handle,
-              `templatesToDesigns.${templateHandle} (key)`,
-              templateHandle,
-              PAGE_TEMPLATE_KINDS
-            );
-            checkRef(
-              recipe.handle,
-              `templatesToDesigns.${templateHandle}`,
-              designHandle,
-              PAGE_DESIGN_KINDS
-            );
-          }
-        }
-        break;
-      case "site":
-        checkRef(recipe.handle, "siteTemplate", recipe.siteTemplate, SITE_TEMPLATE_KINDS);
-        if (recipe.initialHome !== undefined) {
-          checkRef(recipe.handle, "initialHome", recipe.initialHome, PAGE_KINDS);
-        }
-        // Cross-field shape: SiteRecipe must specify exactly one of
-        // collectionId or collectionName. The Zod schema can't enforce
-        // it (discriminated union members can't carry refines), so the
-        // constraint lives here.
-        if (recipe.collectionId && recipe.collectionName) {
-          fieldShapeErrors.push({
-            fromRecipe: recipe.handle,
-            fromField: "collectionId, collectionName",
-            message:
-              "collectionId and collectionName are mutually exclusive — provide one, not both",
-          });
-        }
-        if (!recipe.collectionId && !recipe.collectionName) {
-          fieldShapeErrors.push({
-            fromRecipe: recipe.handle,
-            fromField: "collectionId, collectionName",
-            message: "either collectionId (existing) or collectionName (new) must be provided",
-          });
-        }
-        break;
-      case "dictionary":
-        checkRef(recipe.handle, "site", recipe.site, SITE_KINDS);
-        break;
-    }
-  }
-
-  // Shared-site uniqueness: at most ONE SiteRecipe with
-  // `siteRole: "shared"` is allowed per collection. SXA's resolution
-  // chain treats the `Shared` site as the per-collection content host;
-  // a second shared site under the same collection would silently
-  // shadow the first.
-  //
-  // Collection identity is approximated by `collectionId` if present,
-  // else `collectionName` (the two are XOR-enforced above). Sites
-  // missing both don't have a unique collection key — they fail the
-  // XOR check, so they're already flagged; we skip them here to avoid
-  // a confusing "shared-site" error stacked on top of the XOR error.
+/**
+ * Shared-site uniqueness: at most ONE SiteRecipe with
+ * `siteRole: "shared"` per collection. A second shared site under the
+ * same collection would silently shadow the first in SXA's resolution
+ * chain. Collection identity is `collectionId ?? collectionName` (the
+ * two are XOR-enforced elsewhere); sites missing both are skipped here
+ * to avoid stacking a confusing error on top of the XOR failure.
+ */
+const checkSharedSiteUniqueness = (
+  recipes: readonly Recipe[],
+  fieldShapeErrors: FieldShapeError[]
+): void => {
   const sharedByCollection = new Map<string, string[]>();
   for (const recipe of recipes) {
     if (recipe.kind !== "site" || recipe.siteRole !== "shared") continue;
@@ -717,6 +677,84 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
       });
     }
   }
+};
+
+/**
+ * Validate cross-recipe references in a recipe set. Returns a result
+ * with all detected problems — caller decides whether to throw, log,
+ * or surface them in CLI output.
+ */
+export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult {
+  const { index, duplicateHandles } = buildRecipeIndex(recipes);
+
+  const unresolved: UnresolvedHandle[] = [];
+  const fieldShapeErrors: FieldShapeError[] = [];
+
+  const checkRef: CheckRef = (
+    fromRecipe: string,
+    fromField: string,
+    handle: string,
+    expectedKinds: readonly RecipeKind[]
+  ): void => {
+    const target = index.get(handle);
+    if (target === undefined) {
+      unresolved.push({
+        fromRecipe,
+        fromField,
+        handle,
+        expectedKinds,
+        actualKind: undefined,
+      });
+      return;
+    }
+    if (!expectedKinds.includes(target.kind)) {
+      unresolved.push({
+        fromRecipe,
+        fromField,
+        handle,
+        expectedKinds,
+        actualKind: target.kind,
+      });
+    }
+  };
+
+  const placementViolations: PlacementViolation[] = [];
+
+  // Pre-pass: collect recipe-defined placeholder keys and their resolved
+  // `Allowed Controls` whitelists. Mirrors
+  // `buildPlaceholderSettingsAggregate` in `compile.ts` so the legality
+  // check sees the same allow-sets the compiler emits.
+  const placeholderAllow = collectPlaceholderAllowSets(recipes, fieldShapeErrors);
+
+  /**
+   * Check every placement in a layout against the placeholder allow-set.
+   * Only flags placements into recipe-defined placeholders with a
+   * non-empty whitelist — pre-existing tenant placeholders and
+   * unrestricted (empty-whitelist) ones can't be checked and pass.
+   */
+  const checkLayoutPlacements: CheckLayout = (fromRecipe, placeholders) => {
+    for (const [phKey, placements] of Object.entries(placeholders)) {
+      const allow = placeholderAllow.get(phKey);
+      if (!allow || allow.size === 0) continue;
+      placements.forEach((placement, idx) => {
+        if (!allow.has(placement.componentHandle)) {
+          placementViolations.push({
+            fromRecipe,
+            fromField: `layout.placeholders.${phKey}.${idx}`,
+            componentHandle: placement.componentHandle,
+            placeholderKey: phKey,
+            allowedComponents: [...allow].sort((a, b) => a.localeCompare(b)),
+          });
+        }
+      });
+    }
+  };
+
+  for (const recipe of recipes) {
+    checkRecipeReferences(recipe, checkRef, checkLayoutPlacements, fieldShapeErrors);
+  }
+
+  checkSharedSiteUniqueness(recipes, fieldShapeErrors);
 
   const cycles = detectInsertOptionsCycles(index, recipes);
 

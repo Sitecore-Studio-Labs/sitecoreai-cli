@@ -66,6 +66,22 @@ module.exports = [
     },
   },
   {
+    // Complexity guardrails target the shipped product surface (`src/`).
+    // `scripts/` are one-shot probe/recon/smoke tools that intentionally
+    // inline their logic top-to-bottom, and `tests/` are fixtures — neither
+    // is the maintainability surface those rules protect, and neither has a
+    // safety net that would make a behaviour-preserving rewrite verifiable.
+    // Turn the four complexity rules off there (the rest of the config,
+    // incl. the error-level correctness rules, still applies).
+    files: ["scripts/**", "tests/**"],
+    rules: {
+      complexity: "off",
+      "max-depth": "off",
+      "max-nested-callbacks": "off",
+      "max-params": "off",
+    },
+  },
+  {
     files: ["tests/**/*.ts"],
     languageOptions: {
       globals: {

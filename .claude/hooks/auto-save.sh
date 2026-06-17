@@ -51,6 +51,19 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 TAG="[auto-save]"
 CHECK_STATUS="skipped"
 
+# Never auto-commit on a protected/shared branch. Auto-saving to dev/main
+# pollutes shared history with `[auto-save]` commits, can capture a parallel
+# session's WIP or node_modules churn (`git add -A`), and has caused real
+# cross-session tangles. The per-session `agent/*` branch (from
+# branch-create.sh) is the only safe target — if a session is sitting on a
+# protected branch, leave the work dirty for the operator to place deliberately.
+case "$BRANCH" in
+  dev | main | master | release | changeset-release/*)
+    echo "auto-save: on protected branch '${BRANCH}' — skipping auto-commit; work left dirty for deliberate placement." >&2
+    exit 0
+    ;;
+esac
+
 # Run checks only when the project is installed and has a `check` script.
 # Hook must never block the session, so failures here just mark the commit.
 if [ -d node_modules ] && [ -f package.json ] && grep -q '"check"' package.json; then

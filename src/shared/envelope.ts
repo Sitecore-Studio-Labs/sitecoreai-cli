@@ -113,7 +113,8 @@ export const readScaiEnvelopeFromStdin = async <T = unknown>(): Promise<ScaiEnve
     parsed = JSON.parse(text);
   } catch (error) {
     throw new Error(
-      `--from-stdin: stdin was not valid JSON (${error instanceof Error ? error.message : String(error)}).`
+      `--from-stdin: stdin was not valid JSON (${error instanceof Error ? error.message : String(error)}).`,
+      { cause: error }
     );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

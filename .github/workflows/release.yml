@@ -74,6 +74,31 @@ jobs:
           # source repo; Trusted Publishing does not.
           HUSKY: 0
 
+      # After a real publish, bring `dev` up to the released `main` so the two
+      # branches don't drift on version / CHANGELOG / consumed changesets (the
+      # recurring "Version Packages landed on main, dev is behind" tax). Tries a
+      # direct merge+push; if dev has diverged or is protection-gated, falls
+      # back to opening a sync PR instead of failing the (already-done) release.
+      - name: Sync dev with released main
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main dev
+          git checkout -B dev origin/dev
+          if git merge --no-edit origin/main && git push origin dev; then
+            echo "dev synced to released main."
+          else
+            echo "Direct sync not possible (divergence or branch protection) — opening a PR."
+            git merge --abort 2>/dev/null || true
+            gh pr create --base dev --head main \
+              --title "chore: sync dev with released main" \
+              --body "Auto-opened after a release: brings dev up to the version bump, CHANGELOG, and consumed changesets that landed on main." \
+              2>/dev/null || echo "(sync PR already open or not needed)"
+          fi
+
   # Canary (pre-release) publish. Manually dispatched against a branch
   # (usually `dev`) to make an unreleased fix testable before it ships.
   # Publishes a snapshot version (e.g. 0.1.2-canary-20260519123456) under

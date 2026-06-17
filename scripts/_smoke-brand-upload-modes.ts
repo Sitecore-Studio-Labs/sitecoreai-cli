@@ -187,7 +187,7 @@ const main = async (): Promise<void> => {
 
     const { body, headers } = variant.build(pdf, createRequest);
     let status = 0;
-    let respText = "";
+    let respText: string;
     let docId = "";
     try {
       const res = await fetch(docsUrl, {

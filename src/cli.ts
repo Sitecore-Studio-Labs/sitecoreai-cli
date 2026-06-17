@@ -126,7 +126,7 @@ const resolveAutoWizardNeed = async (
   configBasePath: string
 ): Promise<AutoWizardNeed | null> => {
   const envFromArgs = resolveEnvironmentNameFromArgs(args);
-  let configFile: ReturnType<typeof readRootConfigurationFile> | null = null;
+  let configFile: ReturnType<typeof readRootConfigurationFile> | null;
   try {
     configFile = readRootConfigurationFile(configBasePath);
   } catch (error) {

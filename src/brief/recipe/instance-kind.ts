@@ -523,7 +523,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   }
 
   let writtenRecipe: BriefInstanceRecipe = recipe;
-  let writtenBriefId: string | null = null;
+  let writtenBriefId: string | null;
 
   // Prior baseline tenantId lets apply resolve the brief by id
   // before falling back to the marker-suffix-based name match.

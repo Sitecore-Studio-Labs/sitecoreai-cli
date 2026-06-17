@@ -105,7 +105,7 @@ export const runWorkflowApply = async (
 
   // Resolve target state. Default to initial state.
   let targetStateId: string;
-  let targetStateName: string | null = null;
+  let targetStateName: string | null;
   if (options.state) {
     const stateRef = options.state.trim();
     const match = resolveWorkflowState(workflowDetail, stateRef);

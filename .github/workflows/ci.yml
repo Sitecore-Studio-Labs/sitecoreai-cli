@@ -69,6 +69,30 @@ jobs:
       - name: Build
         run: npm run build
 
+  lockfile-drift:
+    # Devs use pnpm (pnpm-lock.yaml, gitignored) but the tracked lockfile —
+    # the one the npm CI variant and the `npm ci`-based release consume — is
+    # package-lock.json. This catches the drift where package.json changed and
+    # the npm lock was not refreshed (e.g. a dep bumped via `pnpm install`
+    # only). The reverse can't happen: pnpm-lock is regenerated fresh each run.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: package-lock.json is in sync with package.json
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          if ! git diff --exit-code package-lock.json; then
+            echo "::error::package-lock.json is out of sync with package.json. Run 'npm install --package-lock-only' and commit the result — the tracked npm lock must follow package.json even though local dev uses pnpm."
+            exit 1
+          fi
+
   headless-cli:
     runs-on: ${{ matrix.os }}
     strategy:

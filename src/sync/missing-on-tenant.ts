@@ -45,7 +45,7 @@ export const resolveMissingCurrentPlan = async (params: {
   // → can't tell "deleted" from "never pushed"; treat as first-push.
   if (!ctx.baselineStorage) return params.recreate();
 
-  let hadBaseline = false;
+  let hadBaseline: boolean;
   try {
     const loaded = await ctx.baselineStorage.load(
       params.kindName,

@@ -401,6 +401,175 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<BrandKitReci
   return internal ? internal.recipe : null;
 };
 
+/**
+ * Three-way merge gate: throw before any writes when the planner marked
+ * unresolved conflicts under the `"error"` policy. No-op otherwise.
+ */
+const assertNoPolicyError = (plan: RecipePlan, ref: KindRef): void => {
+  const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
+  if (!policyErrorChange) return;
+  const errors =
+    (policyErrorChange.meta?.policyErrors as
+      | Array<{ path: string; classification: string }>
+      | undefined) ?? [];
+  throw createScaiError(
+    `Brand kit "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
+    "POLICY_DENIED",
+    {
+      hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the kit first to converge the recipe against the tenant.",
+      details: errors.map((e) => `${e.path} → ${e.classification}`),
+      conflicts: toMergeConflicts(errors),
+    }
+  );
+};
+
+/**
+ * Load the baseline-stored tenant id for a kit, best-effort. Returns
+ * `undefined` when there's no baseline storage, no prior baseline, or a
+ * load error (all non-fatal — resolution falls back to name match).
+ */
+const loadPriorTenantId = async (ctx: SyncContext, refId: string): Promise<string | undefined> => {
+  if (!ctx.baselineStorage) return undefined;
+  try {
+    const prior = await ctx.baselineStorage.load<BrandBaselinePayload>(
+      BRAND_KIT_KIND_NAME,
+      ctx.environmentName,
+      refId
+    );
+    return prior?.payload?.tenantId;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Self-heal probe for stuck kits: when NONE of the section/field pairs
+ * the writes target are reachable on the live kit, synthesize a stub PDF
+ * and run enrichment on the existing kit id (or just log when
+ * `--no-enrich` is set). Does nothing when there are no writes or at
+ * least one target already resolves.
+ */
+const selfHealUnreachableKit = async (
+  client: BrandApiClientOptions,
+  brandKitId: string,
+  fieldChanges: RecipeChange[],
+  ref: KindRef,
+  ctx: SyncContext
+): Promise<void> => {
+  const writeKeys = fieldChanges
+    .filter((c) => c.kind === "create" || c.kind === "update")
+    .map((c) => ({
+      section: typeof c.meta?.section === "string" ? c.meta.section : "",
+      field: typeof c.meta?.field === "string" ? c.meta.field : "",
+    }))
+    .filter((k) => k.section && k.field);
+  if (writeKeys.length === 0) return;
+  const sectionsTargetedByWrites = Array.from(new Set(writeKeys.map((k) => k.section)));
+  const initialIndex = await indexFields(client, brandKitId, ctx.signal);
+  const anyTargetReachable = writeKeys.some((k) => initialIndex.has(fieldKey(k.section, k.field)));
+  if (anyTargetReachable) return;
+  if (ctx.skipEnrichment) {
+    // Operator asked to skip enrichment; surface the diagnostic
+    // so the "Applied 0 / N skipped" outcome is explainable, but
+    // don't trigger the self-heal pipeline they opted out of.
+    ctx.logger?.info(
+      `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}). \`--no-enrich\` is set, so the self-heal enrichment cycle is skipped — every field write will skip. Re-run without \`--no-enrich\` to populate the section structure.`
+    );
+    return;
+  }
+  ctx.logger?.info(
+    `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}) — synthesizing a stub PDF and running enrichment on the existing kit id (paid, ~5-15 min).`
+  );
+  const stub = synthesizeBrandStubDocument({
+    brandKitName: ref.id,
+    sectionNames: sectionsTargetedByWrites,
+  });
+  await enrichBrandKitWithDocuments({
+    client,
+    brandKitId,
+    name: ref.id,
+    documents: [
+      {
+        kind: "url",
+        url: stub.url,
+        title: stub.title,
+        tags: stub.tags,
+      },
+    ],
+    signal: ctx.signal,
+    onProgress: (event) =>
+      ctx.logger?.info(`  [+${event.elapsedSec}s] ${event.stage}: ${event.message}`),
+  });
+};
+
+/**
+ * Diagnostic: when every field write skipped, name the section/field
+ * mismatches so the operator can reconcile the recipe with the live
+ * kit's section names. No-op unless every field-stage applied change is
+ * absent and at least one change skipped.
+ */
+const logFieldSkipDiagnostic = (
+  applied: RecipeChange[],
+  skipped: RecipeChange[],
+  writes: RecipeChange[],
+  index: Map<string, FieldTarget>,
+  ref: KindRef,
+  ctx: SyncContext
+): void => {
+  if (applied.filter((c) => c.meta?.stage === "field").length !== 0 || skipped.length === 0) return;
+  const liveSectionNames = Array.from(
+    new Set(Array.from(index.keys()).map((k) => k.split("\x00")[0]))
+  );
+  const liveFieldsBySection: Record<string, string[]> = {};
+  for (const key of index.keys()) {
+    const [s, f] = key.split("\x00");
+    if (!s || !f) continue;
+    (liveFieldsBySection[s] ??= []).push(f);
+  }
+  const missed = writes
+    .map((c) => `${String(c.meta?.section)} / ${String(c.meta?.field)}`)
+    .slice(0, 17);
+  ctx.logger?.info(
+    `Every field write skipped — recipe targets ${missed.length} fields whose section/field names do not match the live kit's structure. Live sections: [${liveSectionNames.join(", ")}]. Recipe targets: [${missed.join(", ")}]. Reconcile the recipe's section/field names against \`scai brand sync pull --kit "${ref.id}"\`.`
+  );
+  for (const [section, fields] of Object.entries(liveFieldsBySection)) {
+    ctx.logger?.info(`  live: ${section} -> [${fields.join(", ")}]`);
+  }
+};
+
+/**
+ * Re-read the live kit post-apply and persist the three-way baseline.
+ * Best-effort — a baseline write failure logs and degrades the next
+ * push to two-way mode rather than throwing.
+ */
+const captureBrandBaseline = async (
+  ref: KindRef,
+  ctx: SyncContext,
+  brandKitId: string
+): Promise<void> => {
+  if (!ctx.baselineStorage) return;
+  const snapshot = await readCurrent(ref, ctx);
+  if (!snapshot) return;
+  const payload = captureBrandBaselinePayload(snapshot, brandKitId);
+  const baseline: Baseline<BrandBaselinePayload> = {
+    envelopeVersion: "1",
+    kind: BRAND_KIT_KIND_NAME,
+    recipeHandle: ref.id,
+    envName: ctx.environmentName,
+    capturedAt: new Date().toISOString(),
+    payload,
+  };
+  try {
+    await ctx.baselineStorage.write(BRAND_KIT_KIND_NAME, ctx.environmentName, ref.id, baseline);
+  } catch (err) {
+    ctx.logger?.error?.(
+      `Brand-kit baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+};
+
 /** Apply a plan — full orchestration: create/ingest the kit, then converge values. */
 const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
   const client = resolveBrandClient(ctx);
@@ -409,22 +578,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
 
   // Three-way merge gate: refuse before any writes when the planner
   // marked unresolved conflicts under the `"error"` policy.
-  const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
-  if (policyErrorChange) {
-    const errors =
-      (policyErrorChange.meta?.policyErrors as
-        | Array<{ path: string; classification: string }>
-        | undefined) ?? [];
-    throw createScaiError(
-      `Brand kit "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
-      "POLICY_DENIED",
-      {
-        hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the kit first to converge the recipe against the tenant.",
-        details: errors.map((e) => `${e.path} → ${e.classification}`),
-        conflicts: toMergeConflicts(errors),
-      }
-    );
-  }
+  assertNoPolicyError(plan, ref);
 
   const kitChange = plan.changes.find((change) => change.meta?.stage === "kit");
   const documentChanges = plan.changes.filter((change) => change.meta?.stage === "document");
@@ -516,19 +670,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   } else {
     // Prefer baseline-stored tenant id over name match — robust to
     // kit name edits between pushes.
-    let priorTenantId: string | undefined;
-    if (ctx.baselineStorage) {
-      try {
-        const prior = await ctx.baselineStorage.load<BrandBaselinePayload>(
-          BRAND_KIT_KIND_NAME,
-          ctx.environmentName,
-          ref.id
-        );
-        priorTenantId = prior?.payload?.tenantId;
-      } catch {
-        // best-effort
-      }
-    }
+    const priorTenantId = await loadPriorTenantId(ctx, ref.id);
     const found = await findKitByIdOrName(client, ref, priorTenantId, ctx.signal);
     if (!found) {
       throw createScaiError(`Brand kit "${ref.id}" not found`, "INPUT_INVALID", {
@@ -550,54 +692,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // shapes of stuck kit (zero sections, sections-but-no-fields) and
   // sections-with-wrong-names — without firing on a partially
   // populated kit where some targets already exist.
-  const writeKeys = fieldChanges
-    .filter((c) => c.kind === "create" || c.kind === "update")
-    .map((c) => ({
-      section: typeof c.meta?.section === "string" ? c.meta.section : "",
-      field: typeof c.meta?.field === "string" ? c.meta.field : "",
-    }))
-    .filter((k) => k.section && k.field);
-  const sectionsTargetedByWrites = Array.from(new Set(writeKeys.map((k) => k.section)));
-  if (writeKeys.length > 0) {
-    const initialIndex = await indexFields(client, brandKitId, ctx.signal);
-    const anyTargetReachable = writeKeys.some((k) =>
-      initialIndex.has(fieldKey(k.section, k.field))
-    );
-    if (!anyTargetReachable) {
-      if (ctx.skipEnrichment) {
-        // Operator asked to skip enrichment; surface the diagnostic
-        // so the "Applied 0 / N skipped" outcome is explainable, but
-        // don't trigger the self-heal pipeline they opted out of.
-        ctx.logger?.info(
-          `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}). \`--no-enrich\` is set, so the self-heal enrichment cycle is skipped — every field write will skip. Re-run without \`--no-enrich\` to populate the section structure.`
-        );
-      } else {
-        ctx.logger?.info(
-          `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}) — synthesizing a stub PDF and running enrichment on the existing kit id (paid, ~5-15 min).`
-        );
-        const stub = synthesizeBrandStubDocument({
-          brandKitName: ref.id,
-          sectionNames: sectionsTargetedByWrites,
-        });
-        await enrichBrandKitWithDocuments({
-          client,
-          brandKitId,
-          name: ref.id,
-          documents: [
-            {
-              kind: "url",
-              url: stub.url,
-              title: stub.title,
-              tags: stub.tags,
-            },
-          ],
-          signal: ctx.signal,
-          onProgress: (event) =>
-            ctx.logger?.info(`  [+${event.elapsedSec}s] ${event.stage}: ${event.message}`),
-        });
-      }
-    }
-  }
+  await selfHealUnreachableKit(client, brandKitId, fieldChanges, ref, ctx);
 
   // Converge field values against the (now-existing) kit.
   const writes = fieldChanges.filter(
@@ -667,26 +762,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // mismatches so the operator can reconcile the recipe with the
     // live kit's section names. Without this hint, the operator
     // stares at "Applied 0; N skipped" and has no idea why.
-    if (applied.filter((c) => c.meta?.stage === "field").length === 0 && skipped.length > 0) {
-      const liveSectionNames = Array.from(
-        new Set(Array.from(index.keys()).map((k) => k.split("\x00")[0]))
-      );
-      const liveFieldsBySection: Record<string, string[]> = {};
-      for (const key of index.keys()) {
-        const [s, f] = key.split("\x00");
-        if (!s || !f) continue;
-        (liveFieldsBySection[s] ??= []).push(f);
-      }
-      const missed = writes
-        .map((c) => `${String(c.meta?.section)} / ${String(c.meta?.field)}`)
-        .slice(0, 17);
-      ctx.logger?.info(
-        `Every field write skipped — recipe targets ${missed.length} fields whose section/field names do not match the live kit's structure. Live sections: [${liveSectionNames.join(", ")}]. Recipe targets: [${missed.join(", ")}]. Reconcile the recipe's section/field names against \`scai brand sync pull --kit "${ref.id}"\`.`
-      );
-      for (const [section, fields] of Object.entries(liveFieldsBySection)) {
-        ctx.logger?.info(`  live: ${section} -> [${fields.join(", ")}]`);
-      }
-    }
+    logFieldSkipDiagnostic(applied, skipped, writes, index, ref, ctx);
   }
   for (const change of fieldChanges) {
     if (change.kind === "noop") skipped.push(change);
@@ -697,29 +773,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // enrichment-authored values on a freshly-seeded kit) rather than
   // trust desired, which may have diverged at the field-skip path
   // when the section/field structure didn't match.
-  if (ctx.baselineStorage) {
-    const snapshot = await readCurrent(ref, ctx);
-    if (snapshot) {
-      const payload = captureBrandBaselinePayload(snapshot, brandKitId);
-      const baseline: Baseline<BrandBaselinePayload> = {
-        envelopeVersion: "1",
-        kind: BRAND_KIT_KIND_NAME,
-        recipeHandle: ref.id,
-        envName: ctx.environmentName,
-        capturedAt: new Date().toISOString(),
-        payload,
-      };
-      try {
-        await ctx.baselineStorage.write(BRAND_KIT_KIND_NAME, ctx.environmentName, ref.id, baseline);
-      } catch (err) {
-        ctx.logger?.error?.(
-          `Brand-kit baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-        );
-      }
-    }
-  }
+  await captureBrandBaseline(ref, ctx, brandKitId);
 
   // Surface the resolved Sitecore AI brand-kit UUID so the caller
   // (orchestrator) can stamp it onto its brand_kits row. Without this,

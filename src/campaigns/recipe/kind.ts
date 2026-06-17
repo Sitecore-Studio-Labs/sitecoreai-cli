@@ -312,59 +312,177 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
   };
 };
 
-/** Apply a plan — create the project, then converge deliverables and tasks. */
-const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
-  const client = await resolveCampaignClient(ctx);
-  const applied: RecipeChange[] = [];
-  const skipped: RecipeChange[] = [];
-
-  // Refuse before any writes when the planner marked unresolved
-  // three-way conflicts under the `"error"` policy. The flag may
-  // ride on the project change (preferred) or — if no project change
-  // exists this run — on the first carrier change.
+/**
+ * Refuse before any writes when the planner marked unresolved
+ * three-way conflicts under the `"error"` policy. The flag may ride on
+ * the project change (preferred) or — if no project change exists this
+ * run — on the first carrier change. No-op when no flag is set.
+ */
+const assertNoPolicyError = (plan: RecipePlan, ref: KindRef): void => {
   const policyErrorChange = plan.changes.find((change) => change.meta?.policyError === true);
-  if (policyErrorChange) {
-    const errors =
-      (policyErrorChange.meta?.policyErrors as
-        | Array<{ path: string; classification: string }>
-        | undefined) ?? [];
-    throw createScaiError(
-      `Campaign "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
-      "POLICY_DENIED",
-      {
-        hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the campaign first to converge the recipe against the tenant.",
-        details: errors.map((e) => `${e.path} → ${e.classification}`),
-        conflicts: toMergeConflicts(errors),
-      }
+  if (!policyErrorChange) return;
+  const errors =
+    (policyErrorChange.meta?.policyErrors as
+      | Array<{ path: string; classification: string }>
+      | undefined) ?? [];
+  throw createScaiError(
+    `Campaign "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
+    "POLICY_DENIED",
+    {
+      hint: "Re-run with `conflictPolicy: 'cms-wins'` (preserve Sitecore AI edits) or `'recipe-wins'` (clobber). Or pull the campaign first to converge the recipe against the tenant.",
+      details: errors.map((e) => `${e.path} → ${e.classification}`),
+      conflicts: toMergeConflicts(errors),
+    }
+  );
+};
+
+/**
+ * Load the baseline-stored tenant id for a campaign, best-effort.
+ * Returns `undefined` with no baseline storage, no prior baseline, or a
+ * load error.
+ */
+const loadPriorTenantId = async (
+  ctx: SyncContext,
+  baselineKey: string
+): Promise<string | undefined> => {
+  if (!ctx.baselineStorage) return undefined;
+  try {
+    const prior = await ctx.baselineStorage.load<CampaignBaselinePayload>(
+      CAMPAIGN_KIND_NAME,
+      ctx.environmentName,
+      baselineKey
+    );
+    return prior?.payload?.tenantId;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Extract the value out of a `handle:<x>` label in a labels array, if present. */
+const handleFromLabels = (labels: ReadonlyArray<string> | undefined): string | null => {
+  if (!labels) return null;
+  for (const l of labels) {
+    if (l.startsWith("handle:")) return l.slice("handle:".length);
+  }
+  return null;
+};
+
+/**
+ * Converge an already-adopted project onto the recipe with one
+ * full-object `PUT /projects/{id}` — stamping any missing identity
+ * labels and recipe-owned scalar fields. The wire object is spread
+ * whole so server-managed fields + inline deliverables survive; a
+ * date is only overridden when its day actually changed (a bare
+ * reformat corrupts the PUT and drops the deliverables). The PUT's
+ * lean response is intentionally discarded — the caller keeps the full
+ * `adopted` tree. Self-contained — logs its own PUT failure.
+ */
+const convergeAdoptedProject = async (
+  client: CampaignApiClientOptions,
+  adopted: Project,
+  projectChange: RecipeChange,
+  desiredLabels: string[],
+  ctx: SyncContext
+): Promise<void> => {
+  const identityLabels = desiredLabels.filter(
+    (l) => l.startsWith("story:") || l.startsWith("handle:")
+  );
+  const existingLabels = adopted.labels ?? [];
+  const missingLabels = identityLabels.filter((l) => !existingLabels.includes(l));
+  const fieldUpdate = projectChange.meta?.update === true;
+  if (missingLabels.length === 0 && !fieldUpdate) return;
+  const m = projectChange.meta ?? {};
+  const dayChanged = (recipeVal: unknown, wireVal: unknown): boolean =>
+    String(recipeVal ?? "").slice(0, 10) !== String(wireVal ?? "").slice(0, 10);
+  const body: Record<string, unknown> = {
+    ...(adopted as unknown as Record<string, unknown>),
+    labels: Array.from(new Set([...existingLabels, ...desiredLabels])),
+  };
+  if (fieldUpdate) {
+    if (m.name !== undefined) body.name = m.name;
+    if (m.description !== undefined) body.description = m.description;
+    if (m.status !== undefined) body.status = m.status;
+    if (m.startDate !== undefined && dayChanged(m.startDate, adopted.start_date))
+      body.start_date = m.startDate;
+    if (m.dueDate !== undefined && dayChanged(m.dueDate, adopted.due_date))
+      body.due_date = m.dueDate;
+    if (m.brandKitId !== undefined) body.brandkit_id = m.brandKitId;
+  }
+  try {
+    // Do NOT reassign `project` from the PUT response — it returns a
+    // LEAN project with no inline `deliverables`, which would wipe the
+    // in-memory tree the deliverable/task matching below depends on
+    // (findExistingDeliverable would then miss and skip every child
+    // update). Keep the full `adopted` tree; the PUT's side effect on
+    // the tenant is all we need.
+    await updateProject(client, adopted.id, body);
+    ctx.logger?.info(
+      `Updated campaign "${adopted.name}"${fieldUpdate ? " fields" : ""}${
+        missingLabels.length > 0 ? ` (+${missingLabels.length} identity label(s))` : ""
+      }.`
+    );
+  } catch (error) {
+    ctx.logger?.warn?.(
+      `Could not update project "${adopted.name}" via PUT /projects: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
+};
 
-  const projectChange = plan.changes.find((change) => change.meta?.stage === "project");
-  const deliverableChanges = plan.changes.filter((change) => change.meta?.stage === "deliverable");
-  const taskChanges = plan.changes.filter((change) => change.meta?.stage === "task");
-
-  // Prior baseline tenantId — when present, prefer id-resolve over
-  // label or name match. Survives any drift in the project's
-  // displayName + identity labels.
-  let priorBaselineTenantId: string | undefined;
-  if (ctx.baselineStorage) {
+/**
+ * POST each member to the project. The Orchestrate UI shows the project
+ * only to its members, so a project with no real-user members is
+ * invisible even though it exists on the wire. Promotes the first
+ * member to ADMIN if none is. Each add failure logs + continues.
+ */
+const addProjectMembers = async (
+  client: CampaignApiClientOptions,
+  projectId: string,
+  name: string,
+  projectChange: RecipeChange,
+  ctx: SyncContext
+): Promise<void> => {
+  const members =
+    (projectChange.meta?.members as
+      | Array<{ authorId: string; role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER" }>
+      | undefined) ?? [];
+  if (members.length === 0) return;
+  const ensured = members.some((m) => m.role === "ADMIN")
+    ? members
+    : members.map((m, i) => (i === 0 ? { authorId: m.authorId, role: "ADMIN" as const } : m));
+  ctx.logger?.info(`Adding ${ensured.length} member(s) to "${name}".`);
+  for (const m of ensured) {
     try {
-      const prior = await ctx.baselineStorage.load<CampaignBaselinePayload>(
-        CAMPAIGN_KIND_NAME,
-        ctx.environmentName,
-        ref.baselineKey ?? ref.id
+      await addProjectMember(client, projectId, {
+        id: m.authorId,
+        ...(m.role ? { role: m.role } : {}),
+      });
+    } catch (err) {
+      ctx.logger?.warn?.(
+        `Failed to add member ${m.authorId} (${m.role ?? "default role"}) to "${name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
       );
-      priorBaselineTenantId = prior?.payload?.tenantId;
-    } catch {
-      // Best-effort.
     }
   }
-  // Ref-supplied tenantId (registry-tracked) wins over the baseline-
-  // stored one. Falls back when absent.
-  const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
+};
 
-  // Resolve the campaign (project) id — creating it when the plan says so.
-  let project: Project;
+/**
+ * Resolve the campaign (project) the plan operates on — creating it
+ * (with adopt-on-match), converging an adopted one, adding members, OR
+ * (no project change) resolving an existing project id-first with a
+ * name fallback. Pushes `projectChange` to `applied` on the create
+ * branch, exactly as the inline logic did.
+ */
+const resolveProject = async (
+  client: CampaignApiClientOptions,
+  projectChange: RecipeChange | undefined,
+  effectiveTenantId: string | undefined,
+  ref: KindRef,
+  applied: RecipeChange[],
+  ctx: SyncContext
+): Promise<Project> => {
   if (projectChange) {
     const name = String(projectChange.after);
     const desiredLabels = (projectChange.meta?.labels as string[] | undefined) ?? [];
@@ -395,73 +513,15 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         adopted = await getProject(client, labelMatch.id);
       }
     }
+    let project: Project;
     if (adopted) {
       ctx.logger?.info(
         `Adopting existing campaign "${adopted.name}" (id ${adopted.id}) — recipe name "${name}" was a rename or recipe-handle drift.`
       );
       project = adopted;
       // The campaign already exists. Converge it onto the recipe with ONE
-      // full-object `PUT /projects/{id}` (verified supported 2026-06-10),
-      // covering two things:
-      //   - identity labels (`story:`/`handle:`) an early push may never
-      //     have stamped — without them pull can't resolve it by handle;
-      //   - project-level field drift (name/description/status/dates) when
-      //     the diff emitted an `update` change.
-      // Spread the wire object first so server-managed fields (id, org_id,
-      // members, timestamps) survive; override only what the recipe owns.
-      const identityLabels = desiredLabels.filter(
-        (l) => l.startsWith("story:") || l.startsWith("handle:")
-      );
-      const existingLabels = adopted.labels ?? [];
-      const missingLabels = identityLabels.filter((l) => !existingLabels.includes(l));
-      const fieldUpdate = projectChange.meta?.update === true;
-      if (missingLabels.length > 0 || fieldUpdate) {
-        const m = projectChange.meta ?? {};
-        // Full-object PUT — spread the WHOLE wire project (incl. the inline
-        // `deliverables` view) so the API preserves the child associations;
-        // omitting them makes a full-replace clear them. Override only the
-        // recipe-owned scalar fields. Dates are special: the recipe authors
-        // a bare `YYYY-MM-DD` while the wire stores a datetime, so override
-        // a date ONLY when its day actually changed — pushing a bare date
-        // that merely reformats the same day corrupts the PUT and drops the
-        // deliverables.
-        const dayChanged = (recipeVal: unknown, wireVal: unknown): boolean =>
-          String(recipeVal ?? "").slice(0, 10) !== String(wireVal ?? "").slice(0, 10);
-        const body: Record<string, unknown> = {
-          ...(adopted as unknown as Record<string, unknown>),
-          labels: Array.from(new Set([...existingLabels, ...desiredLabels])),
-        };
-        if (fieldUpdate) {
-          if (m.name !== undefined) body.name = m.name;
-          if (m.description !== undefined) body.description = m.description;
-          if (m.status !== undefined) body.status = m.status;
-          if (m.startDate !== undefined && dayChanged(m.startDate, adopted.start_date))
-            body.start_date = m.startDate;
-          if (m.dueDate !== undefined && dayChanged(m.dueDate, adopted.due_date))
-            body.due_date = m.dueDate;
-          if (m.brandKitId !== undefined) body.brandkit_id = m.brandKitId;
-        }
-        try {
-          // Do NOT reassign `project` from the PUT response — it returns a
-          // LEAN project with no inline `deliverables`, which would wipe the
-          // in-memory tree the deliverable/task matching below depends on
-          // (findExistingDeliverable would then miss and skip every child
-          // update). Keep the full `adopted` tree; the PUT's side effect on
-          // the tenant is all we need.
-          await updateProject(client, adopted.id, body);
-          ctx.logger?.info(
-            `Updated campaign "${adopted.name}"${fieldUpdate ? " fields" : ""}${
-              missingLabels.length > 0 ? ` (+${missingLabels.length} identity label(s))` : ""
-            }.`
-          );
-        } catch (error) {
-          ctx.logger?.warn?.(
-            `Could not update project "${adopted.name}" via PUT /projects: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        }
-      }
+      // full-object `PUT /projects/{id}` (verified supported 2026-06-10).
+      await convergeAdoptedProject(client, adopted, projectChange, desiredLabels, ctx);
       applied.push(projectChange);
     } else {
       ctx.logger?.info(`Creating campaign "${name}".`);
@@ -477,94 +537,103 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       applied.push(projectChange);
     }
 
-    // POST each member to the project. The Orchestrate UI shows the
-    // project only to its members, so a project with no real-user
-    // members is invisible in the UI even though it exists on the
-    // wire. Promote the first member to ADMIN if none is — guards
-    // against a service-account-only project the operator can't see.
-    const members =
-      (projectChange.meta?.members as
-        | Array<{ authorId: string; role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER" }>
-        | undefined) ?? [];
-    if (members.length > 0) {
-      const ensured = members.some((m) => m.role === "ADMIN")
-        ? members
-        : members.map((m, i) => (i === 0 ? { authorId: m.authorId, role: "ADMIN" as const } : m));
-      ctx.logger?.info(`Adding ${ensured.length} member(s) to "${name}".`);
-      for (const m of ensured) {
-        try {
-          await addProjectMember(client, project.id, {
-            id: m.authorId,
-            ...(m.role ? { role: m.role } : {}),
-          });
-        } catch (err) {
-          ctx.logger?.warn?.(
-            `Failed to add member ${m.authorId} (${m.role ?? "default role"}) to "${name}": ${
-              err instanceof Error ? err.message : String(err)
-            }`
-          );
-        }
-      }
-    }
-  } else {
-    // Update branch: same id-first preference as the create branch.
-    let resolved: Project | null = null;
-    if (effectiveTenantId) {
-      try {
-        resolved = await getProject(client, effectiveTenantId);
-      } catch {
-        resolved = null;
-      }
-    }
-    if (!resolved) {
-      const found = await findProjectByName(client, ref.id);
-      if (found) resolved = await getProject(client, found.id);
-    }
-    if (!resolved) {
-      throw createScaiError(`Campaign "${ref.id}" not found`, "INPUT_INVALID", {
-        hint: "Push a recipe that creates the campaign, or check the name.",
-      });
-    }
-    project = resolved;
+    await addProjectMembers(client, project.id, name, projectChange, ctx);
+    return project;
   }
-
-  // Index existing deliverables by their stamped `handle:<handle>`
-  // label first, then by name as fallback. Re-syncs match by label
-  // even when the LLM picks a different display name between runs.
-  // Helper extracts the value out of a `handle:<x>` label, if present.
-  const handleFromLabels = (labels: ReadonlyArray<string> | undefined): string | null => {
-    if (!labels) return null;
-    for (const l of labels) {
-      if (l.startsWith("handle:")) return l.slice("handle:".length);
+  // Update branch: same id-first preference as the create branch.
+  let resolved: Project | null = null;
+  if (effectiveTenantId) {
+    try {
+      resolved = await getProject(client, effectiveTenantId);
+    } catch {
+      resolved = null;
     }
-    return null;
-  };
-  const deliverablesByName = new Map<string, Deliverable>(
+  }
+  if (!resolved) {
+    const found = await findProjectByName(client, ref.id);
+    if (found) resolved = await getProject(client, found.id);
+  }
+  if (!resolved) {
+    throw createScaiError(`Campaign "${ref.id}" not found`, "INPUT_INVALID", {
+      hint: "Push a recipe that creates the campaign, or check the name.",
+    });
+  }
+  return resolved;
+};
+
+/**
+ * The threaded apply context — the client, the sync context, and the
+ * `applied`/`skipped` accumulators every convergence helper reads and
+ * mutates. Bundled so helpers stay under the parameter limit.
+ */
+interface ApplyRun {
+  client: CampaignApiClientOptions;
+  applied: RecipeChange[];
+  skipped: RecipeChange[];
+  ctx: SyncContext;
+}
+
+/**
+ * Stamp `handle:<handle>` into a labels array (dropping any existing
+ * `handle:` entry first) so the item is matchable by handle on re-sync.
+ * Returns the original labels when the recipe carries no handle.
+ */
+const labelsWithHandle = (
+  handle: string | undefined,
+  labels: ReadonlyArray<string> | undefined
+): string[] =>
+  handle
+    ? [...(labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${handle}`]
+    : [...(labels ?? [])];
+
+/** Indexes of the live deliverables, keyed by name and by handle. */
+interface DeliverableIndex {
+  byName: Map<string, Deliverable>;
+  byHandle: Map<string, Deliverable>;
+}
+
+/** Build the name + handle indexes for a project's live deliverables. */
+const indexDeliverables = (project: Project): DeliverableIndex => {
+  const byName = new Map<string, Deliverable>(
     (project.deliverables ?? []).map((deliverable) => [deliverable.name, deliverable])
   );
-  const deliverablesByHandle = new Map<string, Deliverable>();
+  const byHandle = new Map<string, Deliverable>();
   for (const deliverable of project.deliverables ?? []) {
     const h = handleFromLabels(deliverable.labels);
-    if (h) deliverablesByHandle.set(h, deliverable);
+    if (h) byHandle.set(h, deliverable);
   }
+  return { byName, byHandle };
+};
 
-  /** Find an existing deliverable by recipe shape, preferring label. */
-  const findExistingDeliverable = (
-    recipeDeliverable: CampaignDeliverable
-  ): Deliverable | undefined => {
-    if (recipeDeliverable.sitecoreId) {
-      const byId = (project.deliverables ?? []).find((d) => d.id === recipeDeliverable.sitecoreId);
-      if (byId) return byId;
-    }
-    if (recipeDeliverable.handle) {
-      const byHandle = deliverablesByHandle.get(recipeDeliverable.handle);
-      if (byHandle) return byHandle;
-    }
-    return deliverablesByName.get(recipeDeliverable.name);
-  };
+/** Find an existing live deliverable for a recipe shape — id, then handle, then name. */
+const findExistingDeliverable = (
+  project: Project,
+  index: DeliverableIndex,
+  recipeDeliverable: CampaignDeliverable
+): Deliverable | undefined => {
+  if (recipeDeliverable.sitecoreId) {
+    const byId = (project.deliverables ?? []).find((d) => d.id === recipeDeliverable.sitecoreId);
+    if (byId) return byId;
+  }
+  if (recipeDeliverable.handle) {
+    const byHandle = index.byHandle.get(recipeDeliverable.handle);
+    if (byHandle) return byHandle;
+  }
+  return index.byName.get(recipeDeliverable.name);
+};
 
-  // Create missing deliverables. Their tasks are created in the task
-  // pass below, which resolves against this freshly-populated index.
+/**
+ * Converge deliverables: PUT-update drifted ones, adopt-or-create the
+ * rest. Mutates `index` (so the task loop resolves against the
+ * freshly-populated deliverables) and pushes to `applied` / `skipped`.
+ */
+const convergeDeliverables = async (
+  run: ApplyRun,
+  project: Project,
+  deliverableChanges: RecipeChange[],
+  index: DeliverableIndex
+): Promise<void> => {
+  const { client, applied, skipped, ctx } = run;
   for (const change of deliverableChanges) {
     const deliverable = change.meta?.deliverable as CampaignDeliverable | undefined;
     if (!deliverable) {
@@ -576,17 +645,12 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // Full-object PUT — spread the wire deliverable so server-managed
     // fields survive, override the recipe-owned ones.
     if (change.kind === "update") {
-      const existing = findExistingDeliverable(deliverable);
+      const existing = findExistingDeliverable(project, index, deliverable);
       if (!existing) {
         skipped.push(change);
         continue;
       }
-      const labelsWithHandle = deliverable.handle
-        ? [
-            ...(deliverable.labels ?? []).filter((l) => !l.startsWith("handle:")),
-            `handle:${deliverable.handle}`,
-          ]
-        : (deliverable.labels ?? []);
+      const labels = labelsWithHandle(deliverable.handle, deliverable.labels);
       // Full-object PUT — spread the whole wire deliverable (incl. its
       // inline `tasks` view) so the API preserves the task associations;
       // omitting them clears them. Override only the deliverable's own
@@ -604,7 +668,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         status: deliverable.status,
         funnel_stage: deliverable.funnelStage,
         funnel_tactics: deliverable.funnelTactics ?? [],
-        labels: labelsWithHandle,
+        labels,
       };
       if (delDayChanged(deliverable.dueDate, (existing as { due_date?: string }).due_date))
         delBody.due_date = deliverable.dueDate;
@@ -614,8 +678,8 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
         // keep `existing` (which carries the inline `tasks`) as the value —
         // NOT the lean PUT response — so the task loop below can still
         // resolve task ids against this deliverable.
-        deliverablesByName.set(deliverable.name, existing);
-        if (deliverable.handle) deliverablesByHandle.set(deliverable.handle, existing);
+        index.byName.set(deliverable.name, existing);
+        if (deliverable.handle) index.byHandle.set(deliverable.handle, existing);
         ctx.logger?.info(`Updated deliverable "${deliverable.name}".`);
         applied.push(change);
       } catch (error) {
@@ -637,7 +701,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // Even when the planner classified this as a fresh create, check
     // for an existing deliverable carrying our recipe's `handle:<x>`
     // label — adopt it rather than spawning a duplicate.
-    const existing = findExistingDeliverable(deliverable);
+    const existing = findExistingDeliverable(project, index, deliverable);
     if (existing) {
       ctx.logger?.info(
         `Adopting existing deliverable "${existing.name}" via handle "${deliverable.handle ?? "(name)"}" — recipe name "${deliverable.name}" matched.`
@@ -651,12 +715,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     // can match by label. Idempotent — never appends the same label
     // twice because the recipe's authored labels[] is the source of
     // truth on each push.
-    const labelsWithHandle = deliverable.handle
-      ? [
-          ...(deliverable.labels ?? []).filter((l) => !l.startsWith("handle:")),
-          `handle:${deliverable.handle}`,
-        ]
-      : (deliverable.labels ?? []);
+    const labels = labelsWithHandle(deliverable.handle, deliverable.labels);
 
     ctx.logger?.info(`Creating deliverable "${deliverable.name}".`);
     const created = await createDeliverable(client, project.id, {
@@ -665,25 +724,32 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       status: deliverable.status,
       funnel_stage: deliverable.funnelStage,
       funnel_tactics: deliverable.funnelTactics,
-      labels: labelsWithHandle,
+      labels,
     });
-    deliverablesByName.set(created.name, created);
+    index.byName.set(created.name, created);
     if (deliverable.handle) {
-      deliverablesByHandle.set(deliverable.handle, created);
+      index.byHandle.set(deliverable.handle, created);
     }
     applied.push(change);
   }
+};
 
-  // Track every task we've touched so the dependency second-pass can
-  // resolve handle references to {project, deliverable, task} triples.
-  // Includes tasks we created this run AND tasks already on the
-  // tenant that the recipe hasn't changed — a recipe may declare a
-  // dependency on a previously-pushed task.
-  type ResolvedTaskRef = {
-    projectId: string;
-    deliverableId: string;
-    taskId: string;
-  };
+/** A task located within the project tree for dependency resolution. */
+type ResolvedTaskRef = {
+  projectId: string;
+  deliverableId: string;
+  taskId: string;
+};
+
+/**
+ * Pre-index every live task by handle so the dependency second-pass can
+ * resolve handle references — preferring the `handle:<x>` label, falling
+ * back to a recipe-name match that captures the recipe's handle.
+ */
+const indexTasksByHandle = (
+  project: Project,
+  taskChanges: RecipeChange[]
+): Map<string, ResolvedTaskRef> => {
   const tasksByHandle = new Map<string, ResolvedTaskRef>();
   for (const deliverable of project.deliverables ?? []) {
     for (const t of deliverable.tasks ?? []) {
@@ -713,16 +779,137 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       }
     }
   }
+  return tasksByHandle;
+};
 
-  // Converge tasks — create the missing ones, PUT-replace changed ones.
-  // Defer setting `dependencies` to a second pass — the deps reference
-  // sibling tasks by handle, and not all may exist yet when this loop
-  // visits a referencing task.
-  const tasksWithDeps: Array<{
-    task: CampaignTask;
-    parent: Deliverable;
-    taskId: string;
-  }> = [];
+/** A task whose `dependencies` need resolving in the second pass. */
+interface TaskWithDeps {
+  task: CampaignTask;
+  parent: Deliverable;
+  taskId: string;
+}
+
+/**
+ * Write a single task change — adopt-or-create on `create`, full-replace
+ * PUT on `update`. Returns the written task id (or `null` when the change
+ * was skipped). Pushes to `applied` / `skipped`.
+ */
+const writeTaskChange = async (
+  run: ApplyRun,
+  project: Project,
+  parent: Deliverable,
+  task: CampaignTask,
+  change: RecipeChange
+): Promise<string | null> => {
+  const { client, applied, skipped, ctx } = run;
+  if (change.kind === "create") {
+    // Adopt instead of duplicate when an existing task on this
+    // deliverable matches our recipe's identity — by server UUID
+    // first, then the `handle:<x>` label. This is the safety net for
+    // a rename the planner classified as a create (no name match):
+    // the existing item is updated in place rather than duplicated.
+    const existingById = task.sitecoreId
+      ? (parent.tasks ?? []).find((t) => t.id === task.sitecoreId)
+      : undefined;
+    const existingByHandle =
+      existingById ??
+      (task.handle
+        ? (parent.tasks ?? []).find((t) => (t.labels ?? []).includes(`handle:${task.handle}`))
+        : undefined);
+    const labels = labelsWithHandle(task.handle, task.labels);
+    if (existingByHandle) {
+      ctx.logger?.info(
+        `Adopting existing task "${existingByHandle.name}" via handle "${task.handle}" — recipe name "${task.name}" matched.`
+      );
+      await updateTask(client, project.id, parent.id, existingByHandle.id, {
+        name: task.name,
+        due_date: task.dueDate,
+        status: task.status,
+        priority: task.priority ?? null,
+        description: task.description ?? null,
+        assignee: task.assignee ?? null,
+        labels,
+      });
+      applied.push(change);
+      return existingByHandle.id;
+    }
+    const created = await createTask(client, project.id, parent.id, {
+      name: task.name,
+      due_date: task.dueDate,
+      status: task.status,
+    });
+    // createTask only accepts name/due_date/status — converge the
+    // remaining fields with a follow-up update so a freshly-created
+    // task does not silently lose its priority/description/
+    // assignee/labels. Stamp `handle:<x>` into labels here so the
+    // task is matchable on re-sync regardless of name drift.
+    if (
+      task.priority !== undefined ||
+      task.description !== undefined ||
+      task.assignee !== undefined ||
+      labels.length > 0
+    ) {
+      await updateTask(client, project.id, parent.id, created.id, {
+        name: task.name,
+        due_date: task.dueDate,
+        status: task.status,
+        priority: task.priority ?? null,
+        description: task.description ?? null,
+        assignee: task.assignee ?? null,
+        labels,
+      });
+    }
+    applied.push(change);
+    return created.id;
+  }
+  if (change.kind === "update") {
+    // PUT is full-replacement — the recipe carries the whole task.
+    const taskId = resolveTaskId(parent, task);
+    // Stamp `handle:<x>` on update writes too, not just on create.
+    // Without this, a task whose recipe gained identity (via the
+    // orchestrator's lazy backfill or a hand-edit) would never
+    // reach the tenant — the apply path would push the raw
+    // operator-authored labels and leave the wire unidentified.
+    const labels = labelsWithHandle(task.handle, task.labels);
+    // Full-replace PUT — spread the current wire task so server-managed
+    // fields (id, org_id, start_date, …) are present, then override the
+    // recipe-owned fields. A partial body is silently ignored.
+    const wireTask = (parent.tasks ?? []).find((t) => t.id === taskId) as
+      | Record<string, unknown>
+      | undefined;
+    await updateTask(client, project.id, parent.id, taskId, {
+      ...(wireTask ?? {}),
+      name: task.name,
+      due_date: task.dueDate ?? (wireTask?.due_date as string | undefined),
+      status: task.status,
+      priority: task.priority ?? null,
+      description: task.description ?? null,
+      assignee: task.assignee ?? null,
+      labels,
+    });
+    applied.push(change);
+    return taskId;
+  }
+  skipped.push(change);
+  return null;
+};
+
+/**
+ * Converge tasks — create the missing ones, PUT-replace changed ones.
+ * Defers `dependencies` to the returned `tasksWithDeps` list (the deps
+ * reference sibling tasks by handle, not all of which exist yet when
+ * this loop visits a referencing task). Mutates `tasksByHandle` and
+ * pushes to `applied` / `skipped`.
+ */
+const convergeTasks = async (
+  run: ApplyRun,
+  project: Project,
+  taskChanges: RecipeChange[],
+  deliverablesByName: Map<string, Deliverable>,
+  tasksByHandle: Map<string, ResolvedTaskRef>
+): Promise<TaskWithDeps[]> => {
+  const { skipped } = run;
+  const tasksWithDeps: TaskWithDeps[] = [];
   for (const change of taskChanges) {
     if (change.kind === "noop") {
       skipped.push(change);
@@ -737,100 +924,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       continue;
     }
 
-    let taskId: string | null = null;
-    if (change.kind === "create") {
-      // Adopt instead of duplicate when an existing task on this
-      // deliverable matches our recipe's identity — by server UUID
-      // first, then the `handle:<x>` label. This is the safety net for
-      // a rename the planner classified as a create (no name match):
-      // the existing item is updated in place rather than duplicated.
-      const existingById = task.sitecoreId
-        ? (parent.tasks ?? []).find((t) => t.id === task.sitecoreId)
-        : undefined;
-      const existingByHandle =
-        existingById ??
-        (task.handle
-          ? (parent.tasks ?? []).find((t) => (t.labels ?? []).includes(`handle:${task.handle}`))
-          : undefined);
-      const labelsWithHandle = task.handle
-        ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
-        : (task.labels ?? []);
-      if (existingByHandle) {
-        ctx.logger?.info(
-          `Adopting existing task "${existingByHandle.name}" via handle "${task.handle}" — recipe name "${task.name}" matched.`
-        );
-        taskId = existingByHandle.id;
-        await updateTask(client, project.id, parent.id, taskId, {
-          name: task.name,
-          due_date: task.dueDate,
-          status: task.status,
-          priority: task.priority ?? null,
-          description: task.description ?? null,
-          assignee: task.assignee ?? null,
-          labels: labelsWithHandle,
-        });
-        applied.push(change);
-      } else {
-        const created = await createTask(client, project.id, parent.id, {
-          name: task.name,
-          due_date: task.dueDate,
-          status: task.status,
-        });
-        taskId = created.id;
-        // createTask only accepts name/due_date/status — converge the
-        // remaining fields with a follow-up update so a freshly-created
-        // task does not silently lose its priority/description/
-        // assignee/labels. Stamp `handle:<x>` into labels here so the
-        // task is matchable on re-sync regardless of name drift.
-        if (
-          task.priority !== undefined ||
-          task.description !== undefined ||
-          task.assignee !== undefined ||
-          labelsWithHandle.length > 0
-        ) {
-          await updateTask(client, project.id, parent.id, created.id, {
-            name: task.name,
-            due_date: task.dueDate,
-            status: task.status,
-            priority: task.priority ?? null,
-            description: task.description ?? null,
-            assignee: task.assignee ?? null,
-            labels: labelsWithHandle,
-          });
-        }
-        applied.push(change);
-      }
-    } else if (change.kind === "update") {
-      // PUT is full-replacement — the recipe carries the whole task.
-      taskId = resolveTaskId(parent, task);
-      // Stamp `handle:<x>` on update writes too, not just on create.
-      // Without this, a task whose recipe gained identity (via the
-      // orchestrator's lazy backfill or a hand-edit) would never
-      // reach the tenant — the apply path would push the raw
-      // operator-authored labels and leave the wire unidentified.
-      const labelsWithHandle = task.handle
-        ? [...(task.labels ?? []).filter((l) => !l.startsWith("handle:")), `handle:${task.handle}`]
-        : (task.labels ?? []);
-      // Full-replace PUT — spread the current wire task so server-managed
-      // fields (id, org_id, start_date, …) are present, then override the
-      // recipe-owned fields. A partial body is silently ignored.
-      const wireTask = (parent.tasks ?? []).find((t) => t.id === taskId) as
-        | Record<string, unknown>
-        | undefined;
-      await updateTask(client, project.id, parent.id, taskId, {
-        ...(wireTask ?? {}),
-        name: task.name,
-        due_date: task.dueDate ?? (wireTask?.due_date as string | undefined),
-        status: task.status,
-        priority: task.priority ?? null,
-        description: task.description ?? null,
-        assignee: task.assignee ?? null,
-        labels: labelsWithHandle,
-      });
-      applied.push(change);
-    } else {
-      skipped.push(change);
-    }
+    const taskId = await writeTaskChange(run, project, parent, task, change);
 
     if (taskId !== null) {
       if (task.handle) {
@@ -845,11 +939,23 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       }
     }
   }
+  return tasksWithDeps;
+};
 
-  // Dependencies second pass — now that every task in the project
-  // has a UUID, resolve each task's `dependencies: [<handle>]` list
-  // to the full `{project_id, project_deliverable_id, task_id}`
-  // triples the Brief API expects and PUT them back.
+/**
+ * Dependencies second pass — now that every task has a UUID, resolve
+ * each task's `dependencies: [<handle>]` list to the
+ * `{project_id, project_deliverable_id, task_id}` triples the API
+ * expects and PUT them back. Self-contained — logs missing handles +
+ * its own PUT failures.
+ */
+const convergeTaskDependencies = async (
+  client: CampaignApiClientOptions,
+  project: Project,
+  tasksWithDeps: TaskWithDeps[],
+  tasksByHandle: Map<string, ResolvedTaskRef>,
+  ctx: SyncContext
+): Promise<void> => {
   for (const { task, parent, taskId } of tasksWithDeps) {
     const resolved: Array<{
       project_id: string;
@@ -894,56 +1000,54 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       );
     }
   }
+};
 
-  // Three-way merge baseline capture — post-apply, hash the desired
-  // recipe (the recipe the planner merged-and-wrote) so the next
-  // push can detect drift. Re-read the live state for an accurate
-  // post-apply snapshot rather than trust desired, since incremental
-  // creates may not actually land every cell (a task without a
-  // resolving deliverable is `skipped`).
-  if (ctx.baselineStorage) {
-    const snapshot = (await readCurrent(ref, ctx)) ?? undefined;
-    if (snapshot) {
-      const payload = captureCampaignBaselinePayload(snapshot, project.id);
-      const baselineKey = ref.baselineKey ?? ref.id;
-      const baseline: Baseline<CampaignBaselinePayload> = {
-        envelopeVersion: "1",
-        kind: CAMPAIGN_KIND_NAME,
-        recipeHandle: baselineKey,
-        envName: ctx.environmentName,
-        capturedAt: new Date().toISOString(),
-        payload,
-      };
-      try {
-        await ctx.baselineStorage.write(
-          CAMPAIGN_KIND_NAME,
-          ctx.environmentName,
-          baselineKey,
-          baseline
-        );
-      } catch (err) {
-        ctx.logger?.error?.(
-          `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-        );
-      }
-    }
+/**
+ * Post-apply three-way baseline capture. Re-reads the live state for an
+ * accurate post-apply snapshot (incremental creates may not land every
+ * cell). Best-effort — a write failure logs and degrades the next push
+ * to two-way mode rather than throwing.
+ */
+const captureCampaignBaseline = async (
+  ref: KindRef,
+  ctx: SyncContext,
+  projectId: string
+): Promise<void> => {
+  if (!ctx.baselineStorage) return;
+  const snapshot = (await readCurrent(ref, ctx)) ?? undefined;
+  if (!snapshot) return;
+  const payload = captureCampaignBaselinePayload(snapshot, projectId);
+  const baselineKey = ref.baselineKey ?? ref.id;
+  const baseline: Baseline<CampaignBaselinePayload> = {
+    envelopeVersion: "1",
+    kind: CAMPAIGN_KIND_NAME,
+    recipeHandle: baselineKey,
+    envName: ctx.environmentName,
+    capturedAt: new Date().toISOString(),
+    payload,
+  };
+  try {
+    await ctx.baselineStorage.write(CAMPAIGN_KIND_NAME, ctx.environmentName, baselineKey, baseline);
+  } catch (err) {
+    ctx.logger?.error?.(
+      `Campaign baseline write failed for "${ref.id}" — next push will operate in two-way mode: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
+};
 
-  // Surface resolved Sitecore UUIDs so the caller (orchestrator →
-  // registry) can persist them onto the recipe and skip scai's
-  // baseline / label fallback on subsequent pushes.
-  //
-  // Re-read the converged project so we emit an identity for EVERY
-  // deliverable + task — including handle-less ones and unchanged
-  // (noop) ones, which the old handle-keyed emission silently dropped.
-  // That gap is why renames duplicated: a task whose id never reached
-  // the recipe could only be re-matched by its (volatile) name. Each
-  // nested identity carries `parentName` so the caller can place it even
-  // when the parent deliverable has no handle. Best-effort: fall back to
-  // the pre-apply snapshot if the re-read fails (identities are an
-  // optimization, not a correctness gate).
+/**
+ * Re-read the converged project and emit a resolved Sitecore UUID for
+ * the campaign + EVERY deliverable + EVERY task (incl. handle-less and
+ * noop ones). Best-effort — falls back to the pre-apply `project` if the
+ * re-read fails (identities are an optimization, not a correctness gate).
+ */
+const collectIdentities = async (
+  client: CampaignApiClientOptions,
+  project: Project,
+  ref: KindRef
+): Promise<ResolvedIdentity[]> => {
   const converged = await getProject(client, project.id).catch(() => project);
   const identities: ResolvedIdentity[] = [];
   // Campaign-level identity. `ref.baselineKey` carries the recipe's
@@ -976,6 +1080,84 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       });
     }
   }
+  return identities;
+};
+
+/** Apply a plan — create the project, then converge deliverables and tasks. */
+const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<ApplyResult> => {
+  const client = await resolveCampaignClient(ctx);
+  const applied: RecipeChange[] = [];
+  const skipped: RecipeChange[] = [];
+
+  // Refuse before any writes when the planner marked unresolved
+  // three-way conflicts under the `"error"` policy.
+  assertNoPolicyError(plan, ref);
+
+  const projectChange = plan.changes.find((change) => change.meta?.stage === "project");
+  const deliverableChanges = plan.changes.filter((change) => change.meta?.stage === "deliverable");
+  const taskChanges = plan.changes.filter((change) => change.meta?.stage === "task");
+
+  // Prior baseline tenantId — when present, prefer id-resolve over
+  // label or name match. Survives any drift in the project's
+  // displayName + identity labels.
+  const priorBaselineTenantId = await loadPriorTenantId(ctx, ref.baselineKey ?? ref.id);
+  // Ref-supplied tenantId (registry-tracked) wins over the baseline-
+  // stored one. Falls back when absent.
+  const effectiveTenantId = ref.tenantId ?? priorBaselineTenantId;
+
+  // Resolve the campaign (project) id — creating it when the plan says so.
+  const project: Project = await resolveProject(
+    client,
+    projectChange,
+    effectiveTenantId,
+    ref,
+    applied,
+    ctx
+  );
+
+  const run: ApplyRun = { client, applied, skipped, ctx };
+
+  // Index existing deliverables by their stamped `handle:<handle>`
+  // label first, then by name as fallback. Re-syncs match by label
+  // even when the LLM picks a different display name between runs.
+  const deliverableIndex = indexDeliverables(project);
+
+  // Create missing deliverables. Their tasks are created in the task
+  // pass below, which resolves against this freshly-populated index.
+  await convergeDeliverables(run, project, deliverableChanges, deliverableIndex);
+
+  // Track every task we've touched so the dependency second-pass can
+  // resolve handle references to {project, deliverable, task} triples.
+  // Includes tasks we created this run AND tasks already on the
+  // tenant that the recipe hasn't changed — a recipe may declare a
+  // dependency on a previously-pushed task.
+  const tasksByHandle = indexTasksByHandle(project, taskChanges);
+
+  // Converge tasks — create the missing ones, PUT-replace changed ones.
+  // Dependencies are deferred to the second pass below.
+  const tasksWithDeps = await convergeTasks(
+    run,
+    project,
+    taskChanges,
+    deliverableIndex.byName,
+    tasksByHandle
+  );
+
+  // Dependencies second pass — now that every task in the project
+  // has a UUID, resolve each task's `dependencies: [<handle>]` list
+  // to the full `{project_id, project_deliverable_id, task_id}`
+  // triples the Brief API expects and PUT them back.
+  await convergeTaskDependencies(client, project, tasksWithDeps, tasksByHandle, ctx);
+
+  // Three-way merge baseline capture — post-apply, hash the desired
+  // recipe (the recipe the planner merged-and-wrote) so the next
+  // push can detect drift.
+  await captureCampaignBaseline(ref, ctx, project.id);
+
+  // Surface resolved Sitecore UUIDs so the caller (orchestrator →
+  // registry) can persist them onto the recipe and skip scai's
+  // baseline / label fallback on subsequent pushes.
+  const identities = await collectIdentities(client, project, ref);
 
   return { applied, skipped, identities };
 };

@@ -223,6 +223,122 @@ const findInboundBlockers = async (
 };
 
 /**
+ * Build the hard-block error thrown when external references point into
+ * the subtree and the policy is `block`. Sorts by referenceKind priority
+ * so structural blockers surface first, then samples the top 5.
+ */
+const throwInboundBlockerError = (subtreePath: string, blockers: InboundBlocker[]): never => {
+  const sortedBlockers = [...blockers].sort(
+    (a, b) => REFERENCE_KIND_PRIORITY[a.referenceKind] - REFERENCE_KIND_PRIORITY[b.referenceKind]
+  );
+  const sample = sortedBlockers
+    .slice(0, 5)
+    .map(
+      (b) =>
+        `  [${b.referenceKind}] ${b.referrerPath} . ${b.fieldName} → ${b.targetItemId.slice(0, 8)}…`
+    )
+    .join("\n");
+  throw createScaiError(
+    `Refusing to delete subtree '${subtreePath}': ${blockers.length} external reference(s) point into it. ` +
+      `Pass --orphan-external-refs clear (empty the fields), prune (surgical removal preserving siblings), or leave (accept dangling refs and clean up later via audit broken-links).\n${sample}${
+        blockers.length > 5 ? `\n  …and ${blockers.length - 5} more` : ""
+      }`,
+    "INPUT_INVALID"
+  );
+};
+
+/**
+ * Clear or prune each external referring field (apply mode only). Groups
+ * blockers by (referrer, field) so multiple targets in one field collapse
+ * to a single update; stamps `cleared` on each blocker on success.
+ */
+const clearOrPruneReferringFields = async (
+  client: HygieneApiClient,
+  blockers: InboundBlocker[],
+  policy: OrphanExternalRefsPolicy,
+  options: CleanupSubtreeOptions,
+  logger: ReturnType<typeof toLogger>
+): Promise<void> => {
+  // Group blockers by (referrerItemId, fieldName) — multiple targets
+  // could point at the same field. One update per (item, field).
+  const byKey = new Map<string, InboundBlocker[]>();
+  for (const b of blockers) {
+    const key = `${b.referrerItemId}::${b.fieldName}`;
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(b);
+    else byKey.set(key, [b]);
+  }
+  await mapWithConcurrency(
+    [...byKey.entries()],
+    async ([, group]) => {
+      const [first] = group;
+      // Decide the new value:
+      //   - `clear`: always empty string.
+      //   - `prune`: try pruners (renderings XML, multi-list). When no
+      //     pruner matches the value's shape, fall back to clearing —
+      //     a single-value reference field has nothing to preserve.
+      let newValue = "";
+      if (policy === "prune" && first.fieldValue) {
+        const targetsInThisField = new Set(group.map((b) => b.targetItemId));
+        const pruned = pruneFieldValue(first.fieldValue, targetsInThisField);
+        if (pruned !== null) newValue = pruned;
+      }
+      try {
+        await client.updateItemFields({
+          itemId: first.referrerItemId,
+          fields: [{ name: first.fieldName, value: newValue }],
+        });
+        for (const b of group) b.cleared = true;
+      } catch (error) {
+        // Leave `cleared: undefined` so the caller can see the field
+        // wasn't written; downstream delete will likely fail too.
+        logger.warn(
+          `Failed to ${policy} ${first.referrerPath}.${first.fieldName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    },
+    options.concurrency ?? 4
+  );
+};
+
+/**
+ * Build the human-readable run summary line (what-if plan vs applied
+ * result), folding in the policy verb and the `leave`-mode note.
+ */
+const buildSubtreeSummary = (params: {
+  whatIf: boolean;
+  subtreeCount: number;
+  blockers: InboundBlocker[];
+  policy: OrphanExternalRefsPolicy | "block";
+  deletedCount: number;
+  failedCount: number;
+}): string => {
+  const { whatIf, subtreeCount, blockers, policy, deletedCount, failedCount } = params;
+  // Verb describing what the policy did to each external referring
+  // field. "clearing" for clear, "pruning" for prune, "blocking on"
+  // when the operator hit a hard-block.
+  const refVerb = policy === "clear" ? "clearing" : policy === "prune" ? "pruning" : "blocking on";
+  const writtenVerb = policy === "clear" ? "cleared" : policy === "prune" ? "pruned" : "wrote";
+  const leaveNote =
+    policy === "leave"
+      ? " (leave mode: dangling refs accepted; run `audit broken-links` afterward to triage)"
+      : "";
+  return whatIf
+    ? `Plan: would delete ${subtreeCount} item${subtreeCount === 1 ? "" : "s"}${
+        blockers.length > 0
+          ? ` (after ${refVerb} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})`
+          : ""
+      }${leaveNote}.`
+    : `Deleted ${deletedCount} of ${subtreeCount} item${subtreeCount === 1 ? "" : "s"}${
+        blockers.length > 0
+          ? ` (${writtenVerb} ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})`
+          : ""
+      }${failedCount > 0 ? ` (${failedCount} delete failure${failedCount === 1 ? "" : "s"})` : ""}${leaveNote}.`;
+};
+
+/**
  * Bottom-up cascade delete of a Sitecore subtree.
  *
  * Steps:
@@ -345,72 +461,12 @@ export const runCleanupSubtree = async (
   if (blockers.length > 0 && policy === "block") {
     // Print the blockers so the operator can choose: clear external refs,
     // or fix the refs out-of-band first.
-    // Sort by referenceKind priority so structural blockers (base-template,
-    // insert-options, …) surface before plain field-value refs — those are
-    // the ones the operator needs to triage first.
-    const sortedBlockers = [...blockers].sort(
-      (a, b) => REFERENCE_KIND_PRIORITY[a.referenceKind] - REFERENCE_KIND_PRIORITY[b.referenceKind]
-    );
-    const sample = sortedBlockers
-      .slice(0, 5)
-      .map(
-        (b) =>
-          `  [${b.referenceKind}] ${b.referrerPath} . ${b.fieldName} → ${b.targetItemId.slice(0, 8)}…`
-      )
-      .join("\n");
-    throw createScaiError(
-      `Refusing to delete subtree '${subtreePath}': ${blockers.length} external reference(s) point into it. ` +
-        `Pass --orphan-external-refs clear (empty the fields), prune (surgical removal preserving siblings), or leave (accept dangling refs and clean up later via audit broken-links).\n${sample}${
-          blockers.length > 5 ? `\n  …and ${blockers.length - 5} more` : ""
-        }`,
-      "INPUT_INVALID"
-    );
+    throwInboundBlockerError(subtreePath, blockers);
   }
 
   // ─── Optionally clear or prune external referring fields ──────────────
   if (blockers.length > 0 && policy !== "block" && !options.whatIf) {
-    // Group blockers by (referrerItemId, fieldName) — multiple targets
-    // could point at the same field. One update per (item, field).
-    const byKey = new Map<string, InboundBlocker[]>();
-    for (const b of blockers) {
-      const key = `${b.referrerItemId}::${b.fieldName}`;
-      const bucket = byKey.get(key);
-      if (bucket) bucket.push(b);
-      else byKey.set(key, [b]);
-    }
-    await mapWithConcurrency(
-      [...byKey.entries()],
-      async ([, group]) => {
-        const [first] = group;
-        // Decide the new value:
-        //   - `clear`: always empty string.
-        //   - `prune`: try pruners (renderings XML, multi-list). When no
-        //     pruner matches the value's shape, fall back to clearing —
-        //     a single-value reference field has nothing to preserve.
-        let newValue = "";
-        if (policy === "prune" && first.fieldValue) {
-          const targetsInThisField = new Set(group.map((b) => b.targetItemId));
-          const pruned = pruneFieldValue(first.fieldValue, targetsInThisField);
-          if (pruned !== null) newValue = pruned;
-        }
-        try {
-          await client.updateItemFields({
-            itemId: first.referrerItemId,
-            fields: [{ name: first.fieldName, value: newValue }],
-          });
-          for (const b of group) b.cleared = true;
-        } catch (error) {
-          // Leave `cleared: undefined` so the caller can see the field
-          // wasn't written; downstream delete will likely fail too.
-          logger.warn(
-            `Failed to ${policy} ${first.referrerPath}.${first.fieldName}: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        }
-      },
-      options.concurrency ?? 4
-    );
+    await clearOrPruneReferringFields(client, blockers, policy, options, logger);
   }
 
   // ─── Delete bottom-up ─────────────────────────────────────────────────
@@ -442,26 +498,14 @@ export const runCleanupSubtree = async (
 
   const deletedCount = deletions.filter((d) => d.status === "deleted").length;
   const failedCount = deletions.filter((d) => d.status === "failed").length;
-  // Verb describing what the policy did to each external referring
-  // field. "clearing" for clear, "pruning" for prune, "blocking on"
-  // when the operator hit a hard-block.
-  const refVerb = policy === "clear" ? "clearing" : policy === "prune" ? "pruning" : "blocking on";
-  const writtenVerb = policy === "clear" ? "cleared" : policy === "prune" ? "pruned" : "wrote";
-  const leaveNote =
-    policy === "leave"
-      ? " (leave mode: dangling refs accepted; run `audit broken-links` afterward to triage)"
-      : "";
-  const summary = options.whatIf
-    ? `Plan: would delete ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0
-          ? ` (after ${refVerb} ${blockers.length} external ref${blockers.length === 1 ? "" : "s"})`
-          : ""
-      }${leaveNote}.`
-    : `Deleted ${deletedCount} of ${subtreeItems.length} item${subtreeItems.length === 1 ? "" : "s"}${
-        blockers.length > 0
-          ? ` (${writtenVerb} ${blockers.filter((b) => b.cleared).length} of ${blockers.length} referring field${blockers.length === 1 ? "" : "s"})`
-          : ""
-      }${failedCount > 0 ? ` (${failedCount} delete failure${failedCount === 1 ? "" : "s"})` : ""}${leaveNote}.`;
+  const summary = buildSubtreeSummary({
+    whatIf: Boolean(options.whatIf),
+    subtreeCount: subtreeItems.length,
+    blockers,
+    policy,
+    deletedCount,
+    failedCount,
+  });
 
   printReport({
     logger,

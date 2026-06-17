@@ -128,21 +128,50 @@ const collectDescendantIds = async (
   return ids;
 };
 
+interface ActiveContentRefRow {
+  itemId: string;
+  path: string;
+  field: string;
+  referenceKind: ReferenceKind;
+  refs: string[];
+}
+
+/**
+ * Attribute every internal ref carried by a single active-content row to
+ * whichever orphan tree(s) own the referenced descendant, appending an
+ * `InboundRef` to that orphan's bucket. Pulled out of the scan loop so the
+ * per-ref / per-orphan matching lives at a shallow depth instead of six
+ * blocks deep inside the tenant-root loop.
+ */
+const attributeRowToOrphans = (
+  row: ActiveContentRefRow,
+  descendantsByOrphan: ReadonlyMap<string, Set<string>>,
+  refsByOrphan: Map<string, InboundRef[]>
+): void => {
+  for (const ref of row.refs) {
+    const normalized = ref.toLowerCase();
+    for (const [orphanId, descendants] of descendantsByOrphan) {
+      if (!descendants.has(normalized)) continue;
+      const list = refsByOrphan.get(orphanId) ?? [];
+      list.push({
+        fromItemId: row.itemId,
+        fromPath: row.path,
+        fieldName: row.field,
+        referenceKind: row.referenceKind,
+        refItemId: normalized,
+      });
+      refsByOrphan.set(orphanId, list);
+    }
+  }
+};
+
 const scanActiveContentForRefs = async (params: {
   client: HygieneApiClient;
   envName: string;
   options: CleanupSiteResidueOptions;
   contentRoot: string;
   logger: ReturnType<typeof toLogger>;
-}): Promise<
-  Array<{
-    itemId: string;
-    path: string;
-    field: string;
-    referenceKind: ReferenceKind;
-    refs: string[];
-  }>
-> => {
+}): Promise<ActiveContentRefRow[]> => {
   const { scanned, fieldsByItemId } = await scanItemsAndFields({
     client: params.client,
     envName: params.envName,
@@ -150,13 +179,7 @@ const scanActiveContentForRefs = async (params: {
     logger: params.logger,
     options: params.options,
   });
-  const rows: Array<{
-    itemId: string;
-    path: string;
-    field: string;
-    referenceKind: ReferenceKind;
-    refs: string[];
-  }> = [];
+  const rows: ActiveContentRefRow[] = [];
   for (const item of scanned) {
     const fields = fieldsByItemId.get(item.itemId);
     if (!fields || !Array.isArray(fields)) continue;
@@ -248,21 +271,7 @@ export const runCleanupSiteResidue = async (
         logger,
       });
       for (const row of rows) {
-        for (const ref of row.refs) {
-          const normalized = ref.toLowerCase();
-          for (const [orphanId, descendants] of descendantsByOrphan) {
-            if (!descendants.has(normalized)) continue;
-            const list = refsByOrphan.get(orphanId) ?? [];
-            list.push({
-              fromItemId: row.itemId,
-              fromPath: row.path,
-              fieldName: row.field,
-              referenceKind: row.referenceKind,
-              refItemId: normalized,
-            });
-            refsByOrphan.set(orphanId, list);
-          }
-        }
+        attributeRowToOrphans(row, descendantsByOrphan, refsByOrphan);
       }
     }
   }

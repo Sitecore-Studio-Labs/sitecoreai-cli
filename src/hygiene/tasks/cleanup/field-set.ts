@@ -150,6 +150,47 @@ const isPipeDelimitedGuidShape = (value: string): boolean => {
 };
 
 /**
+ * Compute the new field value (and any skip reason) for a single item
+ * given the requested mode and the item's current value. Pure — the
+ * branching per mode lives here so the scan loop in `runCleanupFieldSet`
+ * stays flat. `replaceValue` is the verbatim `--value` (used by
+ * `replace`); `guidList` is the pre-parsed GUID set (used by add/remove).
+ */
+const computeFieldSetValue = (
+  mode: FieldSetMode,
+  oldValue: string,
+  replaceValue: string | undefined,
+  guidList: string[] | null
+): { newValue: string; skip?: FieldSetAction["status"] } => {
+  switch (mode) {
+    case "replace":
+      return { newValue: replaceValue! };
+    case "clear":
+      return { newValue: "" };
+    case "add": {
+      if (!isPipeDelimitedGuidShape(oldValue)) {
+        return { newValue: oldValue, skip: "skipped-shape" };
+      }
+      const existing = splitMultilistValue(oldValue);
+      const merged = new Set(
+        existing.map((g) => normalizeGuid(g) ?? g.toLowerCase()).filter(Boolean)
+      );
+      for (const g of guidList!) merged.add(g);
+      return { newValue: joinMultilistValue([...merged]) };
+    }
+    case "remove": {
+      if (!isPipeDelimitedGuidShape(oldValue)) {
+        return { newValue: oldValue, skip: "skipped-shape" };
+      }
+      const existing = splitMultilistValue(oldValue);
+      const toRemove = new Set(guidList!);
+      const filtered = existing.map((g) => normalizeGuid(g) ?? g).filter((g) => !toRemove.has(g));
+      return { newValue: joinMultilistValue(filtered) };
+    }
+  }
+};
+
+/**
  * Bulk-edit a single field across a content scope.
  *
  * One verb, four modes — `replace`, `add`, `remove`, `clear`. Field
@@ -231,40 +272,9 @@ export const runCleanupFieldSet = async (
     const oldValue = matchingField.value ?? "";
     if (currentRegex && !currentRegex.test(oldValue)) continue;
 
-    let newValue = oldValue;
-    let skip: FieldSetAction["status"] | undefined;
-    switch (mode) {
-      case "replace":
-        newValue = options.value!;
-        break;
-      case "clear":
-        newValue = "";
-        break;
-      case "add": {
-        if (!isPipeDelimitedGuidShape(oldValue)) {
-          skip = "skipped-shape";
-          break;
-        }
-        const existing = splitMultilistValue(oldValue);
-        const merged = new Set(
-          existing.map((g) => normalizeGuid(g) ?? g.toLowerCase()).filter(Boolean)
-        );
-        for (const g of guidList!) merged.add(g);
-        newValue = joinMultilistValue([...merged]);
-        break;
-      }
-      case "remove": {
-        if (!isPipeDelimitedGuidShape(oldValue)) {
-          skip = "skipped-shape";
-          break;
-        }
-        const existing = splitMultilistValue(oldValue);
-        const toRemove = new Set(guidList!);
-        const filtered = existing.map((g) => normalizeGuid(g) ?? g).filter((g) => !toRemove.has(g));
-        newValue = joinMultilistValue(filtered);
-        break;
-      }
-    }
+    const computed = computeFieldSetValue(mode, oldValue, options.value, guidList);
+    const newValue = computed.newValue;
+    let skip = computed.skip;
     if (!skip && newValue === oldValue) {
       skip = "skipped-no-change";
     }

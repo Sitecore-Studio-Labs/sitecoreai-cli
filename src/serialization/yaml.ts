@@ -161,6 +161,25 @@ export const readItemYaml = async (filePath: string): Promise<ItemData> => {
   return readItemYamlFromString(content);
 };
 
+/**
+ * Write a list of field entries (sorted by fieldId) as YAML list items.
+ * Shared by the unversioned-fields and versioned-fields blocks so the
+ * inner ID/Hint/BlobID/Value emission lives at a single indent depth
+ * instead of nested inside the language/version loops.
+ */
+const writeSortedFields = (writer: YamlWriter, fields: ItemFieldValue[]): void => {
+  for (const field of [...fields].sort((a, b) => a.fieldId.localeCompare(b.fieldId))) {
+    writer.writeBeginListItem("ID", field.fieldId);
+    if (field.nameHint) {
+      writer.writeMap("Hint", field.nameHint);
+    }
+    if (field.blobId) {
+      writer.writeMap("BlobID", field.blobId);
+    }
+    writer.writeMap("Value", field.value ?? "");
+  }
+};
+
 export const writeItemYaml = (item: ItemData): string => {
   const writer = new YamlWriter();
   writer.writeBeginNewDocument();
@@ -210,16 +229,7 @@ export const writeItemYaml = (item: ItemData): string => {
       if (unversioned && unversioned.fields.length > 0) {
         writer.writeMap("Fields");
         writer.increaseIndent();
-        for (const field of unversioned.fields.sort((a, b) => a.fieldId.localeCompare(b.fieldId))) {
-          writer.writeBeginListItem("ID", field.fieldId);
-          if (field.nameHint) {
-            writer.writeMap("Hint", field.nameHint);
-          }
-          if (field.blobId) {
-            writer.writeMap("BlobID", field.blobId);
-          }
-          writer.writeMap("Value", field.value ?? "");
-        }
+        writeSortedFields(writer, unversioned.fields);
         writer.decreaseIndent();
       }
 
@@ -230,16 +240,7 @@ export const writeItemYaml = (item: ItemData): string => {
         if (version.fields.length > 0) {
           writer.writeMap("Fields");
           writer.increaseIndent();
-          for (const field of version.fields.sort((a, b) => a.fieldId.localeCompare(b.fieldId))) {
-            writer.writeBeginListItem("ID", field.fieldId);
-            if (field.nameHint) {
-              writer.writeMap("Hint", field.nameHint);
-            }
-            if (field.blobId) {
-              writer.writeMap("BlobID", field.blobId);
-            }
-            writer.writeMap("Value", field.value ?? "");
-          }
+          writeSortedFields(writer, version.fields);
           writer.decreaseIndent();
         }
       }

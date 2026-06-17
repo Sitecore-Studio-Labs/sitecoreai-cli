@@ -1227,6 +1227,519 @@ const writeRecipeJson = async (
   return filePath;
 };
 
+/**
+ * Snapshot mode (no `--against`): no disk discovery, no classification —
+ * just dump every tenant recipe to `<outDir>/<kind>/`. Every entry gets
+ * status "in-sync" so the result shape stays uniform across modes.
+ */
+const runSnapshotMode = async (args: {
+  tenantRecipes: readonly Recipe[];
+  outputDir: string;
+  dryRun: boolean;
+  byStatus: Record<RecipeMergeStatus, number>;
+  envName: string;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<RecipePullResult> => {
+  const { tenantRecipes, outputDir, dryRun, byStatus, envName, logger } = args;
+  const files: RecipePullEntry[] = [];
+  const byKind: Record<string, number> = {};
+  for (const recipe of tenantRecipes) {
+    const filePath = dryRun
+      ? null
+      : await writeRecipeJson(outputDir, recipe as Recipe & { handle: string });
+    files.push({
+      handle: (recipe as { handle: string }).handle,
+      kind: recipe.kind,
+      path: filePath,
+      status: "in-sync",
+    });
+    byKind[recipe.kind] = (byKind[recipe.kind] ?? 0) + 1;
+    byStatus["in-sync"] += 1;
+  }
+  const result: RecipePullResult = {
+    outputDir,
+    totalRecipes: tenantRecipes.length,
+    byKind,
+    byStatus,
+    files,
+    blocked: false,
+  };
+  if (logger.isJson()) {
+    logger.json({ command: "recipe.pull", environment: envName, ...result });
+    return result;
+  }
+  logger.info(`Pulled ${result.totalRecipes} recipes from ${envName} to ${outputDir}`, "cyan");
+  for (const [kind, count] of Object.entries(result.byKind).sort()) {
+    logger.info(`  ${kind}: ${count}`);
+  }
+  if (result.totalRecipes === 0) {
+    logger.info(
+      "  (no recipes recovered — verify env-profile roots and that tenant items carry the SCAI Handle marker)",
+      "yellow"
+    );
+  }
+  return result;
+};
+
+/**
+ * Detect cross-kind collisions on one side and build the handle→Recipe
+ * lookup the merge loop re-emits from. Two recipes on the same side sharing
+ * a handle but differing in kind would silently overwrite each other and the
+ * merge loop would later fall through to a tenant write with no diagnostic
+ * (last-write-wins). Throw `INPUT_INVALID` so the operator sees the collision
+ * before any file is written.
+ */
+const buildRecipeByHandle = (
+  label: "disk" | "tenant",
+  list: readonly Recipe[]
+): Map<string, Recipe> => {
+  const out = new Map<string, Recipe>();
+  for (const r of list) {
+    const handle = (r as { handle: string }).handle;
+    const existing = out.get(handle);
+    if (existing && existing.kind !== r.kind) {
+      throw createScaiError(
+        `Handle collision on ${label}: '${handle}' appears as both ${existing.kind} and ${r.kind}.`,
+        "INPUT_INVALID",
+        {
+          hint: "Recipe handles must be unique per side. Rename one of the colliding recipes (or merge them) and re-run.",
+        }
+      );
+    }
+    out.set(handle, r);
+  }
+  return out;
+};
+
+/**
+ * Cross-side kind check: the same handle on both sides MUST resolve to the
+ * same kind for the synthesis path to make sense. Different kinds would fall
+ * through to the else-branch (write tenant) silently — surface as an error.
+ */
+const assertCrossSideKinds = (
+  diskRecipeByHandle: ReadonlyMap<string, Recipe>,
+  tenantRecipeByHandle: ReadonlyMap<string, Recipe>
+): void => {
+  for (const [handle, diskRecipe] of diskRecipeByHandle) {
+    const tenantRecipe = tenantRecipeByHandle.get(handle);
+    if (tenantRecipe !== undefined && tenantRecipe.kind !== diskRecipe.kind) {
+      throw createScaiError(
+        `Cross-side kind mismatch for handle '${handle}': disk is ${diskRecipe.kind}, tenant is ${tenantRecipe.kind}.`,
+        "INPUT_INVALID",
+        {
+          hint: "The same handle must resolve to the same kind on both sides. One side may have been authored against an older schema, or two recipes accidentally share a handle.",
+        }
+      );
+    }
+  }
+};
+
+/**
+ * Roll up structural presence + per-field statuses into the recipe-level
+ * status. Disk-only / tenant-only short-circuit (one side has no fields to
+ * compare); otherwise defer to `rollupPerFieldStatuses`.
+ */
+const classifyRecipeStatus = (
+  diskHashes: Map<string, string> | null,
+  tenantHashes: Map<string, string> | null,
+  fieldStatuses: PerFieldStatuses
+): { status: RecipeMergeStatus; diskChanged: number; tenantChanged: number } => {
+  if (diskHashes === null && tenantHashes === null) {
+    return { status: "in-sync", diskChanged: 0, tenantChanged: 0 };
+  }
+  if (diskHashes === null) {
+    return { status: "tenant-only", diskChanged: 0, tenantChanged: 0 };
+  }
+  if (tenantHashes === null) {
+    return { status: "disk-only", diskChanged: 0, tenantChanged: 0 };
+  }
+  const rolled = rollupPerFieldStatuses(fieldStatuses);
+  return {
+    status: rolled.status,
+    diskChanged: rolled.diskChanged,
+    tenantChanged: rolled.tenantChanged,
+  };
+};
+
+/**
+ * Decide whether to write a recipe file for one handle given the policy /
+ * apply-plan mode and the recipe's classification.
+ */
+const shouldWriteRecipe = (args: {
+  appliedPlan: MergePlan | null;
+  policy: "error" | "disk-wins" | "tenant-wins";
+  status: RecipeMergeStatus;
+  diskRecipe: Recipe | undefined;
+  tenantRecipe: Recipe | undefined;
+}): boolean => {
+  const { appliedPlan, policy, status, diskRecipe, tenantRecipe } = args;
+  if (!tenantRecipe && !diskRecipe) return false;
+  // Apply-plan mode always writes — the plan IS the policy.
+  if (appliedPlan !== null) return true;
+  switch (policy) {
+    case "tenant-wins":
+      // Always emit a recipe file — either tenant-only, or a per-field
+      // merge synthesized below.
+      return tenantRecipe !== undefined || diskRecipe !== undefined;
+    case "disk-wins":
+      // Only write when the disk side has no changes (in-sync or
+      // tenant-only or tenant-edited cases). Skip disk-ahead +
+      // conflict so the operator's local recipe stays the source of
+      // truth in the output directory.
+      return (
+        tenantRecipe !== undefined &&
+        (status === "in-sync" || status === "tenant-only" || status === "tenant-edited")
+      );
+    case "error":
+    default:
+      // Default policy: write `in-sync` + `tenant-only` (safe), skip
+      // anything that needs operator attention so the file list
+      // reflects what's actually been merged.
+      return tenantRecipe !== undefined && (status === "in-sync" || status === "tenant-only");
+  }
+};
+
+/**
+ * Apply-plan staleness verification: compare each plan-recorded field status
+ * to the current classification. A mismatch means the world moved between
+ * write-plan + apply-plan; applying the stale plan could clobber a fresh
+ * edit, so throw and ask the operator to regenerate.
+ */
+const assertPlanNotStale = (args: {
+  appliedPlan: MergePlan | null;
+  overridesForRecipe: Map<string, "disk" | "tenant"> | undefined;
+  handle: string;
+  tenantRecipe: Recipe | undefined;
+  diskRecipe: Recipe | undefined;
+  fieldStatuses: PerFieldStatuses;
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>;
+  diskIrByHandle: ReadonlyMap<string, OperationIr>;
+}): void => {
+  const {
+    appliedPlan,
+    overridesForRecipe,
+    handle,
+    tenantRecipe,
+    diskRecipe,
+    fieldStatuses,
+    tenantIrByHandle,
+    diskIrByHandle,
+  } = args;
+  if (appliedPlan === null || overridesForRecipe === undefined) return;
+  const planEntry = appliedPlan.recipes.find((r) => r.handle === handle);
+  if (planEntry === undefined) return;
+  const planEntryKind = (tenantRecipe ?? diskRecipe)?.kind;
+  // Templates compare against the rolled-up statuses (one per field);
+  // content kinds compare against raw fieldStatuses.
+  const compareStatuses = ((): PerFieldStatuses => {
+    if (
+      planEntryKind === "component-template" ||
+      planEntryKind === "content-template" ||
+      planEntryKind === "page-template"
+    ) {
+      const ir = tenantIrByHandle.get(handle) ?? diskIrByHandle.get(handle);
+      return ir ? rollupTemplateStatuses(fieldStatuses, ir).statuses : fieldStatuses;
+    }
+    return fieldStatuses;
+  })();
+  const drifted = detectStalePlanDrift(planEntry, compareStatuses);
+  if (drifted.length > 0) {
+    throw createScaiError(
+      `Stale merge plan for recipe '${handle}': ${drifted.length} field(s) classify differently now than when the plan was generated.`,
+      "INPUT_INVALID",
+      {
+        hint: "The world moved between --write-plan and --apply-plan. Regenerate the plan (`recipe pull --against ... --write-plan ...`) to see the new state and re-pick winners.",
+        details: drifted,
+      }
+    );
+  }
+};
+
+/**
+ * Pick the Recipe to write for one handle under the effective policy:
+ *   disk-wins   prefer disk whole (falls back to tenant when absent)
+ *   tenant-wins per-field merge for content + template kinds; other kinds
+ *               fall through to tenant whole
+ *   error       only in-sync + tenant-only reach here — tenant is correct
+ */
+const selectRecipeToWrite = (args: {
+  effectivePolicy: "error" | "disk-wins" | "tenant-wins";
+  handle: string;
+  diskRecipe: Recipe | undefined;
+  tenantRecipe: Recipe | undefined;
+  fieldStatuses: PerFieldStatuses;
+  overridesForRecipe: Map<string, "disk" | "tenant"> | undefined;
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>;
+  diskIrByHandle: ReadonlyMap<string, OperationIr>;
+}): Recipe => {
+  const {
+    effectivePolicy,
+    handle,
+    diskRecipe,
+    tenantRecipe,
+    fieldStatuses,
+    overridesForRecipe,
+    tenantIrByHandle,
+    diskIrByHandle,
+  } = args;
+  if (effectivePolicy === "disk-wins") {
+    return (diskRecipe ?? tenantRecipe)!;
+  }
+  if (
+    effectivePolicy === "tenant-wins" &&
+    diskRecipe !== undefined &&
+    tenantRecipe !== undefined &&
+    (tenantRecipe.kind === "content-item" || tenantRecipe.kind === "page") &&
+    diskRecipe.kind === tenantRecipe.kind
+  ) {
+    const tenantIr = tenantIrByHandle.get(handle);
+    const mainRefKey = tenantIr ? findMainItemRefKey(tenantIr, tenantRecipe.kind) : undefined;
+    return mergeContentValueRecipe(
+      diskRecipe as ContentItemRecipe | PageRecipe,
+      tenantRecipe as ContentItemRecipe | PageRecipe,
+      fieldStatuses,
+      mainRefKey,
+      overridesForRecipe
+    );
+  }
+  if (
+    effectivePolicy === "tenant-wins" &&
+    diskRecipe !== undefined &&
+    tenantRecipe !== undefined &&
+    (tenantRecipe.kind === "component-template" ||
+      tenantRecipe.kind === "content-template" ||
+      tenantRecipe.kind === "page-template") &&
+    diskRecipe.kind === tenantRecipe.kind
+  ) {
+    // Template-style recipes: per-field merge matches by field name
+    // (FieldDefinition is the merge unit, not its sub-properties).
+    const diskIr = diskIrByHandle.get(handle);
+    const tenantIr = tenantIrByHandle.get(handle);
+    if (diskIr !== undefined && tenantIr !== undefined) {
+      return mergeTemplateRecipe(
+        diskRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
+        tenantRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
+        fieldStatuses,
+        diskIr,
+        tenantIr,
+        overridesForRecipe
+      );
+    }
+    // Defensive: IR missing for one side → fall back to tenant.
+    return tenantRecipe;
+  }
+  return (tenantRecipe ?? diskRecipe)!;
+};
+
+/**
+ * Build the merge-plan source entry for one handle. Templates need their
+ * per-property statuses rolled up to one entry per field (so plan +
+ * `mergeTemplateRecipe.winnerFor` agree on the key shape); content kinds use
+ * the raw field-level map.
+ */
+const buildPlanSourceEntry = (
+  handle: string,
+  kind: string,
+  status: RecipeMergeStatus,
+  fieldStatuses: PerFieldStatuses,
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>,
+  diskIrByHandle: ReadonlyMap<string, OperationIr>
+): {
+  handle: string;
+  kind: string;
+  rollupStatus: RecipeMergeStatus;
+  fieldStatuses: PerFieldStatuses;
+  labels?: Map<string, string>;
+} => {
+  if (kind === "component-template" || kind === "content-template" || kind === "page-template") {
+    const ir = tenantIrByHandle.get(handle) ?? diskIrByHandle.get(handle);
+    if (ir !== undefined) {
+      const { statuses: rolled, labels } = rollupTemplateStatuses(fieldStatuses, ir);
+      return { handle, kind, rollupStatus: status, fieldStatuses: rolled, labels };
+    }
+  }
+  return { handle, kind, rollupStatus: status, fieldStatuses };
+};
+
+/**
+ * Load + validate the merge plan when `--apply-plan` is set, and build the
+ * per-(recipe, field) winner-override map. The plan's environment must match
+ * the current run's env (a plan generated against staging shouldn't apply to
+ * prod). Returns the loaded plan (or null) and the override map.
+ */
+const loadAppliedPlan = async (
+  options: RecipePullOptions,
+  envName: string,
+  winnerOverridesByHandle: Map<string, Map<string, "disk" | "tenant">>
+): Promise<MergePlan | null> => {
+  if (options.applyPlan === undefined) return null;
+  const appliedPlan = await loadMergePlan(options.applyPlan);
+  if (appliedPlan.environment !== envName) {
+    throw createScaiError(
+      `Merge plan was generated against environment '${appliedPlan.environment}' but pull is running against '${envName}'.`,
+      "INPUT_INVALID",
+      {
+        hint: "Regenerate the plan against the current environment (`recipe pull --against ... --write-plan ...`) or run pull against the matching env.",
+      }
+    );
+  }
+  for (const recipeEntry of appliedPlan.recipes) {
+    const overrides = new Map<string, "disk" | "tenant">();
+    for (const field of recipeEntry.fields) {
+      overrides.set(field.rawKey.toLowerCase(), field.winner);
+    }
+    winnerOverridesByHandle.set(recipeEntry.handle, overrides);
+  }
+  return appliedPlan;
+};
+
+/**
+ * Apply-plan completeness check: every plan-referenced recipe must be in the
+ * current run. A plan entry whose handle disappeared (operator deleted the
+ * recipe, or pull is running against a different set) means the plan is
+ * stale; refuse to apply it. Extra recipes not in the plan are fine.
+ */
+const assertPlanRecipesPresent = (
+  appliedPlan: MergePlan | null,
+  allHandles: ReadonlySet<string>
+): void => {
+  if (appliedPlan === null) return;
+  const missingFromCurrent = appliedPlan.recipes
+    .map((r) => r.handle)
+    .filter((h) => !allHandles.has(h));
+  if (missingFromCurrent.length > 0) {
+    throw createScaiError(
+      `Merge plan references ${missingFromCurrent.length} recipe(s) that aren't in the current set.`,
+      "INPUT_INVALID",
+      {
+        hint: "Regenerate the plan (`recipe pull --against ... --write-plan ...`) — the recipe set has changed since the plan was written.",
+        details: missingFromCurrent.map(
+          (h) => `Plan handle '${h}' not found in current disk + tenant set.`
+        ),
+      }
+    );
+  }
+};
+
+/**
+ * Resolve the on-disk path written for one handle: short-circuits to `null`
+ * when nothing should be written, otherwise verifies plan freshness, selects
+ * the recipe to write under the effective policy, and writes it (unless
+ * dry-run). Returns `null` in dry-run even when a write would occur.
+ */
+const resolveRecipeFilePath = async (args: {
+  shouldWrite: boolean;
+  appliedPlan: MergePlan | null;
+  policy: "error" | "disk-wins" | "tenant-wins";
+  handle: string;
+  diskRecipe: Recipe | undefined;
+  tenantRecipe: Recipe | undefined;
+  fieldStatuses: PerFieldStatuses;
+  winnerOverridesByHandle: ReadonlyMap<string, Map<string, "disk" | "tenant">>;
+  tenantIrByHandle: ReadonlyMap<string, OperationIr>;
+  diskIrByHandle: ReadonlyMap<string, OperationIr>;
+  dryRun: boolean;
+  outputDir: string;
+}): Promise<string | null> => {
+  const {
+    shouldWrite,
+    appliedPlan,
+    policy,
+    handle,
+    diskRecipe,
+    tenantRecipe,
+    fieldStatuses,
+    winnerOverridesByHandle,
+    tenantIrByHandle,
+    diskIrByHandle,
+    dryRun,
+    outputDir,
+  } = args;
+  if (!shouldWrite) return null;
+  // Operator-supplied per-(rawKey) overrides from --apply-plan (if any).
+  // When `applyPlan` is set + this recipe is in the plan, the overrides win
+  // per-field; otherwise the policy default applies.
+  const overridesForRecipe = winnerOverridesByHandle.get(handle);
+  // Staleness verification: refuse to apply a plan whose classifications
+  // drifted since it was written (could clobber a fresh edit).
+  assertPlanNotStale({
+    appliedPlan,
+    overridesForRecipe,
+    handle,
+    tenantRecipe,
+    diskRecipe,
+    fieldStatuses,
+    tenantIrByHandle,
+    diskIrByHandle,
+  });
+  // Apply-plan mode forces the per-field merge path (tenant-wins synthesis)
+  // regardless of conflictPolicy — the plan IS the policy.
+  const effectivePolicy: "error" | "disk-wins" | "tenant-wins" =
+    appliedPlan !== null ? "tenant-wins" : policy;
+  const recipeToWrite = selectRecipeToWrite({
+    effectivePolicy,
+    handle,
+    diskRecipe,
+    tenantRecipe,
+    fieldStatuses,
+    overridesForRecipe,
+    tenantIrByHandle,
+    diskIrByHandle,
+  });
+  return dryRun ? null : writeRecipeJson(outputDir, recipeToWrite as Recipe & { handle: string });
+};
+
+/** Human-readable merge-mode summary rendering (skipped in JSON mode). */
+const renderMergeSummary = (args: {
+  result: RecipePullResult;
+  byStatus: Record<RecipeMergeStatus, number>;
+  files: readonly RecipePullEntry[];
+  blocked: boolean;
+  envName: string;
+  against: string;
+  policy: string;
+  outputDir: string;
+  logger: ReturnType<typeof toLogger>;
+}): void => {
+  const { result, byStatus, files, blocked, envName, against, policy, outputDir, logger } = args;
+  logger.info(
+    `Pulled ${result.totalRecipes} recipes from ${envName} (merge against ${against}, policy=${policy})`,
+    "cyan"
+  );
+  for (const [statusKey, count] of Object.entries(byStatus).sort()) {
+    if (count === 0) continue;
+    const color =
+      statusKey === "conflict" || statusKey === "tenant-edited"
+        ? "yellow"
+        : statusKey === "disk-only"
+          ? "yellow"
+          : "green";
+    logger.info(`  ${statusKey}: ${count}`, color);
+  }
+  for (const entry of files) {
+    if (entry.status === "in-sync") continue;
+    const tag =
+      entry.status === "tenant-edited" || entry.status === "conflict"
+        ? "!"
+        : entry.status === "disk-ahead"
+          ? "+"
+          : "?";
+    logger.info(
+      `  [${tag}] ${entry.handle}  ${entry.status}` +
+        (entry.diskChangedFields || entry.tenantChangedFields
+          ? `  (disk:${entry.diskChangedFields}, tenant:${entry.tenantChangedFields})`
+          : "") +
+        (entry.path ? `  → ${path.relative(outputDir, entry.path)}` : "")
+    );
+  }
+  if (blocked) {
+    logger.info(
+      `  ! blocked by --policy=error: ${byStatus["tenant-edited"]} tenant-edited + ${byStatus.conflict} conflict`,
+      "yellow"
+    );
+  }
+};
+
 export const runRecipePull = async (options: RecipePullOptions): Promise<RecipePullResult> => {
   const logger = toLogger(options);
   const tenant = resolveTenant(options);
@@ -1260,51 +1773,15 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
   };
 
   // ───── Snapshot mode (no --against) ────────────────────────────────────
-  // No disk discovery, no classification — just dump tenant recipes.
-  // Every entry gets status "in-sync" (the bare-minimum classification)
-  // so the result shape stays uniform across modes.
   if (options.against === undefined) {
-    const files: RecipePullEntry[] = [];
-    const byKind: Record<string, number> = {};
-    for (const recipe of tenantRecipes) {
-      const filePath = dryRun
-        ? null
-        : await writeRecipeJson(outputDir, recipe as Recipe & { handle: string });
-      files.push({
-        handle: (recipe as { handle: string }).handle,
-        kind: recipe.kind,
-        path: filePath,
-        status: "in-sync",
-      });
-      byKind[recipe.kind] = (byKind[recipe.kind] ?? 0) + 1;
-      byStatus["in-sync"] += 1;
-    }
-    const result: RecipePullResult = {
+    return runSnapshotMode({
+      tenantRecipes,
       outputDir,
-      totalRecipes: tenantRecipes.length,
-      byKind,
+      dryRun,
       byStatus,
-      files,
-      blocked: false,
-    };
-    if (logger.isJson()) {
-      logger.json({ command: "recipe.pull", environment: tenant.envName, ...result });
-      return result;
-    }
-    logger.info(
-      `Pulled ${result.totalRecipes} recipes from ${tenant.envName} to ${outputDir}`,
-      "cyan"
-    );
-    for (const [kind, count] of Object.entries(result.byKind).sort()) {
-      logger.info(`  ${kind}: ${count}`);
-    }
-    if (result.totalRecipes === 0) {
-      logger.info(
-        "  (no recipes recovered — verify env-profile roots and that tenant items carry the SCAI Handle marker)",
-        "yellow"
-      );
-    }
-    return result;
+      envName: tenant.envName,
+      logger,
+    });
   }
 
   // ───── Merge mode (--against set) ──────────────────────────────────────
@@ -1321,26 +1798,7 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
   // Per-(recipe, field) winner-override maps are built here; per-recipe
   // entries are looked up by handle in the loop below.
   const winnerOverridesByHandle = new Map<string, Map<string, "disk" | "tenant">>();
-  let appliedPlan: MergePlan | null = null;
-  if (options.applyPlan !== undefined) {
-    appliedPlan = await loadMergePlan(options.applyPlan);
-    if (appliedPlan.environment !== tenant.envName) {
-      throw createScaiError(
-        `Merge plan was generated against environment '${appliedPlan.environment}' but pull is running against '${tenant.envName}'.`,
-        "INPUT_INVALID",
-        {
-          hint: "Regenerate the plan against the current environment (`recipe pull --against ... --write-plan ...`) or run pull against the matching env.",
-        }
-      );
-    }
-    for (const recipeEntry of appliedPlan.recipes) {
-      const overrides = new Map<string, "disk" | "tenant">();
-      for (const field of recipeEntry.fields) {
-        overrides.set(field.rawKey.toLowerCase(), field.winner);
-      }
-      winnerOverridesByHandle.set(recipeEntry.handle, overrides);
-    }
-  }
+  const appliedPlan = await loadAppliedPlan(options, tenant.envName, winnerOverridesByHandle);
 
   // Reuse push's input resolution + roots resolution so the merge
   // semantics match what push would compile against. `resolveRecipeInputs`
@@ -1392,52 +1850,12 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
   }
 
   // Build a recipe-by-handle lookup for both sides so the per-recipe loop
-  // can re-emit the right Recipe object based on the status.
-  //
-  // Detect cross-kind collisions early — two recipes on the same side
-  // sharing a handle but differing in kind would silently overwrite
-  // each other and the merge loop would later fall through to a tenant
-  // write with no diagnostic (last-write-wins). Throw `INPUT_INVALID`
-  // so the operator sees the collision before any file is written.
-  const buildRecipeByHandle = (
-    label: "disk" | "tenant",
-    list: readonly Recipe[]
-  ): Map<string, Recipe> => {
-    const out = new Map<string, Recipe>();
-    for (const r of list) {
-      const handle = (r as { handle: string }).handle;
-      const existing = out.get(handle);
-      if (existing && existing.kind !== r.kind) {
-        throw createScaiError(
-          `Handle collision on ${label}: '${handle}' appears as both ${existing.kind} and ${r.kind}.`,
-          "INPUT_INVALID",
-          {
-            hint: "Recipe handles must be unique per side. Rename one of the colliding recipes (or merge them) and re-run.",
-          }
-        );
-      }
-      out.set(handle, r);
-    }
-    return out;
-  };
+  // can re-emit the right Recipe object based on the status. Both calls
+  // detect same-side cross-kind collisions; assertCrossSideKinds adds the
+  // cross-side check.
   const diskRecipeByHandle = buildRecipeByHandle("disk", diskRecipes);
   const tenantRecipeByHandle = buildRecipeByHandle("tenant", tenantRecipes);
-  // Also check cross-side: the same handle on both sides MUST have the
-  // same kind for the synthesis path to make sense. Different kinds
-  // would fall through to the else-branch (write tenant) silently —
-  // surface as an error instead.
-  for (const [handle, diskRecipe] of diskRecipeByHandle) {
-    const tenantRecipe = tenantRecipeByHandle.get(handle);
-    if (tenantRecipe !== undefined && tenantRecipe.kind !== diskRecipe.kind) {
-      throw createScaiError(
-        `Cross-side kind mismatch for handle '${handle}': disk is ${diskRecipe.kind}, tenant is ${tenantRecipe.kind}.`,
-        "INPUT_INVALID",
-        {
-          hint: "The same handle must resolve to the same kind on both sides. One side may have been authored against an older schema, or two recipes accidentally share a handle.",
-        }
-      );
-    }
-  }
+  assertCrossSideKinds(diskRecipeByHandle, tenantRecipeByHandle);
 
   const configDir = path.dirname(tenant.root.physicalPath);
   const allHandles = new Set<string>([
@@ -1464,29 +1882,8 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     for (const [handle, hashes] of baselineEntries) baselineHashesByHandle.set(handle, hashes);
   }
 
-  // Apply-plan: verify every plan-referenced recipe is in the current
-  // run. A plan entry whose handle disappeared (operator deleted the
-  // recipe between write-plan + apply-plan, or pull is running against
-  // a different recipe set) means the plan is stale; refuse to apply
-  // it. Extra recipes in the current run that aren't in the plan are
-  // fine — they just use the policy defaults.
-  if (appliedPlan !== null) {
-    const missingFromCurrent = appliedPlan.recipes
-      .map((r) => r.handle)
-      .filter((h) => !allHandles.has(h));
-    if (missingFromCurrent.length > 0) {
-      throw createScaiError(
-        `Merge plan references ${missingFromCurrent.length} recipe(s) that aren't in the current set.`,
-        "INPUT_INVALID",
-        {
-          hint: "Regenerate the plan (`recipe pull --against ... --write-plan ...`) — the recipe set has changed since the plan was written.",
-          details: missingFromCurrent.map(
-            (h) => `Plan handle '${h}' not found in current disk + tenant set.`
-          ),
-        }
-      );
-    }
-  }
+  // Apply-plan: verify every plan-referenced recipe is in the current run.
+  assertPlanRecipesPresent(appliedPlan, allHandles);
 
   const files: RecipePullEntry[] = [];
   const byKind: Record<string, number> = {};
@@ -1524,27 +1921,11 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     // Disk-only / tenant-only short-circuits — these aren't per-field
     // classifiable since one side has no fields to compare to. Roll up
     // by structural presence first.
-    let status: RecipeMergeStatus;
-    let diskChanged: number;
-    let tenantChanged: number;
-    if (diskHashes === null && tenantHashes === null) {
-      status = "in-sync";
-      diskChanged = 0;
-      tenantChanged = 0;
-    } else if (diskHashes === null) {
-      status = "tenant-only";
-      diskChanged = 0;
-      tenantChanged = 0;
-    } else if (tenantHashes === null) {
-      status = "disk-only";
-      diskChanged = 0;
-      tenantChanged = 0;
-    } else {
-      const rolled = rollupPerFieldStatuses(fieldStatuses);
-      status = rolled.status;
-      diskChanged = rolled.diskChanged;
-      tenantChanged = rolled.tenantChanged;
-    }
+    const { status, diskChanged, tenantChanged } = classifyRecipeStatus(
+      diskHashes,
+      tenantHashes,
+      fieldStatuses
+    );
 
     // Per-field statuses surfaced on the result for JSON consumers /
     // verbose human output. Convert the opaque baselineLookupKey to a
@@ -1557,151 +1938,33 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
       perFieldList.push({ key: humanizeFieldKey(key), status: fieldStatus });
     }
 
-    // Decide whether to write a recipe file for this handle.
-    const shouldWrite = (() => {
-      if (!tenantRecipe && !diskRecipe) return false;
-      // Apply-plan mode always writes — the plan IS the policy.
-      if (appliedPlan !== null) return true;
-      switch (policy) {
-        case "tenant-wins":
-          // Always emit a recipe file — either tenant-only, or a per-field
-          // merge synthesized below.
-          return tenantRecipe !== undefined || diskRecipe !== undefined;
-        case "disk-wins":
-          // Only write when the disk side has no changes (in-sync or
-          // tenant-only or tenant-edited cases). Skip disk-ahead +
-          // conflict so the operator's local recipe stays the source of
-          // truth in the output directory.
-          return (
-            tenantRecipe !== undefined &&
-            (status === "in-sync" || status === "tenant-only" || status === "tenant-edited")
-          );
-        case "error":
-        default:
-          // Default policy: write `in-sync` + `tenant-only` (safe), skip
-          // anything that needs operator attention so the file list
-          // reflects what's actually been merged.
-          return tenantRecipe !== undefined && (status === "in-sync" || status === "tenant-only");
-      }
-    })();
-
-    let filePath: string | null = null;
-    if (shouldWrite) {
-      // Per-field merge applies under `tenant-wins` for content-bearing
-      // kinds (ContentItem, Page) when both sides exist. Synthesises a
-      // Recipe that takes tenant's values where tenant moved, keeps
-      // disk's values where only disk moved, and falls back to tenant
-      // for the rest. Other kinds (templates, designs, placeholders)
-      // adopt the tenant projection wholesale — their "fields" are
-      // schema definitions, not values, and field-level merge there
-      // would risk producing a malformed template.
-      // Operator-supplied per-(rawKey) overrides from --apply-plan (if
-      // any). When `applyPlan` is set + this recipe is in the plan, the
-      // overrides win per-field; otherwise the policy default applies.
-      const overridesForRecipe = winnerOverridesByHandle.get(handle);
-      // Staleness verification: when applying a plan, compare each
-      // plan-recorded field status to the current classification. A
-      // mismatch means the world moved between write-plan + apply-plan
-      // (someone pushed, someone edited tenant, baseline rewrote), and
-      // applying the stale plan could clobber a fresh edit. Refuse and
-      // ask the operator to regenerate.
-      if (appliedPlan !== null && overridesForRecipe !== undefined) {
-        const planEntry = appliedPlan.recipes.find((r) => r.handle === handle);
-        if (planEntry !== undefined) {
-          const planEntryKind = (tenantRecipe ?? diskRecipe)?.kind;
-          // Templates compare against the rolled-up statuses (one per
-          // field); content kinds compare against raw fieldStatuses.
-          const compareStatuses = ((): PerFieldStatuses => {
-            if (
-              planEntryKind === "component-template" ||
-              planEntryKind === "content-template" ||
-              planEntryKind === "page-template"
-            ) {
-              const ir = tenantIrByHandle.get(handle) ?? diskIrByHandle.get(handle);
-              return ir ? rollupTemplateStatuses(fieldStatuses, ir).statuses : fieldStatuses;
-            }
-            return fieldStatuses;
-          })();
-          const drifted = detectStalePlanDrift(planEntry, compareStatuses);
-          if (drifted.length > 0) {
-            throw createScaiError(
-              `Stale merge plan for recipe '${handle}': ${drifted.length} field(s) classify differently now than when the plan was generated.`,
-              "INPUT_INVALID",
-              {
-                hint: "The world moved between --write-plan and --apply-plan. Regenerate the plan (`recipe pull --against ... --write-plan ...`) to see the new state and re-pick winners.",
-                details: drifted,
-              }
-            );
-          }
-        }
-      }
-      // Apply-plan mode also forces the per-field merge path (i.e.
-      // tenant-wins synthesis behaviour) regardless of the conflictPolicy
-      // — the plan IS the policy. Without overrides we fall back to the
-      // existing policy switch.
-      const effectivePolicy: "error" | "disk-wins" | "tenant-wins" =
-        appliedPlan !== null ? "tenant-wins" : policy;
-      // Per-recipe write choice:
-      //   disk-wins: prefer disk recipe whole (the policy literally
-      //     says "disk wins" — write the operator's local view to
-      //     outDir). Falls back to tenant when disk is absent
-      //     (tenant-only).
-      //   tenant-wins: per-field merge for content + template kinds;
-      //     other kinds fall through to tenant whole.
-      //   error: only in-sync + tenant-only reach this branch per
-      //     shouldWrite; tenant is correct in both cases.
-      let recipeToWrite: Recipe;
-      if (effectivePolicy === "disk-wins") {
-        recipeToWrite = (diskRecipe ?? tenantRecipe)!;
-      } else if (
-        effectivePolicy === "tenant-wins" &&
-        diskRecipe !== undefined &&
-        tenantRecipe !== undefined &&
-        (tenantRecipe.kind === "content-item" || tenantRecipe.kind === "page") &&
-        diskRecipe.kind === tenantRecipe.kind
-      ) {
-        const tenantIr = tenantIrByHandle.get(handle);
-        const mainRefKey = tenantIr ? findMainItemRefKey(tenantIr, tenantRecipe.kind) : undefined;
-        recipeToWrite = mergeContentValueRecipe(
-          diskRecipe as ContentItemRecipe | PageRecipe,
-          tenantRecipe as ContentItemRecipe | PageRecipe,
-          fieldStatuses,
-          mainRefKey,
-          overridesForRecipe
-        );
-      } else if (
-        effectivePolicy === "tenant-wins" &&
-        diskRecipe !== undefined &&
-        tenantRecipe !== undefined &&
-        (tenantRecipe.kind === "component-template" ||
-          tenantRecipe.kind === "content-template" ||
-          tenantRecipe.kind === "page-template") &&
-        diskRecipe.kind === tenantRecipe.kind
-      ) {
-        // Template-style recipes: per-field merge matches by field name
-        // (FieldDefinition is the merge unit, not its sub-properties).
-        const diskIr = diskIrByHandle.get(handle);
-        const tenantIr = tenantIrByHandle.get(handle);
-        if (diskIr !== undefined && tenantIr !== undefined) {
-          recipeToWrite = mergeTemplateRecipe(
-            diskRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-            tenantRecipe as ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe,
-            fieldStatuses,
-            diskIr,
-            tenantIr,
-            overridesForRecipe
-          );
-        } else {
-          // Defensive: IR missing for one side → fall back to tenant.
-          recipeToWrite = tenantRecipe;
-        }
-      } else {
-        recipeToWrite = (tenantRecipe ?? diskRecipe)!;
-      }
-      filePath = dryRun
-        ? null
-        : await writeRecipeJson(outputDir, recipeToWrite as Recipe & { handle: string });
-    }
+    // Decide whether to write a recipe file for this handle, then resolve
+    // the on-disk path. Per-field merge applies under `tenant-wins` for
+    // content-bearing kinds (ContentItem, Page) when both sides exist; other
+    // kinds adopt the tenant projection wholesale (their "fields" are schema
+    // definitions, not values, so a field-level merge would risk a malformed
+    // template).
+    const shouldWrite = shouldWriteRecipe({
+      appliedPlan,
+      policy,
+      status,
+      diskRecipe,
+      tenantRecipe,
+    });
+    const filePath = await resolveRecipeFilePath({
+      shouldWrite,
+      appliedPlan,
+      policy,
+      handle,
+      diskRecipe,
+      tenantRecipe,
+      fieldStatuses,
+      winnerOverridesByHandle,
+      tenantIrByHandle,
+      diskIrByHandle,
+      dryRun,
+      outputDir,
+    });
 
     const kind = (tenantRecipe ?? diskRecipe)!.kind;
     byKind[kind] = (byKind[kind] ?? 0) + 1;
@@ -1719,23 +1982,9 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     // Templates need their per-property statuses rolled up to one
     // entry per field for the merge plan; content kinds use the raw
     // map (already at field-level resolution).
-    if (kind === "component-template" || kind === "content-template" || kind === "page-template") {
-      const ir = tenantIrByHandle.get(handle) ?? diskIrByHandle.get(handle);
-      if (ir !== undefined) {
-        const { statuses: rolled, labels } = rollupTemplateStatuses(fieldStatuses, ir);
-        planSourceEntries.push({
-          handle,
-          kind,
-          rollupStatus: status,
-          fieldStatuses: rolled,
-          labels,
-        });
-      } else {
-        planSourceEntries.push({ handle, kind, rollupStatus: status, fieldStatuses });
-      }
-    } else {
-      planSourceEntries.push({ handle, kind, rollupStatus: status, fieldStatuses });
-    }
+    planSourceEntries.push(
+      buildPlanSourceEntry(handle, kind, status, fieldStatuses, tenantIrByHandle, diskIrByHandle)
+    );
 
     // Apply-plan mode short-circuits the error gate — the operator
     // already reviewed + committed their picks by editing the plan;
@@ -1781,41 +2030,16 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     return result;
   }
 
-  logger.info(
-    `Pulled ${result.totalRecipes} recipes from ${tenant.envName} (merge against ${options.against}, policy=${policy})`,
-    "cyan"
-  );
-  for (const [statusKey, count] of Object.entries(byStatus).sort()) {
-    if (count === 0) continue;
-    const color =
-      statusKey === "conflict" || statusKey === "tenant-edited"
-        ? "yellow"
-        : statusKey === "disk-only"
-          ? "yellow"
-          : "green";
-    logger.info(`  ${statusKey}: ${count}`, color);
-  }
-  for (const entry of files) {
-    if (entry.status === "in-sync") continue;
-    const tag =
-      entry.status === "tenant-edited" || entry.status === "conflict"
-        ? "!"
-        : entry.status === "disk-ahead"
-          ? "+"
-          : "?";
-    logger.info(
-      `  [${tag}] ${entry.handle}  ${entry.status}` +
-        (entry.diskChangedFields || entry.tenantChangedFields
-          ? `  (disk:${entry.diskChangedFields}, tenant:${entry.tenantChangedFields})`
-          : "") +
-        (entry.path ? `  → ${path.relative(outputDir, entry.path)}` : "")
-    );
-  }
-  if (blocked) {
-    logger.info(
-      `  ! blocked by --policy=error: ${byStatus["tenant-edited"]} tenant-edited + ${byStatus.conflict} conflict`,
-      "yellow"
-    );
-  }
+  renderMergeSummary({
+    result,
+    byStatus,
+    files,
+    blocked,
+    envName: tenant.envName,
+    against: options.against,
+    policy,
+    outputDir,
+    logger,
+  });
   return result;
 };

@@ -1917,6 +1917,198 @@ const authorableFieldsOf = (item: RemoteItem): RemoteItem["fields"] =>
   item.fields.filter((f) => isItemAuthorableField(f.name));
 
 /**
+ * Decode the per-(lang, version) authorable field values for one snapshot
+ * into the recipe's `{ fieldName → ContentFieldValue }` shape. Fields whose
+ * name doesn't resolve to a known shape (template hasn't been walked, or
+ * a non-template field) are skipped — we'd be guessing the shape.
+ */
+const decodeVersionedFieldsOf = (
+  snapshot: RemoteItem,
+  shapes: TemplateFieldShapes,
+  guidIndex: GuidHandleIndex
+): Record<string, ContentFieldValue> => {
+  const out: Record<string, ContentFieldValue> = {};
+  for (const f of authorableFieldsOf(snapshot)) {
+    // Versioned-bucket fields only: shared values surface separately
+    // (they're already split by storage on the template-shape map).
+    if (f.language === undefined && f.version === undefined) continue;
+    if (f.name === undefined) continue;
+    const info = shapes.get(f.name.toLowerCase());
+    if (info === undefined) continue;
+    if (info.storage === "shared") continue;
+    const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+    if (decoded !== null) out[f.name] = decoded;
+  }
+  return out;
+};
+
+/**
+ * Decode the item-level `storage: shared` fields. Aggregated across pass 1's
+ * results — shared values are language-agnostic, so the first occurrence
+ * wins. (`storage: unversioned` is treated as `versioned` from the recipe's
+ * perspective: it lives per-language and round-trips as a translation/version
+ * field, not a shared one.)
+ */
+const collectSharedFields = (
+  populated: ReadonlyArray<{ item: RemoteItem | null }>,
+  shapes: TemplateFieldShapes,
+  guidIndex: GuidHandleIndex
+): Record<string, ContentFieldValue> => {
+  const sharedFields: Record<string, ContentFieldValue> = {};
+  for (const row of populated) {
+    const snapshot = row.item;
+    if (!snapshot) continue;
+    for (const f of authorableFieldsOf(snapshot)) {
+      if (f.language !== undefined || f.version !== undefined) continue;
+      if (f.name === undefined || f.name in sharedFields) continue;
+      const info = shapes.get(f.name.toLowerCase());
+      if (info === undefined || info.storage !== "shared") continue;
+      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
+      if (decoded !== null) sharedFields[f.name] = decoded;
+    }
+  }
+  return sharedFields;
+};
+
+/** Read the per-version `__Final Renderings` layout XML and decode to a Layout. */
+const layoutOfSnapshot = (snapshot: RemoteItem, guidIndex: GuidHandleIndex): Layout | undefined => {
+  const xml = finalLayoutXmlOf(snapshot);
+  if (xml === "") return undefined;
+  const layout = layoutFromXml(xml, guidIndex);
+  return Object.keys(layout.placeholders).length === 0 ? undefined : layout;
+};
+
+/** Read the per-version `__Created` date and decode to ISO datetime. */
+const dateOfSnapshot = (snapshot: RemoteItem): string | undefined => {
+  const raw = fieldValueByName(snapshot, "__Created");
+  if (raw === undefined || raw === "") return undefined;
+  return decodeSitecoreDateToIso(raw, "datetime");
+};
+
+/**
+ * Per-(language, version) historic snapshot fan-out. Requests every version
+ * below each language's latest (the latest came back in pass 1) in a single
+ * batched round trip, then indexes the results by `language|version`.
+ */
+const fetchHistoricSnapshots = async (
+  item: RemoteItem,
+  populated: ReadonlyArray<{ language: string; versions: number[] }>,
+  client: AuthoringApiClient
+): Promise<Map<string, RemoteItem>> => {
+  const historicRequests: Array<{ language: string; version: number }> = [];
+  for (const row of populated) {
+    for (const v of row.versions) {
+      // The latest version came back in pass 1; only fetch the ones below it.
+      if (v < row.versions[row.versions.length - 1]) {
+        historicRequests.push({ language: row.language, version: v });
+      }
+    }
+  }
+  const historic =
+    historicRequests.length > 0
+      ? await client.getItemAtVersionsBatch({ itemId: item.itemId }, historicRequests)
+      : [];
+  const historicByLangVer = new Map<string, RemoteItem>();
+  for (let i = 0; i < historicRequests.length; i += 1) {
+    const snap = historic[i];
+    if (snap)
+      historicByLangVer.set(`${historicRequests[i].language}|${historicRequests[i].version}`, snap);
+  }
+  return historicByLangVer;
+};
+
+/**
+ * Mode decision: story when any language carries >1 version OR any version
+ * carries a layout (the simple-mode wire shape doesn't encode item-level
+ * layout, so layout-bearing CIs MUST round-trip as story).
+ */
+const isStoryMode = (
+  populated: ReadonlyArray<{ item: RemoteItem | null; versions: number[] }>,
+  historicByLangVer: ReadonlyMap<string, RemoteItem>,
+  guidIndex: GuidHandleIndex
+): boolean => {
+  if (populated.some((row) => row.versions.length > 1)) return true;
+  for (const row of populated) {
+    if (row.item && layoutOfSnapshot(row.item, guidIndex) !== undefined) return true;
+  }
+  for (const snapshot of historicByLangVer.values()) {
+    if (layoutOfSnapshot(snapshot, guidIndex) !== undefined) return true;
+  }
+  return false;
+};
+
+/**
+ * Simple mode: default-language fields, other languages → translations.
+ * Mutates `base.fields` + `base.translations` and returns `base`.
+ */
+const fillSimpleMode = (
+  base: ContentItemRecipe,
+  populated: ReadonlyArray<{ language: string; item: RemoteItem | null }>,
+  shapes: TemplateFieldShapes,
+  guidIndex: GuidHandleIndex
+): ContentItemRecipe => {
+  const DEFAULT_LANG = "en";
+  const defaultRow = populated.find((row) => row.language === DEFAULT_LANG);
+  if (defaultRow?.item) {
+    base.fields = decodeVersionedFieldsOf(defaultRow.item, shapes, guidIndex);
+  } else {
+    // No `en` populated — promote the first populated language as the
+    // primary so `fields` carries content; the recipe schema requires
+    // `fields` as a `Record` (defaulting to `{}` is legal but degrades
+    // round-trip). The translations branch then skips that promoted lang.
+    const first = populated[0];
+    if (first.item) base.fields = decodeVersionedFieldsOf(first.item, shapes, guidIndex);
+  }
+  const primaryLang = populated.some((r) => r.language === DEFAULT_LANG)
+    ? DEFAULT_LANG
+    : populated[0].language;
+  const translations: Record<string, ContentTranslation> = {};
+  for (const row of populated) {
+    if (row.language === primaryLang) continue;
+    if (!row.item) continue;
+    const fields = decodeVersionedFieldsOf(row.item, shapes, guidIndex);
+    if (Object.keys(fields).length > 0) translations[row.language] = { fields };
+  }
+  if (Object.keys(translations).length > 0) base.translations = translations;
+  return base;
+};
+
+/**
+ * Story mode: every (language, version) cell projects to a ContentVersion.
+ * The schema requires `fields` (always present) — leave as `{}` and put all
+ * content under `versions`. Mutates `base.versions` and returns `base`.
+ */
+const fillStoryMode = (
+  base: ContentItemRecipe,
+  populated: ReadonlyArray<{ language: string; item: RemoteItem | null; versions: number[] }>,
+  historicByLangVer: ReadonlyMap<string, RemoteItem>,
+  shapes: TemplateFieldShapes,
+  guidIndex: GuidHandleIndex
+): ContentItemRecipe => {
+  const versions: Record<string, ContentVersion[]> = {};
+  for (const row of populated) {
+    const entries: ContentVersion[] = [];
+    for (const v of row.versions) {
+      const isLatest = v === row.versions[row.versions.length - 1];
+      const snapshot = isLatest ? row.item : historicByLangVer.get(`${row.language}|${v}`);
+      if (!snapshot) continue;
+      const entry: ContentVersion = {
+        version: v,
+        fields: decodeVersionedFieldsOf(snapshot, shapes, guidIndex),
+      };
+      const date = dateOfSnapshot(snapshot);
+      if (date !== undefined) entry.date = date;
+      const layout = layoutOfSnapshot(snapshot, guidIndex);
+      if (layout !== undefined) entry.layout = layout;
+      entries.push(entry);
+    }
+    if (entries.length > 0) versions[row.language] = entries;
+  }
+  if (Object.keys(versions).length > 0) base.versions = versions;
+  return base;
+};
+
+/**
  * Reverse-project one concrete content-item into a `ContentItemRecipe` —
  * fanning per-language reads (`getItemPerLanguageBatch`) and historic
  * per-(language, version) reads (`getItemAtVersionsBatch`) into a single
@@ -1972,99 +2164,11 @@ const contentItemFromItem = async (
 
   // Pass 2 — historic versions (any populated language with versions > 1).
   // Skip pass 2 entirely when every language is single-version.
-  const historicRequests: Array<{ language: string; version: number }> = [];
-  for (const row of populated) {
-    for (const v of row.versions) {
-      // The latest version came back in pass 1; only fetch the ones below it.
-      if (v < row.versions[row.versions.length - 1]) {
-        historicRequests.push({ language: row.language, version: v });
-      }
-    }
-  }
-  const historic =
-    historicRequests.length > 0
-      ? await client.getItemAtVersionsBatch({ itemId: item.itemId }, historicRequests)
-      : [];
-  // (language, version) → RemoteItem snapshot for historic versions.
-  const historicByLangVer = new Map<string, RemoteItem>();
-  for (let i = 0; i < historicRequests.length; i += 1) {
-    const snap = historic[i];
-    if (snap)
-      historicByLangVer.set(`${historicRequests[i].language}|${historicRequests[i].version}`, snap);
-  }
+  const historicByLangVer = await fetchHistoricSnapshots(item, populated, client);
 
-  /**
-   * Decode the per-(lang, version) authorable field values for one snapshot
-   * into the recipe's `{ fieldName → ContentFieldValue }` shape. Fields whose
-   * name doesn't resolve to a known shape (template hasn't been walked, or
-   * a non-template field) are skipped — we'd be guessing the shape.
-   */
-  const decodeVersionedFields = (snapshot: RemoteItem): Record<string, ContentFieldValue> => {
-    const out: Record<string, ContentFieldValue> = {};
-    for (const f of authorableFieldsOf(snapshot)) {
-      // Versioned-bucket fields only: shared values surface separately
-      // (they're already split by storage on the template-shape map).
-      if (f.language === undefined && f.version === undefined) continue;
-      if (f.name === undefined) continue;
-      const info = shapes.get(f.name.toLowerCase());
-      if (info === undefined) continue;
-      if (info.storage === "shared") continue;
-      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
-      if (decoded !== null) out[f.name] = decoded;
-    }
-    return out;
-  };
+  const sharedFields = collectSharedFields(populated, shapes, guidIndex);
 
-  /**
-   * Decode the item-level `storage: shared` fields. Aggregated across pass 1's
-   * results — shared values are language-agnostic, so the first occurrence
-   * wins. (`storage: unversioned` is treated as `versioned` from the recipe's
-   * perspective: it lives per-language and round-trips as a translation/version
-   * field, not a shared one.)
-   */
-  const sharedFields: Record<string, ContentFieldValue> = {};
-  for (const row of populated) {
-    const snapshot = row.item;
-    if (!snapshot) continue;
-    for (const f of authorableFieldsOf(snapshot)) {
-      if (f.language !== undefined || f.version !== undefined) continue;
-      if (f.name === undefined || f.name in sharedFields) continue;
-      const info = shapes.get(f.name.toLowerCase());
-      if (info === undefined || info.storage !== "shared") continue;
-      const decoded = decodeContentFieldValue(f.value, info.shape, guidIndex);
-      if (decoded !== null) sharedFields[f.name] = decoded;
-    }
-  }
-
-  /** Read the per-version `__Final Renderings` layout XML and decode to a Layout. */
-  const layoutOfSnapshot = (snapshot: RemoteItem): Layout | undefined => {
-    const xml = finalLayoutXmlOf(snapshot);
-    if (xml === "") return undefined;
-    const layout = layoutFromXml(xml, guidIndex);
-    return Object.keys(layout.placeholders).length === 0 ? undefined : layout;
-  };
-
-  /** Read the per-version `__Created` date and decode to ISO datetime. */
-  const dateOfSnapshot = (snapshot: RemoteItem): string | undefined => {
-    const raw = fieldValueByName(snapshot, "__Created");
-    if (raw === undefined || raw === "") return undefined;
-    return decodeSitecoreDateToIso(raw, "datetime");
-  };
-
-  // Mode decision: story when any language carries >1 version OR any version
-  // carries a layout (the simple-mode wire shape doesn't encode item-level
-  // layout, so layout-bearing CIs MUST round-trip as story).
-  const anyMultiVersion = populated.some((row) => row.versions.length > 1);
-  const anyLayout = (() => {
-    for (const row of populated) {
-      if (row.item && layoutOfSnapshot(row.item) !== undefined) return true;
-    }
-    for (const snapshot of historicByLangVer.values()) {
-      if (layoutOfSnapshot(snapshot) !== undefined) return true;
-    }
-    return false;
-  })();
-  const isStory = anyMultiVersion || anyLayout;
+  const isStory = isStoryMode(populated, historicByLangVer, guidIndex);
 
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
@@ -2083,55 +2187,9 @@ const contentItemFromItem = async (
   if (description !== undefined && description !== "") base.description = description;
   if (Object.keys(sharedFields).length > 0) base.shared = sharedFields;
 
-  if (!isStory) {
-    // Simple mode: default-language fields, other languages → translations.
-    const DEFAULT_LANG = "en";
-    const defaultRow = populated.find((row) => row.language === DEFAULT_LANG);
-    if (defaultRow?.item) {
-      base.fields = decodeVersionedFields(defaultRow.item);
-    } else {
-      // No `en` populated — promote the first populated language as the
-      // primary so `fields` carries content; the recipe schema requires
-      // `fields` as a `Record` (defaulting to `{}` is legal but degrades
-      // round-trip). The translations branch then skips that promoted lang.
-      const first = populated[0];
-      if (first.item) base.fields = decodeVersionedFields(first.item);
-    }
-    const primaryLang = populated.some((r) => r.language === DEFAULT_LANG)
-      ? DEFAULT_LANG
-      : populated[0].language;
-    const translations: Record<string, ContentTranslation> = {};
-    for (const row of populated) {
-      if (row.language === primaryLang) continue;
-      if (!row.item) continue;
-      const fields = decodeVersionedFields(row.item);
-      if (Object.keys(fields).length > 0) translations[row.language] = { fields };
-    }
-    if (Object.keys(translations).length > 0) base.translations = translations;
-    return base;
-  }
-
-  // Story mode: every (language, version) cell projects to a ContentVersion.
-  // The schema requires `fields` (always present) — leave as `{}` and put all
-  // content under `versions`.
-  const versions: Record<string, ContentVersion[]> = {};
-  for (const row of populated) {
-    const entries: ContentVersion[] = [];
-    for (const v of row.versions) {
-      const isLatest = v === row.versions[row.versions.length - 1];
-      const snapshot = isLatest ? row.item : historicByLangVer.get(`${row.language}|${v}`);
-      if (!snapshot) continue;
-      const entry: ContentVersion = { version: v, fields: decodeVersionedFields(snapshot) };
-      const date = dateOfSnapshot(snapshot);
-      if (date !== undefined) entry.date = date;
-      const layout = layoutOfSnapshot(snapshot);
-      if (layout !== undefined) entry.layout = layout;
-      entries.push(entry);
-    }
-    if (entries.length > 0) versions[row.language] = entries;
-  }
-  if (Object.keys(versions).length > 0) base.versions = versions;
-  return base;
+  return isStory
+    ? fillStoryMode(base, populated, historicByLangVer, shapes, guidIndex)
+    : fillSimpleMode(base, populated, shapes, guidIndex);
 };
 
 /**

@@ -3,8 +3,9 @@ import path from "node:path";
 import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
+import type { EnvironmentConfiguration } from "@/config/types";
 import { getAccessToken } from "../api/auth";
-import type { RemoteItem } from "../api/client";
+import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
 import {
   cachedSkipFor,
@@ -82,6 +83,292 @@ const collectPrefetchPaths = (
 };
 
 /**
+ * Partition the resolved input file list into recipe-source files and
+ * pre-compiled `.ir.json` files. Recipes compile through `compileRecipeSet`
+ * (so cross-recipe aggregates form); IRs load directly.
+ */
+const partitionInputFiles = (
+  files: readonly string[]
+): { recipeFiles: string[]; irFiles: string[] } => {
+  const recipeFiles: string[] = [];
+  const irFiles: string[] = [];
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (ext === ".json" && file.endsWith(".ir.json")) {
+      irFiles.push(file);
+    } else {
+      recipeFiles.push(file);
+    }
+  }
+  return { recipeFiles, irFiles };
+};
+
+/**
+ * Build the workspace-wide refKey → expectedPath map the executor uses to
+ * seed `capturedItemIds` with cross-recipe references the current recipe's
+ * own ops don't produce. Seeds every CreateItem op's id→path, every
+ * `templateOf: ref-path`, and the synthetic Page Designs root.
+ */
+const buildCrossRecipeRefs = (
+  irs: ReadonlyArray<{ ir: OperationIr }>,
+  pageDesignsRoot: string | undefined
+): Map<string, string> => {
+  const crossRecipeRefs = new Map<string, string>();
+  for (const { ir } of irs) {
+    for (const op of ir.operations) {
+      if (op.op === "CreateItem") {
+        crossRecipeRefs.set(op.id, op.path);
+        // templateOf: ref-path needs the same lookup-before-plan seed
+        // path-parent resolution uses. Compute the deterministic
+        // refKey + the target path; the executor's
+        // `getItemsByPaths` batch picks it up alongside parent paths.
+        if (typeof op.templateOf !== "string" && op.templateOf.kind === "ref-path") {
+          crossRecipeRefs.set(templatePathRefKey(op.templateOf.value), op.templateOf.value);
+        }
+      }
+    }
+  }
+  // Seed the synthetic Page Designs root refKey so the cross-recipe
+  // `TemplatesMapping` aggregate op (emitted by `compileRecipeSet` when
+  // any page design declares `appliesTo`) resolves its target. The
+  // executor walks the path and stores the captured itemId in
+  // `capturedItemIds` before applying the SetField op. Skip the seed
+  // when `pageDesignsRoot` isn't set — without page designs in the
+  // set, the aggregate IR isn't emitted and the seed wouldn't be used
+  // anyway.
+  if (pageDesignsRoot) {
+    crossRecipeRefs.set(PAGE_DESIGNS_ROOT_REF_KEY, pageDesignsRoot);
+  }
+  return crossRecipeRefs;
+};
+
+/** Flatten one collected `{ recipe, event }` into the JSON output shape. */
+const eventToJson = ({
+  recipe,
+  event,
+}: {
+  recipe: string;
+  event: ExecutionEvent;
+}): Record<string, unknown> => ({
+  recipe,
+  kind: event.kind,
+  index: "index" in event ? event.index : "action" in event ? event.action.index : undefined,
+  label:
+    "operation" in event
+      ? event.operation.label
+      : "action" in event
+        ? event.action.operation.label
+        : undefined,
+  status: "action" in event ? event.action.status : undefined,
+  reason: "action" in event ? event.action.reason : undefined,
+  diff: "action" in event ? event.action.diff : undefined,
+  mutation: "action" in event ? event.action.mutation : undefined,
+  error: "error" in event ? event.error : undefined,
+});
+
+/**
+ * Resolve every per-site folder-layout root the compiler may need, applying
+ * the CLI-flag-overrides-env-profile precedence uniformly. Roots the compiler
+ * reads straight off the env profile (no CLI override) pass through verbatim.
+ */
+const resolveCompileRoots = (
+  options: RecipePushOptions,
+  env: EnvironmentConfiguration
+): {
+  componentsRoot: string | undefined;
+  contentModelsRoot: string | undefined;
+  partialDesignsRoot: string | undefined;
+  pageDesignsRoot: string | undefined;
+  contentItemsRoot: string | undefined;
+  headlessVariantsRoot: string | undefined;
+  availableRenderingsRoot: string | undefined;
+  enumerationsRoot: string | undefined;
+  pageTemplatesRoot: string | undefined;
+  placeholderSettingsRoot: string | undefined;
+  pagesRoot: string | undefined;
+} => ({
+  componentsRoot: options.componentsRoot ?? env.componentsRoot,
+  contentModelsRoot: options.contentModelsRoot ?? env.contentModelsRoot,
+  partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
+  pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
+  contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
+  headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
+  availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
+  enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
+  pageTemplatesRoot: env.pageTemplatesRoot,
+  placeholderSettingsRoot: env.placeholderSettingsRoot,
+  pagesRoot: env.pagesRoot,
+});
+
+/**
+ * Surface cache-skips as zero-effect ExecutionResults so downstream callers
+ * (orchestrator, JSON consumers) see a uniform shape across skipped +
+ * executed recipes. Pushes one result per skipped IR and logs the skip in
+ * human mode.
+ */
+const emitCachedSkipResults = (
+  cachedSkips: ReadonlyArray<{ ir: OperationIr; entry: ReturnType<typeof cachedSkipFor> }>,
+  results: ExecutionResult[],
+  envName: string,
+  logger: ReturnType<typeof toLogger>
+): void => {
+  for (const { ir, entry } of cachedSkips) {
+    const skipSummary = {
+      create: 0,
+      update: 0,
+      skip: ir.operations.length,
+      error: 0,
+      prune: 0,
+      conflict: 0,
+    };
+    results.push({
+      plan: {
+        schemaVersion: "1",
+        recipeHandle: ir.recipeHandle,
+        actions: [],
+        summary: skipSummary,
+      },
+      summary: skipSummary,
+      aborted: false,
+      // Cached-skip path didn't run the executor — no refKeys to capture.
+      capturedItemIds: new Map(),
+    });
+    if (!logger.isJson()) {
+      logger.info(
+        `Skipping ${ir.recipeHandle} on ${envName} (unchanged since ${entry?.lastApplied ?? "previous push"})`,
+        "green"
+      );
+    }
+  }
+};
+
+/**
+ * Persist the recipe-hash skip cache after a successful apply. Only records
+ * entries for recipes that applied cleanly (non-aborted, no errors). No-op in
+ * dry-run, when `--skip-unchanged-recipes` is off, or with no loaded cache.
+ */
+const persistRecipeCache = async (args: {
+  isDryRun: boolean;
+  skipUnchangedRecipes: boolean | undefined;
+  recipeCache: Awaited<ReturnType<typeof loadRecipeCache>> | null;
+  irsToExecute: ReadonlyArray<{ ir: OperationIr; irHash: string }>;
+  results: readonly ExecutionResult[];
+  envName: string;
+  rootsHash: string;
+  configDir: string;
+}): Promise<void> => {
+  const { isDryRun, skipUnchangedRecipes, recipeCache, irsToExecute, results, envName, rootsHash } =
+    args;
+  if (isDryRun || !skipUnchangedRecipes || !recipeCache) return;
+  for (const { ir, irHash } of irsToExecute) {
+    const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
+    if (!result || result.aborted || result.summary.error > 0) continue;
+    recordCacheEntry(recipeCache, envName, rootsHash, ir.recipeHandle, {
+      irHash,
+      lastApplied: new Date().toISOString(),
+      summary: {
+        create: result.summary.create,
+        update: result.summary.update,
+        skip: result.summary.skip,
+      },
+    });
+  }
+  await saveRecipeCache(args.configDir, recipeCache);
+};
+
+/**
+ * Persist the three-way-merge baseline after a successful apply. Writes one
+ * per-field hash snapshot per recipe that applied cleanly (non-aborted,
+ * no errors, no conflicts). No-op in dry-run or with `--no-baseline`.
+ */
+const persistBaselines = async (args: {
+  isDryRun: boolean;
+  noBaseline: boolean | undefined;
+  irsToExecute: ReadonlyArray<{ ir: OperationIr }>;
+  results: readonly ExecutionResult[];
+  envName: string;
+  baselineStorage: FileBaselineStorage | NonNullable<RecipePushOptions["baselineStorage"]>;
+}): Promise<void> => {
+  const { isDryRun, noBaseline, irsToExecute, results, envName, baselineStorage } = args;
+  if (isDryRun || noBaseline) return;
+  const capturedAt = new Date().toISOString();
+  for (const { ir } of irsToExecute) {
+    const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
+    if (!result || result.aborted || result.summary.error > 0 || result.summary.conflict > 0) {
+      continue;
+    }
+    const entries = collectBaselineEntries(ir, result.capturedItemIds);
+    if (entries.length === 0) continue;
+    await baselineStorage.write(envName, ir.recipeHandle, {
+      schemaVersion: "1",
+      recipeHandle: ir.recipeHandle,
+      envName,
+      capturedAt,
+      fields: entries,
+    });
+  }
+};
+
+/**
+ * Post-IR phase: register each component-template recipe's rendering with the
+ * placeholder slots it declares compatibility with (`recipe.placedIn`). Runs
+ * only on apply mode and only when at least one IR succeeded. Returns the
+ * patch summary, or `null` when the phase didn't run.
+ */
+const runPlaceholderAllowPhase = async (args: {
+  isDryRun: boolean;
+  sourceRecipes: readonly Recipe[];
+  placeholderRoots: readonly string[];
+  results: readonly ExecutionResult[];
+  client: AuthoringApiClient;
+  renderingsRoot: string;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<PlaceholderAllowResult | null> => {
+  const { isDryRun, sourceRecipes, placeholderRoots, results, client, renderingsRoot, logger } =
+    args;
+  const anyComponentRecipeDeclaresPlaceholders = sourceRecipes.some(
+    (r) => r.kind === "component-template" && Array.isArray(r.placedIn) && r.placedIn.length > 0
+  );
+  if (
+    isDryRun ||
+    !anyComponentRecipeDeclaresPlaceholders ||
+    placeholderRoots.length === 0 ||
+    !results.some((r) => !r.aborted)
+  ) {
+    return null;
+  }
+  const placeholderAllowSummary = await applyPlaceholderAllowControls({
+    client,
+    recipes: sourceRecipes,
+    renderingsRoot,
+    placeholderSettingsRoots: placeholderRoots,
+    apply: true,
+    onUpdate: (placeholderPath, added) => {
+      if (!logger.isJson()) {
+        logger.info(`  Placeholder ${placeholderPath} ← +${added} rendering(s)`, "cyan");
+      }
+    },
+  });
+  if (!logger.isJson()) {
+    logger.info(
+      `Placeholder allow-controls: ${placeholderAllowSummary.patched} placeholder(s) patched, ${placeholderAllowSummary.totalAdded} entry(ies) added`,
+      placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0 ? "yellow" : "green"
+    );
+    if (placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0) {
+      logger.warn(
+        `  Unmatched placeholder keys (no Placeholder Settings item with that key under any configured root): ${placeholderAllowSummary.unmatchedPlaceholderKeys.join(", ")}`
+      );
+    }
+    if (placeholderAllowSummary.unresolvedRecipeHandles.length > 0) {
+      logger.warn(
+        `  Recipes whose rendering item couldn't be resolved (skipped from placeholder registration): ${placeholderAllowSummary.unresolvedRecipeHandles.join(", ")}`
+      );
+    }
+  }
+  return placeholderAllowSummary;
+};
+
+/**
  * `scai provision recipe push` — apply recipes to a tenant.
  *
  * Input resolution:
@@ -119,42 +406,27 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const rollbackRunId = randomUUID();
   const rollbackLog = createRollbackLogger(rollbackRunId);
 
-  // Per-site folder layout roots — optional at the envProfile
-  // level. When unset the compiler falls back to `templatesRoot` for
-  // both, which means section-aware components nest under templatesRoot
-  // (mid-migration fallback) and content templates land mixed in with
-  // components. The orchestrator's ephemeral CLI config sets both.
-  const componentsRoot = options.componentsRoot ?? tenant.environment.componentsRoot;
-  const contentModelsRoot = options.contentModelsRoot ?? tenant.environment.contentModelsRoot;
-  // Composition roots — optional at the envProfile level. The
-  // per-recipe compile fns throw with their own clear messages if a
-  // partial-design / page-design / content-item recipe is in the set
-  // but the corresponding root is unset. CLI flag overrides match the
-  // templatesRoot / renderingsRoot pattern.
-  const partialDesignsRoot = options.partialDesignsRoot ?? tenant.environment.partialDesignsRoot;
-  const pageDesignsRoot = options.pageDesignsRoot ?? tenant.environment.pageDesignsRoot;
-  const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
-  // SXA Headless variants root — required when any recipe in the set
-  // declares variants. Compiler throws INPUT_INVALID with a clear hint
-  // if a recipe asks for variants but this root is unset; if no
-  // recipe in the set has variants, this stays unset and the
-  // compiler skips the check.
-  const headlessVariantsRoot =
-    options.headlessVariantsRoot ?? tenant.environment.headlessVariantsRoot;
-  // SXA Available Renderings root — when set, compileRecipeSet emits
-  // a synthetic IR with one Available Renderings section per
-  // `recipe.section`, listing every rendering in that section.
-  const availableRenderingsRoot =
-    options.availableRenderingsRoot ?? tenant.environment.availableRenderingsRoot;
-  // Per-site enumerations bucket — required for EnumerationRecipe
-  // compilation and for any field carrying `sitecore.enumHandle`.
-  const enumerationsRoot = options.enumerationsRoot ?? tenant.environment.enumerationsRoot;
-  // Page-level roots. `pageTemplatesRoot` falls back to `templatesRoot`
-  // in the compiler; `placeholderSettingsRoot` is required when the set
-  // declares any placeholder (standalone or inline).
-  const pageTemplatesRoot = tenant.environment.pageTemplatesRoot;
-  const placeholderSettingsRoot = tenant.environment.placeholderSettingsRoot;
-  const pagesRoot = tenant.environment.pagesRoot;
+  // Per-site folder layout roots — optional at the envProfile level, with
+  // CLI flags overriding the env profile. When unset the compiler falls back
+  // to `templatesRoot` (section-aware components nest under templatesRoot in
+  // the mid-migration fallback; content templates land mixed in with
+  // components). The orchestrator's ephemeral CLI config sets these. The
+  // per-recipe compile fns throw clear messages when a composition root is
+  // unset but the matching recipe kind is present; `headlessVariantsRoot` /
+  // `enumerationsRoot` are checked only when a recipe needs them.
+  const {
+    componentsRoot,
+    contentModelsRoot,
+    partialDesignsRoot,
+    pageDesignsRoot,
+    contentItemsRoot,
+    headlessVariantsRoot,
+    availableRenderingsRoot,
+    enumerationsRoot,
+    pageTemplatesRoot,
+    placeholderSettingsRoot,
+    pagesRoot,
+  } = resolveCompileRoots(options, tenant.environment);
 
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
@@ -173,16 +445,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // single synthetic IR. Pre-compiled `.ir.json` inputs load directly —
   // the aggregate-IR opportunity is gone for those, but the executor
   // still applies whatever's there.
-  const recipeFiles: string[] = [];
-  const irFiles: string[] = [];
-  for (const file of files) {
-    const ext = path.extname(file).toLowerCase();
-    if (ext === ".json" && file.endsWith(".ir.json")) {
-      irFiles.push(file);
-    } else {
-      recipeFiles.push(file);
-    }
-  }
+  const { recipeFiles, irFiles } = partitionInputFiles(files);
   const recipes: Recipe[] = await mapWithConcurrency(recipeFiles, (f) => loadRecipe(f));
   // Resolve templatesRoot / renderingsRoot now that the recipe kinds are
   // known: a set built only from workflow / webhook-authorization recipes
@@ -237,32 +500,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     );
   }
 
-  const crossRecipeRefs = new Map<string, string>();
-  for (const { ir } of irs) {
-    for (const op of ir.operations) {
-      if (op.op === "CreateItem") {
-        crossRecipeRefs.set(op.id, op.path);
-        // templateOf: ref-path needs the same lookup-before-plan seed
-        // path-parent resolution uses. Compute the deterministic
-        // refKey + the target path; the executor's
-        // `getItemsByPaths` batch picks it up alongside parent paths.
-        if (typeof op.templateOf !== "string" && op.templateOf.kind === "ref-path") {
-          crossRecipeRefs.set(templatePathRefKey(op.templateOf.value), op.templateOf.value);
-        }
-      }
-    }
-  }
-  // Seed the synthetic Page Designs root refKey so the cross-recipe
-  // `TemplatesMapping` aggregate op (emitted by `compileRecipeSet` when
-  // any page design declares `appliesTo`) resolves its target. The
-  // executor walks the path and stores the captured itemId in
-  // `capturedItemIds` before applying the SetField op. Skip the seed
-  // when `pageDesignsRoot` isn't set — without page designs in the
-  // set, the aggregate IR isn't emitted and the seed wouldn't be used
-  // anyway.
-  if (pageDesignsRoot) {
-    crossRecipeRefs.set(PAGE_DESIGNS_ROOT_REF_KEY, pageDesignsRoot);
-  }
+  const crossRecipeRefs = buildCrossRecipeRefs(irs, pageDesignsRoot);
 
   // Lazy-build a SitesApiClient only when an IR in the set needs one
   // (i.e. carries a CreateSiteFromTemplate op). Component / partial /
@@ -330,37 +568,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     irsToExecute.push({ ir, irHash, cached: false });
   }
 
-  // Surface cache-skips as zero-effect ExecutionResults so downstream
-  // callers (orchestrator, JSON consumers) see a uniform shape across
-  // skipped + executed recipes.
-  for (const { ir, entry } of cachedSkips) {
-    const skipSummary = {
-      create: 0,
-      update: 0,
-      skip: ir.operations.length,
-      error: 0,
-      prune: 0,
-      conflict: 0,
-    };
-    results.push({
-      plan: {
-        schemaVersion: "1",
-        recipeHandle: ir.recipeHandle,
-        actions: [],
-        summary: skipSummary,
-      },
-      summary: skipSummary,
-      aborted: false,
-      // Cached-skip path didn't run the executor — no refKeys to capture.
-      capturedItemIds: new Map(),
-    });
-    if (!logger.isJson()) {
-      logger.info(
-        `Skipping ${ir.recipeHandle} on ${tenant.envName} (unchanged since ${entry?.lastApplied ?? "previous push"})`,
-        "green"
-      );
-    }
-  }
+  emitCachedSkipResults(cachedSkips, results, tenant.envName, logger);
 
   // ─── Workspace prefetch ────────────────────────────────────────────────
   // One batched `getItemsByPaths` call covering every path the executor
@@ -511,22 +719,16 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // Only after a successful (non-aborted, non-error) apply. Plan-mode
   // (dry-run) doesn't update the cache — it can't validate that the
   // tenant matches what the cache implies.
-  if (!isDryRun && options.skipUnchangedRecipes && recipeCache) {
-    for (const { ir, irHash } of irsToExecute) {
-      const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
-      if (!result || result.aborted || result.summary.error > 0) continue;
-      recordCacheEntry(recipeCache, tenant.envName, rootsHash, ir.recipeHandle, {
-        irHash,
-        lastApplied: new Date().toISOString(),
-        summary: {
-          create: result.summary.create,
-          update: result.summary.update,
-          skip: result.summary.skip,
-        },
-      });
-    }
-    await saveRecipeCache(configDir, recipeCache);
-  }
+  await persistRecipeCache({
+    isDryRun,
+    skipUnchangedRecipes: options.skipUnchangedRecipes,
+    recipeCache,
+    irsToExecute,
+    results,
+    envName: tenant.envName,
+    rootsHash,
+    configDir,
+  });
 
   // ─── Persist three-way merge baseline ──────────────────────────────────
   // For each successfully-applied (non-aborted, non-error, non-conflict)
@@ -536,72 +738,25 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // snapshot to reflect tenant truth. Conflict-status results are also
   // skipped: the recipe didn't fully apply, so capturing its desired
   // state as baseline would mask the unresolved conflict.
-  if (!isDryRun && !options.noBaseline) {
-    const capturedAt = new Date().toISOString();
-    for (const { ir } of irsToExecute) {
-      const result = results.find((r) => r.plan.recipeHandle === ir.recipeHandle);
-      if (!result || result.aborted || result.summary.error > 0 || result.summary.conflict > 0) {
-        continue;
-      }
-      const entries = collectBaselineEntries(ir, result.capturedItemIds);
-      if (entries.length === 0) continue;
-      await baselineStorage.write(tenant.envName, ir.recipeHandle, {
-        schemaVersion: "1",
-        recipeHandle: ir.recipeHandle,
-        envName: tenant.envName,
-        capturedAt,
-        fields: entries,
-      });
-    }
-  }
+  await persistBaselines({
+    isDryRun,
+    noBaseline: options.noBaseline,
+    irsToExecute,
+    results,
+    envName: tenant.envName,
+    baselineStorage,
+  });
 
-  // Post-IR phase: register each component-template recipe's
-  // rendering with the placeholder slots it declares compatibility
-  // with (`recipe.placedIn: string[]`). Runs only on apply mode
-  // and only when at least one IR succeeded (a fully-aborted push
-  // shouldn't dirty unrelated placeholders). Skipped when the env
-  // profile doesn't configure `placeholderSettingsRoots` — empty list
-  // means no slots to walk.
   const placeholderRoots = tenant.environment.placeholderSettingsRoots ?? [];
-  const anyComponentRecipeDeclaresPlaceholders = sourceRecipes.some(
-    (r) => r.kind === "component-template" && Array.isArray(r.placedIn) && r.placedIn.length > 0
-  );
-  let placeholderAllowSummary: PlaceholderAllowResult | null = null;
-  if (
-    !isDryRun &&
-    anyComponentRecipeDeclaresPlaceholders &&
-    placeholderRoots.length > 0 &&
-    results.some((r) => !r.aborted)
-  ) {
-    placeholderAllowSummary = await applyPlaceholderAllowControls({
-      client: tenant.client,
-      recipes: sourceRecipes,
-      renderingsRoot,
-      placeholderSettingsRoots: placeholderRoots,
-      apply: true,
-      onUpdate: (placeholderPath, added) => {
-        if (!logger.isJson()) {
-          logger.info(`  Placeholder ${placeholderPath} ← +${added} rendering(s)`, "cyan");
-        }
-      },
-    });
-    if (!logger.isJson()) {
-      logger.info(
-        `Placeholder allow-controls: ${placeholderAllowSummary.patched} placeholder(s) patched, ${placeholderAllowSummary.totalAdded} entry(ies) added`,
-        placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0 ? "yellow" : "green"
-      );
-      if (placeholderAllowSummary.unmatchedPlaceholderKeys.length > 0) {
-        logger.warn(
-          `  Unmatched placeholder keys (no Placeholder Settings item with that key under any configured root): ${placeholderAllowSummary.unmatchedPlaceholderKeys.join(", ")}`
-        );
-      }
-      if (placeholderAllowSummary.unresolvedRecipeHandles.length > 0) {
-        logger.warn(
-          `  Recipes whose rendering item couldn't be resolved (skipped from placeholder registration): ${placeholderAllowSummary.unresolvedRecipeHandles.join(", ")}`
-        );
-      }
-    }
-  }
+  const placeholderAllowSummary = await runPlaceholderAllowPhase({
+    isDryRun,
+    sourceRecipes,
+    placeholderRoots,
+    results,
+    client: tenant.client,
+    renderingsRoot,
+    logger,
+  });
 
   if (rollbackLog.wasUsed && !logger.isJson()) {
     logger.warn(`Rollback audit log written to ${rollbackLog.logPath}`);
@@ -615,22 +770,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
         aborted: r.aborted,
         rollback: r.rollback ?? null,
       })),
-      events: allEvents.map(({ recipe, event }) => ({
-        recipe,
-        kind: event.kind,
-        index: "index" in event ? event.index : "action" in event ? event.action.index : undefined,
-        label:
-          "operation" in event
-            ? event.operation.label
-            : "action" in event
-              ? event.action.operation.label
-              : undefined,
-        status: "action" in event ? event.action.status : undefined,
-        reason: "action" in event ? event.action.reason : undefined,
-        diff: "action" in event ? event.action.diff : undefined,
-        mutation: "action" in event ? event.action.mutation : undefined,
-        error: "error" in event ? event.error : undefined,
-      })),
+      events: allEvents.map(eventToJson),
     };
     logger.json(
       buildScaiEnvelope({

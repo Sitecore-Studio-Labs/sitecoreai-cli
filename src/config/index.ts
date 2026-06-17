@@ -1,5 +1,7 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/config`.
+ * Internal configuration module. The standalone `./config` published
+ * subpath was removed in 0.4.2 to slim the SDK surface; this barrel is
+ * still used across the CLI and other domain modules.
  *
  * The scai root configuration model — reading, writing, validating, and
  * environment-resolving `sitecoreai.cli.json`. SDK consumers that embed

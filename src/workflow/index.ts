@@ -1,5 +1,6 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/workflow`.
+ * Internal workflow module. The standalone `./workflow` published
+ * subpath was removed in 0.4.2 to slim the SDK surface.
  *
  * Sitecore item workflow surface — state inspection, command resolution,
  * advance/apply/reset lifecycle. Authoring GraphQL underneath.

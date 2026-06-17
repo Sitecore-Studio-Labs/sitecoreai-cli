@@ -289,29 +289,18 @@ import { createSitecoreApiClient } from "@sitecoreai-labs/sitecoreai-cli/seriali
 const sc = createSitecoreApiClient({ host, accessToken });
 const meta = await sc.fetchItemMetadata("master", "/sitecore/content/Home");
 
-// Publishing API — XM Cloud publish jobs, with the structured consent
-// argument required for any destructive call
-import {
-  submitPublishJob,
-  mintScopeToken,
-  type PublishConsent,
-} from "@sitecoreai-labs/sitecoreai-cli/publishing";
-
-// Sites API — CRUD over sites, collections, languages, jobs (unstable)
-import { listSites, addLanguage } from "@sitecoreai-labs/sitecoreai-cli/unstable/sites";
-
 // Hygiene — audits + cleanups, output adapters, baselines, history
 import { runAuditOrphans, createHygieneApiClient } from "@sitecoreai-labs/sitecoreai-cli/hygiene";
 
-// Brand — Brand Review SARIF + JSON pipelines (unstable)
-import {
-  generateBrandReview,
-  runBrandReview,
-} from "@sitecoreai-labs/sitecoreai-cli/unstable/brand";
+// Unstable surfaces — sites, brand, brief, campaigns, agents, scripting —
+// are namespaces of the single `./unstable` barrel (no stability promise)
+import { sites, brand } from "@sitecoreai-labs/sitecoreai-cli/unstable";
+const allSites = await sites.listSites(env);
+const review = await brand.runBrandReview(opts);
 
-// Webhooks + Workflow — Sitecore event handlers and item workflow operations
-import { createWebhookApiClient } from "@sitecoreai-labs/sitecoreai-cli/webhooks";
-import { createWorkflowApiClient } from "@sitecoreai-labs/sitecoreai-cli/workflow";
+// Publishing, webhooks, and workflow are available through the `scai` CLI
+// (e.g. `scai content publish`, `scai content workflow`); they are no
+// longer standalone SDK subpaths as of 0.4.2.
 
 // Errors — every subpath throws `ScaiError`; import the type from `/errors`
 import { ScaiError, type ScaiErrorCode } from "@sitecoreai-labs/sitecoreai-cli/errors";
@@ -325,22 +314,26 @@ The SDK is split into a **stable core** and an **`unstable/` namespace**.
 below:
 
 ```
-./recipe    ./deploy     ./serialization   ./errors
-./envelope  ./config     ./publishing      ./content
-./hygiene   ./webhooks   ./workflow        ./sync
+./recipe   ./deploy   ./serialization   ./sync
+./hygiene  ./errors   ./envelope
 ```
 
-**Unstable** — these subpaths carry **no stability promise**. Their
-shape may change in any minor (or patch) release without a major bump
-or a changeset. The `brand`, `brief`, `sites`, `campaigns`, and `agents`
-APIs are reverse-engineered from observed traffic. Pin an exact scai
-version if you depend on them:
+The surface was slimmed in 0.4.2: `./config`, `./content`, `./publishing`,
+`./webhooks`, and `./workflow` are no longer published subpaths (those
+operations remain available through the `scai` CLI).
+
+**Unstable** — carries **no stability promise**. The shape may change in
+any release without a major bump or a changeset. The `brand`, `brief`,
+`sites`, `campaigns`, and `agents` APIs are reverse-engineered from
+observed traffic. Pin an exact scai version if you depend on them:
 
 ```
-./unstable/agents      ./unstable/brand        ./unstable/brief
-./unstable/campaigns   ./unstable/scripting    ./unstable/sites
-./recipe/unstable      — recipe composition kinds (PageDesignRecipeSchema,
-                         SiteRecipeSchema, PartialDesign, …)
+./unstable          — one barrel, namespaced: `agents`, `brand`, `brandSchema`,
+                      `brief`, `briefSchema`, `campaigns`, `campaignsSchema`,
+                      `scripting`, `sites` (consolidated from the former
+                      ./unstable/* subpaths in 0.4.2)
+./recipe/unstable   — recipe composition kinds (PageDesignRecipeSchema,
+                      SiteRecipeSchema, PartialDesign, …)
 ```
 
 ### Stability contract (0.1.0)

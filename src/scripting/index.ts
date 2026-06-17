@@ -1,5 +1,7 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/scripting`.
+ * Unstable SDK surface, published as the `scripting` namespace of the
+ * consolidated `@sitecoreai-labs/sitecoreai-cli/unstable` barrel
+ * (was `./unstable/scripting` before 0.4.2).
  *
  * Ergonomic surface for ad-hoc TypeScript scripts against a scai-
  * configured Sitecore environment. Distinct from `scai/hygiene`,

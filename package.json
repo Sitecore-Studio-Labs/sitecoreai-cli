@@ -38,6 +38,14 @@
       "types": "./dist/serialization/index.d.ts",
       "default": "./dist/serialization/index.js"
     },
+    "./sync": {
+      "types": "./dist/sync/index.d.ts",
+      "default": "./dist/sync/index.js"
+    },
+    "./hygiene": {
+      "types": "./dist/hygiene/index.d.ts",
+      "default": "./dist/hygiene/index.js"
+    },
     "./errors": {
       "types": "./dist/shared/errors.d.ts",
       "default": "./dist/shared/errors.js"
@@ -46,69 +54,9 @@
       "types": "./dist/shared/envelope.d.ts",
       "default": "./dist/shared/envelope.js"
     },
-    "./config": {
-      "types": "./dist/config/index.d.ts",
-      "default": "./dist/config/index.js"
-    },
-    "./publishing": {
-      "types": "./dist/publishing/index.d.ts",
-      "default": "./dist/publishing/index.js"
-    },
-    "./content": {
-      "types": "./dist/content/index.d.ts",
-      "default": "./dist/content/index.js"
-    },
-    "./hygiene": {
-      "types": "./dist/hygiene/index.d.ts",
-      "default": "./dist/hygiene/index.js"
-    },
-    "./webhooks": {
-      "types": "./dist/webhooks/index.d.ts",
-      "default": "./dist/webhooks/index.js"
-    },
-    "./workflow": {
-      "types": "./dist/workflow/index.d.ts",
-      "default": "./dist/workflow/index.js"
-    },
-    "./sync": {
-      "types": "./dist/sync/index.d.ts",
-      "default": "./dist/sync/index.js"
-    },
-    "./unstable/agents": {
-      "types": "./dist/agents/index.d.ts",
-      "default": "./dist/agents/index.js"
-    },
-    "./unstable/brand": {
-      "types": "./dist/brand/index.d.ts",
-      "default": "./dist/brand/index.js"
-    },
-    "./unstable/brand/schema": {
-      "types": "./dist/brand/recipe/schema-only.d.ts",
-      "default": "./dist/brand/recipe/schema-only.js"
-    },
-    "./unstable/brief": {
-      "types": "./dist/brief/index.d.ts",
-      "default": "./dist/brief/index.js"
-    },
-    "./unstable/brief/schema": {
-      "types": "./dist/brief/recipe/schema-only.d.ts",
-      "default": "./dist/brief/recipe/schema-only.js"
-    },
-    "./unstable/campaigns": {
-      "types": "./dist/campaigns/index.d.ts",
-      "default": "./dist/campaigns/index.js"
-    },
-    "./unstable/campaigns/schema": {
-      "types": "./dist/campaigns/recipe/schema-only.d.ts",
-      "default": "./dist/campaigns/recipe/schema-only.js"
-    },
-    "./unstable/scripting": {
-      "types": "./dist/scripting/index.d.ts",
-      "default": "./dist/scripting/index.js"
-    },
-    "./unstable/sites": {
-      "types": "./dist/sites/index.d.ts",
-      "default": "./dist/sites/index.js"
+    "./unstable": {
+      "types": "./dist/unstable.d.ts",
+      "default": "./dist/unstable.js"
     },
     "./package.json": "./package.json"
   },

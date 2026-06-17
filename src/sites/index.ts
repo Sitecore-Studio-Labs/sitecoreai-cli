@@ -1,5 +1,7 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/unstable/sites`.
+ * Unstable SDK surface, published as the `sites` namespace of the
+ * consolidated `@sitecoreai-labs/sitecoreai-cli/unstable` barrel
+ * (was `./unstable/sites` before 0.4.2).
  *
  * Sites API client surface. The Sites API is XM Cloud's CRUD proxy for
  * sites, collections, languages, hosts, and related resources at

@@ -1,5 +1,6 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/webhooks`.
+ * Internal webhooks module. The standalone `./webhooks` published
+ * subpath was removed in 0.4.2 to slim the SDK surface.
  *
  * Sitecore webhooks (event handlers + workflow submit/validation actions)
  * authored against the Authoring GraphQL API. Surface mirrors the

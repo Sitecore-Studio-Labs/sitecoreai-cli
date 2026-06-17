@@ -1,5 +1,6 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/publishing`.
+ * Internal publishing module. The standalone `./publishing` published
+ * subpath was removed in 0.4.2 to slim the SDK surface.
  *
  * The Sitecore AI Publishing API (XM Cloud publish jobs) plus the
  * library-layer safety primitives that gate every destructive call:

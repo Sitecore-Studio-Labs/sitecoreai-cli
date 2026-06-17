@@ -1,5 +1,6 @@
 /**
- * Public entry for `@sitecoreai-labs/sitecoreai-cli/content`.
+ * Internal content-operations module. The standalone `./content`
+ * published subpath was removed in 0.4.2 to slim the SDK surface.
  *
  * Content-state controls — per-version mutations on Sitecore's
  * publish-state fields (`__Never publish`, `__Valid from`, `__Valid

@@ -13,9 +13,10 @@ something the CLI doesn't expose, this is for you.
 
 ## Stability
 
-`scai/scripting` is an **unstable** SDK entry — it ships under the
-`@sitecoreai-labs/sitecoreai-cli/unstable/scripting` subpath and carries
-no SemVer stability promise. `connect()` currently wires only the
+`scai/scripting` is an **unstable** SDK entry — it ships as the
+`scripting` namespace of the `@sitecoreai-labs/sitecoreai-cli/unstable`
+barrel and carries no SemVer stability promise. `scripting.connect()`
+currently wires only the
 `hygiene` area; its return shape will grow as more areas are wired, and
 the helper pattern is still settling. The entry graduates to a stable
 contract in a later release. Pin an exact scai version if you depend on
@@ -29,9 +30,9 @@ becomes friction.
 ## Connect
 
 ```ts
-import { connect } from "@sitecoreai-labs/sitecoreai-cli/unstable/scripting";
+import { scripting } from "@sitecoreai-labs/sitecoreai-cli/unstable";
 
-const scai = connect({ envName: "sandbox" });
+const scai = scripting.connect({ envName: "sandbox" });
 //          ^^^^^^^ uses defaultEnvProfile from sitecoreai.cli.json if omitted
 
 // scai.hygiene is the same HygieneApiClient exported from scai/hygiene —
@@ -48,11 +49,11 @@ trips on the surrounding pipes. This is the canonical script-shaped
 case.
 
 ```ts
-import { connect, multilist } from "@sitecoreai-labs/sitecoreai-cli/unstable/scripting";
+import { scripting } from "@sitecoreai-labs/sitecoreai-cli/unstable";
 
-const scai = connect();
+const scai = scripting.connect();
 
-const result = await multilist.removeRef(scai, {
+const result = await scripting.multilist.removeRef(scai, {
   itemId: "11111111-...",
   fieldName: "RelatedItems",
   refToRemove: "22222222-...", // case-insensitive, brace-tolerant

@@ -406,6 +406,40 @@ describe("campaign runners — write verbs honour --what-if", () => {
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
   });
 
+  it("continues deleting the campaign when loading the project fails", async () => {
+    // getProject throws → the detach can't enumerate briefs, but the delete
+    // must still proceed (src guards this with a verbose log and returns early).
+    vi.mocked(projectsApi.getProject).mockRejectedValue(new Error("boom") as never);
+    vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
+
+    const result = await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
+
+    expect(result).toEqual({ id: "proj-1", deleted: true });
+    expect(vi.mocked(updateBrief)).not.toHaveBeenCalled();
+    expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
+  });
+
+  it("still deletes the campaign when updateBrief fails after getBrief succeeds (best-effort)", async () => {
+    vi.mocked(projectsApi.getProject).mockResolvedValue(
+      makeProject({ briefs: [{ id: "brief-1" }] }) as never
+    );
+    vi.mocked(getBrief).mockResolvedValue(
+      makeBrief({ references: [campaignRef("proj-1"), campaignRef("other-proj")] }) as never
+    );
+    vi.mocked(updateBrief).mockRejectedValue(new Error("updateBrief failed"));
+    vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
+
+    const result = await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
+
+    // The PUT was attempted with this campaign's ref dropped (other-proj kept)...
+    expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-1", {
+      references: [campaignRef("other-proj")],
+    });
+    // ...and even though it threw, the campaign delete still went through.
+    expect(result).toEqual({ id: "proj-1", deleted: true });
+    expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
+  });
+
   it("does not touch the brief API when the campaign has no linked briefs", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(makeProject({ briefs: [] }) as never);
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);

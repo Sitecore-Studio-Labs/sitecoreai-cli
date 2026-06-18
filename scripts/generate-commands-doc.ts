@@ -57,7 +57,7 @@ const escapeInline = (value: string): string =>
 
 const isMachineSpecific = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
-  return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("~");
+  return value.startsWith("/") || /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("~");
 };
 
 const renderOption = (option: Option): string => {
@@ -171,11 +171,7 @@ const main = (): void => {
     renderCommand(top, 1, lines);
   }
 
-  const output =
-    lines
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trimEnd() + "\n";
+  const output = lines.join("\n").trimEnd() + "\n";
   const outputPath = resolve(__dirname, "..", "docs", "commands.md");
   writeFileSync(outputPath, output);
   process.stdout.write(`Wrote ${outputPath}\n`);

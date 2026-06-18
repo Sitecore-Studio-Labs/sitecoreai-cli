@@ -2,7 +2,7 @@
 
 # Command reference
 
-Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.4.3.
+Generated from the Commander tree assembled by `createProgram` in `src/program.ts`.
 The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs.
 
 ## scai

@@ -18,7 +18,6 @@ import { resolve } from "node:path";
 import { Command, Option } from "commander";
 
 import { createProgram } from "../src/program";
-import packageJson from "../package.json";
 
 /**
  * Build the documented program tree. `createProgram` needs a `runCli`
@@ -146,7 +145,11 @@ const main = (): void => {
   lines.push("# Command reference");
   lines.push("");
   lines.push(
-    `Generated from the Commander tree assembled by \`createProgram\` in \`src/program.ts\` at scai v${packageJson.version}.`
+    // No version embedded on purpose: a mutable version here would make every
+    // Changesets "Version Packages" release PR fail `docs:commands:check`
+    // (the bump touches package.json but not this generated file). The version
+    // lives in package.json + CHANGELOG.md.
+    "Generated from the Commander tree assembled by `createProgram` in `src/program.ts`."
   );
   lines.push(
     "The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs."

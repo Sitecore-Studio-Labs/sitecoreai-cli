@@ -438,7 +438,19 @@ export const runCampaignDelete = async (
     }
     return plan;
   }
-  await detachLinkedBriefs(client, options.campaignId, options, logger);
+  // Best-effort: detach failures must not block the campaign delete. The
+  // per-brief loop already swallows its own errors; this guards the residual
+  // throw paths (e.g. resolving the brief client) so the delete still runs.
+  try {
+    await detachLinkedBriefs(client, options.campaignId, options, logger);
+  } catch (err) {
+    logger.warn(
+      `Pre-delete detach failed for campaign ${options.campaignId} (continuing with delete): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      "yellow"
+    );
+  }
   await deleteProject(client, options.campaignId);
   const result = { id: options.campaignId, deleted: true };
   if (logger.isJson()) {

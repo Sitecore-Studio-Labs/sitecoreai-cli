@@ -84,6 +84,14 @@ interface ExecuteAdvanceArgs {
   envName: string;
 }
 
+/** Map an execution success flag to the corresponding advance status. */
+const toAdvanceStatus = (successful: boolean): WorkflowAdvanceResult["status"] =>
+  successful ? "advanced" : "failed";
+
+/** Hint pointing the user at the command that lists available transitions. */
+const buildWorkflowCommandsHint = (itemRef: string | undefined): string =>
+  `Run 'scai content workflow commands ${itemRef}' to see available commands.`;
+
 /** Execute the resolved command and build the success/failure result. */
 const executeAdvance = async (args: ExecuteAdvanceArgs): Promise<WorkflowAdvanceResult> => {
   const { client, wf, command, options, logger, envName } = args;
@@ -101,7 +109,7 @@ const executeAdvance = async (args: ExecuteAdvanceArgs): Promise<WorkflowAdvance
       toState: exec.nextStateId,
       commandRequested: options.command,
       commandUsed: command.displayName,
-      status: exec.successful ? "advanced" : "failed",
+      status: toAdvanceStatus(exec.successful),
       ...(exec.successful
         ? {}
         : { message: exec.message ?? "Workflow command returned successful=false." }),
@@ -190,7 +198,7 @@ export const runWorkflowAdvance = async (
     commandName: options.command,
   });
   if (!command) {
-    const message = `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. Run 'scai content workflow commands ${selector.path ?? selector.itemId}' to see available commands.`;
+    const message = `Workflow '${wf.workflowName}' has no command named '${options.command}' at state '${wf.stateName ?? "?"}'. ${buildWorkflowCommandsHint(selector.path ?? selector.itemId)}`;
     return reportAdvance(
       logger,
       envName,

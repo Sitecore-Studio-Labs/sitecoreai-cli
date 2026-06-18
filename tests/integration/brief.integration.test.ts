@@ -1,7 +1,7 @@
 /**
  * Contract-pinned integration coverage for the `./unstable/brief` SDK
  * surface — Sitecore Content Operations Brief API. The write surface
- * (`createBriefType`, `createBrief`, `setBriefStatus`, `deleteBrief`)
+ * (`createBriefType`, `createBrief`, `updateBrief`, `deleteBrief`)
  * was verified against the Agents env in May 2026; these tests pin the
  * verified wire shape so future drift surfaces as a contract failure
  * rather than a 400 against a live tenant.
@@ -16,7 +16,7 @@
 
 import "./setup";
 import { afterEach, beforeEach, expect, vi } from "vitest";
-import { createBrief, deleteBrief, setBriefStatus } from "../../src/brief/api/briefs";
+import { createBrief, deleteBrief, updateBrief } from "../../src/brief/api/briefs";
 import {
   createBriefType,
   deleteBriefType,
@@ -103,7 +103,7 @@ describe("brief — full lifecycle: briefType → brief → status → delete", 
     });
     expect(brief.id).toBe(briefId);
 
-    await setBriefStatus(baseClient, briefId, "Approved");
+    await updateBrief(baseClient, briefId, { status: "Approved" });
     await deleteBrief(baseClient, briefId);
 
     // -- Wire-level contract assertions ------------------------------------
@@ -136,7 +136,7 @@ describe("brief — full lifecycle: briefType → brief → status → delete", 
     });
     expect((calls[1].body as Record<string, unknown>).briefType).toBeUndefined();
 
-    // setBriefStatus — PUT to /briefs/{id} with status-only body, 204 No Content.
+    // updateBrief (status-only) — PUT to /briefs/{id} with status body, 204 No Content.
     expect(calls[2]).toMatchObject({
       url: `${B}/api/brief/v1/briefs/${briefId}`,
       method: "PUT",
@@ -218,7 +218,12 @@ describe("brief — regional baseUrl + error mapping at the wire boundary", () =
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(createBrief(baseClient, { name: "bad", briefTypeId: "" })).rejects.toMatchObject({
+    // Valid client-side input (non-empty name + briefTypeId) so the call
+    // reaches the wire and exercises the non-2xx → BRIEF_API_FAILED mapping,
+    // rather than tripping `assertCreateBriefInput` (INPUT_INVALID) first.
+    await expect(
+      createBrief(baseClient, { name: "bad", briefTypeId: "bt-1" })
+    ).rejects.toMatchObject({
       code: "BRIEF_API_FAILED",
     });
   });

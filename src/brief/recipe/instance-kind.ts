@@ -818,11 +818,11 @@ const resolveCampaignLinkRef = async (
       return { type: "ExternalLink", relatedSystem: "co", relatedType: "Project", id: projectId };
     }
     ctx.logger?.error?.(
-      `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign carrying both labels story:${recipe.storyId} and handle:${recipe.campaignHandle} was found on the tenant — the brief→campaign link was NOT set. The campaign must be pushed before the brief, and must carry matching identity labels.`
+      `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign carrying both labels story:${recipe.storyId} and handle:${recipe.campaignHandle} was found on the tenant — the brief->campaign link was NOT set. The campaign must be pushed before the brief, and must carry matching identity labels.`
     );
   } catch (err) {
     ctx.logger?.error?.(
-      `Failed to resolve campaignHandle "${recipe.campaignHandle}" for brief "${recipe.name}" — the brief→campaign link was NOT set: ${
+      `Failed to resolve campaignHandle "${recipe.campaignHandle}" for brief "${recipe.name}" — the brief->campaign link was NOT set: ${
         err instanceof Error ? err.message : String(err)
       }`
     );
@@ -861,13 +861,13 @@ const confirmCampaignLink = async (params: {
   };
   if (await linkPersisted()) return;
   ctx.logger?.warn?.(
-    `Brief "${recipe.name}" → campaign ${projectId} link did not persist after PUT (silent drop); retrying once.`
+    `Brief "${recipe.name}" -> campaign ${projectId} link did not persist after PUT (silent drop); retrying once.`
   );
   try {
     await updateBrief(client, writtenBriefId, { references: referencesToWrite });
   } catch (err) {
     ctx.logger?.error?.(
-      `Retry PUT for brief "${recipe.name}" → campaign ${projectId} failed — link NOT set: ${
+      `Retry PUT for brief "${recipe.name}" -> campaign ${projectId} failed — link NOT set: ${
         err instanceof Error ? err.message : String(err)
       }`
     );
@@ -875,7 +875,7 @@ const confirmCampaignLink = async (params: {
   }
   if (!(await linkPersisted())) {
     ctx.logger?.error?.(
-      `Brief "${recipe.name}" → campaign ${projectId} link STILL absent after retry — the reverse view on the campaign will be empty. Likely an Orchestrate-side precondition (e.g. brief status) blocking reference writes.`
+      `Brief "${recipe.name}" -> campaign ${projectId} link STILL absent after retry — the reverse view on the campaign will be empty. Likely an Orchestrate-side precondition (e.g. brief status) blocking reference writes.`
     );
   }
 };
@@ -906,7 +906,7 @@ const convergeReferences = async (
     await updateBrief(client, writtenBriefId, { references: referencesToWrite });
   } catch (err) {
     ctx.logger?.error?.(
-      `Failed to set references on brief "${recipe.name}" — the brief→campaign link was NOT set: ${
+      `Failed to set references on brief "${recipe.name}" — the brief->campaign link was NOT set: ${
         err instanceof Error ? err.message : String(err)
       }`
     );

@@ -366,6 +366,10 @@ describe("campaign runners — write verbs honour --what-if", () => {
     expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-1", { references: [] });
     expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-2", { references: [] });
     // ...and the detach ran before the project delete (order is load-bearing).
+    // Assert both actually fired first so the order check can't pass vacuously
+    // on an undefined invocationCallOrder entry.
+    expect(vi.mocked(updateBrief)).toHaveBeenCalled();
+    expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalled();
     expect(vi.mocked(updateBrief).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(projectsApi.deleteProject).mock.invocationCallOrder[0]
     );

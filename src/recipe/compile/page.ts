@@ -148,7 +148,6 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
       const value = encodeContentFieldValue(normalised, recipe.handle, site);
-      if (value === null) continue;
       fieldOps.push({
         op: "SetField",
         policy,

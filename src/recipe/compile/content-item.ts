@@ -281,7 +281,6 @@ export function compileContentItemRecipe(
   ): void => {
     for (const [fieldName, fieldValue] of Object.entries(fields)) {
       const value = encodeContentFieldValue(fieldValue, recipe.handle, site);
-      if (value === null) continue;
       fieldOps.push({
         op: "SetField",
         policy,
@@ -438,11 +437,10 @@ const escapeXmlAttr = (s: string): string =>
     .replace(/'/g, "&apos;");
 
 /**
- * Encode one ContentFieldValue to a RefValue. Returns null when the
- * shape is unsupported (e.g. `link-internal`, which currently throws
+ * Encode one ContentFieldValue to a RefValue. Every supported shape
+ * returns a RefValue; unsupported shapes (e.g. `link-internal`) throw
  * INPUT_INVALID at compile time — see the limitations docblock on
- * `compileContentItemRecipe`) — the caller skips emitting a SetField
- * op for it. Throws on truly invalid input.
+ * `compileContentItemRecipe`. Throws on truly invalid input.
  *
  * Exported so `compilePageRecipe` reuses the exact same field-value
  * encoding for page-item fields.
@@ -451,7 +449,7 @@ export const encodeContentFieldValue = (
   value: ContentFieldValue,
   recipeHandle: string,
   site: string
-): RefValue | null => {
+): RefValue => {
   switch (value.shape) {
     case "text":
     case "richText":

@@ -2,7 +2,7 @@
 
 # Command reference
 
-Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.2.1.
+Generated from the Commander tree assembled by `createProgram` in `src/program.ts` at scai v0.4.2.
 The canonical source is always `scai <command> --help`; this file is for browsing on GitHub or in IDEs.
 
 ## scai
@@ -12,6 +12,7 @@ SitecoreAI developer toolkit — deploy, serialization, recipes, publishing, and
 **Top-level commands**
 
 - [`setup`](#scai-setup) — Configure environments and authenticate — init, login, env, logout, status
+- [`capabilities`](#scai-capabilities) — Print the scai ↔ orchestrator sync contract version, features, and supported kinds (handshake).
 - [`doctor`](#scai-doctor) — Diagnose local config + credentials. Walks sitecoreai.cli.json, the OS keychain, and the Node runtime to surface what needs fixing before remote calls will work. Different from `scai cli health`, which probes the live tenant.
 - [`policy`](#scai-policy) — Inspect and manage the workspace environment-policy guardrails — the allowlist of Sitecore environments scai may operate against.
 - [`hygiene`](#scai-hygiene) — Content quality — read-only audits, mutating cleanup, and composed diagnostics
@@ -256,6 +257,23 @@ scai setup status [options]
 **Options**
 
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+## scai capabilities
+
+Print the scai ↔ orchestrator sync contract version, features, and supported kinds (handshake).
+
+```
+scai capabilities [options]
+```
+
+**Options**
+
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
 - `-q, --quiet` — Suppress non-error output
@@ -3463,6 +3481,7 @@ scai ops brief list [options]
 - `--non-interactive` — Disable prompts and require explicit input
 - `--limit <n>` — Page size
 - `--locale <code>` — Filter by locale (e.g. en-us)
+- `--lean` — Emit only identity + linkage fields (id, name, status, locale, references) as compact JSON. Drops the heavy fields/tasks/comments bodies. --json only.
 
 #### scai ops brief get
 
@@ -3703,7 +3722,7 @@ scai ops brief sync pull [options]
 
 **Options**
 
-- `--name <name>` — Identifier of the recipe. Brief-type codename (`CreativeBrief`) or brief display name (`Q3 Launch`).
+- `--name <name>` — Identifier of the recipe. Brief-type codename (`Creative`) or brief display name (`Q3 Launch`).
 - `--file <path>` — Output recipe file (default: <name>.<kind>.yaml)
 - `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
@@ -3749,6 +3768,8 @@ scai ops brief sync push [options]
 - `--file <path>` — Recipe file (.yaml / .json)
 - `--allow-write` — Apply the plan (default is a dry-run)
 - `--prune` — Include delete changes (off by default)
+- `--conflict-policy <policy>` — Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them. Requires a baseline (HTTP storage via env or file-backed); without one, the kinds degrade to two-way diff and this flag has no effect.
+- `--identities-out <path>` — Write the apply outcome's resolved Sitecore UUIDs (project, brief, deliverable, task) to a JSON file at this path. The orchestrator reads it back to persist UUIDs onto its own model so the next push can read entities by id directly — bypassing scai's marker-in-name / handle-label search.
 - `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
@@ -3792,7 +3813,7 @@ scai ops brief comments [options] [command]
 **Subcommands**
 
 - [`scai ops brief comments list`](#scai-ops-brief-comments-list) — List comments across briefs, or filter to one brief with [briefId].
-- [`scai ops brief comments add`](#scai-ops-brief-comments-add) — Post a comment to a brief. UNVERIFIED — the comment write body is a best guess; smoke-test before relying on it. Requires --apply.
+- [`scai ops brief comments add`](#scai-ops-brief-comments-add) — Post a comment to a brief. Verified body shape: briefId + text + authorId; the server records `author` as the impersonated user while `createdBy` captures the actual caller. Requires --apply.
 
 ##### scai ops brief comments list
 
@@ -3817,7 +3838,7 @@ scai ops brief comments list [options] [briefId]
 
 ##### scai ops brief comments add
 
-Post a comment to a brief. UNVERIFIED — the comment write body is a best guess; smoke-test before relying on it. Requires --apply.
+Post a comment to a brief. Verified body shape: briefId + text + authorId; the server records `author` as the impersonated user while `createdBy` captures the actual caller. Requires --apply.
 
 ```
 scai ops brief comments add [options] <briefId>
@@ -3826,6 +3847,7 @@ scai ops brief comments add [options] <briefId>
 **Options**
 
 - `--text <text>` — Comment text
+- `--author <authorId>` — Auth0 subject of the visible comment author (e.g. auth0\|abc123). Use `scai ops campaign users list` to enumerate.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `--org-id <id>` — Sitecore organization id to act on. Overrides the env profile's organizationId.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
@@ -3877,6 +3899,7 @@ scai ops campaign list [options]
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 - `--limit <n>` — Page size
+- `--lean` — Emit only identity + linkage fields (id, name, labels, brandkit\_id, status) as compact JSON. Drops the heavy deliverables/members/attachments bodies. --json only.
 
 #### scai ops campaign get
 
@@ -4189,6 +4212,8 @@ scai ops campaign sync pull [options]
 **Options**
 
 - `--campaign <name>` — Campaign display name
+- `--sitecore-id <uuid>` — Sitecore Orchestrate project UUID. When set, the read path loads the project by id and skips the display-name search — survives renames on either side. Pass the UUID stamped by a prior push (`--identities-out` writes it; the orchestrator persists it onto the recipe row).
+- `--handle <handle>` — Stable campaign handle. When set, the read path matches the project by its `handle:` label so a renamed campaign still resolves even before a `sitecoreId` has been stamped. Falls back to display-name match when omitted.
 - `--file <path>` — Output recipe file (default: <campaign>.campaign.yaml)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
@@ -4232,6 +4257,8 @@ scai ops campaign sync push [options]
 - `--file <path>` — Recipe file (.yaml / .json)
 - `--allow-write` — Apply the plan (default is a dry-run)
 - `--prune` — Include delete changes (off by default)
+- `--conflict-policy <policy>` — Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them. Requires a baseline (HTTP storage via env or file-backed); without one, the kind degrades to two-way diff and this flag has no effect. Mirrors `scai ops brief sync push --conflict-policy`.
+- `--identities-out <path>` — Write the apply outcome's resolved Sitecore UUIDs (project, deliverables, tasks) to a JSON file at this path. The orchestrator reads it back to persist UUIDs onto its own model so the next push can read entities by id directly.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -4742,6 +4769,9 @@ scai brand sync push [options]
 - `--file <path>` — Recipe file (.yaml / .json)
 - `--allow-write` — Apply the plan (default is a dry-run)
 - `--prune` — Include delete changes (off by default)
+- `--no-enrich` — Skip every code path that triggers a Sitecore AI enrichment pipeline run. Field PATCHes only — kit must already exist with the right section structure. Useful for fast iteration on field values without waiting 5-15 min for an enrichment cycle.
+- `--conflict-policy <policy>` — Three-way merge resolution when tenant-side edits diverge from baseline. `error` (default) refuses the push and surfaces the cells; `recipe-wins` clobbers tenant edits; `cms-wins` preserves them and drops the recipe-side change for this push. Requires a baseline (HTTP storage via env or file-backed); without one, the brand kind degrades to two-way diff and this flag has no effect.
+- `--identities-out <path>` — Write the apply outcome's resolved Sitecore brand-kit UUID to a JSON file at this path. The orchestrator reads it back to stamp the real UUID onto its brand\_kits row — without this the row stores the recipe handle as a placeholder and downstream campaign pushes can't populate `brandkit_id`.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -7727,6 +7757,7 @@ scai provision recipe [options] [command]
 - [`scai provision recipe compile`](#scai-provision-recipe-compile) — Compile recipe (.ts/.json) files to Operation IR JSON files
 - [`scai provision recipe diff`](#scai-provision-recipe-diff) — Show what `recipe push` would change — read-only diff against a tenant. Compiles recipes in-memory; never mutates.
 - [`scai provision recipe plan`](#scai-provision-recipe-plan) — Plan an Operation IR push against a tenant — read-then-diff, no mutations
+- [`scai provision recipe pull`](#scai-provision-recipe-pull) — Read tenant state and dump every reverse-projectable recipe to disk as .recipe.json. Read-only — does not mutate the tenant. Default snapshot mode dumps everything to <out>; `--against <recipes-dir>` enables three-way merge detection (in-sync / disk-ahead / tenant-edited / conflict).
 - [`scai provision recipe push`](#scai-provision-recipe-push) — Apply recipes to a tenant. Compiles in-memory and runs the executor with idempotency + best-effort rollback.
 - [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
 
@@ -7798,6 +7829,43 @@ scai provision recipe plan [options]
 - `-i, --input <path>` — Path to a compiled .ir.json file
 - `-o, --output <path>` — Path to write the output file
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--snapshot-languages <list>` — Comma-separated ISO codes to capture in prune-rollback snapshots. When unset, auto-discovered via the Authoring API's tenant languages query. The first language becomes the inverse createItem language.
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai provision recipe pull
+
+Read tenant state and dump every reverse-projectable recipe to disk as .recipe.json. Read-only — does not mutate the tenant. Default snapshot mode dumps everything to <out>; `--against <recipes-dir>` enables three-way merge detection (in-sync / disk-ahead / tenant-edited / conflict).
+
+```
+scai provision recipe pull [options]
+```
+
+**Options**
+
+- `-o, --output <path>` — Output directory. Defaults to ./pulled-recipes.
+- `--against <recipes-dir>` — Path to authored recipes directory (or single recipe file). Enables merge-detection mode: compares the tenant projection against your local recipes + baseline and classifies each recipe. Use `--against .` to use the config glob from sitecoreai.cli.json.
+- `--conflict-policy <policy>` — Merge-mode conflict policy (mirrors push's, direction-inverted). `error` (default) exits non-zero on tenant-edited / conflict; `disk-wins` skips writes for recipes with disk changes; `tenant-wins` writes every tenant projection regardless. Only used with --against. (default: `"error"`)
+- `--no-baseline` — Skip three-way merge baseline loading. Without a baseline, any divergence classifies as conflict (we can't tell who moved).
+- `--write-plan <path>` — Write a merge-plan JSON file with every per-recipe per-field classification + the default winner per --conflict-policy. Hand-editable: operator opens the file, flips `winner` to `disk` or `tenant` per field, then re-runs `recipe pull --apply-plan <same-path>` to commit. Implies merge mode (--against must be set).
+- `--apply-plan <path>` — Read a merge-plan JSON file and use its `winner` picks per field instead of --conflict-policy. Pull rebuilds classifications + verifies the plan still matches the current tenant + disk state; refuses to apply a stale plan. Implies merge mode.
+- `--dry-run` — Classify + report what WOULD be written without writing any files (no recipe JSON files, no merge plan). Useful in CI for verifying tenant + disk are in sync without leaving runner-FS artifacts.
+- `--templates-root <path>` — Sitecore parent path for template items. Falls back to envProfiles[<name>].templatesRoot.
+- `--renderings-root <path>` — Sitecore parent path for rendering items. Falls back to envProfiles[<name>].renderingsRoot.
+- `--components-root <path>` — Sitecore parent path for component template items in the per-site folder layout (Phase 2). Falls back to envProfiles[<name>].componentsRoot.
+- `--content-models-root <path>` — Sitecore parent path for content-template items (Phase 2). Falls back to envProfiles[<name>].contentModelsRoot.
+- `--partial-designs-root <path>` — Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot.
+- `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
+- `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
+- `--pages-root <path>` — Sitecore parent path for page items. Falls back to envProfiles[<name>].pagesRoot.
+- `--enumerations-root <path>` — Sitecore parent path for enumeration containers. Falls back to envProfiles[<name>].enumerationsRoot.
+- `--placeholder-settings-root <path>` — Sitecore parent path for Placeholder Settings items. Falls back to envProfiles[<name>].placeholderSettingsRoot.
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data
@@ -7827,8 +7895,13 @@ scai provision recipe push [options]
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `--allow-write` — Allow write operations for this command without updating config
+- `--allow-prune` — Authorize deletion of items via PruneChildren ops with mode='delete'. Required IN ADDITION TO --apply when the IR contains delete-mode prunes.
+- `--snapshot-languages <list>` — Comma-separated ISO codes to capture in prune-rollback snapshots. When unset, auto-discovered via the Authoring API's tenant languages query. The first language becomes the inverse createItem language.
 - `--skip-unchanged-recipes` — Skip recipes whose compiled IR digest matches the cached entry from the previous successful push (.scai/recipe-cache.json). Off by default — opt in for fast re-pushes of an unchanged recipe set.
 - `--plan-concurrency <n>` — Number of recipes plan-mode (--what-if) runs concurrently. Defaults to 4. Apply mode is always sequential per-recipe.
+- `--conflict-policy <policy>` — Three-way merge resolution for tenant-side author edits since the last push. `error` (default) blocks the apply on any conflict; `recipe-wins` clobbers the author edit; `cms-wins` preserves it and drops the recipe-side change for this push. (default: `"error"`)
+- `--no-baseline` — Skip three-way merge baseline loading + post-apply writing. Recipe becomes a legacy two-way diff (recipe-wins on every drift). Use for first-push test runs against a clean tenant or CI runs where the baseline isn't checked in.
+- `--handles <list>` — Comma-separated list of recipe handles to narrow the push to. Cross-recipe references still resolve against the full input set; only matched handles are applied. Unknown handles are logged and ignored. Aligns with the `handles` field convention the orchestrator's brief/campaign sync plans use.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data

@@ -16,6 +16,14 @@
 
 set -euo pipefail
 
+# Capture the hook payload (JSON on stdin) before anything else reads stdin.
+# `.session_id` is the harness-stable identity for THIS agent session — far
+# more reliable than a pid (which, via $PPID, points at a transient shell that
+# dies right after the hook returns). The PreToolUse guard
+# (guard-checkout-owner.sh) compares this id to enforce one-agent-per-checkout.
+HOOK_STDIN=$(cat 2>/dev/null || true)
+SESSION_ID=$(printf '%s' "$HOOK_STDIN" | jq -r '.session_id // empty' 2>/dev/null || true)
+
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo '.')"
 
 LOCK_FILE=".claude/session-checkout.lock"
@@ -28,37 +36,49 @@ if [ -f "$LOCK_FILE" ]; then
   now_epoch=$(date +%s)
   lock_epoch=$(awk -F= '/^created_epoch=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
   lock_pid=$(awk -F= '/^pid=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
-  # A lock is "live" only when (a) its recorded pid is still running and
-  # (b) it isn't past the stale-age cap. The pid check is the load-bearing
-  # one — Stop hooks fire at the end of every user message turn, not on
-  # process exit, so a release-on-Stop pattern (the prior design) cleared
-  # the lock between turns even while the agent process was still alive.
-  # The age cap stays as a belt-and-suspenders backup if the pid lookup
-  # fails or the lock is corrupted.
-  lock_live=0
-  if [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
-    lock_live=1
-  fi
-  if [[ "$lock_epoch" =~ ^[0-9]+$ ]]; then
-    age=$((now_epoch - lock_epoch))
-    if [ "$age" -gt "$STALE_LOCK_MAX_AGE_SECONDS" ]; then
-      lock_live=0
+  lock_session=$(awk -F= '/^session_id=/{print $2}' "$LOCK_FILE" 2>/dev/null || true)
+
+  # Our own lock from a re-fired SessionStart (resume): just refresh it.
+  if [ -n "$SESSION_ID" ] && [ "$lock_session" = "$SESSION_ID" ]; then
+    mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
+  else
+    # A lock is "live" only when (a) its recorded pid is still running and
+    # (b) it isn't past the stale-age cap. pid is a liveness hint; identity
+    # is the session_id. If the holder crashed, its pid is gone → not live →
+    # we reclaim. The age cap is a belt-and-suspenders backup.
+    lock_live=0
+    if [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+      lock_live=1
     fi
-  fi
-  if [ "$lock_live" -eq 1 ]; then
-    cat >&2 <<EOF
-[branch-create] RULE #1 violation: this checkout already has an active agent session (pid ${lock_pid}).
-[branch-create] Start this agent in a separate git worktree/clone (one checkout per agent).
-[branch-create] If this lock is wrong, end the other session cleanly or remove .claude/session-checkout.lock.
+    if [[ "$lock_epoch" =~ ^[0-9]+$ ]]; then
+      age=$((now_epoch - lock_epoch))
+      if [ "$age" -gt "$STALE_LOCK_MAX_AGE_SECONDS" ]; then
+        lock_live=0
+      fi
+    fi
+    if [ "$lock_live" -eq 1 ]; then
+      # A DIFFERENT live session owns this checkout. We can't hard-stop from
+      # SessionStart (a non-zero exit here doesn't abort the session), so we
+      # warn loudly and leave their lock untouched — the PreToolUse guard
+      # (guard-checkout-owner.sh) is what actually blocks this session's
+      # mutating tools until it gets its own checkout/worktree.
+      cat >&2 <<EOF
+[branch-create] RULE #1 violation: this checkout is already owned by another active agent session.
+[branch-create]   owner session_id=${lock_session:-unknown} pid=${lock_pid:-unknown}
+[branch-create] This session's Edit/Write/Bash calls will be BLOCKED until it has its own checkout.
+[branch-create] Spawn a worktree:  scripts/agent-worktree-create.sh <slug>
+[branch-create] If the lock is stale, remove it: rm .claude/session-checkout.lock
 EOF
-    exit 42
+      exit 0
+    fi
+    mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
   fi
-  mv "$LOCK_FILE" "${LOCK_FILE}.stale-${now_epoch}" 2>/dev/null || true
 fi
 
 cat >"$LOCK_FILE" <<EOF
 created_epoch=$(date +%s)
 created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+session_id=${SESSION_ID}
 pid=${CLAUDE_AGENT_PID:-$PPID}
 user=${USER:-unknown}
 host=$(hostname 2>/dev/null || echo unknown)

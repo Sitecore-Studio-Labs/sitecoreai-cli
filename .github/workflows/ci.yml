@@ -56,6 +56,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Module boundaries (dependency-cruiser)
+        # Enforces the layering from CLAUDE.md as errors (shared-is-leaf,
+        # content ↛ publishing, nothing-imports-commands) and reports
+        # pre-existing import cycles as non-blocking warnings.
+        run: npm run depcruise:check
+
+      - name: Command docs in sync
+        # docs/commands.md is generated from program.ts. Regenerate and fail
+        # if it drifts so a flag/command change can't silently stale the doc.
+        run: npm run docs:commands:check
+
       - name: Coverage ratchet gate
         # Fails when vitest.config.ts thresholds have dropped below the
         # baseline recorded in coverage-ratchet.json without an explicit

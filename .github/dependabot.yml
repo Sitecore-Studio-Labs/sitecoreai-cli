@@ -9,6 +9,23 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    # The default branch is `main` (release), but agent work integrates on
+    # `dev` — route dependency PRs there so they flow through the normal
+    # dev → main merge, not straight at the release branch.
+    target-branch: dev
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+      include: scope
+    # Let a freshly published version bake before bumping — cheap supply-chain
+    # hardening. Does NOT delay security updates (those ship immediately).
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+      semver-minor-days: 5
+      semver-patch-days: 2
     groups:
       # Group every security update so they ship in a single PR — easier
       # to triage than one PR per advisory.
@@ -47,6 +64,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    target-branch: dev
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(ci)"
     groups:
       actions:
         patterns:

@@ -44,10 +44,17 @@ const escapeInline = (value: string): string =>
     // spans (left untouched), even indices are the surrounding prose.
     .split(/(`[^`]*`)/g)
     .map((part, index) =>
-      index % 2 === 1 ? part : part.replace(/\\/g, "\\\\").replace(/[_*]/g, "\\$&")
+      // Prose: escape the backslash FIRST, then the Markdown metacharacters
+      // (`_` `*` `|`) in one pass, so a backslash we add is never re-escaped.
+      // `|` is folded in here rather than applied globally after the join —
+      // a trailing `.replace(/\|/g, ...)` over the whole string adds an escape
+      // character without escaping pre-existing backslashes (CodeQL
+      // js/incomplete-sanitization). Output only ever lands in prose/list
+      // items (never a table cell), and code spans hold literal flag text, so
+      // leaving spans untouched is both safe and correct for Markdown.
+      index % 2 === 1 ? part : part.replace(/\\/g, "\\\\").replace(/[_*|]/g, "\\$&")
     )
-    .join("")
-    .replace(/\|/g, "\\|");
+    .join("");
 
 const isMachineSpecific = (value: unknown): boolean => {
   if (typeof value !== "string") return false;

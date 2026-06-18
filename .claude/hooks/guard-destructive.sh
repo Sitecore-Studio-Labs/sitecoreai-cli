@@ -17,8 +17,10 @@
 
 set -euo pipefail
 
-# The tool input is passed via stdin as JSON. Extract the command field.
-COMMAND=$(cat | jq -r '.command // empty' 2>/dev/null || true)
+# The tool input is passed via stdin as JSON. The command lives at
+# `.tool_input.command` for the Bash tool; older single-field payloads
+# used a top-level `.command`, so fall back to that for safety.
+COMMAND=$(cat | jq -r '.tool_input.command // .command // empty' 2>/dev/null || true)
 
 if [ -z "$COMMAND" ]; then
   exit 0
@@ -27,26 +29,36 @@ fi
 block() {
   echo "BLOCKED: $1" >&2
   echo "If you need to do this, ask the operator to run it manually." >&2
-  exit 1
+  # Exit code 2 is the PreToolUse "deny" signal — it blocks the tool call
+  # and feeds stderr back to the agent. Any other non-zero code is a
+  # non-blocking error and would let the command run anyway.
+  exit 2
 }
 
-# Check for git push (any form)
-if echo "$COMMAND" | grep -qE '\bgit\s+push\b'; then
+# Match the dangerous op only at a COMMAND position — start of the command
+# or right after a shell separator (; & | && ||), allowing leading
+# whitespace and an optional `git -C <path>` prefix. This stops false
+# positives when a dangerous token appears inside an argument, e.g. a
+# `git commit -m "...git push..."` message (which is data, not a command).
+BOUNDARY='(^|[;&|(]|&&|\|\|)[[:space:]]*git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?'
+
+# git push (any form)
+if echo "$COMMAND" | grep -qE "${BOUNDARY}push\b"; then
   block "git push is not allowed in agent sessions. Work stays local until operator review."
 fi
 
-# Check for git reset --hard
-if echo "$COMMAND" | grep -qE '\bgit\s+reset\s+--hard\b'; then
+# git reset --hard
+if echo "$COMMAND" | grep -qE "${BOUNDARY}reset[[:space:]]+--hard\b"; then
   block "git reset --hard destroys uncommitted work. Use git stash instead."
 fi
 
-# Check for git checkout . or git checkout -- .
-if echo "$COMMAND" | grep -qE '\bgit\s+checkout\s+(--\s+)?\.'; then
+# git checkout . or git checkout -- .
+if echo "$COMMAND" | grep -qE "${BOUNDARY}checkout[[:space:]]+(--[[:space:]]+)?\."; then
   block "git checkout . discards all working-tree changes."
 fi
 
-# Check for git clean -f
-if echo "$COMMAND" | grep -qE '\bgit\s+clean\s+.*-f'; then
+# git clean -f
+if echo "$COMMAND" | grep -qE "${BOUNDARY}clean\b[^;&|]*-f"; then
   block "git clean -f deletes untracked files permanently."
 fi
 

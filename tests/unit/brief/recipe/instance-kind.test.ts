@@ -22,6 +22,15 @@ const briefApi = vi.hoisted(() => ({
 }));
 vi.mock("../../../../src/brief", () => briefApi);
 
+// Mock the campaign surface used by campaignHandle → projectId resolution.
+const campaignApi = vi.hoisted(() => ({
+  listProjects: vi.fn(async () => ({ next: null, data: [] as Array<Record<string, unknown>> })),
+}));
+vi.mock("../../../../src/campaigns", () => campaignApi);
+vi.mock("../../../../src/campaigns/recipe/client", () => ({
+  resolveCampaignClient: async () => ({ accessToken: "tok" }),
+}));
+
 import {
   briefInstanceKind,
   htmlToProseMirrorDoc,
@@ -443,5 +452,111 @@ describe("htmlToProseMirrorDoc sanitization", () => {
   it("unescapes a single &amp; to &", () => {
     const doc = htmlToProseMirrorDoc("Tom &amp; Jerry");
     expect(docText(doc)).toBe("Tom & Jerry");
+  });
+});
+
+describe("apply — campaign link convergence", () => {
+  const projectId = "proj-1";
+  const campaignHandle = "summer-launch@1";
+  const storyId = "story-1";
+  const campaignLink = {
+    type: "ExternalLink" as const,
+    relatedSystem: "co",
+    relatedType: "Project",
+    id: projectId,
+  };
+  const linkedBrief = { ...liveBrief, id: "brief-9", references: [campaignLink] };
+
+  // Logger with error/warn spies so we can assert the link outcome is
+  // surfaced loudly (the old code swallowed these to a warn).
+  const makeCtx = (): {
+    ctx: SyncContext;
+    error: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+  } => {
+    const error = vi.fn();
+    const warn = vi.fn();
+    return {
+      ctx: {
+        environmentName: "test",
+        logger: { info: vi.fn(), warn, error } as unknown as Logger,
+      },
+      error,
+      warn,
+    };
+  };
+
+  const applyCreateWithCampaign = (ctxArg: SyncContext) => {
+    const recipe = briefInstanceKind.schema.parse({
+      name: "Q3 Launch",
+      briefTypeName: "CreativeBrief",
+      campaignHandle,
+      storyId,
+    });
+    return briefInstanceKind.apply(
+      {
+        changes: [
+          { kind: "create", path: "brief", summary: "create", meta: { stage: "instance", recipe } },
+        ],
+      },
+      ref,
+      ctxArg
+    );
+  };
+
+  beforeEach(() => {
+    briefApi.listBriefTypes.mockResolvedValue({ totalCount: 1, next: null, data: [liveType] });
+    briefApi.createBrief.mockResolvedValue({ ...liveBrief, id: "brief-9", status: "Draft" });
+    briefApi.updateBrief.mockResolvedValue(undefined);
+    campaignApi.listProjects.mockResolvedValue({
+      next: null,
+      data: [{ id: projectId, labels: [`story:${storyId}`, `handle:${campaignHandle}`] }],
+    });
+  });
+
+  it("PUTs the campaign link and confirms it persisted (no retry)", async () => {
+    briefApi.getBrief.mockResolvedValue(linkedBrief);
+    const { ctx: c, error, warn } = makeCtx();
+
+    await applyCreateWithCampaign(c);
+
+    const refPut = briefApi.updateBrief.mock.calls.find((call) => call[2]?.references);
+    expect(refPut?.[2].references).toContainEqual(campaignLink);
+    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("retries the PUT once when the link silently drops, then succeeds", async () => {
+    // First read: link absent (silent drop). After retry: present.
+    briefApi.getBrief.mockResolvedValueOnce(liveBrief).mockResolvedValueOnce(linkedBrief);
+    const { ctx: c, error, warn } = makeCtx();
+
+    await applyCreateWithCampaign(c);
+
+    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/did not persist.*retrying/i));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("logs an error when the link is STILL absent after the retry", async () => {
+    briefApi.getBrief.mockResolvedValue(liveBrief); // never shows the link
+    const { ctx: c, error } = makeCtx();
+
+    await applyCreateWithCampaign(c);
+
+    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(2);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/STILL absent after retry/i));
+  });
+
+  it("logs an error and writes no campaign ref when no campaign matches the labels", async () => {
+    campaignApi.listProjects.mockResolvedValue({ next: null, data: [] });
+    const { ctx: c, error } = makeCtx();
+
+    await applyCreateWithCampaign(c);
+
+    // No explicit references + unresolved campaign → nothing to PUT.
+    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(0);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/no campaign carrying both labels/i));
   });
 });

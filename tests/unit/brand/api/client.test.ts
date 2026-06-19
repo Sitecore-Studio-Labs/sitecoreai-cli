@@ -270,3 +270,26 @@ describe("requestBrandApi — response parsing", () => {
     expect(result).toEqual({ id: "kit-1", name: "Acme" });
   });
 });
+
+describe("requestBrandApi — 409 brand-kit-lock retry", () => {
+  it("retries a 409 (locked by background enrichment) and resolves once the lock clears", async () => {
+    // Seed pass kicks off Sitecore enrichment, which holds the kit lock;
+    // the override pass's field PATCH 409s until it releases. The client
+    // now rides that out with backoff instead of hard-failing.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse({ error: "Brand Kit is locked by another user" }, 409))
+      .mockResolvedValueOnce(okResponse({ id: "field-1" }, 200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await requestBrandApi(client, {
+      basePath: "/stream/ai-skills-api",
+      path: "/brandkits/k1/sections/s1/fields/f1",
+      method: "PATCH",
+      body: { value: "x" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ id: "field-1" });
+  });
+});

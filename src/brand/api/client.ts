@@ -127,6 +127,18 @@ export const requestBrandApi = async <TResponse>(
         await clearBrandToken(client.orgId);
       },
     },
+    retry: {
+      // Sitecore holds a brand-kit lock while its background AI enrichment
+      // writes to the kit; a concurrent field PATCH then 409s ("Brand Kit
+      // is locked by another user"). The lock is transient, so ride it out
+      // with backoff rather than hard-failing the (idempotent) override
+      // pass. 409 is the brand API's only "locked" status, so retrying it
+      // is safe across every brand call. ~5 attempts ≈ up to ~15s of
+      // backoff — enough for typical per-write locks; a longer hold still
+      // surfaces and is handled by the caller's own retry.
+      maxRetries: 5,
+      shouldRetryStatus: (status) => status === 409,
+    },
     // Preserve the pre-refactor behavior of letting a raw fetch rejection
     // (network error) propagate unmapped — brand callers never relied on a
     // structured NETWORK ScaiError here.

@@ -1,5 +1,38 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.5.0
+
+### Minor Changes
+
+- c07cf0e: Brand kit recipe: add a `logo` URL field, and remove the broken synthesized-stub-document path.
+
+  - The brand-kit recipe now carries an optional `logo` — a PNG URL the brand-kit UI renders directly. It is converged via a new `updateBrandKitLogo()` kit-level PATCH on both freshly-created and pre-existing kits, read back in `readCurrent`, and diffed idempotently (an omitted `logo` leaves the live value unmanaged).
+  - `synthesizeBrandStubDocument` is removed. Its `data:` URL was never fetched by Sitecore, so the self-heal path always timed out (~15 min waiting for sections) and marked fresh kits `failed`. The canonical sections are materialized on **publish**, so a recipe with no source document now creates the kit via `createBrandKit → publishBrandKit` (real operator documents still go through `seedBrandKit` + ingestion/enrichment), and self-heal publishes an unpublished kit instead of synthesizing a stub. This also makes `--no-enrich` coherent with kit creation.
+
+- c07cf0e: feat(campaigns): campaign icon + attachment SDK foundation
+
+  - Add `thumbnailUrl` to the campaign recipe — the project `thumbnail_url`,
+    threaded through create (`createProject`), the recipe diff (create +
+    update metas), and apply (`readCurrent` / `applyProjectFieldUpdate`).
+  - Add `attachProjectAttachment()` / `deleteProjectAttachment()` plus the
+    `AttachmentMetadata` type (POST/DELETE `/projects/{id}/attachments/{fileId}`).
+
+  Both take an MMS **mediaId** (the trailing segment of the file's
+  `mms-delivery` URL). Producing a viewable mediaId requires the MMS upload
+  flow (scope `mms.upload.file:add`), which scai's M2M credentials don't
+  carry — so these accept an existing mediaId. The campaign-side wiring is
+  complete and verified live; the byte-upload step is tracked separately.
+
+### Patch Changes
+
+- c07cf0e: Brand sync: retry a transient `409 Brand Kit is locked` with backoff.
+
+  `requestBrandApi` now opts into the shared transport's retry-with-backoff for `409` (the brand API's only "locked" status). A brand sync push's override pass PATCHes kit fields while Sitecore's background AI enrichment still holds the kit lock; previously that 409 hard-failed the push (exit 7, `Brand Kit is locked by another user`). The idempotent field PATCH now rides out the transient lock (~5 attempts, ~15s of backoff) instead of failing.
+
+- c07cf0e: Brief sync: link a brief to its campaign via `PATCH /api/brief/v1/briefs/{id}/links` (system `AI`, type `project`).
+
+  Adds `linkBriefToProject()` and wires it into the brief recipe apply + schema. Orchestrate derives the campaign's `project.briefs[]` reverse view from the brief's `links` collection; the prior write targeted `references`, which left that reverse view empty.
+
 ## 0.4.5
 
 ### Patch Changes

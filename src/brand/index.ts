@@ -95,6 +95,7 @@ export {
   listBrandKitSections,
   listBrandKitFields,
   updateBrandKitField,
+  updateBrandKitSection,
   createBrandKitSectionField,
   type BrandKitSectionSummary,
   type BrandKitFieldSummary,
@@ -105,6 +106,7 @@ export {
   type ListBrandKitSectionsOptions,
   type ListBrandKitFieldsOptions,
   type UpdateBrandKitFieldOptions,
+  type UpdateBrandKitSectionOptions,
 } from "./kits/sections";
 
 export {

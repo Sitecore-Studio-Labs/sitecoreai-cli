@@ -8,6 +8,7 @@
  *   - kit creation   → `{ stage: "kit", description, industry }`
  *   - document ingest → `{ stage: "document", document }`
  *   - field value     → `{ stage: "field", section, field }`
+ *   - section property → `{ stage: "sectionProperty", section, sourceLanguage }`
  *
  * A brand kit's sections/fields are created by the enrichment pipeline,
  * so a kit-absent diff also emits the desired field values as `create`
@@ -92,6 +93,29 @@ export const diffBrandKit = (
         });
       }
     }
+  }
+
+  // Section-level properties (today only Glossary's `sourceLanguage`). The
+  // Sitecore AI app gates the Glossary terms table behind a section-level
+  // source language — without it, term fields persist but the UI renders an
+  // empty state, so the values never appear. Emit a change when the recipe
+  // declares a `sourceLanguage` that the live section lacks or differs from;
+  // an omitted value leaves the live one unmanaged (no clear).
+  // `sectionProperties` is schema-defaulted to `{}`, but the merged recipe
+  // built by the policy merge can omit it — guard against undefined.
+  for (const [section, properties] of Object.entries(desired.sectionProperties ?? {})) {
+    const sourceLanguage = properties.sourceLanguage;
+    if (sourceLanguage === undefined) continue;
+    const currentSourceLanguage = current?.sectionProperties?.[section]?.sourceLanguage;
+    if (sourceLanguage === currentSourceLanguage) continue;
+    changes.push({
+      kind: current === null || currentSourceLanguage === undefined ? "create" : "update",
+      path: `sectionProperties.${section}.sourceLanguage`,
+      summary: `${section} source language → ${sourceLanguage}`,
+      before: currentSourceLanguage,
+      after: sourceLanguage,
+      meta: { stage: "sectionProperty", section, sourceLanguage },
+    });
   }
 
   return { changes };

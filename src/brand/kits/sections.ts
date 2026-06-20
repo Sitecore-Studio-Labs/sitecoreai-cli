@@ -120,6 +120,43 @@ export const listBrandKitSections = async (
   });
 };
 
+export interface UpdateBrandKitSectionOptions {
+  client: BrandApiClientOptions;
+  brandKitId: string;
+  sectionId: string;
+  /**
+   * Section-level properties to merge. Today the load-bearing key is
+   * `sourceLanguage` (BCP-47) on `Glossary and Localization`: the
+   * Sitecore AI app gates the glossary terms table behind it, so a
+   * glossary with terms but no source language renders an empty state
+   * and the values never appear.
+   */
+  properties: Record<string, unknown>;
+  signal?: AbortSignal;
+}
+
+/**
+ * Patch a brand-kit section's properties
+ * (`PATCH /api/brands/v1/.../sections/{sectionId}`).
+ *
+ * NB: section ops are **v1** (GET/POST/PATCH section + field DELETE),
+ * while field create/update/list are v2 — this mirrors the Sitecore AI
+ * app's own routing. Only `properties` is sent (a true partial update);
+ * the primary use is setting the Glossary section's `sourceLanguage` so
+ * synced terms actually render.
+ */
+export const updateBrandKitSection = async (
+  options: UpdateBrandKitSectionOptions
+): Promise<BrandKitSectionSummary> => {
+  return requestBrandApi<BrandKitSectionSummary>(options.client, {
+    basePath: BRAND_MANAGEMENT_BASE_PATH,
+    path: `/api/brands/v1/organizations/${options.client.orgId}/brandkits/${options.brandKitId}/sections/${options.sectionId}`,
+    method: "PATCH",
+    body: { properties: options.properties },
+    signal: options.signal,
+  });
+};
+
 export interface ListBrandKitFieldsOptions {
   client: BrandApiClientOptions;
   brandKitId: string;

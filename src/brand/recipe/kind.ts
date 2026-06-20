@@ -20,6 +20,7 @@ import {
   listBrandKits,
   seedBrandKit,
   updateBrandKitField,
+  updateBrandKitSection,
   createBrandKitSectionField,
   type BrandApiClientOptions,
   type BrandKitFieldSummary,
@@ -290,9 +291,14 @@ const indexFields = async (
   client: BrandApiClientOptions,
   brandKitId: string,
   signal?: AbortSignal
-): Promise<Map<string, FieldTarget>> => {
+): Promise<{ index: Map<string, FieldTarget>; sectionIdByName: Map<string, string> }> => {
   const index = new Map<string, FieldTarget>();
+  // Section name → id, captured from the same listing so callers can
+  // resolve a section by name (e.g. to PATCH its properties or create a
+  // glossary term field) without a second `listBrandKitSections` call.
+  const sectionIdByName = new Map<string, string>();
   for (const section of await listBrandKitSections({ client, brandKitId, signal })) {
+    sectionIdByName.set(section.name, section.id);
     for (const field of await listBrandKitFields({
       client,
       brandKitId,
@@ -306,7 +312,7 @@ const indexFields = async (
       });
     }
   }
-  return index;
+  return { index, sectionIdByName };
 };
 
 /** A live `richArray` field whose entries are missing the canonical
@@ -467,7 +473,7 @@ const selfHealUnreachableKit = async (
     .filter((k) => k.section && k.field);
   if (writeKeys.length === 0) return;
   const sectionsTargetedByWrites = Array.from(new Set(writeKeys.map((k) => k.section)));
-  const initialIndex = await indexFields(client, brandKitId, ctx.signal);
+  const { index: initialIndex } = await indexFields(client, brandKitId, ctx.signal);
   const anyTargetReachable = writeKeys.some((k) => initialIndex.has(fieldKey(k.section, k.field)));
   if (anyTargetReachable) return;
   // None of the targeted sections/fields are reachable. The canonical
@@ -653,20 +659,45 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   // already exist.
   await selfHealUnreachableKit(client, brandKitId, fieldChanges, ref, ctx);
 
-  // Converge field values against the (now-existing) kit.
+  // Converge section properties + field values against the (now-existing)
+  // kit. Both resolve sections by name, so build that map once.
+  const sectionPropertyChanges = plan.changes.filter(
+    (change) => change.meta?.stage === "sectionProperty"
+  );
   const writes = fieldChanges.filter(
     (change) => change.kind === "create" || change.kind === "update"
   );
-  if (writes.length > 0) {
-    const index = await indexFields(client, brandKitId, ctx.signal);
-    // Section name → id, so a missing glossary term (a field the
-    // enrichment pipeline never creates) can be created in the right
-    // section. Cheap extra GET; keeps `indexFields`/its other callers
-    // unchanged.
-    const sectionIdByName = new Map<string, string>();
-    for (const s of await listBrandKitSections({ client, brandKitId, signal: ctx.signal })) {
-      sectionIdByName.set(s.name, s.id);
+  if (sectionPropertyChanges.length > 0 || writes.length > 0) {
+    // One section listing serves both the section-name→id map (for
+    // glossary term creation + section-property PATCHes) and the field
+    // index (for value writes).
+    const { index, sectionIdByName } = await indexFields(client, brandKitId, ctx.signal);
+
+    // Section properties FIRST. The Sitecore AI app gates the Glossary
+    // terms table behind a section-level `sourceLanguage`: without it the
+    // term fields persist but the UI renders an empty state, so the values
+    // never appear. Set it before writing terms so the section renders.
+    for (const change of sectionPropertyChanges) {
+      const section = String(change.meta?.section);
+      const sourceLanguage = change.meta?.sourceLanguage as string | undefined;
+      const sectionId = sectionIdByName.get(section);
+      if (sectionId && sourceLanguage) {
+        await updateBrandKitSection({
+          client,
+          brandKitId,
+          sectionId,
+          properties: { sourceLanguage },
+          signal: ctx.signal,
+        });
+        applied.push(change);
+      } else {
+        // Section not on the kit (enrichment hasn't materialized it) —
+        // surfaced as skipped, not silently dropped.
+        skipped.push(change);
+      }
     }
+
+    // A no-op when `writes` is empty (e.g. a sectionProperty-only plan).
     for (const change of writes) {
       const section = String(change.meta?.section);
       const field = String(change.meta?.field);

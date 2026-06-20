@@ -155,3 +155,56 @@ describe("diffBrandKit — logo", () => {
     expect(plan.changes.some((c) => c.meta?.stage === "logo")).toBe(false);
   });
 });
+
+describe("diffBrandKit — section properties (sourceLanguage)", () => {
+  const GLOSSARY = "Glossary and Localization";
+
+  it("emits a create change when the recipe sets a sourceLanguage and the kit is absent", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } }),
+      null
+    );
+    const change = plan.changes.find((c) => c.meta?.stage === "sectionProperty");
+    expect(change).toMatchObject({
+      kind: "create",
+      path: `sectionProperties.${GLOSSARY}.sourceLanguage`,
+      after: "en-US",
+      meta: { stage: "sectionProperty", section: GLOSSARY, sourceLanguage: "en-US" },
+    });
+  });
+
+  it("emits a create change when the live section has no sourceLanguage yet", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } }),
+      recipe({ name: "Acme" })
+    );
+    const change = plan.changes.find((c) => c.meta?.stage === "sectionProperty");
+    expect(change?.kind).toBe("create");
+    expect(change?.meta).toMatchObject({ section: GLOSSARY, sourceLanguage: "en-US" });
+  });
+
+  it("emits an update change when the sourceLanguage drifts", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "fr-FR" } } }),
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } })
+    );
+    const change = plan.changes.find((c) => c.meta?.stage === "sectionProperty");
+    expect(change).toMatchObject({ kind: "update", before: "en-US", after: "fr-FR" });
+  });
+
+  it("emits no change when the sourceLanguage is unchanged (idempotent)", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } }),
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } })
+    );
+    expect(plan.changes.some((c) => c.meta?.stage === "sectionProperty")).toBe(false);
+  });
+
+  it("leaves the live sourceLanguage unmanaged when the recipe omits it", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme" }),
+      recipe({ name: "Acme", sectionProperties: { [GLOSSARY]: { sourceLanguage: "en-US" } } })
+    );
+    expect(plan.changes.some((c) => c.meta?.stage === "sectionProperty")).toBe(false);
+  });
+});

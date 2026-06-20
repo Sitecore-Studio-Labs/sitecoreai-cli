@@ -13,6 +13,7 @@ const brandApi = vi.hoisted(() => ({
   listBrandKitSections: vi.fn(),
   listBrandKitFields: vi.fn(),
   updateBrandKitField: vi.fn(),
+  updateBrandKitSection: vi.fn(),
   createBrandKitSectionField: vi.fn(),
   seedBrandKit: vi.fn(),
   createBrandKit: vi.fn(),
@@ -349,6 +350,91 @@ describe("apply", () => {
       })
     );
     expect(brandApi.createBrandKitSectionField).not.toHaveBeenCalled();
+  });
+
+  it("PATCHes the Glossary section's sourceLanguage before writing its terms", async () => {
+    // Without the section-level sourceLanguage the Sitecore AI app gates
+    // the glossary terms table behind an empty state, so the values never
+    // render even though the term fields persist. The sectionProperty
+    // change must resolve the section by name and PATCH its properties.
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([
+      { id: "sec-g", name: "Glossary and Localization" },
+    ]);
+    brandApi.listBrandKitFields.mockResolvedValue([]);
+    brandApi.createBrandKitSectionField.mockResolvedValue({});
+    brandApi.updateBrandKitSection.mockResolvedValue({});
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "sectionProperties.Glossary and Localization.sourceLanguage",
+            summary: "Glossary and Localization source language → en-US",
+            after: "en-US",
+            meta: {
+              stage: "sectionProperty",
+              section: "Glossary and Localization",
+              sourceLanguage: "en-US",
+            },
+          },
+          {
+            kind: "create",
+            path: "sections.Glossary and Localization.Sync",
+            summary: "Sync",
+            after: [{ term: "Sync", locale: "ja-JP", displayName: "Japanese (Japan)" }],
+            meta: { stage: "field", section: "Glossary and Localization", field: "Sync" },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitSection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sectionId: "sec-g",
+        properties: { sourceLanguage: "en-US" },
+      })
+    );
+    expect(brandApi.createBrandKitSectionField).toHaveBeenCalled();
+    expect(result.applied).toHaveLength(2);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it("skips a sectionProperty change when the section is not on the kit", async () => {
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-1", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([]); // no Glossary section
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "sectionProperties.Glossary and Localization.sourceLanguage",
+            summary: "Glossary and Localization source language → en-US",
+            after: "en-US",
+            meta: {
+              stage: "sectionProperty",
+              section: "Glossary and Localization",
+              sourceLanguage: "en-US",
+            },
+          },
+        ],
+      },
+      ref,
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitSection).not.toHaveBeenCalled();
+    expect(result.skipped).toHaveLength(1);
   });
 
   it("skips a field change that does not resolve to a kit field", async () => {

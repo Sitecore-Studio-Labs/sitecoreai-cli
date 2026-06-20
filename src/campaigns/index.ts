@@ -59,6 +59,12 @@ export {
 } from "./api/deliverables";
 
 export {
+  attachProjectAttachment,
+  deleteProjectAttachment,
+  type AttachmentMetadata,
+} from "./api/attachments";
+
+export {
   listTasks,
   getTask,
   createTask,

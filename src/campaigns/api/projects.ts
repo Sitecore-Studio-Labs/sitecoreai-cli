@@ -58,6 +58,10 @@ export type CreateProjectInput = {
   due_date?: string;
   status?: string;
   brandkit_id?: string;
+  /** Campaign icon — an MMS mediaId (the trailing segment of the file's
+   *  `mms-delivery` URL). The Content Ops UI fetches it from MMS to render
+   *  the icon, so a plain URL won't display. */
+  thumbnail_url?: string;
   labels?: string[];
   members?: ProjectMember[];
 };
@@ -76,6 +80,7 @@ export const createProject = (
       due_date: input.due_date,
       status: input.status ?? "NOT_STARTED",
       brandkit_id: input.brandkit_id,
+      thumbnail_url: input.thumbnail_url,
       labels: input.labels ?? [],
       members: input.members ?? [],
     },

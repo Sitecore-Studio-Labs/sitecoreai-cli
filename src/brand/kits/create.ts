@@ -73,6 +73,33 @@ export const publishBrandKit = async (
   });
 };
 
+export interface UpdateBrandKitLogoOptions {
+  client: BrandApiClientOptions;
+  brandKitId: string;
+  /** Logo image URL (PNG per the OpenAPI). */
+  logo: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Set a brand kit's logo via `PATCH .../brandkits/{id}` with a `{ logo }`
+ * body — the same kit-level PATCH `publishBrandKit` uses for `status`.
+ * The logo is a plain URL the brand-kit UI renders directly, so any
+ * publicly reachable image URL works. Idempotent: re-PATCHing the same
+ * value returns 200 unchanged.
+ */
+export const updateBrandKitLogo = async (
+  options: UpdateBrandKitLogoOptions
+): Promise<BrandKitSummary> => {
+  return requestBrandApi<BrandKitSummary>(options.client, {
+    basePath: BRAND_MANAGEMENT_BASE_PATH,
+    path: `/api/brands/v1/organizations/${options.client.orgId}/brandkits/${options.brandKitId}`,
+    method: "PATCH",
+    body: { logo: options.logo },
+    signal: options.signal,
+  });
+};
+
 export interface DeleteBrandKitOptions {
   client: BrandApiClientOptions;
   brandKitId: string;

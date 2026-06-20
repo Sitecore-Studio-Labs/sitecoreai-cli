@@ -16,6 +16,8 @@ const brandApi = vi.hoisted(() => ({
   createBrandKitSectionField: vi.fn(),
   seedBrandKit: vi.fn(),
   createBrandKit: vi.fn(),
+  publishBrandKit: vi.fn(),
+  updateBrandKitLogo: vi.fn(),
   enrichBrandKitWithDocuments: vi.fn(),
 }));
 vi.mock("../../../../src/brand", () => brandApi);
@@ -465,12 +467,12 @@ describe("apply", () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining("[+3s] ingest: running"));
   });
 
-  it("synthesizes a stub document when the plan has field changes but no operator documents", async () => {
-    // Sections only exist after EnrichSections runs over an uploaded
-    // document. If the operator declared field values but no doc, the
-    // kind synthesizes a stub PDF naming the sections so enrichment
-    // produces the canonical section set; field values then converge.
-    brandApi.seedBrandKit.mockResolvedValue({ kit: { id: "kit-syn", name: "Acme" } });
+  it("creates + publishes the kit (no stub) when the plan has field changes but no operator documents", async () => {
+    // The canonical sections + fields are materialized on *publish* — no
+    // stub document and no paid enrichment are needed. Field values
+    // converge into those sections via PATCH afterward.
+    brandApi.createBrandKit.mockResolvedValue({ id: "kit-pub", name: "Acme" });
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-pub", status: "published" });
     brandApi.listBrandKitSections.mockResolvedValue([
       { id: "sec-gg", name: "Global Goals" },
       { id: "sec-bc", name: "Brand Context" },
@@ -514,25 +516,21 @@ describe("apply", () => {
       ctx
     );
 
-    // seedBrandKit must be called — not createBrandKit — because the
-    // synthesis path goes through the full pipeline.
-    expect(brandApi.createBrandKit).not.toHaveBeenCalled();
-    expect(brandApi.seedBrandKit).toHaveBeenCalledOnce();
-    const seedArgs = brandApi.seedBrandKit.mock.calls[0][0] as {
-      documents: Array<{ kind: string; url: string; tags?: string[] }>;
-    };
-    expect(seedArgs.documents).toHaveLength(1);
-    expect(seedArgs.documents[0].kind).toBe("url");
-    expect(seedArgs.documents[0].url.startsWith("data:application/pdf;base64,")).toBe(true);
-    expect(seedArgs.documents[0].tags).toEqual(["scai-synthesized", "stub"]);
+    // create + publish — never seed (no document → no paid pipeline).
+    expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.createBrandKit).toHaveBeenCalledOnce();
+    expect(brandApi.publishBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-pub" })
+    );
 
-    // Both field PATCHes converge after the kit is seeded.
+    // Both field PATCHes converge after publish.
     expect(brandApi.updateBrandKitField).toHaveBeenCalledTimes(2);
     expect(result.applied.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("creates a bare kit (no seed) when the plan has a kit change but no documents", async () => {
+  it("creates + publishes the kit when the plan has a kit change but no documents", async () => {
     brandApi.createBrandKit.mockResolvedValue({ id: "kit-bare", name: "Bare" });
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-bare", status: "published" });
     brandApi.listBrandKitSections.mockResolvedValue([]);
 
     const result = await brandKitKind.apply(
@@ -554,24 +552,24 @@ describe("apply", () => {
     expect(brandApi.createBrandKit).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Bare", description: "d", industry: "i" })
     );
+    expect(brandApi.publishBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-bare" })
+    );
     expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
     expect(result.applied).toHaveLength(1);
   });
 
-  it("self-heals a pre-existing bare kit by synthesizing a stub doc and running enrichment", async () => {
-    // A kit previously created without sections (older scai, or a
-    // direct createBrandKit call) is stuck — every field write
-    // skips because no section IDs exist. This test verifies the
-    // self-heal: when the existing kit has zero sections AND there
-    // are pending field writes, the kind synthesizes a stub doc and
-    // runs enrichBrandKitWithDocuments against the existing kit id.
+  it("self-heals a pre-existing unpublished kit by publishing it", async () => {
+    // A kit created but never published has zero sections, so every
+    // field write skips. Self-heal publishes it (idempotent, no document,
+    // no enrichment) to materialize the canonical sections, after which
+    // the field writes land.
     brandApi.listBrandKits.mockResolvedValue({
       totalCount: 1,
       data: [{ id: "kit-stuck", name: "Acme" }],
     });
     // First listBrandKitSections call (in the self-heal pre-check) →
-    // empty; second call (inside indexFields after enrichment) →
-    // populated.
+    // empty; second call (inside indexFields after publish) → populated.
     brandApi.listBrandKitSections.mockResolvedValueOnce([]).mockResolvedValueOnce([
       { id: "sec-gg", name: "Global Goals" },
       { id: "sec-bc", name: "Brand Context" },
@@ -583,14 +581,7 @@ describe("apply", () => {
           : [{ id: "fld-desc", name: "description", type: "text" }]
       )
     );
-    brandApi.enrichBrandKitWithDocuments.mockResolvedValue({
-      document: { id: "doc-stub" },
-      sections: [
-        { id: "sec-gg", name: "Global Goals" },
-        { id: "sec-bc", name: "Brand Context" },
-      ],
-      elapsedSec: 300,
-    });
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-stuck", status: "published" });
     brandApi.updateBrandKitField.mockResolvedValue({});
 
     const result = await brandKitKind.apply(
@@ -617,17 +608,13 @@ describe("apply", () => {
       ctx
     );
 
-    expect(brandApi.enrichBrandKitWithDocuments).toHaveBeenCalledOnce();
-    const enrichArgs = brandApi.enrichBrandKitWithDocuments.mock.calls[0][0] as {
-      brandKitId: string;
-      documents: Array<{ kind: string; url: string; tags?: string[] }>;
-    };
-    expect(enrichArgs.brandKitId).toBe("kit-stuck");
-    expect(enrichArgs.documents).toHaveLength(1);
-    expect(enrichArgs.documents[0].url.startsWith("data:application/pdf;base64,")).toBe(true);
-    expect(enrichArgs.documents[0].tags).toEqual(["scai-synthesized", "stub"]);
+    // Self-heal publishes the existing kit — no enrichment, no document.
+    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
+    expect(brandApi.publishBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-stuck" })
+    );
 
-    // After enrichment, the two field writes converge.
+    // After publish materializes the sections, the two field writes converge.
     expect(brandApi.updateBrandKitField).toHaveBeenCalledTimes(2);
     expect(result.applied).toHaveLength(2);
   });
@@ -659,41 +646,28 @@ describe("apply", () => {
       ctx
     );
 
-    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
+    expect(brandApi.publishBrandKit).not.toHaveBeenCalled();
     expect(brandApi.updateBrandKitField).toHaveBeenCalledOnce();
   });
 
-  it("self-heals AND surfaces a diagnostic when sections exist but no targets resolve post-enrichment", async () => {
+  it("self-heals (publishes) AND surfaces a diagnostic when sections exist but no targets resolve", async () => {
     // The "stuck kit" shape this covers: live kit has sections + fields,
     // but their names don't match the recipe (so writes can't resolve).
-    // Self-heal fires (anyTargetReachable=false), enrichment runs, but
-    // post-enrich the names still mismatch — every write skips, and
-    // the diagnostic block names the recipe targets + live structure.
+    // Self-heal fires (anyTargetReachable=false) and publishes, but the
+    // names still mismatch — every write skips, and the diagnostic block
+    // names the recipe targets + live structure.
     brandApi.listBrandKits.mockResolvedValue({
       totalCount: 1,
       data: [{ id: "kit-mismatch", name: "Acme" }],
     });
-    // Same response for both the initial probe (in self-heal block)
-    // and the post-enrich re-index — the live shape never converges
-    // with the recipe's section names.
+    // Same response for both the initial probe (in self-heal block) and
+    // the post-publish re-index — the live shape never converges with
+    // the recipe's section names.
     brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-legacy", name: "Legacy Section" }]);
     brandApi.listBrandKitFields.mockResolvedValue([
       { id: "fld-legacy", name: "legacyField", type: "text" },
     ]);
-    brandApi.enrichBrandKitWithDocuments.mockImplementation(
-      (args: {
-        onProgress?: (e: { elapsedSec: number; stage: string; message: string }) => void;
-      }) => {
-        // Drive onProgress so the kind's `[+Ns] stage: msg` log line runs.
-        args.onProgress?.({ elapsedSec: 60, stage: "upload", message: "uploading stub" });
-        args.onProgress?.({ elapsedSec: 120, stage: "enrich", message: "enriching" });
-        return Promise.resolve({
-          document: { id: "doc-stub" },
-          sections: [{ id: "sec-legacy", name: "Legacy Section" }],
-          elapsedSec: 120,
-        });
-      }
-    );
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-mismatch", status: "published" });
 
     const infoSpy = ctx.logger?.info as ReturnType<typeof vi.fn>;
 
@@ -714,7 +688,8 @@ describe("apply", () => {
     );
 
     // Broadened self-heal trigger: live index non-empty but no targets reachable.
-    expect(brandApi.enrichBrandKitWithDocuments).toHaveBeenCalledOnce();
+    expect(brandApi.publishBrandKit).toHaveBeenCalledOnce();
+    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
     expect(brandApi.updateBrandKitField).not.toHaveBeenCalled();
     expect(result.applied).toHaveLength(0);
     expect(result.skipped).toHaveLength(1);
@@ -730,44 +705,52 @@ describe("apply", () => {
     expect(infoCalls.some((m) => /live: Legacy Section -> \[legacyField\]/.test(m))).toBe(true);
   });
 
-  it("refuses to create a new kit when ctx.skipEnrichment is set", async () => {
-    // --no-enrich + kit creation is incoherent: sections only exist
-    // after enrichment, so PATCHes can't land. Refuse with a clear
-    // INPUT_INVALID rather than silently creating a bare kit + every
-    // field skipped.
+  it("creates + publishes (no enrichment) when ctx.skipEnrichment is set", async () => {
+    // --no-enrich is now coherent with kit creation: sections are
+    // materialized on publish, so create + publish bootstraps the kit
+    // without any paid enrichment pipeline.
     const noEnrichCtx: SyncContext = { ...ctx, skipEnrichment: true };
-    await expect(
-      brandKitKind.apply(
-        {
-          changes: [
-            {
-              kind: "create",
-              path: "kit",
-              summary: "create",
-              after: "Acme",
-              meta: { stage: "kit" },
-            },
-          ],
-        },
-        { kind: "brand-kit", id: "Acme" },
-        noEnrichCtx
-      )
-    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    brandApi.createBrandKit.mockResolvedValue({ id: "kit-ne", name: "Acme" });
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-ne", status: "published" });
+    brandApi.listBrandKitSections.mockResolvedValue([]);
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "create",
+            path: "kit",
+            summary: "create",
+            after: "Acme",
+            meta: { stage: "kit" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      noEnrichCtx
+    );
+
     expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
-    expect(brandApi.createBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
+    expect(brandApi.createBrandKit).toHaveBeenCalledOnce();
+    expect(brandApi.publishBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-ne" })
+    );
+    expect(result.applied).toHaveLength(1);
   });
 
-  it("skips the self-heal enrichment cycle when ctx.skipEnrichment is set", async () => {
+  it("self-heals by publishing (never enrichment) even when ctx.skipEnrichment is set", async () => {
     // Existing kit with no reachable targets is the self-heal trigger.
-    // With --no-enrich, the operator opted out — log + proceed to the
-    // PATCH loop (which will skip everything), but don't run the
-    // 5-15-minute enrichment pipeline.
+    // Self-heal now publishes (cheap, no paid pipeline), so --no-enrich
+    // doesn't block it. Here the mock keeps sections empty even after
+    // publish, so the field write still skips — but no enrichment ran.
     brandApi.listBrandKits.mockResolvedValue({
       totalCount: 1,
       data: [{ id: "kit-stuck", name: "Acme" }],
     });
     brandApi.listBrandKitSections.mockResolvedValue([]);
     brandApi.listBrandKitFields.mockResolvedValue([]);
+    brandApi.publishBrandKit.mockResolvedValue({ id: "kit-stuck", status: "published" });
     const info = vi.fn();
     const noEnrichCtx: SyncContext = {
       ...ctx,
@@ -797,12 +780,11 @@ describe("apply", () => {
 
     expect(brandApi.enrichBrandKitWithDocuments).not.toHaveBeenCalled();
     expect(brandApi.seedBrandKit).not.toHaveBeenCalled();
+    expect(brandApi.publishBrandKit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-stuck" })
+    );
     expect(brandApi.updateBrandKitField).not.toHaveBeenCalled();
     expect(result.skipped.length).toBe(1);
-    // Diagnostic message names the no-enrich opt-out so the operator
-    // understands why nothing landed.
-    const infoCalls = info.mock.calls.map(([msg]) => String(msg));
-    expect(infoCalls.some((m) => m.includes("`--no-enrich` is set"))).toBe(true);
   });
 
   it("throws INPUT_INVALID when no kit change exists and the kit is not found", async () => {
@@ -948,6 +930,52 @@ describe("apply", () => {
     expect(brandApi.updateBrandKitField).not.toHaveBeenCalled();
     expect(result.skipped).toHaveLength(1);
     expect(result.applied).toHaveLength(0);
+  });
+
+  it("converges the brand-kit logo via updateBrandKitLogo on an existing kit", async () => {
+    brandApi.listBrandKits.mockResolvedValue({
+      totalCount: 1,
+      data: [{ id: "kit-logo", name: "Acme" }],
+    });
+    brandApi.listBrandKitSections.mockResolvedValue([{ id: "sec-gg", name: "Global Goals" }]);
+    brandApi.listBrandKitFields.mockResolvedValue([
+      { id: "fld-cm", name: "contentMission", type: "text" },
+    ]);
+    brandApi.updateBrandKitLogo.mockResolvedValue({
+      id: "kit-logo",
+      logo: "https://cdn.test/logo.png",
+    });
+    brandApi.updateBrandKitField.mockResolvedValue({});
+
+    const result = await brandKitKind.apply(
+      {
+        changes: [
+          {
+            kind: "update",
+            path: "logo",
+            summary: "Set brand kit logo",
+            after: "https://cdn.test/logo.png",
+            meta: { stage: "logo" },
+          },
+          {
+            kind: "update",
+            path: "sections.Global Goals.contentMission",
+            summary: "contentMission",
+            after: "Inform.",
+            meta: { stage: "field", section: "Global Goals", field: "contentMission" },
+          },
+        ],
+      },
+      { kind: "brand-kit", id: "Acme" },
+      ctx
+    );
+
+    expect(brandApi.updateBrandKitLogo).toHaveBeenCalledWith(
+      expect.objectContaining({ brandKitId: "kit-logo", logo: "https://cdn.test/logo.png" })
+    );
+    expect(result.applied.some((c) => c.path === "logo")).toBe(true);
+    // self-heal must NOT fire — the targeted field already resolves.
+    expect(brandApi.publishBrandKit).not.toHaveBeenCalled();
   });
 });
 

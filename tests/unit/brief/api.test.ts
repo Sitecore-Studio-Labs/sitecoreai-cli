@@ -6,6 +6,7 @@ import {
   createBrief,
   deleteBrief,
   updateBrief,
+  linkBriefToProject,
 } from "../../../src/brief/api/briefs";
 import {
   createBriefType,
@@ -257,6 +258,34 @@ describe("brief instance CRUD", () => {
       name: "Renamed",
       locale: "en-us",
     });
+  });
+
+  it("linkBriefToProject PATCHes /links with the AI/project body and returns undefined on 204", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await linkBriefToProject(baseOptions, "brief-xyz", "proj-123");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${DEFAULT_BRIEF_API_BASE}/api/brief/v1/briefs/brief-xyz/links`);
+    expect((init as { method: string }).method).toBe("PATCH");
+    expect(JSON.parse((init as { body: string }).body)).toEqual({
+      system: "AI",
+      id: "proj-123",
+      type: "project",
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("linkBriefToProject URL-encodes the brief id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await linkBriefToProject(baseOptions, "brief/with/slashes", "proj-123");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${DEFAULT_BRIEF_API_BASE}/api/brief/v1/briefs/brief%2Fwith%2Fslashes/links`
+    );
   });
 
   it("assertCreateBriefInput accepts a minimal valid body", () => {

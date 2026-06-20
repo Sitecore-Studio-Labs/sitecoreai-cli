@@ -302,6 +302,7 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     startDate: project.start_date ?? undefined,
     dueDate: project.due_date ?? undefined,
     brandKitId: project.brandkit_id ?? undefined,
+    thumbnailUrl: project.thumbnail_url ?? undefined,
     labels: project.labels ?? [],
     // Members aren't currently projected on pull — the read endpoint
     // returns them, but recipe-side authorship treats them as opt-in
@@ -407,6 +408,7 @@ const convergeAdoptedProject = async (
     if (m.dueDate !== undefined && dayChanged(m.dueDate, adopted.due_date))
       body.due_date = m.dueDate;
     if (m.brandKitId !== undefined) body.brandkit_id = m.brandKitId;
+    if (m.thumbnailUrl !== undefined) body.thumbnail_url = m.thumbnailUrl;
   }
   try {
     // Do NOT reassign `project` from the PUT response — it returns a
@@ -533,6 +535,7 @@ const resolveProject = async (args: {
         start_date: projectChange.meta?.startDate as string | undefined,
         due_date: projectChange.meta?.dueDate as string | undefined,
         brandkit_id: projectChange.meta?.brandKitId as string | undefined,
+        thumbnail_url: projectChange.meta?.thumbnailUrl as string | undefined,
         labels: desiredLabels,
       });
       applied.push(projectChange);

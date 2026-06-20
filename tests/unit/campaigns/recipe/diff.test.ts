@@ -40,6 +40,11 @@ describe("diffCampaign — campaign absent", () => {
     });
   });
 
+  it("carries thumbnailUrl in the project create meta", () => {
+    const plan = diffCampaign(recipe({ name: "Spring Launch", thumbnailUrl: "media-42" }), null);
+    expect(plan.changes[0].meta).toMatchObject({ stage: "project", thumbnailUrl: "media-42" });
+  });
+
   it("plans project + deliverable + task creates for a full recipe", () => {
     const plan = diffCampaign(
       recipe({
@@ -104,6 +109,20 @@ describe("diffCampaign — campaign present", () => {
       update: true,
       description: "changed metadata",
     });
+  });
+
+  it("emits a project UPDATE carrying thumbnailUrl when the icon drifts", () => {
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        thumbnailUrl: "media-99",
+        deliverables: [{ name: "Landing page", tasks: [{ name: "Draft copy" }] }],
+      }),
+      current
+    );
+    const projectChange = plan.changes.find((c) => c.meta?.stage === "project");
+    expect(projectChange?.kind).toBe("update");
+    expect(projectChange?.meta).toMatchObject({ update: true, thumbnailUrl: "media-99" });
   });
 
   it("emits NO project change when an existing campaign's fields are unchanged", () => {

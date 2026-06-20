@@ -279,13 +279,13 @@ export const BriefInstanceRecipeSchema = z.object({
     .array(BriefExternalReferenceSchema)
     .optional()
     .describe(
-      "External resource references — linking a brief to its parent Orchestrate project (campaign) is the verified case: `{type: ExternalLink, relatedSystem: 'co', relatedType: 'Project', id: <projectId>}`. Applied via a follow-up `PUT /api/brief/v1/briefs/{id}` after the brief is created."
+      "Explicit external resource references the recipe declares — applied wholesale via a follow-up `PUT /api/brief/v1/briefs/{id}` (the brief's `references` collection) after the brief is created. NOT the way to link a campaign: a `relatedSystem: 'co'` project reference is stored on the brief but never surfaces on the campaign. Use `campaignHandle` for the campaign link."
     ),
   campaignHandle: z
     .string()
     .optional()
     .describe(
-      "Stable handle of the parent Orchestrate campaign (project). When set, scai's apply path resolves it to a project id via list-by-labels (`story:<storyId>` + `handle:<campaignHandle>`) and PUTs the resolved ExternalLink onto the brief's references. The campaign must already exist on the tenant — story-sync pushes campaigns before briefs."
+      "Stable handle of the parent Orchestrate campaign (project). When set, scai's apply path resolves it to a project id via list-by-labels (`story:<storyId>` + `handle:<campaignHandle>`) and links the brief via `PATCH /api/brief/v1/briefs/{id}/links` (system `AI`, type `project`) — the `links` collection Orchestrate derives the campaign's `project.briefs[]` reverse view from. The campaign must already exist on the tenant — story-sync pushes campaigns before briefs."
     ),
   storyId: z
     .string()

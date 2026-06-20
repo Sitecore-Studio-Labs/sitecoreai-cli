@@ -119,3 +119,39 @@ describe("diffBrandKit — kit present", () => {
     expect(plan.changes.some((change) => change.meta?.stage === "kit")).toBe(false);
   });
 });
+
+describe("diffBrandKit — logo", () => {
+  const logo = "https://cdn.test/logo.png";
+
+  it("plans a logo change on create when the recipe declares one", () => {
+    const plan = diffBrandKit(recipe({ name: "Acme", logo }), null);
+    const change = plan.changes.find((c) => c.meta?.stage === "logo");
+    expect(change).toMatchObject({ kind: "create", path: "logo", after: logo });
+  });
+
+  it("plans a logo update when the live logo differs", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme", logo }),
+      recipe({ name: "Acme", logo: "https://cdn.test/old.png" })
+    );
+    expect(plan.changes.find((c) => c.meta?.stage === "logo")).toMatchObject({
+      kind: "update",
+      path: "logo",
+      before: "https://cdn.test/old.png",
+      after: logo,
+    });
+  });
+
+  it("emits no logo change when the logo is unchanged (idempotent)", () => {
+    const plan = diffBrandKit(recipe({ name: "Acme", logo }), recipe({ name: "Acme", logo }));
+    expect(plan.changes.some((c) => c.meta?.stage === "logo")).toBe(false);
+  });
+
+  it("leaves the live logo unmanaged when the recipe omits it", () => {
+    const plan = diffBrandKit(
+      recipe({ name: "Acme" }),
+      recipe({ name: "Acme", logo: "https://cdn.test/keep.png" })
+    );
+    expect(plan.changes.some((c) => c.meta?.stage === "logo")).toBe(false);
+  });
+});

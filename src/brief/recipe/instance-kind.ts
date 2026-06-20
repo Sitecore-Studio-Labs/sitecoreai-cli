@@ -27,6 +27,7 @@ import {
   createBriefTask,
   deleteBriefTask,
   getBrief,
+  linkBriefToProject,
   listBriefTasks,
   listBriefTypes,
   listBriefs,
@@ -52,7 +53,7 @@ import type {
   ResolvedIdentity,
   SyncContext,
 } from "@/sync";
-import { listProjects } from "@/campaigns";
+import { getProject, listProjects, type CampaignApiClientOptions } from "@/campaigns";
 import { resolveCampaignClient } from "@/campaigns/recipe/client";
 import { resolveBriefClient } from "./client";
 import { diffBriefInstance } from "./instance-diff";
@@ -128,19 +129,18 @@ const findTypeByName = async (
  * and `handle:<campaignHandle>`. The orchestrator stamps these
  * labels on every story-generated campaign.
  *
- * Returns `null` when no project matches. The caller treats that as
- * "no link" — a warning is logged but the brief push still succeeds.
+ * Takes an already-resolved campaign client so the caller can reuse it
+ * to verify the link afterwards. Returns `null` when no project matches.
  */
-const resolveCampaignProjectId = async (
-  ctx: SyncContext,
+const findProjectIdByLabels = async (
+  campaignClient: CampaignApiClientOptions,
   params: { storyId: string; campaignHandle: string }
 ): Promise<string | null> => {
   const storyLabel = `story:${params.storyId}`;
   const handleLabel = `handle:${params.campaignHandle}`;
-  const client = await resolveCampaignClient(ctx);
   let cursor: string | undefined;
   for (;;) {
-    const page = await listProjects(client, cursor ? { next: cursor } : undefined);
+    const page = await listProjects(campaignClient, cursor ? { next: cursor } : undefined);
     for (const project of page.data) {
       const labels = project.labels ?? [];
       if (labels.includes(storyLabel) && labels.includes(handleLabel)) {
@@ -774,49 +774,32 @@ type BriefExternalReference = {
   id: string;
 };
 
-/** True when `ref` is the brief→campaign ExternalLink for `projectId`. */
-const isCampaignLink = (
-  ref: { type?: string; relatedSystem?: string; id?: string },
-  projectId: string
-): boolean => ref.type === "ExternalLink" && ref.relatedSystem === "co" && ref.id === projectId;
+/** True when the campaign's reverse view lists `briefId` under `briefs[]`. */
+const campaignListsBrief = (project: { briefs?: unknown[] }, briefId: string): boolean =>
+  (project.briefs ?? []).some(
+    (b) => b !== null && typeof b === "object" && (b as { id?: unknown }).id === briefId
+  );
 
 /**
- * Assemble the brief's external references from explicit
- * `recipe.references` plus the resolved-at-apply-time campaignHandle
- * link, then PUT them in one follow-up call. The whole array is
- * replaced each push.
- *
- * The brief→campaign link is the ONLY writable side of the relationship
- * (Orchestrate derives the campaign's `project.briefs[]` reverse view
- * from it), so a silently-dropped reference here is exactly why a link
- * "doesn't show up" on the tenant. Two failure modes used to vanish into
- * a `warn`: (1) the campaign couldn't be resolved by its identity labels,
- * and (2) the PUT returned 2xx but the reference didn't persist (a known
- * silent-drop on briefs in some statuses). Both are now surfaced as a
- * loud `error` and, for (2), the PUT is verified by re-read and retried
- * once. Still self-contained (never throws) — a brief that fails to link
- * shouldn't abort the whole push — but the failure is now visible in the
- * captured output instead of buried.
+ * Resolve the recipe's `campaignHandle` to the Orchestrate campaign it
+ * names — returning both the project id and the campaign client used to
+ * find it (reused to verify the link landed). Returns null when no handle
+ * is declared. A declared handle that resolves to nothing (or throws) is
+ * logged as a loud `error` — it's the silent-drop that leaves the
+ * campaign's reverse view empty — and yields null.
  */
-/**
- * Resolve the recipe's `campaignHandle` to a brief→campaign ExternalLink,
- * or null when there's no handle / no matching campaign. A declared handle
- * that resolves to nothing (or throws) is logged as a loud `error` — it's
- * the silent-drop that leaves the campaign's reverse view empty.
- */
-const resolveCampaignLinkRef = async (
+const resolveCampaignTarget = async (
   recipe: BriefInstanceRecipe,
   ctx: SyncContext
-): Promise<BriefExternalReference | null> => {
+): Promise<{ campaignClient: CampaignApiClientOptions; projectId: string } | null> => {
   if (!recipe.campaignHandle || !recipe.storyId) return null;
   try {
-    const projectId = await resolveCampaignProjectId(ctx, {
+    const campaignClient = await resolveCampaignClient(ctx);
+    const projectId = await findProjectIdByLabels(campaignClient, {
       storyId: recipe.storyId,
       campaignHandle: recipe.campaignHandle,
     });
-    if (projectId) {
-      return { type: "ExternalLink", relatedSystem: "co", relatedType: "Project", id: projectId };
-    }
+    if (projectId) return { campaignClient, projectId };
     ctx.logger?.error?.(
       `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign carrying both labels story:${recipe.storyId} and handle:${recipe.campaignHandle} was found on the tenant — the brief->campaign link was NOT set. The campaign must be pushed before the brief, and must carry matching identity labels.`
     );
@@ -831,97 +814,113 @@ const resolveCampaignLinkRef = async (
 };
 
 /**
- * Confirm the campaign link persisted, retrying the PUT once on a silent
- * drop. Orchestrate has occasionally accepted the PUT (2xx) yet not stored
- * the reference, leaving the campaign's reverse view empty even though the
- * push "succeeded". A re-read that itself errors is treated as "persisted"
- * rather than churning a blind retry.
+ * Link the brief to its campaign via `PATCH /briefs/{id}/links` (system
+ * "AI", type "project") — the action that registers the relationship with
+ * Orchestrate and so populates the campaign's `project.briefs[]` reverse
+ * view. Writing a `references` "co" ExternalLink (the old behaviour) stored
+ * the link on the brief but never surfaced it on the campaign.
+ *
+ * Confirms the link by re-reading the campaign, and retries the PATCH once
+ * on a silent drop. Self-contained (never throws): a brief that fails to
+ * link shouldn't abort the whole push, but the failure is surfaced loudly.
  */
-const confirmCampaignLink = async (params: {
-  client: BriefApiClientOptions;
-  writtenBriefId: string;
-  referencesToWrite: BriefExternalReference[];
-  projectId: string;
-  recipe: BriefInstanceRecipe;
-  ctx: SyncContext;
-}): Promise<void> => {
-  const { client, writtenBriefId, referencesToWrite, projectId, recipe, ctx } = params;
-  const linkPersisted = async (): Promise<boolean> => {
+const linkBriefToCampaign = async (
+  briefClient: BriefApiClientOptions,
+  writtenBriefId: string,
+  target: { campaignClient: CampaignApiClientOptions; projectId: string },
+  recipe: BriefInstanceRecipe,
+  ctx: SyncContext
+): Promise<void> => {
+  const { campaignClient, projectId } = target;
+  const linked = async (): Promise<boolean> => {
     try {
-      const after = await getBrief(client, writtenBriefId);
-      return (after.references ?? []).some((r) => isCampaignLink(r, projectId));
+      return campaignListsBrief(await getProject(campaignClient, projectId), writtenBriefId);
     } catch (err) {
       ctx.logger?.warn?.(
-        `Could not re-read brief "${recipe.name}" to confirm the campaign link: ${
+        `Could not re-read campaign ${projectId} to confirm the link for brief "${recipe.name}": ${
           err instanceof Error ? err.message : String(err)
         }`
       );
       return true;
     }
   };
-  if (await linkPersisted()) return;
-  ctx.logger?.warn?.(
-    `Brief "${recipe.name}" -> campaign ${projectId} link did not persist after PUT (silent drop); retrying once.`
-  );
+
+  ctx.logger?.info(`Linking brief "${recipe.name}" to campaign ${projectId}.`);
   try {
-    await updateBrief(client, writtenBriefId, { references: referencesToWrite });
+    await linkBriefToProject(briefClient, writtenBriefId, projectId);
   } catch (err) {
     ctx.logger?.error?.(
-      `Retry PUT for brief "${recipe.name}" -> campaign ${projectId} failed — link NOT set: ${
+      `Failed to link brief "${recipe.name}" to campaign ${projectId} — the brief->campaign link was NOT set: ${
         err instanceof Error ? err.message : String(err)
       }`
     );
     return;
   }
-  if (!(await linkPersisted())) {
+
+  if (await linked()) return;
+  ctx.logger?.warn?.(
+    `Brief "${recipe.name}" -> campaign ${projectId} link did not surface on the campaign (silent drop); retrying once.`
+  );
+  try {
+    await linkBriefToProject(briefClient, writtenBriefId, projectId);
+  } catch (err) {
     ctx.logger?.error?.(
-      `Brief "${recipe.name}" -> campaign ${projectId} link STILL absent after retry — the reverse view on the campaign will be empty. Likely an Orchestrate-side precondition (e.g. brief status) blocking reference writes.`
+      `Retry link for brief "${recipe.name}" -> campaign ${projectId} failed — link NOT set: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    return;
+  }
+  if (!(await linked())) {
+    ctx.logger?.error?.(
+      `Brief "${recipe.name}" -> campaign ${projectId} link STILL absent after retry — the campaign's reverse view will be empty. Likely an Orchestrate-side precondition (e.g. brief status) blocking the link.`
     );
   }
 };
 
+/**
+ * Converge a brief's outbound links after it's written. Two independent
+ * relationships, written through two different collections:
+ *
+ *  1. Explicit `recipe.references` — pass-through ExternalLinks the recipe
+ *     declares — are replaced wholesale via `PUT /briefs/{id}` (the brief's
+ *     `references` collection).
+ *  2. The `campaignHandle` brief->campaign link is written via
+ *     `PATCH /briefs/{id}/links` (the `links` collection), NOT `references`.
+ *     This is the ONLY action Orchestrate derives the campaign's
+ *     `project.briefs[]` reverse view from; a `references` "co" ExternalLink
+ *     is stored on the brief but never surfaces on the campaign.
+ *
+ * Self-contained — a link failure logs loudly but never aborts the push.
+ */
 const convergeReferences = async (
   client: BriefApiClientOptions,
   writtenBriefId: string,
   recipe: BriefInstanceRecipe,
   ctx: SyncContext
 ): Promise<void> => {
-  const referencesToWrite: BriefExternalReference[] = [];
-  for (const r of recipe.references ?? []) {
-    referencesToWrite.push({
-      type: "ExternalLink",
-      relatedSystem: r.relatedSystem,
-      ...(r.relatedType !== undefined ? { relatedType: r.relatedType } : {}),
-      id: r.id,
-    });
-  }
-  // The campaignHandle link is the reverse-view driver we must verify
-  // landed; explicit `recipe.references` are pass-through (not re-read).
-  const campaignLink = await resolveCampaignLinkRef(recipe, ctx);
-  if (campaignLink) referencesToWrite.push(campaignLink);
-
-  if (referencesToWrite.length === 0) return;
-  ctx.logger?.info(`Setting ${referencesToWrite.length} reference(s) on brief "${recipe.name}".`);
-  try {
-    await updateBrief(client, writtenBriefId, { references: referencesToWrite });
-  } catch (err) {
-    ctx.logger?.error?.(
-      `Failed to set references on brief "${recipe.name}" — the brief->campaign link was NOT set: ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-    return;
+  const referencesToWrite: BriefExternalReference[] = (recipe.references ?? []).map((r) => ({
+    type: "ExternalLink",
+    relatedSystem: r.relatedSystem,
+    ...(r.relatedType !== undefined ? { relatedType: r.relatedType } : {}),
+    id: r.id,
+  }));
+  if (referencesToWrite.length > 0) {
+    ctx.logger?.info(`Setting ${referencesToWrite.length} reference(s) on brief "${recipe.name}".`);
+    try {
+      await updateBrief(client, writtenBriefId, { references: referencesToWrite });
+    } catch (err) {
+      ctx.logger?.error?.(
+        `Failed to set references on brief "${recipe.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   }
 
-  if (campaignLink) {
-    await confirmCampaignLink({
-      client,
-      writtenBriefId,
-      referencesToWrite,
-      projectId: campaignLink.id,
-      recipe,
-      ctx,
-    });
+  const target = await resolveCampaignTarget(recipe, ctx);
+  if (target) {
+    await linkBriefToCampaign(client, writtenBriefId, target, recipe, ctx);
   }
 };
 

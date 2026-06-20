@@ -42,14 +42,15 @@ const sameDate = (a: string | undefined, b: string | undefined): boolean => {
   return a.slice(0, 10) === b.slice(0, 10);
 };
 
-/** Whether project-level fields drifted (name/description/status/dates/brandkit). */
+/** Whether project-level fields drifted (name/description/status/dates/brandkit/thumbnail). */
 const projectFieldsChanged = (a: CampaignRecipe, b: CampaignRecipe): boolean =>
   !sameStr(a.name, b.name) ||
   !sameStr(a.description, b.description) ||
   !sameStr(a.status, b.status) ||
   !sameDate(a.startDate, b.startDate) ||
   !sameDate(a.dueDate, b.dueDate) ||
-  !sameStr(a.brandKitId, b.brandKitId);
+  !sameStr(a.brandKitId, b.brandKitId) ||
+  !sameStr(a.thumbnailUrl, b.thumbnailUrl);
 
 /**
  * Whether deliverable-level fields drifted (name/dueDate/funnelStage/
@@ -191,6 +192,7 @@ export const diffCampaign = (
         startDate: desired.startDate,
         dueDate: desired.dueDate,
         brandKitId: desired.brandKitId,
+        thumbnailUrl: desired.thumbnailUrl,
         labels: desired.labels,
         members: desired.members,
       },
@@ -214,6 +216,7 @@ export const diffCampaign = (
         startDate: desired.startDate,
         dueDate: desired.dueDate,
         brandKitId: desired.brandKitId,
+        thumbnailUrl: desired.thumbnailUrl,
         labels: desired.labels,
       },
     });

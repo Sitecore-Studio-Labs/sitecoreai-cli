@@ -220,6 +220,12 @@ export const CampaignRecipeSchema = z.object({
     .string()
     .optional()
     .describe("Associated brand kit UUID. A cross-reference, not an embedded object."),
+  thumbnailUrl: z
+    .string()
+    .optional()
+    .describe(
+      "Campaign icon — the project `thumbnail_url`. The Content Ops UI treats this value as an MMS **mediaId** (the trailing segment of the file's `mms-delivery` URL) and fetches the bytes from MMS to render the icon, so a plain image URL will NOT render. Producing a viewable mediaId needs the MMS upload flow (scope `mms.upload.file:add`), which scai's M2M credentials lack — set this to an existing MMS mediaId."
+    ),
   labels: z.array(z.string()).default([]).describe("Free-form labels on the campaign."),
   /**
    * Members on the project. `apply` enforces an ADMIN-present

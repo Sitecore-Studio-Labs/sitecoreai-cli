@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProject, getProject, listProjects } from "../../../src/campaigns/api/projects";
 import { createDeliverable } from "../../../src/campaigns/api/deliverables";
+import {
+  attachProjectAttachment,
+  deleteProjectAttachment,
+} from "../../../src/campaigns/api/attachments";
 import { createTask, getTask, listTasks, updateTask } from "../../../src/campaigns/api/tasks";
 import { listUsers } from "../../../src/campaigns/api/users";
 import { DEFAULT_CAMPAIGN_API_BASE } from "../../../src/campaigns/api/types";
@@ -68,6 +72,16 @@ describe("campaign API — projects", () => {
       labels: [],
       members: [],
     });
+  });
+
+  it("createProject threads thumbnail_url through to the body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "new" }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createProject(baseOptions, { name: "Spring Launch", thumbnail_url: "media-42" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({ thumbnail_url: "media-42" });
   });
 });
 
@@ -139,6 +153,52 @@ describe("campaign API — deliverables + tasks", () => {
     expect(url).toBe(`${B}/api/orchestrate/v1/projects/proj-1/deliverables/del-1/tasks/task-1`);
     expect(init.method).toBe("PUT");
     expect(JSON.parse(init.body)).toMatchObject({ name: "Updated", description: "<p>done</p>" });
+  });
+});
+
+describe("campaign API — attachments", () => {
+  it("attachProjectAttachment POSTs the metadata to the nested attachment path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "proj-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await attachProjectAttachment(baseOptions, "proj-1", "media-42", {
+      mimeType: "image/png",
+      fileName: "logo.png",
+      contentLength: "1234",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe(`${B}/api/orchestrate/v1/projects/proj-1/attachments/media-42`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      metadata: { mimeType: "image/png", fileName: "logo.png", contentLength: "1234" },
+    });
+  });
+
+  it("attachProjectAttachment URL-encodes both ids", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "p" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await attachProjectAttachment(baseOptions, "proj/1", "media/42", {
+      mimeType: "image/png",
+      fileName: "logo.png",
+      contentLength: "1",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${B}/api/orchestrate/v1/projects/proj%2F1/attachments/media%2F42`
+    );
+  });
+
+  it("deleteProjectAttachment DELETEs the nested attachment path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(null, 204));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteProjectAttachment(baseOptions, "proj-1", "media-42");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+    expect(url).toBe(`${B}/api/orchestrate/v1/projects/proj-1/attachments/media-42`);
+    expect(init.method).toBe("DELETE");
   });
 });
 

@@ -15,6 +15,7 @@ const briefApi = vi.hoisted(() => ({
   getBrief: vi.fn(),
   createBrief: vi.fn(),
   updateBrief: vi.fn(),
+  linkBriefToProject: vi.fn(),
   listBriefTasks: vi.fn(async () => ({ totalCount: 0, next: null, data: [] })),
   createBriefTask: vi.fn(),
   deleteBriefTask: vi.fn(),
@@ -22,9 +23,11 @@ const briefApi = vi.hoisted(() => ({
 }));
 vi.mock("../../../../src/brief", () => briefApi);
 
-// Mock the campaign surface used by campaignHandle → projectId resolution.
+// Mock the campaign surface used by campaignHandle → projectId resolution
+// and brief→campaign link verification (the reverse-view re-read).
 const campaignApi = vi.hoisted(() => ({
   listProjects: vi.fn(async () => ({ next: null, data: [] as Array<Record<string, unknown>> })),
+  getProject: vi.fn(async () => ({ briefs: [] as Array<{ id: string }> })),
 }));
 vi.mock("../../../../src/campaigns", () => campaignApi);
 vi.mock("../../../../src/campaigns/recipe/client", () => ({
@@ -459,13 +462,9 @@ describe("apply — campaign link convergence", () => {
   const projectId = "proj-1";
   const campaignHandle = "summer-launch@1";
   const storyId = "story-1";
-  const campaignLink = {
-    type: "ExternalLink" as const,
-    relatedSystem: "co",
-    relatedType: "Project",
-    id: projectId,
-  };
-  const linkedBrief = { ...liveBrief, id: "brief-9", references: [campaignLink] };
+  // Campaign reverse-view shapes: empty vs listing the written brief.
+  const projectWithout = { id: projectId, briefs: [] as Array<{ id: string }> };
+  const projectWith = { id: projectId, briefs: [{ id: "brief-9" }] };
 
   // Logger with error/warn spies so we can assert the link outcome is
   // surfaced loudly (the old code swallowed these to a warn).
@@ -508,55 +507,60 @@ describe("apply — campaign link convergence", () => {
     briefApi.listBriefTypes.mockResolvedValue({ totalCount: 1, next: null, data: [liveType] });
     briefApi.createBrief.mockResolvedValue({ ...liveBrief, id: "brief-9", status: "Draft" });
     briefApi.updateBrief.mockResolvedValue(undefined);
+    briefApi.linkBriefToProject.mockResolvedValue(undefined);
     campaignApi.listProjects.mockResolvedValue({
       next: null,
       data: [{ id: projectId, labels: [`story:${storyId}`, `handle:${campaignHandle}`] }],
     });
   });
 
-  it("PUTs the campaign link and confirms it persisted (no retry)", async () => {
-    briefApi.getBrief.mockResolvedValue(linkedBrief);
+  it("links via PATCH /links and confirms it surfaced on the campaign (no retry)", async () => {
+    campaignApi.getProject.mockResolvedValue(projectWith);
     const { ctx: c, error, warn } = makeCtx();
 
     await applyCreateWithCampaign(c);
 
-    const refPut = briefApi.updateBrief.mock.calls.find((call) => call[2]?.references);
-    expect(refPut?.[2].references).toContainEqual(campaignLink);
-    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(1);
+    expect(briefApi.linkBriefToProject).toHaveBeenCalledTimes(1);
+    expect(briefApi.linkBriefToProject).toHaveBeenCalledWith(
+      expect.anything(),
+      "brief-9",
+      projectId
+    );
+    // The campaign link must NOT be written through the references PUT.
+    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(0);
     expect(error).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("retries the PUT once when the link silently drops, then succeeds", async () => {
-    // First read: link absent (silent drop). After retry: present.
-    briefApi.getBrief.mockResolvedValueOnce(liveBrief).mockResolvedValueOnce(linkedBrief);
+  it("retries the link once when it silently drops, then succeeds", async () => {
+    // First reverse-view read: brief absent. After retry: present.
+    campaignApi.getProject.mockResolvedValueOnce(projectWithout).mockResolvedValueOnce(projectWith);
     const { ctx: c, error, warn } = makeCtx();
 
     await applyCreateWithCampaign(c);
 
-    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(2);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/did not persist.*retrying/i));
+    expect(briefApi.linkBriefToProject).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/did not surface.*retrying/i));
     expect(error).not.toHaveBeenCalled();
   });
 
   it("logs an error when the link is STILL absent after the retry", async () => {
-    briefApi.getBrief.mockResolvedValue(liveBrief); // never shows the link
+    campaignApi.getProject.mockResolvedValue(projectWithout); // never lists the brief
     const { ctx: c, error } = makeCtx();
 
     await applyCreateWithCampaign(c);
 
-    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(2);
+    expect(briefApi.linkBriefToProject).toHaveBeenCalledTimes(2);
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/STILL absent after retry/i));
   });
 
-  it("logs an error and writes no campaign ref when no campaign matches the labels", async () => {
+  it("logs an error and does not link when no campaign matches the labels", async () => {
     campaignApi.listProjects.mockResolvedValue({ next: null, data: [] });
     const { ctx: c, error } = makeCtx();
 
     await applyCreateWithCampaign(c);
 
-    // No explicit references + unresolved campaign → nothing to PUT.
-    expect(briefApi.updateBrief.mock.calls.filter((call) => call[2]?.references)).toHaveLength(0);
+    expect(briefApi.linkBriefToProject).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/no campaign carrying both labels/i));
   });
 });

@@ -160,3 +160,32 @@ export const deleteBrief = (options: BriefApiClientOptions, briefId: string): Pr
   briefRequest<void>(options, `/api/brief/v1/briefs/${encodeURIComponent(briefId)}`, {
     method: "DELETE",
   });
+
+/**
+ * Link a brief to an Orchestrate campaign (project) — `PATCH
+ * /api/brief/v1/briefs/{id}/links` → 204 No Content.
+ *
+ * This is the ONLY action that registers a brief→campaign relationship
+ * with Orchestrate, and the one the campaign's `project.briefs[]` reverse
+ * view is derived from. It writes the brief's **`links`** collection,
+ * which is distinct from the `references` collection `updateBrief` writes:
+ * a `references` ExternalLink with `relatedSystem: "co"` is stored on the
+ * brief but is NEVER surfaced on the campaign — only this PATCH is. (That
+ * mismatch is exactly why a brief could carry a "co" project reference yet
+ * never appear under its campaign.)
+ *
+ * Body shape verified against the SitecoreAI "link to campaign" UI action
+ * (2026-06-20): the campaign lives in the **AI** system
+ * (`ai-workflows-*.sitecorecloud.io`), so `system` is `"AI"`, `type` is the
+ * lowercase entity kind `"project"`, and `id` is the Orchestrate project
+ * id. No other fields are sent.
+ */
+export const linkBriefToProject = (
+  options: BriefApiClientOptions,
+  briefId: string,
+  projectId: string
+): Promise<void> =>
+  briefRequest<void>(options, `/api/brief/v1/briefs/${encodeURIComponent(briefId)}/links`, {
+    method: "PATCH",
+    body: { system: "AI", id: projectId, type: "project" },
+  });

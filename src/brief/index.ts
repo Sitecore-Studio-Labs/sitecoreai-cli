@@ -55,6 +55,7 @@ export {
   createBrief,
   updateBrief,
   deleteBrief,
+  linkBriefToProject,
   assertCreateBriefInput,
   type BriefExternalReference,
   type CreateBriefInput,

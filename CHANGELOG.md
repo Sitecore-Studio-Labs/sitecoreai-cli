@@ -1,5 +1,72 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 0b410be: Brand kit recipe: add a `logo` URL field, and remove the broken synthesized-stub-document path.
+
+  - The brand-kit recipe now carries an optional `logo` — a PNG URL the brand-kit UI renders directly. It is converged via a new `updateBrandKitLogo()` kit-level PATCH on both freshly-created and pre-existing kits, read back in `readCurrent`, and diffed idempotently (an omitted `logo` leaves the live value unmanaged).
+  - `synthesizeBrandStubDocument` is removed. Its `data:` URL was never fetched by Sitecore, so the self-heal path always timed out (~15 min waiting for sections) and marked fresh kits `failed`. The canonical sections are materialized on **publish**, so a recipe with no source document now creates the kit via `createBrandKit → publishBrandKit` (real operator documents still go through `seedBrandKit` + ingestion/enrichment), and self-heal publishes an unpublished kit instead of synthesizing a stub. This also makes `--no-enrich` coherent with kit creation.
+
+- 0b410be: feat(campaigns): campaign icon + attachment SDK foundation
+
+  - Add `thumbnailUrl` to the campaign recipe — the project `thumbnail_url`,
+    threaded through create (`createProject`), the recipe diff (create +
+    update metas), and apply (`readCurrent` / `applyProjectFieldUpdate`).
+  - Add `attachProjectAttachment()` / `deleteProjectAttachment()` plus the
+    `AttachmentMetadata` type (POST/DELETE `/projects/{id}/attachments/{fileId}`).
+
+  Both take an MMS **mediaId** (the trailing segment of the file's
+  `mms-delivery` URL). Producing a viewable mediaId requires the MMS upload
+  flow (scope `mms.upload.file:add`), which scai's M2M credentials don't
+  carry — so these accept an existing mediaId. The campaign-side wiring is
+  complete and verified live; the byte-upload step is tracked separately.
+
+### Patch Changes
+
+- 0b410be: fix(brand): set the Glossary section's source language so synced terms render
+
+  A brand-kit glossary synced via scai showed no values in the Sitecore AI app
+  even though the term fields persisted. The app gates the Glossary terms table
+  behind the section-level `sourceLanguage` (`GlossarySection` → `hasSourceLanguage`);
+  scai read that property but never wrote it, so a freshly-synced kit rendered the
+  empty state and hid every term.
+
+  `diffBrandKit` now emits a `sectionProperty` change when a recipe's
+  `sectionProperties[section].sourceLanguage` differs from the live section, and
+  `apply` PATCHes it via a new `updateBrandKitSection()` (`PATCH /api/brands/v1/.../sections/{id}`,
+  body `{ properties: { sourceLanguage } }`) before writing the section's term
+  fields. The field-value write shape was already correct (verified live) — this
+  only adds the missing section-level source language.
+
+- 0b410be: Brand sync: retry a transient `409 Brand Kit is locked` with backoff.
+
+  `requestBrandApi` now opts into the shared transport's retry-with-backoff for `409` (the brand API's only "locked" status). A brand sync push's override pass PATCHes kit fields while Sitecore's background AI enrichment still holds the kit lock; previously that 409 hard-failed the push (exit 7, `Brand Kit is locked by another user`). The idempotent field PATCH now rides out the transient lock (~5 attempts, ~15s of backoff) instead of failing.
+
+- 0b410be: Brief sync: link a brief to its campaign via `PATCH /api/brief/v1/briefs/{id}/links` (system `AI`, type `project`).
+
+  Adds `linkBriefToProject()` and wires it into the brief recipe apply + schema. Orchestrate derives the campaign's `project.briefs[]` reverse view from the brief's `links` collection; the prior write targeted `references`, which left that reverse view empty.
+
+- 0b410be: feat(sites): environment language management (Sites API) + recipe provisioning
+
+  Languages are environment-scoped, so a language added here is available to every
+  site in the environment AND surfaces to higher-level consumers that read the
+  environment's languages — notably the Sitecore AI brand-kit Glossary's org
+  locales. (There is no separate "org language" API; adding an environment
+  language is what makes a locale available org-wide.)
+
+  - **SDK** (`@/sites`): add `listSupportedLanguages`, `updateLanguage`, and
+    `removeLanguage` alongside the existing `listLanguages` / `addLanguage` —
+    full CRUD on the Sites API `/api/v1/languages` resource.
+  - **CLI**: new `scai provision sites language` group — `list`,
+    `list-supported`, `add --code <iso>`, and `rm --code <iso>` (env-scoped,
+    `--json`/`--quiet`; `rm` is gated by `--apply`).
+  - **Recipe push**: a site recipe's primary `language` plus any additional
+    `languages` are now ensured on the environment (idempotently) **before**
+    `createSite`, closing the gap where site creation failed on a language that
+    hadn't been added yet.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -169,6 +169,15 @@ export interface PlannedAction {
          * overrides etc.) can resolve.
          */
         siteRefKey: string;
+        /**
+         * Environment languages to ensure (idempotently add) BEFORE
+         * createSite: the site's primary `language` plus any
+         * `additionalLanguages`. createSite fails when its `language`
+         * isn't already on the environment; adding them also makes them
+         * available environment-wide (e.g. to the brand-kit Glossary's
+         * org locales).
+         */
+        languages: string[];
       }
     | {
         kind: "addItemVersion";
@@ -1943,11 +1952,14 @@ const planCreateSite = async (
       collectionDescription: op.collectionDescription,
     }),
   };
+  // Languages to ensure on the environment before createSite — the primary
+  // plus any declared additionals, de-duped and order-preserving.
+  const languages = Array.from(new Set([op.language, ...(op.additionalLanguages ?? [])]));
   return {
     index,
     operation: op,
     status: "create",
-    mutation: { kind: "createSite", input, siteRefKey: op.siteRefKey },
+    mutation: { kind: "createSite", input, siteRefKey: op.siteRefKey, languages },
   };
 };
 

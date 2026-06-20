@@ -1,6 +1,11 @@
 import { listCollections, type SiteCollection } from "../../sites/api/collections";
 import { getJobStatus, type Job } from "../../sites/api/jobs";
-import { addLanguage, listLanguages, type Language } from "../../sites/api/languages";
+import {
+  addLanguage,
+  listLanguages,
+  parseLanguageCode,
+  type Language,
+} from "../../sites/api/languages";
 import {
   createSite,
   deleteSite,
@@ -77,7 +82,7 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
   listSiteTemplates: () => listSiteTemplates(options),
   listCollections: () => listCollections(options),
   listLanguages: () => listLanguages(options),
-  addLanguage: (languageCode) => addLanguage(options, { languageCode }),
+  addLanguage: (languageCode) => addLanguage(options, parseLanguageCode(languageCode)),
 });
 
 export type { Job, JobResponse, Language, NewSiteInput, Site, SiteCollection, SiteTemplate };

@@ -5827,6 +5827,7 @@ scai provision [options] [command]
 - [`scai provision deploy`](#scai-provision-deploy) — XM Cloud Deploy API commands
 - [`scai provision serialization`](#scai-provision-serialization) — Item serialization commands
 - [`scai provision recipe`](#scai-provision-recipe) — Compile, plan, and push declarative recipes to Sitecore
+- [`scai provision sites`](#scai-provision-sites) — XM Cloud Sites API — environment languages (shared by sites + the brand-kit Glossary)
 
 ### scai provision deploy
 
@@ -7934,6 +7935,118 @@ scai provision recipe prune-defaults [options]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
+
+### scai provision sites
+
+XM Cloud Sites API — environment languages (shared by sites + the brand-kit Glossary)
+
+```
+scai provision sites [options] [command]
+```
+
+**Subcommands**
+
+- [`scai provision sites language`](#scai-provision-sites-language) — Manage the environment's languages (shared by sites + the brand-kit Glossary)
+
+#### scai provision sites language
+
+Manage the environment's languages (shared by sites + the brand-kit Glossary)
+
+**Aliases:** `lang`
+
+```
+scai provision sites language [options] [command]
+```
+
+**Subcommands**
+
+- [`scai provision sites language list`](#scai-provision-sites-language-list) — List languages added to the environment
+- [`scai provision sites language list-supported`](#scai-provision-sites-language-list-supported) — List languages SitecoreAI supports — the catalog you can add from
+- [`scai provision sites language add`](#scai-provision-sites-language-add) — Add a language to the environment (also makes it available to the brand-kit Glossary)
+- [`scai provision sites language rm`](#scai-provision-sites-language-rm) — Remove a language from the environment
+
+##### scai provision sites language list
+
+List languages added to the environment
+
+```
+scai provision sites language list [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+##### scai provision sites language list-supported
+
+List languages SitecoreAI supports — the catalog you can add from
+
+```
+scai provision sites language list-supported [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+##### scai provision sites language add
+
+Add a language to the environment (also makes it available to the brand-kit Glossary)
+
+```
+scai provision sites language add [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--allow-write` — Allow write operations for this command without updating config
+- `--code <code>` — Regional ISO code, e.g. fr-FR or da-DK
+
+##### scai provision sites language rm
+
+Remove a language from the environment
+
+**Aliases:** `remove`
+
+```
+scai provision sites language rm [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--allow-write` — Allow write operations for this command without updating config
+- `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
+- `--code <code>` — Regional ISO code to remove
 
 ## scai sync
 

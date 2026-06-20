@@ -272,6 +272,12 @@ export const BrandKitRecipeSchema = z.object({
   displayName: z.string().min(1).optional().describe("Author-facing label; defaults to `name`."),
   description: z.string().optional().describe("Human description of the kit."),
   industry: z.string().optional().describe('Industry label, e.g. "retail" or "developer-tools".'),
+  logo: z
+    .string()
+    .optional()
+    .describe(
+      "URL of the brand kit's logo image (PNG per the Sitecore API). Rendered directly by the brand-kit UI, so any publicly reachable image URL works. Omit to leave the live logo unmanaged."
+    ),
   documents: z
     .array(BrandDocumentSchema)
     .default([])

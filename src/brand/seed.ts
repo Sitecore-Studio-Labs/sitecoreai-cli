@@ -107,13 +107,11 @@ export interface EnrichExistingKitResult {
  * previously created without documents (and therefore have zero
  * sections).
  *
- * Why this exists: `scai brand sync push` would historically call
- * `createBrandKit` (no documents) when the operator's recipe shipped
- * no source PDF, leaving the kit with zero sections forever. The
- * synthesize-stub-PDF feature fixed initial creation; this function
- * unblocks the kits already stuck in that state — calling
- * `apply()` against the existing kit now produces a stub doc and
- * runs enrichment, so field writes have somewhere to land.
+ * Why this exists: this is the document-ingestion + AI enrichment path
+ * for operators who ship *real* source documents and want sections
+ * populated from their content. (Kits with no source document don't need
+ * this — `createBrandKit` + `publishBrandKit` materializes the canonical
+ * section + field set directly, and the recipe writes values via PATCH.)
  */
 export const enrichBrandKitWithDocuments = async (
   options: EnrichExistingKitOptions

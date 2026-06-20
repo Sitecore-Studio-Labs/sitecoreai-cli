@@ -12,7 +12,8 @@
  */
 import {
   createBrandKit,
-  enrichBrandKitWithDocuments,
+  publishBrandKit,
+  updateBrandKitLogo,
   getBrandKit,
   listBrandKitFields,
   listBrandKitSections,
@@ -55,7 +56,6 @@ import {
   type BrandFieldValue,
   type BrandKitRecipe,
 } from "./schema";
-import { synthesizeBrandStubDocument } from "./synthesize-doc";
 
 /** Map key for a (section name, field name) pair. The NUL separator
  *  (never legal in a section or field name) lets the diagnostic block
@@ -387,6 +387,7 @@ const readCurrentInternal = async (
       name: kit.name,
       description: kit.description ?? undefined,
       industry: kit.industry ?? undefined,
+      logo: (kit as { logo?: string | null }).logo ?? undefined,
       documents: [],
       sections,
       sectionProperties,
@@ -444,10 +445,11 @@ const loadPriorTenantId = async (ctx: SyncContext, refId: string): Promise<strin
 
 /**
  * Self-heal probe for stuck kits: when NONE of the section/field pairs
- * the writes target are reachable on the live kit, synthesize a stub PDF
- * and run enrichment on the existing kit id (or just log when
- * `--no-enrich` is set). Does nothing when there are no writes or at
- * least one target already resolves.
+ * the writes target are reachable on the live kit, publish the kit. The
+ * canonical section + field set is materialized on *publish* (no
+ * document, no enrichment), so publishing repairs a kit that was created
+ * but never published. Idempotent. Does nothing when there are no writes
+ * or at least one target already resolves.
  */
 const selfHealUnreachableKit = async (
   client: BrandApiClientOptions,
@@ -468,38 +470,17 @@ const selfHealUnreachableKit = async (
   const initialIndex = await indexFields(client, brandKitId, ctx.signal);
   const anyTargetReachable = writeKeys.some((k) => initialIndex.has(fieldKey(k.section, k.field)));
   if (anyTargetReachable) return;
-  if (ctx.skipEnrichment) {
-    // Operator asked to skip enrichment; surface the diagnostic
-    // so the "Applied 0 / N skipped" outcome is explainable, but
-    // don't trigger the self-heal pipeline they opted out of.
-    ctx.logger?.info(
-      `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}). \`--no-enrich\` is set, so the self-heal enrichment cycle is skipped — every field write will skip. Re-run without \`--no-enrich\` to populate the section structure.`
-    );
-    return;
-  }
+  // None of the targeted sections/fields are reachable. The canonical
+  // section + field set is created as a side-effect of *publishing* a
+  // kit — not (as previously believed) by running enrichment over an
+  // uploaded document. A kit created but never published therefore has
+  // zero sections and skips every field write. Publishing is idempotent
+  // (already-published kits return 200) and needs no document or paid
+  // enrichment pipeline, so we can always self-heal by publishing.
   ctx.logger?.info(
-    `Brand kit "${ref.id}" exists but none of the ${sectionsTargetedByWrites.length} recipe section(s) are reachable on the live kit (live field count: ${initialIndex.size}) — synthesizing a stub PDF and running enrichment on the existing kit id (paid, ~5-15 min).`
+    `Brand kit "${ref.id}" has none of the ${sectionsTargetedByWrites.length} targeted section(s) reachable (live field count: ${initialIndex.size}) — publishing to materialize the canonical sections (no document, no enrichment).`
   );
-  const stub = synthesizeBrandStubDocument({
-    brandKitName: ref.id,
-    sectionNames: sectionsTargetedByWrites,
-  });
-  await enrichBrandKitWithDocuments({
-    client,
-    brandKitId,
-    name: ref.id,
-    documents: [
-      {
-        kind: "url",
-        url: stub.url,
-        title: stub.title,
-        tags: stub.tags,
-      },
-    ],
-    signal: ctx.signal,
-    onProgress: (event) =>
-      ctx.logger?.info(`  [+${event.elapsedSec}s] ${event.stage}: ${event.message}`),
-  });
+  await publishBrandKit({ client, brandKitId, signal: ctx.signal });
 };
 
 /**
@@ -584,24 +565,18 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
   const kitChange = plan.changes.find((change) => change.meta?.stage === "kit");
   const documentChanges = plan.changes.filter((change) => change.meta?.stage === "document");
   const fieldChanges = plan.changes.filter((change) => change.meta?.stage === "field");
+  const logoChange = plan.changes.find((change) => change.meta?.stage === "logo");
 
-  // Resolve the kit id — running create → ingest → enrich when the plan
-  // calls for it.
+  // Resolve the kit id. Two creation paths:
+  //   - operator shipped real source documents → full seed (upload +
+  //     publish + ingest + AI enrichment) so sections are populated from
+  //     their content.
+  //   - no document → create + publish. The canonical section + field set
+  //     is materialized on *publish* (verified), so no stub document and
+  //     no paid enrichment are needed; the field loop below converges
+  //     values into those sections via PATCH.
   let brandKitId: string;
   if (kitChange) {
-    // --no-enrich + creating a fresh kit is incoherent: sections only
-    // exist after enrichment, and PATCHes can't land without sections.
-    // Refuse up front with the explanation rather than silently
-    // creating a bare kit + reporting every field skipped.
-    if (ctx.skipEnrichment) {
-      throw createScaiError(
-        `Brand kit "${ref.id}" does not exist yet — \`--no-enrich\` cannot bootstrap a new kit because Sitecore's Brand Management API only creates sections via the enrichment pipeline.`,
-        "INPUT_INVALID",
-        {
-          hint: "Run once without `--no-enrich` to seed the kit, then re-run with `--no-enrich` for fast iteration on field values.",
-        }
-      );
-    }
     const name = String(kitChange.after);
     const description = kitChange.meta?.description as string | undefined;
     const industry = kitChange.meta?.industry as string | undefined;
@@ -609,44 +584,9 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       .map((change) => change.meta?.document as BrandDocument | undefined)
       .filter((doc): doc is BrandDocument => doc !== undefined);
 
-    // Sitecore's Brand Management API has no "create section" endpoint
-    // — sections only appear after EnrichSectionsPipeline runs over a
-    // document. If the recipe declares field values but the operator
-    // shipped no source doc, every field write would land on a kit
-    // with zero sections and get marked `skipped` by the field loop
-    // below (the live kit would end up blank). Synthesize a stub PDF
-    // naming the declared sections so the canonical 7-section set
-    // gets created and our PATCH calls have somewhere to land.
-    const fieldSectionNames = Array.from(
-      new Set(
-        fieldChanges
-          .map((change) => change.meta?.section)
-          .filter((section): section is string => typeof section === "string")
-      )
-    );
-    const synthesizeStub = operatorDocuments.length === 0 && fieldSectionNames.length > 0;
-    const documents: BrandDocument[] = synthesizeStub
-      ? [
-          (() => {
-            const stub = synthesizeBrandStubDocument({
-              brandKitName: name,
-              sectionNames: fieldSectionNames,
-            });
-            return {
-              kind: "url",
-              url: stub.url,
-              title: stub.title,
-              tags: stub.tags,
-            };
-          })(),
-        ]
-      : operatorDocuments;
-
-    if (documents.length > 0) {
+    if (operatorDocuments.length > 0 && !ctx.skipEnrichment) {
       ctx.logger?.info(
-        synthesizeStub
-          ? `Seeding brand kit "${name}" — no operator document, synthesizing a stub PDF naming ${fieldSectionNames.length} section(s) so EnrichSections produces the canonical section set. Field values then converge via PATCH (paid, ~5-15 min).`
-          : `Seeding brand kit "${name}" — create -> upload ${documents.length} doc(s) -> publish -> ingest -> enrich (paid, ~5-15 min).`
+        `Seeding brand kit "${name}" — create -> upload ${operatorDocuments.length} doc(s) -> publish -> ingest -> enrich (paid, ~5-15 min).`
       );
       // `seedBrandKit` accepts the recipe-shaped `BrandDocument` union
       // directly; registry-file variants without a resolved URL get
@@ -655,7 +595,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       const result = await seedBrandKit({
         client,
         name,
-        documents,
+        documents: operatorDocuments,
         description,
         industry,
         signal: ctx.signal,
@@ -664,7 +604,15 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       });
       brandKitId = result.kit.id;
     } else {
+      if (operatorDocuments.length > 0 && ctx.skipEnrichment) {
+        ctx.logger?.info(
+          `\`--no-enrich\` set — skipping ingestion/enrichment of ${operatorDocuments.length} document(s) for "${name}"; creating + publishing the kit so field values still converge into the canonical sections.`
+        );
+      }
       const kit = await createBrandKit({ client, name, description, industry, signal: ctx.signal });
+      // Publish materializes the canonical sections + fields — the field
+      // loop below writes into them. Idempotent on an already-published kit.
+      await publishBrandKit({ client, brandKitId: kit.id, signal: ctx.signal });
       brandKitId = kit.id;
     }
     applied.push(kitChange, ...documentChanges);
@@ -681,18 +629,28 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
     brandKitId = found.id;
   }
 
-  // Self-heal path for stuck kits: an existing kit may have been
-  // previously created without going through the AI enrichment
-  // pipeline (older scai missing the synthesize-stub feature, a
-  // direct `createBrandKit` call, or an enrichment that produced
-  // sections-without-fields). The field-PATCH loop below silently
-  // skips every write against such a kit.
+  // Converge the kit-level logo (a plain URL, PATCHed directly). Runs for
+  // both freshly-created and pre-existing kits, independent of sections.
+  if (logoChange) {
+    await updateBrandKitLogo({
+      client,
+      brandKitId,
+      logo: String(logoChange.after),
+      signal: ctx.signal,
+    });
+    applied.push(logoChange);
+  }
+
+  // Self-heal path for stuck kits: an existing kit that was created but
+  // never published has zero sections (the canonical section + field set
+  // is materialized on publish), so the field-PATCH loop below would
+  // silently skip every write. The self-heal publishes such a kit.
   //
   // We trigger self-heal when an indexFields probe finds NONE of
-  // the section/field pairs the writes target. That covers both
-  // shapes of stuck kit (zero sections, sections-but-no-fields) and
-  // sections-with-wrong-names — without firing on a partially
-  // populated kit where some targets already exist.
+  // the section/field pairs the writes target. That covers the
+  // unpublished-kit shape (zero sections) and sections-with-wrong-names
+  // — without firing on a partially populated kit where some targets
+  // already exist.
   await selfHealUnreachableKit(client, brandKitId, fieldChanges, ref, ctx);
 
   // Converge field values against the (now-existing) kit.
@@ -745,7 +703,7 @@ const apply = async (plan: RecipePlan, ref: KindRef, ctx: SyncContext): Promise<
       // wait for sections to *appear*, not for enrichment to finish).
       // Without `aiEditable: false` on operator-authored PATCHes, a
       // late-arriving enrichment write can overwrite the recipe value
-      // with AI-generated content from the stub PDF — the "ruins half
+      // with AI-generated content from enrichment — the "ruins half
       // the work we seed" symptom. The flag pins the field's value to
       // what scai just wrote.
       await updateBrandKitField({

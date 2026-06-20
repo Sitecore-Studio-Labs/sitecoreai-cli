@@ -110,9 +110,11 @@ export {
 export {
   createBrandKit,
   publishBrandKit,
+  updateBrandKitLogo,
   deleteBrandKit,
   type CreateBrandKitOptions,
   type PublishBrandKitOptions,
+  type UpdateBrandKitLogoOptions,
   type DeleteBrandKitOptions,
 } from "./kits/create";
 

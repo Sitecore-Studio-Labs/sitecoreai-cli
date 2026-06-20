@@ -50,6 +50,21 @@ export const diffBrandKit = (
     });
   }
 
+  // Logo is a kit-level URL field, set via a PATCH (`updateBrandKitLogo`)
+  // regardless of whether the kit was just created or already exists.
+  // Only emit a change when the recipe declares a logo and it differs —
+  // an omitted `logo` leaves the live value unmanaged (no clear).
+  if (desired.logo !== undefined && desired.logo !== current?.logo) {
+    changes.push({
+      kind: current === null ? "create" : "update",
+      path: "logo",
+      summary: `Set brand kit logo`,
+      before: current?.logo,
+      after: desired.logo,
+      meta: { stage: "logo" },
+    });
+  }
+
   for (const [section, fields] of Object.entries(desired.sections)) {
     for (const [field, value] of Object.entries(fields)) {
       const path = `sections.${section}.${field}`;

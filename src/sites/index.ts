@@ -55,6 +55,17 @@ export {
   type CreateSiteCollectionInput,
 } from "./api/collections";
 
-export { listLanguages, addLanguage, type Language, type AddLanguageModel } from "./api/languages";
+export {
+  listLanguages,
+  listSupportedLanguages,
+  addLanguage,
+  updateLanguage,
+  removeLanguage,
+  parseLanguageCode,
+  type Language,
+  type AddLanguageModel,
+  type SupportedLanguage,
+  type EditLanguageInput,
+} from "./api/languages";
 
 export { getJobStatus, listJobs, type Job } from "./api/jobs";

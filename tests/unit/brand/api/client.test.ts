@@ -292,4 +292,99 @@ describe("requestBrandApi — 409 brand-kit-lock retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ id: "field-1" });
   });
+
+  // The remaining cases drive the backoff under fake timers: the real
+  // schedule is base 500ms doubled per attempt (~15s across 5 retries), so
+  // real timers would make the suite crawl. `runAllTimersAsync` flushes
+  // every backoff sleep without wall-clock waiting.
+  const lock409 = () => okResponse({ error: "Brand Kit is locked by another user" }, 409);
+
+  it("retries multiple consecutive 409 locks before eventually succeeding", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(lock409())
+        .mockResolvedValueOnce(lock409())
+        .mockResolvedValueOnce(lock409())
+        .mockResolvedValueOnce(okResponse({ id: "field-1" }, 200));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = requestBrandApi(client, {
+        basePath: "/stream/ai-skills-api",
+        path: "/brandkits/k1/sections/s1/fields/f1",
+        method: "PATCH",
+        body: { value: "x" },
+      });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      // 1 initial attempt + 3 retries = 4 calls (well under maxRetries: 5).
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(result).toEqual({ id: "field-1" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces BRAND_API_FAILED once all 409 retry attempts are exhausted", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn();
+      // 1 initial attempt + maxRetries: 5 = 6 attempts, all locked.
+      for (let i = 0; i < 6; i += 1) fetchMock.mockResolvedValueOnce(lock409());
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = requestBrandApi(client, {
+        basePath: "/stream/ai-skills-api",
+        path: "/brandkits/k1/sections/s1/fields/f1",
+        method: "PATCH",
+        body: { value: "x" },
+      });
+      const assertion = expect(pending).rejects.toMatchObject({
+        code: "BRAND_API_FAILED",
+        // ScaiError carries no `status` field — the 409 surfaces in the message.
+        message: expect.stringContaining("(409)"),
+      });
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(fetchMock).toHaveBeenCalledTimes(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits between 409 retries (scheduled backoff, not a tight loop)", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(lock409())
+        .mockResolvedValueOnce(lock409())
+        .mockResolvedValueOnce(okResponse({ id: "field-1" }, 200));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = requestBrandApi(client, {
+        basePath: "/stream/ai-skills-api",
+        path: "/brandkits/k1/sections/s1/fields/f1",
+        method: "PATCH",
+        body: { value: "x" },
+      });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // Each of the 2 retries is gated by a positive backoff delay.
+      const backoffDelays = setTimeoutSpy.mock.calls
+        .map((call) => call[1])
+        .filter((ms): ms is number => typeof ms === "number" && ms > 0);
+      expect(backoffDelays.length).toBeGreaterThanOrEqual(2);
+      expect(result).toEqual({ id: "field-1" });
+    } finally {
+      setTimeoutSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

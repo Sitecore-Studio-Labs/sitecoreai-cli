@@ -19,6 +19,7 @@ import { createSerializationCommand } from "./commands/serialization";
 import { createStatusCommand } from "./commands/status";
 import { createLoginCommand } from "./commands/login";
 import { createDeployCommand } from "./commands/deploy";
+import { createSitesCommand } from "./commands/sites";
 import { createExplainCommand } from "./commands/explain";
 import { createCapabilitiesCommand } from "./commands/capabilities";
 import { createDoctorCommand } from "./commands/doctor";
@@ -130,6 +131,7 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
   provision.addCommand(createDeployCommand());
   provision.addCommand(createSerializationCommand());
   provision.addCommand(createRecipeCommand());
+  provision.addCommand(createSitesCommand());
   provision.addHelpText(
     "after",
     "\nRoadmap: `scai provision iar` — package content as Items-as-Resources\n" +

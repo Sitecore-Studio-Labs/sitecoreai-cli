@@ -232,6 +232,52 @@ describe("diffCampaign — campaign present", () => {
     expect(plan.changes.filter((c) => c.kind === "create")).toHaveLength(0);
   });
 
+  it("treats a task handle change (same sitecoreId) as an update, not a create", () => {
+    // sitecoreId is the strongest identity key, so a task whose handle is
+    // re-minted but whose server id is unchanged must still converge onto
+    // the existing task rather than spawning a duplicate.
+    const withIds = recipe({
+      name: "Spring Launch",
+      deliverables: [
+        {
+          name: "Landing page",
+          sitecoreId: "11111111-1111-4111-8111-111111111111",
+          tasks: [
+            {
+              name: "Draft copy",
+              handle: "draft-copy",
+              sitecoreId: "22222222-2222-4222-8222-222222222222",
+            },
+          ],
+        },
+      ],
+    });
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        deliverables: [
+          {
+            name: "Landing page",
+            sitecoreId: "11111111-1111-4111-8111-111111111111",
+            tasks: [
+              {
+                name: "Draft copy",
+                handle: "hero-copy",
+                sitecoreId: "22222222-2222-4222-8222-222222222222",
+              },
+            ],
+          },
+        ],
+      }),
+      withIds
+    );
+    const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
+    expect(taskChange?.kind).toBe("update");
+    expect((taskChange?.before as { handle?: string }).handle).toBe("draft-copy");
+    expect((taskChange?.after as { handle?: string }).handle).toBe("hero-copy");
+    expect(plan.changes.filter((c) => c.kind === "create")).toHaveLength(0);
+  });
+
   it("treats a renamed task (same handle, no id) as an update", () => {
     const withHandles = recipe({
       name: "Spring Launch",
@@ -251,6 +297,50 @@ describe("diffCampaign — campaign present", () => {
     const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
     expect(taskChange?.kind).toBe("update");
     expect(plan.changes.filter((c) => c.kind === "create")).toHaveLength(0);
+  });
+
+  it("falls back to handle when a task's sitecoreId matches nothing current", () => {
+    // matchByIdentity is a fallback CHAIN, not a hard gate: a desired
+    // sitecoreId that matches no current task falls through to handle. So a
+    // same-handle task whose server id drifted converges onto the existing
+    // task (update), NOT a duplicate create. (sitecoreId only "wins" when it
+    // actually matches a current task.)
+    const current = recipe({
+      name: "Spring Launch",
+      deliverables: [
+        {
+          name: "Landing page",
+          tasks: [
+            {
+              name: "Draft copy",
+              handle: "draft-copy@1",
+              sitecoreId: "22222222-2222-4222-8222-222222222222",
+            },
+          ],
+        },
+      ],
+    });
+    const plan = diffCampaign(
+      recipe({
+        name: "Spring Launch",
+        deliverables: [
+          {
+            name: "Landing page",
+            tasks: [
+              {
+                name: "Draft hero copy",
+                handle: "draft-copy@1",
+                sitecoreId: "33333333-3333-4333-8333-333333333333",
+              },
+            ],
+          },
+        ],
+      }),
+      current
+    );
+    const taskChange = plan.changes.find((c) => c.meta?.stage === "task");
+    expect(taskChange?.kind).toBe("update");
+    expect(plan.changes.some((c) => c.kind === "create" && c.meta?.stage === "task")).toBe(false);
   });
 
   it("treats a renamed deliverable (same id) as an update of its tasks, not a new deliverable", () => {

@@ -1,7 +1,7 @@
 import { createScaiError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "../api/client";
 import { renderRefValue } from "../api/ref-encoding";
-import type { SitesApiClient } from "../api/sites-client";
+import type { Language, SitesApiClient } from "../api/sites-client";
 import type { FieldValue, OperationIr } from "../ir/operations";
 import {
   buildAction,
@@ -314,6 +314,47 @@ const synthesizeCreateSnapshot = ({
   return { itemId, parentId: parentItemId, templateId, name, path, fields: remoteFields };
 };
 
+/** True when an `addLanguage` error means the language is already present. */
+const isAlreadyAddedLanguageError = (err: unknown): boolean => {
+  const message = err instanceof Error ? err.message : String(err);
+  return /\b409\b/.test(message) || /already/i.test(message);
+};
+
+/** Regional + iso codes currently on the environment, lowercased for matching. */
+const presentLanguageCodes = (languages: Language[]): Set<string> => {
+  const set = new Set<string>();
+  for (const lang of languages) {
+    if (lang.iso) set.add(lang.iso.toLowerCase());
+    if (lang.regionalIsoCode) set.add(lang.regionalIsoCode.toLowerCase());
+  }
+  return set;
+};
+
+/**
+ * Ensure each required language exists on the environment before
+ * `createSite` (which fails on an unknown `language`). Idempotent: skip
+ * codes already present (single `listLanguages` pre-check), and treat the
+ * Sites API's "already added" (409) as success. Adding a language here also
+ * makes it available environment-wide — e.g. to the brand-kit Glossary's
+ * org locales — so a recipe's `additionalLanguages` provisions brand locales
+ * as a side effect.
+ */
+const ensureEnvironmentLanguages = async (
+  sitesClient: SitesApiClient,
+  languages: string[]
+): Promise<void> => {
+  if (languages.length === 0) return;
+  const present = presentLanguageCodes(await sitesClient.listLanguages());
+  for (const code of languages) {
+    if (present.has(code.toLowerCase())) continue;
+    try {
+      await sitesClient.addLanguage(code);
+    } catch (err) {
+      if (!isAlreadyAddedLanguageError(err)) throw err;
+    }
+  }
+};
+
 interface DispatchMutationOptions {
   client: AuthoringApiClient;
   sitesClient: SitesApiClient | undefined;
@@ -438,7 +479,10 @@ const dispatchMutation = async ({
       "UNKNOWN"
     );
   }
-  const { input, siteRefKey } = action.mutation;
+  const { input, siteRefKey, languages } = action.mutation;
+  // createSite fails on a language the environment doesn't have yet — add
+  // the site's primary + additional languages first (idempotent).
+  await ensureEnvironmentLanguages(sitesClient, languages);
   const jobResponse = await sitesClient.createSite(input);
   const jobHandle = jobResponse.handle ?? jobResponse.jobHandle;
   if (!jobHandle) {

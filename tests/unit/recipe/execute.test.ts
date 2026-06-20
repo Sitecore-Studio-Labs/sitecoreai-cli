@@ -547,6 +547,73 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
     expect(siteCreated).toBe(true);
   });
 
+  it("ensures language + additionalLanguages on the environment before createSite, skipping present ones", async () => {
+    const client = new MockAuthoringClient();
+    client.preload({
+      itemId: "tpl-id",
+      templateId: SITECORE_TEMPLATES.TEMPLATE,
+      parentId: "p",
+      name: "SiteTemplate",
+      path: "/sitecore/templates/SiteTemplate",
+      fields: [],
+    });
+    client.preload({
+      itemId: "site-id-1",
+      templateId: "site-tpl",
+      parentId: "p",
+      name: "MarketingSite",
+      path: "/sitecore/content/Marketing/MarketingSite",
+      fields: [],
+    });
+
+    const added: string[] = [];
+    const order: string[] = [];
+    const sitesClient = makeSitesClient({
+      listSites: async () => [] as never,
+      // "en" already present on the environment; da/fr-FR are not.
+      listLanguages: async () => [{ iso: "en" }] as never,
+      addLanguage: async (code) => {
+        added.push(code);
+        order.push(`add:${code}`);
+        return {} as never;
+      },
+      createSite: async () => {
+        order.push("createSite");
+        return { handle: "job-1" } as never;
+      },
+    });
+
+    const ir: OperationIr = {
+      schemaVersion: "1",
+      recipeHandle: "marketing-site@1",
+      operations: [
+        {
+          op: "CreateSiteFromTemplate",
+          policy: "CreateOnly",
+          label: "create-site:marketing-site@1",
+          siteRefKey: SITE_REF,
+          siteName: "MarketingSite",
+          language: "en",
+          additionalLanguages: ["da", "fr-FR"],
+          templateRefKey: TEMPLATE_REF,
+          collectionName: "Marketing",
+        },
+      ],
+    };
+
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      sitesClient,
+      crossRecipeRefs: new Map([[TEMPLATE_REF, "/sitecore/templates/SiteTemplate"]]),
+    });
+
+    expect(result.aborted).toBe(false);
+    // "en" already present → skipped; the two missing ones are added...
+    expect(added).toEqual(["da", "fr-FR"]);
+    // ...and every add runs BEFORE the site is created.
+    expect(order).toEqual(["add:da", "add:fr-FR", "createSite"]);
+  });
+
   it("plans createSite as skip when the site already exists in the tenant", async () => {
     const client = new MockAuthoringClient();
     client.preload({

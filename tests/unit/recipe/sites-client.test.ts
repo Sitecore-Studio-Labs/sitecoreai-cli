@@ -31,6 +31,12 @@ vi.mock("../../../src/sites/api/jobs", () => ({ getJobStatus: apiMocks.getJobSta
 vi.mock("../../../src/sites/api/languages", () => ({
   addLanguage: apiMocks.addLanguage,
   listLanguages: apiMocks.listLanguages,
+  parseLanguageCode: (code: string) => {
+    const dash = code.indexOf("-");
+    return dash === -1
+      ? { languageCode: code }
+      : { languageCode: code.slice(0, dash), regionCode: code.slice(dash + 1) };
+  },
 }));
 vi.mock("../../../src/sites/api/sites", () => ({
   createSite: apiMocks.createSite,
@@ -102,5 +108,15 @@ describe("createSitesApiClient — delegation", () => {
     const result = await client.addLanguage("da");
     expect(result).toEqual({ languageCode: "da" });
     expect(apiMocks.addLanguage).toHaveBeenCalledWith(options, { languageCode: "da" });
+  });
+
+  it("addLanguage splits a regional code into languageCode + regionCode", async () => {
+    apiMocks.addLanguage.mockResolvedValue({});
+    const client = createSitesApiClient(options);
+    await client.addLanguage("fr-FR");
+    expect(apiMocks.addLanguage).toHaveBeenCalledWith(options, {
+      languageCode: "fr",
+      regionCode: "FR",
+    });
   });
 });

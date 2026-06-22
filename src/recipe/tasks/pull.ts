@@ -28,6 +28,7 @@ import {
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
+  resolveSeedSite,
   resolveTenant,
   toLogger,
   type RecipeTenantOptions,
@@ -1909,6 +1910,7 @@ export const runRecipePull = async (options: RecipePullOptions): Promise<RecipeP
     placeholderSettingsRoot:
       options.placeholderSettingsRoot ?? tenant.environment.placeholderSettingsRoot,
     pagesRoot: options.pagesRoot ?? tenant.environment.pagesRoot,
+    site: resolveSeedSite(tenant.environment),
   };
   const diskIrs = compileRecipeSet(diskRecipes, compileContext);
   const tenantIrs = compileRecipeSet(tenantRecipes, compileContext);

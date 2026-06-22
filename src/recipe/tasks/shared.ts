@@ -422,6 +422,43 @@ export const resolveRecipeRoots = (
   return { templatesRoot, renderingsRoot };
 };
 
+/**
+ * Derive the GUID-seed site for an env profile.
+ *
+ * Recipe item GUIDs are `uuidv5(`${seed}::${handle}`)` where `seed` is
+ * `CompileContext.site ?? "default"` (see `compile/shared.ts#siteOf`).
+ * Returning `undefined` here leaves `context.site` unset, so the seed stays
+ * `"default"` — byte-identical to legacy behavior for every profile that does
+ * not opt in.
+ *
+ * When a profile sets `siteScopedGuids: true`, the seed becomes its `site`,
+ * so the same recipe handle resolves to a *distinct* item per site (required
+ * to install one recipe onto multiple sites in one Sitecore instance without
+ * colliding on Sitecore's globally-unique item IDs).
+ *
+ * MUST be called from every compile path (push, pull, compile, sync) so the
+ * write path and the read/diff paths agree on item GUIDs — a mismatch would
+ * silently break the three-way merge.
+ *
+ * Throws `INPUT_INVALID` when scoping is enabled but no `site` is configured.
+ */
+export const resolveSeedSite = (
+  environment: Pick<EnvironmentConfiguration, "siteScopedGuids" | "site"> | undefined
+): string | undefined => {
+  if (!environment?.siteScopedGuids) return undefined;
+  const site = environment.site?.trim();
+  if (!site) {
+    throw createScaiError(
+      "siteScopedGuids is enabled but no 'site' is set on the env profile.",
+      "INPUT_INVALID",
+      {
+        hint: "Set 'site' (the SXA Headless site name) on the env profile, or remove 'siteScopedGuids'.",
+      }
+    );
+  }
+  return site;
+};
+
 export interface RecipeInputResolution {
   files: string[];
   source: "input-flag" | "config-glob";

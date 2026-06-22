@@ -33,6 +33,7 @@ import {
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
+  resolveSeedSite,
   resolveTenant,
   toLogger,
   withDerivedRecipeRoots,
@@ -522,6 +523,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    site: resolveSeedSite(environment),
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
@@ -599,6 +601,10 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    // GUID seed is part of the cache identity — toggling site scoping
+    // changes every item's GUID, so a "default"-seeded cache entry must
+    // not be reused once the profile opts in.
+    seedSite: resolveSeedSite(environment),
   });
   const irsToExecute: { ir: OperationIr; irHash: string; cached: false }[] = [];
   const cachedSkips: {

@@ -8,6 +8,7 @@ import {
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
+  resolveSeedSite,
   toLogger,
   type RecipeCompileOptions,
 } from "./shared";
@@ -102,6 +103,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
       templatesRoot,
       renderingsRoot,
       ...optionalRoots,
+      site: resolveSeedSite(environment),
       marketplacePluginOverrides: root.marketplacePluginOverrides,
     });
 

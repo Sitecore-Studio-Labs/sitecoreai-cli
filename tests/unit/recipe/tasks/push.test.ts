@@ -11,6 +11,8 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   // so derivation is a no-op and resolveCompileRoots sees the env unchanged.
   withDerivedRecipeRoots: (env: unknown) => env,
   ensureSiteCollection: async (env: unknown) => env,
+  // These tests use envs without siteScopedGuids, so the seed stays "default".
+  resolveSeedSite: () => undefined,
 }));
 vi.mock("../../../../src/recipe/io", () => ({
   loadRecipe: vi.fn(),

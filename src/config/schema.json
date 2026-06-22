@@ -199,6 +199,10 @@
           "type": "string",
           "description": "SXA Headless site collection (parent tenant) for `site`. Set alongside `site` to enable recipeRoots derivation."
         },
+        "siteScopedGuids": {
+          "type": "boolean",
+          "description": "Opt in to site-scoped recipe item GUIDs. Recipe items are keyed by uuidv5(`${seed}::${handle}`); the seed defaults to `default` (same handle => same item across all sites). When true, the seed becomes this profile's `site`, yielding a distinct item per site — required to install one recipe onto multiple sites in a single Sitecore instance without GUID collisions. Requires `site`. Leaving it unset is byte-identical to legacy behavior; flipping it on a tenant that already pushed re-keys its items (a migration)."
+        },
         "environmentType": {
           "type": "string",
           "description": "Environment type (cm or eh)",

@@ -112,6 +112,8 @@ describe("top-level commands", () => {
       "--client-id",
       "--client-secret",
       "--use-client-credentials",
+      "--site",
+      "--site-collection",
       "--set-default",
     ]);
   });

@@ -52,6 +52,18 @@ export const createInitCommand = (): Command => {
     .addOption(
       new Option("--use-client-credentials", "Use client credentials instead of interactive login")
     )
+    .addOption(
+      new Option(
+        "--site <name>",
+        "SXA Headless site name. Written to the profile so `scai provision recipe` derives recipeRoots automatically (no hand-written paths)."
+      )
+    )
+    .addOption(
+      new Option(
+        "--site-collection <name>",
+        "SXA Headless site collection (parent tenant). When omitted, scai tries to discover it from the environment's sites."
+      )
+    )
     .addOption(new Option("--set-default", "Set as default environment"));
 
   command.addHelpText(
@@ -74,6 +86,11 @@ export const createInitCommand = (): Command => {
       "",
       "  Identifiers written to the profile:",
       "    --organization-id  --tenant-id",
+      "",
+      "  Recipe authoring (optional) — set the SXA site so recipe commands",
+      "  derive every recipeRoot automatically instead of hand-writing paths:",
+      "    --site <name>  [--site-collection <name>]",
+      "  Omit --site-collection to let scai discover it from the environment.",
       "",
       "Examples:",
       '  $ scai setup init -n demo --project "My Project" --deploy-environment "Dev"',

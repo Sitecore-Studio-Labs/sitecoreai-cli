@@ -32,6 +32,7 @@ import {
   type ContentFieldValue,
   type Layout,
   type PageRecipe,
+  type PageRecipeParsed,
   PageRecipeSchema,
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
@@ -360,7 +361,11 @@ interface PagePath {
  * for legacy recipes without `itemPath` (`pagesRoot` is required only in
  * the fallback path).
  */
-const resolvePagePath = (recipe: PageRecipe, context: CompileContext, site: string): PagePath => {
+const resolvePagePath = (
+  recipe: PageRecipeParsed,
+  context: CompileContext,
+  site: string
+): PagePath => {
   if (recipe.itemPath) {
     const itemPath = recipe.itemPath.replace(/\{site\}/g, site);
     const lastSlash = itemPath.lastIndexOf("/");
@@ -393,7 +398,7 @@ const resolvePagePath = (recipe: PageRecipe, context: CompileContext, site: stri
  * captured variable.
  */
 interface PageEmitters {
-  recipe: PageRecipe;
+  recipe: PageRecipeParsed;
   policy: ReturnType<typeof defaultPolicyForRecipe>;
   itemRefKey: string;
   versionOps: Operation[];
@@ -427,7 +432,7 @@ const addVersionOp = (e: PageEmitters, language: string, version: number): AddIt
 const emitStoryVersionEntry = (
   e: PageEmitters,
   language: string,
-  entry: NonNullable<PageRecipe["versions"]>[string][number]
+  entry: NonNullable<PageRecipeParsed["versions"]>[string][number]
 ): void => {
   const { recipe, itemRefKey, policy } = e;
   if ((entry.variants?.length ?? 0) > 0) {
@@ -571,7 +576,7 @@ interface ScopedSlotInfo {
  * (one Sitecore item per slot, regardless of how many `(lang, version)`
  * cells reference it), so this collection is union-of-layouts.
  */
-const collectScopedSlots = (recipe: PageRecipe): Map<string, ScopedSlotInfo> => {
+const collectScopedSlots = (recipe: PageRecipeParsed): Map<string, ScopedSlotInfo> => {
   const slots = new Map<string, ScopedSlotInfo>();
   const addFrom = (layout: Layout): void => {
     for (const placements of Object.values(layout.placeholders)) {
@@ -682,7 +687,7 @@ const deriveStandardFieldId = (parentRefKey: string, fieldName: string): string 
  * itself, always non-empty per `ComponentPlacementSchema`).
  */
 const collectPageDataInsertOptions = (
-  recipe: PageRecipe,
+  recipe: PageRecipeParsed,
   context: CompileContext
 ): readonly string[] => {
   if (!recipe.layout) return [];

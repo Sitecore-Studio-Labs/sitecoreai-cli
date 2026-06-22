@@ -125,6 +125,30 @@ export default {
 For an enum to back the `ColorScheme` Droplink, see
 [`example/recipes/color-scheme.recipe.ts`](../example/recipes/color-scheme.recipe.ts).
 
+### Authoring types omit defaults
+
+The exported `<Kind>Recipe` types (`ComponentTemplateRecipe`,
+`EnumerationRecipe`, …) are the **authoring** shape: every field that the
+schema gives a `.default(...)` is **optional** in your object literal. You
+only write what you mean — omit `fields`, `variants`, `params`, an empty
+`datasource.query`, `dynamicPlaceholders`, and the like, and the compiler
+fills the defaults at parse time. So the minimal placeable component is just:
+
+```ts
+import type { ComponentTemplateRecipe } from "@sitecoreai-labs/sitecoreai-cli/recipe";
+
+export default {
+  kind: "component-template",
+  schemaVersion: "1",
+  handle: "cta-button@1",
+  name: "CtaButton",
+  displayName: "CTA Button",
+} satisfies ComponentTemplateRecipe;
+```
+
+(Internally the compiler operates on the parsed, defaults-present shape —
+exposed as `<Kind>RecipeParsed` for scai's own use; authors never need it.)
+
 ## Handles
 
 Every recipe declares a `handle` — a stable identity string in the form

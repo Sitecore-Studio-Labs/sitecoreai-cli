@@ -30,6 +30,7 @@ import { emitLayoutXml } from "../layout/emit";
 import {
   type ContentFieldValue,
   type ContentItemRecipe,
+  type ContentItemRecipeParsed,
   ContentItemRecipeSchema,
 } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
@@ -84,7 +85,7 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * body shallow instead of nesting workflow/date/layout branches five deep).
  */
 interface ContentItemStoryEmitters {
-  recipe: ContentItemRecipe;
+  recipe: ContentItemRecipeParsed;
   policy: ReturnType<typeof defaultPolicyForRecipe>;
   itemRefKey: string;
   site: string;
@@ -102,7 +103,7 @@ interface ContentItemStoryEmitters {
 const emitStoryWorkflowState = (
   e: ContentItemStoryEmitters,
   language: string,
-  entry: NonNullable<ContentItemRecipe["versions"]>[string][number],
+  entry: NonNullable<ContentItemRecipeParsed["versions"]>[string][number],
   versionTag: string
 ): void => {
   if (entry.workflowState === undefined) return;
@@ -138,7 +139,7 @@ const emitStoryWorkflowState = (
 const emitStoryLayout = (
   e: ContentItemStoryEmitters,
   language: string,
-  entry: NonNullable<ContentItemRecipe["versions"]>[string][number],
+  entry: NonNullable<ContentItemRecipeParsed["versions"]>[string][number],
   versionTag: string
 ): void => {
   if (entry.layout === undefined) return;
@@ -174,7 +175,7 @@ const emitStoryLayout = (
 const emitStoryVersionEntry = (
   e: ContentItemStoryEmitters,
   language: string,
-  entry: NonNullable<ContentItemRecipe["versions"]>[string][number]
+  entry: NonNullable<ContentItemRecipeParsed["versions"]>[string][number]
 ): void => {
   const { recipe, policy, itemRefKey } = e;
   if ((entry.variants?.length ?? 0) > 0) {

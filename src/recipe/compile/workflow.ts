@@ -20,7 +20,11 @@ import {
 } from "../ir/operations";
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { WorkflowRecipeSchema, type WorkflowRecipe } from "../schema/recipe";
+import {
+  type WorkflowRecipe,
+  type WorkflowRecipeParsed,
+  WorkflowRecipeSchema,
+} from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 import { v5 as uuidv5 } from "uuid";
 
@@ -301,7 +305,7 @@ export function compileWorkflowRecipe(
  * `discriminatedUnion` rejects `ZodEffects` members). Mirror of
  * `compileEnumerationRecipe`'s `default ∈ values` check.
  */
-function validateWorkflowRecipe(recipe: WorkflowRecipe): void {
+function validateWorkflowRecipe(recipe: WorkflowRecipeParsed): void {
   const stateKeys = new Set(recipe.states.map((s) => s.key));
   if (!stateKeys.has(recipe.initialState)) {
     throw createScaiError(

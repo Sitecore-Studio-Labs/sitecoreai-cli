@@ -12,16 +12,16 @@ import { FileBaselineStorage } from "../runtime/baseline";
 import { classifyPullField } from "../runtime/merge";
 import type { OperationIr } from "../ir/operations";
 import type {
-  ComponentTemplateRecipe,
+  ComponentTemplateRecipeParsed,
   ContentFieldValue,
-  ContentItemRecipe,
-  ContentTemplateRecipe,
+  ContentItemRecipeParsed,
+  ContentTemplateRecipeParsed,
   ContentTranslation,
   ContentVersion,
   FieldDefinition,
   Layout,
-  PageRecipe,
-  PageTemplateRecipe,
+  PageRecipeParsed,
+  PageTemplateRecipeParsed,
   Recipe,
 } from "../schema/recipe";
 import {
@@ -518,8 +518,8 @@ const applyLayoutPick = (
  * CreateItem op shouldn't crash the pull).
  */
 export const mergeContentValueRecipe = (
-  diskRecipe: ContentItemRecipe | PageRecipe,
-  tenantRecipe: ContentItemRecipe | PageRecipe,
+  diskRecipe: ContentItemRecipeParsed | PageRecipeParsed,
+  tenantRecipe: ContentItemRecipeParsed | PageRecipeParsed,
   statuses: PerFieldStatuses,
   mainItemRefKey: string | undefined,
   /**
@@ -529,7 +529,7 @@ export const mergeContentValueRecipe = (
    * through to the default `disk-ahead → disk, else → tenant` policy.
    */
   winnerOverrides?: Map<string, "disk" | "tenant">
-): ContentItemRecipe | PageRecipe => {
+): ContentItemRecipeParsed | PageRecipeParsed => {
   if (mainItemRefKey === undefined) return tenantRecipe;
 
   /** Decide which side wins for one (fieldName, lang?, version?) cell. */
@@ -597,7 +597,7 @@ export const mergeContentValueRecipe = (
   // tenant-wins. Overlay disk-ahead field values per cell below.
   // Cast to the union for assignment safety; per-field merge preserves
   // the discriminator (`kind`).
-  const merged = { ...tenantRecipe } as ContentItemRecipe | PageRecipe;
+  const merged = { ...tenantRecipe } as ContentItemRecipeParsed | PageRecipeParsed;
 
   // Simple-mode default-language fields (DEFAULT_LANGUAGE = "en",
   // DEFAULT_VERSION = 1). compileContentItemRecipe / compilePageRecipe
@@ -698,9 +698,9 @@ export const mergeContentValueRecipe = (
   // item-level layout.
   if (diskRecipe.kind === "page" && tenantRecipe.kind === "page") {
     applyLayoutPick(
-      merged as PageRecipe,
-      (diskRecipe as PageRecipe).layout,
-      (tenantRecipe as PageRecipe).layout,
+      merged as PageRecipeParsed,
+      (diskRecipe as PageRecipeParsed).layout,
+      (tenantRecipe as PageRecipeParsed).layout,
       () => layoutWinner(DEFAULT_LANGUAGE, DEFAULT_VERSION)
     );
   }
@@ -839,14 +839,20 @@ export const mergeTemplateRecipe = ({
   tenantIr,
   winnerOverrides,
 }: {
-  diskRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe;
-  tenantRecipe: ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe;
+  diskRecipe:
+    | ComponentTemplateRecipeParsed
+    | ContentTemplateRecipeParsed
+    | PageTemplateRecipeParsed;
+  tenantRecipe:
+    | ComponentTemplateRecipeParsed
+    | ContentTemplateRecipeParsed
+    | PageTemplateRecipeParsed;
   statuses: PerFieldStatuses;
   diskIr: OperationIr;
   tenantIr: OperationIr;
   /** Per-(rawKey) override for the winner decision (merge-plan file). */
   winnerOverrides?: Map<string, "disk" | "tenant">;
-}): ComponentTemplateRecipe | ContentTemplateRecipe | PageTemplateRecipe => {
+}): ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed => {
   const diskIndex = templateFieldRefKeyIndex(diskIr);
   const tenantIndex = templateFieldRefKeyIndex(tenantIr);
   // Pre-group the statuses map ONCE — without this, every per-field
@@ -913,20 +919,20 @@ export const mergeTemplateRecipe = ({
   // variants, placeholders, section, meta, datasource, etc. that
   // template-level merge doesn't tackle.
   const merged = { ...tenantRecipe } as
-    | ComponentTemplateRecipe
-    | ContentTemplateRecipe
-    | PageTemplateRecipe;
+    | ComponentTemplateRecipeParsed
+    | ContentTemplateRecipeParsed
+    | PageTemplateRecipeParsed;
 
   merged.fields = mergeFieldList(diskRecipe.fields, tenantRecipe.fields, "fields");
 
   if (diskRecipe.kind === "component-template" && tenantRecipe.kind === "component-template") {
-    const diskComponent = diskRecipe as ComponentTemplateRecipe;
-    const tenantComponent = tenantRecipe as ComponentTemplateRecipe;
+    const diskComponent = diskRecipe as ComponentTemplateRecipeParsed;
+    const tenantComponent = tenantRecipe as ComponentTemplateRecipeParsed;
     if (
       (diskComponent.params && diskComponent.params.length > 0) ||
       (tenantComponent.params && tenantComponent.params.length > 0)
     ) {
-      (merged as ComponentTemplateRecipe).params = mergeFieldList(
+      (merged as ComponentTemplateRecipeParsed).params = mergeFieldList(
         diskComponent.params,
         tenantComponent.params,
         "params"
@@ -1437,8 +1443,8 @@ const selectRecipeToWrite = (args: {
     const tenantIr = tenantIrByHandle.get(handle);
     const mainRefKey = tenantIr ? findMainItemRefKey(tenantIr, tenantRecipe.kind) : undefined;
     return mergeContentValueRecipe(
-      diskRecipe as ContentItemRecipe | PageRecipe,
-      tenantRecipe as ContentItemRecipe | PageRecipe,
+      diskRecipe as ContentItemRecipeParsed | PageRecipeParsed,
+      tenantRecipe as ContentItemRecipeParsed | PageRecipeParsed,
       fieldStatuses,
       mainRefKey,
       overridesForRecipe
@@ -1460,13 +1466,13 @@ const selectRecipeToWrite = (args: {
     if (diskIr !== undefined && tenantIr !== undefined) {
       return mergeTemplateRecipe({
         diskRecipe: diskRecipe as
-          | ComponentTemplateRecipe
-          | ContentTemplateRecipe
-          | PageTemplateRecipe,
+          | ComponentTemplateRecipeParsed
+          | ContentTemplateRecipeParsed
+          | PageTemplateRecipeParsed,
         tenantRecipe: tenantRecipe as
-          | ComponentTemplateRecipe
-          | ContentTemplateRecipe
-          | PageTemplateRecipe,
+          | ComponentTemplateRecipeParsed
+          | ContentTemplateRecipeParsed
+          | PageTemplateRecipeParsed,
         statuses: fieldStatuses,
         diskIr,
         tenantIr,

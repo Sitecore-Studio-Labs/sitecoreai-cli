@@ -62,7 +62,7 @@ export const ContentTemplateRecipeSchema = z.object({
   defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
-export type ContentTemplateRecipe = z.infer<typeof ContentTemplateRecipeSchema>;
+export type ContentTemplateRecipe = z.input<typeof ContentTemplateRecipeSchema>;
 
 /**
  * A standalone Parameters Template — a Sitecore template item that holds
@@ -114,7 +114,7 @@ export const DesignParametersTemplateRecipeSchema = z.object({
   params: z.array(DesignParameterSchema).default([]),
 });
 
-export type DesignParametersTemplateRecipe = z.infer<typeof DesignParametersTemplateRecipeSchema>;
+export type DesignParametersTemplateRecipe = z.input<typeof DesignParametersTemplateRecipeSchema>;
 
 /**
  * A concrete content item — one Sitecore item conforming to a content
@@ -184,4 +184,4 @@ export const ContentItemRecipeSchema = z.object({
   workflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
-export type ContentItemRecipe = z.infer<typeof ContentItemRecipeSchema>;
+export type ContentItemRecipe = z.input<typeof ContentItemRecipeSchema>;

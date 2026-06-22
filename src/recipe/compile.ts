@@ -37,10 +37,10 @@ import {
   type SharedSubfolderContribution,
 } from "./compile/aggregates";
 import type {
-  ComponentSectionRecipe,
-  ComponentTemplateRecipe,
-  EnumerationRecipe,
-  SiteRecipe,
+  ComponentSectionRecipeParsed,
+  ComponentTemplateRecipeParsed,
+  EnumerationRecipeParsed,
+  SiteRecipeParsed,
 } from "./schema/recipe";
 
 // Re-export per-kind compile functions so existing import paths
@@ -121,14 +121,14 @@ const buildPerRecipeContext = (
 ): CompileContext => {
   const sectionsByHandle = indexByKind(recipes, "component-section") as Map<
     string,
-    ComponentSectionRecipe
+    ComponentSectionRecipeParsed
   >;
-  const enumsByHandle = indexByKind(recipes, "enumeration") as Map<string, EnumerationRecipe>;
+  const enumsByHandle = indexByKind(recipes, "enumeration") as Map<string, EnumerationRecipeParsed>;
   const componentsByHandle = indexByKind(recipes, "component-template") as Map<
     string,
-    ComponentTemplateRecipe
+    ComponentTemplateRecipeParsed
   >;
-  const sitesByHandle = indexByKind(recipes, "site") as Map<string, SiteRecipe>;
+  const sitesByHandle = indexByKind(recipes, "site") as Map<string, SiteRecipeParsed>;
   return {
     ...context,
     ...(sharedSubfolders.size > 0 ? { sharedSubfolders } : {}),

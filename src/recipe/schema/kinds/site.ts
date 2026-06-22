@@ -178,7 +178,7 @@ export const SiteTemplateRecipeSchema = z.object({
     .optional(),
 });
 
-export type SiteTemplateRecipe = z.infer<typeof SiteTemplateRecipeSchema>;
+export type SiteTemplateRecipe = z.input<typeof SiteTemplateRecipeSchema>;
 
 /**
  * Site grouping — hostname + language binding. The Sitecore Sites API
@@ -355,7 +355,7 @@ export const SiteRecipeSchema = z.object({
   initialHome: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
-export type SiteRecipe = z.infer<typeof SiteRecipeSchema>;
+export type SiteRecipe = z.input<typeof SiteRecipeSchema>;
 
 /**
  * One phrase in a `DictionaryRecipe`. The primary-locale value is
@@ -461,4 +461,4 @@ export const DictionaryRecipeSchema = z.object({
   phrases: z.record(z.string().min(1), DictionaryPhraseSchema).default({}),
 });
 
-export type DictionaryRecipe = z.infer<typeof DictionaryRecipeSchema>;
+export type DictionaryRecipe = z.input<typeof DictionaryRecipeSchema>;

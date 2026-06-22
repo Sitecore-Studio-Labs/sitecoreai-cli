@@ -10,6 +10,7 @@ import {
   resolveRecipeRoots,
   resolveSeedSite,
   toLogger,
+  withDerivedRecipeRoots,
   type RecipeCompileOptions,
 } from "./shared";
 
@@ -64,7 +65,11 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
 
   const envName = options.environmentName ?? root.defaultEnvironment;
-  const environment = envName ? root.environments[envName] : undefined;
+  // Backfill recipeRoots derived from `site` + `siteCollection` before any
+  // root lookup, so the optional roots (headless variants, enumerations,
+  // placeholder settings) derive too — not just templates/renderings (which
+  // `resolveRecipeRoots` derives on its own). Mirrors push's up-front derive.
+  const environment = withDerivedRecipeRoots(envName ? root.environments[envName] : undefined);
 
   const { files, source } = await resolveRecipeInputs(options, root);
 

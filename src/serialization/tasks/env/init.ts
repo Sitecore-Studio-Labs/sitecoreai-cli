@@ -21,6 +21,7 @@ import type { ConnectOptions } from "../types";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { resolveDeployAuth } from "./init/auth";
 import { resolveDeployLookup } from "./init/deploy-lookup";
+import { discoverSites } from "@/authoring";
 
 /** Whether the caller supplied any explicit configuration flag (vs. a bare wizard run). */
 const hasExplicitInput = (options: ConnectOptions): boolean =>
@@ -358,6 +359,105 @@ const applyDefaultEnvProfile = async (params: {
   }
 };
 
+/**
+ * Match a site name (case-insensitive) against a discovered site list and
+ * return its collection (parent tenant). Pure + exported for unit testing the
+ * matching independently of the network discovery call.
+ */
+export const matchSiteCollection = (
+  sites: ReadonlyArray<{ name: string; tenantName: string }>,
+  site: string
+): string | undefined => {
+  const match = sites.find(
+    (candidate) => candidate.name.localeCompare(site, undefined, { sensitivity: "accent" }) === 0
+  );
+  return match?.tenantName?.trim() || undefined;
+};
+
+/**
+ * Best-effort: discover the site collection from the environment's sites.
+ * Returns `undefined` on any failure (discovery needs CM auth that may not be
+ * provisioned at init time) so the caller can fall back to a prompt or warning
+ * — init must never block on this.
+ */
+const discoverSiteCollection = async (params: {
+  environment: EnvironmentConfiguration;
+  envName: string;
+  site: string;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<string | undefined> => {
+  const { environment, envName, site, logger } = params;
+  try {
+    const sites = await discoverSites({ ...environment, name: envName });
+    const collection = matchSiteCollection(sites, site);
+    if (collection) {
+      logger.info(`Discovered site collection '${collection}' for site '${site}'.`, "green");
+    }
+    return collection;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Resolve and persist the SXA site name + collection so `scai provision recipe`
+ * derives the full recipeRoots set without hand-authored paths.
+ *
+ *   site:       --site flag > existing profile > wizard prompt (default: env name)
+ *   collection: --site-collection flag > existing profile > discovery > wizard prompt
+ *
+ * No-op when no site is resolved (a non-recipe environment leaves the profile
+ * untouched). Discovery is best-effort; a miss falls back to a prompt in the
+ * wizard or a warning otherwise, so init never blocks on it.
+ */
+const resolveSiteIdentity = async (params: {
+  options: ConnectOptions;
+  updated: EnvironmentConfiguration;
+  envName: string;
+  runWizard: boolean;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<void> => {
+  const { options, updated, envName, runWizard, logger } = params;
+
+  let site = options.site?.trim() || updated.site?.trim();
+  if (!site && runWizard) {
+    site =
+      (
+        await promptText("SXA Headless site name for recipe authoring (blank to skip)", envName)
+      )?.trim() || undefined;
+  }
+  if (!site) {
+    return;
+  }
+  updated.site = site;
+
+  let collection = options.siteCollection?.trim() || updated.siteCollection?.trim();
+  if (!collection) {
+    collection = await discoverSiteCollection({ environment: updated, envName, site, logger });
+  }
+  if (!collection && runWizard) {
+    collection =
+      (
+        await promptText(
+          `Site collection (parent tenant) for '${site}' — couldn't discover it automatically (blank to set later)`
+        )
+      )?.trim() || undefined;
+  }
+
+  if (collection) {
+    updated.siteCollection = collection;
+    logger.info(
+      `recipeRoots will derive from site '${site}' / collection '${collection}'.`,
+      "green"
+    );
+  } else {
+    logger.warn(
+      `Site collection not set for '${site}'. Recipe commands need it — set 'siteCollection' on '${envName}', ` +
+        `pass --site-collection, or run 'scai provision recipe roots --site ${site} -n ${envName}'.`
+    );
+  }
+};
+
 export const runInit = async (options: ConnectOptions): Promise<void> => {
   const logger = toLogger(options);
   const isInteractive =
@@ -498,6 +598,8 @@ export const runInit = async (options: ConnectOptions): Promise<void> => {
     wantsClientCredentials,
     shouldPersistClientId,
   });
+
+  await resolveSiteIdentity({ options, updated, envName, runWizard, logger });
 
   rootConfigFile.config.envProfiles = {
     ...envProfiles,

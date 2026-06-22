@@ -73,6 +73,8 @@ scai setup init [options]
 - `--client-id <id>` — SitecoreAI client ID
 - `--client-secret <secret>` — SitecoreAI client secret
 - `--use-client-credentials` — Use client credentials instead of interactive login
+- `--site <name>` — SXA Headless site name. Written to the profile so `scai provision recipe` derives recipeRoots automatically (no hand-written paths).
+- `--site-collection <name>` — SXA Headless site collection (parent tenant). When omitted, scai tries to discover it from the environment's sites.
 - `--set-default` — Set as default environment
 
 ### scai setup login

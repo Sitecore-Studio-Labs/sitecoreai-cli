@@ -1,5 +1,144 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.8.0
+
+### Minor Changes
+
+- ffbad77: feat(agents): export an `agentsSchema` namespace on `./unstable`
+
+  Adds `src/agents/recipe/schema-only.ts` (a zod-only re-export of the agent
+  recipe schemas) and surfaces it as the `agentsSchema` namespace on `./unstable`,
+  bringing agents to parity with `briefSchema` / `brandSchema` / `campaignsSchema`.
+
+- ffbad77: feat(unstable): bundle-safe subpath exports for the brand/brief/campaign/agents schemas
+
+  Adds dedicated package exports `./unstable/{brief,brand,campaigns,agents}/schema`
+  pointing at each family's compiler-free `schema-only` module. Previously these
+  zod-only schemas were only reachable through the `./unstable` namespace barrel,
+  which also pulls each family's sync / API / MCP graph (esbuild). The new subpaths
+  mirror `./recipe/schema`: an external consumer (the registry, including its
+  client components) can import e.g. `BriefTypeRecipeSchema` /
+  `BriefInstanceRecipeSchema` without dragging the compiler into client bundles.
+
+- c01fe33: feat(setup): capture SXA site identity in `setup init` so recipeRoots derive automatically
+
+  `scai setup init` now resolves and persists `site` + `siteCollection` on the env
+  profile (new `--site` / `--site-collection` flags; the wizard prompts, defaulting
+  the site to the env name). When `siteCollection` is omitted it is discovered from
+  the environment's sites (best-effort — a miss falls back to a prompt or warning, so
+  init never blocks). With both values set, `scai provision recipe` derives the full
+  recipeRoots set, so a fresh profile works without hand-written tree paths.
+
+  Also: `recipe compile` now applies `withDerivedRecipeRoots` up front (matching
+  `push`), so the optional roots (headless variants, enumerations, placeholder
+  settings) derive from `site` + `siteCollection` too — previously only
+  templates/renderings did, so compiling a variant-bearing recipe still demanded an
+  explicit `headlessVariantsRoot`.
+
+- 26e401b: feat(recipe): exported `<Kind>Recipe` types are now the authoring (`z.input`) shape
+
+  The public recipe-kind types (`ComponentTemplateRecipe`, `EnumerationRecipe`,
+  `ContentTemplateRecipe`, and every other kind exported from
+  `@sitecoreai-labs/sitecoreai-cli/recipe` and `/recipe/unstable`) are now derived
+  with `z.input` instead of `z.infer`. Every field the schema gives a
+  `.default(...)` — `fields`, `variants`, `params`, an empty `datasource.query`,
+  `dynamicPlaceholders`, etc. — is now **optional** when authoring an object
+  literal, so `{ ... } satisfies ComponentTemplateRecipe` no longer forces you to
+  spell out defaults you don't care about. This matches the documented authoring
+  pattern and lets external consumers (the registry, generated starter repos,
+  hand-rolled recipes) import the recipe types directly with no boilerplate and no
+  local re-derivation shim.
+
+  The compiler is unaffected: it always operates on the parsed, defaults-present
+  shape, now named explicitly as `<Kind>RecipeParsed` (`z.output`) and used for
+  all compiler-internal helpers and the `read-current` / `pull` serialization
+  paths. No runtime behavior changes; the full unit + integration suite (recipe
+  compile and pull round-trips included) passes unchanged.
+
+- 41e8282: feat(recipe): derive recipeRoots from `site` (+ auto-resolved collection)
+
+  Recipe authoring no longer requires hand-writing the ~13 SXA Headless
+  `recipeRoots` paths. Set `site` (and optionally `siteCollection`) on an env
+  profile and scai derives the full set from the standard SXA tree layout:
+  - New `site` / `siteCollection` fields on env profiles (`sitecoreai.cli.json`).
+  - `recipe compile|plan|diff|push|pull` backfill any unset `*Root` from the
+    derivation; explicit `recipeRoots` / `*Root` config and `--*-root` CLI flags
+    still override per root (`flag > explicit > derived`).
+  - When `site` is set but `siteCollection` is not, scai resolves the collection
+    by discovering the environment's sites and matching by name; a clear
+    `INPUT_INVALID` points at the explicit-`siteCollection` escape hatch on
+    failure. No network for explicit-roots / collection-set configs.
+  - New `scai provision recipe roots [--site <name>] [--site-collection <name>]`
+    command prints the derived `recipeRoots` block (JSON via `--json`) to paste
+    into `sitecoreai.cli.json` or to inspect what `recipe push` will use.
+
+  GUID seeding is unchanged — the derivation only affects content-tree parent
+  paths, not item ids, so existing pushes stay idempotent.
+
+- 5773b20: feat(recipe): opt-in `siteScopedGuids` for per-site recipe item GUIDs
+
+  Recipe item GUIDs are derived as `uuidv5(`${seed}::${handle}`)`. The seed has
+  always been `"default"`, so a given recipe handle resolves to the **same**
+  Sitecore item regardless of site — correct for one-site-per-tenant, but a
+  GUID collision the moment the same handle is pushed to a second site in one
+  instance (Sitecore item IDs are globally unique).
+
+  Env profiles can now set `siteScopedGuids: true` to seed by the profile's
+  `site` instead, so the same handle yields a **distinct** item per site —
+  required to install one recipe onto multiple sites in a single Sitecore
+  instance. The seed is derived through a single `resolveSeedSite` helper that
+  every compile path (push, pull, compile, sync) and the skip-unchanged cache
+  key share, so the write path and the read/diff paths cannot disagree on item
+  GUIDs.
+
+  Leaving `siteScopedGuids` unset (or `false`) is **byte-identical** to prior
+  behavior — every existing `"default"`-seeded tenant is unaffected, including
+  profiles that already set `site` purely for recipeRoots derivation. Flipping
+  the flag on a tenant that has already pushed re-keys its items and must be
+  treated as a migration.
+
+- 7c0bbc6: feat(sdk): export `./sites`, `discoverSites`, and `createSiteBinding`
+
+  Widens the consumable SDK surface so consumers (the orchestrator's deploy/install
+  path) stop re-implementing logic scai already owns:
+  - Adds `@sitecoreai-labs/sitecoreai-cli/sites` (the Sites API client barrel) to
+    the package exports.
+  - Surfaces `discoverSites` (+ `DiscoveredSite` / `DiscoverSitesOptions`) on the
+    published `./recipe` entry.
+  - Adds `createSiteBinding` (+ `SiteBindingInput` / `SiteBindingResult`) on
+    `./deploy` — the reusable, CLI-free core of `scai deploy site bind` (idempotent
+    SXA Site Grouping field write over an Authoring client). The CLI task now wraps
+    it, so there's one implementation.
+
+  No CLI runtime change.
+
+### Patch Changes
+
+- b43cdf0: fix(recipe): derive recipeRoots in prune-defaults from site + siteCollection
+
+  `recipe prune-defaults` read the content-side roots (`headlessVariantsRoot`,
+  `availableRenderingsRoot`, `contentItemsRoot`, `presentationStylesRoot`)
+  straight off the env profile — unlike `push`/`pull`, which derive them via
+  `withDerivedRecipeRoots`. A profile that configures only `site` +
+  `siteCollection` (e.g. the orchestrator's ephemeral CLI config, which no
+  longer writes explicit `*Root` fields) therefore failed with `INPUT_INVALID`
+  "root path(s) not configured" even though push/pull resolved them fine.
+  prune-defaults now derives the same way.
+
+- ff62d1e: fix(recipe): actually bootstrap the `Scai Handle` marker field on push
+
+  Recipe identity — rename/move-robust matching plus exact handle recovery —
+  hangs off a `Scai Handle` field on the Sitecore Standard Template.
+  `injectHandleMarker` stamped the value onto every `CreateItem`, and
+  `ensureMarkerField` knew how to create the field, but **nothing called it**.
+  On a real tenant the field therefore never existed: the Authoring API silently
+  dropped the marker writes and matching fell back to path/name (so renames/moves
+  weren't actually robust, and there was no `Scai Handle` to find).
+
+  `runRecipePush` now calls `ensureMarkerField` once before applying — idempotent
+  (a no-op when the field is present), skipped under dry-run, and best-effort so a
+  bootstrap hiccup degrades to path/name matching rather than failing the push.
+
 ## 0.7.0
 
 ### Minor Changes
@@ -45,7 +184,6 @@
   Recipe authoring no longer requires hand-writing the ~13 SXA Headless
   `recipeRoots` paths. Set `site` (and optionally `siteCollection`) on an env
   profile and scai derives the full set from the standard SXA tree layout:
-
   - New `site` / `siteCollection` fields on env profiles (`sitecoreai.cli.json`).
   - `recipe compile|plan|diff|push|pull` backfill any unset `*Root` from the
     derivation; explicit `recipeRoots` / `*Root` config and `--*-root` CLI flags
@@ -87,7 +225,6 @@
 
   Widens the consumable SDK surface so consumers (the orchestrator's deploy/install
   path) stop re-implementing logic scai already owns:
-
   - Adds `@sitecoreai-labs/sitecoreai-cli/sites` (the Sites API client barrel) to
     the package exports.
   - Surfaces `discoverSites` (+ `DiscoveredSite` / `DiscoverSitesOptions`) on the
@@ -131,12 +268,10 @@
 ### Minor Changes
 
 - 0b410be: Brand kit recipe: add a `logo` URL field, and remove the broken synthesized-stub-document path.
-
   - The brand-kit recipe now carries an optional `logo` — a PNG URL the brand-kit UI renders directly. It is converged via a new `updateBrandKitLogo()` kit-level PATCH on both freshly-created and pre-existing kits, read back in `readCurrent`, and diffed idempotently (an omitted `logo` leaves the live value unmanaged).
   - `synthesizeBrandStubDocument` is removed. Its `data:` URL was never fetched by Sitecore, so the self-heal path always timed out (~15 min waiting for sections) and marked fresh kits `failed`. The canonical sections are materialized on **publish**, so a recipe with no source document now creates the kit via `createBrandKit → publishBrandKit` (real operator documents still go through `seedBrandKit` + ingestion/enrichment), and self-heal publishes an unpublished kit instead of synthesizing a stub. This also makes `--no-enrich` coherent with kit creation.
 
 - 0b410be: feat(campaigns): campaign icon + attachment SDK foundation
-
   - Add `thumbnailUrl` to the campaign recipe — the project `thumbnail_url`,
     threaded through create (`createProject`), the recipe diff (create +
     update metas), and apply (`readCurrent` / `applyProjectFieldUpdate`).
@@ -181,7 +316,6 @@
   environment's languages — notably the Sitecore AI brand-kit Glossary's org
   locales. (There is no separate "org language" API; adding an environment
   language is what makes a locale available org-wide.)
-
   - **SDK** (`@/sites`): add `listSupportedLanguages`, `updateLanguage`, and
     `removeLanguage` alongside the existing `listLanguages` / `addLanguage` —
     full CRUD on the Sites API `/api/v1/languages` resource.
@@ -198,12 +332,10 @@
 ### Minor Changes
 
 - c07cf0e: Brand kit recipe: add a `logo` URL field, and remove the broken synthesized-stub-document path.
-
   - The brand-kit recipe now carries an optional `logo` — a PNG URL the brand-kit UI renders directly. It is converged via a new `updateBrandKitLogo()` kit-level PATCH on both freshly-created and pre-existing kits, read back in `readCurrent`, and diffed idempotently (an omitted `logo` leaves the live value unmanaged).
   - `synthesizeBrandStubDocument` is removed. Its `data:` URL was never fetched by Sitecore, so the self-heal path always timed out (~15 min waiting for sections) and marked fresh kits `failed`. The canonical sections are materialized on **publish**, so a recipe with no source document now creates the kit via `createBrandKit → publishBrandKit` (real operator documents still go through `seedBrandKit` + ingestion/enrichment), and self-heal publishes an unpublished kit instead of synthesizing a stub. This also makes `--no-enrich` coherent with kit creation.
 
 - c07cf0e: feat(campaigns): campaign icon + attachment SDK foundation
-
   - Add `thumbnailUrl` to the campaign recipe — the project `thumbnail_url`,
     threaded through create (`createProject`), the recipe diff (create +
     update metas), and apply (`readCurrent` / `applyProjectFieldUpdate`).
@@ -239,7 +371,6 @@
 ### Patch Changes
 
 - 19fff6d: `ops brief` / `ops campaign`: harden brief↔campaign linking and make campaign delete self-detach.
-
   - **Linking is now observable and verified.** When a brief declares a `campaignHandle`, `ops brief` push resolves it to the campaign by its `story:`/`handle:` identity labels and PUTs the `ExternalLink` onto the brief. A failed resolution (no matching campaign) and a silent post-PUT drop used to vanish into a `warn`; both are now surfaced as a loud `error`, and the write is confirmed by re-read and retried once before giving up — so a link that didn't take is visible instead of buried.
   - **`ops campaign delete` detaches its linked briefs first.** Before deleting the project it clears the campaign reference from every still-linked, still-alive brief (via the brief credential — the only side the API lets you mutate), so a campaign with a live linked brief deletes cleanly instead of failing with HTTP 403 "Failed to detach link from brief". Best-effort per brief; preserves links to other campaigns.
 
@@ -248,7 +379,6 @@
 ### Patch Changes
 
 - 3640fa4: `ops brief` / `ops campaign`: harden brief↔campaign linking and make campaign delete self-detach.
-
   - **Linking is now observable and verified.** When a brief declares a `campaignHandle`, `ops brief` push resolves it to the campaign by its `story:`/`handle:` identity labels and PUTs the `ExternalLink` onto the brief. A failed resolution (no matching campaign) and a silent post-PUT drop used to vanish into a `warn`; both are now surfaced as a loud `error`, and the write is confirmed by re-read and retried once before giving up — so a link that didn't take is visible instead of buried.
   - **`ops campaign delete` detaches its linked briefs first.** Before deleting the project it clears the campaign reference from every still-linked, still-alive brief (via the brief credential — the only side the API lets you mutate), so a campaign with a live linked brief deletes cleanly instead of failing with HTTP 403 "Failed to detach link from brief". Best-effort per brief; preserves links to other campaigns.
 
@@ -257,7 +387,6 @@
 ### Patch Changes
 
 - e0b3102: Slim the published SDK export surface from 24 subpaths to 10. This is breaking for SDK importers, but is shipped as a patch (0.4.2) because the package has no adopters yet.
-
   - The nine `./unstable/*` subpaths collapse into a single namespaced `./unstable` barrel: `agents`, `brand`, `brandSchema`, `brief`, `briefSchema`, `campaigns`, `campaignsSchema`, `scripting`, `sites`.
   - `./config`, `./content`, `./publishing`, `./webhooks`, and `./workflow` are no longer published subpaths — those operations remain available through the `scai` CLI and internally.
   - Stable core kept: `./recipe`, `./recipe/unstable`, `./recipe/schema`, `./deploy`, `./serialization`, `./sync`, `./hygiene`, `./errors`, `./envelope`.
@@ -269,7 +398,6 @@
 ### Patch Changes
 
 - d693df2: Maintenance & hardening pass (no public API changes):
-
   - **Security:** remediated a `js-yaml` quadratic-complexity DoS pulled in transitively via `@changesets/cli` (override `read-yaml-file` → v2; `npm audit` clean), and fixed 22 CodeQL findings — polynomial-ReDoS in path/slug/marker regexes (replaced with linear trims and bounded patterns), incomplete YAML/markdown/XML escaping, an HTML→ProseMirror sanitization bypass + double-unescape, and stack-trace exposure in the MCP HTTP error path.
   - **Maintainability:** behavior-preserving refactors cutting every cyclomatic-complexity and nesting outlier below threshold across recipe compile/validate/pull/push, the campaign/brief/brand sync kinds, env init/auth/status, hygiene cleanup, and workflow/deploy/mcp/publishing tasks; high-arity internal helpers moved to options objects.
   - **Tooling:** complexity guardrails are now a two-tier lint ratchet — hard `error` ceilings that block regressions, plus a non-blocking `lint:complexity-debt` worklist to chip the remainder down over time.

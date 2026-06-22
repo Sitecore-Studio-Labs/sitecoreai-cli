@@ -96,7 +96,7 @@ vi.mock("../../../../../src/serialization/tasks/env/init/deploy-lookup", () => (
   resolveDeployLookup: h.resolveDeployLookup,
 }));
 
-import { runInit } from "../../../../../src/serialization/tasks/env/init";
+import { matchSiteCollection, runInit } from "../../../../../src/serialization/tasks/env/init";
 
 const configFile = (config: Record<string, unknown> = {}): RootConfigurationFile =>
   ({ config: { envProfiles: {}, ...config } }) as RootConfigurationFile;
@@ -760,5 +760,41 @@ describe("runInit", () => {
         })
       );
     });
+
+    it("persists site + siteCollection from flags (no discovery needed)", async () => {
+      await runInit({
+        environmentName: "demo",
+        host: "https://cm.example.com",
+        site: "Sodra",
+        siteCollection: "SodraTenant",
+      });
+
+      expect(writeRootConfigurationFile).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          envProfiles: {
+            demo: expect.objectContaining({ site: "Sodra", siteCollection: "SodraTenant" }),
+          },
+        })
+      );
+    });
+  });
+});
+
+describe("matchSiteCollection", () => {
+  it("matches case-insensitively and returns the tenant name", () => {
+    const sites = [
+      { name: "Other", tenantName: "T1" },
+      { name: "Sodra", tenantName: "SodraTenant" },
+    ];
+    expect(matchSiteCollection(sites, "sodra")).toBe("SodraTenant");
+  });
+
+  it("returns undefined when no site matches", () => {
+    expect(matchSiteCollection([{ name: "A", tenantName: "T" }], "B")).toBeUndefined();
+  });
+
+  it("returns undefined when the matched tenant name is blank", () => {
+    expect(matchSiteCollection([{ name: "A", tenantName: "  " }], "A")).toBeUndefined();
   });
 });

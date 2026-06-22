@@ -110,4 +110,8 @@ export type ConnectOptions = CommonOptions & {
   useClientCredentials?: boolean;
   setDefault?: boolean;
   wizard?: boolean;
+  /** SXA Headless site name — enables recipeRoots derivation for recipe commands. */
+  site?: string;
+  /** SXA Headless site collection (parent tenant). Discovered from the environment when omitted. */
+  siteCollection?: string;
 };

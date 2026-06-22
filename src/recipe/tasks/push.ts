@@ -17,6 +17,7 @@ import {
 } from "../runtime/cache";
 import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
+import { ensureMarkerField } from "../items/ensure-marker-field";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
@@ -382,6 +383,40 @@ const runPlaceholderAllowPhase = async (args: {
  * scai-wide safety gate). Streams progress as `task-progress`-style
  * events in JSON mode; renders a per-op summary in human mode.
  */
+/**
+ * Ensure the `Scai Handle` marker field exists on the Standard Template
+ * before an apply push. Recipe identity (rename/move-robust matching +
+ * exact handle recovery) hangs off it; `injectHandleMarker` stamps the
+ * value on every CreateItem, but without the field the Authoring API
+ * drops it and matching silently falls back to path/name.
+ *
+ * Idempotent (no-op when present), skipped under dry-run (no writes), and
+ * best-effort: a bootstrap hiccup degrades to path/name matching this push
+ * rather than aborting it.
+ */
+const bootstrapMarkerField = async (
+  client: AuthoringApiClient,
+  isDryRun: boolean,
+  logger: ReturnType<typeof toLogger>
+): Promise<void> => {
+  if (isDryRun) return;
+  try {
+    const marker = await ensureMarkerField(client);
+    if (marker.status === "created" && !logger.isJson()) {
+      logger.info(
+        "Bootstrapped the `Scai Handle` marker field on the Standard Template (recipe identity).",
+        "cyan"
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      `Could not bootstrap the \`Scai Handle\` marker field — recipe identity falls back to path/name matching this push: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+};
+
 export const runRecipePush = async (options: RecipePushOptions): Promise<ExecutionResult[]> => {
   const logger = toLogger(options);
   // Workspace-wide path → itemId cache. Shared between the AuthoringApiClient
@@ -607,6 +642,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     });
     for (const [handle, index] of entries) baselineIndexByHandle.set(handle, index);
   }
+
+  // Recipe identity hangs off the `Scai Handle` field on the Standard
+  // Template — ensure it exists before applying. Idempotent + best-effort;
+  // see `bootstrapMarkerField`.
+  await bootstrapMarkerField(tenant.client, isDryRun, logger);
 
   // ─── Plan or apply ────────────────────────────────────────────────────
   // Plan-mode reads are pure and have no cross-recipe ordering

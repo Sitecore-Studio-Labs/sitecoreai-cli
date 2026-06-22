@@ -191,6 +191,14 @@
         "tenantId": { "type": "string", "description": "Sitecore tenant ID" },
         "projectId": { "type": "string", "description": "Sitecore project ID" },
         "environmentId": { "type": "string", "description": "Sitecore environment ID" },
+        "site": {
+          "type": "string",
+          "description": "SXA Headless site name. Set alongside `siteCollection` to have scai derive the full recipeRoots set from the standard SXA tree layout instead of hand-writing each path. Explicit `recipeRoots` / `*Root` fields and `--*-root` CLI flags still override per root."
+        },
+        "siteCollection": {
+          "type": "string",
+          "description": "SXA Headless site collection (parent tenant) for `site`. Set alongside `site` to enable recipeRoots derivation."
+        },
         "environmentType": {
           "type": "string",
           "description": "Environment type (cm or eh)",

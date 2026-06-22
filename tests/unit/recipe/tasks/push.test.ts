@@ -7,6 +7,10 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   recipeSetNeedsRoots: vi.fn(),
   resolveRecipeInputs: vi.fn(),
   ensureAllowWrite: vi.fn(),
+  // Identity passthrough: these tests use envs without site/siteCollection,
+  // so derivation is a no-op and resolveCompileRoots sees the env unchanged.
+  withDerivedRecipeRoots: (env: unknown) => env,
+  ensureSiteCollection: async (env: unknown) => env,
 }));
 vi.mock("../../../../src/recipe/io", () => ({
   loadRecipe: vi.fn(),

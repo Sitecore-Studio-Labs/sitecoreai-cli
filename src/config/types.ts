@@ -96,6 +96,19 @@ export type EnvironmentConfiguration = {
   host?: string;
   authority?: string;
   environmentType?: "cm" | "eh";
+  /**
+   * SXA Headless site name. When set together with `siteCollection`, scai
+   * derives the full `recipeRoots` set from the standard SXA tree layout
+   * (see `recipe/tasks/derive-roots`), so authors needn't hand-write every
+   * path. Explicit `recipeRoots` / `*Root` fields and `--*-root` CLI flags
+   * still override per root.
+   */
+  site?: string;
+  /**
+   * SXA Headless site collection (parent tenant) for `site`. Set alongside
+   * `site` to enable recipeRoots derivation.
+   */
+  siteCollection?: string;
   allowWrite?: boolean;
   /**
    * When `true`, MCP write tools refuse to operate against this

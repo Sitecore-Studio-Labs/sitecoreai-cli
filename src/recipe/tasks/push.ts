@@ -4,6 +4,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
 import type { EnvironmentConfiguration } from "@/config/types";
+import { discoverSites } from "@/authoring";
 import { getAccessToken } from "../api/auth";
 import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
@@ -28,11 +29,13 @@ import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
+  ensureSiteCollection,
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
   resolveTenant,
   toLogger,
+  withDerivedRecipeRoots,
   type RecipePushOptions,
 } from "./shared";
 
@@ -174,7 +177,7 @@ const eventToJson = ({
  */
 const resolveCompileRoots = (
   options: RecipePushOptions,
-  env: EnvironmentConfiguration
+  envArg: EnvironmentConfiguration
 ): {
   componentsRoot: string | undefined;
   contentModelsRoot: string | undefined;
@@ -187,19 +190,24 @@ const resolveCompileRoots = (
   pageTemplatesRoot: string | undefined;
   placeholderSettingsRoot: string | undefined;
   pagesRoot: string | undefined;
-} => ({
-  componentsRoot: options.componentsRoot ?? env.componentsRoot,
-  contentModelsRoot: options.contentModelsRoot ?? env.contentModelsRoot,
-  partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
-  pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
-  contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
-  headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
-  availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
-  enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
-  pageTemplatesRoot: env.pageTemplatesRoot,
-  placeholderSettingsRoot: env.placeholderSettingsRoot,
-  pagesRoot: env.pagesRoot,
-});
+} => {
+  // Backfill the optional folder-layout roots from site+collection derivation
+  // when configured, before applying CLI-flag overrides (flag > derived).
+  const env = withDerivedRecipeRoots(envArg) ?? envArg;
+  return {
+    componentsRoot: options.componentsRoot ?? env.componentsRoot,
+    contentModelsRoot: options.contentModelsRoot ?? env.contentModelsRoot,
+    partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
+    pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
+    contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
+    headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
+    availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
+    enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
+    pageTemplatesRoot: env.pageTemplatesRoot,
+    placeholderSettingsRoot: env.placeholderSettingsRoot,
+    pagesRoot: env.pagesRoot,
+  };
+};
 
 /**
  * Surface cache-skips as zero-effect ExecutionResults so downstream callers
@@ -441,6 +449,13 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const rollbackRunId = randomUUID();
   const rollbackLog = createRollbackLogger(rollbackRunId);
 
+  // When the env profile sets `site` but not `siteCollection`, discover the
+  // collection (parent tenant) from the environment so recipeRoots derivation
+  // has both values. No-op for explicit-roots / collection-set configs.
+  const environment =
+    (await ensureSiteCollection(tenant.environment, tenant.envName, (env) => discoverSites(env))) ??
+    tenant.environment;
+
   // Per-site folder layout roots — optional at the envProfile level, with
   // CLI flags overriding the env profile. When unset the compiler falls back
   // to `templatesRoot` (section-aware components nest under templatesRoot in
@@ -461,7 +476,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
-  } = resolveCompileRoots(options, tenant.environment);
+  } = resolveCompileRoots(options, environment);
 
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
@@ -489,7 +504,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // requirement too; pre-compiled IRs carry their roots baked in.
   const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
     options,
-    tenant.environment,
+    environment,
     tenant.envName,
     recipeSetNeedsRoots(recipes)
   );

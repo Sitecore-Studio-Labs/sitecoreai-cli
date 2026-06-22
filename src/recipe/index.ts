@@ -272,6 +272,16 @@ export { createAuthoringClient, type AuthoringClientOptions } from "./api/author
 // timeout + auth + redaction with `createAuthoringClient`.
 export { runAuthoringGraphQL, type AuthoringRequestOptions } from "./api/graphql";
 
+// SXA site discovery — walks `/sitecore/content` via Authoring GraphQL and
+// returns each site with its parent tenant (the site collection). Lets
+// orchestrator/deploy callers resolve a site's collection without
+// re-implementing the walk.
+export {
+  discoverSites,
+  type DiscoveredSite,
+  type DiscoverSitesOptions,
+} from "./api/site-discovery";
+
 // Sites API client seam + factory + types. Parallels the Authoring
 // client pair: the interface is what the recipe planner depends on,
 // `createSitesApiClient` is the production adapter over the Sites HTTP

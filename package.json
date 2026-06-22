@@ -34,6 +34,10 @@
       "types": "./dist/deploy/index.d.ts",
       "default": "./dist/deploy/index.js"
     },
+    "./sites": {
+      "types": "./dist/sites/index.d.ts",
+      "default": "./dist/sites/index.js"
+    },
     "./serialization": {
       "types": "./dist/serialization/index.d.ts",
       "default": "./dist/serialization/index.js"

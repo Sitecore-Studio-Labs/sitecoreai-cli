@@ -15,7 +15,7 @@
 import type { AuthoringApiClient, RemoteItem } from "../../api/client";
 import { SYSTEM_FIELDS } from "../../ir/sitecore-templates";
 import type {
-  ContentItemRecipe,
+  ContentItemRecipeParsed,
   ContentTranslation,
   ContentVersion,
   Recipe,
@@ -66,11 +66,11 @@ const isStoryMode = (
  * Mutates `base.fields` + `base.translations` and returns `base`.
  */
 const fillSimpleMode = (
-  base: ContentItemRecipe,
+  base: ContentItemRecipeParsed,
   populated: ReadonlyArray<{ language: string; item: RemoteItem | null }>,
   shapes: TemplateFieldShapes,
   guidIndex: GuidHandleIndex
-): ContentItemRecipe => {
+): ContentItemRecipeParsed => {
   const DEFAULT_LANG = "en";
   const defaultRow = populated.find((row) => row.language === DEFAULT_LANG);
   if (defaultRow?.item) {
@@ -103,12 +103,12 @@ const fillSimpleMode = (
  * content under `versions`. Mutates `base.versions` and returns `base`.
  */
 const fillStoryMode = (
-  base: ContentItemRecipe,
+  base: ContentItemRecipeParsed,
   populated: ReadonlyArray<LangRow>,
   historicByLangVer: ReadonlyMap<string, RemoteItem>,
   shapes: TemplateFieldShapes,
   guidIndex: GuidHandleIndex
-): ContentItemRecipe => {
+): ContentItemRecipeParsed => {
   const versions: Record<string, ContentVersion[]> = {};
   for (const row of populated) {
     const entries: ContentVersion[] = [];
@@ -183,7 +183,7 @@ const contentItemFromItem = async ({
   guidIndex: GuidHandleIndex;
   templateShapeCache: Map<string, TemplateFieldShapes>;
   tenantLanguages: readonly string[];
-}): Promise<ContentItemRecipe | null> => {
+}): Promise<ContentItemRecipeParsed | null> => {
   if (tenantLanguages.length === 0) return null;
 
   const shapes = await getTemplateFieldShapes(item.templateId, client, templateShapeCache);
@@ -204,7 +204,7 @@ const contentItemFromItem = async ({
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
 
-  const base: ContentItemRecipe = {
+  const base: ContentItemRecipeParsed = {
     kind: "content-item",
     schemaVersion: "1",
     handle: handleOf(item),

@@ -3,6 +3,7 @@ import fastGlob from "fast-glob";
 import { Logger } from "@/shared/logger";
 import type { EnvironmentConfiguration, RootConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
+import { deriveRecipeRoots } from "./derive-roots";
 import { resolveEnvironment } from "@/policy/environment";
 import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient } from "../api/client";
@@ -276,6 +277,96 @@ export const recipeSetNeedsRoots = (recipes: readonly { kind: string }[]): boole
   recipes.some((recipe) => !ROOTLESS_RECIPE_KINDS.has(recipe.kind));
 
 /**
+ * Backfill an env profile's recipe-root fields from `site` + `siteCollection`
+ * when both are set and a given root is absent. Explicit `*Root` config wins
+ * over derivation; CLI flags (applied by the resolvers below) win over both —
+ * preserving the `flag > explicit config > derived` precedence.
+ *
+ * Returns the profile unchanged when it lacks `site`/`siteCollection`, so
+ * existing explicit-roots configs are untouched. Auto-resolving the collection
+ * from the environment (Sites API) lands in a later milestone; for now both
+ * values must be present for derivation to apply. See
+ * `plans/recipe-roots-derivation.md`.
+ */
+export const withDerivedRecipeRoots = (
+  environment: EnvironmentConfiguration | undefined
+): EnvironmentConfiguration | undefined => {
+  if (!environment) return environment;
+  const site = environment.site?.trim();
+  const siteCollection = environment.siteCollection?.trim();
+  if (!site || !siteCollection) return environment;
+  const derived = deriveRecipeRoots(site, siteCollection);
+  return {
+    ...environment,
+    templatesRoot: environment.templatesRoot ?? derived.templates,
+    renderingsRoot: environment.renderingsRoot ?? derived.renderings,
+    componentsRoot: environment.componentsRoot ?? derived.components,
+    contentModelsRoot: environment.contentModelsRoot ?? derived.contentModels,
+    partialDesignsRoot: environment.partialDesignsRoot ?? derived.partialDesigns,
+    pageDesignsRoot: environment.pageDesignsRoot ?? derived.pageDesigns,
+    contentItemsRoot: environment.contentItemsRoot ?? derived.contentItems,
+    headlessVariantsRoot: environment.headlessVariantsRoot ?? derived.headlessVariants,
+    availableRenderingsRoot: environment.availableRenderingsRoot ?? derived.availableRenderings,
+    presentationStylesRoot: environment.presentationStylesRoot ?? derived.presentationStyles,
+    enumerationsRoot: environment.enumerationsRoot ?? derived.enumerations,
+    placeholderSettingsRoots: environment.placeholderSettingsRoots ?? derived.placeholderSettings,
+    placeholderSettingsRoot:
+      environment.placeholderSettingsRoot ?? derived.placeholderSettingsCreate,
+  };
+};
+
+/**
+ * When an env profile sets `site` but not `siteCollection`, resolve the
+ * collection (parent tenant) by discovering the environment's sites and
+ * matching by name — so authors can configure just `site` and let scai fill in
+ * the collection that recipeRoots derivation needs. No-op when `site` is unset
+ * or `siteCollection` is already configured, so it never hits the network for
+ * explicit-roots / collection-set configs.
+ *
+ * `discover` is injected (callers wire scai's `discoverSites`) to keep this
+ * unit testable without a tenant. Throws a clear `INPUT_INVALID` when discovery
+ * fails or no site matches, pointing at the explicit `siteCollection` escape
+ * hatch. See `plans/recipe-roots-derivation.md`.
+ */
+export const ensureSiteCollection = async (
+  environment: EnvironmentConfiguration | undefined,
+  envName: string,
+  discover: (
+    environment: EnvironmentConfiguration
+  ) => Promise<ReadonlyArray<{ name: string; tenantName: string }>>
+): Promise<EnvironmentConfiguration | undefined> => {
+  if (!environment) return environment;
+  const site = environment.site?.trim();
+  if (!site || environment.siteCollection?.trim()) return environment;
+  let sites: ReadonlyArray<{ name: string; tenantName: string }>;
+  try {
+    sites = await discover(environment);
+  } catch {
+    throw createScaiError(
+      `Could not resolve a site collection for site '${site}' in environment '${envName}': site discovery failed.`,
+      "INPUT_INVALID",
+      {
+        hint: "Set `siteCollection` on the env profile to skip discovery, or verify connectivity and credentials for this environment.",
+      }
+    );
+  }
+  const match = sites.find(
+    (candidate) => candidate.name.localeCompare(site, undefined, { sensitivity: "accent" }) === 0
+  );
+  const collection = match?.tenantName?.trim();
+  if (!collection) {
+    throw createScaiError(
+      `Could not resolve a site collection: no site named '${site}' was found in environment '${envName}'.`,
+      "INPUT_INVALID",
+      {
+        hint: "Set `siteCollection` on the env profile, or check that `site` matches a site name in this environment.",
+      }
+    );
+  }
+  return { ...environment, siteCollection: collection };
+};
+
+/**
  * Resolve the recipe parent paths that the compiler will use for top-level
  * template + rendering items.
  *
@@ -304,8 +395,9 @@ export const resolveRecipeRoots = (
   envName: string,
   required = true
 ): { templatesRoot: string; renderingsRoot: string } => {
-  const templatesRoot = options.templatesRoot ?? environment?.templatesRoot;
-  const renderingsRoot = options.renderingsRoot ?? environment?.renderingsRoot;
+  const env = withDerivedRecipeRoots(environment);
+  const templatesRoot = options.templatesRoot ?? env?.templatesRoot;
+  const renderingsRoot = options.renderingsRoot ?? env?.renderingsRoot;
   if (!required) {
     // The recipe set in play never reads these roots — pass through
     // whatever's configured, or "" so the requirement doesn't block a
@@ -328,6 +420,43 @@ export const resolveRecipeRoots = (
     );
   }
   return { templatesRoot, renderingsRoot };
+};
+
+/**
+ * Derive the GUID-seed site for an env profile.
+ *
+ * Recipe item GUIDs are `uuidv5(`${seed}::${handle}`)` where `seed` is
+ * `CompileContext.site ?? "default"` (see `compile/shared.ts#siteOf`).
+ * Returning `undefined` here leaves `context.site` unset, so the seed stays
+ * `"default"` — byte-identical to legacy behavior for every profile that does
+ * not opt in.
+ *
+ * When a profile sets `siteScopedGuids: true`, the seed becomes its `site`,
+ * so the same recipe handle resolves to a *distinct* item per site (required
+ * to install one recipe onto multiple sites in one Sitecore instance without
+ * colliding on Sitecore's globally-unique item IDs).
+ *
+ * MUST be called from every compile path (push, pull, compile, sync) so the
+ * write path and the read/diff paths agree on item GUIDs — a mismatch would
+ * silently break the three-way merge.
+ *
+ * Throws `INPUT_INVALID` when scoping is enabled but no `site` is configured.
+ */
+export const resolveSeedSite = (
+  environment: Pick<EnvironmentConfiguration, "siteScopedGuids" | "site"> | undefined
+): string | undefined => {
+  if (!environment?.siteScopedGuids) return undefined;
+  const site = environment.site?.trim();
+  if (!site) {
+    throw createScaiError(
+      "siteScopedGuids is enabled but no 'site' is set on the env profile.",
+      "INPUT_INVALID",
+      {
+        hint: "Set 'site' (the SXA Headless site name) on the env profile, or remove 'siteScopedGuids'.",
+      }
+    );
+  }
+  return site;
 };
 
 export interface RecipeInputResolution {

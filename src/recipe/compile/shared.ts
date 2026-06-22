@@ -197,7 +197,7 @@ export interface CompileContext {
    * leave this unset; the per-recipe compiler then errors on any
    * `recipe.section` reference, since there's no way to resolve it.
    */
-  sectionsByHandle?: ReadonlyMap<string, import("../schema/recipe").ComponentSectionRecipe>;
+  sectionsByHandle?: ReadonlyMap<string, import("../schema/recipe").ComponentSectionRecipeParsed>;
   /**
    * Cross-recipe map of enumeration handles → `EnumerationRecipe`,
    * populated by `compileRecipeSet` from every `enumeration` recipe in
@@ -212,7 +212,7 @@ export interface CompileContext {
    * then errors on any `sitecore.enumHandle` reference, since there's
    * no way to resolve the folder path.
    */
-  enumsByHandle?: ReadonlyMap<string, import("../schema/recipe").EnumerationRecipe>;
+  enumsByHandle?: ReadonlyMap<string, import("../schema/recipe").EnumerationRecipeParsed>;
   /**
    * Cross-recipe map of component handles → `ComponentTemplateRecipe`,
    * populated by `compileRecipeSet`. `compilePageRecipe` uses it to
@@ -222,7 +222,10 @@ export interface CompileContext {
    * standalone single-recipe compiles — the page compiler then assumes
    * the component template is its own datasource template.
    */
-  componentsByHandle?: ReadonlyMap<string, import("../schema/recipe").ComponentTemplateRecipe>;
+  componentsByHandle?: ReadonlyMap<
+    string,
+    import("../schema/recipe").ComponentTemplateRecipeParsed
+  >;
   /**
    * SXA Available Renderings root, e.g.
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
@@ -275,7 +278,7 @@ export interface CompileContext {
    * callers leave this unset; `compileDictionaryRecipe` then errors
    * unless `crossRecipeSitePaths` provides a direct path.
    */
-  sitesByHandle?: ReadonlyMap<string, import("../schema/recipe").SiteRecipe>;
+  sitesByHandle?: ReadonlyMap<string, import("../schema/recipe").SiteRecipeParsed>;
   /**
    * Pre-resolved content-tree paths for sites referenced by
    * dictionaries — keyed by SiteRecipe handle. Used by orchestrator-

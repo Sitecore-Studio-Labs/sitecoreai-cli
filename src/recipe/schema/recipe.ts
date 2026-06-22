@@ -198,3 +198,38 @@ export const RecipeSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type Recipe = z.infer<typeof RecipeSchema>;
+
+// ---------------------------------------------------------------------------
+// Compiler-internal "parsed" recipe shapes (post-`.parse()`, every default
+// present).
+//
+// The public `<Kind>Recipe` types above are `z.input` — the AUTHORING shape,
+// where `.default(...)` fields are OPTIONAL so a hand-authored object literal
+// (`{ ... } satisfies ComponentTemplateRecipe`) doesn't have to spell out the
+// defaults. scai's compiler, by contrast, always operates on the PARSED recipe
+// (`<Kind>RecipeSchema.parse(input)` runs at every compile entry), where those
+// fields are guaranteed present. These `<Kind>RecipeParsed` aliases give that
+// post-parse shape an explicit name so compiler-internal helpers — which only
+// ever receive parsed recipes — can be typed on the output rather than the
+// (looser) authoring input.
+// ---------------------------------------------------------------------------
+export type ComponentSectionRecipeParsed = z.output<typeof ComponentSectionRecipeSchema>;
+export type ComponentTemplateRecipeParsed = z.output<typeof ComponentTemplateRecipeSchema>;
+export type PlaceholderRecipeParsed = z.output<typeof PlaceholderRecipeSchema>;
+export type ContentTemplateRecipeParsed = z.output<typeof ContentTemplateRecipeSchema>;
+export type ContentItemRecipeParsed = z.output<typeof ContentItemRecipeSchema>;
+export type DesignParametersTemplateRecipeParsed = z.output<
+  typeof DesignParametersTemplateRecipeSchema
+>;
+export type PageRecipeParsed = z.output<typeof PageRecipeSchema>;
+export type PageTemplateRecipeParsed = z.output<typeof PageTemplateRecipeSchema>;
+export type PartialDesignRecipeParsed = z.output<typeof PartialDesignRecipeSchema>;
+export type PageDesignRecipeParsed = z.output<typeof PageDesignRecipeSchema>;
+export type VariantRecipeParsed = z.output<typeof VariantRecipeSchema>;
+export type SiteRecipeParsed = z.output<typeof SiteRecipeSchema>;
+export type SiteTemplateRecipeParsed = z.output<typeof SiteTemplateRecipeSchema>;
+export type DictionaryRecipeParsed = z.output<typeof DictionaryRecipeSchema>;
+export type EnumerationRecipeParsed = z.output<typeof EnumerationRecipeSchema>;
+export type WorkflowRecipeParsed = z.output<typeof WorkflowRecipeSchema>;
+export type WebhookAuthorizationRecipeParsed = z.output<typeof WebhookAuthorizationRecipeSchema>;
+export type RecipeParsed = z.output<typeof RecipeSchema>;

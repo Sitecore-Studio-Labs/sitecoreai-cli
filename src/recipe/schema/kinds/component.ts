@@ -63,7 +63,7 @@ export const PlaceholderRecipeSchema = z.object({
   allowedComponents: z.array(z.string().regex(HANDLE_PATTERN)).default([]),
 });
 
-export type PlaceholderRecipe = z.infer<typeof PlaceholderRecipeSchema>;
+export type PlaceholderRecipe = z.input<typeof PlaceholderRecipeSchema>;
 
 /**
  * Container for a related set of components in the Sitecore tree.
@@ -146,7 +146,7 @@ export const ComponentSectionRecipeSchema = z.object({
     .optional(),
 });
 
-export type ComponentSectionRecipe = z.infer<typeof ComponentSectionRecipeSchema>;
+export type ComponentSectionRecipe = z.input<typeof ComponentSectionRecipeSchema>;
 
 export const ComponentTemplateRecipeSchema = z
   .object({
@@ -306,4 +306,4 @@ export const ComponentTemplateRecipeSchema = z
     path: ["params"],
   });
 
-export type ComponentTemplateRecipe = z.infer<typeof ComponentTemplateRecipeSchema>;
+export type ComponentTemplateRecipe = z.input<typeof ComponentTemplateRecipeSchema>;

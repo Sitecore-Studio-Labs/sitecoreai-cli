@@ -40,7 +40,11 @@ import {
   SXA_HEADLESS_PARAMS_BASE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
-import { type ComponentTemplateRecipe, ComponentTemplateRecipeSchema } from "../schema/recipe";
+import {
+  type ComponentTemplateRecipe,
+  type ComponentTemplateRecipeParsed,
+  ComponentTemplateRecipeSchema,
+} from "../schema/recipe";
 import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
@@ -71,7 +75,7 @@ import {
  * that no `ComponentSectionRecipe` in the set provides.
  */
 const resolveSectionName = (
-  recipe: ComponentTemplateRecipe,
+  recipe: ComponentTemplateRecipeParsed,
   context: CompileContext
 ): string | undefined => {
   if (!recipe.section) return undefined;
@@ -237,7 +241,7 @@ export function compileComponentTemplateRecipe(
  */
 function emitComponentFolderTemplate(
   operations: Operation[],
-  recipe: ComponentTemplateRecipe,
+  recipe: ComponentTemplateRecipeParsed,
   context: CompileContext,
   icon: string,
   emittedFolders: Set<string>
@@ -357,7 +361,7 @@ function emitComponentFolderTemplate(
  */
 function emitSiteDataFolderTemplate(
   operations: Operation[],
-  recipe: ComponentTemplateRecipe,
+  recipe: ComponentTemplateRecipeParsed,
   context: CompileContext,
   icon: string,
   emittedFolders: Set<string>
@@ -570,7 +574,7 @@ function emitParamsTemplate({
   emittedFolders,
 }: {
   operations: Operation[];
-  recipe: ComponentTemplateRecipe;
+  recipe: ComponentTemplateRecipeParsed;
   context: CompileContext;
   icon: string;
   policy: PushPolicy;
@@ -709,7 +713,7 @@ function emitParamsTemplate({
 
 interface EmitRenderingOptions {
   operations: Operation[];
-  recipe: ComponentTemplateRecipe;
+  recipe: ComponentTemplateRecipeParsed;
   context: CompileContext;
   icon: string;
   hasParams: boolean;
@@ -835,7 +839,7 @@ function emitRendering({
  *      droppable without an authoring prompt.
  */
 const resolveDatasourceTemplateField = (
-  recipe: ComponentTemplateRecipe,
+  recipe: ComponentTemplateRecipeParsed,
   site: string
 ): FieldValue | undefined => {
   const datasourceTemplates = recipe.datasource?.templates;
@@ -866,7 +870,7 @@ const resolveDatasourceTemplateField = (
  * the rendering has a datasource block; authors' explicit keys override
  * the auto-set values.
  */
-const buildOtherProperties = (recipe: ComponentTemplateRecipe): Record<string, string> => {
+const buildOtherProperties = (recipe: ComponentTemplateRecipeParsed): Record<string, string> => {
   const otherProperties: Record<string, string> = {};
   if (recipe.datasource?.autoCreate) otherProperties.IsAutoDatasourceRendering = "true";
   if (recipe.dynamicPlaceholders) {
@@ -886,14 +890,16 @@ const buildOtherProperties = (recipe: ComponentTemplateRecipe): Record<string, s
 interface DatasourceLocationOptions {
   fields: FieldValue[];
   operations: Operation[];
-  recipe: ComponentTemplateRecipe;
+  recipe: ComponentTemplateRecipeParsed;
   context: CompileContext;
   site: string;
   emittedFolders: Set<string>;
 }
 
 /** A single entry in a component-template recipe's `datasource.locations`. */
-type DatasourceLocation = NonNullable<ComponentTemplateRecipe["datasource"]>["locations"][number];
+type DatasourceLocation = NonNullable<
+  ComponentTemplateRecipeParsed["datasource"]
+>["locations"][number];
 
 /**
  * Emit a CreateOnly folder item for a site-scoped `(base, subfolder)`
@@ -1051,7 +1057,7 @@ function emitVariants({
   emittedFolders,
 }: {
   operations: Operation[];
-  recipe: ComponentTemplateRecipe;
+  recipe: ComponentTemplateRecipeParsed;
   context: CompileContext;
   icon: string;
   policy: PushPolicy;

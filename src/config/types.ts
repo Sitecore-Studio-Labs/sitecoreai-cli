@@ -96,6 +96,36 @@ export type EnvironmentConfiguration = {
   host?: string;
   authority?: string;
   environmentType?: "cm" | "eh";
+  /**
+   * SXA Headless site name. When set together with `siteCollection`, scai
+   * derives the full `recipeRoots` set from the standard SXA tree layout
+   * (see `recipe/tasks/derive-roots`), so authors needn't hand-write every
+   * path. Explicit `recipeRoots` / `*Root` fields and `--*-root` CLI flags
+   * still override per root.
+   */
+  site?: string;
+  /**
+   * SXA Headless site collection (parent tenant) for `site`. Set alongside
+   * `site` to enable recipeRoots derivation.
+   */
+  siteCollection?: string;
+  /**
+   * Opt in to **site-scoped recipe item GUIDs**. Recipe items are keyed by
+   * `uuidv5(`${seed}::${handle}`)`. The seed defaults to `"default"`, so a
+   * given recipe handle resolves to the *same* Sitecore item regardless of
+   * site — correct for one-site-per-tenant, but a GUID collision the moment
+   * the same handle is pushed to a second site in one instance (Sitecore
+   * item IDs are globally unique).
+   *
+   * When `true`, the seed becomes this profile's `site`, so the same handle
+   * yields a *distinct* item per site — required to install one recipe onto
+   * multiple sites in a single Sitecore instance. Requires `site` to be set.
+   *
+   * Leaving this unset (or `false`) is byte-identical to legacy behavior:
+   * every existing `"default"`-seeded tenant is unaffected. Flipping it on a
+   * tenant that already pushed re-keys its items — treat as a migration.
+   */
+  siteScopedGuids?: boolean;
   allowWrite?: boolean;
   /**
    * When `true`, MCP write tools refuse to operate against this

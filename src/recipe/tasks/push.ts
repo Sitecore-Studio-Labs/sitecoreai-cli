@@ -4,6 +4,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { buildScaiEnvelope } from "@/shared/envelope";
 import { createScaiError } from "@/shared/errors";
 import type { EnvironmentConfiguration } from "@/config/types";
+import { discoverSites } from "@/authoring";
 import { getAccessToken } from "../api/auth";
 import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
@@ -17,6 +18,7 @@ import {
 } from "../runtime/cache";
 import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
+import { ensureMarkerField } from "../items/ensure-marker-field";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
@@ -27,11 +29,14 @@ import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
+  ensureSiteCollection,
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
+  resolveSeedSite,
   resolveTenant,
   toLogger,
+  withDerivedRecipeRoots,
   type RecipePushOptions,
 } from "./shared";
 
@@ -173,7 +178,7 @@ const eventToJson = ({
  */
 const resolveCompileRoots = (
   options: RecipePushOptions,
-  env: EnvironmentConfiguration
+  envArg: EnvironmentConfiguration
 ): {
   componentsRoot: string | undefined;
   contentModelsRoot: string | undefined;
@@ -186,19 +191,24 @@ const resolveCompileRoots = (
   pageTemplatesRoot: string | undefined;
   placeholderSettingsRoot: string | undefined;
   pagesRoot: string | undefined;
-} => ({
-  componentsRoot: options.componentsRoot ?? env.componentsRoot,
-  contentModelsRoot: options.contentModelsRoot ?? env.contentModelsRoot,
-  partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
-  pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
-  contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
-  headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
-  availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
-  enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
-  pageTemplatesRoot: env.pageTemplatesRoot,
-  placeholderSettingsRoot: env.placeholderSettingsRoot,
-  pagesRoot: env.pagesRoot,
-});
+} => {
+  // Backfill the optional folder-layout roots from site+collection derivation
+  // when configured, before applying CLI-flag overrides (flag > derived).
+  const env = withDerivedRecipeRoots(envArg) ?? envArg;
+  return {
+    componentsRoot: options.componentsRoot ?? env.componentsRoot,
+    contentModelsRoot: options.contentModelsRoot ?? env.contentModelsRoot,
+    partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
+    pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
+    contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
+    headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
+    availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
+    enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
+    pageTemplatesRoot: env.pageTemplatesRoot,
+    placeholderSettingsRoot: env.placeholderSettingsRoot,
+    pagesRoot: env.pagesRoot,
+  };
+};
 
 /**
  * Surface cache-skips as zero-effect ExecutionResults so downstream callers
@@ -382,6 +392,40 @@ const runPlaceholderAllowPhase = async (args: {
  * scai-wide safety gate). Streams progress as `task-progress`-style
  * events in JSON mode; renders a per-op summary in human mode.
  */
+/**
+ * Ensure the `Scai Handle` marker field exists on the Standard Template
+ * before an apply push. Recipe identity (rename/move-robust matching +
+ * exact handle recovery) hangs off it; `injectHandleMarker` stamps the
+ * value on every CreateItem, but without the field the Authoring API
+ * drops it and matching silently falls back to path/name.
+ *
+ * Idempotent (no-op when present), skipped under dry-run (no writes), and
+ * best-effort: a bootstrap hiccup degrades to path/name matching this push
+ * rather than aborting it.
+ */
+const bootstrapMarkerField = async (
+  client: AuthoringApiClient,
+  isDryRun: boolean,
+  logger: ReturnType<typeof toLogger>
+): Promise<void> => {
+  if (isDryRun) return;
+  try {
+    const marker = await ensureMarkerField(client);
+    if (marker.status === "created" && !logger.isJson()) {
+      logger.info(
+        "Bootstrapped the `Scai Handle` marker field on the Standard Template (recipe identity).",
+        "cyan"
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      `Could not bootstrap the \`Scai Handle\` marker field — recipe identity falls back to path/name matching this push: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+};
+
 export const runRecipePush = async (options: RecipePushOptions): Promise<ExecutionResult[]> => {
   const logger = toLogger(options);
   // Workspace-wide path → itemId cache. Shared between the AuthoringApiClient
@@ -406,6 +450,13 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const rollbackRunId = randomUUID();
   const rollbackLog = createRollbackLogger(rollbackRunId);
 
+  // When the env profile sets `site` but not `siteCollection`, discover the
+  // collection (parent tenant) from the environment so recipeRoots derivation
+  // has both values. No-op for explicit-roots / collection-set configs.
+  const environment =
+    (await ensureSiteCollection(tenant.environment, tenant.envName, (env) => discoverSites(env))) ??
+    tenant.environment;
+
   // Per-site folder layout roots — optional at the envProfile level, with
   // CLI flags overriding the env profile. When unset the compiler falls back
   // to `templatesRoot` (section-aware components nest under templatesRoot in
@@ -426,7 +477,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
-  } = resolveCompileRoots(options, tenant.environment);
+  } = resolveCompileRoots(options, environment);
 
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
@@ -454,7 +505,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // requirement too; pre-compiled IRs carry their roots baked in.
   const { templatesRoot, renderingsRoot } = resolveRecipeRoots(
     options,
-    tenant.environment,
+    environment,
     tenant.envName,
     recipeSetNeedsRoots(recipes)
   );
@@ -472,6 +523,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    site: resolveSeedSite(environment),
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
@@ -549,6 +601,10 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageTemplatesRoot,
     placeholderSettingsRoot,
     pagesRoot,
+    // GUID seed is part of the cache identity — toggling site scoping
+    // changes every item's GUID, so a "default"-seeded cache entry must
+    // not be reused once the profile opts in.
+    seedSite: resolveSeedSite(environment),
   });
   const irsToExecute: { ir: OperationIr; irHash: string; cached: false }[] = [];
   const cachedSkips: {
@@ -607,6 +663,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     });
     for (const [handle, index] of entries) baselineIndexByHandle.set(handle, index);
   }
+
+  // Recipe identity hangs off the `Scai Handle` field on the Standard
+  // Template — ensure it exists before applying. Idempotent + best-effort;
+  // see `bootstrapMarkerField`.
+  await bootstrapMarkerField(tenant.client, isDryRun, logger);
 
   // ─── Plan or apply ────────────────────────────────────────────────────
   // Plan-mode reads are pure and have no cross-recipe ordering

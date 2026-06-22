@@ -82,7 +82,7 @@ export const WebhookAuthorizationRecipeSchema = z.object({
   ]),
 });
 
-export type WebhookAuthorizationRecipe = z.infer<typeof WebhookAuthorizationRecipeSchema>;
+export type WebhookAuthorizationRecipe = z.input<typeof WebhookAuthorizationRecipeSchema>;
 
 /**
  * Either an intra-recipe reference to a `webhook-authorization` recipe
@@ -211,4 +211,4 @@ export const WorkflowRecipeSchema = z.object({
   bindings: WorkflowBindingsSchema,
 });
 
-export type WorkflowRecipe = z.infer<typeof WorkflowRecipeSchema>;
+export type WorkflowRecipe = z.input<typeof WorkflowRecipeSchema>;

@@ -86,6 +86,10 @@ Requires Node.js >= 20.
 
 ## Quick start
 
+> Authoring recipes for your own Sitecore AI website? See
+> **[QUICKSTART.md](./QUICKSTART.md)** — zero to a pushed component template in
+> five minutes, CLI-only.
+
 Get from zero to a working environment in three commands:
 
 ```sh

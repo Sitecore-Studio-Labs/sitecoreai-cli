@@ -84,7 +84,7 @@ export const PageTemplateRecipeSchema = z.object({
   defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
-export type PageTemplateRecipe = z.infer<typeof PageTemplateRecipeSchema>;
+export type PageTemplateRecipe = z.input<typeof PageTemplateRecipeSchema>;
 
 /**
  * A page — a concrete, navigable item in the site content tree. The
@@ -205,4 +205,4 @@ export const PageRecipeSchema = z.object({
   workflow: z.string().regex(HANDLE_PATTERN).optional(),
 });
 
-export type PageRecipe = z.infer<typeof PageRecipeSchema>;
+export type PageRecipe = z.input<typeof PageRecipeSchema>;

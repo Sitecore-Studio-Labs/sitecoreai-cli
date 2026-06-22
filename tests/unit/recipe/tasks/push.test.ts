@@ -7,6 +7,12 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   recipeSetNeedsRoots: vi.fn(),
   resolveRecipeInputs: vi.fn(),
   ensureAllowWrite: vi.fn(),
+  // Identity passthrough: these tests use envs without site/siteCollection,
+  // so derivation is a no-op and resolveCompileRoots sees the env unchanged.
+  withDerivedRecipeRoots: (env: unknown) => env,
+  ensureSiteCollection: async (env: unknown) => env,
+  // These tests use envs without siteScopedGuids, so the seed stays "default".
+  resolveSeedSite: () => undefined,
 }));
 vi.mock("../../../../src/recipe/io", () => ({
   loadRecipe: vi.fn(),
@@ -38,6 +44,9 @@ vi.mock("../../../../src/recipe/api/sites-client", () => ({
 vi.mock("../../../../src/recipe/tasks/placeholder-allow", () => ({
   applyPlaceholderAllowControls: vi.fn(),
 }));
+vi.mock("../../../../src/recipe/items/ensure-marker-field", () => ({
+  ensureMarkerField: vi.fn(),
+}));
 
 import { runRecipePush } from "../../../../src/recipe/tasks/push";
 import * as shared from "../../../../src/recipe/tasks/shared";
@@ -49,6 +58,7 @@ import { createRollbackLogger } from "../../../../src/recipe/rollback/rollback-l
 import { getAccessToken } from "../../../../src/recipe/api/auth";
 import { createSitesApiClient } from "../../../../src/recipe/api/sites-client";
 import { applyPlaceholderAllowControls } from "../../../../src/recipe/tasks/placeholder-allow";
+import { ensureMarkerField } from "../../../../src/recipe/items/ensure-marker-field";
 
 interface FakeLogger {
   isJson: () => boolean;
@@ -126,6 +136,11 @@ beforeEach(() => {
     wasUsed: false,
   } as never);
   vi.mocked(cache.cachedSkipFor).mockReturnValue(undefined as never);
+  vi.mocked(ensureMarkerField).mockResolvedValue({
+    status: "already-present",
+    fieldItemId: "f-1",
+    sectionItemId: "s-1",
+  });
   vi.mocked(executeIr).mockImplementation(async (ir, _client, opts) => {
     (opts as { emit?: (e: unknown) => void }).emit?.({
       kind: "op-applied",
@@ -160,6 +175,29 @@ describe("runRecipePush — apply vs dry-run", () => {
 
     expect(shared.ensureAllowWrite).not.toHaveBeenCalled();
     expect(vi.mocked(executeIr).mock.calls[0][2]).toMatchObject({ mode: "plan" });
+  });
+
+  it("bootstraps the `Scai Handle` marker field on apply, but not on dry-run", async () => {
+    await runRecipePush({ allowWrite: true } as never);
+    // Recipe identity depends on the field existing — push ensures it once.
+    expect(ensureMarkerField).toHaveBeenCalledTimes(1);
+
+    vi.mocked(ensureMarkerField).mockClear();
+    await runRecipePush({ whatIf: true } as never);
+    // Dry-run writes nothing, so it must not touch the Standard Template.
+    expect(ensureMarkerField).not.toHaveBeenCalled();
+  });
+
+  it("continues the push (best-effort) when the marker bootstrap fails", async () => {
+    vi.mocked(ensureMarkerField).mockRejectedValueOnce(new Error("standard template unreachable"));
+    const results = await runRecipePush({ allowWrite: true } as never);
+
+    // A bootstrap hiccup degrades to path/name matching — it must not abort.
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    expect(results).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not bootstrap the `Scai Handle` marker field")
+    );
   });
 
   it("renders a per-op human summary with action tags", async () => {

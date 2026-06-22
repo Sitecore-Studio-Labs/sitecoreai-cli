@@ -127,4 +127,4 @@ export const EnumerationRecipeSchema = z.object({
   default: z.string().min(1).optional(),
 });
 
-export type EnumerationRecipe = z.infer<typeof EnumerationRecipeSchema>;
+export type EnumerationRecipe = z.input<typeof EnumerationRecipeSchema>;

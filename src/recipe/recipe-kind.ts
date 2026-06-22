@@ -36,6 +36,7 @@ import type {
 import { createAuthoringClient } from "./api/authoring-client";
 import type { AuthoringApiClient } from "./api/client";
 import { compileRecipeSet, type CompileContext } from "./compile";
+import { resolveSeedSite } from "./tasks/shared";
 import { executeIr, type ExecutionResult } from "./runtime/execute";
 import type { OperationIr } from "./ir/operations";
 import { injectHandleMarker } from "./items/marker";
@@ -89,6 +90,7 @@ const resolveContext = (
     pageTemplatesRoot: environment.pageTemplatesRoot,
     placeholderSettingsRoot: environment.placeholderSettingsRoot,
     pagesRoot: environment.pagesRoot,
+    site: resolveSeedSite(environment),
     marketplacePluginOverrides: root.marketplacePluginOverrides,
   };
   return { client, context, envName };

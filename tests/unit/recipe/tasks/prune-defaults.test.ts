@@ -393,6 +393,27 @@ describe("runRecipePruneDefaults", () => {
     });
   });
 
+  it("derives content roots from site + siteCollection when explicit *Root fields are absent", async () => {
+    // The orchestrator's ephemeral CLI config writes only `site` +
+    // `siteCollection` and relies on scai deriving the SXA roots (the same
+    // contract push/pull honor). Without derivation here this threw
+    // INPUT_INVALID "root path(s) not configured". ROOTS were authored to
+    // match deriveRecipeRoots("sandbox", "sandbox-collection"), so the seeded
+    // default lands under the derived headlessVariantsRoot.
+    vi.mocked(shared.resolveTenant).mockReturnValue(
+      makeTenant({
+        environment: { site: "sandbox", siteCollection: "sandbox-collection" },
+        client: makeClient([`${ROOTS.headlessVariantsRoot}/Image`]),
+      }) as never
+    );
+
+    const result = await runRecipePruneDefaults({ whatIf: true } as never);
+
+    expect(result.environment).toBe("sandbox");
+    // Derivation produced the right headlessVariantsRoot — the seeded default matched.
+    expect(result.summary.wouldDelete).toBe(1);
+  });
+
   it("names every missing root in the INPUT_INVALID message", async () => {
     vi.mocked(shared.resolveTenant).mockReturnValue(makeTenant({ environment: {} }) as never);
 

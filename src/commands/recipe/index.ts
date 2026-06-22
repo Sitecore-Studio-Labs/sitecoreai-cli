@@ -14,6 +14,7 @@ import { runRecipePlan } from "../../recipe/tasks/plan";
 import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
 import { runRecipePull } from "../../recipe/tasks/pull";
 import { runRecipePush } from "../../recipe/tasks/push";
+import { runRecipeRoots } from "../../recipe/tasks/roots";
 import { createScaiError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
@@ -399,6 +400,31 @@ const createPruneDefaultsCommand = (): Command => {
   return command;
 };
 
+const createRootsCommand = (): Command => {
+  const command = new Command("roots").description(
+    "Print the recipeRoots derived from a site (+ collection). Read-only — paste the output into envProfiles.<name>.recipeRoots in sitecoreai.cli.json, or inspect what `recipe push` will use."
+  );
+
+  command.addOption(
+    new Option(
+      "--site <name>",
+      "SXA Headless site name to derive roots for. Falls back to envProfiles[<name>].site."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--site-collection <name>",
+      "SXA Headless site collection (parent tenant). Falls back to envProfiles[<name>].siteCollection, else discovered from the environment."
+    )
+  );
+  addEnvironmentOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.action(async (options) => runRecipeRoots(options));
+  return command;
+};
+
 export const createRecipeCommand = (): Command => {
   const command = new Command("recipe").description(
     "Compile, plan, and push declarative recipes to Sitecore"
@@ -410,6 +436,7 @@ export const createRecipeCommand = (): Command => {
   command.addCommand(createPullCommand());
   command.addCommand(createPushCommand());
   command.addCommand(createPruneDefaultsCommand());
+  command.addCommand(createRootsCommand());
 
   command.addHelpText(
     "after",
@@ -448,6 +475,11 @@ export const createRecipeCommand = (): Command => {
       "",
       "  # Apply the SXA OOTB prune",
       "  $ scai provision recipe prune-defaults -n my-tenant --allow-write",
+      "",
+      "  # Print the recipeRoots derived from a site (paste into sitecoreai.cli.json)",
+      "  $ scai provision recipe roots --site my-site --site-collection MyTenant --json",
+      "  # ...or let scai discover the collection from the environment",
+      "  $ scai provision recipe roots --site my-site -n my-tenant",
     ].join("\n")
   );
 

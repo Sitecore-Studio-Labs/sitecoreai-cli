@@ -26,7 +26,7 @@ export const PartialDesignRecipeSchema = z.object({
   layout: LayoutSchema,
 });
 
-export type PartialDesignRecipe = z.infer<typeof PartialDesignRecipeSchema>;
+export type PartialDesignRecipe = z.input<typeof PartialDesignRecipeSchema>;
 
 /**
  * Brand-scoped sidecar variant for an existing rendering. A standalone
@@ -108,7 +108,7 @@ export const VariantRecipeSchema = z.object({
   content: z.string().min(1),
 });
 
-export type VariantRecipe = z.infer<typeof VariantRecipeSchema>;
+export type VariantRecipe = z.input<typeof VariantRecipeSchema>;
 
 /**
  * Maps page templates to a layout. Lives at
@@ -150,4 +150,4 @@ export const PageDesignRecipeSchema = z.object({
   layout: LayoutSchema.optional(),
 });
 
-export type PageDesignRecipe = z.infer<typeof PageDesignRecipeSchema>;
+export type PageDesignRecipe = z.input<typeof PageDesignRecipeSchema>;

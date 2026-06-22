@@ -26,7 +26,7 @@
 
 export { runAuthoringGraphQL, type AuthoringRequestOptions } from "./graphql";
 
-export { discoverSites } from "./site-discovery";
+export { discoverSites, type DiscoveredSite, type DiscoverSitesOptions } from "./site-discovery";
 
 // Typed client stays recipe-owned (see header) — re-exported here for
 // the cross-domain callers (content, deploy, serialization) that reuse it.

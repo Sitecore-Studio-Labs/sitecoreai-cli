@@ -17,11 +17,11 @@
 import type { AuthoringApiClient, RemoteItem } from "../../api/client";
 import { RENDERING_FIELDS, SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../ir/sitecore-templates";
 import type {
-  ComponentSectionRecipe,
-  ComponentTemplateRecipe,
-  ContentTemplateRecipe,
-  EnumerationRecipe,
-  PageTemplateRecipe,
+  ComponentSectionRecipeParsed,
+  ComponentTemplateRecipeParsed,
+  ContentTemplateRecipeParsed,
+  EnumerationRecipeParsed,
+  PageTemplateRecipeParsed,
   Recipe,
 } from "../../schema/recipe";
 import {
@@ -63,13 +63,13 @@ const componentTemplateFromItem = async (
   templateItem: RemoteItem,
   sectionHandle: string | undefined,
   client: AuthoringApiClient
-): Promise<ComponentTemplateRecipe> => {
+): Promise<ComponentTemplateRecipeParsed> => {
   const displayName =
     fieldValue(templateItem, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? templateItem.name;
   const description = fieldValueByName(templateItem, "__Long description");
   const fields = await fieldsOfTemplate(templateItem, client);
 
-  const recipe: ComponentTemplateRecipe = {
+  const recipe: ComponentTemplateRecipeParsed = {
     kind: "component-template",
     schemaVersion: "1",
     handle: handleOf(templateItem),
@@ -108,13 +108,13 @@ const contentTemplateFromItem = async (
   templateItem: RemoteItem,
   group: string | undefined,
   client: AuthoringApiClient
-): Promise<ContentTemplateRecipe> => {
+): Promise<ContentTemplateRecipeParsed> => {
   const displayName =
     fieldValue(templateItem, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? templateItem.name;
   const description = fieldValueByName(templateItem, "__Long description");
   const fields = await fieldsOfTemplate(templateItem, client);
 
-  const recipe: ContentTemplateRecipe = {
+  const recipe: ContentTemplateRecipeParsed = {
     kind: "content-template",
     schemaVersion: "1",
     handle: handleOf(templateItem),
@@ -143,13 +143,13 @@ const contentTemplateFromItem = async (
 const pageTemplateFromItem = async (
   templateItem: RemoteItem,
   client: AuthoringApiClient
-): Promise<PageTemplateRecipe> => {
+): Promise<PageTemplateRecipeParsed> => {
   const displayName =
     fieldValue(templateItem, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? templateItem.name;
   const description = fieldValueByName(templateItem, "__Long description");
   const fields = await fieldsOfTemplate(templateItem, client);
 
-  const recipe: PageTemplateRecipe = {
+  const recipe: PageTemplateRecipeParsed = {
     kind: "page-template",
     schemaVersion: "1",
     handle: handleOf(templateItem),
@@ -172,13 +172,13 @@ const pageTemplateFromItem = async (
  * `name` for an unmarked folder (see `handleOf`). The section's identity is
  * otherwise purely the folder — nothing else to recover.
  */
-const componentSectionFromItem = (folderItem: RemoteItem): ComponentSectionRecipe => {
+const componentSectionFromItem = (folderItem: RemoteItem): ComponentSectionRecipeParsed => {
   const displayName = fieldValue(folderItem, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name");
   const description = fieldValueByName(folderItem, "__Long description");
   const icon = fieldValue(folderItem, SYSTEM_FIELDS.ICON, "__Icon");
   const sortOrderRaw = fieldValue(folderItem, SYSTEM_FIELDS.SORT_ORDER, "__Sortorder");
 
-  const recipe: ComponentSectionRecipe = {
+  const recipe: ComponentSectionRecipeParsed = {
     kind: "component-section",
     schemaVersion: "1",
     handle: handleOf(folderItem),
@@ -216,7 +216,7 @@ const enumerationFromItem = async (
   containerItem: RemoteItem,
   folderSegments: string[],
   client: AuthoringApiClient
-): Promise<EnumerationRecipe | null> => {
+): Promise<EnumerationRecipeParsed | null> => {
   const valueItems = (await client.getChildren({ itemId: containerItem.itemId }))
     .filter((child) => child.name !== "__Standard Values")
     .sort(byTreeOrder);
@@ -228,7 +228,7 @@ const enumerationFromItem = async (
 
   const values = valueItems.map((valueItem) => {
     const valueDisplayName = fieldValue(valueItem, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name");
-    const value: EnumerationRecipe["values"][number] = { name: valueItem.name };
+    const value: EnumerationRecipeParsed["values"][number] = { name: valueItem.name };
     if (
       valueDisplayName !== undefined &&
       valueDisplayName !== "" &&
@@ -243,7 +243,7 @@ const enumerationFromItem = async (
   const description = fieldValueByName(containerItem, "__Long description");
   const defaultValue = fieldValueByName(containerItem, "Value");
 
-  const recipe: EnumerationRecipe = {
+  const recipe: EnumerationRecipeParsed = {
     kind: "enumeration",
     schemaVersion: "1",
     handle: handleOf(containerItem),

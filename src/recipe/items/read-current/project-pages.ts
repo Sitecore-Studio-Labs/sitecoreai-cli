@@ -25,10 +25,10 @@ import {
 import type {
   ContentTranslation,
   ContentVersion,
-  PageDesignRecipe,
-  PageRecipe,
-  PartialDesignRecipe,
-  PlaceholderRecipe,
+  PageDesignRecipeParsed,
+  PageRecipeParsed,
+  PartialDesignRecipeParsed,
+  PlaceholderRecipeParsed,
   Recipe,
 } from "../../schema/recipe";
 import { decodeTemplatesMapping } from "./decode";
@@ -73,12 +73,12 @@ type LangRow = { language: string; item: RemoteItem | null; versions: number[] }
 const partialDesignFromItem = (
   item: RemoteItem,
   guidIndex: GuidHandleIndex
-): PartialDesignRecipe => {
+): PartialDesignRecipeParsed => {
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
   const icon = fieldValue(item, SYSTEM_FIELDS.ICON, "__Icon");
 
-  const recipe: PartialDesignRecipe = {
+  const recipe: PartialDesignRecipeParsed = {
     kind: "partial-design",
     schemaVersion: "1",
     handle: handleOf(item),
@@ -115,7 +115,7 @@ const pageDesignFromItem = (
   item: RemoteItem,
   appliesTo: string[],
   guidIndex: GuidHandleIndex
-): PageDesignRecipe => {
+): PageDesignRecipeParsed => {
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
   const icon = fieldValue(item, SYSTEM_FIELDS.ICON, "__Icon");
@@ -131,7 +131,7 @@ const pageDesignFromItem = (
     }
   }
 
-  const recipe: PageDesignRecipe = {
+  const recipe: PageDesignRecipeParsed = {
     kind: "page-design",
     schemaVersion: "1",
     handle: handleOf(item),
@@ -161,10 +161,10 @@ const pageFromItemLegacy = (
   item: RemoteItem,
   templateHandle: string,
   guidIndex: GuidHandleIndex
-): PageRecipe => {
+): PageRecipeParsed => {
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
-  const recipe: PageRecipe = {
+  const recipe: PageRecipeParsed = {
     kind: "page",
     schemaVersion: "1",
     handle: handleOf(item),
@@ -186,11 +186,11 @@ const pageFromItemLegacy = (
  * `__Final Renderings`. Mutates `base` and returns it.
  */
 const fillPageSimpleMode = (
-  base: PageRecipe,
+  base: PageRecipeParsed,
   populated: ReadonlyArray<{ language: string; item: RemoteItem | null }>,
   shapes: TemplateFieldShapes,
   guidIndex: GuidHandleIndex
-): PageRecipe => {
+): PageRecipeParsed => {
   const DEFAULT_LANG = "en";
   const primaryRow = populated.find((row) => row.language === DEFAULT_LANG) ?? populated[0];
   const primaryLang = primaryRow.language;
@@ -216,12 +216,12 @@ const fillPageSimpleMode = (
  * per the simple-vs-story XOR. Mutates `base.versions` and returns `base`.
  */
 const fillPageStoryMode = (
-  base: PageRecipe,
+  base: PageRecipeParsed,
   populated: ReadonlyArray<LangRow>,
   historicByLangVer: ReadonlyMap<string, RemoteItem>,
   shapes: TemplateFieldShapes,
   guidIndex: GuidHandleIndex
-): PageRecipe => {
+): PageRecipeParsed => {
   const versions: Record<string, ContentVersion[]> = {};
   for (const row of populated) {
     const entries: ContentVersion[] = [];
@@ -296,7 +296,7 @@ const pageFromItem = async ({
   guidIndex: GuidHandleIndex;
   templateShapeCache: Map<string, TemplateFieldShapes>;
   tenantLanguages: readonly string[];
-}): Promise<PageRecipe | null> => {
+}): Promise<PageRecipeParsed | null> => {
   if (tenantLanguages.length === 0) {
     // Defensive — when getTenantLanguages's fallback is empty, leave the
     // historic single-language projection in place.
@@ -329,7 +329,7 @@ const pageFromItem = async ({
   const displayName = fieldValue(item, SYSTEM_FIELDS.DISPLAY_NAME, "__Display name") ?? item.name;
   const description = fieldValueByName(item, "__Long description");
 
-  const base: PageRecipe = {
+  const base: PageRecipeParsed = {
     kind: "page",
     schemaVersion: "1",
     handle: handleOf(item),
@@ -375,7 +375,7 @@ const placeholderFromItem = (
   item: RemoteItem,
   folderSegments: string[],
   guidIndex: GuidHandleIndex
-): PlaceholderRecipe | null => {
+): PlaceholderRecipeParsed | null => {
   const key = fieldValue(item, PLACEHOLDER_FIELDS.PLACEHOLDER_KEY, "Placeholder Key");
   if (key === undefined || key.trim() === "") {
     // No Placeholder Key — schema requires `key.min(1)`. Skip.
@@ -397,7 +397,7 @@ const placeholderFromItem = (
     }
   }
 
-  const recipe: PlaceholderRecipe = {
+  const recipe: PlaceholderRecipeParsed = {
     kind: "placeholder",
     schemaVersion: "1",
     handle: handleOf(item),

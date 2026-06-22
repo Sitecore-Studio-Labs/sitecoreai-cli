@@ -28,3 +28,13 @@ export {
   resolveProjectIdValue,
   type DeployContext,
 } from "./context";
+
+// Site binding — populate the SXA Site Grouping fields (HostName / StartItem /
+// RenderingHost) over an Authoring client. CLI-free, bundle-safe core; the
+// `deploy site bind` CLI wraps it.
+export {
+  createSiteBinding,
+  type SiteBindingInput,
+  type SiteBindingResult,
+  type SiteBindingStatus,
+} from "./site-binding";

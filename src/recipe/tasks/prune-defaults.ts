@@ -1,7 +1,13 @@
 import { createScaiError } from "@/shared/errors";
 import { Logger } from "@/shared/logger";
 import type { AuthoringApiClient } from "../api/client";
-import { ensureAllowWrite, resolveTenant, toLogger, type RecipeTenantOptions } from "./shared";
+import {
+  ensureAllowWrite,
+  resolveTenant,
+  toLogger,
+  withDerivedRecipeRoots,
+  type RecipeTenantOptions,
+} from "./shared";
 
 /**
  * `scai provision recipe prune-defaults` — remove the SXA Headless OOTB content
@@ -274,13 +280,17 @@ export const runRecipePruneDefaults = async (
     ensureAllowWrite(tenant.root, tenant.envName, options.allowWrite);
   }
 
-  const headlessVariantsRoot =
-    options.headlessVariantsRoot ?? tenant.environment.headlessVariantsRoot;
-  const availableRenderingsRoot =
-    options.availableRenderingsRoot ?? tenant.environment.availableRenderingsRoot;
-  const contentItemsRoot = options.contentItemsRoot ?? tenant.environment.contentItemsRoot;
-  const presentationStylesRoot =
-    options.presentationStylesRoot ?? tenant.environment.presentationStylesRoot;
+  // Derive the SXA recipe roots from `site` + `siteCollection` the same way
+  // `recipe push`/`pull` do (see push.ts) before reading them. A profile that
+  // configures only `site`/`siteCollection` — e.g. the orchestrator's ephemeral
+  // CLI config, which stopped writing explicit `*Root` fields — would otherwise
+  // fail here as "root path(s) not configured" even though push/pull resolve
+  // them fine.
+  const env = withDerivedRecipeRoots(tenant.environment) ?? tenant.environment;
+  const headlessVariantsRoot = options.headlessVariantsRoot ?? env.headlessVariantsRoot;
+  const availableRenderingsRoot = options.availableRenderingsRoot ?? env.availableRenderingsRoot;
+  const contentItemsRoot = options.contentItemsRoot ?? env.contentItemsRoot;
+  const presentationStylesRoot = options.presentationStylesRoot ?? env.presentationStylesRoot;
   if (
     !headlessVariantsRoot ||
     !availableRenderingsRoot ||

@@ -71,5 +71,8 @@ export const deriveRecipeRoots = (site: string, siteCollection: string): Environ
       `${siteContentRoot}/Presentation/Placeholder Settings`,
       projectPlaceholderSettings,
     ],
+    // Singular CREATE root for recipe-declared placeholder settings — the
+    // per-site path (first walk entry). Distinct from the walk list above.
+    placeholderSettingsCreate: `${siteContentRoot}/Presentation/Placeholder Settings`,
   };
 };

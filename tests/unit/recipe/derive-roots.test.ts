@@ -27,6 +27,8 @@ describe("deriveRecipeRoots — golden SXA Headless layout", () => {
         "/sitecore/content/showcase/demo-registry/Presentation/Placeholder Settings",
         "/sitecore/layout/Placeholder Settings/Project/showcase/demo-registry",
       ],
+      placeholderSettingsCreate:
+        "/sitecore/content/showcase/demo-registry/Presentation/Placeholder Settings",
     });
   });
 

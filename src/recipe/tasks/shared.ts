@@ -310,6 +310,8 @@ export const withDerivedRecipeRoots = (
     presentationStylesRoot: environment.presentationStylesRoot ?? derived.presentationStyles,
     enumerationsRoot: environment.enumerationsRoot ?? derived.enumerations,
     placeholderSettingsRoots: environment.placeholderSettingsRoots ?? derived.placeholderSettings,
+    placeholderSettingsRoot:
+      environment.placeholderSettingsRoot ?? derived.placeholderSettingsCreate,
   };
 };
 

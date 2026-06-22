@@ -21,6 +21,7 @@
  */
 
 export * as agents from "./agents";
+export * as agentsSchema from "./agents/recipe/schema-only";
 export * as brand from "./brand";
 export * as brandSchema from "./brand/recipe/schema-only";
 export * as brief from "./brief";

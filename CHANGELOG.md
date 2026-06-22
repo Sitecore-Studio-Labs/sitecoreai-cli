@@ -1,5 +1,131 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.7.0
+
+### Minor Changes
+
+- e24dd76: feat(agents): export an `agentsSchema` namespace on `./unstable`
+
+  Adds `src/agents/recipe/schema-only.ts` (a zod-only re-export of the agent
+  recipe schemas) and surfaces it as the `agentsSchema` namespace on `./unstable`,
+  bringing agents to parity with `briefSchema` / `brandSchema` / `campaignsSchema`.
+
+- e24dd76: feat(unstable): bundle-safe subpath exports for the brand/brief/campaign/agents schemas
+
+  Adds dedicated package exports `./unstable/{brief,brand,campaigns,agents}/schema`
+  pointing at each family's compiler-free `schema-only` module. Previously these
+  zod-only schemas were only reachable through the `./unstable` namespace barrel,
+  which also pulls each family's sync / API / MCP graph (esbuild). The new subpaths
+  mirror `./recipe/schema`: an external consumer (the registry, including its
+  client components) can import e.g. `BriefTypeRecipeSchema` /
+  `BriefInstanceRecipeSchema` without dragging the compiler into client bundles.
+
+- e24dd76: feat(recipe): exported `<Kind>Recipe` types are now the authoring (`z.input`) shape
+
+  The public recipe-kind types (`ComponentTemplateRecipe`, `EnumerationRecipe`,
+  `ContentTemplateRecipe`, and every other kind exported from
+  `@sitecoreai-labs/sitecoreai-cli/recipe` and `/recipe/unstable`) are now derived
+  with `z.input` instead of `z.infer`. Every field the schema gives a
+  `.default(...)` — `fields`, `variants`, `params`, an empty `datasource.query`,
+  `dynamicPlaceholders`, etc. — is now **optional** when authoring an object
+  literal, so `{ ... } satisfies ComponentTemplateRecipe` no longer forces you to
+  spell out defaults you don't care about. This matches the documented authoring
+  pattern and lets external consumers (the registry, generated starter repos,
+  hand-rolled recipes) import the recipe types directly with no boilerplate and no
+  local re-derivation shim.
+
+  The compiler is unaffected: it always operates on the parsed, defaults-present
+  shape, now named explicitly as `<Kind>RecipeParsed` (`z.output`) and used for
+  all compiler-internal helpers and the `read-current` / `pull` serialization
+  paths. No runtime behavior changes; the full unit + integration suite (recipe
+  compile and pull round-trips included) passes unchanged.
+
+- e24dd76: feat(recipe): derive recipeRoots from `site` (+ auto-resolved collection)
+
+  Recipe authoring no longer requires hand-writing the ~13 SXA Headless
+  `recipeRoots` paths. Set `site` (and optionally `siteCollection`) on an env
+  profile and scai derives the full set from the standard SXA tree layout:
+
+  - New `site` / `siteCollection` fields on env profiles (`sitecoreai.cli.json`).
+  - `recipe compile|plan|diff|push|pull` backfill any unset `*Root` from the
+    derivation; explicit `recipeRoots` / `*Root` config and `--*-root` CLI flags
+    still override per root (`flag > explicit > derived`).
+  - When `site` is set but `siteCollection` is not, scai resolves the collection
+    by discovering the environment's sites and matching by name; a clear
+    `INPUT_INVALID` points at the explicit-`siteCollection` escape hatch on
+    failure. No network for explicit-roots / collection-set configs.
+  - New `scai provision recipe roots [--site <name>] [--site-collection <name>]`
+    command prints the derived `recipeRoots` block (JSON via `--json`) to paste
+    into `sitecoreai.cli.json` or to inspect what `recipe push` will use.
+
+  GUID seeding is unchanged — the derivation only affects content-tree parent
+  paths, not item ids, so existing pushes stay idempotent.
+
+- e24dd76: feat(recipe): opt-in `siteScopedGuids` for per-site recipe item GUIDs
+
+  Recipe item GUIDs are derived as `uuidv5(`${seed}::${handle}`)`. The seed has
+  always been `"default"`, so a given recipe handle resolves to the **same**
+  Sitecore item regardless of site — correct for one-site-per-tenant, but a
+  GUID collision the moment the same handle is pushed to a second site in one
+  instance (Sitecore item IDs are globally unique).
+
+  Env profiles can now set `siteScopedGuids: true` to seed by the profile's
+  `site` instead, so the same handle yields a **distinct** item per site —
+  required to install one recipe onto multiple sites in a single Sitecore
+  instance. The seed is derived through a single `resolveSeedSite` helper that
+  every compile path (push, pull, compile, sync) and the skip-unchanged cache
+  key share, so the write path and the read/diff paths cannot disagree on item
+  GUIDs.
+
+  Leaving `siteScopedGuids` unset (or `false`) is **byte-identical** to prior
+  behavior — every existing `"default"`-seeded tenant is unaffected, including
+  profiles that already set `site` purely for recipeRoots derivation. Flipping
+  the flag on a tenant that has already pushed re-keys its items and must be
+  treated as a migration.
+
+- e24dd76: feat(sdk): export `./sites`, `discoverSites`, and `createSiteBinding`
+
+  Widens the consumable SDK surface so consumers (the orchestrator's deploy/install
+  path) stop re-implementing logic scai already owns:
+
+  - Adds `@sitecoreai-labs/sitecoreai-cli/sites` (the Sites API client barrel) to
+    the package exports.
+  - Surfaces `discoverSites` (+ `DiscoveredSite` / `DiscoverSitesOptions`) on the
+    published `./recipe` entry.
+  - Adds `createSiteBinding` (+ `SiteBindingInput` / `SiteBindingResult`) on
+    `./deploy` — the reusable, CLI-free core of `scai deploy site bind` (idempotent
+    SXA Site Grouping field write over an Authoring client). The CLI task now wraps
+    it, so there's one implementation.
+
+  No CLI runtime change.
+
+### Patch Changes
+
+- e24dd76: fix(recipe): derive recipeRoots in prune-defaults from site + siteCollection
+
+  `recipe prune-defaults` read the content-side roots (`headlessVariantsRoot`,
+  `availableRenderingsRoot`, `contentItemsRoot`, `presentationStylesRoot`)
+  straight off the env profile — unlike `push`/`pull`, which derive them via
+  `withDerivedRecipeRoots`. A profile that configures only `site` +
+  `siteCollection` (e.g. the orchestrator's ephemeral CLI config, which no
+  longer writes explicit `*Root` fields) therefore failed with `INPUT_INVALID`
+  "root path(s) not configured" even though push/pull resolved them fine.
+  prune-defaults now derives the same way.
+
+- e24dd76: fix(recipe): actually bootstrap the `Scai Handle` marker field on push
+
+  Recipe identity — rename/move-robust matching plus exact handle recovery —
+  hangs off a `Scai Handle` field on the Sitecore Standard Template.
+  `injectHandleMarker` stamped the value onto every `CreateItem`, and
+  `ensureMarkerField` knew how to create the field, but **nothing called it**.
+  On a real tenant the field therefore never existed: the Authoring API silently
+  dropped the marker writes and matching fell back to path/name (so renames/moves
+  weren't actually robust, and there was no `Scai Handle` to find).
+
+  `runRecipePush` now calls `ensureMarkerField` once before applying — idempotent
+  (a no-op when the field is present), skipped under dry-run, and best-effort so a
+  bootstrap hiccup degrades to path/name matching rather than failing the push.
+
 ## 0.6.0
 
 ### Minor Changes

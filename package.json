@@ -58,6 +58,22 @@
       "types": "./dist/unstable.d.ts",
       "default": "./dist/unstable.js"
     },
+    "./unstable/brief/schema": {
+      "types": "./dist/brief/recipe/schema-only.d.ts",
+      "default": "./dist/brief/recipe/schema-only.js"
+    },
+    "./unstable/brand/schema": {
+      "types": "./dist/brand/recipe/schema-only.d.ts",
+      "default": "./dist/brand/recipe/schema-only.js"
+    },
+    "./unstable/campaigns/schema": {
+      "types": "./dist/campaigns/recipe/schema-only.d.ts",
+      "default": "./dist/campaigns/recipe/schema-only.js"
+    },
+    "./unstable/agents/schema": {
+      "types": "./dist/agents/recipe/schema-only.d.ts",
+      "default": "./dist/agents/recipe/schema-only.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {

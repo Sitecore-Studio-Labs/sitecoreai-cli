@@ -36,7 +36,7 @@ scai setup [options] [command]
 **Subcommands**
 
 - [`scai setup init`](#scai-setup-init) — Create or update an environment with project selection and SitecoreAI credentials
-- [`scai setup bootstrap`](#scai-setup-bootstrap) — Guided setup: policy + login + CM client + site + recipe push for an environment.
+- [`scai setup bootstrap`](#scai-setup-bootstrap) — Guided setup: init (if needed) + policy + login + CM client + site + repo assets + recipe push.
 - [`scai setup login`](#scai-setup-login) — Authenticate with SitecoreAI and store an access token (Deploy + CM/admin scopes)
 - [`scai setup client`](#scai-setup-client) — Manage an environment's credentials — automation clients (create, list, delete) and the brand key (register-brand).
 - [`scai setup logout`](#scai-setup-logout) — Clear stored authentication tokens
@@ -80,7 +80,7 @@ scai setup init [options]
 
 ### scai setup bootstrap
 
-Guided setup: policy + login + CM client + site + recipe push for an environment.
+Guided setup: init (if needed) + policy + login + CM client + site + repo assets + recipe push.
 
 ```
 scai setup bootstrap [options] [env]
@@ -96,7 +96,10 @@ scai setup bootstrap [options] [env]
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--yes` — Accept every consent prompt (policy grants, login, push) — for CI.
+- `--yes` — Accept every consent prompt (policy grants, login, assets, push) — for CI.
+- `--assets` — Generate repo assets even outside a detected head-app repo.
+- `--skip-assets` — Skip the repo-assets step (.env.local + xmcloud.build.json).
+- `--rendering-host <name>` — Rendering-host key for xmcloud.build.json (default: <site>-editing-host).
 - `--skip-push` — Provision only — do not push the recipe set at the end.
 - `--prune-defaults` — After pushing, prune the SXA Headless OOTB default folders (Media, Navigation, Promo, …).
 
@@ -5865,6 +5868,7 @@ scai provision deploy [options] [command]
 **Subcommands**
 
 - [`scai provision deploy build-config`](#scai-provision-deploy-build-config) — Create or update xmcloud.build.json — the XM Cloud Deploy build manifest. Adds/updates a rendering-host entry; merges with an existing file.
+- [`scai provision deploy env-file`](#scai-provision-deploy-env-file) — Write/update .env.local for a Content SDK head app — looks up the Edge context id + editing secret from the environment (Deploy API) and merges them in.
 - [`scai provision deploy deployments`](#scai-provision-deploy-deployments) — Deployment operations
 - [`scai provision deploy editing-host`](#scai-provision-deploy-editing-host) — Editing host operations
 - [`scai provision deploy environments`](#scai-provision-deploy-environments) — Environment operations
@@ -5895,6 +5899,29 @@ scai provision deploy build-config [options]
 - `--run-command <cmd>` — Run command. (default: `"next:start"`)
 - `--remove-default` — Drop the OOTB 'editing-host-name' host when adding a renamed one.
 - `-o, --output <path>` — Path to write. Defaults to ./xmcloud.build.json.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai provision deploy env-file
+
+Write/update .env.local for a Content SDK head app — looks up the Edge context id + editing secret from the environment (Deploy API) and merges them in.
+
+```
+scai provision deploy env-file [options]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `--site <name>` — Site for NEXT\_PUBLIC\_DEFAULT\_SITE\_NAME (defaults to the profile's site).
+- `--language <lang>` — Default language for NEXT\_PUBLIC\_DEFAULT\_LANGUAGE. (default: `"en"`)
+- `-o, --output <path>` — Path to write. Defaults to ./.env.local.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data

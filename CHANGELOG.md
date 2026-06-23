@@ -1,5 +1,70 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.9.2
+
+### Patch Changes
+
+- a7a6730: feat(recipe): `recipe prune-sample` + `setup bootstrap --prune-sample` — remove the OOTB sample project
+
+  Adds `scai provision recipe prune-sample [project]` (default `click-click-launch`),
+  which deletes the bundled SXA sample project's subtrees that a fresh XM Cloud
+  environment ships and that clutter the authoring tree + Pages component list:
+  `/sitecore/templates/Branches/Project/<project>`, `/sitecore/templates/Project/<project>`,
+  `/sitecore/layout/Renderings/Project/<project>`, and
+  `/sitecore/layout/Placeholder Settings/<project>`. The `Project` /
+  `Placeholder Settings` parents (where your own site lives) are left intact.
+  Idempotent (missing paths skip; tolerates concurrent-delete races) and destructive
+  (dry-runs without `--allow-write`). Also surfaced as a `setup bootstrap --prune-sample`
+  step.
+
+## 0.9.1
+
+### Patch Changes
+
+- 6e7ce50: feat(setup): `--prune-defaults` option on `setup bootstrap`
+
+  `scai setup bootstrap --prune-defaults` runs the SXA OOTB default-folder prune
+  (the same logic as `recipe prune-defaults`) as a final step after the recipe
+  push — removing the Media/Navigation/Promo/etc. clutter under Available
+  Renderings, Headless Variants, Data, and Presentation/Styles. Opt-in and
+  consent-gated (it's destructive); roots derive from the profile's
+  `site` + `siteCollection`.
+
+## 0.9.0
+
+### Minor Changes
+
+- 77aac4c: feat(setup): `setup bootstrap` command + `recipe compile` resolves the full set
+
+  Adds `scai setup bootstrap [env]` — one guided, idempotent flow from a configured
+  env profile to a pushable recipe set: workspace-policy grants (enroll + permit
+  minting + raise ceiling to `destructive`, consent-gated), device login, CM
+  automation client, SXA site picker, and an optional recipe push. Collapses the
+  five commands operators otherwise run (and discover one-error-at-a-time) into one.
+
+  Also: `scai provision recipe compile` now compiles the whole recipe set via
+  `compileRecipeSet` (was per-recipe). Cross-recipe references (`section`, treelist
+  sources, enum handles) resolve offline, and the cross-recipe aggregates (available
+  renderings, placeholder settings, templates mapping) are emitted to `.scai/` — so
+  `compile` is a faithful no-tenant validation of what `push` applies. A broken
+  `section` ref now fails at compile time instead of only at push.
+
+## 0.8.1
+
+### Patch Changes
+
+- 0bbe532: feat(setup): site picker in the init wizard + fix the auth hint
+
+  `scai setup init --wizard` now discovers the environment's SXA sites and offers
+  them as a **picker** — choosing one resolves both the site name and its
+  collection (parent tenant) in a single step, so recipeRoots derive with no typing.
+  Best-effort: if discovery is unavailable (no CM client yet) or the environment has
+  no sites, it falls back to the existing text prompt.
+
+  Also fix the `AUTH_REQUIRED` hint on the Authoring API: it pointed at
+  `scai setup env` (not a command) — it now points at `scai setup client create <env>`,
+  the command that actually provisions the CM automation client.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -12,6 +12,7 @@ import { runRecipeCompile } from "../../recipe/tasks/compile";
 import { runRecipeDiff } from "../../recipe/tasks/diff";
 import { runRecipePlan } from "../../recipe/tasks/plan";
 import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
+import { DEFAULT_SAMPLE_PROJECT, runRecipePruneSample } from "../../recipe/tasks/prune-sample";
 import { runRecipePull } from "../../recipe/tasks/pull";
 import { runRecipePush } from "../../recipe/tasks/push";
 import { runRecipeRoots } from "../../recipe/tasks/roots";
@@ -400,6 +401,44 @@ const createPruneDefaultsCommand = (): Command => {
   return command;
 };
 
+const createPruneSampleCommand = (): Command => {
+  const command = new Command("prune-sample")
+    .description(
+      `Delete an SXA sample project's subtrees (templates, branch templates, renderings, placeholder settings). Defaults to '${DEFAULT_SAMPLE_PROJECT}'. Destructive — dry-runs without --allow-write.`
+    )
+    .argument(
+      "[project]",
+      `Sample project name to remove. Defaults to '${DEFAULT_SAMPLE_PROJECT}'.`
+    );
+
+  addEnvironmentOption(command);
+  addWhatIfOption(command);
+  addAllowWriteOption(command);
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.addHelpText(
+    "after",
+    [
+      "",
+      "Removes (when present): /sitecore/templates/Branches/Project/<project>,",
+      "/sitecore/templates/Project/<project>, /sitecore/layout/Renderings/Project/<project>,",
+      "and /sitecore/layout/Placeholder Settings/<project>. The Project / Placeholder",
+      "Settings parents (where your own site lives) are left intact.",
+      "",
+      "Examples:",
+      "  $ scai provision recipe prune-sample -n my-tenant --what-if",
+      "  $ scai provision recipe prune-sample -n my-tenant --allow-write",
+      "",
+    ].join("\n")
+  );
+
+  command.action(async (project: string | undefined, options) => {
+    await runRecipePruneSample({ ...options, project });
+  });
+  return command;
+};
+
 const createRootsCommand = (): Command => {
   const command = new Command("roots").description(
     "Print the recipeRoots derived from a site (+ collection). Read-only — paste the output into envProfiles.<name>.recipeRoots in sitecoreai.cli.json, or inspect what `recipe push` will use."
@@ -436,6 +475,7 @@ export const createRecipeCommand = (): Command => {
   command.addCommand(createPullCommand());
   command.addCommand(createPushCommand());
   command.addCommand(createPruneDefaultsCommand());
+  command.addCommand(createPruneSampleCommand());
   command.addCommand(createRootsCommand());
 
   command.addHelpText(

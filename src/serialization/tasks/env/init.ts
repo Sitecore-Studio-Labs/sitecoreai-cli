@@ -22,6 +22,7 @@ import type { EnvironmentConfiguration } from "@/config/types";
 import { resolveDeployAuth } from "./init/auth";
 import { resolveDeployLookup } from "./init/deploy-lookup";
 import { discoverSites } from "@/authoring";
+import { selectFromList } from "@/shared/cli-tasks";
 
 /** Whether the caller supplied any explicit configuration flag (vs. a bare wizard run). */
 const hasExplicitInput = (options: ConnectOptions): boolean =>
@@ -400,17 +401,50 @@ const discoverSiteCollection = async (params: {
 };
 
 /**
+ * Best-effort site picker: discover the environment's SXA sites and let the
+ * operator choose one from a list. Selecting a site resolves BOTH its name and
+ * its collection (parent tenant) in a single step — no typing, no name match.
+ *
+ * Returns `undefined` (so the caller falls back to a text prompt) when discovery
+ * fails — it needs CM auth, which may not be provisioned at init time — or when
+ * the environment has no sites.
+ */
+const pickSiteFromEnvironment = async (params: {
+  environment: EnvironmentConfiguration;
+  envName: string;
+  logger: ReturnType<typeof toLogger>;
+}): Promise<{ site: string; collection: string } | undefined> => {
+  const { environment, envName, logger } = params;
+  let sites: Awaited<ReturnType<typeof discoverSites>>;
+  try {
+    sites = await discoverSites({ ...environment, name: envName });
+  } catch {
+    return undefined;
+  }
+  const choices = sites
+    .filter((s) => s.name && s.tenantName)
+    // `selectFromList` renders `name (id)` — surface the collection as the id so
+    // the operator sees `MySite (MyTenant)` and the pick carries both values.
+    .map((s) => ({ name: s.name, id: s.tenantName }));
+  if (choices.length === 0) {
+    return undefined;
+  }
+  const picked = await selectFromList(logger, "Site", choices);
+  return { site: picked.name as string, collection: picked.id as string };
+};
+
+/**
  * Resolve and persist the SXA site name + collection so `scai provision recipe`
  * derives the full recipeRoots set without hand-authored paths.
  *
- *   site:       --site flag > existing profile > wizard prompt (default: env name)
- *   collection: --site-collection flag > existing profile > discovery > wizard prompt
+ *   site + collection: --site / --site-collection flags > existing profile >
+ *     wizard site picker (discovered list) > site text prompt + collection discovery
  *
  * No-op when no site is resolved (a non-recipe environment leaves the profile
- * untouched). Discovery is best-effort; a miss falls back to a prompt in the
- * wizard or a warning otherwise, so init never blocks on it.
+ * untouched). The picker and discovery are best-effort; a miss falls back to a
+ * text prompt in the wizard or a warning otherwise, so init never blocks.
  */
-const resolveSiteIdentity = async (params: {
+export const resolveSiteIdentity = async (params: {
   options: ConnectOptions;
   updated: EnvironmentConfiguration;
   envName: string;
@@ -420,6 +454,18 @@ const resolveSiteIdentity = async (params: {
   const { options, updated, envName, runWizard, logger } = params;
 
   let site = options.site?.trim() || updated.site?.trim();
+  let collection = options.siteCollection?.trim() || updated.siteCollection?.trim();
+
+  // Wizard, nothing pre-set by flags/profile: offer a picker of discovered sites.
+  // Picking one fills both site and collection at once.
+  if (runWizard && !site && !collection) {
+    const picked = await pickSiteFromEnvironment({ environment: updated, envName, logger });
+    if (picked) {
+      site = picked.site;
+      collection = picked.collection;
+    }
+  }
+
   if (!site && runWizard) {
     site =
       (
@@ -431,7 +477,6 @@ const resolveSiteIdentity = async (params: {
   }
   updated.site = site;
 
-  let collection = options.siteCollection?.trim() || updated.siteCollection?.trim();
   if (!collection) {
     collection = await discoverSiteCollection({ environment: updated, envName, site, logger });
   }

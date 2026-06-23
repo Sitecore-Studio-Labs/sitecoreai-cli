@@ -7,10 +7,12 @@ import { createDeployDeploymentsCommand } from "./deployments";
 import { createDeployLogsCommand } from "./logs";
 import { createDeployEditingHostCommand } from "./editing-host";
 import { createDeploySiteCommand } from "./site";
+import { createDeployBuildConfigCommand } from "./build-config";
 
 export const createDeployCommand = (): Command => {
   const command = new Command("deploy").description("XM Cloud Deploy API commands");
 
+  command.addCommand(createDeployBuildConfigCommand());
   command.addCommand(createDeployDeploymentsCommand());
   command.addCommand(createDeployEditingHostCommand());
   command.addCommand(createDeployEnvironmentsCommand());

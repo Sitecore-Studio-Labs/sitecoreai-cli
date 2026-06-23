@@ -5865,6 +5865,7 @@ scai provision deploy [options] [command]
 
 **Subcommands**
 
+- [`scai provision deploy build-config`](#scai-provision-deploy-build-config) — Create or update xmcloud.build.json — the XM Cloud Deploy build manifest. Adds/updates a rendering-host entry; merges with an existing file.
 - [`scai provision deploy deployments`](#scai-provision-deploy-deployments) — Deployment operations
 - [`scai provision deploy editing-host`](#scai-provision-deploy-editing-host) — Editing host operations
 - [`scai provision deploy environments`](#scai-provision-deploy-environments) — Environment operations
@@ -5873,6 +5874,36 @@ scai provision deploy [options] [command]
 - [`scai provision deploy projects`](#scai-provision-deploy-projects) — Project operations
 - [`scai provision deploy site`](#scai-provision-deploy-site) — SXA site operations
 - [`scai provision deploy source-control`](#scai-provision-deploy-source-control) — Source control operations
+
+#### scai provision deploy build-config
+
+Create or update xmcloud.build.json — the XM Cloud Deploy build manifest. Adds/updates a rendering-host entry; merges with an existing file.
+
+```
+scai provision deploy build-config [options]
+```
+
+**Options**
+
+- `--rendering-host <name>` — Rendering-host key to add/update. (default: `"editing-host-name"`)
+- `--secret <token>` — JSS deployment secret for the rendering host.
+- `--no-enabled` — Mark the rendering host disabled (default: enabled).
+- `--node-version <version>` — Node version for the build host. (default: `"24.10.0"`)
+- `--host-path <path>` — Rendering-host path within the repo. (default: `"./"`)
+- `--type <type>` — Rendering-host type. (default: `"sxa"`)
+- `--install-command <cmd>` — Install command. (default: `"npm install"`)
+- `--build-command <cmd>` — Build command. (default: `"npm run build"`)
+- `--run-command <cmd>` — Run command. (default: `"next:start"`)
+- `--remove-default` — Drop the OOTB 'editing-host-name' host when adding a renamed one.
+- `-o, --output <path>` — Path to write. Defaults to ./xmcloud.build.json.
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
 
 #### scai provision deploy deployments
 

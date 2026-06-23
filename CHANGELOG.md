@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.12.1
+
+### Patch Changes
+
+- `provision deploy env-file` no longer writes `NEXT_PUBLIC_SITECORE_EDGE_PLATFORM_HOSTNAME`. The value came from the Deploy edge-token's `edgeUrl` (the Experience Edge _delivery_ host, `edge.sitecorecloud.io`), but that variable is the Edge _Platform_ host — which the Content SDK reads for its service/site-info endpoint and defaults correctly to `edge-platform.sitecorecloud.io` when unset. Writing the delivery host there pointed the app's `api.edge.edgeUrl` at the wrong endpoint. The var is optional, so env-file now leaves it alone and lets the SDK default stand. It still writes the Edge context id, editing secret, and default site/language.
+
 ## 0.12.0
 
 ### Minor Changes

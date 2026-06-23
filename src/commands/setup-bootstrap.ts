@@ -24,8 +24,12 @@ export const createBootstrapCommand = (): Command => {
     .addOption(
       new Option("--yes", "Accept every consent prompt (policy grants, login, push) — for CI.")
     )
+    .addOption(new Option("--skip-push", "Provision only — do not push the recipe set at the end."))
     .addOption(
-      new Option("--skip-push", "Provision only — do not push the recipe set at the end.")
+      new Option(
+        "--prune-defaults",
+        "After pushing, prune the SXA Headless OOTB default folders (Media, Navigation, Promo, …)."
+      )
     );
 
   command.addHelpText(
@@ -38,6 +42,7 @@ export const createBootstrapCommand = (): Command => {
       "  3. client   — mint the env-scoped CM automation client",
       "  4. site     — pick the SXA site → writes site/siteCollection (roots derive)",
       "  5. push     — apply the recipe set (skip with --skip-push)",
+      "  6. prune    — remove SXA OOTB default folders (only with --prune-defaults)",
       "",
       "Prerequisite: the env profile must exist — run 'scai setup init' first.",
       "",

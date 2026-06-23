@@ -28,6 +28,7 @@ import type { EnvironmentConfiguration } from "@/config/types";
 import { enrollEnvironment, setEnvironmentFlags } from "@/policy";
 import type { RiskTier } from "@/policy";
 import { runRecipePush } from "@/recipe/tasks/push";
+import { runRecipePruneDefaults } from "@/recipe/tasks/prune-defaults";
 import { assertInteractive, promptConfirm } from "@/shared/prompt";
 import { toLogger } from "../shared";
 import { runDeployToken } from "./deploy-token";
@@ -40,6 +41,8 @@ export type BootstrapOptions = CommonOptions & {
   yes?: boolean;
   /** Skip the final recipe push. */
   skipPush?: boolean;
+  /** After pushing, prune the SXA Headless OOTB default folders. */
+  pruneDefaults?: boolean;
 };
 
 export const runBootstrap = async (options: BootstrapOptions): Promise<void> => {
@@ -103,6 +106,18 @@ export const runBootstrap = async (options: BootstrapOptions): Promise<void> => 
   // 5. Push the recipe set (optional).
   if (!options.skipPush && (await confirm("Push the recipe set to Sitecore now?"))) {
     await runRecipePush({ environmentName: envName, allowWrite: true, config: options.config });
+  }
+
+  // 6. Prune the SXA Headless OOTB default folders (opt-in, destructive).
+  if (
+    options.pruneDefaults &&
+    (await confirm("Prune the SXA OOTB default folders (Media, Navigation, Promo, …)?"))
+  ) {
+    await runRecipePruneDefaults({
+      environmentName: envName,
+      allowWrite: true,
+      config: options.config,
+    });
   }
 
   logger.info(

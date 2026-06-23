@@ -99,6 +99,7 @@ scai setup bootstrap [options] [env]
 - `--yes` — Accept every consent prompt (policy grants, login, push) — for CI.
 - `--skip-push` — Provision only — do not push the recipe set at the end.
 - `--prune-defaults` — After pushing, prune the SXA Headless OOTB default folders (Media, Navigation, Promo, …).
+- `--prune-sample` — After pushing, delete the OOTB 'click-click-launch' sample project's subtrees.
 
 ### scai setup login
 
@@ -7786,6 +7787,7 @@ scai provision recipe [options] [command]
 - [`scai provision recipe pull`](#scai-provision-recipe-pull) — Read tenant state and dump every reverse-projectable recipe to disk as .recipe.json. Read-only — does not mutate the tenant. Default snapshot mode dumps everything to <out>; `--against <recipes-dir>` enables three-way merge detection (in-sync / disk-ahead / tenant-edited / conflict).
 - [`scai provision recipe push`](#scai-provision-recipe-push) — Apply recipes to a tenant. Compiles in-memory and runs the executor with idempotency + best-effort rollback.
 - [`scai provision recipe prune-defaults`](#scai-provision-recipe-prune-defaults) — Remove the SXA Headless OOTB child folders under Available Renderings (Media, Navigation, Page Content, Page Structure), Headless Variants (Image, LinkList, Navigation, Page Content, Promo, Rich Text, Title), Data (Images, Link Lists, Navigation Filters, Promos, Texts — Tags is preserved), and Presentation/Styles (Spacing, Add Highlight, Content Alignment, Background Color, Background Layout, Navigation, Link List, Rich Text, Promo, Image, Common, Container). Keeps the parent folders. Idempotent — missing items are skipped, not errored.
+- [`scai provision recipe prune-sample`](#scai-provision-recipe-prune-sample) — Delete an SXA sample project's subtrees (templates, branch templates, renderings, placeholder settings). Defaults to 'click-click-launch'. Destructive — dry-runs without --allow-write.
 - [`scai provision recipe roots`](#scai-provision-recipe-roots) — Print the recipeRoots derived from a site (+ collection). Read-only — paste the output into envProfiles.<name>.recipeRoots in sitecoreai.cli.json, or inspect what `recipe push` will use.
 
 #### scai provision recipe compile
@@ -7951,6 +7953,27 @@ scai provision recipe prune-defaults [options]
 - `--available-renderings-root <path>` — Override availableRenderingsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Available Renderings).
 - `--content-items-root <path>` — Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data).
 - `--presentation-styles-root <path>` — Override presentationStylesRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Styles).
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-w, --what-if` — Lists commands that would be executed, without executing them
+- `--allow-write` — Allow write operations for this command without updating config
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai provision recipe prune-sample
+
+Delete an SXA sample project's subtrees (templates, branch templates, renderings, placeholder settings). Defaults to 'click-click-launch'. Destructive — dry-runs without --allow-write.
+
+```
+scai provision recipe prune-sample [options] [project]
+```
+
+**Options**
+
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `--allow-write` — Allow write operations for this command without updating config

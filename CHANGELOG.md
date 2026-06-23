@@ -1,5 +1,30 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.11.0
+
+### Minor Changes
+
+- b419b2b: remove `provision recipe prune-sample` + the `setup bootstrap --prune-sample` step
+
+  The motivating case — removing the OOTB `click-click-launch` sample — is delivered
+  as **Items-as-Resources (IAR)**: read-only resource items, not content-database
+  items. The Authoring `deleteItem` can never remove them (it returns
+  `successful: false` for every item, including leaves, because there's nothing in the
+  database to delete). Excluding an IAR sample is a deployment/resource-layer concern
+  (the planned `provision iar` surface), not an Authoring-delete one — so the command
+  doesn't belong on the recipe surface. `prune-defaults` (which removes
+  content-database OOTB folders) is unaffected.
+
+### Patch Changes
+
+- b419b2b: docs(skills): add the `recipe-authoring` skill
+
+  A `skills/recipe-authoring/SKILL.md` decision-guide for authoring recipes
+  (component / content / enumeration / section): field-shape mapping, params vs
+  fields, variants, placeholders (expose vs placedIn, static vs dynamic),
+  datasources (locations, autoCreate, treelist vs insert-options), and the
+  section-required gotcha. Registered in the skills index + `agent.json`.
+
 ## 0.10.0
 
 ### Minor Changes

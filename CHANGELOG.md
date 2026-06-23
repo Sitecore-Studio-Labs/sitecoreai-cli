@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.12.2
+
+### Patch Changes
+
+- Ship the `skills/` directory in the npm package. Consumers can now install the agent skills (notably `recipe-authoring`) straight from the dependency — e.g. `cp -r node_modules/@sitecoreai-labs/sitecoreai-cli/skills/recipe-authoring .agents/skills/` — instead of copying them out of the repo.
+
 ## 0.12.1
 
 ### Patch Changes

@@ -26,6 +26,7 @@ import { createDoctorCommand } from "./commands/doctor";
 import { createHealthCommand } from "./commands/health";
 import { createHistoryCommand } from "./commands/history";
 import { createInitCommand } from "./commands/init";
+import { createBootstrapCommand } from "./commands/setup-bootstrap";
 import { createLogoutCommand } from "./commands/logout";
 import { createSetupClientCommand } from "./commands/setup-client";
 import { createMcpCommand } from "./commands/mcp";
@@ -82,6 +83,7 @@ export const createProgram = (runCli: RunCli, options: { shellMode?: boolean } =
     "Configure environments and authenticate — init, login, env, logout, status"
   );
   setup.addCommand(createInitCommand());
+  setup.addCommand(createBootstrapCommand());
   setup.addCommand(createLoginCommand());
   setup.addCommand(createSetupClientCommand());
   setup.addCommand(createLogoutCommand());

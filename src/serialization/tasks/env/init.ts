@@ -444,7 +444,7 @@ const pickSiteFromEnvironment = async (params: {
  * untouched). The picker and discovery are best-effort; a miss falls back to a
  * text prompt in the wizard or a warning otherwise, so init never blocks.
  */
-const resolveSiteIdentity = async (params: {
+export const resolveSiteIdentity = async (params: {
   options: ConnectOptions;
   updated: EnvironmentConfiguration;
   envName: string;

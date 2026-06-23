@@ -2,7 +2,7 @@ import path from "node:path";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
-import { compileRecipe } from "../compile";
+import { compileRecipeSet } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";
 import {
   recipeSetNeedsRoots,
@@ -103,28 +103,47 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     operationCount: number;
   }> = [];
 
-  for (const { file, recipe } of loaded) {
-    const ir = compileRecipe(recipe, {
-      templatesRoot,
-      renderingsRoot,
-      ...optionalRoots,
-      site: resolveSeedSite(environment),
-      marketplacePluginOverrides: root.marketplacePluginOverrides,
-    });
+  // Compile the whole set in one pass (not per-recipe), so cross-recipe
+  // references — `section`, treelist sources, enum handles — resolve and the
+  // cross-recipe aggregates (available renderings, placeholder settings,
+  // templates mapping) are emitted. This mirrors `push`, making `compile` a
+  // faithful no-tenant validation: a broken `section` ref now errors here
+  // instead of only at push time, and the Available Renderings IR lands on
+  // disk for inspection.
+  const recipes = loaded.map((entry) => entry.recipe);
+  const fileByHandle = new Map(loaded.map((entry) => [entry.recipe.handle, entry.file]));
+  const irs = compileRecipeSet(recipes, {
+    templatesRoot,
+    renderingsRoot,
+    ...optionalRoots,
+    site: resolveSeedSite(environment),
+    marketplacePluginOverrides: root.marketplacePluginOverrides,
+  });
 
-    const outputPath =
-      options.output ?? defaultIrPath(recipe.handle, path.dirname(path.resolve(file)));
+  if (options.output && irs.length > 1) {
+    throw createScaiError("--output cannot be combined with a multi-IR compile.", "INPUT_INVALID", {
+      hint: "A recipe-set compile emits one IR per recipe plus cross-recipe aggregates; omit --output to write per-recipe IRs to <dir>/.scai/.",
+    });
+  }
+
+  // Per-recipe IRs land next to their source file; cross-recipe aggregate IRs
+  // (no source file) land under the config root's `.scai/`.
+  const aggregateDir = path.dirname(root.physicalPath);
+  for (const ir of irs) {
+    const sourceFile = fileByHandle.get(ir.recipeHandle);
+    const baseDir = sourceFile ? path.dirname(path.resolve(sourceFile)) : aggregateDir;
+    const outputPath = options.output ?? defaultIrPath(ir.recipeHandle, baseDir);
     await writeIr(outputPath, ir);
 
     results.push({
-      recipeHandle: recipe.handle,
-      input: file,
+      recipeHandle: ir.recipeHandle,
+      input: sourceFile ?? "(aggregate)",
       output: outputPath,
       operationCount: ir.operations.length,
     });
 
     if (!logger.isJson()) {
-      logger.info(`Compiled ${recipe.handle} → ${outputPath}`, "green");
+      logger.info(`Compiled ${ir.recipeHandle} → ${outputPath}`, "green");
       logger.info(`  ${ir.operations.length} operation${ir.operations.length === 1 ? "" : "s"}.`);
     }
   }

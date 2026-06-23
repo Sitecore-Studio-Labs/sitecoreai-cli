@@ -98,6 +98,7 @@ scai setup bootstrap [options] [env]
 - `--non-interactive` — Disable prompts and require explicit input
 - `--yes` — Accept every consent prompt (policy grants, login, push) — for CI.
 - `--skip-push` — Provision only — do not push the recipe set at the end.
+- `--prune-defaults` — After pushing, prune the SXA Headless OOTB default folders (Media, Navigation, Promo, …).
 
 ### scai setup login
 

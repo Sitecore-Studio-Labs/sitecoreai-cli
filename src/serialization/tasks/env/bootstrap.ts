@@ -29,6 +29,7 @@ import { enrollEnvironment, setEnvironmentFlags } from "@/policy";
 import type { RiskTier } from "@/policy";
 import { runRecipePush } from "@/recipe/tasks/push";
 import { runRecipePruneDefaults } from "@/recipe/tasks/prune-defaults";
+import { runRecipePruneSample } from "@/recipe/tasks/prune-sample";
 import { assertInteractive, promptConfirm } from "@/shared/prompt";
 import { toLogger } from "../shared";
 import { runDeployToken } from "./deploy-token";
@@ -43,6 +44,8 @@ export type BootstrapOptions = CommonOptions & {
   skipPush?: boolean;
   /** After pushing, prune the SXA Headless OOTB default folders. */
   pruneDefaults?: boolean;
+  /** After pushing, delete the OOTB `click-click-launch` sample project. */
+  pruneSample?: boolean;
 };
 
 export const runBootstrap = async (options: BootstrapOptions): Promise<void> => {
@@ -114,6 +117,18 @@ export const runBootstrap = async (options: BootstrapOptions): Promise<void> => 
     (await confirm("Prune the SXA OOTB default folders (Media, Navigation, Promo, …)?"))
   ) {
     await runRecipePruneDefaults({
+      environmentName: envName,
+      allowWrite: true,
+      config: options.config,
+    });
+  }
+
+  // 7. Delete the OOTB sample project (opt-in, destructive).
+  if (
+    options.pruneSample &&
+    (await confirm("Delete the OOTB 'click-click-launch' sample project's subtrees?"))
+  ) {
+    await runRecipePruneSample({
       environmentName: envName,
       allowWrite: true,
       config: options.config,

@@ -30,6 +30,12 @@ export const createBootstrapCommand = (): Command => {
         "--prune-defaults",
         "After pushing, prune the SXA Headless OOTB default folders (Media, Navigation, Promo, …)."
       )
+    )
+    .addOption(
+      new Option(
+        "--prune-sample",
+        "After pushing, delete the OOTB 'click-click-launch' sample project's subtrees."
+      )
     );
 
   command.addHelpText(
@@ -43,6 +49,7 @@ export const createBootstrapCommand = (): Command => {
       "  4. site     — pick the SXA site → writes site/siteCollection (roots derive)",
       "  5. push     — apply the recipe set (skip with --skip-push)",
       "  6. prune    — remove SXA OOTB default folders (only with --prune-defaults)",
+      "             — delete the click-click-launch sample (only with --prune-sample)",
       "",
       "Prerequisite: the env profile must exist — run 'scai setup init' first.",
       "",

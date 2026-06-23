@@ -82,7 +82,7 @@ pnpm add    -g @sitecoreai-labs/sitecoreai-cli
 yarn global add @sitecoreai-labs/sitecoreai-cli
 ```
 
-Requires Node.js >= 20.
+Requires Node.js >= 22.12.0.
 
 ## Quick start
 

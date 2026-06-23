@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.12.3
+
+### Patch Changes
+
+- Fix `provision deploy env-file` to write the real Edge context ids. It was writing the edge-token `apiKey` into `SITECORE_EDGE_CONTEXT_ID`, but that value is **not** a `sitecore_context_id` — so a head app's build (`sitecore-tools project build`) failed with `404 "No sitecore context"`. env-file now reads `previewContextId` + `liveContextId` from the environment GET (`/api/environments/v2/{id}`, the same source the orchestrator uses): the preview id becomes `SITECORE_EDGE_CONTEXT_ID` / `NEXT_PUBLIC_SITECORE_EDGE_CONTEXT_ID` (the editing-host default) and the live id is written as `SITECORE_EDGE_LIVE_CONTEXT_ID`.
+
 ## 0.12.2
 
 ### Patch Changes

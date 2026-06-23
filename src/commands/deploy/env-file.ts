@@ -9,8 +9,9 @@ import { runDeployEnvFile } from "../../deploy/tasks/env-file";
 
 /**
  * `scai provision deploy env-file` — generate/update `.env.local` for a Content
- * SDK head app, looking up the Edge context id + editing secret from the Deploy
- * API (no hand-pasting secrets). Merges into an existing file.
+ * SDK head app, looking up the Edge preview/live context ids (environment GET)
+ * + editing secret from the Deploy API (no hand-pasting secrets). Merges into an
+ * existing file.
  */
 export const createDeployEnvFileCommand = (): Command => {
   const command = new Command("env-file").description(
@@ -40,7 +41,8 @@ export const createDeployEnvFileCommand = (): Command => {
     [
       "",
       "Resolves from the Deploy API and writes (merging, not clobbering):",
-      "  SITECORE_EDGE_CONTEXT_ID / NEXT_PUBLIC_SITECORE_EDGE_CONTEXT_ID  (obtain-edge-token)",
+      "  SITECORE_EDGE_CONTEXT_ID / NEXT_PUBLIC_SITECORE_EDGE_CONTEXT_ID  (env GET previewContextId)",
+      "  SITECORE_EDGE_LIVE_CONTEXT_ID                                    (env GET liveContextId)",
       "  SITECORE_EDITING_SECRET                                          (obtain-editing-secret)",
       "  NEXT_PUBLIC_DEFAULT_SITE_NAME / NEXT_PUBLIC_DEFAULT_LANGUAGE",
       "",

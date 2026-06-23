@@ -36,6 +36,7 @@ scai setup [options] [command]
 **Subcommands**
 
 - [`scai setup init`](#scai-setup-init) — Create or update an environment with project selection and SitecoreAI credentials
+- [`scai setup bootstrap`](#scai-setup-bootstrap) — Guided setup: policy + login + CM client + site + recipe push for an environment.
 - [`scai setup login`](#scai-setup-login) — Authenticate with SitecoreAI and store an access token (Deploy + CM/admin scopes)
 - [`scai setup client`](#scai-setup-client) — Manage an environment's credentials — automation clients (create, list, delete) and the brand key (register-brand).
 - [`scai setup logout`](#scai-setup-logout) — Clear stored authentication tokens
@@ -76,6 +77,27 @@ scai setup init [options]
 - `--site <name>` — SXA Headless site name. Written to the profile so `scai provision recipe` derives recipeRoots automatically (no hand-written paths).
 - `--site-collection <name>` — SXA Headless site collection (parent tenant). When omitted, scai tries to discover it from the environment's sites.
 - `--set-default` — Set as default environment
+
+### scai setup bootstrap
+
+Guided setup: policy + login + CM client + site + recipe push for an environment.
+
+```
+scai setup bootstrap [options] [env]
+```
+
+**Options**
+
+- `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+- `--yes` — Accept every consent prompt (policy grants, login, push) — for CI.
+- `--skip-push` — Provision only — do not push the recipe set at the end.
 
 ### scai setup login
 

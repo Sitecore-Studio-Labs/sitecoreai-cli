@@ -8,6 +8,7 @@ This directory contains Cursor-style skills (each in its own folder with a `SKIL
 - `config-bootstrap` — Create and validate `sitecoreai.cli.json`.
 - `deploy-ops` — Deploy API operations (projects/environments/deployments).
 - `environment-setup` — Authentication and environment setup.
+- `recipe-authoring` — Author component/content/enum/section recipes (`.recipe.ts`) that compile to Sitecore templates + renderings; fields/params/variants/placeholders/datasources and the section gotcha.
 - `redaction-logs` — Logging, JSON output, and redaction guidance.
 - `release-workflow` — Changesets and release steps.
 - `serialization-ops` — Serialization pull/push/diff/validate/watch.

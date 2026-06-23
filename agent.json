@@ -43,6 +43,11 @@
       "summary": "Configure authentication for environments (deploy token or client credentials)."
     },
     {
+      "id": "recipe-authoring",
+      "path": "skills/recipe-authoring/SKILL.md",
+      "summary": "Author component/content/enum/section recipes (.recipe.ts) — fields, params, variants, placeholders, datasources — that compile to Sitecore templates + renderings."
+    },
+    {
       "id": "redaction-logs",
       "path": "skills/redaction-logs/SKILL.md",
       "summary": "Manage logging, redaction, and output formats safely."

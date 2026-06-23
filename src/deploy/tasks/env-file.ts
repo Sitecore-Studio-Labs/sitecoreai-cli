@@ -33,7 +33,6 @@ export type DeployEnvFileOptions = CommonOptions & {
 export const MANAGED_ENV_KEYS = [
   "SITECORE_EDGE_CONTEXT_ID",
   "NEXT_PUBLIC_SITECORE_EDGE_CONTEXT_ID",
-  "NEXT_PUBLIC_SITECORE_EDGE_PLATFORM_HOSTNAME",
   "SITECORE_EDITING_SECRET",
   "NEXT_PUBLIC_DEFAULT_SITE_NAME",
   "NEXT_PUBLIC_DEFAULT_LANGUAGE",
@@ -80,7 +79,6 @@ export const runDeployEnvFile = async (options: DeployEnvFileOptions): Promise<v
   const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
   const edge = (await fetchEnvironmentEdgeToken(apiOptions, environmentId)) as {
     apiKey?: string;
-    edgeUrl?: string;
   } | null;
   const secretResult = await fetchEnvironmentEditingSecret(apiOptions, environmentId);
   const editingSecret =
@@ -95,7 +93,6 @@ export const runDeployEnvFile = async (options: DeployEnvFileOptions): Promise<v
     vars.SITECORE_EDGE_CONTEXT_ID = edge.apiKey;
     vars.NEXT_PUBLIC_SITECORE_EDGE_CONTEXT_ID = edge.apiKey;
   }
-  if (edge?.edgeUrl) vars.NEXT_PUBLIC_SITECORE_EDGE_PLATFORM_HOSTNAME = edge.edgeUrl;
   if (editingSecret) vars.SITECORE_EDITING_SECRET = editingSecret;
   if (site) vars.NEXT_PUBLIC_DEFAULT_SITE_NAME = site;
   vars.NEXT_PUBLIC_DEFAULT_LANGUAGE = language;

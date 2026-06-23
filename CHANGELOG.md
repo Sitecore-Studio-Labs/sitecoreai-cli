@@ -1,5 +1,12 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.12.0
+
+### Minor Changes
+
+- `setup bootstrap` is now the one command from a fresh checkout to a working head app. It gains two steps: it runs `setup init` first when no profile exists yet (init stays a thin standalone command), and after the site pick it generates the head-app repo assets — `.env.local` (via `deploy env-file`) and `xmcloud.build.json` (via `deploy build-config`) — using the just-picked site. The assets step is on by default in a detected Content SDK head-app repo; `--skip-assets` opts out, `--assets` forces it, and `--rendering-host <name>` names the editing host. Every step stays idempotent and consent-gated.
+- Add `scai provision deploy env-file` — generates/updates a Content SDK head app's `.env.local` by looking up the Edge context id (`obtain-edge-token`) and editing secret (`obtain-editing-secret`) from the Deploy API. Merges into an existing file (only the managed keys are upserted), supports `--site` / `--language` / `--output`, and `--what-if` previews with secrets masked. Pairs with `deploy build-config` to replace the bespoke `.env.local` generation head-app pipelines otherwise hand-roll.
+
 ## 0.11.0
 
 ### Minor Changes

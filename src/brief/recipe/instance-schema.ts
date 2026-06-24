@@ -293,6 +293,12 @@ export const BriefInstanceRecipeSchema = z.object({
     .describe(
       "Story UUID. Narrows campaign-handle resolution by the `story:<id>` label so two stories that share a campaign handle don't collide. Omittable when `campaignHandle` is also omitted."
     ),
+  campaignSitecoreId: z
+    .string()
+    .optional()
+    .describe(
+      "Orchestrate project UUID of the linked campaign. When set, the link path uses it directly (`getProject(id)`) instead of resolving `campaignHandle` via list-by-labels — the only reliable lookup past the Orchestrate project list's row cap, where the label search can't see a project on a later page. The orchestrator forwards the campaign's stamped `sitecoreId`; falls back to the label search when absent."
+    ),
 });
 
 /** A validated brief-instance recipe. */

@@ -563,4 +563,30 @@ describe("apply — campaign link convergence", () => {
     expect(briefApi.linkBriefToProject).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/no campaign carrying both labels/i));
   });
+
+  it("does not hang when listProjects returns a non-advancing pagination cursor", async () => {
+    // The Orchestrate list endpoint hands back the SAME `next` cursor on
+    // every page (a malformed / perpetual cursor) while never yielding a
+    // matching project. Without the cursor-advance guard,
+    // `findProjectIdByLabels` pages forever — each request individually
+    // succeeds, so the LOOP never terminates and the whole brief push
+    // hangs until the orchestrator's multi-minute spawn timeout. This is
+    // the campaign-linked-brief hang (standalone briefs never page
+    // projects). The guard must terminate, skip the link non-fatally
+    // (the brief is still created), and warn so the cause is observable.
+    //
+    // If the guard regresses, this `apply` never resolves and the test
+    // fails by exceeding its timeout rather than hanging the whole suite.
+    campaignApi.listProjects.mockResolvedValue({
+      next: "STUCK_CURSOR",
+      data: [{ id: "other", labels: ["story:nomatch", "handle:nomatch"] }],
+    });
+    const { ctx: c, warn } = makeCtx();
+
+    await applyCreateWithCampaign(c);
+
+    expect(briefApi.createBrief).toHaveBeenCalledTimes(1);
+    expect(briefApi.linkBriefToProject).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/non-advancing pagination cursor/i));
+  }, 5_000);
 });

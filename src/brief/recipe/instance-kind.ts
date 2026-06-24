@@ -70,6 +70,52 @@ import { BriefInstanceRecipeSchema, type BriefInstanceRecipe } from "./instance-
 const BRIEF_KIND_NAME = "brief";
 
 /**
+ * Hard ceiling on pages drained from a cursor-paged endpoint. A backstop
+ * for a `next` cursor that keeps yielding fresh values forever; a healthy
+ * tenant never approaches it.
+ */
+const MAX_LIST_PAGES = 10_000;
+
+/**
+ * Drain a cursor-paged list endpoint, calling `visit` with each page's
+ * rows. `visit` returns a non-`undefined` value to short-circuit (match
+ * found); returning `undefined` keeps paging.
+ *
+ * Stops on: end-of-stream (`next` falsy / empty page), a hard page cap,
+ * or — critically — a NON-ADVANCING cursor (the endpoint returned a
+ * `next` we already sent). Left unguarded, a malformed/perpetual cursor
+ * makes the caller page forever; because each request individually
+ * succeeds (and only carries a per-request timeout), the LOOP never
+ * terminates and hangs the whole push until the orchestrator's multi-
+ * minute spawn timeout kills it. This bit campaign-linked brief pushes
+ * via `findProjectIdByLabels` (standalone briefs never page projects).
+ * The guard degrades that infinite loop to a clean "not found" — which
+ * every caller here already handles non-fatally — and invokes
+ * `onNonAdvancingCursor` so the condition is observable in logs.
+ */
+const drainPages = async <Row, Hit>(
+  fetchPage: (cursor: string | undefined) => Promise<{ data: Row[]; next: string | null }>,
+  visit: (rows: Row[]) => Hit | undefined,
+  onNonAdvancingCursor?: () => void
+): Promise<Hit | undefined> => {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+    const result = await fetchPage(cursor);
+    const hit = visit(result.data);
+    if (hit !== undefined) return hit;
+    if (!result.next || result.data.length === 0) return undefined;
+    if (seenCursors.has(result.next)) {
+      onNonAdvancingCursor?.();
+      return undefined;
+    }
+    seenCursors.add(result.next);
+    cursor = result.next;
+  }
+  return undefined;
+};
+
+/**
  * Identity-marker pattern callers stamp into a brief's name to keep
  * re-pushes idempotent. Shape: `[story:<storyId>/<handle>]`. The orchestrator
  * uses this for story-generated briefs; ad-hoc recipes that don't carry a
@@ -96,21 +142,22 @@ const findBriefByName = async (
 ): Promise<Brief | null> => {
   const markerMatch = name.match(IDENTITY_MARKER_RE);
   const marker = markerMatch ? markerMatch[0] : null;
-  let cursor: string | undefined;
   let exactFallback: Brief | null = null;
-  for (;;) {
-    const page = await listBriefs(client, cursor ? { next: cursor } : undefined);
-    for (const brief of page.data) {
-      if (brief.name === name) {
-        exactFallback ??= brief;
+  const markerHit = await drainPages(
+    (cursor) => listBriefs(client, cursor ? { next: cursor } : undefined),
+    (rows) => {
+      for (const brief of rows) {
+        if (brief.name === name) {
+          exactFallback ??= brief;
+        }
+        if (marker && brief.name.endsWith(marker)) {
+          return brief;
+        }
       }
-      if (marker && brief.name.endsWith(marker)) {
-        return brief;
-      }
+      return undefined;
     }
-    if (!page.next || page.data.length === 0) return exactFallback;
-    cursor = page.next;
-  }
+  );
+  return markerHit ?? exactFallback;
 };
 
 /** Find a brief type by its codename (mirrors `briefTypeKind`'s helper). */
@@ -134,37 +181,44 @@ const findTypeByName = async (
  */
 const findProjectIdByLabels = async (
   campaignClient: CampaignApiClientOptions,
-  params: { storyId: string; campaignHandle: string }
+  params: { storyId: string; campaignHandle: string },
+  logger?: SyncContext["logger"]
 ): Promise<string | null> => {
   const storyLabel = `story:${params.storyId}`;
   const handleLabel = `handle:${params.campaignHandle}`;
-  let cursor: string | undefined;
-  for (;;) {
-    const page = await listProjects(campaignClient, cursor ? { next: cursor } : undefined);
-    for (const project of page.data) {
-      const labels = project.labels ?? [];
-      if (labels.includes(storyLabel) && labels.includes(handleLabel)) {
-        return project.id;
+  const projectId = await drainPages(
+    (cursor) => listProjects(campaignClient, cursor ? { next: cursor } : undefined),
+    (rows) => {
+      for (const project of rows) {
+        const labels = project.labels ?? [];
+        if (labels.includes(storyLabel) && labels.includes(handleLabel)) {
+          return project.id;
+        }
       }
-    }
-    if (!page.next || page.data.length === 0) return null;
-    cursor = page.next;
-  }
+      return undefined;
+    },
+    () =>
+      logger?.warn?.(
+        `Orchestrate listProjects returned a non-advancing pagination cursor while resolving campaignHandle "${params.campaignHandle}" (story ${params.storyId}); stopped paging to avoid a hang. The brief->campaign link may be skipped this push — re-run after the campaign is confirmed pushed.`
+      )
+  );
+  return projectId ?? null;
 };
 
 /** Enumerate every brief on the remote — fans out into the aggregate sync. */
 const list = async (ctx: SyncContext): Promise<KindRef[]> => {
   const client = await resolveBriefClient(ctx);
   const refs: KindRef[] = [];
-  let cursor: string | undefined;
-  for (;;) {
-    const page = await listBriefs(client, cursor ? { next: cursor } : undefined);
-    for (const brief of page.data) {
-      refs.push({ kind: "brief", id: brief.name });
+  await drainPages(
+    (cursor) => listBriefs(client, cursor ? { next: cursor } : undefined),
+    (rows) => {
+      for (const brief of rows) {
+        refs.push({ kind: "brief", id: brief.name });
+      }
+      return undefined; // never short-circuit — drain every page
     }
-    if (!page.next || page.data.length === 0) return refs;
-    cursor = page.next;
-  }
+  );
+  return refs;
 };
 
 /**
@@ -795,10 +849,14 @@ const resolveCampaignTarget = async (
   if (!recipe.campaignHandle || !recipe.storyId) return null;
   try {
     const campaignClient = await resolveCampaignClient(ctx);
-    const projectId = await findProjectIdByLabels(campaignClient, {
-      storyId: recipe.storyId,
-      campaignHandle: recipe.campaignHandle,
-    });
+    const projectId = await findProjectIdByLabels(
+      campaignClient,
+      {
+        storyId: recipe.storyId,
+        campaignHandle: recipe.campaignHandle,
+      },
+      ctx.logger
+    );
     if (projectId) return { campaignClient, projectId };
     ctx.logger?.error?.(
       `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign carrying both labels story:${recipe.storyId} and handle:${recipe.campaignHandle} was found on the tenant — the brief->campaign link was NOT set. The campaign must be pushed before the brief, and must carry matching identity labels.`

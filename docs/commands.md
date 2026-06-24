@@ -3752,6 +3752,7 @@ scai ops brief sync pull [options]
 
 - `--name <name>` — Identifier of the recipe. Brief-type codename (`Creative`) or brief display name (`Q3 Launch`).
 - `--file <path>` — Output recipe file (default: <name>.<kind>.yaml)
+- `--sitecore-id <uuid>` — Sitecore Brief UUID (kind=brief only). When set, the brief is read by id (`getBrief`) instead of by name — the reliable lookup when the tenant has more briefs than the list endpoint's 20-row cap. Ignored for brief types.
 - `--kind <kind>` — Recipe kind to operate on. Defaults to brief-type for back-compat. (default: `"brief-type"`)
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).

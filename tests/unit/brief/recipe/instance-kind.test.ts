@@ -607,4 +607,39 @@ describe("apply — campaign link convergence", () => {
     expect(briefApi.linkBriefToProject).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/non-advancing pagination cursor/i));
   }, 5_000);
+
+  it("uses campaignSitecoreId directly and skips the listProjects label search", async () => {
+    // The orchestrator forwards the linked campaign's project UUID. The
+    // Orchestrate project list caps at one page with a dead cursor, so the
+    // label search can't find a project on a later page — the link silently
+    // never lands. With the id supplied, the link must go straight to it
+    // and never touch listProjects.
+    campaignApi.getProject.mockResolvedValue(projectWith);
+    const { ctx: c, error } = makeCtx();
+    const recipe = briefInstanceKind.schema.parse({
+      name: "Q3 Launch",
+      briefTypeName: "CreativeBrief",
+      campaignHandle,
+      storyId,
+      campaignSitecoreId: "proj-direct-uuid",
+    });
+
+    await briefInstanceKind.apply(
+      {
+        changes: [
+          { kind: "create", path: "brief", summary: "create", meta: { stage: "instance", recipe } },
+        ],
+      },
+      ref,
+      c
+    );
+
+    expect(briefApi.linkBriefToProject).toHaveBeenCalledWith(
+      expect.anything(),
+      "brief-9",
+      "proj-direct-uuid"
+    );
+    expect(campaignApi.listProjects).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
 });

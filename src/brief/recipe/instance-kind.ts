@@ -849,14 +849,23 @@ const resolveCampaignTarget = async (
   if (!recipe.campaignHandle || !recipe.storyId) return null;
   try {
     const campaignClient = await resolveCampaignClient(ctx);
-    const projectId = await findProjectIdByLabels(
-      campaignClient,
-      {
-        storyId: recipe.storyId,
-        campaignHandle: recipe.campaignHandle,
-      },
-      ctx.logger
-    );
+    // Prefer the caller-supplied project UUID. The Orchestrate project list
+    // caps its page size with a non-advancing cursor (same family as the
+    // brief list), so `findProjectIdByLabels` can't see a project past the
+    // first page — and the brief->campaign link silently never lands. The
+    // orchestrator forwards the linked campaign's stamped `sitecoreId`; use
+    // it directly and skip the search. Fall back to the label search for
+    // CLI / older callers that don't supply it.
+    const projectId =
+      recipe.campaignSitecoreId ??
+      (await findProjectIdByLabels(
+        campaignClient,
+        {
+          storyId: recipe.storyId,
+          campaignHandle: recipe.campaignHandle,
+        },
+        ctx.logger
+      ));
     if (projectId) return { campaignClient, projectId };
     ctx.logger?.error?.(
       `Brief "${recipe.name}" declares campaignHandle "${recipe.campaignHandle}" but no campaign carrying both labels story:${recipe.storyId} and handle:${recipe.campaignHandle} was found on the tenant — the brief->campaign link was NOT set. The campaign must be pushed before the brief, and must carry matching identity labels.`

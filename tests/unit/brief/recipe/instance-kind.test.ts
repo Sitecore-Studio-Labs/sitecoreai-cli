@@ -141,6 +141,24 @@ describe("readCurrent", () => {
     expect(await briefInstanceKind.readCurrent({ kind: "brief", id: "Nope" }, ctx)).toBeNull();
   });
 
+  it("reads by UUID (getBrief) when ref.tenantId is set — never walks the broken brief list", async () => {
+    // The Brief list endpoint caps at 20 rows with a non-advancing cursor,
+    // so a name walk can't see briefs past page 1. When the ref carries the
+    // UUID (orchestrator forward / `--sitecore-id`), readCurrent must read
+    // the brief directly by id and NOT call listBriefs at all.
+    briefApi.getBrief.mockResolvedValue({ ...liveBrief, id: "brief-1" });
+    briefApi.listBriefTypes.mockResolvedValue({ totalCount: 1, next: null, data: [liveType] });
+
+    const recipe = await briefInstanceKind.readCurrent(
+      { kind: "brief", id: "ANY_NAME_EVEN_BOGUS", tenantId: "brief-1" },
+      ctx
+    );
+
+    expect(recipe?.name).toBe("Q3 Launch");
+    expect(briefApi.getBrief).toHaveBeenCalledWith(expect.anything(), "brief-1");
+    expect(briefApi.listBriefs).not.toHaveBeenCalled();
+  });
+
   it("builds a recipe from the matched brief, dropping server ids and resolving the type codename", async () => {
     briefApi.listBriefs.mockResolvedValue({ totalCount: 1, next: null, data: [liveBrief] });
     briefApi.getBrief.mockResolvedValue(liveBrief);

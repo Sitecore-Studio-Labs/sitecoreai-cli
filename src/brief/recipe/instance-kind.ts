@@ -1187,11 +1187,24 @@ const plan = async (
   return basePlan;
 };
 
+/**
+ * Pull-path read: prefer the ref-supplied Sitecore UUID (`getBrief` by
+ * id) over the name walk. The Brief LIST endpoint caps at 20 rows and
+ * its `next` cursor does not advance, so on a tenant with more briefs the
+ * name-based `findBriefByName` can't see past the first page and reports
+ * an existing brief as missing (→ a false "deleted on Sitecore AI"). When
+ * the caller passes `ref.tenantId` (the orchestrator forwards the UUID it
+ * stamped on push; the CLI takes `--sitecore-id`), the id read bypasses
+ * the list entirely. Falls back to the name walk when no id is supplied.
+ */
+const readCurrentForRef = (ref: KindRef, ctx: SyncContext): Promise<BriefInstanceRecipe | null> =>
+  readCurrentByIdOrName(ref, ctx, ref.tenantId);
+
 /** The `brief` recipe kind. */
 export const briefInstanceKind: RecipeKind<BriefInstanceRecipe> = {
   name: "brief",
   schema: BriefInstanceRecipeSchema,
-  readCurrent,
+  readCurrent: readCurrentForRef,
   plan,
   apply,
   list,

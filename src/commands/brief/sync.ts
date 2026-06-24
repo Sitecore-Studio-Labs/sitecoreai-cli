@@ -53,6 +53,15 @@ interface SyncOptions extends CommonOptions {
   config?: string;
   kind?: BriefSyncKind;
   name?: string;
+  /**
+   * Sitecore Brief UUID. When set on `pull`, the read path resolves the
+   * brief by id (`getBrief`) instead of walking the brief list by name —
+   * the ONLY reliable lookup on a tenant with more than ~20 briefs, where
+   * the Brief list endpoint caps at 20 and its `next` cursor does not
+   * advance (so name-based enumeration can't see the rest). The
+   * orchestrator forwards the UUID it stamped on the first push.
+   */
+  sitecoreId?: string;
   file?: string;
   allowWrite?: boolean;
   prune?: boolean;
@@ -183,7 +192,13 @@ const createPullCommand = (): Command => {
       "--name <name>",
       "Identifier of the recipe. Brief-type codename (`Creative`) or brief display name (`Q3 Launch`)."
     )
-    .addOption(new Option("--file <path>", "Output recipe file (default: <name>.<kind>.yaml)"));
+    .addOption(new Option("--file <path>", "Output recipe file (default: <name>.<kind>.yaml)"))
+    .addOption(
+      new Option(
+        "--sitecore-id <uuid>",
+        "Sitecore Brief UUID (kind=brief only). When set, the brief is read by id (`getBrief`) instead of by name — the reliable lookup when the tenant has more briefs than the list endpoint's 20-row cap. Ignored for brief types."
+      )
+    );
   addKindOption(command);
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -193,7 +208,11 @@ const createPullCommand = (): Command => {
     const ctx = buildContext(options, logger);
     const { recipeKind, suffix, humanName } = kindFor(options.kind);
     const name = options.name ?? "";
-    const ref = { kind: recipeKind.name, id: name };
+    const ref = {
+      kind: recipeKind.name,
+      id: name,
+      ...(options.sitecoreId ? { tenantId: options.sitecoreId } : {}),
+    };
     const recipe = await syncPull(recipeKind, ref, ctx);
     if (!recipe) {
       // Under --json, "not found" is a structured found:false result the

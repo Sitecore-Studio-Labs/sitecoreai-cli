@@ -192,8 +192,12 @@ export const SYNC_FEATURES = [
   "conflict-policy",
   /** structured `conflicts[]` on `POLICY_DENIED` errors. */
   "structured-conflicts",
-  /** `scai ... pull --sitecore-id` id-first lookup (campaign + brief). */
+  /** `scai ops campaign sync pull --sitecore-id` id-first lookup. */
   "campaign-pull-sitecore-id",
+  /** `scai ops brief sync pull --sitecore-id` id-first lookup — reads a
+   *  brief by UUID (`getBrief`) instead of the name walk, the only
+   *  reliable lookup past the Brief list endpoint's 20-row cap. */
+  "brief-pull-sitecore-id",
   /** `scai ops campaign sync pull --handle` matches by the `handle:`
    *  label so a renamed campaign resolves before a sitecoreId is stamped. */
   "campaign-pull-handle",

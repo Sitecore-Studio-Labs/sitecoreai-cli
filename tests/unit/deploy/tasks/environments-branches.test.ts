@@ -172,11 +172,14 @@ describe("deploy environments branches", () => {
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({});
 
+    // No server-side `Types` hint — the Deploy API's Types filter is
+    // unreliable (returns 3 of 10 CM envs). The query is empty.
     expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledWith(
       { accessToken: "token", baseUrl: "https://api.example" },
-      expect.objectContaining({ Types: undefined }),
+      {},
       50
     );
+    expect(apiMocks.fetchAllEnvironments.mock.calls[0][1]).not.toHaveProperty("Types");
     expect(apiMocks.fetchEnvironments).not.toHaveBeenCalled();
   });
 
@@ -191,11 +194,13 @@ describe("deploy environments branches", () => {
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ all: true });
 
+    // No server-side `Types` hint is ever sent (unreliable server filter).
     expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledWith(
       { accessToken: "token", baseUrl: "https://api.example" },
-      expect.objectContaining({ Types: undefined }),
+      {},
       50
     );
+    expect(apiMocks.fetchAllEnvironments.mock.calls[0][1]).not.toHaveProperty("Types");
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
@@ -218,37 +223,62 @@ describe("deploy environments branches", () => {
     expect(apiMocks.fetchAllEnvironments).not.toHaveBeenCalled();
   });
 
-  it("falls back when the type filter returns empty under the walker default", async () => {
+  it("narrows the walker default by type client-side, without a server Types hint", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
-    apiMocks.fetchAllEnvironments
-      .mockResolvedValueOnce({ totalCount: 0, pageSize: 50, items: [] })
-      .mockResolvedValueOnce({
-        totalCount: 1,
-        pageSize: 50,
-        items: [{ id: "env-2", type: "cm" }],
-      });
-    sharedMocks.filterEnvironmentsByType
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([{ id: "env-2", type: "cm" }]);
+    apiMocks.fetchAllEnvironments.mockResolvedValue({
+      totalCount: 10,
+      pageSize: 50,
+      items: [
+        { id: "env-2", type: "cm" },
+        { id: "env-3", type: "eh" },
+      ],
+    });
+    sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-2", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ type: "cm" });
-    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledTimes(2);
+
+    // Single full walk — no empty-result re-fetch, since no server-side
+    // Types hint is ever sent (the Deploy API's Types filter is unreliable:
+    // it returned 3 of 10 CM envs in the field). Narrowing is client-side.
+    expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledTimes(1);
+    expect(apiMocks.fetchAllEnvironments.mock.calls[0][1]).not.toHaveProperty("Types");
+    expect(sharedMocks.filterEnvironmentsByType).toHaveBeenCalledWith(
+      [
+        { id: "env-2", type: "cm" },
+        { id: "env-3", type: "eh" },
+      ],
+      "cm"
+    );
   });
 
-  it("falls back when the type filter returns empty under explicit --page", async () => {
+  it("narrows the explicit --page result by type client-side, without a server Types hint", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
-    apiMocks.fetchEnvironments
-      .mockResolvedValueOnce({ items: [] })
-      .mockResolvedValueOnce({ items: [{ id: "env-2", type: "cm" }] });
-    sharedMocks.extractDeployEnvironmentList
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce([{ id: "env-2", type: "cm" }]);
+    apiMocks.fetchEnvironments.mockResolvedValue({
+      items: [
+        { id: "env-2", type: "cm" },
+        { id: "env-3", type: "eh" },
+      ],
+    });
+    sharedMocks.extractDeployEnvironmentList.mockReturnValue([
+      { id: "env-2", type: "cm" },
+      { id: "env-3", type: "eh" },
+    ]);
     sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-2", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ type: "cm", page: 1 });
-    expect(apiMocks.fetchEnvironments).toHaveBeenCalledTimes(2);
+
+    // Single fetch — no empty-result re-fetch. No server-side Types hint.
+    expect(apiMocks.fetchEnvironments).toHaveBeenCalledTimes(1);
+    expect(apiMocks.fetchEnvironments.mock.calls[0][1]).not.toHaveProperty("Types");
+    expect(sharedMocks.filterEnvironmentsByType).toHaveBeenCalledWith(
+      [
+        { id: "env-2", type: "cm" },
+        { id: "env-3", type: "eh" },
+      ],
+      "cm"
+    );
   });
 
   it("prints non-JSON project/name output for environments get", async () => {
@@ -470,37 +500,40 @@ describe("deploy environments branches", () => {
     );
   });
 
-  it("prints the org-wide single-page result directly when a type filter matches rows", async () => {
+  it("prints the client-side-filtered org-wide single-page result under a type filter", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
     apiMocks.fetchEnvironments.mockResolvedValue({ items: [{ id: "env-1", type: "cm" }] });
     sharedMocks.extractDeployEnvironmentList.mockReturnValue([{ id: "env-1", type: "cm" }]);
+    sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-1", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ type: "cm", page: 1 });
 
-    // list.length > 0 → no fallback re-fetch.
+    // Single fetch, then client-side narrowing — the printed payload is the
+    // filtered list, never the raw server `result` (which would leak the
+    // other type's rows).
     expect(apiMocks.fetchEnvironments).toHaveBeenCalledTimes(1);
     expect(sharedMocks.printDeployResultWithContext).toHaveBeenCalledWith(
       logger,
       expect.objectContaining({ envName: "demo" }),
       "deploy.environments.list",
-      { items: [{ id: "env-1", type: "cm" }] }
+      [{ id: "env-1", type: "cm" }]
     );
   });
 
-  it("does not re-walk when the walker type filter finds rows or totalCount is positive", async () => {
+  it("walks the org-wide list exactly once under a type filter (no re-walk)", async () => {
     sharedMocks.resolveDeployProjectId.mockResolvedValue(undefined);
     apiMocks.fetchAllEnvironments.mockResolvedValue({
       totalCount: 3,
       pageSize: 50,
       items: [{ id: "env-1", type: "cm" }],
     });
-    sharedMocks.filterEnvironmentsByType.mockReturnValue([]);
+    sharedMocks.filterEnvironmentsByType.mockReturnValue([{ id: "env-1", type: "cm" }]);
 
     const { runDeployEnvironmentsList } = await import("../../../../src/deploy/tasks/environments");
     await runDeployEnvironmentsList({ type: "cm" });
 
-    // filteredData empty but totalCount > 0 → fallback condition is false.
+    // No server Types hint means no empty-result re-fetch path — one walk only.
     expect(apiMocks.fetchAllEnvironments).toHaveBeenCalledTimes(1);
   });
 

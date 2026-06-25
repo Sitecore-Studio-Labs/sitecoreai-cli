@@ -64,13 +64,16 @@ export const runDeployEnvironmentsList = async (
   const projectId = await resolveDeployProjectId(context, options);
   const apiOptions = { accessToken: context.token, baseUrl: context.baseUrl };
 
-  const normalizedType = options.type ? options.type.toLowerCase() : undefined;
+  // Deliberately DO NOT send a server-side `Types` query hint. The Deploy
+  // API's `Types` filter is unreliable: an org with 10 CM environments
+  // returns only 3 when asked with `Types=cm`, silently dropping valid
+  // environments. We always fetch the full (paginated) listing and narrow
+  // exclusively via the client-side `filterEnvironmentsByType` helper,
+  // which is exact. See `filterEnvironmentsByType` in deploy/context.ts.
   const baseQuery: Record<
     string,
     string | number | boolean | Array<string | number | boolean> | undefined
-  > = {
-    Types: normalizedType ? [normalizedType] : undefined,
-  };
+  > = {};
 
   // Default: walk every page. The Deploy API caps single-page responses at
   // 10 by default, so "list" without --page returning only the first page
@@ -115,16 +118,6 @@ export const runDeployEnvironmentsList = async (
     const filteredData = options.type
       ? filterEnvironmentsByType(aggregated.items, options.type)
       : aggregated.items;
-    // Mirror the single-page fallback: if the server's Types filter
-    // returned an empty list under a type filter, re-walk without it
-    // and filter client-side. Defensive against server-side filter
-    // semantics that occasionally surface as "no envs" when there are.
-    if (options.type && filteredData.length === 0 && (aggregated.totalCount ?? 0) === 0) {
-      const fallback = await fetchAllEnvironments(apiOptions, {}, options.pageSize ?? 50);
-      const fallbackFiltered = filterEnvironmentsByType(fallback.items, options.type);
-      printDeployResultWithContext(logger, context, "deploy.environments.list", fallbackFiltered);
-      return;
-    }
     const aggregatedResult = {
       totalCount: aggregated.totalCount,
       pageSize: aggregated.pageSize,
@@ -148,15 +141,10 @@ export const runDeployEnvironmentsList = async (
     return;
   }
 
+  // No server-side `Types` hint was sent (see baseQuery above), so the page
+  // is unnarrowed — always narrow client-side via the exact helper.
   const list = extractDeployEnvironmentList(result);
-  if (list.length > 0) {
-    printDeployResultWithContext(logger, context, "deploy.environments.list", result);
-    return;
-  }
-
-  const fallback = await fetchEnvironments(apiOptions, {});
-  const fallbackList = extractDeployEnvironmentList(fallback);
-  const filtered = filterEnvironmentsByType(fallbackList, options.type);
+  const filtered = filterEnvironmentsByType(list, options.type);
   printDeployResultWithContext(logger, context, "deploy.environments.list", filtered);
 };
 

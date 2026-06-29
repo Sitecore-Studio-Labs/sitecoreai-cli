@@ -26,8 +26,7 @@ vi.mock("../../../../src/campaigns/api/users", () => ({
 // Brief surface used by the pre-delete detach in runCampaignDelete.
 vi.mock("../../../../src/brief", () => ({
   resolveBriefClient: vi.fn(),
-  getBrief: vi.fn(),
-  updateBrief: vi.fn(),
+  unlinkBriefFromProject: vi.fn(),
 }));
 
 import * as runners from "../../../../src/campaigns/tasks/index";
@@ -36,24 +35,10 @@ import * as projectsApi from "../../../../src/campaigns/api/projects";
 import * as deliverablesApi from "../../../../src/campaigns/api/deliverables";
 import * as tasksApi from "../../../../src/campaigns/api/tasks";
 import * as usersApi from "../../../../src/campaigns/api/users";
-import { getBrief, resolveBriefClient, updateBrief } from "../../../../src/brief";
+import { resolveBriefClient, unlinkBriefFromProject } from "../../../../src/brief";
 
 const client = { accessToken: "test-token", baseUrl: "https://ai-workflows-eus.example" };
 const briefClient = { accessToken: "brief-token", baseUrl: "https://co-brief-api-eus.example" };
-
-const campaignRef = (projectId: string) => ({
-  type: "ExternalLink" as const,
-  relatedSystem: "co",
-  relatedType: "Project",
-  id: projectId,
-});
-const makeBrief = (overrides: Record<string, unknown> = {}) => ({
-  id: "brief-1",
-  name: "A brief",
-  status: "Draft",
-  references: [campaignRef("proj-1")],
-  ...overrides,
-});
 
 const makeProject = (overrides: Record<string, unknown> = {}) => ({
   id: "proj-1",
@@ -350,54 +335,41 @@ describe("campaign runners — write verbs honour --what-if", () => {
     expect(deletedHuman).toEqual({ id: "proj-1", deleted: true });
   });
 
-  it("detaches every still-linked brief BEFORE deleting the campaign", async () => {
+  it("unlinks every still-linked brief from the campaign BEFORE deleting it", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(
       makeProject({ briefs: [{ id: "brief-1" }, { id: "brief-2" }] }) as never
     );
-    vi.mocked(getBrief).mockImplementation((async (_c: unknown, id: string) =>
-      makeBrief({ id })) as never);
-    vi.mocked(updateBrief).mockResolvedValue(undefined as never);
+    vi.mocked(unlinkBriefFromProject).mockResolvedValue(undefined as never);
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
 
     await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
 
-    // Both briefs had their campaign reference cleared...
-    expect(vi.mocked(updateBrief)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-1", { references: [] });
-    expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-2", { references: [] });
-    // ...and the detach ran before the project delete (order is load-bearing).
-    // Assert both actually fired first so the order check can't pass vacuously
-    // on an undefined invocationCallOrder entry.
-    expect(vi.mocked(updateBrief)).toHaveBeenCalled();
+    // Both briefs were unlinked from THIS campaign via the `links` collection...
+    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(
+      briefClient,
+      "brief-1",
+      "proj-1"
+    );
+    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(
+      briefClient,
+      "brief-2",
+      "proj-1"
+    );
+    // ...and the unlink ran before the project delete (order is load-bearing:
+    // the brief must still be alive for the unlink to clear the reverse view).
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalled();
-    expect(vi.mocked(updateBrief).mock.invocationCallOrder[0]).toBeLessThan(
+    expect(vi.mocked(unlinkBriefFromProject).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(projectsApi.deleteProject).mock.invocationCallOrder[0]
     );
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
-  });
-
-  it("preserves a brief's references to OTHER campaigns when detaching", async () => {
-    vi.mocked(projectsApi.getProject).mockResolvedValue(
-      makeProject({ briefs: [{ id: "brief-1" }] }) as never
-    );
-    vi.mocked(getBrief).mockResolvedValue(
-      makeBrief({ references: [campaignRef("proj-1"), campaignRef("other-proj")] }) as never
-    );
-    vi.mocked(updateBrief).mockResolvedValue(undefined as never);
-    vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
-
-    await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
-
-    expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-1", {
-      references: [campaignRef("other-proj")],
-    });
   });
 
   it("still deletes the campaign when a brief unlink fails (best-effort)", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(
       makeProject({ briefs: [{ id: "brief-1" }] }) as never
     );
-    vi.mocked(getBrief).mockRejectedValue(new Error("brief 404 — already gone"));
+    vi.mocked(unlinkBriefFromProject).mockRejectedValue(new Error("brief 404 — already gone"));
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
 
     const result = await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
@@ -415,28 +387,7 @@ describe("campaign runners — write verbs honour --what-if", () => {
     const result = await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
 
     expect(result).toEqual({ id: "proj-1", deleted: true });
-    expect(vi.mocked(updateBrief)).not.toHaveBeenCalled();
-    expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
-  });
-
-  it("still deletes the campaign when updateBrief fails after getBrief succeeds (best-effort)", async () => {
-    vi.mocked(projectsApi.getProject).mockResolvedValue(
-      makeProject({ briefs: [{ id: "brief-1" }] }) as never
-    );
-    vi.mocked(getBrief).mockResolvedValue(
-      makeBrief({ references: [campaignRef("proj-1"), campaignRef("other-proj")] }) as never
-    );
-    vi.mocked(updateBrief).mockRejectedValue(new Error("updateBrief failed"));
-    vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
-
-    const result = await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
-
-    // The PUT was attempted with this campaign's ref dropped (other-proj kept)...
-    expect(vi.mocked(updateBrief)).toHaveBeenCalledWith(briefClient, "brief-1", {
-      references: [campaignRef("other-proj")],
-    });
-    // ...and even though it threw, the campaign delete still went through.
-    expect(result).toEqual({ id: "proj-1", deleted: true });
+    expect(vi.mocked(unlinkBriefFromProject)).not.toHaveBeenCalled();
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
   });
 
@@ -447,7 +398,7 @@ describe("campaign runners — write verbs honour --what-if", () => {
     await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
 
     expect(vi.mocked(resolveBriefClient)).not.toHaveBeenCalled();
-    expect(vi.mocked(updateBrief)).not.toHaveBeenCalled();
+    expect(vi.mocked(unlinkBriefFromProject)).not.toHaveBeenCalled();
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
   });
 

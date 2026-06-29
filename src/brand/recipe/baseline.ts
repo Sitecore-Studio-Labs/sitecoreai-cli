@@ -181,6 +181,13 @@ export const mergeBrandByPolicy = (
     industry: pickKit("industry"),
     documents: desired.documents,
     sections: mergedSections,
+    // logo is not part of the cell-based three-way classification (it has
+    // its own dedicated diff path — see diffBrandKit, which PATCHes it on
+    // both create and update). Pass the recipe-author intent through
+    // verbatim; dropping it here left `merged.logo` undefined, so
+    // diffBrandKit's `desired.logo !== undefined` guard never fired on the
+    // UPDATE path and a changed logo silently never reached Sitecore.
+    logo: desired.logo,
     // sectionProperties is not yet part of three-way classification —
     // pass through the recipe-author intent verbatim. When/if Sitecore
     // exposes a write path for `sourceLanguage`, classify by cell at

@@ -1,4 +1,5 @@
 import { createScaiError } from "@/shared/errors";
+import { fetchWithRateLimitRetry } from "@/shared/rate-limit-retry";
 import { redactSecrets } from "@/shared/redact";
 import { extractErrorMessage, parseJsonIfPossible } from "@/deploy/api/common/request";
 import {
@@ -66,12 +67,12 @@ export const briefRequest = async <TResponse>(
   }
 
   const timeoutMs = Number(process.env.SITECOREAI_REQUEST_TIMEOUT_MS ?? 60_000);
-  const controller = timeoutMs > 0 ? new AbortController() : undefined;
-  const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
 
   let response: Response;
   try {
-    response = await fetch(url, { method, headers, body, signal: controller?.signal });
+    // Retries on Cosmos 429 (TooManyRequests). Safe for writes: a 429 is
+    // rejected before processing, so a retried POST/PUT can't double-apply.
+    response = await fetchWithRateLimitRetry(url, { method, headers, body }, { timeoutMs });
   } catch (error) {
     throw createScaiError(
       redactSecrets(
@@ -80,8 +81,6 @@ export const briefRequest = async <TResponse>(
       "NETWORK",
       { hint: "Check network connectivity or try again later." }
     );
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 
   if (!response.ok) {

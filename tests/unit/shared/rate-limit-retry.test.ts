@@ -44,6 +44,43 @@ describe("fetchWithRateLimitRetry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("retries a 5xx that wraps a Cosmos throttle in its body (idempotent PUT)", async () => {
+    // Sitecore bubbles a Cosmos 429 inside a 500 with a raw exception body —
+    // no 429 status, so it must be detected in the body.
+    const throttle500 = new Response(
+      "TasksRepository: Error updating item: (TooManyRequests) The request rate is too large. Sub Status: 3200",
+      { status: 500 }
+    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(throttle500).mockResolvedValue(res(200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await fetchWithRateLimitRetry(URL, INIT, {
+      timeoutMs: 1000,
+      baseMs: 0,
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT retry a body-throttle on a non-idempotent POST", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("(TooManyRequests) The request rate is too large", { status: 500 })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await fetchWithRateLimitRetry(
+      URL,
+      { ...INIT, method: "POST" },
+      { timeoutMs: 1000, baseMs: 0 }
+    );
+
+    expect(response.status).toBe(500);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does NOT retry a 429 on POST / PATCH creates (would duplicate)", async () => {
     for (const method of ["POST", "PATCH"]) {
       const fetchMock = vi.fn().mockResolvedValue(res(429, { "x-ms-retry-after-ms": "0" }));

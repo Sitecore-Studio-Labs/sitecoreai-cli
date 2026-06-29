@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createProject, getProject, listProjects } from "../../../src/campaigns/api/projects";
+import {
+  createProject,
+  getProject,
+  listProjects,
+  unlinkBriefFromProject,
+} from "../../../src/campaigns/api/projects";
 import { createDeliverable } from "../../../src/campaigns/api/deliverables";
 import {
   attachProjectAttachment,
@@ -54,6 +59,29 @@ describe("campaign API — projects", () => {
     await getProject(baseOptions, "p1/with/slash");
 
     expect(fetchMock.mock.calls[0][0]).toBe(`${B}/api/orchestrate/v1/projects/p1%2Fwith%2Fslash`);
+  });
+
+  it("unlinkBriefFromProject DELETEs the campaign-side briefs sub-resource (id in path)", async () => {
+    // Verified shape (2026-06-29): DELETE on the Orchestrate project's briefs
+    // sub-resource, campaign credential, no body. Returns 200 with the project.
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "proj-1", briefs: [] }, 200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await unlinkBriefFromProject(baseOptions, "proj-1", "brief-9");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body?: string }];
+    expect(url).toBe(`${B}/api/orchestrate/v1/projects/proj-1/briefs/brief-9`);
+    expect(init.method).toBe("DELETE");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("unlinkBriefFromProject URL-encodes both ids", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "p" }, 200));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await unlinkBriefFromProject(baseOptions, "p/1", "b/2");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${B}/api/orchestrate/v1/projects/p%2F1/briefs/b%2F2`);
   });
 
   it("createProject POSTs a body with server-defaulted fields", async () => {

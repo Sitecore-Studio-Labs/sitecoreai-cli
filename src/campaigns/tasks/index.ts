@@ -6,6 +6,7 @@ import {
   deleteProject,
   getProject,
   listProjects,
+  unlinkBriefFromProject,
   type CreateProjectInput,
 } from "../api/projects";
 import {
@@ -25,7 +26,6 @@ import {
 import { listUsers } from "../api/users";
 import type { CampaignUser, Deliverable, PagedResult, Project, Task } from "../api/schema";
 import type { CampaignApiClientOptions } from "../api/types";
-import { resolveBriefClient, unlinkBriefFromProject } from "@/brief";
 
 /**
  * CLI runners for the `scai ops campaign …` command family.
@@ -341,33 +341,24 @@ export const runTaskUpdate = async (
 /**
  * Detach every brief still linked to the project BEFORE deleting it.
  *
- * The brief→campaign link the project's reverse-view `briefs[]` is derived
- * from lives in the brief's **`links`** collection (written add-only via
- * `PATCH /briefs/{id}/links`; see {@link linkBriefToProject}) — NOT the
- * brief's `references` collection. `deleteProject` walks that reverse view
- * and 403s ("Failed to detach link from brief") if any brief is still
- * attached, and there is no project-side detach API. So we clear the link
- * from each live brief's `links` collection here (the only writable side),
- * via {@link unlinkBriefFromProject}.
- *
- * (Earlier this rewrote `references` instead — the pre-2026-06-20 model,
- * when the link was thought to live there. That cleared the wrong
- * collection, so the reverse-view never dropped and every campaign delete
- * with a linked brief 403'd. This is that fix.)
+ * The brief↔campaign relationship is a CAMPAIGN-side sub-resource:
+ * `DELETE /api/orchestrate/v1/projects/{campaignId}/briefs/{briefId}` clears
+ * it, using the same campaign credential the delete already holds (see
+ * {@link unlinkBriefFromProject}). `deleteProject` walks the project's
+ * `briefs[]` reverse view and 403s ("Failed to detach link from brief") if any
+ * brief is still attached, so we drop each one here first.
  *
  * Order matters at the caller: this only works while the linked briefs are
  * still alive, so any cascade must delete the campaign BEFORE its briefs.
  * A brief that's already been deleted (404) leaves a dangling reverse-view
  * entry we cannot clear — the pre-existing un-recoverable orphan case.
  *
- * The `links` collection is never returned by `getBrief`, so we can't read
- * to confirm the campaign link is present — we just issue the unlink for
- * every brief in the reverse view. Best-effort + idempotent per brief.
+ * Best-effort + idempotent per brief: a failed unlink logs and continues so
+ * the delete still runs (and surfaces the 403 if the link truly remains).
  */
 const detachLinkedBriefs = async (
   campaignClient: CampaignApiClientOptions,
   campaignId: string,
-  options: RunCampaignBaseOptions,
   logger: Logger
 ): Promise<void> => {
   const fmt = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -385,17 +376,12 @@ const detachLinkedBriefs = async (
     .filter((id): id is string => typeof id === "string" && id.length > 0);
   if (linkedBriefIds.length === 0) return;
 
-  const { client: briefClient } = await resolveBriefClient({
-    orgId: options.orgId,
-    environmentName: options.environmentName,
-    config: options.config,
-  });
   logger.verbose(
-    `Pre-delete detach: unlinking campaign ${campaignId} from ${linkedBriefIds.length} linked brief(s).`
+    `Pre-delete detach: unlinking ${linkedBriefIds.length} brief(s) from campaign ${campaignId}.`
   );
   for (const briefId of linkedBriefIds) {
     try {
-      await unlinkBriefFromProject(briefClient, briefId, campaignId);
+      await unlinkBriefFromProject(campaignClient, campaignId, briefId);
     } catch (err) {
       logger.verbose(`Pre-delete detach: brief ${briefId} unlink failed (continuing): ${fmt(err)}`);
     }
@@ -425,9 +411,9 @@ export const runCampaignDelete = async (
   }
   // Best-effort: detach failures must not block the campaign delete. The
   // per-brief loop already swallows its own errors; this guards the residual
-  // throw paths (e.g. resolving the brief client) so the delete still runs.
+  // throw paths (e.g. the project read) so the delete still runs.
   try {
-    await detachLinkedBriefs(client, options.campaignId, options, logger);
+    await detachLinkedBriefs(client, options.campaignId, logger);
   } catch (err) {
     logger.warn(
       `Pre-delete detach failed for campaign ${options.campaignId} (continuing with delete): ${

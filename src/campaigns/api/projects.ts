@@ -149,6 +149,34 @@ export const deleteProject = (
   });
 
 /**
+ * Unlink a brief from a campaign — `DELETE
+ * /api/orchestrate/v1/projects/{projectId}/briefs/{briefId}` → 200 with the
+ * updated project body.
+ *
+ * The brief↔campaign relationship is a CAMPAIGN-side sub-resource: it's keyed
+ * and mutated here, on the Orchestrate project, with the CAMPAIGN credential —
+ * NOT on the brief (the brief-side `references`/`links` collections are a
+ * separate, partial view). This is what clears the project's `briefs[]` reverse
+ * view, so it MUST run (while the brief is still linked) before `deleteProject`,
+ * or the delete 403s ("Failed to detach link from brief") on the lingering link.
+ *
+ * VERIFIED 2026-06-29 against `org_Sqg9NOB4DhDdpb1x` (Summer Energy Programs
+ * 2026): a 200 on this route dropped the brief from `project.briefs[]`, and the
+ * campaign then deleted cleanly — all with the campaign token alone (no
+ * brief-scoped credential involved).
+ */
+export const unlinkBriefFromProject = (
+  options: CampaignApiClientOptions,
+  projectId: string,
+  briefId: string
+): Promise<void> =>
+  campaignRequest<void>(
+    options,
+    `/api/orchestrate/v1/projects/${encodeURIComponent(projectId)}/briefs/${encodeURIComponent(briefId)}`,
+    { method: "DELETE" }
+  );
+
+/**
  * Input for `addProjectMember`. Verified against TestDemo 2026-06-03:
  * the POST body takes `{id, role?}` where `id` is the Auth0 subject
  * and `role` is one of `ADMIN`, `EDITOR`, `VIEWER`, `MEMBER` (omittable).

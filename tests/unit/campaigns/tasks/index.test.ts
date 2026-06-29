@@ -8,6 +8,8 @@ vi.mock("../../../../src/campaigns/api/projects", () => ({
   deleteProject: vi.fn(),
   getProject: vi.fn(),
   listProjects: vi.fn(),
+  // Campaign-side brief unlink used by the pre-delete detach.
+  unlinkBriefFromProject: vi.fn(),
 }));
 vi.mock("../../../../src/campaigns/api/deliverables", () => ({
   createDeliverable: vi.fn(),
@@ -23,11 +25,6 @@ vi.mock("../../../../src/campaigns/api/tasks", () => ({
 vi.mock("../../../../src/campaigns/api/users", () => ({
   listUsers: vi.fn(),
 }));
-// Brief surface used by the pre-delete detach in runCampaignDelete.
-vi.mock("../../../../src/brief", () => ({
-  resolveBriefClient: vi.fn(),
-  unlinkBriefFromProject: vi.fn(),
-}));
 
 import * as runners from "../../../../src/campaigns/tasks/index";
 import { resolveCampaignClient } from "../../../../src/campaigns/client";
@@ -35,10 +32,10 @@ import * as projectsApi from "../../../../src/campaigns/api/projects";
 import * as deliverablesApi from "../../../../src/campaigns/api/deliverables";
 import * as tasksApi from "../../../../src/campaigns/api/tasks";
 import * as usersApi from "../../../../src/campaigns/api/users";
-import { resolveBriefClient, unlinkBriefFromProject } from "../../../../src/brief";
+
+const { unlinkBriefFromProject } = projectsApi;
 
 const client = { accessToken: "test-token", baseUrl: "https://ai-workflows-eus.example" };
-const briefClient = { accessToken: "brief-token", baseUrl: "https://co-brief-api-eus.example" };
 
 const makeProject = (overrides: Record<string, unknown> = {}) => ({
   id: "proj-1",
@@ -74,7 +71,6 @@ beforeEach(() => {
   vi.mocked(resolveCampaignClient).mockResolvedValue({ client, envName: "test" } as never);
   // Defaults so the pre-delete detach is a clean no-op unless a test opts in.
   vi.mocked(projectsApi.getProject).mockResolvedValue(makeProject({ briefs: [] }) as never);
-  vi.mocked(resolveBriefClient).mockResolvedValue({ client: briefClient, orgId: "org-1" } as never);
 });
 
 afterEach(() => {
@@ -344,18 +340,11 @@ describe("campaign runners — write verbs honour --what-if", () => {
 
     await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
 
-    // Both briefs were unlinked from THIS campaign via the `links` collection...
+    // Both briefs were unlinked from THIS campaign on the campaign API
+    // (campaign client, campaignId, briefId)...
     expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(
-      briefClient,
-      "brief-1",
-      "proj-1"
-    );
-    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(
-      briefClient,
-      "brief-2",
-      "proj-1"
-    );
+    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(client, "proj-1", "brief-1");
+    expect(vi.mocked(unlinkBriefFromProject)).toHaveBeenCalledWith(client, "proj-1", "brief-2");
     // ...and the unlink ran before the project delete (order is load-bearing:
     // the brief must still be alive for the unlink to clear the reverse view).
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalled();
@@ -391,13 +380,12 @@ describe("campaign runners — write verbs honour --what-if", () => {
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
   });
 
-  it("does not touch the brief API when the campaign has no linked briefs", async () => {
+  it("does not attempt any unlink when the campaign has no linked briefs", async () => {
     vi.mocked(projectsApi.getProject).mockResolvedValue(makeProject({ briefs: [] }) as never);
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined as never);
 
     await runners.runCampaignDelete({ quiet: true, campaignId: "proj-1" });
 
-    expect(vi.mocked(resolveBriefClient)).not.toHaveBeenCalled();
     expect(vi.mocked(unlinkBriefFromProject)).not.toHaveBeenCalled();
     expect(vi.mocked(projectsApi.deleteProject)).toHaveBeenCalledWith(client, "proj-1");
   });

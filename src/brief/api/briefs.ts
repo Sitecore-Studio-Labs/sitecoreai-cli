@@ -190,28 +190,10 @@ export const linkBriefToProject = (
     body: { system: "AI", id: projectId, type: "project" },
   });
 
-/**
- * Remove the brief->campaign link from the brief's `links` collection —
- * the inverse of {@link linkBriefToProject}. Clearing this is what drops
- * the campaign's `project.briefs[]` reverse view, so it MUST run (while the
- * brief is still alive) before a campaign delete, or Orchestrate's
- * `deleteProject` 403s ("Failed to detach link from brief") on the lingering
- * inbound link.
- *
- * UNVERIFIED endpoint shape (2026-06-29): the `links` collection is written
- * add-only via PATCH and is never returned by `getBrief`, so there was no
- * captured remove verb to mirror. Wired as the symmetric `DELETE` on the
- * same sub-resource with the same `{ system, id, type }` body the add uses.
- * Smoke-test against a tenant before trusting it; if the tenant rejects the
- * DELETE-with-body, the fallbacks to try are `DELETE .../links/{projectId}`
- * or a `PATCH .../links` carrying a remove operation.
- */
-export const unlinkBriefFromProject = (
-  options: BriefApiClientOptions,
-  briefId: string,
-  projectId: string
-): Promise<void> =>
-  briefRequest<void>(options, `/api/brief/v1/briefs/${encodeURIComponent(briefId)}/links`, {
-    method: "DELETE",
-    body: { system: "AI", id: projectId, type: "project" },
-  });
+// NOTE: brief→campaign UNLINK is NOT a brief-side operation. It's a campaign
+// sub-resource — `DELETE /api/orchestrate/v1/projects/{campaignId}/briefs/{briefId}`
+// on the Orchestrate (campaign) API, using the campaign credential. See
+// `unlinkBriefFromProject` in `src/campaigns/api/projects.ts`. (An earlier
+// attempt to remove it via the brief's `links` collection here was wrong: that
+// collection is add-only and the brief credential can't drop the campaign's
+// reverse-view link.)

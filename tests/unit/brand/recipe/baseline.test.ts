@@ -213,6 +213,33 @@ describe("mergeBrandByPolicy", () => {
     expect(merged.sections["Brand Context"].Mission).toBe("Tenant override");
   });
 
+  // Regression: the merged recipe used to omit `logo`, so on the UPDATE
+  // path diffBrandKit saw `desired.logo === undefined` and never PATCHed a
+  // changed logo to Sitecore (CREATE worked because it skips the merge).
+  // logo is outside the cell-classification — recipe-author intent carries
+  // through verbatim under every policy.
+  it("carries the recipe logo through the merge on update", () => {
+    const desired = recipe({
+      name: "Acme",
+      description: "Vehicle brand",
+      industry: "Automotive",
+      documents: [],
+      logo: "https://durable.example/new-logo.png",
+      sections: { "Brand Context": { Mission: "Build durable vehicles" } },
+    });
+    const baseline = captureBrandBaselinePayload(desired);
+    // Tenant still carries the OLD logo URL.
+    const current = recipe({
+      ...desired,
+      logo: "https://durable.example/old-logo.png",
+    });
+    const classifications = classifyBrandCells(desired, current, baseline);
+    for (const policy of ["recipe-wins", "cms-wins", "error"] as const) {
+      const { merged } = mergeBrandByPolicy(desired, current, classifications, policy);
+      expect(merged.logo).toBe("https://durable.example/new-logo.png");
+    }
+  });
+
   // error policy on a cms-edit → policyError surfaced + desired
   // retained (so the caller still has a coherent recipe to log).
   it("error policy surfaces a policyError per cms-edit cell and keeps desired", () => {

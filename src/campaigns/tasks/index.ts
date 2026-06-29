@@ -6,6 +6,7 @@ import {
   deleteProject,
   getProject,
   listProjects,
+  unlinkBriefFromProject,
   type CreateProjectInput,
 } from "../api/projects";
 import {
@@ -25,7 +26,6 @@ import {
 import { listUsers } from "../api/users";
 import type { CampaignUser, Deliverable, PagedResult, Project, Task } from "../api/schema";
 import type { CampaignApiClientOptions } from "../api/types";
-import { getBrief, resolveBriefClient, updateBrief, type BriefExternalReference } from "@/brief";
 
 /**
  * CLI runners for the `scai ops campaign …` command family.
@@ -341,28 +341,24 @@ export const runTaskUpdate = async (
 /**
  * Detach every brief still linked to the project BEFORE deleting it.
  *
- * The brief→campaign link lives on the BRIEF (`references[]` → an
- * `ExternalLink` to the project); Orchestrate derives the project's
- * reverse-view `briefs[]` from it. `deleteProject` walks that reverse view
- * and 403s ("Failed to detach link from brief") if any brief is still
- * attached — and there is no project-side detach API. So we clear the
- * project reference from each live brief here, while the brief still
- * exists (the only writable side). Best-effort per brief: a brief that's
- * already been deleted (404) leaves a dangling reverse-view entry we
- * cannot clear — the pre-existing un-recoverable orphan case.
+ * The brief↔campaign relationship is a CAMPAIGN-side sub-resource:
+ * `DELETE /api/orchestrate/v1/projects/{campaignId}/briefs/{briefId}` clears
+ * it, using the same campaign credential the delete already holds (see
+ * {@link unlinkBriefFromProject}). `deleteProject` walks the project's
+ * `briefs[]` reverse view and 403s ("Failed to detach link from brief") if any
+ * brief is still attached, so we drop each one here first.
  *
  * Order matters at the caller: this only works while the linked briefs are
  * still alive, so any cascade must delete the campaign BEFORE its briefs.
+ * A brief that's already been deleted (404) leaves a dangling reverse-view
+ * entry we cannot clear — the pre-existing un-recoverable orphan case.
  *
- * UNVERIFIED end-to-end against a tenant (blocked on Orchestrate creds at
- * the time of writing) — the reverse-view drain on brief-unlink is proven
- * by the delete-403 it fixes, but the full detach→delete sequence needs a
- * live run before being trusted on real data.
+ * Best-effort + idempotent per brief: a failed unlink logs and continues so
+ * the delete still runs (and surfaces the 403 if the link truly remains).
  */
 const detachLinkedBriefs = async (
   campaignClient: CampaignApiClientOptions,
   campaignId: string,
-  options: RunCampaignBaseOptions,
   logger: Logger
 ): Promise<void> => {
   const fmt = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -380,37 +376,12 @@ const detachLinkedBriefs = async (
     .filter((id): id is string => typeof id === "string" && id.length > 0);
   if (linkedBriefIds.length === 0) return;
 
-  const { client: briefClient } = await resolveBriefClient({
-    orgId: options.orgId,
-    environmentName: options.environmentName,
-    config: options.config,
-  });
   logger.verbose(
-    `Pre-delete detach: clearing campaign ${campaignId} from ${linkedBriefIds.length} linked brief(s).`
+    `Pre-delete detach: unlinking ${linkedBriefIds.length} brief(s) from campaign ${campaignId}.`
   );
   for (const briefId of linkedBriefIds) {
     try {
-      const brief = await getBrief(briefClient, briefId);
-      const refs = brief.references ?? [];
-      const hadCampaignLink = refs.some(
-        (r) => r.type === "ExternalLink" && r.relatedSystem === "co" && r.id === campaignId
-      );
-      if (!hadCampaignLink) continue;
-      // Preserve every other ExternalLink; drop only this campaign. (Internal
-      // `Link` refs aren't writable via the references PUT, so they're omitted.)
-      const remaining: BriefExternalReference[] = refs.flatMap((r) =>
-        r.type === "ExternalLink" && !(r.relatedSystem === "co" && r.id === campaignId)
-          ? [
-              {
-                type: "ExternalLink",
-                relatedSystem: r.relatedSystem,
-                relatedType: r.relatedType,
-                id: r.id,
-              },
-            ]
-          : []
-      );
-      await updateBrief(briefClient, briefId, { references: remaining });
+      await unlinkBriefFromProject(campaignClient, campaignId, briefId);
     } catch (err) {
       logger.verbose(`Pre-delete detach: brief ${briefId} unlink failed (continuing): ${fmt(err)}`);
     }
@@ -440,9 +411,9 @@ export const runCampaignDelete = async (
   }
   // Best-effort: detach failures must not block the campaign delete. The
   // per-brief loop already swallows its own errors; this guards the residual
-  // throw paths (e.g. resolving the brief client) so the delete still runs.
+  // throw paths (e.g. the project read) so the delete still runs.
   try {
-    await detachLinkedBriefs(client, options.campaignId, options, logger);
+    await detachLinkedBriefs(client, options.campaignId, logger);
   } catch (err) {
     logger.warn(
       `Pre-delete detach failed for campaign ${options.campaignId} (continuing with delete): ${

@@ -189,3 +189,11 @@ export const linkBriefToProject = (
     method: "PATCH",
     body: { system: "AI", id: projectId, type: "project" },
   });
+
+// NOTE: brief→campaign UNLINK is NOT a brief-side operation. It's a campaign
+// sub-resource — `DELETE /api/orchestrate/v1/projects/{campaignId}/briefs/{briefId}`
+// on the Orchestrate (campaign) API, using the campaign credential. See
+// `unlinkBriefFromProject` in `src/campaigns/api/projects.ts`. (An earlier
+// attempt to remove it via the brief's `links` collection here was wrong: that
+// collection is add-only and the brief credential can't drop the campaign's
+// reverse-view link.)

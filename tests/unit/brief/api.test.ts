@@ -288,6 +288,9 @@ describe("brief instance CRUD", () => {
     );
   });
 
+  // brief→campaign UNLINK lives on the campaign API (campaigns/api/projects.ts),
+  // not the brief API — see that test file.
+
   it("assertCreateBriefInput accepts a minimal valid body", () => {
     const input = assertCreateBriefInput({ name: "B", briefTypeId: "type-1" });
     expect(input.name).toBe("B");

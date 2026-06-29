@@ -27,7 +27,7 @@ describe("fetchWithRateLimitRetry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a 429 (writes included) then returns the eventual success", async () => {
+  it("retries a 429 on an idempotent write (PUT) then returns the eventual success", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(res(429, { "x-ms-retry-after-ms": "0" }))
@@ -42,6 +42,24 @@ describe("fetchWithRateLimitRetry", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does NOT retry a 429 on POST / PATCH creates (would duplicate)", async () => {
+    for (const method of ["POST", "PATCH"]) {
+      const fetchMock = vi.fn().mockResolvedValue(res(429, { "x-ms-retry-after-ms": "0" }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await fetchWithRateLimitRetry(
+        URL,
+        { ...INIT, method },
+        { timeoutMs: 1000, baseMs: 0, maxRetries: 5 }
+      );
+
+      expect(response.status).toBe(429);
+      // Surfaced immediately — exactly one attempt, no retry.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    }
   });
 
   it("gives up after the retry budget and returns the final 429", async () => {

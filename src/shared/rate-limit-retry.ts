@@ -7,9 +7,16 @@
  * common when a reconnect pushes a whole story's campaigns → deliverables
  * → tasks in a burst.
  *
- * A 429 is rejected by Cosmos BEFORE the request is processed, so retrying
- * is safe even for non-idempotent writes (PUT/POST/PATCH) — unlike a 5xx,
- * which may have partially applied. We therefore retry 429 for ALL methods.
+ * We retry 429 ONLY for idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS).
+ * A naive "429 is rejected before processing, so retrying any write is safe"
+ * is WRONG for the Orchestrate API: creating a campaign is a multi-step POST
+ * (project → deliverables → tasks), and the API can apply part of a create
+ * before Cosmos throttles a later step and returns 429 to us. Retrying that
+ * POST then DUPLICATES the already-created entity (observed: duplicate
+ * campaigns on regenerate). POST/PATCH are non-idempotent and carry no
+ * idempotency key, so we surface their 429 to the caller instead of
+ * retrying. Updates (PUT) and deletes — the bulk of a re-push / reconnect —
+ * are idempotent and still retry, which is what the burst actually needs.
  *
  * The wait is the server's hint when present (`x-ms-retry-after-ms`, else a
  * standard `Retry-After` in seconds or as an HTTP-date), otherwise
@@ -27,6 +34,11 @@ const DEFAULT_MAX_429_RETRIES = 5;
 const DEFAULT_BASE_MS = 500;
 /** Cap on a single backoff wait so a hostile/garbage hint can't hang a run. */
 const MAX_BACKOFF_MS = 20_000;
+/**
+ * Methods safe to replay after a 429. POST/PATCH are excluded: they're
+ * non-idempotent and a partially-applied create would duplicate on retry.
+ */
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
 
 /**
  * Read the server's retry hint. Cosmos surfaces `x-ms-retry-after-ms`
@@ -73,6 +85,9 @@ export const fetchWithRateLimitRetry = async (
   const maxRetries =
     opts.maxRetries ?? Number(process.env.SITECOREAI_HTTP_429_RETRIES ?? DEFAULT_MAX_429_RETRIES);
   const baseMs = opts.baseMs ?? Number(process.env.SITECOREAI_HTTP_429_BASE_MS ?? DEFAULT_BASE_MS);
+  // Only replay a 429 for idempotent methods — retrying a non-idempotent
+  // POST/PATCH create that partially applied would duplicate it.
+  const idempotent = IDEMPOTENT_METHODS.has(init.method.toUpperCase());
 
   let attempt = 0;
   for (;;) {
@@ -101,7 +116,7 @@ export const fetchWithRateLimitRetry = async (
       if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
-    if (response.status !== 429 || attempt >= maxRetries) return response;
+    if (response.status !== 429 || attempt >= maxRetries || !idempotent) return response;
 
     attempt += 1;
     const hinted = parseRetryAfterMs(response);

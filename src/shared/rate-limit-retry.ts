@@ -41,6 +41,25 @@ const MAX_BACKOFF_MS = 20_000;
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
 
 /**
+ * Cosmos / Orchestrate rate-limit markers that can appear in a NON-429 error
+ * body when Sitecore wraps a throttle in a 5xx (e.g. `(TooManyRequests) The
+ * request rate is too large … Sub Status: 3200`). Specific enough not to fire
+ * on incidental text.
+ */
+const THROTTLE_BODY_RE =
+  /too\s*many\s*requests|request rate is too large|RequestRateTooLarge|Sub\s*Status:\s*3200/i;
+
+/** Peek a 5xx response body (via clone, so the caller's body stays intact) for a wrapped throttle. */
+const isThrottleBody = async (response: Response): Promise<boolean> => {
+  if (response.status < 500) return false;
+  try {
+    return THROTTLE_BODY_RE.test(await response.clone().text());
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Read the server's retry hint. Cosmos surfaces `x-ms-retry-after-ms`
  * (milliseconds); a plain `Retry-After` is seconds or an HTTP-date.
  * Returns the wait in ms (capped), or undefined when no usable hint exists.
@@ -116,7 +135,15 @@ export const fetchWithRateLimitRetry = async (
       if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
-    if (response.status !== 429 || attempt >= maxRetries || !idempotent) return response;
+    // Retry on a throttle for idempotent methods. A clean `429` is the common
+    // case, but Sitecore's Orchestrate API sometimes bubbles a Cosmos 429 up
+    // INSIDE a 5xx — a raw exception body like
+    // `TasksRepository: Error updating item: (TooManyRequests) … Sub Status: 3200`
+    // — which never carries the 429 status. Detect that in the body so a
+    // throttled PUT/DELETE still retries. (Body peeked via clone() so the
+    // caller still gets an intact response on the final return.)
+    const throttled = idempotent && (response.status === 429 || (await isThrottleBody(response)));
+    if (!throttled || attempt >= maxRetries) return response;
 
     attempt += 1;
     const hinted = parseRetryAfterMs(response);

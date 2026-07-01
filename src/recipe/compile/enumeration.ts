@@ -228,6 +228,36 @@ export function compileEnumerationRecipe(
 
   for (const value of recipe.values) {
     const valueDisplayName = value.displayName ?? value.name;
+    // The `Value` shared field carries the actual enumeration string
+    // (matches canonical pattern: each value item under
+    // `Background Themes/shooting-star` stores `Value: "shooting-star"`).
+    // `fieldName` is required so the executor's tenant-side resolver
+    // can locate the field by name — the recipe-derived `valueFieldRefKey`
+    // doesn't match the Sitecore-assigned field GUID after the template
+    // is materialised.
+    const valueFields: CreateItemOp["fields"] = [
+      {
+        ...sharedField(valueFieldRefKey, { kind: "string", value: value.name }),
+        fieldName: "Value",
+      },
+      versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
+        kind: "string",
+        value: valueDisplayName,
+      }),
+    ];
+    // Optional per-value "when to use this" guidance → shared `__Help
+    // text` field, so it surfaces in the Content Editor tooltip AND
+    // rides along in the published recipe JSON for page-composing
+    // agents. Same well-known system-field GUID the dictionary
+    // compiler writes phrase descriptions to (`SYSTEM_FIELDS.HELP_TEXT`),
+    // so no `fieldName` resolution is needed — the GUID is stable
+    // across tenants. Only emitted when set to keep description-free
+    // values byte-identical to before.
+    if (value.description) {
+      valueFields.push(
+        sharedField(SYSTEM_FIELDS.HELP_TEXT, { kind: "string", value: value.description })
+      );
+    }
     operations.push({
       op: "CreateItem",
       policy,
@@ -237,23 +267,7 @@ export function compileEnumerationRecipe(
       parent: { kind: "ref-recipe", refKey: folderRefKey },
       templateOf: valueTemplateRefKey,
       name: value.name,
-      // The `Value` shared field carries the actual enumeration string
-      // (matches canonical pattern: each value item under
-      // `Background Themes/shooting-star` stores `Value: "shooting-star"`).
-      // `fieldName` is required so the executor's tenant-side resolver
-      // can locate the field by name — the recipe-derived `valueFieldRefKey`
-      // doesn't match the Sitecore-assigned field GUID after the template
-      // is materialised.
-      fields: [
-        {
-          ...sharedField(valueFieldRefKey, { kind: "string", value: value.name }),
-          fieldName: "Value",
-        },
-        versionedField(SYSTEM_FIELDS.DISPLAY_NAME, {
-          kind: "string",
-          value: valueDisplayName,
-        }),
-      ],
+      fields: valueFields,
     } satisfies CreateItemOp);
   }
 

@@ -401,6 +401,38 @@ describe("compileEnumerationRecipe — emits one folder + one value-item per dec
     }
   });
 
+  it("writes an optional value.description to the value item's shared `__Help text` field (no language/version); omits it when unset", () => {
+    const withDescriptions: EnumerationRecipe = {
+      ...recipe,
+      values: [
+        {
+          name: "primary",
+          displayName: "Primary",
+          description: "Brand primary — use for the dominant call-to-action on the section.",
+        },
+        { name: "neutral" }, // no description → no help-text field
+      ],
+    };
+    const ir = compileEnumerationRecipe(withDescriptions, CONTEXT);
+
+    const primary = findCreateItem(ir.operations, (o) => o.name === "primary");
+    const helpEntry = primary!.fields.find((f) => f.fieldId === SYSTEM_FIELDS.HELP_TEXT);
+    expect(helpEntry).toBeDefined();
+    // Shared field: no language/version stamped (mirrors the `Value`
+    // shared field, unlike the versioned `__Display name`).
+    expect(helpEntry!.language).toBeUndefined();
+    expect(helpEntry!.version).toBeUndefined();
+    expect(helpEntry!.value).toEqual({
+      kind: "string",
+      value: "Brand primary — use for the dominant call-to-action on the section.",
+    });
+
+    // Description-free value carries no help-text field — byte-identical
+    // to the pre-feature shape, so existing enums don't churn.
+    const neutral = findCreateItem(ir.operations, (o) => o.name === "neutral");
+    expect(neutral!.fields.find((f) => f.fieldId === SYSTEM_FIELDS.HELP_TEXT)).toBeUndefined();
+  });
+
   it("template-ensure CreateItem + SetBaseTemplates ops carry CreateOnly; SV link + Insert Options carry CreateAndUpdate; recipe-owned ops carry CreateAndUpdate", () => {
     const ir = compileEnumerationRecipe(recipe, CONTEXT);
     const containerRefKey = enumerationFolderId(SITE, "color-scheme@1");

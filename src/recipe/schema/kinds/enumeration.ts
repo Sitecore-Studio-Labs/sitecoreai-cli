@@ -21,10 +21,20 @@ import { FolderPath, HANDLE_PATTERN } from "../shared";
  *                    What the editor's Droplink dropdown shows. Use
  *                    this to change the visible label without touching
  *                    `name`.
+ *   `description`  — optional per-value guidance: *when to pick this
+ *                    value over its siblings*. Lands on the value
+ *                    item's `__Help text` field (surfaces in the
+ *                    Content Editor tooltip) AND travels in the
+ *                    published recipe JSON, so an agent composing a
+ *                    page has the discriminating context a bare
+ *                    `displayName` can't carry (e.g. why choose
+ *                    `link-arrow` over `link`). `displayName` labels
+ *                    the option; `description` says when to use it.
  */
 export const EnumerationValueSchema = z.object({
   name: z.string().min(1),
   displayName: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
 });
 
 export type EnumerationValue = z.infer<typeof EnumerationValueSchema>;

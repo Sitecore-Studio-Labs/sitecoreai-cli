@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.13.2
+
+### Patch Changes
+
+- 34725e2: Add `scai provision recipe list` — pure-logic recipe discovery (no tenant/creds) that loads the recipe set, orders it by cross-recipe apply-rank (the same order `push` applies in), and emits `{ handle, kind }` per recipe (with `--json`). Lets a driver split a large push into dependency-safe `--handles` batches without re-deriving the recipe graph.
+
 ## 0.13.1
 
 ### Patch Changes

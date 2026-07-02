@@ -7840,6 +7840,7 @@ scai provision recipe [options] [command]
 **Subcommands**
 
 - [`scai provision recipe compile`](#scai-provision-recipe-compile) — Compile recipe (.ts/.json) files to Operation IR JSON files
+- [`scai provision recipe list`](#scai-provision-recipe-list) — List the recipe set in apply order — pure-logic, no tenant. Emits { handle, kind } per recipe (use --json).
 - [`scai provision recipe diff`](#scai-provision-recipe-diff) — Show what `recipe push` would change — read-only diff against a tenant. Compiles recipes in-memory; never mutates.
 - [`scai provision recipe plan`](#scai-provision-recipe-plan) — Plan an Operation IR push against a tenant — read-then-diff, no mutations
 - [`scai provision recipe pull`](#scai-provision-recipe-pull) — Read tenant state and dump every reverse-projectable recipe to disk as .recipe.json. Read-only — does not mutate the tenant. Default snapshot mode dumps everything to <out>; `--against <recipes-dir>` enables three-way merge detection (in-sync / disk-ahead / tenant-edited / conflict).
@@ -7867,6 +7868,25 @@ scai provision recipe compile [options]
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
+- `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
+- `-v, --verbose` — Write some additional diagnostic and performance data
+- `-t, --trace` — Write more additional diagnostic and performance data
+- `-q, --quiet` — Suppress non-error output
+- `--json` — Output machine-readable JSON
+- `--log-file <path>` — Write logs to a file
+- `--non-interactive` — Disable prompts and require explicit input
+
+#### scai provision recipe list
+
+List the recipe set in apply order — pure-logic, no tenant. Emits { handle, kind } per recipe (use --json).
+
+```
+scai provision recipe list [options]
+```
+
+**Options**
+
+- `-i, --input <path>` — Path to a recipe file. Defaults to the config `recipes` glob from sitecoreai.cli.json.
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
 - `-t, --trace` — Write more additional diagnostic and performance data

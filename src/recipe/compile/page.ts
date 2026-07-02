@@ -4,6 +4,7 @@ import {
   contentItemId,
   datasourceId,
   fieldId,
+  pageDesignId,
   pageItemId,
   renderingId,
   templateId,
@@ -25,6 +26,7 @@ import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
   LAYOUT_FIELDS,
+  PAGE_DESIGN_FIELD_ID,
   SITECORE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
@@ -114,6 +116,19 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     fields: [
       sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
       versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: recipe.displayName }),
+      // Per-page Page Design override — stamp the SXA `_Designable` facet's
+      // `Page Design` Droplink (a shared field) at the page item so it
+      // renders with the chosen design instead of the template's default.
+      // `ref-recipe` because the page-design item is recipe-created; the
+      // executor resolves its refKey to the real GUID at apply time.
+      ...(recipe.pageDesign
+        ? [
+            sharedField(PAGE_DESIGN_FIELD_ID, {
+              kind: "ref-recipe",
+              refKey: pageDesignId(site, recipe.pageDesign),
+            }),
+          ]
+        : []),
     ],
   };
 

@@ -41,6 +41,7 @@ import {
   type Task,
 } from "@/campaigns";
 import { createScaiError, toMergeConflicts } from "@/shared/errors";
+import { drainPages } from "@/shared/paginate";
 import { resolveMissingCurrentPlan } from "@/sync";
 import type {
   ApplyResult,
@@ -108,7 +109,8 @@ const extractIdentityLabels = (
 const findProjectByName = async (
   client: CampaignApiClientOptions,
   name: string,
-  identityLabels: ReadonlyArray<string> = []
+  identityLabels: ReadonlyArray<string> = [],
+  logger?: SyncContext["logger"]
 ): Promise<Project | null> => {
   const { story, handle } = extractIdentityLabels(identityLabels);
   // Match by the stable `handle:` label ALONE (it's unique per campaign)
@@ -118,26 +120,35 @@ const findProjectByName = async (
   // instead of only by exact name or a stamped `sitecoreId`. Exact-name
   // remains the fallback for ad-hoc recipes without identity markers.
   const useLabelMatch = handle !== null;
-  let cursor: string | undefined;
+  // Keep the FIRST exact-name match across all pages, but let a stronger
+  // label match short-circuit the drain. `drainPages` bounds the walk and
+  // guards against a non-advancing Orchestrate cursor — without it, a
+  // tenant with enough campaigns to paginate hung the pull indefinitely.
   let nameFallback: Project | null = null;
-  for (;;) {
-    const page = await listProjects(client, { next: cursor });
-    for (const project of page.data) {
-      if (project.name === name) {
-        nameFallback ??= project;
-      }
-      if (useLabelMatch) {
-        const labels = project.labels ?? [];
-        const handleHit = labels.includes(handle);
-        const storyHit = story === null || labels.includes(story);
-        if (handleHit && storyHit) {
-          return project;
+  const labelHit = await drainPages<Project, Project>(
+    (cursor) => listProjects(client, cursor ? { next: cursor } : undefined),
+    (rows) => {
+      for (const project of rows) {
+        if (project.name === name) {
+          nameFallback ??= project;
+        }
+        if (useLabelMatch) {
+          const labels = project.labels ?? [];
+          const handleHit = labels.includes(handle);
+          const storyHit = story === null || labels.includes(story);
+          if (handleHit && storyHit) {
+            return project;
+          }
         }
       }
-    }
-    if (!page.next || page.data.length === 0) return nameFallback;
-    cursor = page.next;
-  }
+      return undefined;
+    },
+    () =>
+      logger?.warn?.(
+        `Orchestrate listProjects returned a non-advancing pagination cursor while resolving campaign "${name}"; stopped paging to avoid a hang. The campaign may resolve by exact name only, or be reported not-found — re-run once the tenant's project list is healthy.`
+      )
+  );
+  return labelHit ?? nameFallback;
 };
 
 /**
@@ -284,7 +295,7 @@ const readCurrent = async (ref: KindRef, ctx: SyncContext): Promise<CampaignReci
     // by exact display name. Falls back to name match inside
     // findProjectByName when no handle is supplied.
     const identityLabels = ref.baselineKey ? [`handle:${ref.baselineKey}`] : [];
-    const found = await findProjectByName(client, ref.id, identityLabels);
+    const found = await findProjectByName(client, ref.id, identityLabels, ctx.logger);
     if (!found) return null;
     // The list endpoint omits inlined children; re-read by id to get
     // the full deliverable + task tree.
@@ -504,7 +515,7 @@ const resolveProject = async (args: {
       }
     }
     if (!adopted) {
-      const labelMatch = await findProjectByName(client, name, desiredLabels);
+      const labelMatch = await findProjectByName(client, name, desiredLabels, ctx.logger);
       // Adopt whenever an existing project matches (by identity label OR
       // exact name) — NOT only on a rename. The old `name !== name` guard
       // meant a re-push of an UNCHANGED campaign that lacks a stamped
@@ -554,7 +565,7 @@ const resolveProject = async (args: {
     }
   }
   if (!resolved) {
-    const found = await findProjectByName(client, ref.id);
+    const found = await findProjectByName(client, ref.id, [], ctx.logger);
     if (found) resolved = await getProject(client, found.id);
   }
   if (!resolved) {

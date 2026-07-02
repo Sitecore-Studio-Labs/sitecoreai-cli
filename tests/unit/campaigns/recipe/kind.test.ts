@@ -296,6 +296,30 @@ describe("readCurrent", () => {
     expect(recipe?.name).toBe("Spring Launch");
     expect(campaignApi.listProjects).toHaveBeenCalledTimes(2);
   });
+
+  it("bails out (not hangs) when the project list returns a non-advancing cursor", async () => {
+    // Regression: a tenant with enough campaigns to paginate hung the pull
+    // forever when Orchestrate handed back a `next` cursor that never
+    // nulled out. The drain must detect the repeated cursor, warn, and
+    // resolve to "not found" instead of looping. A non-terminating guard
+    // would make THIS test hang rather than fail.
+    const warn = vi.fn();
+    const loggingCtx = {
+      ...ctx,
+      logger: { info: vi.fn(), warn } as unknown as Logger,
+    };
+    campaignApi.listProjects.mockResolvedValue({
+      totalCount: 99,
+      next: "stuck-cursor",
+      data: [{ id: "p1", name: "Unrelated" }],
+    });
+
+    const recipe = await campaignKind.readCurrent(ref, loggingCtx);
+    expect(recipe).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    // First page primes `seenCursors`, second page repeats it → guard trips.
+    expect(campaignApi.listProjects).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("apply", () => {

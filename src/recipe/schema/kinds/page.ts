@@ -124,6 +124,20 @@ export const PageRecipeSchema = z.object({
     message: "template must reference a PageTemplateRecipe by handle, e.g. article-page@1",
   }),
   /**
+   * Optional per-page Page Design override — the handle of a
+   * `PageDesignRecipe`. When set, the compiler stamps the SXA `_Designable`
+   * facet's `Page Design` Droplink (a shared field) on the page item, so the
+   * page renders with THIS design instead of the one bound to its template
+   * via the Page Designs root `TemplatesMapping`. Omit to inherit the
+   * template's design (the common case — the field is left unset).
+   */
+  pageDesign: z
+    .string()
+    .regex(HANDLE_PATTERN, {
+      message: "pageDesign must reference a PageDesignRecipe by handle, e.g. standard-page@1",
+    })
+    .optional(),
+  /**
    * Explicit item path in the content tree. Must start with the literal
    * prefix `/sitecore/content/{site}/` — the `{site}` placeholder is the
    * only supported substitution and is replaced with the active site

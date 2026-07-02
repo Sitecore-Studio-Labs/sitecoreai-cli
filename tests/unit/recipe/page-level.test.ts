@@ -13,6 +13,7 @@ import {
 } from "../../../src/recipe/compile";
 import {
   datasourceId,
+  pageDesignId,
   pageItemId,
   placeholderSettingsId,
   renderingId,
@@ -27,6 +28,7 @@ import type {
 } from "../../../src/recipe/ir/operations";
 import {
   LAYOUT_FIELDS,
+  PAGE_DESIGN_FIELD_ID,
   PLACEHOLDER_FIELDS,
   PLACEHOLDER_SETTINGS_FOLDER_TEMPLATE_ID,
   PLACEHOLDER_TEMPLATE_ID,
@@ -415,6 +417,31 @@ describe("compilePageRecipe", () => {
     }
     expect(insert.value.refKeys).toEqual([templateId("default", "alpha-block@1")]);
     expect(insert.value.tolerateMissing).toBe(true);
+  });
+});
+
+describe("compilePageRecipe — Page Design override", () => {
+  it("stamps the SXA _Designable `Page Design` Droplink (shared, ref-recipe) when pageDesign is set", () => {
+    const page = {
+      ...homePage,
+      pageDesign: "standard-page@1",
+    } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+    const create = findCreate(ir.operations, "page:home@1");
+    const field = create.fields.find((f) => f.fieldId === PAGE_DESIGN_FIELD_ID);
+    expect(field).toBeDefined();
+    // Droplink → the recipe-created page-design item; executor resolves the
+    // refKey to the real GUID at apply time.
+    expect(field?.value).toEqual({
+      kind: "ref-recipe",
+      refKey: pageDesignId(SITE, "standard-page@1"),
+    });
+  });
+
+  it("leaves the Page Design field unset when pageDesign is omitted", () => {
+    const ir = compilePageRecipe(homePage, CONTEXT);
+    const create = findCreate(ir.operations, "page:home@1");
+    expect(create.fields.some((f) => f.fieldId === PAGE_DESIGN_FIELD_ID)).toBe(false);
   });
 });
 

@@ -10,6 +10,7 @@ import {
 } from "../shared";
 import { runRecipeCompile } from "../../recipe/tasks/compile";
 import { runRecipeDiff } from "../../recipe/tasks/diff";
+import { runRecipeList } from "../../recipe/tasks/list";
 import { runRecipePlan } from "../../recipe/tasks/plan";
 import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
 import { runRecipePull } from "../../recipe/tasks/pull";
@@ -96,6 +97,19 @@ const createCompileCommand = (): Command => {
   addVerbosityOptions(command);
 
   command.action(async (options) => runRecipeCompile(options));
+  return command;
+};
+
+const createListCommand = (): Command => {
+  const command = new Command("list").description(
+    "List the recipe set in apply order — pure-logic, no tenant. Emits { handle, kind } per recipe (use --json)."
+  );
+
+  addOptionalInputOption(command, "Path to a recipe file");
+  addConfigOption(command);
+  addVerbosityOptions(command);
+
+  command.action(async (options) => runRecipeList(options));
   return command;
 };
 
@@ -431,6 +445,7 @@ export const createRecipeCommand = (): Command => {
   );
 
   command.addCommand(createCompileCommand());
+  command.addCommand(createListCommand());
   command.addCommand(createDiffCommand());
   command.addCommand(createPlanCommand());
   command.addCommand(createPullCommand());

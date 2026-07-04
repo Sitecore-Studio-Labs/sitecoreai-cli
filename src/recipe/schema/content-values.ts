@@ -33,9 +33,14 @@ export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
     shape: z.literal("image"),
     /**
      * Sitecore media-library path, or a fully-qualified external image
-     * URL. The compiler emits the image XML form — `mediapath="…"` for
-     * library paths, `src="…"` for `http(s)` URLs (the attribute the
-     * Layout Service actually surfaces as a renderable `src`).
+     * URL. Library paths emit `<image mediapath="…" />` XML. External
+     * URLs are materialised as REAL media items at push time — the
+     * compiler emits a MediaUpload op (the executor downloads the bytes
+     * and uploads them to the media library) plus a `media-xml-ref`
+     * field value that resolves to `<image mediaid="{GUID}" />`. That
+     * is the only form the Layout Service surfaces as a renderable
+     * `src`; bare `src=`/`mediapath=` attributes show a thumbnail in
+     * Pages' field editor but never render on the canvas or head apps.
      */
     mediaPath: z.string().min(1),
     alt: z.string().optional(),

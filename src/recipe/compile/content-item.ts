@@ -33,7 +33,16 @@ import {
   type ContentItemRecipeParsed,
   ContentItemRecipeSchema,
 } from "../schema/recipe";
-import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
+import {
+  type CompileContext,
+  externalImageMediaRef,
+  type ImageMediaSink,
+  isExternalMediaUrl,
+  joinPath,
+  sharedField,
+  siteOf,
+  versionedField,
+} from "./shared";
 
 /**
  * Compile a `ContentItemRecipe` to an Operation IR.
@@ -275,6 +284,10 @@ export function compileContentItemRecipe(
   // SetField lands on a version that already exists.
   const versionOps: Operation[] = [];
   const fieldOps: Operation[] = [];
+  // MediaUpload ops for external-URL image fields — ordered before
+  // fieldOps in the final IR so each media itemId is captured before the
+  // SetField whose `media-xml-ref` references it resolves.
+  const imageMediaSink: ImageMediaSink = { policy, mediaOps: [] };
 
   /** Emit one SetField per field value at the given (language, version). */
   const emitFields = (
@@ -284,7 +297,10 @@ export function compileContentItemRecipe(
     labelTag: string
   ): void => {
     for (const [fieldName, fieldValue] of Object.entries(fields)) {
-      const value = encodeContentFieldValue(fieldValue, recipe.handle, site);
+      const value = encodeContentFieldValue(fieldValue, recipe.handle, site, {
+        fieldName,
+        ...imageMediaSink,
+      });
       fieldOps.push({
         op: "SetField",
         policy,
@@ -337,7 +353,12 @@ export function compileContentItemRecipe(
     }
   }
 
-  const operations: Operation[] = [createItem, ...versionOps, ...fieldOps];
+  const operations: Operation[] = [
+    createItem,
+    ...imageMediaSink.mediaOps,
+    ...versionOps,
+    ...fieldOps,
+  ];
 
   if (recipe.workflow) {
     operations.push({
@@ -400,24 +421,17 @@ const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
 };
 
 /**
- * True when an image `mediaPath` is a fully-qualified external URL rather
- * than a media-library path. Mirrors the URL detection the standard-values
- * encoder applies implicitly (recipe defaults are authored as URLs).
- */
-const isExternalMediaUrl = (path: string): boolean => /^https?:\/\//i.test(path);
-
-/**
  * Sitecore image-field XML. The attribute carrying `mediaPath` dispatches
  * on its shape:
  *
- *  - **Fully-qualified `http(s)` URL** → emitted as `src="…"`. The Layout
- *    Service builds an image field's rendered `src` from `mediaid` (media
- *    library resolution) or passes a literal `src` attribute through —
- *    `mediapath` never surfaces as a renderable `src`, so an external URL
- *    stored under `mediapath` reaches the head app as a srcless field and
- *    renders nothing (while authoring UIs still show a thumbnail). The
- *    `src` form matches what the standard-values encoder
- *    (`compile/shared.ts` `encodeMediaXmlDefault`) already emits.
+ *  - **Fully-qualified `http(s)` URL** → emitted as `src="…"`. This is
+ *    the LEGACY fallback, taken only when the caller supplies no
+ *    `ImageMediaSink` — the primary path materialises external URLs as
+ *    real media items (MediaUpload + `media-xml-ref` →
+ *    `<image mediaid="{GUID}" />`), because the Layout Service only
+ *    builds a renderable `src` from `mediaid`; a bare `src=` attribute
+ *    shows a thumbnail in Pages' field editor but never renders on the
+ *    canvas or in head apps.
  *  - **Anything else** (a media-library path) → emitted as `mediapath="…"`
  *    — see `compileContentItemRecipe` JSDoc for the media-item upload
  *    caveat.
@@ -468,11 +482,19 @@ const escapeXmlAttr = (s: string): string =>
  *
  * Exported so `compilePageRecipe` reuses the exact same field-value
  * encoding for page-item fields.
+ *
+ * `imageMedia` (fieldName + sink) opts external-URL image values into
+ * media-item materialisation: a MediaUpload op lands in the sink and
+ * the returned value is a `media-xml-ref` (resolved to
+ * `<image mediaid="{GUID}" />` at apply). Without it, external URLs
+ * fall back to the legacy `src=` XML — stored fine, but never rendered
+ * by the Layout Service.
  */
 export const encodeContentFieldValue = (
   value: ContentFieldValue,
   recipeHandle: string,
-  site: string
+  site: string,
+  imageMedia?: { fieldName: string } & ImageMediaSink
 ): RefValue => {
   switch (value.shape) {
     case "text":
@@ -488,6 +510,16 @@ export const encodeContentFieldValue = (
     case "datetime":
       return { kind: "string", value: toSitecoreDate(value.value, value.shape) };
     case "image":
+      if (imageMedia && isExternalMediaUrl(value.mediaPath)) {
+        return externalImageMediaRef({
+          site,
+          recipeHandle,
+          fieldName: imageMedia.fieldName,
+          url: value.mediaPath,
+          ...(value.alt ? { alt: value.alt } : {}),
+          sink: imageMedia,
+        });
+      }
       return { kind: "string", value: encodeImageXml(value) };
     case "link-external":
       return { kind: "string", value: encodeExternalLinkXml(value) };

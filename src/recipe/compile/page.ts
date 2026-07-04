@@ -39,7 +39,14 @@ import {
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
-import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
+import {
+  type CompileContext,
+  type ImageMediaSink,
+  joinPath,
+  sharedField,
+  siteOf,
+  versionedField,
+} from "./shared";
 
 /**
  * Compile a `PageRecipe` to an Operation IR.
@@ -142,6 +149,11 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // SetField lands on a version that already exists.
   const versionOps: Operation[] = [];
   const fieldOps: Operation[] = [];
+  // MediaUpload ops for external-URL image fields (page fields AND
+  // datasource-item fields) — ordered before fieldOps in the final IR
+  // so each media itemId is captured before the SetField whose
+  // `media-xml-ref` references it resolves.
+  const imageMediaSink: ImageMediaSink = { policy, mediaOps: [] };
 
   /**
    * Emit one SetField per field value at the given (language, version).
@@ -169,7 +181,10 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     for (const [fieldName, rawValue] of Object.entries(fields)) {
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
-      const value = encodeContentFieldValue(normalised, recipe.handle, site);
+      const value = encodeContentFieldValue(normalised, recipe.handle, site, {
+        fieldName,
+        ...imageMediaSink,
+      });
       fieldOps.push({
         op: "SetField",
         policy,
@@ -254,6 +269,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // BEFORE the layout SetFields so the captured-itemId map carries
   // the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor` resolves.
   const operations: Operation[] = [createItem];
+  operations.push(...imageMediaSink.mediaOps);
   operations.push(...versionOps);
   if (scopedSlots.size > 0) {
     const dataFolderPath = joinPath(itemPath, "Data");

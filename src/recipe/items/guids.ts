@@ -561,6 +561,28 @@ export const thumbnailMediaId = (site: string, handle: string): string =>
   uuidv5("thumbnail", templateId(site, handle));
 
 /**
+ * Recipe-internal refKey for a media item materialised from an
+ * external-URL image field value (content-item / page-datasource field
+ * or a template's Standard Values image default). Pairs 1:1 with the
+ * `kind: "media-xml-ref"` field value that references it — the executor
+ * substitutes the uploaded media item's server-assigned GUID at apply
+ * time, yielding the `<image mediaid="{GUID}" />` form the Layout
+ * Service actually renders (bare `src=`/`mediapath=` attributes never
+ * surface as a renderable `src` in XM Cloud).
+ *
+ * Seeded with the source URL so a story whose versions swap the image
+ * gets one media item per distinct URL, while repeated emissions of
+ * the same (field, URL) pair across languages/versions dedupe to one
+ * upload.
+ */
+export const mediaFieldId = (
+  site: string,
+  handle: string,
+  fieldName: string,
+  sourceUrl: string
+): string => uuidv5(`media-field:${fieldName}:${sourceUrl}`, templateId(site, handle));
+
+/**
  * Recipe-internal refKey for the tenant-rooted SXA Module item
  * synthesised by `compileSiteTemplateRecipe`. Conforms to
  * `HEADLESS_SITE_SETUP_ROOT`; lands at

@@ -167,9 +167,13 @@ const fillStoryMode = (
  *    rather than synthesise a handle (`decodeContentFieldValue` returns
  *    `null`); the value is omitted from the recipe.
  *  - `image.mediaPath` round-trips verbatim — there is no media-item
- *    handle resolution (the media library is opaque to scai). External-URL
- *    images (`<image src="https://…" />`) also land in `mediaPath`; the
- *    compiler re-emits them as `src=` so the round-trip is stable.
+ *    handle resolution (the media library is opaque to scai). Legacy
+ *    external-URL images (`<image src="https://…" />`) also land in
+ *    `mediaPath`. Images stored in the canonical
+ *    `<image mediaid="{GUID}" />` form (including the media items the
+ *    compiler now materialises from external URLs) are DROPPED — the
+ *    GUID is not resolvable to a path or URL without a media lookup
+ *    the reverse projection doesn't perform.
  */
 const contentItemFromItem = async ({
   item,

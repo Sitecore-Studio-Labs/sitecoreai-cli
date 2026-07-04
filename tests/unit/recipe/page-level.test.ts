@@ -939,22 +939,35 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
     expect(twoXml).toContain('placeh="/headless-main/column-1-1"');
   });
 
-  it("rejects placement trees deeper than the supported depth", () => {
+  it("compiles arbitrarily deep placement trees (recursive schema)", () => {
     const deep = (levels: number): Record<string, unknown> =>
       levels === 0
-        ? { componentHandle: "card@1", datasourceRef: { kind: "none" } }
+        ? {
+            componentHandle: "card@1",
+            datasourceRef: { kind: "scoped", slot: "DeepCard", fields: {} },
+          }
         : {
             componentHandle: "splitter@1",
             datasourceRef: { kind: "none" },
             placeholders: { "column-1": [deep(levels - 1)] },
           };
-    const tooDeep = {
+    const deepPage = {
       ...homePage,
       handle: "deep@1",
       name: "Deep",
-      layout: { placeholders: { "headless-main": [deep(4)] } },
+      layout: { placeholders: { "headless-main": [deep(6)] } },
     } as unknown as PageRecipe;
-    expect(() => compilePageRecipe(tooDeep, CONTEXT)).toThrowError(/nesting exceeds/);
+    const deepIr = compilePageRecipe(deepPage, CONTEXT);
+    const deepLayout = findSetField(deepIr.operations, "page-layout:deep@1:en");
+    const deepXml = deepLayout.value.kind === "string" ? deepLayout.value.value : "";
+    // Six nested splitters (DynamicPlaceholderIds 1..6), then the card at
+    // the innermost path-qualified key.
+    expect(deepXml).toContain(
+      'placeh="/headless-main/column-1-1/column-1-2/column-1-3/column-1-4/column-1-5/column-1-6"'
+    );
+    // The innermost scoped datasource still materialises under <page>/Data.
+    const deepCard = findCreate(deepIr.operations, "page-datasource:deep@1:DeepCard");
+    expect(deepCard.path).toBe("/sitecore/content/Demo/Home/Deep/Data/DeepCard");
   });
 });
 

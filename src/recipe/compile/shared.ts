@@ -344,6 +344,31 @@ export const joinPath = (parent: string, name: string): string => {
 export const siteOf = (context: CompileContext): string => context.site ?? "default";
 
 /**
+ * The content-template handles a component's datasource items conform
+ * to. Mirrors the rendering's `Datasource Template` field precedence
+ * (`resolveDatasourceTemplateField` in component-template.ts): explicit
+ * compatible-datasources list (`datasource.templates[]`) > single
+ * external template (`datasource.template`) > the recipe's own handle
+ * (inline-fields pattern — the component template IS the datasource
+ * template).
+ *
+ * Every Insert Options list that restricts a data folder to "this
+ * component's datasource type" MUST go through this helper: components
+ * using the external-template patterns never create a
+ * `templateId(site, recipe.handle)` item, so referencing the recipe's
+ * own handle for them produces a refKey no CreateItem defines — the
+ * executor then writes a literal broken GUID into the field.
+ */
+export const datasourceTemplateHandles = (
+  recipe: import("../schema/recipe").ComponentTemplateRecipeParsed
+): string[] => {
+  const templates = recipe.datasource?.templates;
+  if (templates?.length) return templates.map((t) => t.handle);
+  if (recipe.datasource?.template) return [recipe.datasource.template.handle];
+  return [recipe.handle];
+};
+
+/**
  * Resolve a `sitecore.enumHandle` reference to the tenant content path
  * the enumeration's folder lives at. Used by `resolveFieldSource` to
  * emit Droplink Source values as content paths (the form SXA Headless's

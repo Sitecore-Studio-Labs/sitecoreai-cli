@@ -788,3 +788,207 @@ describe("compilePageRecipe — story mode (versions)", () => {
     );
   });
 });
+
+describe("compilePageRecipe — {site} itemPath substitution", () => {
+  const sitePage = {
+    ...homePage,
+    handle: "site-path@1",
+    name: "SitePath",
+    itemPath: "/sitecore/content/{site}/Home/Site Path",
+  } satisfies PageRecipe;
+
+  it("substitutes {site} with sitePathSegment (<collection>/<site>)", () => {
+    const ir = compilePageRecipe(sitePage, {
+      ...CONTEXT,
+      sitePathSegment: "Acme Collection/acme",
+    });
+    const create = findCreate(ir.operations, "page:site-path@1");
+    expect(create.path).toBe("/sitecore/content/Acme Collection/acme/Home/Site Path");
+    expect(create.parent).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/content/Acme Collection/acme/Home",
+    });
+  });
+
+  it("throws INPUT_INVALID when a {site} itemPath compiles without a site path", () => {
+    // The pre-fix behaviour substituted the GUID seed ("default" unless
+    // siteScopedGuids opted in) and pages landed in a phantom
+    // /sitecore/content/default/ tree no site serves.
+    expect(() => compilePageRecipe(sitePage, CONTEXT)).toThrowError(/\{site\} placeholder/);
+  });
+});
+
+describe("compilePageRecipe — nested placements (dynamic placeholders)", () => {
+  // Mirrors the registry's column-splitter pattern: a layout component
+  // hosting scoped-datasource children in its own logical placeholders.
+  const nestedPage = {
+    ...homePage,
+    handle: "nested@1",
+    name: "Nested",
+    layout: {
+      placeholders: {
+        "headless-main": [
+          {
+            componentHandle: "splitter@1",
+            variant: "Default",
+            params: { Gap: "lg" },
+            datasourceRef: { kind: "none" },
+            placeholders: {
+              "column-1": [
+                {
+                  componentHandle: "card@1",
+                  variant: "MediaStacked",
+                  datasourceRef: {
+                    kind: "scoped",
+                    slot: "LeftCard",
+                    fields: { Title: "Left" },
+                  },
+                },
+              ],
+              "column-2": [
+                {
+                  componentHandle: "card@1",
+                  datasourceRef: { kind: "scoped", slot: "RightCard", fields: {} },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  } satisfies PageRecipe;
+
+  const ir = compilePageRecipe(nestedPage, CONTEXT);
+  const layout = findSetField(ir.operations, "page-layout:nested@1:en");
+  const xml = layout.value.kind === "string" ? layout.value.value : "";
+
+  it("materialises datasource items for nested scoped placements", () => {
+    const pageRef = pageItemId("default", "nested@1");
+    const left = findCreate(ir.operations, "page-datasource:nested@1:LeftCard");
+    expect(left.path).toBe("/sitecore/content/Demo/Home/Nested/Data/LeftCard");
+    expect(xml).toContain(`ds="{${datasourceId(pageRef, "LeftCard").toUpperCase()}}"`);
+    const leftTitle = findSetField(ir.operations, "page-field:nested@1:scoped:LeftCard:Title");
+    expect(leftTitle.value).toEqual({ kind: "string", value: "Left" });
+  });
+
+  it("assigns the parent a DynamicPlaceholderId rendering parameter", () => {
+    // par is URL-encoded then XML-escaped; the raw param name survives both.
+    expect(xml).toContain("DynamicPlaceholderId%3D1".replace("%3D", "=") /* readable */);
+    expect(xml).toMatch(/par="[^"]*DynamicPlaceholderId=1[^"]*"/);
+  });
+
+  it("emits children under path-qualified dynamic keys", () => {
+    expect(xml).toContain('placeh="/headless-main/column-1-1"');
+    expect(xml).toContain('placeh="/headless-main/column-2-1"');
+  });
+
+  it("respects an author-set DynamicPlaceholderId and never re-mints it", () => {
+    const authored = {
+      ...nestedPage,
+      handle: "authored@1",
+      name: "Authored",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              ...nestedPage.layout.placeholders["headless-main"][0],
+              params: { Gap: "lg", DynamicPlaceholderId: "7" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const authoredIr = compilePageRecipe(authored, CONTEXT);
+    const authoredLayout = findSetField(authoredIr.operations, "page-layout:authored@1:en");
+    const authoredXml = authoredLayout.value.kind === "string" ? authoredLayout.value.value : "";
+    expect(authoredXml).toMatch(/par="[^"]*DynamicPlaceholderId=7[^"]*"/);
+    expect(authoredXml).toContain('placeh="/headless-main/column-1-7"');
+  });
+
+  it("mints distinct ids for sibling parents (skipping author-used values)", () => {
+    const parent = nestedPage.layout.placeholders["headless-main"][0];
+    const twoParents = {
+      ...nestedPage,
+      handle: "two@1",
+      name: "Two",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            { ...parent, params: { DynamicPlaceholderId: "2" } },
+            {
+              ...parent,
+              placeholders: {
+                "column-1": [
+                  {
+                    componentHandle: "card@1",
+                    datasourceRef: { kind: "scoped", slot: "OtherCard", fields: {} },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const twoIr = compilePageRecipe(twoParents, CONTEXT);
+    const twoLayout = findSetField(twoIr.operations, "page-layout:two@1:en");
+    const twoXml = twoLayout.value.kind === "string" ? twoLayout.value.value : "";
+    // Author used 2; the minted id skips it and lands on 1... then 3 would
+    // follow. First parent keeps its authored 2, second parent gets 1.
+    expect(twoXml).toContain('placeh="/headless-main/column-1-2"');
+    expect(twoXml).toContain('placeh="/headless-main/column-1-1"');
+  });
+
+  it("rejects placement trees deeper than the supported depth", () => {
+    const deep = (levels: number): Record<string, unknown> =>
+      levels === 0
+        ? { componentHandle: "card@1", datasourceRef: { kind: "none" } }
+        : {
+            componentHandle: "splitter@1",
+            datasourceRef: { kind: "none" },
+            placeholders: { "column-1": [deep(levels - 1)] },
+          };
+    const tooDeep = {
+      ...homePage,
+      handle: "deep@1",
+      name: "Deep",
+      layout: { placeholders: { "headless-main": [deep(4)] } },
+    } as unknown as PageRecipe;
+    expect(() => compilePageRecipe(tooDeep, CONTEXT)).toThrowError(/nesting exceeds/);
+  });
+});
+
+describe("validateRecipeSet — nested placements", () => {
+  it("flags a nested componentHandle that is not in the set", () => {
+    const page = {
+      ...homePage,
+      handle: "nested-check@1",
+      name: "NestedCheck",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "alpha-block@1",
+              datasourceRef: { kind: "none" },
+              placeholders: {
+                "column-1": [{ componentHandle: "ghost-card@1", datasourceRef: { kind: "none" } }],
+              },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const result = validateRecipeSet([
+      PageRecipeSchema.parse(page),
+      PageTemplateRecipeSchema.parse(articlePage),
+      component("alpha-block@1"),
+    ] as Recipe[]);
+    expect(isValid(result)).toBe(false);
+    expect(result.unresolvedHandles).toContainEqual(
+      expect.objectContaining({
+        handle: "ghost-card@1",
+        fromField: expect.stringContaining("placeholders.column-1"),
+      })
+    );
+  });
+});

@@ -459,6 +459,33 @@ export const resolveSeedSite = (
   return site;
 };
 
+/**
+ * Derive the content-tree path segment for `{site}` substitution in
+ * `PageRecipe.itemPath` — `<siteCollection>/<site>`, the SXA Headless
+ * location every install targets (`/sitecore/content/<collection>/<site>`).
+ *
+ * Distinct from `resolveSeedSite` above on purpose: the GUID seed is an
+ * identity concern (opt-in, defaults to the `default` sentinel so GUIDs
+ * stay stable), while this is the physical tenant tree location. The old
+ * behaviour substituted the GUID seed into `{site}` paths, so pages
+ * landed in a phantom `/sitecore/content/default/` tree unless
+ * `siteScopedGuids` happened to be on — and even then missed the
+ * collection segment.
+ *
+ * Returns `undefined` when either value is missing; `compilePageRecipe`
+ * throws a targeted INPUT_INVALID only when a `{site}` itemPath actually
+ * needs it, so site-less sets (workflow-only, component-only) compile
+ * unchanged.
+ */
+export const resolveSitePathSegment = (
+  environment: Pick<EnvironmentConfiguration, "site" | "siteCollection"> | undefined
+): string | undefined => {
+  const site = environment?.site?.trim();
+  const collection = environment?.siteCollection?.trim();
+  if (!site || !collection) return undefined;
+  return `${collection}/${site}`;
+};
+
 export interface RecipeInputResolution {
   files: string[];
   source: "input-flag" | "config-glob";

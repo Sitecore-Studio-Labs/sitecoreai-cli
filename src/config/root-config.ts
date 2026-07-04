@@ -198,6 +198,7 @@ const RECIPE_ROOT_PAIRS: ReadonlyArray<
   ["pageTemplates", "pageTemplatesRoot"],
   ["pages", "pagesRoot"],
   ["contentItems", "contentItemsRoot"],
+  ["mediaLibrary", "mediaLibraryRoot"],
   ["headlessVariants", "headlessVariantsRoot"],
   ["availableRenderings", "availableRenderingsRoot"],
   ["presentationStyles", "presentationStylesRoot"],

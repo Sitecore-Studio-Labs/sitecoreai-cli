@@ -82,6 +82,12 @@ const addRecipeRootOptions = (command: Command): Command =>
         "--content-items-root <path>",
         "Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot."
       )
+    )
+    .addOption(
+      new Option(
+        "--media-library-root <path>",
+        "Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>."
+      )
     );
 
 const createCompileCommand = (): Command => {
@@ -394,6 +400,12 @@ const createPruneDefaultsCommand = (): Command => {
     new Option(
       "--content-items-root <path>",
       "Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data)."
+    )
+  );
+  command.addOption(
+    new Option(
+      "--media-library-root <path>",
+      "Override mediaLibraryRoot from the env profile (e.g. /sitecore/media library/Project/<col>/<site>)."
     )
   );
   command.addOption(

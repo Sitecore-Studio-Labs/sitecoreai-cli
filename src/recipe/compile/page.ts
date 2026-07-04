@@ -153,7 +153,11 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // datasource-item fields) — ordered before fieldOps in the final IR
   // so each media itemId is captured before the SetField whose
   // `media-xml-ref` references it resolves.
-  const imageMediaSink: ImageMediaSink = { policy, mediaOps: [] };
+  const imageMediaSink: ImageMediaSink = {
+    policy,
+    mediaOps: [],
+    ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+  };
 
   /**
    * Emit one SetField per field value at the given (language, version).
@@ -788,7 +792,7 @@ const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
     const obj = raw as Record<string, unknown>;
     // Already a scai-native discriminated ContentFieldValue.
     if (typeof obj.shape === "string") return obj as unknown as ContentFieldValue;
-    // Registry image shape: { src, alt?, width?, height? }.
+    // Registry image shape: { src, alt?, width?, height?, mediaLibraryFolder? }.
     if (typeof obj.src === "string") {
       return {
         shape: "image",
@@ -796,6 +800,9 @@ const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
         ...(typeof obj.alt === "string" ? { alt: obj.alt } : {}),
         ...(typeof obj.width === "number" ? { width: obj.width } : {}),
         ...(typeof obj.height === "number" ? { height: obj.height } : {}),
+        ...(typeof obj.mediaLibraryFolder === "string"
+          ? { mediaLibraryFolder: obj.mediaLibraryFolder }
+          : {}),
       };
     }
     // Registry external-link shape: { href, text?, target?, title? }.

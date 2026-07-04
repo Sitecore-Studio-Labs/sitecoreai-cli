@@ -287,7 +287,11 @@ export function compileContentItemRecipe(
   // MediaUpload ops for external-URL image fields — ordered before
   // fieldOps in the final IR so each media itemId is captured before the
   // SetField whose `media-xml-ref` references it resolves.
-  const imageMediaSink: ImageMediaSink = { policy, mediaOps: [] };
+  const imageMediaSink: ImageMediaSink = {
+    policy,
+    mediaOps: [],
+    ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+  };
 
   /** Emit one SetField per field value at the given (language, version). */
   const emitFields = (
@@ -517,6 +521,7 @@ export const encodeContentFieldValue = (
           fieldName: imageMedia.fieldName,
           url: value.mediaPath,
           ...(value.alt ? { alt: value.alt } : {}),
+          ...(value.mediaLibraryFolder ? { folder: value.mediaLibraryFolder } : {}),
           sink: imageMedia,
         });
       }

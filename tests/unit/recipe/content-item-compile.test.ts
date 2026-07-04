@@ -258,6 +258,45 @@ describe("compileContentItemRecipe — field encoders", () => {
     expect(uploadIndex).toBeLessThan(setIndex);
   });
 
+  it("honors context.mediaLibraryRoot for the upload destination", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://picsum.photos/seed/hero/1200/600",
+        },
+      }),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Showcase/Demo" }
+    );
+    const upload = ir.operations.find((op) => op.op === "MediaUpload");
+    expect(upload?.op).toBe("MediaUpload");
+    if (upload?.op !== "MediaUpload") return;
+    // Uploads nest under <root>/<recipe handle name>/.
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Showcase\/Demo\/test-content\/X-/
+    );
+  });
+
+  it("prefers the image value's own mediaLibraryFolder over the context root", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://picsum.photos/seed/hero/1200/600",
+          mediaLibraryFolder: "/sitecore/media library/Project/Showcase/Avatars/",
+        },
+      }),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Showcase/Demo" }
+    );
+    const upload = ir.operations.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected MediaUpload");
+    // Used as-is (trailing slash trimmed), no <recipeName> nesting —
+    // only the generated leaf is appended.
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Showcase\/Avatars\/X-/
+    );
+  });
+
   it("dedupes repeated (field, URL) pairs to one MediaUpload across translations", () => {
     const recipe = buildRecipe(
       {

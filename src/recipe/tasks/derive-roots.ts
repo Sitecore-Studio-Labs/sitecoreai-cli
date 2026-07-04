@@ -63,6 +63,7 @@ export const deriveRecipeRoots = (site: string, siteCollection: string): Environ
     partialDesigns: `${siteContentRoot}/Presentation/Partial Designs`,
     pageDesigns: `${siteContentRoot}/Presentation/Page Designs`,
     contentItems: `${siteContentRoot}/Data`,
+    mediaLibrary: `/sitecore/media library/Project/${trimmedCollection}/${trimmedSite}`,
     headlessVariants: `${siteContentRoot}/Presentation/Headless Variants`,
     availableRenderings: `${siteContentRoot}/Presentation/Available Renderings`,
     presentationStyles: `${siteContentRoot}/Presentation/Styles`,

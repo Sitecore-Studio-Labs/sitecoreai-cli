@@ -46,6 +46,14 @@ export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
     alt: z.string().optional(),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
+    /**
+     * Destination media-library FOLDER for an external-URL image (e.g.
+     * `/sitecore/media library/Project/MySite/Avatars`). Only the
+     * generated leaf name is appended. Overrides the env profile's
+     * `recipeRoots.mediaLibrary` / `--media-library-root` for this one
+     * image; ignored for media-library-path values (nothing to upload).
+     */
+    mediaLibraryFolder: z.string().min(1).optional(),
   }),
   z.object({
     shape: z.literal("link-external"),

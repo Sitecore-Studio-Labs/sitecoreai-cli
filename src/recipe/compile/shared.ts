@@ -132,6 +132,19 @@ export interface CompileContext {
    */
   contentItemsRoot?: string;
   /**
+   * Media-library folder under which recipe-materialised media items
+   * land (external-URL image field values / SV image defaults compile
+   * to a MediaUpload + `media-xml-ref` — see `externalImageMediaRef`).
+   * Typically `/sitecore/media library/Project/<siteCollection>/<site>`.
+   *
+   * Optional. When unset the compiler falls back to the flat
+   * `/sitecore/media library/RecipeImages/<site>` bucket. Each upload
+   * still nests under `<recipeName>/` within the configured root; a
+   * per-value `mediaLibraryFolder` on an image field overrides the root
+   * entirely for that one image.
+   */
+  mediaLibraryRoot?: string;
+  /**
    * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
    * or a sub-folder for module groupings. Site templates are reusable
@@ -1046,7 +1059,11 @@ export function emitDatasourceTemplate(
   // the MediaUpload ops must run BEFORE the SV CreateItem so the
   // executor has captured each media itemId when it resolves the
   // entries' `media-xml-ref` values.
-  const svImageMediaSink: ImageMediaSink = { policy, mediaOps: [] };
+  const svImageMediaSink: ImageMediaSink = {
+    policy,
+    mediaOps: [],
+    ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+  };
   const svFieldEntries = buildStandardValuesFieldEntries(
     site,
     recipe.handle,
@@ -1549,6 +1566,12 @@ export const isExternalMediaUrl = (path: string): boolean => /^https?:\/\//i.tes
 export interface ImageMediaSink {
   policy: PushPolicy;
   mediaOps: MediaUploadOp[];
+  /**
+   * Media-library folder the uploads land under — from
+   * `CompileContext.mediaLibraryRoot`. Unset → the flat
+   * `/sitecore/media library/RecipeImages/<site>` fallback.
+   */
+  mediaLibraryRoot?: string;
 }
 
 /**
@@ -1566,6 +1589,14 @@ export interface ImageMediaSink {
  * URLs on the same field can't collide on one media path (the
  * executor's idempotency lookup would otherwise capture the first
  * upload's item for both).
+ *
+ * Destination folder resolution, most-specific first:
+ *   1. `folder` (the image value's own `mediaLibraryFolder`) — used
+ *      as-is; only the generated leaf is appended.
+ *   2. `sink.mediaLibraryRoot` (from `CompileContext.mediaLibraryRoot`,
+ *      i.e. env-profile `recipeRoots.mediaLibrary` / `--media-library-root`)
+ *      — uploads nest under `<root>/<recipeName>/`.
+ *   3. Fallback: `/sitecore/media library/RecipeImages/<site>/<recipeName>/`.
  */
 export const externalImageMediaRef = (opts: {
   site: string;
@@ -1573,19 +1604,24 @@ export const externalImageMediaRef = (opts: {
   fieldName: string;
   url: string;
   alt?: string;
+  /** Per-value destination folder override (`image.mediaLibraryFolder`). */
+  folder?: string;
   sink: ImageMediaSink;
 }): RefValue => {
-  const { site, recipeHandle, fieldName, url, alt, sink } = opts;
+  const { site, recipeHandle, fieldName, url, alt, folder, sink } = opts;
   const refKey = mediaFieldId(site, recipeHandle, fieldName, url);
   if (!sink.mediaOps.some((op) => op.id === refKey)) {
     const recipeName = recipeHandle.split("@")[0];
+    const destinationFolder = folder
+      ? folder.replace(/\/+$/, "")
+      : `${(sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`).replace(/\/+$/, "")}/${recipeName}`;
     sink.mediaOps.push({
       op: "MediaUpload",
       policy: sink.policy,
       label: `media-upload:${recipeHandle}:${fieldName}`,
       id: refKey,
       source: { kind: "external-url", url },
-      destinationPath: `/sitecore/media library/RecipeImages/${site}/${recipeName}/${fieldName}-${refKey.slice(0, 8)}`,
+      destinationPath: `${destinationFolder}/${fieldName}-${refKey.slice(0, 8)}`,
       ...(alt ? { altText: alt } : {}),
     });
   }

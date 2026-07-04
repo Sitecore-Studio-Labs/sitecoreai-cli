@@ -75,15 +75,29 @@ export const decodeTemplatesMapping = (
  * Decode an `<image mediapath="…" alt="…" width="…" height="…" />` blob
  * into the image-shape `ContentFieldValue` payload. Returns `undefined`
  * when the blob is not a recognisable image element (caller drops the
- * field) — `mediapath` is the load-bearing attribute.
+ * field).
+ *
+ * The path is read from `mediapath` (media-library form) first, falling
+ * back to `src` — the attribute Sitecore stores for external-URL images
+ * and the form both scai encoders emit for fully-qualified URLs (the
+ * standard-values encoder always did; `encodeImageXml` since the
+ * external-URL fix). Without the fallback, every external-URL image was
+ * silently dropped from the reverse projection, so synced copies lost
+ * images that Pages still showed. Round-trip is stable: an `src=` URL
+ * decodes into `mediaPath` and re-encodes as `src=` because
+ * `encodeImageXml` dispatches on the URL shape.
  */
 export const decodeImageXml = (
   xml: string
 ): { mediaPath: string; alt?: string; width?: number; height?: number } | undefined => {
   const trimmed = xml.trim();
   if (!trimmed.startsWith("<image")) return undefined;
-  const mediaPath = matchAttr(trimmed, "mediapath");
-  if (mediaPath === undefined || mediaPath === "") return undefined;
+  const nonEmptyAttr = (name: string): string | undefined => {
+    const value = matchAttr(trimmed, name);
+    return value === undefined || value === "" ? undefined : value;
+  };
+  const mediaPath = nonEmptyAttr("mediapath") ?? nonEmptyAttr("src");
+  if (mediaPath === undefined) return undefined;
   const out: { mediaPath: string; alt?: string; width?: number; height?: number } = { mediaPath };
   const alt = matchAttr(trimmed, "alt");
   if (alt !== undefined) out.alt = alt;

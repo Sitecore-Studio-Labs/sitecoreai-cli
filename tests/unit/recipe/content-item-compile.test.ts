@@ -217,6 +217,32 @@ describe("compileContentItemRecipe — field encoders", () => {
     expect(v.value).toContain('height="32"');
   });
 
+  it("image with a fully-qualified URL → <image src=... /> (external-URL form)", () => {
+    // `mediapath` never surfaces as a renderable `src` in Layout Service
+    // output, so external URLs must ship in the `src=` form — the same
+    // form the standard-values encoder emits for image defaults.
+    const v = exercise({
+      shape: "image",
+      mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+      alt: "AI Assistant",
+    });
+    expect(v.kind).toBe("string");
+    if (v.kind !== "string") return;
+    expect(v.value).toContain('src="https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat"');
+    expect(v.value).toContain('alt="AI Assistant"');
+    expect(v.value).not.toContain("mediapath=");
+  });
+
+  it("image with a media-library path keeps the mediapath= form", () => {
+    const v = exercise({
+      shape: "image",
+      mediaPath: "/sitecore/media library/Project/Hero.jpg",
+    });
+    if (v.kind !== "string") throw new Error("expected string");
+    expect(v.value).toContain('mediapath="/sitecore/media library/Project/Hero.jpg"');
+    expect(v.value).not.toContain("src=");
+  });
+
   it("image XML escapes attribute values containing &, <, \", '", () => {
     const v = exercise({
       shape: "image",

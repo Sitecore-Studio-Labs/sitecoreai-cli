@@ -31,7 +31,12 @@ export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
   z.object({ shape: z.literal("enum"), value: z.string() }),
   z.object({
     shape: z.literal("image"),
-    /** Sitecore media-library path. Compiler emits the image XML form. */
+    /**
+     * Sitecore media-library path, or a fully-qualified external image
+     * URL. The compiler emits the image XML form — `mediapath="…"` for
+     * library paths, `src="…"` for `http(s)` URLs (the attribute the
+     * Layout Service actually surfaces as a renderable `src`).
+     */
     mediaPath: z.string().min(1),
     alt: z.string().optional(),
     width: z.number().int().positive().optional(),

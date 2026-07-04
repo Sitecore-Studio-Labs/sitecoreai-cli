@@ -8,6 +8,7 @@ import {
   DesignParameterSchema,
   FieldDefinitionSchema,
   HANDLE_PATTERN,
+  MediaLocationSchema,
   RecipeMetaSchema,
 } from "../shared";
 
@@ -60,6 +61,13 @@ export const ContentTemplateRecipeSchema = z.object({
    * whichever side is more natural to author.
    */
   defaultWorkflow: z.string().regex(HANDLE_PATTERN).optional(),
+  /**
+   * Where external-URL image DEFAULTS (Standard Values) land in the
+   * media library. Only `scope: "site"` is valid — Standard Values are
+   * template-level, not page-bound. Omit for the default
+   * `<mediaLibraryRoot>/<recipeName>/` bucket.
+   */
+  mediaLocation: MediaLocationSchema.optional(),
 });
 
 export type ContentTemplateRecipe = z.input<typeof ContentTemplateRecipeSchema>;
@@ -147,6 +155,13 @@ export const ContentItemRecipeSchema = z.object({
   templateType: z.string().regex(HANDLE_PATTERN, {
     message: "templateType must match `<kebab-name>@<major>`, e.g. nav-link@1",
   }),
+  /**
+   * Where this item's external-URL images land in the media library.
+   * Only `scope: "site"` is valid here — a shared content item has no
+   * host page; the compiler rejects `scope: "page"`. Omit for the
+   * default `<mediaLibraryRoot>/<recipeName>/` bucket.
+   */
+  mediaLocation: MediaLocationSchema.optional(),
   /**
    * Field values keyed by field name — the primary language, single
    * version. The simple-mode common case; mutually exclusive with

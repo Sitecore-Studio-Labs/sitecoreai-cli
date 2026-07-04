@@ -19,12 +19,14 @@ import {
   renderingsSectionFolderId,
   sectionFolderId,
   sectionId,
+  mediaFieldId,
   standardValuesId,
   templateId,
 } from "../items/guids";
 import {
   type CreateItemOp,
   type FieldValue,
+  type MediaUploadOp,
   type Operation,
   type PushPolicy,
   type RefValue,
@@ -129,6 +131,19 @@ export interface CompileContext {
    * datasource targets referenced from partial / page design layouts.
    */
   contentItemsRoot?: string;
+  /**
+   * Media-library folder under which recipe-materialised media items
+   * land (external-URL image field values / SV image defaults compile
+   * to a MediaUpload + `media-xml-ref` — see `externalImageMediaRef`).
+   * Typically `/sitecore/media library/Project/<siteCollection>/<site>`.
+   *
+   * Optional. When unset the compiler falls back to the flat
+   * `/sitecore/media library/RecipeImages/<site>` bucket. Each upload
+   * still nests under `<recipeName>/` within the configured root; a
+   * per-value `mediaLibraryFolder` on an image field overrides the root
+   * entirely for that one image.
+   */
+  mediaLibraryRoot?: string;
   /**
    * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
@@ -941,6 +956,12 @@ export interface DatasourceTemplateInput {
   fields: FieldDefinition[];
   insertOptions?: string[];
   /**
+   * Where external-URL image DEFAULTS (Standard Values) land in the
+   * media library. Site scope only — SVs are template-level, not
+   * page-bound; `resolveMediaLocationFolder` rejects `scope: "page"`.
+   */
+  mediaLocation?: { scope: "page" | "site"; subfolder?: string };
+  /**
    * Optional override for the template's parent path. When set, the
    * template lands at `<parentPath>/<name>` and `parent` resolves via
    * `ref-path`. When omitted, falls back to `context.templatesRoot`
@@ -1040,6 +1061,29 @@ export function emitDatasourceTemplate(
 
   const svRefKey = standardValuesId(site, recipe.handle);
   const svPath = joinPath(tplPath, "__Standard Values");
+  // Image defaults with external URLs materialise as media items —
+  // the MediaUpload ops must run BEFORE the SV CreateItem so the
+  // executor has captured each media itemId when it resolves the
+  // entries' `media-xml-ref` values.
+  const svMediaLocationFolder = resolveMediaLocationFolder(recipe.mediaLocation, {
+    context,
+    site,
+    recipeHandle: recipe.handle,
+  });
+  const svImageMediaSink: ImageMediaSink = {
+    policy,
+    mediaOps: [],
+    ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(svMediaLocationFolder ? { locationFolder: svMediaLocationFolder } : {}),
+  };
+  const svFieldEntries = buildStandardValuesFieldEntries(
+    site,
+    recipe.handle,
+    recipe.fields,
+    fieldId,
+    svImageMediaSink
+  );
+  operations.push(...svImageMediaSink.mediaOps);
   operations.push({
     op: "CreateItem",
     policy,
@@ -1053,10 +1097,10 @@ export function emitDatasourceTemplate(
     name: "__Standard Values",
     // Per-field defaults from `field.default` / `field.sitecore.defaultValue`.
     // These pre-fill new datasource items so authors see meaningful
-    // initial content instead of an empty form. Reference-shape fields
-    // (link/image/etc.) are skipped — their defaults need encoded
-    // payloads outside the simple string-default surface.
-    fields: buildStandardValuesFieldEntries(site, recipe.handle, recipe.fields),
+    // initial content instead of an empty form. Link defaults encode as
+    // link XML; image defaults with external URLs resolve via the
+    // MediaUpload ops emitted above.
+    fields: svFieldEntries,
   } satisfies CreateItemOp);
 
   operations.push({
@@ -1258,13 +1302,19 @@ export function buildStandardValuesFieldEntries(
   // (component/content templates); pass `designParameterFieldId` when emitting
   // SV defaults for a parameters template (which uses a different
   // GUID family scoped under `designParametersTemplateId`).
-  fieldIdResolver: (site: string, handle: string, fieldName: string) => string = fieldId
+  fieldIdResolver: (site: string, handle: string, fieldName: string) => string = fieldId,
+  // When provided, image defaults with external URLs are materialised
+  // as media items: a MediaUpload op lands in the sink and the SV entry
+  // stores a `media-xml-ref` instead of the legacy `<image src=…>` XML
+  // (which Pages/Layout Service never render). The caller must push the
+  // sink's mediaOps BEFORE the CreateItem carrying these entries.
+  imageMediaSink?: ImageMediaSink
 ): FieldValue[] {
   const entries: FieldValue[] = [];
   for (const field of fields) {
     const raw = field.sitecore?.defaultValue ?? field.default;
     if (raw === undefined) continue;
-    const value = encodeStandardValueDefaultForField(raw, field, site, handle);
+    const value = encodeStandardValueDefaultForField(raw, field, site, handle, imageMediaSink);
     if (value === undefined) continue;
     entries.push({
       fieldId: fieldIdResolver(site, handle, field.name),
@@ -1296,7 +1346,8 @@ function encodeStandardValueDefaultForField(
   raw: string,
   field: FieldDefinition | DesignParameter,
   site: string,
-  handle: string
+  handle: string,
+  imageMediaSink?: ImageMediaSink
 ): RefValue | undefined {
   if (field.shape === "enum") {
     const sitecoreType = resolveSitecoreType(field);
@@ -1381,12 +1432,20 @@ function encodeStandardValueDefaultForField(
     if (target === "") return undefined;
     return { kind: "ref-recipe", refKey: contentItemId(site, target) };
   }
-  return encodeStandardValueDefault(raw, resolveSitecoreType(field));
+  return encodeStandardValueDefault(
+    raw,
+    resolveSitecoreType(field),
+    imageMediaSink ? { site, handle, fieldName: field.name, sink: imageMediaSink } : undefined
+  );
 }
 
 const BOOLEAN_TRUE_PATTERN = /^(1|true|yes|on|enabled)$/i;
 
-function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefValue | undefined {
+function encodeStandardValueDefault(
+  raw: string,
+  type: SitecoreFieldType,
+  imageCtx?: { site: string; handle: string; fieldName: string; sink: ImageMediaSink }
+): RefValue | undefined {
   switch (type) {
     case "checkbox":
       // Sitecore stores checkboxes as "1" (true) / "" (false).
@@ -1416,17 +1475,28 @@ function encodeStandardValueDefault(raw: string, type: SitecoreFieldType): RefVa
     }
     case "image": {
       // Convention: pipe-separated `"<alt>|<src>"`. `<src>` alone (no
-      // pipe) seeds a srcless-but-altless default. The encoded payload
-      // is the Sitecore image-field XML format that Standard Values
-      // stores natively. Authors swap to a real media library item via
-      // the image picker; until they do, the seeded src renders the
-      // placeholder image so dropped renderings visualise immediately.
+      // pipe) seeds a srcless-but-altless default.
       //
-      // Caveat: the standard `mediaid` attribute references an item in
-      // /sitecore/media library/. Without a known media item we can't
-      // emit `mediaid`; we use the external-URL `src` form instead.
-      // Sitecore Layout Service surfaces this as `{ src, alt }` in the
-      // image-field value the React side reads.
+      // External-URL defaults (the common case — recipe authors seed
+      // picsum/dicebear URLs) are materialised as REAL media items:
+      // a MediaUpload op + `media-xml-ref` SV value resolving to
+      // `<image mediaid="{GUID}" />`. Bare `src=` XML is stored only
+      // when no sink is available (legacy callers) — that form shows a
+      // thumbnail in Pages' field editor but never renders on the
+      // canvas or in head apps, because the Layout Service only builds
+      // a renderable `src` from `mediaid`.
+      const parsed = parseAltSrcDefault(raw);
+      if (!parsed) return undefined;
+      if (imageCtx && isExternalMediaUrl(parsed.src)) {
+        return externalImageMediaRef({
+          site: imageCtx.site,
+          recipeHandle: imageCtx.handle,
+          fieldName: imageCtx.fieldName,
+          url: parsed.src,
+          ...(parsed.alt ? { alt: parsed.alt } : {}),
+          sink: imageCtx.sink,
+        });
+      }
       const encoded = encodeImageDefault(raw);
       if (encoded == null) return undefined;
       return { kind: "string", value: encoded };
@@ -1482,13 +1552,146 @@ function encodeGeneralLinkDefault(raw: string): string | undefined {
 
 // Sitecore image field stores XML in the Standard Values row. The
 // canonical attribute is `mediaid` (a GUID reference into the media
-// library), but recipes don't ship media items, so we use the
-// external-URL `src` form — Sitecore Layout Service surfaces it as
-// `{ src, alt }` in the image-field value. Empty raw returns
-// undefined so the SV entry is skipped entirely.
+// library) — the ONLY form the Layout Service surfaces as a renderable
+// `src`. External-URL defaults are therefore materialised as media
+// items via `externalImageMediaRef` (MediaUpload + media-xml-ref); this
+// legacy `src=` XML form remains only as the no-sink fallback. Bare
+// `src=`/`mediapath=` attributes show a thumbnail in Pages' field
+// editor (which reads the raw value) but never render on the canvas or
+// the head app. Empty raw returns undefined so the SV entry is skipped.
 function encodeImageDefault(raw: string): string | undefined {
   return encodeMediaXmlDefault("image", raw);
 }
+
+/**
+ * True when an image path/URL is a fully-qualified external URL rather
+ * than a media-library path.
+ */
+export const isExternalMediaUrl = (path: string): boolean => /^https?:\/\//i.test(path);
+
+/**
+ * Accumulator for the `MediaUpload` ops a compile emits alongside field
+ * values. Callers own ordering: push `mediaOps` into the operation list
+ * BEFORE the CreateItem/SetField ops whose `media-xml-ref` values
+ * reference them, so the executor captures each media itemId first.
+ */
+export interface ImageMediaSink {
+  policy: PushPolicy;
+  mediaOps: MediaUploadOp[];
+  /**
+   * Media-library folder the uploads land under — from
+   * `CompileContext.mediaLibraryRoot`. Unset → the flat
+   * `/sitecore/media library/RecipeImages/<site>` fallback.
+   */
+  mediaLibraryRoot?: string;
+  /**
+   * Pre-resolved folder from the recipe's `mediaLocation` declaration
+   * (see `resolveMediaLocationFolder`). When set it wins over
+   * `mediaLibraryRoot` and skips the `<recipeName>/` nesting — the
+   * author owns the layout. A per-image `mediaLibraryFolder` still
+   * overrides this.
+   */
+  locationFolder?: string;
+}
+
+/**
+ * Resolve a recipe's `mediaLocation` declaration to the absolute
+ * media-library folder its uploads land under — the media twin of the
+ * datasource-locations model. Returns `undefined` when no location is
+ * declared (callers fall back to the default `<root>/<recipeName>/`
+ * nesting).
+ *
+ *   - `site`  → `<mediaLibraryRoot>/<subfolder?>`
+ *   - `page`  → `<mediaLibraryRoot>/<pageRelativePath>/<subfolder?>` —
+ *     only valid where a host page exists; callers that have no page
+ *     (content items, template SV defaults) omit `pageRelativePath`
+ *     and the compiler rejects the scope with INPUT_INVALID.
+ */
+export const resolveMediaLocationFolder = (
+  location: { scope: "page" | "site"; subfolder?: string } | undefined,
+  opts: {
+    context: CompileContext;
+    site: string;
+    recipeHandle: string;
+    /** The page item's path relative to `pagesRoot` — page recipes only. */
+    pageRelativePath?: string;
+  }
+): string | undefined => {
+  if (!location) return undefined;
+  const base = (
+    opts.context.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${opts.site}`
+  ).replace(/\/+$/, "");
+  if (location.scope === "site") {
+    return location.subfolder ? `${base}/${location.subfolder}` : base;
+  }
+  if (!opts.pageRelativePath) {
+    throw createScaiError(
+      `Recipe '${opts.recipeHandle}': mediaLocation scope "page" is only valid on a PageRecipe — ` +
+        `content items and templates have no host page to mirror.`,
+      "INPUT_INVALID",
+      { hint: 'Use `mediaLocation: { scope: "site", subfolder: "…" }` here instead.' }
+    );
+  }
+  const pageFolder = `${base}/${opts.pageRelativePath}`;
+  return location.subfolder ? `${pageFolder}/${location.subfolder}` : pageFolder;
+};
+
+/**
+ * Materialise an external image URL as a media-library item: emit (or
+ * dedupe onto) a `MediaUpload` op in the sink and return the
+ * `media-xml-ref` value the consuming field stores. At apply time the
+ * executor uploads the bytes, captures the server-assigned media
+ * itemId, and resolves the ref to `<image mediaid="{GUID}" />` — the
+ * form Pages' canvas, the Layout Service, and Edge all render.
+ *
+ * The refKey is deterministic per (site, recipe, field, URL), so the
+ * same avatar repeated across languages/versions uploads once, while a
+ * story that swaps the image per version gets one media item per URL.
+ * The destination basename embeds a refKey fragment so two different
+ * URLs on the same field can't collide on one media path (the
+ * executor's idempotency lookup would otherwise capture the first
+ * upload's item for both).
+ *
+ * Destination folder resolution, most-specific first:
+ *   1. `folder` (the image value's own `mediaLibraryFolder`) — used
+ *      as-is; only the generated leaf is appended.
+ *   2. `sink.locationFolder` (the recipe's `mediaLocation` declaration,
+ *      page- or site-scoped) — used as-is, no `<recipeName>/` nesting.
+ *   3. `sink.mediaLibraryRoot` (from `CompileContext.mediaLibraryRoot`,
+ *      i.e. env-profile `recipeRoots.mediaLibrary` / `--media-library-root`)
+ *      — uploads nest under `<root>/<recipeName>/`.
+ *   4. Fallback: `/sitecore/media library/RecipeImages/<site>/<recipeName>/`.
+ */
+export const externalImageMediaRef = (opts: {
+  site: string;
+  recipeHandle: string;
+  fieldName: string;
+  url: string;
+  alt?: string;
+  /** Per-value destination folder override (`image.mediaLibraryFolder`). */
+  folder?: string;
+  sink: ImageMediaSink;
+}): RefValue => {
+  const { site, recipeHandle, fieldName, url, alt, folder, sink } = opts;
+  const refKey = mediaFieldId(site, recipeHandle, fieldName, url);
+  if (!sink.mediaOps.some((op) => op.id === refKey)) {
+    const recipeName = recipeHandle.split("@")[0];
+    const destinationFolder = folder
+      ? folder.replace(/\/+$/, "")
+      : (sink.locationFolder?.replace(/\/+$/, "") ??
+        `${(sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`).replace(/\/+$/, "")}/${recipeName}`);
+    sink.mediaOps.push({
+      op: "MediaUpload",
+      policy: sink.policy,
+      label: `media-upload:${recipeHandle}:${fieldName}`,
+      id: refKey,
+      source: { kind: "external-url", url },
+      destinationPath: `${destinationFolder}/${fieldName}-${refKey.slice(0, 8)}`,
+      ...(alt ? { altText: alt } : {}),
+    });
+  }
+  return { kind: "media-xml-ref", refKey };
+};
 
 // Same convention as image (`<alt>|<src>` or bare `<src>`); emits the
 // file-field XML form. Authors swap to a media-library item via the
@@ -1497,19 +1700,28 @@ function encodeFileDefault(raw: string): string | undefined {
   return encodeMediaXmlDefault("file", raw);
 }
 
-// Shared XML body for image + file fields. Sitecore's stored shape
-// for both is identical: `<image src="..." alt="..." />` vs
-// `<file src="..." alt="..." />`. The element name is the only
-// difference.
-function encodeMediaXmlDefault(element: "image" | "file", raw: string): string | undefined {
+// Parse the pipe-separated `"<alt>|<src>"` media-default convention.
+// `<src>` alone (no pipe) yields an empty alt. Empty/whitespace src
+// collapses to undefined so callers skip the SV entry entirely.
+function parseAltSrcDefault(raw: string): { alt: string; src: string } | undefined {
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
   const pipeIndex = trimmed.indexOf("|");
   const alt = pipeIndex === -1 ? "" : trimmed.slice(0, pipeIndex).trim();
   const src = pipeIndex === -1 ? trimmed : trimmed.slice(pipeIndex + 1).trim();
   if (!src) return undefined;
-  const attrs: Array<[string, string]> = [["src", src]];
-  if (alt) attrs.push(["alt", alt]);
+  return { alt, src };
+}
+
+// Shared XML body for image + file fields. Sitecore's stored shape
+// for both is identical: `<image src="..." alt="..." />` vs
+// `<file src="..." alt="..." />`. The element name is the only
+// difference.
+function encodeMediaXmlDefault(element: "image" | "file", raw: string): string | undefined {
+  const parsed = parseAltSrcDefault(raw);
+  if (!parsed) return undefined;
+  const attrs: Array<[string, string]> = [["src", parsed.src]];
+  if (parsed.alt) attrs.push(["alt", parsed.alt]);
   return `<${element} ${attrs.map(([k, v]) => `${k}="${escapeXmlAttr(v)}"`).join(" ")} />`;
 }
 

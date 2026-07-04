@@ -68,6 +68,7 @@ const STRING_OVERRIDE_FIELDS = [
   ["PARTIAL_DESIGNS_ROOT", "partialDesignsRoot"],
   ["PAGE_DESIGNS_ROOT", "pageDesignsRoot"],
   ["CONTENT_ITEMS_ROOT", "contentItemsRoot"],
+  ["MEDIA_LIBRARY_ROOT", "mediaLibraryRoot"],
   ["HEADLESS_VARIANTS_ROOT", "headlessVariantsRoot"],
   ["AVAILABLE_RENDERINGS_ROOT", "availableRenderingsRoot"],
   ["PRESENTATION_STYLES_ROOT", "presentationStylesRoot"],

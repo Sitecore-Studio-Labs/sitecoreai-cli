@@ -65,6 +65,7 @@ export function compileContentTemplateRecipe(
       displayName: recipe.displayName,
       fields: recipe.fields,
       insertOptions: recipe.insertOptions,
+      ...(recipe.mediaLocation ? { mediaLocation: recipe.mediaLocation } : {}),
       ...(parentPath !== undefined && { parentPath }),
       ...(parentRefKey !== undefined && { parentRefKey }),
     },

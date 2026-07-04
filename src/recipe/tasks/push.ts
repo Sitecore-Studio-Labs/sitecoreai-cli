@@ -186,6 +186,7 @@ const resolveCompileRoots = (
   partialDesignsRoot: string | undefined;
   pageDesignsRoot: string | undefined;
   contentItemsRoot: string | undefined;
+  mediaLibraryRoot: string | undefined;
   headlessVariantsRoot: string | undefined;
   availableRenderingsRoot: string | undefined;
   enumerationsRoot: string | undefined;
@@ -202,6 +203,7 @@ const resolveCompileRoots = (
     partialDesignsRoot: options.partialDesignsRoot ?? env.partialDesignsRoot,
     pageDesignsRoot: options.pageDesignsRoot ?? env.pageDesignsRoot,
     contentItemsRoot: options.contentItemsRoot ?? env.contentItemsRoot,
+    mediaLibraryRoot: options.mediaLibraryRoot ?? env.mediaLibraryRoot,
     headlessVariantsRoot: options.headlessVariantsRoot ?? env.headlessVariantsRoot,
     availableRenderingsRoot: options.availableRenderingsRoot ?? env.availableRenderingsRoot,
     enumerationsRoot: options.enumerationsRoot ?? env.enumerationsRoot,
@@ -472,6 +474,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,
+    mediaLibraryRoot,
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,
@@ -518,6 +521,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,
+    mediaLibraryRoot,
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,

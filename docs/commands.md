@@ -7867,6 +7867,7 @@ scai provision recipe compile [options]
 - `--partial-designs-root <path>` — Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot.
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
+- `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -7913,6 +7914,7 @@ scai provision recipe diff [options]
 - `--partial-designs-root <path>` — Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot.
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
+- `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -7968,6 +7970,7 @@ scai provision recipe pull [options]
 - `--partial-designs-root <path>` — Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot.
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
+- `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
 - `--pages-root <path>` — Sitecore parent path for page items. Falls back to envProfiles[<name>].pagesRoot.
 - `--enumerations-root <path>` — Sitecore parent path for enumeration containers. Falls back to envProfiles[<name>].enumerationsRoot.
 - `--placeholder-settings-root <path>` — Sitecore parent path for Placeholder Settings items. Falls back to envProfiles[<name>].placeholderSettingsRoot.
@@ -7998,6 +8001,7 @@ scai provision recipe push [options]
 - `--partial-designs-root <path>` — Sitecore parent path for partial-design items (Phase 4). Falls back to envProfiles[<name>].partialDesignsRoot.
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
+- `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `--allow-write` — Allow write operations for this command without updating config
@@ -8029,6 +8033,7 @@ scai provision recipe prune-defaults [options]
 - `--headless-variants-root <path>` — Override headlessVariantsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Headless Variants).
 - `--available-renderings-root <path>` — Override availableRenderingsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Available Renderings).
 - `--content-items-root <path>` — Override contentItemsRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Data).
+- `--media-library-root <path>` — Override mediaLibraryRoot from the env profile (e.g. /sitecore/media library/Project/<col>/<site>).
 - `--presentation-styles-root <path>` — Override presentationStylesRoot from the env profile (e.g. /sitecore/content/<col>/<site>/Presentation/Styles).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them

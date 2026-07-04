@@ -167,7 +167,9 @@ const fillStoryMode = (
  *    rather than synthesise a handle (`decodeContentFieldValue` returns
  *    `null`); the value is omitted from the recipe.
  *  - `image.mediaPath` round-trips verbatim — there is no media-item
- *    handle resolution (the media library is opaque to scai).
+ *    handle resolution (the media library is opaque to scai). External-URL
+ *    images (`<image src="https://…" />`) also land in `mediaPath`; the
+ *    compiler re-emits them as `src=` so the round-trip is stable.
  */
 const contentItemFromItem = async ({
   item,

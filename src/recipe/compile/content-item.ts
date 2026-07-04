@@ -76,7 +76,10 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *    or `link-external` for URLs. Wiring needs a new RefValue kind
  *    for "General Link XML wrapping a refKey-resolved GUID."
  *  - **`image.mediaPath`** is an opaque path — no media-item upload.
- *    Recipes ship images by referencing existing media-library items.
+ *    Recipes ship images by referencing existing media-library items,
+ *    or by carrying a fully-qualified external URL (emitted as the
+ *    image XML's `src` attribute so the Layout Service surfaces it —
+ *    see `encodeImageXml`).
  */
 /**
  * The per-(language, version) emit closures + op accumulators a story-mode
@@ -397,8 +400,27 @@ const toSitecoreDate = (iso: string, kind: "date" | "datetime"): string => {
 };
 
 /**
- * Sitecore image-field XML. emits `mediapath` only — see
- * `compileContentItemRecipe` JSDoc for the media-item upload caveat.
+ * True when an image `mediaPath` is a fully-qualified external URL rather
+ * than a media-library path. Mirrors the URL detection the standard-values
+ * encoder applies implicitly (recipe defaults are authored as URLs).
+ */
+const isExternalMediaUrl = (path: string): boolean => /^https?:\/\//i.test(path);
+
+/**
+ * Sitecore image-field XML. The attribute carrying `mediaPath` dispatches
+ * on its shape:
+ *
+ *  - **Fully-qualified `http(s)` URL** → emitted as `src="…"`. The Layout
+ *    Service builds an image field's rendered `src` from `mediaid` (media
+ *    library resolution) or passes a literal `src` attribute through —
+ *    `mediapath` never surfaces as a renderable `src`, so an external URL
+ *    stored under `mediapath` reaches the head app as a srcless field and
+ *    renders nothing (while authoring UIs still show a thumbnail). The
+ *    `src` form matches what the standard-values encoder
+ *    (`compile/shared.ts` `encodeMediaXmlDefault`) already emits.
+ *  - **Anything else** (a media-library path) → emitted as `mediapath="…"`
+ *    — see `compileContentItemRecipe` JSDoc for the media-item upload
+ *    caveat.
  */
 const encodeImageXml = (img: {
   mediaPath: string;
@@ -406,7 +428,8 @@ const encodeImageXml = (img: {
   width?: number;
   height?: number;
 }): string => {
-  const attrs: string[] = [`mediapath="${escapeXmlAttr(img.mediaPath)}"`];
+  const pathAttr = isExternalMediaUrl(img.mediaPath) ? "src" : "mediapath";
+  const attrs: string[] = [`${pathAttr}="${escapeXmlAttr(img.mediaPath)}"`];
   if (img.alt !== undefined) attrs.push(`alt="${escapeXmlAttr(img.alt)}"`);
   if (img.width !== undefined) attrs.push(`width="${img.width}"`);
   if (img.height !== undefined) attrs.push(`height="${img.height}"`);

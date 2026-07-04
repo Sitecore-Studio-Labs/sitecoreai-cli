@@ -128,76 +128,28 @@ export const ContentVersionSchema = z.object({
 export type ContentVersion = z.infer<typeof ContentVersionSchema>;
 
 /**
- * One rendering placed into a placeholder, with its variant, parameters,
- * and datasource binding. The compiler emits each ComponentPlacement
- * as one `<r>` element in Sitecore's layout XML.
- *
- * The single shape used by anything that holds layout —
- * `PartialDesignRecipe`, `PageDesignRecipe`, and `PageRecipe`. The
- * `componentHandle` resolves to a `ComponentTemplateRecipe`'s rendering
- * GUID via `renderingId(handle)`.
- *
- * `datasourceRef` distinguishes how the rendering gets its content:
- *
- *   shared  — points at a `ContentItemRecipe` by handle (catalog-shipped
- *             reusable content like `site-logo-content@1`).
- *   scoped  — page-local content materialised at `<page>/Data/<slot>`.
- *             Only valid in a `PageRecipe` layout (a page has a content
- *             home to scope under); `PartialDesignRecipe` and
- *             `PageDesignRecipe` reject it — they have no host page.
- *   none    — config-driven rendering with no datasource (rare).
+ * The datasource binding on a placement — input (authoring) and output
+ * (parsed) forms. Hand-declared alongside the recursive
+ * `ComponentPlacement` interfaces below: the only input/output
+ * difference is the scoped ref's `fields`, which Zod defaults to `{}`.
  */
-const componentPlacementBaseShape = {
-  /** Handle of a `ComponentTemplateRecipe`. */
-  componentHandle: z.string().regex(HANDLE_PATTERN, {
-    message: "componentHandle must match `<kebab-name>@<major>`",
-  }),
-  /** SXA Rendering Variant name. Defaults to the component's first variant. */
-  variant: z.string().optional(),
-  /** Rendering Parameters (URL-encoded into the placement's params blob). */
-  params: z.record(z.string(), z.string()).optional(),
-  /** How the rendering's content is bound. Omit for `kind: "none"` semantics. */
-  datasourceRef: z
-    .discriminatedUnion("kind", [
-      z.object({
-        kind: z.literal("shared"),
-        /** Handle of a `ContentItemRecipe`. */
-        handle: z.string().regex(HANDLE_PATTERN),
-      }),
-      z.object({
-        kind: z.literal("scoped"),
-        /**
-         * Page-local datasource name. `compilePageRecipe` materialises
-         * a datasource item at `<page>/Data/<slot>` (conforming to the
-         * placed component's datasource template) and points the
-         * placement's `ds` at it. Must be a valid Sitecore item name.
-         * Only valid in a `PageRecipe` layout.
-         */
-        slot: z.string().min(1),
-        /**
-         * Field values for the materialised `<page>/Data/<slot>` item,
-         * keyed by field name (matching the rendering's
-         * `ComponentTemplateRecipe` field names). Accepts both the
-         * scai-native discriminated `ContentFieldValue` shape
-         * (`{ shape, value, ... }`) and the registry's flat shape —
-         * plain strings (text), booleans, numbers, `{ src, alt }` for
-         * image fields, `{ href, text }` for link-external fields. The
-         * compiler normalises into `ContentFieldValue` and reuses
-         * `encodeContentFieldValue` to emit the Sitecore wire form.
-         */
-        fields: z.record(z.string(), z.unknown()).default({}),
-      }),
-      z.object({ kind: z.literal("none") }),
-    ])
-    .optional(),
-};
+export type ComponentPlacementDatasourceRefInput =
+  | { kind: "shared"; handle: string }
+  | { kind: "scoped"; slot: string; fields?: Record<string, unknown> }
+  | { kind: "none" };
+
+export type ComponentPlacementDatasourceRef =
+  | { kind: "shared"; handle: string }
+  | { kind: "scoped"; slot: string; fields: Record<string, unknown> }
+  | { kind: "none" };
 
 /**
- * Nested-placement tiers. A placement may host children in its own
- * placeholders (`placement.placeholders` — layout components like
- * `column-splitter@1` expose one slot per column). Keys are the
- * component's LOGICAL placeholder names (`column-1`, `column-2` — the
- * static prefix of a dynamic placeholder, no instance suffix).
+ * Authoring (input) shape of one placement. Recursive: a placement may
+ * host children in its own placeholders (`placement.placeholders` —
+ * layout components like `column-splitter@1` expose one slot per
+ * column). Keys are the component's LOGICAL placeholder names
+ * (`column-1`, `column-2` — the static prefix of a dynamic placeholder,
+ * no instance suffix).
  *
  * Only valid in a `PageRecipe` layout. `compilePageRecipe` flattens the
  * tree into SXA dynamic-placeholder wire form: the parent placement gets
@@ -207,35 +159,82 @@ const componentPlacementBaseShape = {
  * — the key shape XM Cloud Pages writes when an author drops a component
  * into a dynamic placeholder, and the shape headless components resolve
  * via `params.DynamicPlaceholderId`. Partial- and page-design layouts
- * reject nesting (no host page).
+ * reject nesting (no host page). Nesting depth is unbounded.
  *
- * Explicitly tiered rather than `z.lazy`-recursive so every level stays
- * fully type-inferred (`z.input` authoring types included). Nesting is
- * bounded at 4 placement levels — the deepest tier has no `placeholders`
- * key, so Zod would silently strip a level-5 nesting; `compilePageRecipe`
- * guards against that by depth-checking the RAW input before parsing and
- * failing loudly (`MAX_PLACEMENT_DEPTH`).
+ * The interfaces are hand-declared (rather than `z.infer`red) so the
+ * recursion resolves lazily: an inferred recursive schema type gets
+ * INLINED structurally into every consuming schema's emitted `.d.ts`,
+ * and downstream `z.output` expansion of page/content-item schemas then
+ * exceeds TypeScript's instantiation depth (TS2589) in consumer repos.
+ * Named interfaces keep the emitted types small and cacheable.
  */
-const nestedPlaceholders = <T extends z.ZodTypeAny>(child: T) =>
-  z.record(z.string(), z.array(child)).optional();
+export interface ComponentPlacementInput {
+  /** Handle of a `ComponentTemplateRecipe` (`<kebab-name>@<major>`). */
+  componentHandle: string;
+  /** SXA Rendering Variant name. Defaults to the component's first variant. */
+  variant?: string;
+  /** Rendering Parameters (URL-encoded into the placement's params blob). */
+  params?: Record<string, string>;
+  /** Nested placements, keyed by the component's logical placeholder names. */
+  placeholders?: Record<string, ComponentPlacementInput[]>;
+  /**
+   * How the rendering's content is bound. Omit for `kind: "none"`
+   * semantics.
+   *
+   *   shared  — a `ContentItemRecipe` handle (catalog-shipped reusable
+   *             content like `site-logo-content@1`).
+   *   scoped  — page-local content materialised at `<page>/Data/<slot>`;
+   *             `fields` accepts both the scai-native discriminated
+   *             `ContentFieldValue` shape and the registry's flat shape.
+   *             Only valid in a `PageRecipe` layout.
+   *   none    — config-driven rendering with no datasource (rare).
+   */
+  datasourceRef?: ComponentPlacementDatasourceRefInput;
+}
 
-const ComponentPlacementLevel4Schema = z.object(componentPlacementBaseShape);
-const ComponentPlacementLevel3Schema = z.object({
-  ...componentPlacementBaseShape,
-  placeholders: nestedPlaceholders(ComponentPlacementLevel4Schema),
-});
-const ComponentPlacementLevel2Schema = z.object({
-  ...componentPlacementBaseShape,
-  placeholders: nestedPlaceholders(ComponentPlacementLevel3Schema),
-});
-const ComponentPlacementLevel1Schema = z.object({
-  ...componentPlacementBaseShape,
-  placeholders: nestedPlaceholders(ComponentPlacementLevel2Schema),
-});
+/** Parsed (output) shape of one placement — scoped `fields` defaulted. */
+export interface ComponentPlacement {
+  componentHandle: string;
+  variant?: string;
+  params?: Record<string, string>;
+  placeholders?: Record<string, ComponentPlacement[]>;
+  datasourceRef?: ComponentPlacementDatasourceRef;
+}
 
-export const ComponentPlacementSchema = ComponentPlacementLevel1Schema;
-
-export type ComponentPlacement = z.infer<typeof ComponentPlacementSchema>;
+/**
+ * One rendering placed into a placeholder — see the interface docs
+ * above. `z.lazy` + the explicit `z.ZodType` annotation is the
+ * recursive-schema pattern: the annotation terminates type inference,
+ * and the emitted declaration references the named interfaces instead
+ * of inlining a structural tree.
+ */
+export const ComponentPlacementSchema: z.ZodType<ComponentPlacement, ComponentPlacementInput> =
+  z.lazy(() =>
+    z.object({
+      componentHandle: z.string().regex(HANDLE_PATTERN, {
+        message: "componentHandle must match `<kebab-name>@<major>`",
+      }),
+      variant: z.string().optional(),
+      params: z.record(z.string(), z.string()).optional(),
+      placeholders: z.record(z.string(), z.array(ComponentPlacementSchema)).optional(),
+      datasourceRef: z
+        .discriminatedUnion("kind", [
+          z.object({
+            kind: z.literal("shared"),
+            handle: z.string().regex(HANDLE_PATTERN),
+          }),
+          z.object({
+            kind: z.literal("scoped"),
+            // Page-local datasource name — must be a valid Sitecore item
+            // name; `compilePageRecipe` materialises `<page>/Data/<slot>`.
+            slot: z.string().min(1),
+            fields: z.record(z.string(), z.unknown()).default({}),
+          }),
+          z.object({ kind: z.literal("none") }),
+        ])
+        .optional(),
+    })
+  );
 
 /**
  * Layout block keyed by placeholder. Each placeholder holds an ordered

@@ -76,11 +76,6 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * their edits.
  */
 export function compilePageRecipe(input: PageRecipe, context: CompileContext): OperationIr {
-  // The tiered ComponentPlacementSchema types nesting to MAX_PLACEMENT_DEPTH
-  // levels; anything deeper would be Zod-STRIPPED (not rejected) by the
-  // deepest tier. Depth-check the raw input first so an over-deep tree
-  // fails loudly instead of installing with silently-missing content.
-  assertPlacementDepth(input);
   const recipe = PageRecipeSchema.parse(input);
 
   // Simple (fields/translations) XOR story (versions) — never both. Zod
@@ -382,50 +377,6 @@ interface PagePath {
 
 /** One placement in a page layout (post-parse). */
 type PagePlacement = Layout["placeholders"][string][number];
-
-/** Deepest placement nesting the tiered `ComponentPlacementSchema` types. */
-const MAX_PLACEMENT_DEPTH = 4;
-
-/**
- * Reject placement trees deeper than the tiered schema can represent.
- * Walks the RAW (pre-parse) recipe because Zod's deepest tier has no
- * `placeholders` key and would silently strip level-5 nesting — the
- * exact silent-content-loss failure mode this feature exists to close.
- */
-const assertPlacementDepth = (input: PageRecipe): void => {
-  const walk = (placements: unknown, depth: number, handle: string): void => {
-    if (!Array.isArray(placements)) return;
-    for (const placement of placements) {
-      if (!placement || typeof placement !== "object") continue;
-      const children = (placement as { placeholders?: unknown }).placeholders;
-      if (!children || typeof children !== "object") continue;
-      if (depth >= MAX_PLACEMENT_DEPTH) {
-        throw createScaiError(
-          `PageRecipe '${handle}': placement nesting exceeds the supported depth of ${MAX_PLACEMENT_DEPTH} levels.`,
-          "INPUT_INVALID",
-          {
-            hint: "Flatten the layout — hoist deeply nested components toward the page's top-level placeholders.",
-          }
-        );
-      }
-      for (const grandChildren of Object.values(children)) {
-        walk(grandChildren, depth + 1, handle);
-      }
-    }
-  };
-  const layouts: unknown[] = [input.layout];
-  for (const entries of Object.values(input.versions ?? {})) {
-    for (const entry of entries) layouts.push(entry.layout);
-  }
-  for (const layout of layouts) {
-    if (!layout || typeof layout !== "object") continue;
-    const placeholders = (layout as { placeholders?: unknown }).placeholders;
-    if (!placeholders || typeof placeholders !== "object") continue;
-    for (const placements of Object.values(placeholders)) {
-      walk(placements, 1, input.handle ?? "(unknown)");
-    }
-  }
-};
 
 /**
  * Flatten every layout the recipe declares (item-level + per-version)

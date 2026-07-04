@@ -956,6 +956,12 @@ export interface DatasourceTemplateInput {
   fields: FieldDefinition[];
   insertOptions?: string[];
   /**
+   * Where external-URL image DEFAULTS (Standard Values) land in the
+   * media library. Site scope only — SVs are template-level, not
+   * page-bound; `resolveMediaLocationFolder` rejects `scope: "page"`.
+   */
+  mediaLocation?: { scope: "page" | "site"; subfolder?: string };
+  /**
    * Optional override for the template's parent path. When set, the
    * template lands at `<parentPath>/<name>` and `parent` resolves via
    * `ref-path`. When omitted, falls back to `context.templatesRoot`
@@ -1059,10 +1065,16 @@ export function emitDatasourceTemplate(
   // the MediaUpload ops must run BEFORE the SV CreateItem so the
   // executor has captured each media itemId when it resolves the
   // entries' `media-xml-ref` values.
+  const svMediaLocationFolder = resolveMediaLocationFolder(recipe.mediaLocation, {
+    context,
+    site,
+    recipeHandle: recipe.handle,
+  });
   const svImageMediaSink: ImageMediaSink = {
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(svMediaLocationFolder ? { locationFolder: svMediaLocationFolder } : {}),
   };
   const svFieldEntries = buildStandardValuesFieldEntries(
     site,
@@ -1572,7 +1584,57 @@ export interface ImageMediaSink {
    * `/sitecore/media library/RecipeImages/<site>` fallback.
    */
   mediaLibraryRoot?: string;
+  /**
+   * Pre-resolved folder from the recipe's `mediaLocation` declaration
+   * (see `resolveMediaLocationFolder`). When set it wins over
+   * `mediaLibraryRoot` and skips the `<recipeName>/` nesting — the
+   * author owns the layout. A per-image `mediaLibraryFolder` still
+   * overrides this.
+   */
+  locationFolder?: string;
 }
+
+/**
+ * Resolve a recipe's `mediaLocation` declaration to the absolute
+ * media-library folder its uploads land under — the media twin of the
+ * datasource-locations model. Returns `undefined` when no location is
+ * declared (callers fall back to the default `<root>/<recipeName>/`
+ * nesting).
+ *
+ *   - `site`  → `<mediaLibraryRoot>/<subfolder?>`
+ *   - `page`  → `<mediaLibraryRoot>/<pageRelativePath>/<subfolder?>` —
+ *     only valid where a host page exists; callers that have no page
+ *     (content items, template SV defaults) omit `pageRelativePath`
+ *     and the compiler rejects the scope with INPUT_INVALID.
+ */
+export const resolveMediaLocationFolder = (
+  location: { scope: "page" | "site"; subfolder?: string } | undefined,
+  opts: {
+    context: CompileContext;
+    site: string;
+    recipeHandle: string;
+    /** The page item's path relative to `pagesRoot` — page recipes only. */
+    pageRelativePath?: string;
+  }
+): string | undefined => {
+  if (!location) return undefined;
+  const base = (
+    opts.context.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${opts.site}`
+  ).replace(/\/+$/, "");
+  if (location.scope === "site") {
+    return location.subfolder ? `${base}/${location.subfolder}` : base;
+  }
+  if (!opts.pageRelativePath) {
+    throw createScaiError(
+      `Recipe '${opts.recipeHandle}': mediaLocation scope "page" is only valid on a PageRecipe — ` +
+        `content items and templates have no host page to mirror.`,
+      "INPUT_INVALID",
+      { hint: 'Use `mediaLocation: { scope: "site", subfolder: "…" }` here instead.' }
+    );
+  }
+  const pageFolder = `${base}/${opts.pageRelativePath}`;
+  return location.subfolder ? `${pageFolder}/${location.subfolder}` : pageFolder;
+};
 
 /**
  * Materialise an external image URL as a media-library item: emit (or
@@ -1593,10 +1655,12 @@ export interface ImageMediaSink {
  * Destination folder resolution, most-specific first:
  *   1. `folder` (the image value's own `mediaLibraryFolder`) — used
  *      as-is; only the generated leaf is appended.
- *   2. `sink.mediaLibraryRoot` (from `CompileContext.mediaLibraryRoot`,
+ *   2. `sink.locationFolder` (the recipe's `mediaLocation` declaration,
+ *      page- or site-scoped) — used as-is, no `<recipeName>/` nesting.
+ *   3. `sink.mediaLibraryRoot` (from `CompileContext.mediaLibraryRoot`,
  *      i.e. env-profile `recipeRoots.mediaLibrary` / `--media-library-root`)
  *      — uploads nest under `<root>/<recipeName>/`.
- *   3. Fallback: `/sitecore/media library/RecipeImages/<site>/<recipeName>/`.
+ *   4. Fallback: `/sitecore/media library/RecipeImages/<site>/<recipeName>/`.
  */
 export const externalImageMediaRef = (opts: {
   site: string;
@@ -1614,7 +1678,8 @@ export const externalImageMediaRef = (opts: {
     const recipeName = recipeHandle.split("@")[0];
     const destinationFolder = folder
       ? folder.replace(/\/+$/, "")
-      : `${(sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`).replace(/\/+$/, "")}/${recipeName}`;
+      : (sink.locationFolder?.replace(/\/+$/, "") ??
+        `${(sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`).replace(/\/+$/, "")}/${recipeName}`);
     sink.mediaOps.push({
       op: "MediaUpload",
       policy: sink.policy,

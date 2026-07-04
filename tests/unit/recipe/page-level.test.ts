@@ -818,6 +818,64 @@ describe("compilePageRecipe — {site} itemPath substitution", () => {
   });
 });
 
+describe("compilePageRecipe — mediaLocation", () => {
+  const withImage = (mediaLocation?: { scope: "page" | "site"; subfolder?: string }) =>
+    ({
+      ...homePage,
+      fields: {
+        Hero: { src: "https://picsum.photos/seed/hero/1200/600", alt: "Hero" },
+      },
+      ...(mediaLocation ? { mediaLocation } : {}),
+    }) as PageRecipe;
+
+  const uploadOf = (ops: Operation[]) => {
+    const upload = ops.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected a MediaUpload op");
+    return upload;
+  };
+
+  it("page scope mirrors the page's directory under the media root", () => {
+    const ir = compilePageRecipe(withImage({ scope: "page" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    // Home sits directly under pagesRoot → relative path is "Home".
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Home\/Hero-/
+    );
+  });
+
+  it("page scope appends the declared subfolder", () => {
+    const ir = compilePageRecipe(withImage({ scope: "page", subfolder: "Banners" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Home\/Banners\/Hero-/
+    );
+  });
+
+  it("site scope targets the site-wide pool, skipping recipe-name nesting", () => {
+    const ir = compilePageRecipe(withImage({ scope: "site", subfolder: "Shared" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Shared\/Hero-/
+    );
+  });
+
+  it("no mediaLocation keeps the default <root>/<recipeName>/ bucket", () => {
+    const ir = compilePageRecipe(withImage(), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/home\/Hero-/
+    );
+  });
+});
+
 describe("compilePageRecipe — nested placements (dynamic placeholders)", () => {
   // Mirrors the registry's column-splitter pattern: a layout component
   // hosting scoped-datasource children in its own logical placeholders.

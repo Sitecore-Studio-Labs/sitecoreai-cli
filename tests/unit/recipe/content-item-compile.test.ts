@@ -297,6 +297,34 @@ describe("compileContentItemRecipe — field encoders", () => {
     );
   });
 
+  it("mediaLocation site scope targets the site pool; page scope is rejected", () => {
+    const siteScoped = compileContentItemRecipe(
+      buildRecipe(
+        {
+          X: { shape: "image", mediaPath: "https://picsum.photos/seed/a/800/600" },
+        },
+        { mediaLocation: { scope: "site", subfolder: "Shared Images" } }
+      ),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Demo" }
+    );
+    const upload = siteScoped.operations.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected MediaUpload");
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Shared Images\/X-/
+    );
+
+    // A shared content item has no host page to mirror.
+    expect(() =>
+      compileContentItemRecipe(
+        buildRecipe(
+          { X: { shape: "image", mediaPath: "https://picsum.photos/seed/a/800/600" } },
+          { mediaLocation: { scope: "page" } }
+        ),
+        CONTEXT
+      )
+    ).toThrowError(/scope "page" is only valid on a PageRecipe/);
+  });
+
   it("dedupes repeated (field, URL) pairs to one MediaUpload across translations", () => {
     const recipe = buildRecipe(
       {

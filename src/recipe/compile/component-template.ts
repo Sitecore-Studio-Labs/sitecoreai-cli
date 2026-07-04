@@ -162,6 +162,7 @@ export function compileComponentTemplateRecipe(
         displayName: recipe.displayName,
         fields: recipe.fields,
         insertOptions: recipe.insertOptions,
+        ...(recipe.mediaLocation ? { mediaLocation: recipe.mediaLocation } : {}),
         // Component templates always sit at the section root (or
         // templatesRoot, for legacy callers).
         parentPath: resolveComponentTemplateParent(context, sectionName),

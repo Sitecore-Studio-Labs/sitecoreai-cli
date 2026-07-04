@@ -39,6 +39,7 @@ import {
   type ImageMediaSink,
   isExternalMediaUrl,
   joinPath,
+  resolveMediaLocationFolder,
   sharedField,
   siteOf,
   versionedField,
@@ -287,10 +288,18 @@ export function compileContentItemRecipe(
   // MediaUpload ops for external-URL image fields — ordered before
   // fieldOps in the final IR so each media itemId is captured before the
   // SetField whose `media-xml-ref` references it resolves.
+  // `mediaLocation` scope "page" is rejected here — a shared content
+  // item has no host page to mirror (resolver throws INPUT_INVALID).
+  const mediaLocationFolder = resolveMediaLocationFolder(recipe.mediaLocation, {
+    context,
+    site,
+    recipeHandle: recipe.handle,
+  });
   const imageMediaSink: ImageMediaSink = {
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(mediaLocationFolder ? { locationFolder: mediaLocationFolder } : {}),
   };
 
   /** Emit one SetField per field value at the given (language, version). */

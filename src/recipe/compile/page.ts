@@ -43,6 +43,7 @@ import {
   type CompileContext,
   type ImageMediaSink,
   joinPath,
+  resolveMediaLocationFolder,
   sharedField,
   siteOf,
   versionedField,
@@ -153,10 +154,25 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // datasource-item fields) — ordered before fieldOps in the final IR
   // so each media itemId is captured before the SetField whose
   // `media-xml-ref` references it resolves.
+  // `mediaLocation` scope "page" mirrors this page's own directory: the
+  // item path relative to `pagesRoot` becomes the media folder path.
+  // Pages outside `pagesRoot` (explicit `itemPath` elsewhere) fall back
+  // to the leaf name so the scope still yields a per-page folder.
+  const pageRelativePath =
+    context.pagesRoot && itemPath.startsWith(`${context.pagesRoot}/`)
+      ? itemPath.slice(context.pagesRoot.length + 1)
+      : itemName;
+  const mediaLocationFolder = resolveMediaLocationFolder(recipe.mediaLocation, {
+    context,
+    site,
+    recipeHandle: recipe.handle,
+    pageRelativePath,
+  });
   const imageMediaSink: ImageMediaSink = {
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(mediaLocationFolder ? { locationFolder: mediaLocationFolder } : {}),
   };
 
   /**

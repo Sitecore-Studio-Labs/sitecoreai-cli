@@ -33,6 +33,10 @@ describe("withDerivedRecipeRoots", () => {
     expect(env?.enumerationsRoot).toBe(
       "/sitecore/content/showcase/demo-registry/Presentation/Enumerations"
     );
+    // Media root — recipe-materialised media (external-URL image fields)
+    // must land inside the SXA site's media scope, or Pages' image-field
+    // picker can't resolve the mediaid to a path and shows a raw GUID.
+    expect(env?.mediaLibraryRoot).toBe("/sitecore/media library/Project/showcase/demo-registry");
     expect(env?.placeholderSettingsRoots).toEqual([
       "/sitecore/content/showcase/demo-registry/Presentation/Placeholder Settings",
       "/sitecore/layout/Placeholder Settings/Project/showcase/demo-registry",

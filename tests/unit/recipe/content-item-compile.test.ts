@@ -217,20 +217,144 @@ describe("compileContentItemRecipe — field encoders", () => {
     expect(v.value).toContain('height="32"');
   });
 
-  it("image with a fully-qualified URL → <image src=... /> (external-URL form)", () => {
-    // `mediapath` never surfaces as a renderable `src` in Layout Service
-    // output, so external URLs must ship in the `src=` form — the same
-    // form the standard-values encoder emits for image defaults.
-    const v = exercise({
-      shape: "image",
-      mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
-      alt: "AI Assistant",
+  it("image with a fully-qualified URL → MediaUpload op + media-xml-ref value", () => {
+    // Bare `src=`/`mediapath=` XML shows a thumbnail in Pages' field
+    // editor but never renders on the canvas or in head apps — the
+    // Layout Service only builds a renderable `src` from `mediaid`. So
+    // external URLs are materialised as real media items: one
+    // MediaUpload op + a media-xml-ref field value the executor
+    // resolves to `<image mediaid="{GUID}" />`.
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+          alt: "AI Assistant",
+        },
+      }),
+      CONTEXT
+    );
+    const v = findSet(ir.operations, "X", "test-content@1").value;
+    expect(v.kind).toBe("media-xml-ref");
+    if (v.kind !== "media-xml-ref") return;
+
+    const uploads = ir.operations.filter((op) => op.op === "MediaUpload");
+    expect(uploads).toHaveLength(1);
+    const upload = uploads[0];
+    if (upload.op !== "MediaUpload") return;
+    expect(upload.id).toBe(v.refKey);
+    expect(upload.source).toEqual({
+      kind: "external-url",
+      url: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
     });
-    expect(v.kind).toBe("string");
-    if (v.kind !== "string") return;
-    expect(v.value).toContain('src="https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat"');
-    expect(v.value).toContain('alt="AI Assistant"');
-    expect(v.value).not.toContain("mediapath=");
+    expect(upload.altText).toBe("AI Assistant");
+    expect(upload.destinationPath).toContain("/sitecore/media library/RecipeImages/");
+
+    // The MediaUpload must be ordered before the SetField that
+    // references its captured itemId.
+    const uploadIndex = ir.operations.findIndex((op) => op.op === "MediaUpload");
+    const setIndex = ir.operations.findIndex((op) => op.op === "SetField" && op.value === v);
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(uploadIndex).toBeLessThan(setIndex);
+  });
+
+  it("honors context.mediaLibraryRoot for the upload destination", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://picsum.photos/seed/hero/1200/600",
+        },
+      }),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Showcase/Demo" }
+    );
+    const upload = ir.operations.find((op) => op.op === "MediaUpload");
+    expect(upload?.op).toBe("MediaUpload");
+    if (upload?.op !== "MediaUpload") return;
+    // Uploads nest under <root>/<recipe handle name>/.
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Showcase\/Demo\/test-content\/X-/
+    );
+  });
+
+  it("prefers the image value's own mediaLibraryFolder over the context root", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://picsum.photos/seed/hero/1200/600",
+          mediaLibraryFolder: "/sitecore/media library/Project/Showcase/Avatars/",
+        },
+      }),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Showcase/Demo" }
+    );
+    const upload = ir.operations.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected MediaUpload");
+    // Used as-is (trailing slash trimmed), no <recipeName> nesting —
+    // only the generated leaf is appended.
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Showcase\/Avatars\/X-/
+    );
+  });
+
+  it("mediaLocation site scope targets the site pool; page scope is rejected", () => {
+    const siteScoped = compileContentItemRecipe(
+      buildRecipe(
+        {
+          X: { shape: "image", mediaPath: "https://picsum.photos/seed/a/800/600" },
+        },
+        { mediaLocation: { scope: "site", subfolder: "Shared Images" } }
+      ),
+      { ...CONTEXT, mediaLibraryRoot: "/sitecore/media library/Project/Demo" }
+    );
+    const upload = siteScoped.operations.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected MediaUpload");
+    expect(upload.destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Shared Images\/X-/
+    );
+
+    // A shared content item has no host page to mirror.
+    expect(() =>
+      compileContentItemRecipe(
+        buildRecipe(
+          { X: { shape: "image", mediaPath: "https://picsum.photos/seed/a/800/600" } },
+          { mediaLocation: { scope: "page" } }
+        ),
+        CONTEXT
+      )
+    ).toThrowError(/scope "page" is only valid on a PageRecipe/);
+  });
+
+  it("dedupes repeated (field, URL) pairs to one MediaUpload across translations", () => {
+    const recipe = buildRecipe(
+      {
+        X: {
+          shape: "image",
+          mediaPath: "https://picsum.photos/seed/hero/1200/600",
+        },
+      },
+      {
+        translations: {
+          da: {
+            fields: {
+              X: {
+                shape: "image",
+                mediaPath: "https://picsum.photos/seed/hero/1200/600",
+              },
+            },
+          },
+        },
+      }
+    );
+    const ir = compileContentItemRecipe(recipe, CONTEXT);
+    const uploads = ir.operations.filter((op) => op.op === "MediaUpload");
+    // Same URL on the same field in two languages → one upload, two
+    // SetFields referencing the same refKey.
+    expect(uploads).toHaveLength(1);
+    const refs = ir.operations.filter(
+      (op) => op.op === "SetField" && op.value.kind === "media-xml-ref"
+    );
+    expect(refs).toHaveLength(2);
   });
 
   it("image with a media-library path keeps the mediapath= form", () => {

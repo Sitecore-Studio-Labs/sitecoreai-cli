@@ -39,6 +39,12 @@ export type EnvironmentRecipeRoots = {
   pageTemplates?: string;
   pages?: string;
   contentItems?: string;
+  /**
+   * Media-library folder for recipe-materialised media (external-URL
+   * image fields upload here). Typically
+   * `/sitecore/media library/Project/<siteCollection>/<site>`.
+   */
+  mediaLibrary?: string;
   headlessVariants?: string;
   availableRenderings?: string;
   presentationStyles?: string;
@@ -265,6 +271,14 @@ export type EnvironmentConfiguration = {
    * Optional — only `ContentItemRecipe` compilation requires it.
    */
   contentItemsRoot?: string;
+  /**
+   * Media-library folder under which recipe-materialised media items
+   * land (external-URL image field values / SV image defaults compile
+   * to a MediaUpload). Nested form: `recipeRoots.mediaLibrary`.
+   * Optional — the compiler falls back to
+   * `/sitecore/media library/RecipeImages/<site>` when unset.
+   */
+  mediaLibraryRoot?: string;
   /**
    * Sitecore parent path under which `scai provision recipe compile|push` creates
    * SXA Headless rendering variants. Typically

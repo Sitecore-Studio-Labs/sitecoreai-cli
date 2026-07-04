@@ -44,6 +44,8 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   pageDesignsRoot?: string;
   /** Override `contentItemsRoot` from the env profile (Phase 4). */
   contentItemsRoot?: string;
+  /** Override `mediaLibraryRoot` from the env profile (recipe-materialised media). */
+  mediaLibraryRoot?: string;
   /** Override `headlessVariantsRoot` from the env profile. */
   headlessVariantsRoot?: string;
   /** Override `availableRenderingsRoot` from the env profile. */
@@ -105,6 +107,8 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   pageDesignsRoot?: string;
   /** Override `contentItemsRoot` from the env profile (Phase 4). */
   contentItemsRoot?: string;
+  /** Override `mediaLibraryRoot` from the env profile (recipe-materialised media). */
+  mediaLibraryRoot?: string;
   /** Override `headlessVariantsRoot` from the env profile. */
   headlessVariantsRoot?: string;
   /** Override `availableRenderingsRoot` from the env profile. */

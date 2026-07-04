@@ -342,6 +342,42 @@ export const resolveAllowedHandles = (slot: PlaceholderDefinition): readonly str
 };
 
 /**
+ * Where a recipe's external-URL images land in the media library —
+ * the media-library twin of {@link RenderingDatasourceLocationSchema}.
+ * External-URL image field values (and SV image defaults) compile to a
+ * `MediaUpload` + `<image mediaid="{GUID}" />`; this declaration
+ * controls the upload's destination folder:
+ *
+ *   - `page` → mirrors the page's own directory: the page item's path
+ *     relative to `pagesRoot` becomes a folder path under the media
+ *     root (`<mediaLibraryRoot>/<page-relative-path>/<subfolder?>`).
+ *     Only valid on a `PageRecipe` — content items and templates have
+ *     no host page, and the compiler rejects the scope there.
+ *   - `site` → the site-wide media pool:
+ *     `<mediaLibraryRoot>/<subfolder?>`.
+ *
+ * `<mediaLibraryRoot>` is the env profile's `recipeRoots.mediaLibrary`
+ * (or `/sitecore/media library/RecipeImages/<site>` when unset). When
+ * a mediaLocation is declared, the default `<recipeName>/` nesting is
+ * skipped — the author owns the layout. A per-image
+ * `mediaLibraryFolder` on the field value still overrides everything.
+ */
+export const MediaLocationSchema = z.discriminatedUnion("scope", [
+  z.object({
+    scope: z.literal("page"),
+    /** Optional subfolder under the page's mirrored media folder. */
+    subfolder: z.string().min(1).optional(),
+  }),
+  z.object({
+    scope: z.literal("site"),
+    /** Optional subfolder under the site media root. */
+    subfolder: z.string().min(1).optional(),
+  }),
+]);
+
+export type MediaLocation = z.infer<typeof MediaLocationSchema>;
+
+/**
  * One entry in the modern semantic-scope datasource locations list.
  *
  * Each entry compiles to a single Sitecore Source segment; the compiler

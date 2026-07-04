@@ -39,7 +39,15 @@ import {
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
-import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
+import {
+  type CompileContext,
+  type ImageMediaSink,
+  joinPath,
+  resolveMediaLocationFolder,
+  sharedField,
+  siteOf,
+  versionedField,
+} from "./shared";
 
 /**
  * Compile a `PageRecipe` to an Operation IR.
@@ -142,6 +150,30 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // SetField lands on a version that already exists.
   const versionOps: Operation[] = [];
   const fieldOps: Operation[] = [];
+  // MediaUpload ops for external-URL image fields (page fields AND
+  // datasource-item fields) — ordered before fieldOps in the final IR
+  // so each media itemId is captured before the SetField whose
+  // `media-xml-ref` references it resolves.
+  // `mediaLocation` scope "page" mirrors this page's own directory: the
+  // item path relative to `pagesRoot` becomes the media folder path.
+  // Pages outside `pagesRoot` (explicit `itemPath` elsewhere) fall back
+  // to the leaf name so the scope still yields a per-page folder.
+  const pageRelativePath =
+    context.pagesRoot && itemPath.startsWith(`${context.pagesRoot}/`)
+      ? itemPath.slice(context.pagesRoot.length + 1)
+      : itemName;
+  const mediaLocationFolder = resolveMediaLocationFolder(recipe.mediaLocation, {
+    context,
+    site,
+    recipeHandle: recipe.handle,
+    pageRelativePath,
+  });
+  const imageMediaSink: ImageMediaSink = {
+    policy,
+    mediaOps: [],
+    ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(mediaLocationFolder ? { locationFolder: mediaLocationFolder } : {}),
+  };
 
   /**
    * Emit one SetField per field value at the given (language, version).
@@ -169,7 +201,10 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     for (const [fieldName, rawValue] of Object.entries(fields)) {
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
-      const value = encodeContentFieldValue(normalised, recipe.handle, site);
+      const value = encodeContentFieldValue(normalised, recipe.handle, site, {
+        fieldName,
+        ...imageMediaSink,
+      });
       fieldOps.push({
         op: "SetField",
         policy,
@@ -254,6 +289,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // BEFORE the layout SetFields so the captured-itemId map carries
   // the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor` resolves.
   const operations: Operation[] = [createItem];
+  operations.push(...imageMediaSink.mediaOps);
   operations.push(...versionOps);
   if (scopedSlots.size > 0) {
     const dataFolderPath = joinPath(itemPath, "Data");
@@ -308,12 +344,22 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     }
 
     for (const [slot, info] of scopedSlots) {
-      // Resolve the component's datasource template; fall back to the
-      // component template itself (the inline-`fields:` pattern, and
-      // the only option for a standalone single-recipe compile).
+      // Resolve the component's datasource template, in precedence order:
+      //   1. `datasource.template`     — single dedicated template.
+      //   2. `datasource.templates[0]` — compatible-datasources pattern;
+      //      the FIRST listed template is the component's primary
+      //      datasource shape. CRITICAL: such components ship NO
+      //      component-template item of their own (fields live on the
+      //      content templates), so the component-handle fallback below
+      //      would emit a refKey nothing in the set ever creates and the
+      //      apply dies with a raw "Cannot find a template" GraphQL error.
+      //   3. The component template itself — the inline-`fields:` pattern,
+      //      and the only option for a standalone single-recipe compile.
       const component = context.componentsByHandle?.get(info.componentHandle);
       const datasourceTemplateHandle =
-        component?.datasource?.template?.handle ?? info.componentHandle;
+        component?.datasource?.template?.handle ??
+        component?.datasource?.templates?.[0]?.handle ??
+        info.componentHandle;
       const slotItemRefKey = datasourceId(itemRefKey, slot);
       operations.push({
         op: "CreateItem",
@@ -772,7 +818,7 @@ const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
     const obj = raw as Record<string, unknown>;
     // Already a scai-native discriminated ContentFieldValue.
     if (typeof obj.shape === "string") return obj as unknown as ContentFieldValue;
-    // Registry image shape: { src, alt?, width?, height? }.
+    // Registry image shape: { src, alt?, width?, height?, mediaLibraryFolder? }.
     if (typeof obj.src === "string") {
       return {
         shape: "image",
@@ -780,6 +826,9 @@ const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
         ...(typeof obj.alt === "string" ? { alt: obj.alt } : {}),
         ...(typeof obj.width === "number" ? { width: obj.width } : {}),
         ...(typeof obj.height === "number" ? { height: obj.height } : {}),
+        ...(typeof obj.mediaLibraryFolder === "string"
+          ? { mediaLibraryFolder: obj.mediaLibraryFolder }
+          : {}),
       };
     }
     // Registry external-link shape: { href, text?, target?, title? }.

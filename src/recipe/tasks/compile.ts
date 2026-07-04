@@ -38,6 +38,7 @@ const resolveOptionalRoots = (
   partialDesignsRoot: options.partialDesignsRoot ?? environment?.partialDesignsRoot,
   pageDesignsRoot: options.pageDesignsRoot ?? environment?.pageDesignsRoot,
   contentItemsRoot: options.contentItemsRoot ?? environment?.contentItemsRoot,
+  mediaLibraryRoot: options.mediaLibraryRoot ?? environment?.mediaLibraryRoot,
   headlessVariantsRoot: options.headlessVariantsRoot ?? environment?.headlessVariantsRoot,
   availableRenderingsRoot: options.availableRenderingsRoot ?? environment?.availableRenderingsRoot,
   enumerationsRoot: options.enumerationsRoot ?? environment?.enumerationsRoot,

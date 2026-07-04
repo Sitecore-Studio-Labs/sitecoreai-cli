@@ -24,7 +24,7 @@ import {
   resolveRenderingParent,
   siteOf,
 } from "../../../src/recipe/compile/shared";
-import type { CreateItemOp, Operation } from "../../../src/recipe/ir/operations";
+import type { CreateItemOp, MediaUploadOp, Operation } from "../../../src/recipe/ir/operations";
 import type { EnumerationRecipe, FieldDefinition } from "../../../src/recipe/schema/recipe";
 
 const baseContext: CompileContext = {
@@ -637,6 +637,61 @@ describe("buildStandardValuesFieldEntries", () => {
     expect(entries[0].value).toMatchObject({
       kind: "string",
       value: '<image src="https://picsum.photos/seed/x/800/600" />',
+    });
+  });
+
+  it("materialises an external-URL image default as MediaUpload + media-xml-ref when a sink is provided", () => {
+    // The media-item form is the only one Pages' canvas and the Layout
+    // Service render — the sink-less `src=` XML fallback above only
+    // shows a thumbnail in Pages' field editor.
+    const sink = { policy: "CreateAndUpdate" as const, mediaOps: [] as MediaUploadOp[] };
+    const entries = buildStandardValuesFieldEntries(
+      "default",
+      "ai-chat@1",
+      [
+        field({
+          name: "Avatar",
+          shape: "image",
+          default: "AI Assistant|https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+        }),
+      ],
+      undefined,
+      sink
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].value.kind).toBe("media-xml-ref");
+    expect(sink.mediaOps).toHaveLength(1);
+    const upload = sink.mediaOps[0];
+    expect(upload.source).toEqual({
+      kind: "external-url",
+      url: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+    });
+    expect(upload.altText).toBe("AI Assistant");
+    if (entries[0].value.kind === "media-xml-ref") {
+      expect(upload.id).toBe(entries[0].value.refKey);
+    }
+    expect(upload.destinationPath).toContain("/sitecore/media library/RecipeImages/");
+  });
+
+  it("keeps media-library-path image defaults as XML even with a sink", () => {
+    const sink = { policy: "CreateAndUpdate" as const, mediaOps: [] as MediaUploadOp[] };
+    const entries = buildStandardValuesFieldEntries(
+      "default",
+      "h@1",
+      [
+        field({
+          name: "Hero",
+          shape: "image",
+          default: "Logo|/sitecore/media library/Project/Logo",
+        }),
+      ],
+      undefined,
+      sink
+    );
+    expect(sink.mediaOps).toHaveLength(0);
+    expect(entries[0].value).toMatchObject({
+      kind: "string",
+      value: '<image src="/sitecore/media library/Project/Logo" alt="Logo" />',
     });
   });
 

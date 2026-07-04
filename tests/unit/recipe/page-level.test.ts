@@ -298,6 +298,45 @@ describe("compilePageRecipe", () => {
     expect(ds.templateOf).toBe(templateId("default", "widget-data@1"));
   });
 
+  it("resolves a compatible-datasources (templates[]) component to its FIRST template", () => {
+    // The link-list pattern: the component declares `datasource.templates[]`
+    // and ships NO component-template item of its own — fields live on the
+    // listed content templates. The component-handle fallback would emit a
+    // refKey nothing creates ("Cannot find a template" at apply time); the
+    // scoped datasource must conform to the first compatible template.
+    const compatible: ComponentTemplateRecipe = {
+      ...component("link-list@1"),
+      datasource: {
+        templates: [{ handle: "link-list-content@1" }, { handle: "social-follow-content@1" }],
+        autoCreate: true,
+        openPropertiesAfterAdd: false,
+        locations: [],
+        query: [],
+      },
+    };
+    const footerPage = {
+      ...homePage,
+      handle: "footer-page@1",
+      name: "FooterPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "link-list@1",
+              variant: "Horizontal",
+              datasourceRef: { kind: "scoped", slot: "FooterLinks" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const irs = compileRecipeSet([articlePage, compatible, footerPage], CONTEXT);
+    const pageIr = irs.find((ir) => ir.recipeHandle === "footer-page@1")!;
+    const ds = findCreate(pageIr.operations, "page-datasource:footer-page@1:FooterLinks");
+    expect(ds.templateOf).toBe(templateId("default", "link-list-content@1"));
+    expect(ds.templateOf).not.toBe(templateId("default", "link-list@1"));
+  });
+
   it("stamps the page Data folder with Insert Options drawn from EVERY placement's datasource template", () => {
     // Single-template component (inline-fields fallback), single-template
     // via `datasource.template`, and multi-template via `datasource.templates`
@@ -815,6 +854,64 @@ describe("compilePageRecipe — {site} itemPath substitution", () => {
     // siteScopedGuids opted in) and pages landed in a phantom
     // /sitecore/content/default/ tree no site serves.
     expect(() => compilePageRecipe(sitePage, CONTEXT)).toThrowError(/\{site\} placeholder/);
+  });
+});
+
+describe("compilePageRecipe — mediaLocation", () => {
+  const withImage = (mediaLocation?: { scope: "page" | "site"; subfolder?: string }) =>
+    ({
+      ...homePage,
+      fields: {
+        Hero: { src: "https://picsum.photos/seed/hero/1200/600", alt: "Hero" },
+      },
+      ...(mediaLocation ? { mediaLocation } : {}),
+    }) as PageRecipe;
+
+  const uploadOf = (ops: Operation[]) => {
+    const upload = ops.find((op) => op.op === "MediaUpload");
+    if (upload?.op !== "MediaUpload") throw new Error("expected a MediaUpload op");
+    return upload;
+  };
+
+  it("page scope mirrors the page's directory under the media root", () => {
+    const ir = compilePageRecipe(withImage({ scope: "page" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    // Home sits directly under pagesRoot → relative path is "Home".
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Home\/Hero-/
+    );
+  });
+
+  it("page scope appends the declared subfolder", () => {
+    const ir = compilePageRecipe(withImage({ scope: "page", subfolder: "Banners" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Home\/Banners\/Hero-/
+    );
+  });
+
+  it("site scope targets the site-wide pool, skipping recipe-name nesting", () => {
+    const ir = compilePageRecipe(withImage({ scope: "site", subfolder: "Shared" }), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/Shared\/Hero-/
+    );
+  });
+
+  it("no mediaLocation keeps the default <root>/<recipeName>/ bucket", () => {
+    const ir = compilePageRecipe(withImage(), {
+      ...CONTEXT,
+      mediaLibraryRoot: "/sitecore/media library/Project/Demo",
+    });
+    expect(uploadOf(ir.operations).destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/Demo\/home\/Hero-/
+    );
   });
 });
 

@@ -4,6 +4,7 @@ import {
   FieldDefinitionSchema,
   FolderPath,
   HANDLE_PATTERN,
+  MediaLocationSchema,
   PlaceholderDefinitionSchema,
   RecipeDatasourceSchema,
   RenderingVariantDefinitionSchema,
@@ -199,6 +200,14 @@ export const ComponentTemplateRecipeSchema = z
      * prefer; the React component handles either resolution path.
      */
     insertOptions: z.array(z.string()).optional(),
+    /**
+     * Where external-URL image DEFAULTS (Standard Values, e.g.
+     * `Avatar: "AI Assistant|https://…"`) land in the media library.
+     * Only `scope: "site"` is valid — Standard Values are
+     * template-level, not page-bound. Omit for the default
+     * `<mediaLibraryRoot>/<recipeName>/` bucket.
+     */
+    mediaLocation: MediaLocationSchema.optional(),
     /**
      * Datasource configuration — the rendering's data shape, picker
      * locations, auto-create behaviour, and dialog UX. See

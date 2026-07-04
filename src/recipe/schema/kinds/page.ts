@@ -5,7 +5,12 @@ import {
   ContentVersionSchema,
   LayoutSchema,
 } from "../content-values";
-import { FieldDefinitionSchema, HANDLE_PATTERN, RecipeMetaSchema } from "../shared";
+import {
+  FieldDefinitionSchema,
+  HANDLE_PATTERN,
+  MediaLocationSchema,
+  RecipeMetaSchema,
+} from "../shared";
 
 /**
  * A page template — a Sitecore data template that items in a site's
@@ -161,6 +166,16 @@ export const PageRecipeSchema = z.object({
         "itemPath must start with `/sitecore/content/{site}/` — `{site}` is the only supported placeholder and is substituted with `<siteCollection>/<site>` at install time.",
     })
     .optional(),
+  /**
+   * Where this page's external-URL images land in the media library.
+   * `page` scope mirrors the page's directory pattern
+   * (`<mediaLibraryRoot>/<page-relative-path>/<subfolder?>`); `site`
+   * scope targets the site-wide pool. Applies to page fields AND the
+   * page's scoped datasource fields. Omit for the default
+   * `<mediaLibraryRoot>/<recipeName>/` bucket; a per-image
+   * `mediaLibraryFolder` still overrides.
+   */
+  mediaLocation: MediaLocationSchema.optional(),
   /**
    * Field values keyed by field name on the page template — the primary
    * language, single version. Simple-mode common case; mutually exclusive

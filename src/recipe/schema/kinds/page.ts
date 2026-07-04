@@ -140,11 +140,13 @@ export const PageRecipeSchema = z.object({
   /**
    * Explicit item path in the content tree. Must start with the literal
    * prefix `/sitecore/content/{site}/` — the `{site}` placeholder is the
-   * only supported substitution and is replaced with the active site
-   * name (`context.site`, defaulting to `default`) at compile time, so
-   * the same recipe installs cleanly across sites. The path's parent
-   * directory becomes the page's parent ref; the leaf segment supersedes
-   * `name` for path emission.
+   * only supported substitution and is replaced at compile time with the
+   * active site's content-tree segment, `<siteCollection>/<siteName>`
+   * (`context.sitePathSegment`, derived from the env profile's `site` +
+   * `siteCollection`), so the same recipe installs cleanly across sites.
+   * Compiling a `{site}` itemPath with no site configured throws — no
+   * silent fallback. The path's parent directory becomes the page's
+   * parent ref; the leaf segment supersedes `name` for path emission.
    *
    * Optional for back-compat: when omitted, the compiler falls back to
    * `joinPath(context.pagesRoot, name)` (legacy behavior — `pagesRoot`
@@ -156,7 +158,7 @@ export const PageRecipeSchema = z.object({
     .string()
     .regex(/^\/sitecore\/content\/\{site\}\/.+/, {
       message:
-        "itemPath must start with `/sitecore/content/{site}/` — `{site}` is the only supported placeholder and is substituted with the target site name at install time.",
+        "itemPath must start with `/sitecore/content/{site}/` — `{site}` is the only supported placeholder and is substituted with `<siteCollection>/<site>` at install time.",
     })
     .optional(),
   /**

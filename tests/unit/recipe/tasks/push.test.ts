@@ -13,6 +13,8 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   ensureSiteCollection: async (env: unknown) => env,
   // These tests use envs without siteScopedGuids, so the seed stays "default".
   resolveSeedSite: () => undefined,
+  // No site/siteCollection on these envs → no {site} path segment either.
+  resolveSitePathSegment: () => undefined,
 }));
 vi.mock("../../../../src/recipe/io", () => ({
   loadRecipe: vi.fn(),

@@ -9,6 +9,7 @@ import {
   resolveRecipeInputs,
   resolveRecipeRoots,
   resolveSeedSite,
+  resolveSitePathSegment,
   toLogger,
   withDerivedRecipeRoots,
   type RecipeCompileOptions,
@@ -117,6 +118,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     renderingsRoot,
     ...optionalRoots,
     site: resolveSeedSite(environment),
+    sitePathSegment: resolveSitePathSegment(environment),
     marketplacePluginOverrides: root.marketplacePluginOverrides,
   });
 

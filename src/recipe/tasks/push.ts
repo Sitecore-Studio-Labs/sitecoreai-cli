@@ -34,6 +34,7 @@ import {
   resolveRecipeInputs,
   resolveRecipeRoots,
   resolveSeedSite,
+  resolveSitePathSegment,
   resolveTenant,
   toLogger,
   withDerivedRecipeRoots,
@@ -524,6 +525,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     placeholderSettingsRoot,
     pagesRoot,
     site: resolveSeedSite(environment),
+    sitePathSegment: resolveSitePathSegment(environment),
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));

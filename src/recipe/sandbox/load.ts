@@ -19,6 +19,15 @@ import { transpileRecipe } from "./transpile";
 /** Default child timeout — a recipe only exports data; it should be quick. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * How long an 'exit' waits for a possibly-still-queued IPC 'message'
+ * before the load is declared dead. The child sends its result and exits
+ * in the send callback, but Node may emit the parent-side 'exit' before
+ * the queued 'message' — a real message lands within a tick or two, so
+ * this only delays GENUINE crash reporting, never success.
+ */
+const EXIT_MESSAGE_GRACE_MS = 250;
+
 const resolveTimeoutMs = (): number => {
   const raw = Number(process.env.SITECOREAI_RECIPE_SANDBOX_TIMEOUT_MS);
   return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
@@ -173,20 +182,31 @@ const runInChild = (filePath: string, bundlePath: string): Promise<unknown> => {
       );
     });
 
-    // Fires after a successful message too (the child exits 0 once it has
-    // sent the result); `settle` makes the message win that race.
+    // Fires after a successful message too (the child exits once it has
+    // sent the result) — and Node does NOT guarantee the queued IPC
+    // 'message' event is emitted before 'exit'. Under load the exit
+    // event routinely wins, so rejecting here immediately turned
+    // successful loads into flaky "exited unexpectedly (code 0)"
+    // failures. Give delivery a short grace window instead: `settle`
+    // makes whichever event lands first win, so a delivered message
+    // resolves and this deferred rejection becomes a no-op.
     child.on("exit", (code, signal) => {
-      settle(() =>
-        reject(
-          createScaiError(
-            `The recipe sandbox for '${filePath}' exited unexpectedly ` +
-              `(code ${code ?? "null"}, signal ${signal ?? "null"})` +
-              (stderr.trim() ? `: ${stderr.trim()}` : "."),
-            "INPUT_INVALID",
-            { hint: "Set SITECOREAI_RECIPE_SANDBOX=0 to load recipes in-process (less safe)." }
+      if (settled) {
+        return;
+      }
+      setTimeout(() => {
+        settle(() =>
+          reject(
+            createScaiError(
+              `The recipe sandbox for '${filePath}' exited unexpectedly ` +
+                `(code ${code ?? "null"}, signal ${signal ?? "null"})` +
+                (stderr.trim() ? `: ${stderr.trim()}` : "."),
+              "INPUT_INVALID",
+              { hint: "Set SITECOREAI_RECIPE_SANDBOX=0 to load recipes in-process (less safe)." }
+            )
           )
-        )
-      );
+        );
+      }, EXIT_MESSAGE_GRACE_MS);
     });
   });
 };

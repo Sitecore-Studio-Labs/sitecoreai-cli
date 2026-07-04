@@ -913,6 +913,57 @@ describe("compilePageRecipe — mediaLocation", () => {
       /^\/sitecore\/media library\/Project\/Demo\/home\/Hero-/
     );
   });
+
+  it("emits the MediaUpload for a SCOPED datasource image, ordered before its SetField", () => {
+    // Regression: the mediaOps spread used to run before the scoped-slots
+    // block, whose per-slot emitFields also push MediaUploads into the
+    // sink — those late ops were dropped from the IR entirely, and the
+    // scoped SetField's media-xml-ref failed at apply time with
+    // "refKey not in captured map".
+    const scopedImagePage = {
+      ...homePage,
+      handle: "scoped-img@1",
+      name: "ScopedImg",
+      fields: {},
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "alpha-block@1",
+              datasourceRef: {
+                kind: "scoped",
+                slot: "HeroMonarch",
+                fields: {
+                  Image: { src: "https://picsum.photos/seed/monarch/1200/600", alt: "Monarch" },
+                },
+              },
+            },
+          ],
+        },
+      },
+    } as PageRecipe;
+    const ir = compilePageRecipe(scopedImagePage, CONTEXT);
+
+    const uploadIndex = ir.operations.findIndex((op) => op.op === "MediaUpload");
+    expect(uploadIndex).toBeGreaterThan(-1);
+    const upload = ir.operations[uploadIndex];
+    if (upload.op !== "MediaUpload") throw new Error("expected MediaUpload");
+
+    const setIndex = ir.operations.findIndex(
+      (op) =>
+        op.op === "SetField" && op.label === "page-field:scoped-img@1:scoped:HeroMonarch:Image"
+    );
+    expect(setIndex).toBeGreaterThan(-1);
+    const set = ir.operations[setIndex];
+    if (set.op !== "SetField") throw new Error("expected SetField");
+    expect(set.value.kind).toBe("media-xml-ref");
+    if (set.value.kind === "media-xml-ref") {
+      // The producer op is IN the IR and pairs with the consumer refKey.
+      expect(upload.id).toBe(set.value.refKey);
+    }
+    // ...and applies before the SetField that resolves against its capture.
+    expect(uploadIndex).toBeLessThan(setIndex);
+  });
 });
 
 describe("compilePageRecipe — nested placements (dynamic placeholders)", () => {

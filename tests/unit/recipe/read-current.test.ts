@@ -3384,6 +3384,53 @@ describe("readCurrentRecipes — content-item field-shape decoding", () => {
     });
   });
 
+  it("decodes the external-URL image form (<image src=…>) into mediaPath", async () => {
+    const fx = buildShapesFixture();
+    const hero = item({
+      name: "homepage-hero",
+      templateId: fx.template.itemId,
+      parentId: fx.ciRoot.itemId,
+      path: `${fx.contentItemsRoot}/homepage-hero`,
+      fields: [
+        // The `src=` form is what standard-values defaults and the
+        // external-URL branch of encodeImageXml store, and what Pages
+        // writes for external images. Before the fallback the decoder
+        // required `mediapath` and silently dropped these — synced copies
+        // lost images that Pages still rendered.
+        {
+          fieldId: "f-photo",
+          name: "Photo",
+          value:
+            '<image src="https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat" alt="AI Assistant" />',
+          language: "en",
+          version: 1,
+        },
+      ],
+    });
+    const versionsByItem: ItemVersions = new Map([[hero.itemId, new Map([["en", 1]])]]);
+    const client = makeClient(
+      [fx.cmRoot, fx.template, fx.section, ...fx.fieldItems, fx.ciRoot, hero],
+      { versionsByItem }
+    );
+    const recipes = await readCurrentRecipes(
+      {
+        templatesRoot: fx.contentModelsRoot,
+        renderingsRoot: "/sitecore/layout/Renderings/Project/demo",
+        contentModelsRoot: fx.contentModelsRoot,
+        contentItemsRoot: fx.contentItemsRoot,
+      },
+      client
+    );
+    const ci = recipes!.find((r): r is ContentItemRecipe => r.kind === "content-item");
+    expect(ci!.fields).toEqual({
+      Photo: {
+        shape: "image",
+        mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+        alt: "AI Assistant",
+      },
+    });
+  });
+
   it("drops malformed wire values rather than fabricate (image without mediapath)", async () => {
     const fx = buildShapesFixture();
     const hero = item({
@@ -3393,7 +3440,7 @@ describe("readCurrentRecipes — content-item field-shape decoding", () => {
       path: `${fx.contentItemsRoot}/homepage-hero`,
       fields: [
         { fieldId: "f-title", name: "Title", value: "ok", language: "en", version: 1 },
-        // Image XML missing the mandatory `mediapath` attribute → decoder
+        // Image XML carrying neither `mediapath` nor `src` → decoder
         // returns null and the field is dropped from the recipe rather than
         // fabricated as `mediaPath: ""` (the schema's min(1) would reject).
         {

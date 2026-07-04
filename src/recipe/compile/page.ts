@@ -76,6 +76,11 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * their edits.
  */
 export function compilePageRecipe(input: PageRecipe, context: CompileContext): OperationIr {
+  // The tiered ComponentPlacementSchema types nesting to MAX_PLACEMENT_DEPTH
+  // levels; anything deeper would be Zod-STRIPPED (not rejected) by the
+  // deepest tier. Depth-check the raw input first so an over-deep tree
+  // fails loudly instead of installing with silently-missing content.
+  assertPlacementDepth(input);
   const recipe = PageRecipeSchema.parse(input);
 
   // Simple (fields/translations) XOR story (versions) — never both. Zod
@@ -95,11 +100,17 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     );
   }
 
+  // Flatten nested placements (layout components hosting children in
+  // their own placeholders) into SXA dynamic-placeholder wire form
+  // BEFORE anything walks the layouts — scoped-slot collection, insert
+  // options, and layout emission all consume the flat shape.
+  flattenRecipeLayouts(recipe);
+
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
   const itemRefKey = pageItemId(site, recipe.handle);
 
-  const { itemPath, parentPath, itemName } = resolvePagePath(recipe, context, site);
+  const { itemPath, parentPath, itemName } = resolvePagePath(recipe, context);
 
   const createItem: CreateItemOp = {
     op: "CreateItem",
@@ -369,20 +380,184 @@ interface PagePath {
   itemName: string;
 }
 
+/** One placement in a page layout (post-parse). */
+type PagePlacement = Layout["placeholders"][string][number];
+
+/** Deepest placement nesting the tiered `ComponentPlacementSchema` types. */
+const MAX_PLACEMENT_DEPTH = 4;
+
+/**
+ * Reject placement trees deeper than the tiered schema can represent.
+ * Walks the RAW (pre-parse) recipe because Zod's deepest tier has no
+ * `placeholders` key and would silently strip level-5 nesting — the
+ * exact silent-content-loss failure mode this feature exists to close.
+ */
+const assertPlacementDepth = (input: PageRecipe): void => {
+  const walk = (placements: unknown, depth: number, handle: string): void => {
+    if (!Array.isArray(placements)) return;
+    for (const placement of placements) {
+      if (!placement || typeof placement !== "object") continue;
+      const children = (placement as { placeholders?: unknown }).placeholders;
+      if (!children || typeof children !== "object") continue;
+      if (depth >= MAX_PLACEMENT_DEPTH) {
+        throw createScaiError(
+          `PageRecipe '${handle}': placement nesting exceeds the supported depth of ${MAX_PLACEMENT_DEPTH} levels.`,
+          "INPUT_INVALID",
+          {
+            hint: "Flatten the layout — hoist deeply nested components toward the page's top-level placeholders.",
+          }
+        );
+      }
+      for (const grandChildren of Object.values(children)) {
+        walk(grandChildren, depth + 1, handle);
+      }
+    }
+  };
+  const layouts: unknown[] = [input.layout];
+  for (const entries of Object.values(input.versions ?? {})) {
+    for (const entry of entries) layouts.push(entry.layout);
+  }
+  for (const layout of layouts) {
+    if (!layout || typeof layout !== "object") continue;
+    const placeholders = (layout as { placeholders?: unknown }).placeholders;
+    if (!placeholders || typeof placeholders !== "object") continue;
+    for (const placements of Object.values(placeholders)) {
+      walk(placements, 1, input.handle ?? "(unknown)");
+    }
+  }
+};
+
+/**
+ * Flatten every layout the recipe declares (item-level + per-version)
+ * from the recursive authoring shape — placements hosting children in
+ * `placement.placeholders` — into the flat SXA dynamic-placeholder wire
+ * shape the rest of the compiler consumes:
+ *
+ *  - Each placement WITH children gets a page-unique integer
+ *    `DynamicPlaceholderId` rendering parameter (author-set values are
+ *    respected and never re-assigned; assigned ids skip any value an
+ *    author already used). This is the parameter SXA Headless
+ *    components read to construct their placeholder names.
+ *  - Each child group keyed by a LOGICAL name (`column-1`) lands in the
+ *    path-qualified concrete key
+ *    `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>` — e.g.
+ *    `/headless-main/column-1-1` — the key XM Cloud Pages writes when
+ *    an author drops a component into a dynamic placeholder, so
+ *    recipe-seeded and author-added children coexist in one layout.
+ *
+ * One id counter spans ALL of the recipe's layouts: ids are unique per
+ * page item, mirroring SXA's per-page assignment, so per-version
+ * layouts can never mint a key that collides with the item-level one.
+ *
+ * Mutates `recipe` in place (the object is the compiler's own
+ * `PageRecipeSchema.parse` output, never the caller's input).
+ */
+const flattenRecipeLayouts = (recipe: PageRecipeParsed): void => {
+  // Pre-scan author-set DynamicPlaceholderId values across every layout
+  // so assigned ids never collide with them.
+  const usedIds = new Set<string>();
+  const scan = (placements: readonly PagePlacement[]): void => {
+    for (const placement of placements) {
+      const authored = placement.params?.DynamicPlaceholderId;
+      if (authored) usedIds.add(authored);
+      for (const children of Object.values(placement.placeholders ?? {})) scan(children);
+    }
+  };
+  const layouts = collectRecipeLayouts(recipe);
+  for (const layout of layouts) {
+    for (const placements of Object.values(layout.placeholders)) scan(placements);
+  }
+
+  let nextId = 1;
+  const takeId = (): string => {
+    while (usedIds.has(String(nextId))) nextId += 1;
+    const id = String(nextId);
+    usedIds.add(id);
+    return id;
+  };
+
+  const flattenLayout = (layout: Layout): Layout => {
+    const out: Record<string, PagePlacement[]> = {};
+    const emit = (key: string, placements: readonly PagePlacement[]): void => {
+      const flat: PagePlacement[] = [];
+      const childGroups: Array<{ key: string; placements: readonly PagePlacement[] }> = [];
+      for (const placement of placements) {
+        const { placeholders: children, ...rest } = placement;
+        if (children && Object.keys(children).length > 0) {
+          const dynamicPlaceholderId = rest.params?.DynamicPlaceholderId ?? takeId();
+          flat.push({
+            ...rest,
+            params: { ...(rest.params ?? {}), DynamicPlaceholderId: dynamicPlaceholderId },
+          });
+          // Child keys are path-qualified against the parent's own
+          // (already-concrete) key; the top level stays unqualified so
+          // existing single-level layouts emit byte-identical XML.
+          const parentPath = key.startsWith("/") ? key : `/${key}`;
+          for (const [childName, childPlacements] of Object.entries(children)) {
+            childGroups.push({
+              key: `${parentPath}/${childName}-${dynamicPlaceholderId}`,
+              placements: childPlacements,
+            });
+          }
+        } else {
+          flat.push(rest);
+        }
+      }
+      out[key] = [...(out[key] ?? []), ...flat];
+      for (const group of childGroups) emit(group.key, group.placements);
+    };
+    for (const [key, placements] of Object.entries(layout.placeholders)) emit(key, placements);
+    return { placeholders: out };
+  };
+
+  if (recipe.layout) recipe.layout = flattenLayout(recipe.layout);
+  if (recipe.versions) {
+    for (const entries of Object.values(recipe.versions)) {
+      for (const entry of entries) {
+        if (entry.layout) entry.layout = flattenLayout(entry.layout);
+      }
+    }
+  }
+};
+
+/** Every layout object the recipe declares (item-level + per-version). */
+const collectRecipeLayouts = (recipe: PageRecipeParsed): Layout[] => {
+  const layouts: Layout[] = [];
+  if (recipe.layout) layouts.push(recipe.layout);
+  for (const entries of Object.values(recipe.versions ?? {})) {
+    for (const entry of entries) {
+      if (entry.layout) layouts.push(entry.layout);
+    }
+  }
+  return layouts;
+};
+
 /**
  * Resolve a page's tenant path. Explicit `itemPath` (registry shape)
- * wins — `{site}` is substituted with the active site name and the page
- * is parented at the path's parent dir. Falls back to `pagesRoot + name`
- * for legacy recipes without `itemPath` (`pagesRoot` is required only in
- * the fallback path).
+ * wins — `{site}` is substituted with `context.sitePathSegment`
+ * (`<siteCollection>/<siteName>`) so the page lands inside the real SXA
+ * Headless site tree, and the page is parented at the path's parent
+ * dir. Falls back to `pagesRoot + name` for legacy recipes without
+ * `itemPath` (`pagesRoot` is required only in the fallback path).
+ *
+ * A `{site}` itemPath with no `sitePathSegment` configured throws
+ * rather than substituting a fallback: the pre-fix behaviour reused the
+ * GUID seed (`default` unless `siteScopedGuids` opted in), which
+ * silently created pages under a phantom `/sitecore/content/default/`
+ * tree no site serves.
  */
-const resolvePagePath = (
-  recipe: PageRecipeParsed,
-  context: CompileContext,
-  site: string
-): PagePath => {
+const resolvePagePath = (recipe: PageRecipeParsed, context: CompileContext): PagePath => {
   if (recipe.itemPath) {
-    const itemPath = recipe.itemPath.replace(/\{site\}/g, site);
+    if (/\{site\}/.test(recipe.itemPath) && !context.sitePathSegment) {
+      throw createScaiError(
+        `PageRecipe '${recipe.handle}': itemPath '${recipe.itemPath}' uses the {site} placeholder but no site path is configured.`,
+        "INPUT_INVALID",
+        {
+          hint: "Set `site` and `siteCollection` on the active envProfile in sitecoreai.cli.json (scai substitutes {site} with `<siteCollection>/<site>`), or author an explicit absolute itemPath.",
+        }
+      );
+    }
+    const itemPath = recipe.itemPath.replace(/\{site\}/g, context.sitePathSegment ?? "");
     const lastSlash = itemPath.lastIndexOf("/");
     return {
       itemPath,

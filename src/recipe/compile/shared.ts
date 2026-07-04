@@ -146,6 +146,21 @@ export interface CompileContext {
    */
   site?: string;
   /**
+   * Content-tree path segment for the active site —
+   * `<siteCollection>/<siteName>` (e.g. `Solterra Collection/solterra`).
+   * Substituted for `{site}` in a `PageRecipe.itemPath`, yielding the
+   * SXA Headless page path `/sitecore/content/<collection>/<site>/…`.
+   *
+   * Deliberately DISTINCT from `site` above: `site` seeds deterministic
+   * GUIDs (opt-in via `siteScopedGuids`, defaults to the `default`
+   * sentinel so GUIDs stay stable), while this is the real tenant tree
+   * location. Compiling a `{site}` itemPath without this configured
+   * throws INPUT_INVALID — the old behaviour silently substituted the
+   * GUID seed and pages landed in a phantom `/sitecore/content/default/`
+   * tree that no site serves.
+   */
+  sitePathSegment?: string;
+  /**
    * SXA Headless variants root, e.g.
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Headless Variants`.
    * Each component-template recipe's variants land at

@@ -147,7 +147,7 @@ export type ContentVersion = z.infer<typeof ContentVersionSchema>;
  *             `PageDesignRecipe` reject it — they have no host page.
  *   none    — config-driven rendering with no datasource (rare).
  */
-export const ComponentPlacementSchema = z.object({
+const componentPlacementBaseShape = {
   /** Handle of a `ComponentTemplateRecipe`. */
   componentHandle: z.string().regex(HANDLE_PATTERN, {
     message: "componentHandle must match `<kebab-name>@<major>`",
@@ -190,7 +190,50 @@ export const ComponentPlacementSchema = z.object({
       z.object({ kind: z.literal("none") }),
     ])
     .optional(),
+};
+
+/**
+ * Nested-placement tiers. A placement may host children in its own
+ * placeholders (`placement.placeholders` — layout components like
+ * `column-splitter@1` expose one slot per column). Keys are the
+ * component's LOGICAL placeholder names (`column-1`, `column-2` — the
+ * static prefix of a dynamic placeholder, no instance suffix).
+ *
+ * Only valid in a `PageRecipe` layout. `compilePageRecipe` flattens the
+ * tree into SXA dynamic-placeholder wire form: the parent placement gets
+ * a page-unique integer `DynamicPlaceholderId` rendering parameter
+ * (unless the author set one) and each child lands in the
+ * path-qualified key `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>`
+ * — the key shape XM Cloud Pages writes when an author drops a component
+ * into a dynamic placeholder, and the shape headless components resolve
+ * via `params.DynamicPlaceholderId`. Partial- and page-design layouts
+ * reject nesting (no host page).
+ *
+ * Explicitly tiered rather than `z.lazy`-recursive so every level stays
+ * fully type-inferred (`z.input` authoring types included). Nesting is
+ * bounded at 4 placement levels — the deepest tier has no `placeholders`
+ * key, so Zod would silently strip a level-5 nesting; `compilePageRecipe`
+ * guards against that by depth-checking the RAW input before parsing and
+ * failing loudly (`MAX_PLACEMENT_DEPTH`).
+ */
+const nestedPlaceholders = <T extends z.ZodTypeAny>(child: T) =>
+  z.record(z.string(), z.array(child)).optional();
+
+const ComponentPlacementLevel4Schema = z.object(componentPlacementBaseShape);
+const ComponentPlacementLevel3Schema = z.object({
+  ...componentPlacementBaseShape,
+  placeholders: nestedPlaceholders(ComponentPlacementLevel4Schema),
 });
+const ComponentPlacementLevel2Schema = z.object({
+  ...componentPlacementBaseShape,
+  placeholders: nestedPlaceholders(ComponentPlacementLevel3Schema),
+});
+const ComponentPlacementLevel1Schema = z.object({
+  ...componentPlacementBaseShape,
+  placeholders: nestedPlaceholders(ComponentPlacementLevel2Schema),
+});
+
+export const ComponentPlacementSchema = ComponentPlacementLevel1Schema;
 
 export type ComponentPlacement = z.infer<typeof ComponentPlacementSchema>;
 

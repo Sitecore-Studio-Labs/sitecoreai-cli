@@ -92,15 +92,17 @@ export const sourceTypesOf = (augment: SitecoreFieldAugment | undefined): readon
   return augment.source.types ?? [];
 };
 
+/** One placement in a layout — recursive: a placement may host nested
+ *  placements in its own placeholders (`PageRecipe` layouts only). */
+type PlacementWithRefs = {
+  componentHandle: string;
+  datasourceRef?: { kind: "shared"; handle: string } | { kind: "scoped" } | { kind: "none" };
+  placeholders?: Record<string, ReadonlyArray<PlacementWithRefs>>;
+};
+
 /** A layout shape carrying placement placeholders (partial/page/design recipes). */
 type LayoutWithPlaceholders = {
-  placeholders: Record<
-    string,
-    ReadonlyArray<{
-      componentHandle: string;
-      datasourceRef?: { kind: "shared"; handle: string } | { kind: "scoped" } | { kind: "none" };
-    }>
-  >;
+  placeholders: Record<string, ReadonlyArray<PlacementWithRefs>>;
 };
 
 /** A list of augmented fields/params carrying source-picker `types`. */
@@ -120,23 +122,32 @@ const pushSourceTypeRefs = (
   });
 };
 
-/** Push every layout-placement reference (componentHandle + shared datasourceRef). */
+/** Push every layout-placement reference (componentHandle + shared
+ *  datasourceRef), recursing into nested `placement.placeholders` so a
+ *  component hosted inside a layout component (column-splitter columns)
+ *  still validates + topo-sorts like a top-level placement. */
 const pushLayoutPlacementRefs = (out: RecipeReference[], layout: LayoutWithPlaceholders): void => {
-  for (const [phKey, placements] of Object.entries(layout.placeholders)) {
+  const walk = (prefix: string, placements: ReadonlyArray<PlacementWithRefs>): void => {
     placements.forEach((placement, idx) => {
       out.push({
         handle: placement.componentHandle,
-        field: `layout.placeholders.${phKey}.${idx}.componentHandle`,
+        field: `${prefix}.${idx}.componentHandle`,
         expectedKinds: COMPONENT_TEMPLATE_KINDS,
       });
       if (placement.datasourceRef?.kind === "shared") {
         out.push({
           handle: placement.datasourceRef.handle,
-          field: `layout.placeholders.${phKey}.${idx}.datasourceRef.handle`,
+          field: `${prefix}.${idx}.datasourceRef.handle`,
           expectedKinds: CONTENT_ITEM_KINDS,
         });
       }
+      for (const [childKey, children] of Object.entries(placement.placeholders ?? {})) {
+        walk(`${prefix}.${idx}.placeholders.${childKey}`, children);
+      }
     });
+  };
+  for (const [phKey, placements] of Object.entries(layout.placeholders)) {
+    walk(`layout.placeholders.${phKey}`, placements);
   }
 };
 

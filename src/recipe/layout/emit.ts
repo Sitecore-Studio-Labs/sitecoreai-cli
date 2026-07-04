@@ -44,6 +44,15 @@ export interface ComponentPlacementInput {
     | { kind: "shared"; handle: string }
     | { kind: "scoped"; slot: string }
     | { kind: "none" };
+  /**
+   * Nested placements (schema-legal on any placement). ONLY a
+   * `PageRecipe` layout can host them — `compilePageRecipe` flattens
+   * the tree into concrete dynamic-placeholder keys before emission,
+   * so a placement reaching this emitter with children still attached
+   * is a partial-/page-design layout, which has no host page to anchor
+   * the nesting. Rejected loudly rather than silently dropped.
+   */
+  placeholders?: Record<string, readonly ComponentPlacementInput[]>;
 }
 
 export interface LayoutInput {
@@ -150,6 +159,15 @@ const resolvePlacement = (
   index: number,
   ctx: LayoutEmitContext
 ): ResolvedPlacement => {
+  if (placement.placeholders && Object.keys(placement.placeholders).length > 0) {
+    throw createScaiError(
+      `Placement '${placement.componentHandle}' in placeholder '${placeholderKey}' carries nested placeholders, which this layout context cannot host.`,
+      "INPUT_INVALID",
+      {
+        hint: "Nested placements are only valid in a PageRecipe layout (the page compiler flattens them into dynamic-placeholder keys). Partial-design and page-design layouts must place components flat.",
+      }
+    );
+  }
   const renderingId = formatGuidCurly(ctx.renderingIdFor(placement.componentHandle));
   const uid = formatGuidCurly(
     placementUid(ctx.parentItemId, placeholderKey, index, placement.componentHandle)

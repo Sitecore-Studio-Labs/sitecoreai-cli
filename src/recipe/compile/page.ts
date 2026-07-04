@@ -308,12 +308,22 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     }
 
     for (const [slot, info] of scopedSlots) {
-      // Resolve the component's datasource template; fall back to the
-      // component template itself (the inline-`fields:` pattern, and
-      // the only option for a standalone single-recipe compile).
+      // Resolve the component's datasource template, in precedence order:
+      //   1. `datasource.template`     — single dedicated template.
+      //   2. `datasource.templates[0]` — compatible-datasources pattern;
+      //      the FIRST listed template is the component's primary
+      //      datasource shape. CRITICAL: such components ship NO
+      //      component-template item of their own (fields live on the
+      //      content templates), so the component-handle fallback below
+      //      would emit a refKey nothing in the set ever creates and the
+      //      apply dies with a raw "Cannot find a template" GraphQL error.
+      //   3. The component template itself — the inline-`fields:` pattern,
+      //      and the only option for a standalone single-recipe compile.
       const component = context.componentsByHandle?.get(info.componentHandle);
       const datasourceTemplateHandle =
-        component?.datasource?.template?.handle ?? info.componentHandle;
+        component?.datasource?.template?.handle ??
+        component?.datasource?.templates?.[0]?.handle ??
+        info.componentHandle;
       const slotItemRefKey = datasourceId(itemRefKey, slot);
       operations.push({
         op: "CreateItem",

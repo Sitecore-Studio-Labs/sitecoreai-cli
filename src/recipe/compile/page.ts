@@ -285,11 +285,11 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   else emitSimpleMode(emitters);
 
   // Compose: CreateItem → AddItemVersion…s → Data folder + scoped
-  // slots → SetFields → workflow. Scoped infrastructure has to land
-  // BEFORE the layout SetFields so the captured-itemId map carries
-  // the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor` resolves.
+  // slots → MediaUploads → SetFields → workflow. Scoped infrastructure
+  // has to land BEFORE the layout SetFields so the captured-itemId map
+  // carries the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor`
+  // resolves.
   const operations: Operation[] = [createItem];
-  operations.push(...imageMediaSink.mediaOps);
   operations.push(...versionOps);
   if (scopedSlots.size > 0) {
     const dataFolderPath = joinPath(itemPath, "Data");
@@ -393,6 +393,13 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       }
     }
   }
+  // MediaUpload ops are spread AFTER the scoped-slots block: the
+  // per-slot `emitFields` calls above push into `imageMediaSink.mediaOps`
+  // too, and an earlier spread would copy the array before those land —
+  // dropping the producer op and failing the scoped SetField's
+  // `media-xml-ref` resolution at apply time ("refKey not in captured
+  // map"). Uploads only need to precede the fieldOps that reference them.
+  operations.push(...imageMediaSink.mediaOps);
   operations.push(...fieldOps);
 
   if (recipe.workflow) {

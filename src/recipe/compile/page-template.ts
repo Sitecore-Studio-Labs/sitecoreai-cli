@@ -30,14 +30,12 @@ import {
  * A page template is a Sitecore data template that pages conform to. It
  * differs from a `ContentTemplateRecipe` in two ways:
  *
- *   1. It inherits the tenant's SXA-scaffolded
- *      `/sitecore/templates/Project/<collection>/Page` (resolved by
- *      path at apply time; falls back to chaining the
- *      `SXA_HEADLESS_PAGE_BASE_TEMPLATES` facets directly when the
- *      collection is unknown or the tenant lacks the scaffold), so
- *      items conforming to it pick up the layout / navigation /
- *      taxonomy / page-design / sitemap facets that make them
- *      authorable pages in XM Cloud Pages.
+ *   1. It chains the SXA Headless page facet set
+ *      (`SXA_HEADLESS_PAGE_BASE_TEMPLATES`) directly — the same facets
+ *      the SXA-scaffolded `Project/<collection>/Page` carries, making
+ *      it a peer of that scaffold — so items conforming to it pick up
+ *      the layout / navigation / taxonomy / page-design / sitemap
+ *      facets that make them authorable pages in XM Cloud Pages.
  *   2. Its `__Standard Values` carries a `__Renderings` layout shell —
  *      `<r><d id="{device}" l="{jsonLayout}" /></r>` — so pages render
  *      through the headless JSON-layout pipeline. When the recipe
@@ -79,17 +77,16 @@ export function compilePageTemplateRecipe(
   // Template item + base templates + sections + fields + standard
   // values + insert options.
   //
-  // Inheritance: when the site collection is known (`sitePathSegment`
-  // is `<collection>/<site>`), the template inherits the tenant's
-  // SXA-scaffolded `/sitecore/templates/Project/<collection>/Page` —
-  // resolved by path at apply time, since its GUID is per-tenant. That
-  // gives the Content Editor the expected chain and picks up any
-  // collection-level Page customisations; the SXA Foundation page
-  // facets arrive transitively through it. When the path doesn't exist
-  // on the tenant (or the collection is unknown at compile time), the
-  // facet set (`SXA_HEADLESS_PAGE_BASE_TEMPLATES`) is chained directly
-  // instead — functionally equivalent for XM Cloud Pages.
-  const collection = context.sitePathSegment?.split("/")[0]?.trim();
+  // Inheritance: the SXA Foundation page facet set (`Base Page`,
+  // `_Navigable`, `_Taggable`, `_Designable`, `_Sitemap`) is chained
+  // DIRECTLY — the same facets the SXA-scaffolded
+  // `/sitecore/templates/Project/<collection>/Page` carries, making the
+  // recipe template a PEER of that scaffold rather than a subtype of
+  // it. An earlier iteration inherited the scaffold by tenant path
+  // (`SetBaseTemplates.pathBases`); operator verdict on live tenants
+  // was that subtyping the scaffold is NOT the desired shape — the
+  // per-site template should mirror its facet chain instead. The
+  // pathBases mechanism remains available on the op for other callers.
   emitDatasourceTemplate(
     operations,
     {
@@ -100,16 +97,7 @@ export function compilePageTemplateRecipe(
       ...(recipe.insertOptions !== undefined && { insertOptions: recipe.insertOptions }),
       parentPath,
       ...(parentRefKey !== undefined && { parentRefKey }),
-      ...(collection
-        ? {
-            baseTemplatePathBases: [
-              {
-                path: `/sitecore/templates/Project/${collection}/Page`,
-                fallbackTemplates: [...SXA_HEADLESS_PAGE_BASE_TEMPLATES],
-              },
-            ],
-          }
-        : { additionalBaseTemplates: SXA_HEADLESS_PAGE_BASE_TEMPLATES }),
+      additionalBaseTemplates: SXA_HEADLESS_PAGE_BASE_TEMPLATES,
     },
     context,
     recipe.icon ?? PAGE_TEMPLATE_ICON,

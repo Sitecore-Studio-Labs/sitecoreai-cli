@@ -718,6 +718,17 @@ export const templatePathRefKey = (path: string): string =>
   uuidv5(path, NAMESPACE_TEMPLATE_BY_PATH);
 
 /**
+ * Deterministic refKey for a content-tree ITEM referenced by path —
+ * typically pre-existing tenant scaffolding the recipe set doesn't
+ * create but needs to mutate (e.g. a page's parent item receiving an
+ * Insert Options append). Same identity for the same path forever; the
+ * emitting op carries `latePath: <path>` so the executor resolves the
+ * itemId on demand when the captured map has no entry.
+ */
+export const NAMESPACE_ITEM_BY_PATH = uuidv5("item-by-path", NAMESPACE_ROOT);
+export const itemPathRefKey = (path: string): string => uuidv5(path, NAMESPACE_ITEM_BY_PATH);
+
+/**
  * Deterministic refKey for the `__Standard Values` item under a
  * tenant-existing template referenced by content-tree path. Used by
  * `WorkflowRecipe.bindings.templates` entries that point at an absolute

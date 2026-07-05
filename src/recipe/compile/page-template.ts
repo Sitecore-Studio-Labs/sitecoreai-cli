@@ -87,6 +87,10 @@ export function compilePageTemplateRecipe(
   // was that subtyping the scaffold is NOT the desired shape — the
   // per-site template should mirror its facet chain instead. The
   // pathBases mechanism remains available on the op for other callers.
+  //
+  // The implicit Standard template is omitted: `Base Page` chains it
+  // transitively, so listing it explicitly is redundant noise in the
+  // Content Editor's inheritance view.
   emitDatasourceTemplate(
     operations,
     {
@@ -98,6 +102,7 @@ export function compilePageTemplateRecipe(
       parentPath,
       ...(parentRefKey !== undefined && { parentRefKey }),
       additionalBaseTemplates: SXA_HEADLESS_PAGE_BASE_TEMPLATES,
+      omitStandardBaseTemplate: true,
     },
     context,
     recipe.icon ?? PAGE_TEMPLATE_ICON,

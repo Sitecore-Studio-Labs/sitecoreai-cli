@@ -70,10 +70,12 @@ describe("page template inheritance — end-to-end through executeIr (apply)", (
     expect(result.summary.conflict).toBe(0);
 
     const value = await appliedBaseTemplates(client);
-    expect(value).toContain(STANDARD_TEMPLATE_ID.toLowerCase());
     for (const facet of SXA_HEADLESS_PAGE_BASE_TEMPLATES) {
       expect(value).toContain(facet.toLowerCase());
     }
+    // No explicit Standard template (Base Page chains it) and no
+    // reference to the collection scaffold.
+    expect(value).not.toContain(STANDARD_TEMPLATE_ID.toLowerCase());
     expect(value).not.toContain(COLLECTION_PAGE_ID.toLowerCase());
   });
 
@@ -83,7 +85,7 @@ describe("page template inheritance — end-to-end through executeIr (apply)", (
     expect(base).toBeDefined();
     if (base?.op !== "SetBaseTemplates") throw new Error("expected SetBaseTemplates");
     expect(base.pathBases).toBeUndefined();
-    expect(base.baseTemplates).toEqual([STANDARD_TEMPLATE_ID, ...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
+    expect(base.baseTemplates).toEqual([...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
   });
 
   it("a stale baseline never blocks writes to items created in the same run", async () => {

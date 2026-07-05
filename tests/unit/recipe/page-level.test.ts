@@ -105,14 +105,12 @@ describe("compilePageTemplateRecipe", () => {
     expect(create.templateOf).toBe(SITECORE_TEMPLATES.TEMPLATE);
   });
 
-  it("inherits the SXA Headless page base set plus the Standard template", () => {
+  it("inherits EXACTLY the SXA Headless page facet set — no explicit Standard template (Base Page chains it)", () => {
     const base = ir.operations.find(
       (op): op is SetBaseTemplatesOp => op.op === "SetBaseTemplates"
     )!;
-    expect(base.baseTemplates).toContain(STANDARD_TEMPLATE_ID);
-    for (const pageBase of SXA_HEADLESS_PAGE_BASE_TEMPLATES) {
-      expect(base.baseTemplates).toContain(pageBase);
-    }
+    expect(base.baseTemplates).toEqual([...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
+    expect(base.baseTemplates).not.toContain(STANDARD_TEMPLATE_ID);
   });
 
   it("chains the facet set directly even when the collection is known — a PEER of the scaffolded Page, never a subtype", () => {
@@ -124,7 +122,7 @@ describe("compilePageTemplateRecipe", () => {
       (op): op is SetBaseTemplatesOp => op.op === "SetBaseTemplates"
     )!;
     expect(base.pathBases).toBeUndefined();
-    expect(base.baseTemplates).toEqual([STANDARD_TEMPLATE_ID, ...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
+    expect(base.baseTemplates).toEqual([...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
   });
 
   it("stamps the standard-values __Renderings with the JSON-layout shell", () => {
@@ -214,6 +212,22 @@ describe("compilePageRecipe", () => {
     expect(create.path).toBe("/sitecore/content/Demo/Home/Home");
     expect(create.parent).toEqual({ kind: "ref-path", value: "/sitecore/content/Demo/Home" });
     expect(create.templateOf).toBe(templateId("default", "article-page@1"));
+  });
+
+  it("appends the page's template to its PARENT's insert options (merge-unique, late-path resolved)", () => {
+    // Pages' "Create page (+)" lists the selected node's Insert Options —
+    // without this append the installed page type never appears there.
+    const append = ir.operations.find(
+      (op) => op.op === "AppendToMultiList" && op.label === "page-parent-insert-options:home@1"
+    );
+    expect(append).toBeDefined();
+    if (append?.op !== "AppendToMultiList") throw new Error("expected AppendToMultiList");
+    expect(append.latePath).toBe("/sitecore/content/Demo/Home");
+    expect(append.fieldId).toBe(SYSTEM_FIELDS.INSERT_OPTIONS);
+    expect(append.appendPolicy).toBe("merge-unique");
+    expect(append.values).toEqual([
+      { kind: "ref-recipe", refKey: templateId("default", "article-page@1") },
+    ]);
   });
 
   it("emits a versioned SetField per page field value", () => {

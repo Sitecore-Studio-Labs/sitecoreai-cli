@@ -1148,6 +1148,19 @@ export interface BuildActionOptions {
    */
   baselineIndex?: BaselineIndex;
   conflictPolicy?: PlanOptions["conflictPolicy"];
+  /**
+   * RefKeys of items CREATED earlier in this push run (apply mode
+   * tracks them across IRs). Update-style ops targeting one of these
+   * bypass baseline classification entirely: a brand-new item cannot
+   * carry CMS edits, so any divergence between its server-initialised
+   * field values and a stale baseline (e.g. the same refKey's previous
+   * item at an old path) is NOT an author edit — treating it as one
+   * skipped the write and shipped items with default field values (the
+   * page-template base-templates regression: relocated templates kept
+   * Sitecore's default Standard-template-only inheritance because the
+   * stale baseline classified the fresh item as a cms-edit/conflict).
+   */
+  createdThisRun?: ReadonlySet<string>;
 }
 
 export const buildAction = async ({
@@ -1160,7 +1173,13 @@ export const buildAction = async ({
   snapshotLanguages,
   baselineIndex,
   conflictPolicy,
+  createdThisRun,
 }: BuildActionOptions): Promise<PlannedAction> => {
+  // Baseline classification only applies to PRE-EXISTING items — an
+  // item created earlier in this run has no CMS history to preserve
+  // (see `createdThisRun` on BuildActionOptions).
+  const baselineFor = (targetRefKey: string): BaselineIndex | undefined =>
+    createdThisRun?.has(targetRefKey) ? undefined : baselineIndex;
   const cachedReadByPath = async (path: string): Promise<RemoteItem | null> => {
     if (pathSnapshotCache?.has(path)) {
       return pathSnapshotCache.get(path) ?? null;
@@ -1273,7 +1292,7 @@ export const buildAction = async ({
           policy: op.policy,
           remote,
           capturedItemIds,
-          baselineIndex,
+          baselineIndex: baselineFor(op.itemRefKey),
           conflictPolicy,
         });
       case "SetBaseTemplates":
@@ -1288,7 +1307,7 @@ export const buildAction = async ({
           policy: op.policy,
           remote,
           capturedItemIds,
-          baselineIndex,
+          baselineIndex: baselineFor(op.itemRefKey),
           conflictPolicy,
         });
       case "SetStandardValues":
@@ -1300,7 +1319,7 @@ export const buildAction = async ({
           policy: op.policy,
           remote,
           capturedItemIds,
-          baselineIndex,
+          baselineIndex: baselineFor(op.templateRefKey),
           conflictPolicy,
         });
       case "CreateSiteFromTemplate":

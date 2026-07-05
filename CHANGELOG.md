@@ -1,5 +1,31 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.14.3
+
+### Patch Changes
+
+- ee33d1e: Data-folder Insert Options now resolve through the component's actual
+  datasource templates everywhere a folder restricts inserts to "this
+  component's datasource type".
+
+  Components using the external-template patterns (`datasource.template`
+  or the compatible-datasources `datasource.templates[]`) never create a
+  template under their own handle, but three emitters referenced
+  `templateId(site, recipe.handle)` regardless — a refKey no CreateItem
+  defines, which the executor writes to the tenant as a literal broken
+  GUID:
+  - the legacy per-recipe `<Component> Data Folder`'s Insert Options
+    (link-list class),
+  - the shared `<Subfolder> Data Folder` Insert Options union
+    (per-contributor handles),
+  - the `__site-data-root__` aggregate, which additionally referenced the
+    legacy per-recipe template id for recipes whose site locations all
+    declare `allowedTemplates` — those recipes only emit per-LOCATION
+    templates (avatar-block class), so the aggregate now mirrors the
+    emitter's template selection exactly.
+
+- 61c1b61: Fix two media-materialisation bugs. **(1) Scoped datasource images aborted the push**: the page compiler spread its MediaUpload ops into the IR before the scoped-slots block ran, and the per-slot field emission pushes uploads into the same sink — those late ops were dropped, so a page whose scoped datasource carried an external-URL image failed at apply time with `media-xml-ref refKey … not in captured map` and rolled back the recipe. Uploads now spread after the scoped-slots block, immediately before the SetFields that reference them. **(2)** Fix `mediaLibraryRoot` derivation from `site` + `siteCollection`. `withDerivedRecipeRoots` never mapped the derived `mediaLibrary` root onto the flat `mediaLibraryRoot`, so every derivation-based profile (including all hosted installs) compiled media uploads against the `/sitecore/media library/RecipeImages/<site>` fallback instead of `/sitecore/media library/Project/<collection>/<site>`. Media items created outside the SXA site's media scope resolve in the Layout Service but Pages' image-field picker can't display them — the field shows a raw GUID instead of an image path. Uploads (including `mediaLocation` page/site-scoped destinations) now land under the site's Project media folder; re-pushing rewrites affected fields to newly-placed items.
+
 ## 0.14.2
 
 ### Patch Changes

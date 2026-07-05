@@ -788,6 +788,16 @@ describe("validateRecipeSet — DictionaryRecipe + SiteTemplate.dictionaries ref
       actualKind: "site-template",
     });
   });
+
+  it("does NOT emit a site ref (or unresolved error) for a DictionaryRecipe with no site", () => {
+    // A site-less dictionary installs into the deploy's target site — it
+    // needs no in-set SiteRecipe, so validation must not demand one.
+    const { site: _site, ...sitelessLabels } = coreLabels as typeof coreLabels & {
+      site?: string;
+    };
+    const result = validateRecipeSet([sitelessLabels as Recipe]);
+    expect(result.unresolvedHandles.filter((u) => u.fromRecipe === coreLabels.handle)).toEqual([]);
+  });
 });
 
 describe("validateRecipeSet — shared-site uniqueness per collection", () => {

@@ -54,6 +54,17 @@ export const ContentFieldValueSchema = z.discriminatedUnion("shape", [
      * image; ignored for media-library-path values (nothing to upload).
      */
     mediaLibraryFolder: z.string().min(1).optional(),
+    /**
+     * Semantic image role (`hero`, `avatar`, `product`, …). When a push
+     * supplies an image-defaults map (`--image-defaults <file.json>`,
+     * role → URL) and this role appears in it, the mapped URL is
+     * materialised instead of `mediaPath`. External-URL values only;
+     * absent role or no map → `mediaPath` applies unchanged.
+     */
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{0,31}$/, "role must be a short kebab-case slug")
+      .optional(),
   }),
   z.object({
     shape: z.literal("link-external"),

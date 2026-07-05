@@ -46,6 +46,13 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   contentItemsRoot?: string;
   /** Override `mediaLibraryRoot` from the env profile (recipe-materialised media). */
   mediaLibraryRoot?: string;
+  /**
+   * Path to a JSON image-defaults map (role → external URL). Image
+   * values / SV defaults declaring a matching `role` materialise the
+   * mapped URL instead of the recipe-authored one. Falls back to the
+   * `SITECOREAI_IMAGE_DEFAULTS` env var (also a path).
+   */
+  imageDefaults?: string;
   /** Override `headlessVariantsRoot` from the env profile. */
   headlessVariantsRoot?: string;
   /** Override `availableRenderingsRoot` from the env profile. */
@@ -109,6 +116,13 @@ export interface RecipePushOptions extends RecipeTenantOptions {
   contentItemsRoot?: string;
   /** Override `mediaLibraryRoot` from the env profile (recipe-materialised media). */
   mediaLibraryRoot?: string;
+  /**
+   * Path to a JSON image-defaults map (role → external URL). Image
+   * values / SV defaults declaring a matching `role` materialise the
+   * mapped URL instead of the recipe-authored one. Falls back to the
+   * `SITECOREAI_IMAGE_DEFAULTS` env var (also a path).
+   */
+  imageDefaults?: string;
   /** Override `headlessVariantsRoot` from the env profile. */
   headlessVariantsRoot?: string;
   /** Override `availableRenderingsRoot` from the env profile. */
@@ -551,3 +565,56 @@ export const resolveRecipeInputs = async (
 // `recipe-push` destructive tier) as every other write path. The
 // recipe-local copy that used to live here predated the policy layer.
 export { ensureAllowWrite } from "@/policy/allow-write";
+
+/**
+ * Load the image-defaults map (role → external URL) for a compile/push.
+ * Resolution: `--image-defaults <path>` flag → `SITECOREAI_IMAGE_DEFAULTS`
+ * env var (also a path) → undefined (recipe defaults apply unchanged).
+ *
+ * The file must be a flat JSON object of string → string; values must be
+ * fully-qualified http(s) URLs (the compiler re-validates per role at the
+ * substitution site, but failing fast here surfaces a broken map before
+ * any tenant work starts).
+ */
+export const loadImageDefaults = async (
+  imageDefaultsPath: string | undefined
+): Promise<Record<string, string> | undefined> => {
+  const resolved = imageDefaultsPath ?? process.env.SITECOREAI_IMAGE_DEFAULTS?.trim();
+  if (!resolved) return undefined;
+  const fs = await import("node:fs/promises");
+  let rawText: string;
+  try {
+    rawText = await fs.readFile(path.resolve(resolved), "utf8");
+  } catch (error) {
+    throw createScaiError(
+      `Failed to read image-defaults file '${resolved}': ${error instanceof Error ? error.message : String(error)}`,
+      "INPUT_INVALID",
+      { hint: "Pass --image-defaults <path> to a readable JSON file of role → URL." }
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    throw createScaiError(`Image-defaults file '${resolved}' is not valid JSON.`, "INPUT_INVALID", {
+      hint: 'Expected a flat object like {"hero": "https://…", "avatar": "https://…"}.',
+    });
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw createScaiError(
+      `Image-defaults file '${resolved}' must be a flat JSON object of role → URL.`,
+      "INPUT_INVALID"
+    );
+  }
+  const map: Record<string, string> = {};
+  for (const [role, url] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      throw createScaiError(
+        `Image-defaults entry '${role}' must be a fully-qualified http(s) URL (got ${JSON.stringify(url)}).`,
+        "INPUT_INVALID"
+      );
+    }
+    map[role] = url;
+  }
+  return Object.keys(map).length > 0 ? map : undefined;
+};

@@ -15,6 +15,8 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   resolveSeedSite: () => undefined,
   // No site/siteCollection on these envs → no {site} path segment either.
   resolveSitePathSegment: () => undefined,
+  // No --image-defaults flag in these tests → recipe defaults apply.
+  loadImageDefaults: async () => undefined,
 }));
 vi.mock("../../../../src/recipe/io", () => ({
   loadRecipe: vi.fn(),

@@ -145,6 +145,15 @@ export interface CompileContext {
    */
   mediaLibraryRoot?: string;
   /**
+   * Brand image-defaults map (role → external URL) supplied at push
+   * time (`--image-defaults <file.json>` / `SITECOREAI_IMAGE_DEFAULTS`).
+   * Image values and SV defaults that declare a `role` present in this
+   * map materialise the mapped URL instead of the recipe-authored one,
+   * so one brand-agnostic recipe yields brand-appropriate media per
+   * install. Absent → recipe defaults apply unchanged.
+   */
+  imageDefaults?: Readonly<Record<string, string>>;
+  /**
    * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
    * or a sub-folder for module groupings. Site templates are reusable
@@ -1110,6 +1119,7 @@ export function emitDatasourceTemplate(
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(context.imageDefaults ? { imageDefaults: context.imageDefaults } : {}),
     ...(svMediaLocationFolder ? { locationFolder: svMediaLocationFolder } : {}),
   };
   const svFieldEntries = buildStandardValuesFieldEntries(
@@ -1471,7 +1481,17 @@ function encodeStandardValueDefaultForField(
   return encodeStandardValueDefault(
     raw,
     resolveSitecoreType(field),
-    imageMediaSink ? { site, handle, fieldName: field.name, sink: imageMediaSink } : undefined
+    imageMediaSink
+      ? {
+          site,
+          handle,
+          fieldName: field.name,
+          sink: imageMediaSink,
+          // `role` lives on FieldDefinition only (DesignParameter fields
+          // don't model images); the in-check covers both union members.
+          ...("role" in field && field.role !== undefined ? { role: field.role } : {}),
+        }
+      : undefined
   );
 }
 
@@ -1480,7 +1500,13 @@ const BOOLEAN_TRUE_PATTERN = /^(1|true|yes|on|enabled)$/i;
 function encodeStandardValueDefault(
   raw: string,
   type: SitecoreFieldType,
-  imageCtx?: { site: string; handle: string; fieldName: string; sink: ImageMediaSink }
+  imageCtx?: {
+    site: string;
+    handle: string;
+    fieldName: string;
+    sink: ImageMediaSink;
+    role?: string;
+  }
 ): RefValue | undefined {
   switch (type) {
     case "checkbox":
@@ -1530,6 +1556,7 @@ function encodeStandardValueDefault(
           fieldName: imageCtx.fieldName,
           url: parsed.src,
           ...(parsed.alt ? { alt: parsed.alt } : {}),
+          ...(imageCtx.role !== undefined ? { role: imageCtx.role } : {}),
           sink: imageCtx.sink,
         });
       }
@@ -1628,6 +1655,15 @@ export interface ImageMediaSink {
    * overrides this.
    */
   locationFolder?: string;
+  /**
+   * Brand image-defaults map (role → external URL) from
+   * `CompileContext.imageDefaults` (`--image-defaults <file.json>`).
+   * An image value that carries a `role` present in this map
+   * materialises the mapped URL instead of its recipe-authored one —
+   * the substitution seam that keeps recipes brand-agnostic while an
+   * installer supplies brand-appropriate imagery.
+   */
+  imageDefaults?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -1704,11 +1740,27 @@ export const externalImageMediaRef = (opts: {
   fieldName: string;
   url: string;
   alt?: string;
+  /**
+   * Semantic image role — when set AND `sink.imageDefaults` maps it,
+   * the mapped URL replaces `url` before materialisation (brand
+   * substitution). The refKey derives from the EFFECTIVE URL, so two
+   * brands' maps yield distinct media items on the same field.
+   */
+  role?: string;
   /** Per-value destination folder override (`image.mediaLibraryFolder`). */
   folder?: string;
   sink: ImageMediaSink;
 }): RefValue => {
-  const { site, recipeHandle, fieldName, url, alt, folder, sink } = opts;
+  const { site, recipeHandle, fieldName, alt, folder, sink } = opts;
+  const override = opts.role !== undefined ? sink.imageDefaults?.[opts.role] : undefined;
+  if (override !== undefined && !isExternalMediaUrl(override)) {
+    throw createScaiError(
+      `Image-defaults entry for role '${opts.role}' is not an http(s) URL: '${override}'.`,
+      "INPUT_INVALID",
+      { hint: "Image-defaults map values must be fully-qualified external URLs." }
+    );
+  }
+  const url = override ?? opts.url;
   const refKey = mediaFieldId(site, recipeHandle, fieldName, url);
   if (!sink.mediaOps.some((op) => op.id === refKey)) {
     const recipeName = recipeHandle.split("@")[0];

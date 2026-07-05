@@ -172,6 +172,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(context.imageDefaults ? { imageDefaults: context.imageDefaults } : {}),
     ...(mediaLocationFolder ? { locationFolder: mediaLocationFolder } : {}),
   };
 

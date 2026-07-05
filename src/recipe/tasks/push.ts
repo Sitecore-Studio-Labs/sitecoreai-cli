@@ -30,6 +30,7 @@ import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
   ensureSiteCollection,
+  loadImageDefaults,
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
@@ -513,6 +514,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     tenant.envName,
     recipeSetNeedsRoots(recipes)
   );
+  const imageDefaults = await loadImageDefaults(options.imageDefaults);
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
@@ -522,6 +524,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageDesignsRoot,
     contentItemsRoot,
     mediaLibraryRoot,
+    imageDefaults,
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,

@@ -5,6 +5,7 @@ import { createScaiError } from "@/shared/errors";
 import { compileRecipeSet } from "../compile";
 import { defaultIrPath, loadRecipe, writeIr } from "../io";
 import {
+  loadImageDefaults,
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
@@ -114,10 +115,12 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   // disk for inspection.
   const recipes = loaded.map((entry) => entry.recipe);
   const fileByHandle = new Map(loaded.map((entry) => [entry.recipe.handle, entry.file]));
+  const imageDefaults = await loadImageDefaults(options.imageDefaults);
   const irs = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
     ...optionalRoots,
+    ...(imageDefaults ? { imageDefaults } : {}),
     site: resolveSeedSite(environment),
     sitePathSegment: resolveSitePathSegment(environment),
     marketplacePluginOverrides: root.marketplacePluginOverrides,

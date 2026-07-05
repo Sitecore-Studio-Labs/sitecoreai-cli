@@ -971,3 +971,76 @@ describe("buildStandardValuesFieldEntries", () => {
     }
   });
 });
+
+describe("image-role substitution (imageDefaults map)", () => {
+  const STOCK_URL = "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat";
+  const BRAND_URL = "https://assets.example.invalid/brands/sync/avatar-bot.png";
+
+  const avatarField = () =>
+    field({
+      name: "Avatar",
+      shape: "image",
+      role: "avatar",
+      default: `AI Assistant|${STOCK_URL}`,
+    });
+
+  const sinkWith = (imageDefaults?: Record<string, string>) => ({
+    policy: "CreateAndUpdate" as const,
+    mediaOps: [] as MediaUploadOp[],
+    ...(imageDefaults ? { imageDefaults } : {}),
+  });
+
+  it("materialises the mapped URL when the field's role is in the map", () => {
+    const sink = sinkWith({ avatar: BRAND_URL });
+    const entries = buildStandardValuesFieldEntries(
+      "default",
+      "ai-chat@1",
+      [avatarField()],
+      undefined,
+      sink
+    );
+    expect(sink.mediaOps).toHaveLength(1);
+    expect(sink.mediaOps[0].source).toEqual({ kind: "external-url", url: BRAND_URL });
+    // Recipe-authored alt survives the substitution — only the URL is branded.
+    expect(sink.mediaOps[0].altText).toBe("AI Assistant");
+    if (entries[0].value.kind === "media-xml-ref") {
+      expect(sink.mediaOps[0].id).toBe(entries[0].value.refKey);
+    }
+  });
+
+  it("derives the refKey from the EFFECTIVE URL — brand and stock yield distinct media items", () => {
+    const branded = sinkWith({ avatar: BRAND_URL });
+    const stock = sinkWith();
+    buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, branded);
+    buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, stock);
+    expect(branded.mediaOps[0].id).not.toBe(stock.mediaOps[0].id);
+  });
+
+  it("falls back to the stock URL when the role is absent from the map", () => {
+    const sink = sinkWith({ hero: BRAND_URL });
+    buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, sink);
+    expect(sink.mediaOps[0].source).toEqual({ kind: "external-url", url: STOCK_URL });
+  });
+
+  it("ignores the map entirely for fields without a role", () => {
+    const sink = sinkWith({ avatar: BRAND_URL });
+    buildStandardValuesFieldEntries(
+      "default",
+      "ai-chat@1",
+      [field({ name: "Avatar", shape: "image", default: `AI Assistant|${STOCK_URL}` })],
+      undefined,
+      sink
+    );
+    expect(sink.mediaOps[0].source).toEqual({ kind: "external-url", url: STOCK_URL });
+  });
+
+  it("rejects a non-http(s) map entry with INPUT_INVALID", () => {
+    const sink = sinkWith({ avatar: "/sitecore/media library/Not/A/Url" });
+    try {
+      buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, sink);
+      expect.unreachable("expected INPUT_INVALID");
+    } catch (e) {
+      expect((e as { code?: string }).code).toBe("INPUT_INVALID");
+    }
+  });
+});

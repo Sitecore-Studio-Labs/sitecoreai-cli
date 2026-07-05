@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { compilePageTemplateRecipe, type CompileContext } from "../../../src/recipe/compile";
+import {
+  compilePageTemplateRecipe,
+  compileRecipeSet,
+  type CompileContext,
+} from "../../../src/recipe/compile";
+import { PAGE_TEMPLATE_BASE_TEMPLATES_AGGREGATE_HANDLE } from "../../../src/recipe/compile/aggregates";
+import type { RemoteItem } from "../../../src/recipe/api/client";
 import { executeIr } from "../../../src/recipe/runtime/execute";
 import { indexBaseline } from "../../../src/recipe/runtime/baseline";
 import { hashFieldValue } from "../../../src/recipe/runtime/baseline";
@@ -86,6 +92,79 @@ describe("page template inheritance — end-to-end through executeIr (apply)", (
     for (const facet of SXA_HEADLESS_PAGE_BASE_TEMPLATES) {
       expect(value).toContain(facet.toLowerCase());
     }
+  });
+
+  it("fresh-collection install: the trailing aggregate corrects the chain after the site scaffolds Project/<collection>/Page", async () => {
+    // Simulates the first install into a NEW site collection: at
+    // page-template apply time (rank 0) the SXA scaffold doesn't exist
+    // yet — the early base-templates op falls back to the facets, and
+    // the workspace prefetch has cached the scaffold path as MISSING.
+    // The site recipe (rank 5) then materialises the scaffold; the
+    // trailing `__page-template-base-templates__` aggregate must
+    // re-resolve (distrusting the cached null) and correct the chain.
+    const client = new MockAuthoringClient();
+    const pathSnapshotCache = new Map<string, RemoteItem | null>();
+    // Workspace prefetch recorded the scaffold as missing.
+    pathSnapshotCache.set(COLLECTION_PAGE_PATH, null);
+
+    const irs = compileRecipeSet([pageTemplate], CONTEXT);
+    const templateIr = irs.find((ir) => ir.recipeHandle === "page@1");
+    const aggregateIr = irs.find(
+      (ir) => ir.recipeHandle === PAGE_TEMPLATE_BASE_TEMPLATES_AGGREGATE_HANDLE
+    );
+    expect(templateIr).toBeDefined();
+    expect(aggregateIr).toBeDefined();
+    // Aggregate trails the ranked recipe IRs (it runs after `site`).
+    expect(irs.indexOf(aggregateIr!)).toBeGreaterThan(irs.indexOf(templateIr!));
+
+    // Cross-IR ref seeding, as the real push wires it: every CreateItem's
+    // id → path across the set, so the aggregate IR (which creates
+    // nothing itself) can resolve its target template.
+    const crossRecipeRefs = new Map<string, string>(
+      irs
+        .flatMap((ir) => ir.operations)
+        .filter((op): op is CreateItemOp => op.op === "CreateItem")
+        .map((op) => [op.id, op.path])
+    );
+
+    // 1. Early IR applies with the scaffold absent → facet fallback.
+    const createdItemRefKeys = new Set<string>();
+    const first = await executeIr(templateIr!, client, {
+      mode: "apply",
+      pathSnapshotCache,
+      createdItemRefKeys,
+    });
+    expect(first.aborted).toBe(false);
+    let value = await appliedBaseTemplates(client);
+    expect(value).not.toContain(COLLECTION_PAGE_ID.toLowerCase());
+
+    // 2. "Site creation" scaffolds the collection Page mid-push.
+    seedCollectionPage(client);
+
+    // 3. The trailing aggregate re-resolves past the stale cached null
+    //    and rewrites the chain.
+    const second = await executeIr(aggregateIr!, client, {
+      mode: "apply",
+      pathSnapshotCache,
+      createdItemRefKeys,
+      crossRecipeRefs,
+    });
+    expect(second.aborted).toBe(false);
+    value = await appliedBaseTemplates(client);
+    expect(value).toContain(STANDARD_TEMPLATE_ID.toLowerCase());
+    expect(value).toContain(COLLECTION_PAGE_ID.toLowerCase());
+    for (const facet of SXA_HEADLESS_PAGE_BASE_TEMPLATES) {
+      expect(value).not.toContain(facet.toLowerCase());
+    }
+  });
+
+  it("the aggregate is not emitted when the collection is unknown", () => {
+    const { sitePathSegment: _omit, ...noSegment } = CONTEXT;
+    void _omit;
+    const irs = compileRecipeSet([pageTemplate], noSegment);
+    expect(
+      irs.find((ir) => ir.recipeHandle === PAGE_TEMPLATE_BASE_TEMPLATES_AGGREGATE_HANDLE)
+    ).toBeUndefined();
   });
 
   it("a stale baseline never blocks writes to items created in the same run", async () => {

@@ -1195,6 +1195,20 @@ export const buildAction = async ({
     return remote;
   };
 
+  // Path reads for `SetBaseTemplates.pathBases` distrust cached NULLS:
+  // the referenced tenant scaffolding (e.g. the collection `Page`
+  // template) can be created MID-PUSH by a `CreateSiteFromTemplate` in
+  // an earlier IR, after an earlier lookup already cached "missing" in
+  // the shared snapshot cache. Positive cache entries are still used;
+  // misses re-read live (and cache a hit for later ops).
+  const readPathBaseDistrustingNull = async (path: string): Promise<RemoteItem | null> => {
+    const cached = pathSnapshotCache?.get(path);
+    if (cached) return cached;
+    const remote = await client.getItem({ path });
+    if (remote) pathSnapshotCache?.set(path, remote);
+    return remote;
+  };
+
   // Late-path resolution: SetField ops whose target is materialised
   // mid-push (e.g. dictionary phrases under a CreateSiteFromTemplate)
   // carry an optional `latePath`. If the op's itemRefKey isn't yet in
@@ -1308,7 +1322,7 @@ export const buildAction = async ({
           itemRefKey: op.itemRefKey,
           desiredFields: setBaseTemplatesDesired(
             op,
-            await resolveEffectiveBaseTemplates(op, cachedReadByPath)
+            await resolveEffectiveBaseTemplates(op, readPathBaseDistrustingNull)
           ),
           policy: op.policy,
           remote,

@@ -29,6 +29,7 @@ import {
   buildAvailableRenderingsAggregate,
   buildComponentSectionSubtreeOwnershipAggregate,
   buildEnumerationsRootAggregate,
+  buildPageTemplateBaseTemplatesAggregate,
   buildPlaceholderSettingsAggregate,
   buildSharedDataFolderInsertOptionsAggregate,
   buildSharedDataFoldersAggregate,
@@ -265,6 +266,13 @@ const appendTrailingAggregates = ({
   sharedSubfolders: ReadonlySet<string>;
 }): void => {
   const trailing = [
+    // Re-assert page-template base templates AFTER sites: on a push that
+    // creates the site collection, the SXA scaffold
+    // `Project/<collection>/Page` only exists once the site recipe
+    // (rank 5) has applied, so the early per-recipe resolution fell
+    // back to the Foundation facets. Idempotent when the early pass
+    // already resolved.
+    buildPageTemplateBaseTemplatesAggregate(recipes, context, setSite),
     buildTemplatesMappingAggregate(recipes, setSite),
     buildAvailableRenderingsAggregate(recipes, context),
     // The shared-data-folder Insert Options run AFTER the per-recipe IRs

@@ -1026,12 +1026,40 @@ const setFieldDesired = (op: SetFieldOp): FieldValue[] => [
   },
 ];
 
-const setBaseTemplatesDesired = (op: SetBaseTemplatesOp): FieldValue[] => [
+const setBaseTemplatesDesired = (
+  op: SetBaseTemplatesOp,
+  effectiveBaseTemplates: readonly string[]
+): FieldValue[] => [
   {
     fieldId: SYSTEM_FIELDS.BASE_TEMPLATE,
-    value: { kind: "ref-guid-list", values: op.baseTemplates },
+    value: { kind: "ref-guid-list", values: [...effectiveBaseTemplates] },
   },
 ];
+
+/**
+ * Resolve a SetBaseTemplates op's effective base list: the static
+ * `baseTemplates` plus, per `pathBases` entry, either the live item found
+ * at the tenant path or that entry's compile-time fallbacks. Deduped so
+ * a fallback GUID that also appears statically isn't written twice.
+ */
+const resolveEffectiveBaseTemplates = async (
+  op: SetBaseTemplatesOp,
+  readByPath: (path: string) => Promise<RemoteItem | null>
+): Promise<string[]> => {
+  const effective: string[] = [...op.baseTemplates];
+  for (const pathBase of op.pathBases ?? []) {
+    const remote = await readByPath(pathBase.path);
+    if (remote) {
+      effective.push(normaliseGuid(remote.itemId));
+    } else {
+      effective.push(...pathBase.fallbackTemplates);
+    }
+  }
+  return [...new Set(effective.map((guid) => guid.toLowerCase()))];
+};
+
+/** Lowercase, brace-less GUID — the shape `ref-guid-list` values carry. */
+const normaliseGuid = (guid: string): string => guid.replace(/[{}]/g, "").toLowerCase();
 
 const setStandardValuesDesired = (op: SetStandardValuesOp): FieldValue[] => [
   {
@@ -1253,7 +1281,10 @@ export const buildAction = async ({
           index,
           op,
           itemRefKey: op.itemRefKey,
-          desiredFields: setBaseTemplatesDesired(op),
+          desiredFields: setBaseTemplatesDesired(
+            op,
+            await resolveEffectiveBaseTemplates(op, cachedReadByPath)
+          ),
           policy: op.policy,
           remote,
           capturedItemIds,

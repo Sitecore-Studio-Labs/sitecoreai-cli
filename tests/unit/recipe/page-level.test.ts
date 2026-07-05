@@ -115,6 +115,25 @@ describe("compilePageTemplateRecipe", () => {
     }
   });
 
+  it("inherits the collection's scaffolded Page template by path (facet fallback) when the collection is known", () => {
+    const ir2 = compilePageTemplateRecipe(articlePage, {
+      ...CONTEXT,
+      sitePathSegment: "Acme Collection/acme",
+    });
+    const base = ir2.operations.find(
+      (op): op is SetBaseTemplatesOp => op.op === "SetBaseTemplates"
+    )!;
+    // Static list carries only Standard — the SXA page chain arrives via
+    // the path-resolved collection Page (or its facet fallbacks).
+    expect(base.baseTemplates).toEqual([STANDARD_TEMPLATE_ID]);
+    expect(base.pathBases).toEqual([
+      {
+        path: "/sitecore/templates/Project/Acme Collection/Page",
+        fallbackTemplates: [...SXA_HEADLESS_PAGE_BASE_TEMPLATES],
+      },
+    ]);
+  });
+
   it("stamps the standard-values __Renderings with the JSON-layout shell", () => {
     const layout = findSetField(ir.operations, "page-template-layout:article-page@1");
     expect(layout.itemRefKey).toBe(standardValuesId(SITE, "article-page@1"));

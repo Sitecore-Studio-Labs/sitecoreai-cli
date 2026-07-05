@@ -1011,6 +1011,14 @@ export interface DatasourceTemplateInput {
    * unset so content templates stay shape-pure.
    */
   additionalBaseTemplates?: readonly string[];
+  /**
+   * Base templates resolved by TENANT PATH at apply time, forwarded to
+   * the synthesised `SetBaseTemplates` op's `pathBases`. Used by
+   * `compilePageTemplateRecipe` to inherit the SXA-scaffolded
+   * `/sitecore/templates/Project/<collection>/Page` when the tenant has
+   * one, with the raw SXA Foundation page facets as the fallback.
+   */
+  baseTemplatePathBases?: readonly { path: string; fallbackTemplates: string[] }[];
 }
 
 export function emitDatasourceTemplate(
@@ -1049,6 +1057,9 @@ export function emitDatasourceTemplate(
     label: `base-templates:${recipe.handle}`,
     itemRefKey: tplRefKey,
     baseTemplates: [STANDARD_TEMPLATE_ID, ...(recipe.additionalBaseTemplates ?? [])],
+    ...(recipe.baseTemplatePathBases?.length
+      ? { pathBases: recipe.baseTemplatePathBases.map((entry) => ({ ...entry })) }
+      : {}),
   } satisfies SetBaseTemplatesOp);
 
   for (const group of groupFieldsBySection(recipe.fields)) {

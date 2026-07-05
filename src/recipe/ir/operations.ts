@@ -220,6 +220,26 @@ export const SetBaseTemplatesOpSchema = z.object({
   /** RefKey of the target item. */
   itemRefKey: GUID,
   baseTemplates: z.array(GUID).min(1),
+  /**
+   * Base templates resolved by TENANT PATH at plan/apply time, appended
+   * to `baseTemplates`. For each entry the executor runs
+   * `getItem({ path })`: found → the live item's id joins the base list;
+   * missing → `fallbackTemplates` join instead.
+   *
+   * Exists for pre-existing tenant scaffolding whose GUID is per-tenant
+   * and therefore unknowable at compile time — the canonical case is a
+   * page template inheriting the SXA-scaffolded
+   * `/sitecore/templates/Project/<collection>/Page` when present,
+   * falling back to the raw SXA Foundation page facets when not.
+   */
+  pathBases: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        fallbackTemplates: z.array(GUID).default([]),
+      })
+    )
+    .optional(),
 });
 
 export const SetStandardValuesOpSchema = z.object({

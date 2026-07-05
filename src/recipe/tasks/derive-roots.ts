@@ -13,6 +13,7 @@ import { createScaiError } from "@/shared/errors";
  *
  *   templates / components → /sitecore/templates/Project/<collection>/<site>/Components
  *   content models         → /sitecore/templates/Project/<collection>/<site>/Content Models
+ *   page templates         → /sitecore/templates/Project/<collection>/<site>/Pages
  *   renderings             → /sitecore/layout/Renderings/Project/<collection>/<site>/Components
  *   partial designs        → /sitecore/content/<collection>/<site>/Presentation/Partial Designs
  *   page designs           → /sitecore/content/<collection>/<site>/Presentation/Page Designs
@@ -32,10 +33,13 @@ import { createScaiError } from "@/shared/errors";
  *
  * Derivation is the *fallback*: explicit `recipeRoots` / `*Root` config and
  * CLI-flag overrides still win at resolution time (see
- * `plans/recipe-roots-derivation.md`). `pageTemplates`, `pages`, and a
- * singular placeholder-settings create root are intentionally not derived —
- * they fall back to `templates` / are set explicitly when a tenant needs them,
- * matching the orchestrator's behaviour.
+ * `plans/recipe-roots-derivation.md`). `pages` is intentionally not
+ * derived — it is set explicitly when a tenant needs it, matching the
+ * orchestrator's behaviour. `pageTemplates` derives to
+ * `<projectTemplates>/Pages` (its own bucket, sibling of Components /
+ * Content Models) — earlier it wasn't derived and fell back to the
+ * Components bucket, which mixed page templates in with component
+ * datasource templates.
  */
 export const deriveRecipeRoots = (site: string, siteCollection: string): EnvironmentRecipeRoots => {
   const trimmedSite = site.trim();
@@ -59,6 +63,11 @@ export const deriveRecipeRoots = (site: string, siteCollection: string): Environ
     templates: `${projectTemplates}/Components`,
     components: `${projectTemplates}/Components`,
     contentModels: `${projectTemplates}/Content Models`,
+    // Page templates get their own bucket, sibling of Components /
+    // Content Models. Without this the compiler's fallback dumped them
+    // into `<templates>` — i.e. the Components bucket — mixing page
+    // templates in with component datasource templates.
+    pageTemplates: `${projectTemplates}/Pages`,
     renderings: `${projectRenderings}/Components`,
     partialDesigns: `${siteContentRoot}/Presentation/Partial Designs`,
     pageDesigns: `${siteContentRoot}/Presentation/Page Designs`,

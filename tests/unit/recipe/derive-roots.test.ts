@@ -14,6 +14,7 @@ describe("deriveRecipeRoots — golden SXA Headless layout", () => {
       templates: "/sitecore/templates/Project/showcase/demo-registry/Components",
       components: "/sitecore/templates/Project/showcase/demo-registry/Components",
       contentModels: "/sitecore/templates/Project/showcase/demo-registry/Content Models",
+      pageTemplates: "/sitecore/templates/Project/showcase/demo-registry/Pages",
       renderings: "/sitecore/layout/Renderings/Project/showcase/demo-registry/Components",
       partialDesigns: "/sitecore/content/showcase/demo-registry/Presentation/Partial Designs",
       pageDesigns: "/sitecore/content/showcase/demo-registry/Presentation/Page Designs",

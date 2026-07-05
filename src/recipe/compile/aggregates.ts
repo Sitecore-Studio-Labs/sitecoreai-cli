@@ -66,6 +66,7 @@ import {
   PLACEHOLDER_TEMPLATE_ID,
   SITECORE_TEMPLATES,
   STANDARD_TEMPLATE_ID,
+  SXA_HEADLESS_PAGE_BASE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import { type ComponentSectionRecipe, type Recipe, resolveAllowedHandles } from "../schema/recipe";
@@ -134,6 +135,19 @@ export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
  * and every component naming the key in `placedIn`.
  */
 export const PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE = "__placeholder-settings__";
+
+/**
+ * Stable handle for the LATE re-assertion of every page-template's base
+ * templates. The per-recipe `SetBaseTemplates` (rank 0) resolves the
+ * SXA-scaffolded `/sitecore/templates/Project/<collection>/Page` by
+ * path — but on an install that CREATES the site collection in the same
+ * push, that scaffold only exists after the `site` recipe (rank 5)
+ * applies, so the early resolution falls back to the raw Foundation
+ * facets. This trailing aggregate re-emits the same op AFTER sites: a
+ * drift-free skip when the early pass already resolved, a corrective
+ * rewrite when it fell back.
+ */
+export const PAGE_TEMPLATE_BASE_TEMPLATES_AGGREGATE_HANDLE = "__page-template-base-templates__";
 
 /**
  * Stable handle for the synthetic IR that materialises subtree-level
@@ -257,6 +271,54 @@ const availableRenderingsSectionItem = (
     name: section,
     fields,
   } satisfies CreateItemOp;
+};
+
+/**
+ * Build the LATE page-template base-templates IR — one `SetBaseTemplates`
+ * per page-template recipe, identical to the one its own compile emits
+ * (Standard template + the collection `Page` resolved by path, Foundation
+ * facets as fallback). Appended AFTER the ranked recipe IRs so it runs
+ * after `site` recipes: on a push that creates the site collection, the
+ * SXA scaffold `/sitecore/templates/Project/<collection>/Page` only
+ * exists once the site has materialised — the early per-recipe op then
+ * fell back to the facets, and this pass corrects the chain. Idempotent:
+ * when the early pass already resolved the scaffold, this op plans as a
+ * drift-free skip. Returns null when no page-template recipes exist or
+ * the collection is unknown (`sitePathSegment` unset).
+ */
+export const buildPageTemplateBaseTemplatesAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext,
+  site: string
+): OperationIr | null => {
+  const collection = context.sitePathSegment?.split("/")[0]?.trim();
+  if (!collection) return null;
+
+  const policy = defaultPolicyForRecipe("page-template");
+  const operations: Operation[] = [];
+  for (const recipe of recipes) {
+    if (recipe.kind !== "page-template") continue;
+    operations.push({
+      op: "SetBaseTemplates",
+      policy,
+      label: `page-template-base-templates:${recipe.handle}`,
+      itemRefKey: templateId(site, recipe.handle),
+      baseTemplates: [STANDARD_TEMPLATE_ID],
+      pathBases: [
+        {
+          path: `/sitecore/templates/Project/${collection}/Page`,
+          fallbackTemplates: [...SXA_HEADLESS_PAGE_BASE_TEMPLATES],
+        },
+      ],
+    } satisfies SetBaseTemplatesOp);
+  }
+  if (operations.length === 0) return null;
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: PAGE_TEMPLATE_BASE_TEMPLATES_AGGREGATE_HANDLE,
+    operations,
+  });
 };
 
 /**

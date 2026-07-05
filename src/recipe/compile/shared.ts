@@ -1028,6 +1028,15 @@ export interface DatasourceTemplateInput {
    * one, with the raw SXA Foundation page facets as the fallback.
    */
   baseTemplatePathBases?: readonly { path: string; fallbackTemplates: string[] }[];
+  /**
+   * Drop the implicit Standard template from the synthesised
+   * `SetBaseTemplates`. Set when `additionalBaseTemplates` already
+   * chains Standard transitively (page templates: the SXA `Base Page`
+   * facet carries it) — listing it explicitly is redundant noise in the
+   * Content Editor's inheritance view. Callers using this MUST provide
+   * a non-empty `additionalBaseTemplates` (base lists can't be empty).
+   */
+  omitStandardBaseTemplate?: boolean;
 }
 
 export function emitDatasourceTemplate(
@@ -1065,7 +1074,10 @@ export function emitDatasourceTemplate(
     policy,
     label: `base-templates:${recipe.handle}`,
     itemRefKey: tplRefKey,
-    baseTemplates: [STANDARD_TEMPLATE_ID, ...(recipe.additionalBaseTemplates ?? [])],
+    baseTemplates: [
+      ...(recipe.omitStandardBaseTemplate ? [] : [STANDARD_TEMPLATE_ID]),
+      ...(recipe.additionalBaseTemplates ?? []),
+    ],
     ...(recipe.baseTemplatePathBases?.length
       ? { pathBases: recipe.baseTemplatePathBases.map((entry) => ({ ...entry })) }
       : {}),

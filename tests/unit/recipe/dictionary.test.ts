@@ -110,13 +110,70 @@ describe("compileDictionaryRecipe — host-site resolution", () => {
     expect(folder?.path).toBe(`/sitecore/content/Direct/Path/Dictionary/${SHARED_LABELS.name}`);
   });
 
-  it("throws INPUT_INVALID when neither sitesByHandle nor crossRecipeSitePaths resolves the host site", () => {
+  it("throws INPUT_INVALID when an explicit host site resolves via neither sitesByHandle nor crossRecipeSitePaths", () => {
     expect(() =>
       compileDictionaryRecipe(SHARED_LABELS, {
         templatesRoot: CONTEXT_WITH_HOST.templatesRoot,
         renderingsRoot: CONTEXT_WITH_HOST.renderingsRoot,
       })
-    ).toThrow(/host SiteRecipe 'showcase-shared@1' to be in the recipe set/);
+    ).toThrow(/host SiteRecipe 'showcase-shared@1'.*is not in the recipe set/);
+  });
+});
+
+/**
+ * The common case: a dictionary with NO `site` handle. It installs into
+ * the deploy's TARGET site (`context.sitePathSegment`, the
+ * `<siteCollection>/<site>` from the active env profile) — parity with
+ * how pages and enums install, with no in-set SiteRecipe required.
+ */
+describe("compileDictionaryRecipe — no host site (installs into deploy target)", () => {
+  const SITELESS_LABELS: DictionaryRecipe = {
+    kind: "dictionary",
+    schemaVersion: "1",
+    handle: "core-ui-labels@1",
+    name: "CoreUiLabels",
+    displayName: "Core UI Labels",
+    primaryLocale: "en",
+    phrases: { "cta-sign-up": { defaultValue: "Sign up" } },
+  };
+
+  const CONTEXT_DEPLOY_TARGET: CompileContext = {
+    templatesRoot: "/sitecore/templates/Project/Showcase/Components",
+    renderingsRoot: "/sitecore/layout/Renderings/Project/Showcase",
+    site: "showcase-site",
+    sitePathSegment: "Showcase/showcase-site",
+  };
+
+  it("lands the Dictionary Folder under /sitecore/content/<sitePathSegment>/Dictionary/<name>", () => {
+    const ir = compileDictionaryRecipe(SITELESS_LABELS, CONTEXT_DEPLOY_TARGET);
+    const folder = ir.operations.find(
+      (o): o is CreateItemOp => o.op === "CreateItem" && o.label.startsWith("dictionary-folder:")
+    );
+    expect(folder?.path).toBe(
+      `/sitecore/content/Showcase/showcase-site/Dictionary/${SITELESS_LABELS.name}`
+    );
+  });
+
+  it("seeds site-scoped refKeys off context.site so re-pushes stay stable", () => {
+    const ir = compileDictionaryRecipe(SITELESS_LABELS, CONTEXT_DEPLOY_TARGET);
+    const entry = ir.operations.find(
+      (o): o is CreateItemOp => o.op === "CreateItem" && o.label.startsWith("dictionary-entry:")
+    );
+    expect(entry?.id).toBe(dictionaryPhraseId("showcase-site", "cta-sign-up"));
+  });
+
+  it("compiles WITHOUT any sitesByHandle / crossRecipeSitePaths wiring", () => {
+    // No in-set SiteRecipe is needed — the whole point of the pattern.
+    expect(() => compileDictionaryRecipe(SITELESS_LABELS, CONTEXT_DEPLOY_TARGET)).not.toThrow();
+  });
+
+  it("throws a targeted INPUT_INVALID when the deploy target site is unconfigured", () => {
+    expect(() =>
+      compileDictionaryRecipe(SITELESS_LABELS, {
+        templatesRoot: CONTEXT_DEPLOY_TARGET.templatesRoot,
+        renderingsRoot: CONTEXT_DEPLOY_TARGET.renderingsRoot,
+      })
+    ).toThrow(/has no host site.*no site path is configured/);
   });
 });
 

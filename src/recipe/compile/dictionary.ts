@@ -34,14 +34,17 @@ import { joinPath, versionedField, type CompileContext } from "./shared";
  *   - A `__Help text` (description) shared field — optional, sourced
  *     from `phrases[*].description`. Translator-facing context only.
  *
- * **Host-site resolution.** `recipe.site` is a HandleString pointing
- * at a `SiteRecipe`. The compile context's `sitesByHandle` map
- * resolves that handle to the host SiteRecipe; the dictionary's
- * content-tree path is composed from the host site's resolved
+ * **Host-site resolution.** By default a dictionary has NO `site` and
+ * installs into the deploy's TARGET site — the compiler composes
+ * `/sitecore/content/<context.sitePathSegment>` (the
+ * `<siteCollection>/<site>` from the active env profile), the same
+ * location pages and enums install into. No in-set `SiteRecipe` is
+ * required. When `recipe.site` IS set (the shared-site override), it
+ * points at a `SiteRecipe`; the compile context's `crossRecipeSitePaths`
+ * / `sitesByHandle` resolves that handle to the host site's
  * `<collectionPath>/<siteName>` shape (same logic
- * `compileSiteRecipe`'s `resolveSiteContentTreePath` uses). Standalone
- * callers without `sitesByHandle` get an INPUT_INVALID error pointing
- * at the missing wiring.
+ * `compileSiteRecipe`'s `resolveSiteContentTreePath` uses). Either way,
+ * an unresolvable target yields an INPUT_INVALID with a targeted hint.
  *
  * **Why `Dictionary Folder` + `Dictionary Entry` templates use
  * `ref-path` `templateOf`.** Sub-milestone A's introspection focused
@@ -67,24 +70,32 @@ export function compileDictionaryRecipe(
   const sitePath = resolveHostSitePath(recipe, context);
   if (!sitePath) {
     throw createScaiError(
-      `compileDictionaryRecipe requires the host SiteRecipe '${recipe.site}' to be in the recipe set (or to be pre-seeded via context.sitesByHandle / context.crossRecipeSitePaths). Dictionary '${recipe.handle}' has no resolvable content-tree path.`,
+      recipe.site
+        ? `compileDictionaryRecipe: the host SiteRecipe '${recipe.site}' declared on dictionary '${recipe.handle}' is not in the recipe set (and no matching context.crossRecipeSitePaths entry was pre-seeded), so it has no resolvable content-tree path.`
+        : `compileDictionaryRecipe: dictionary '${recipe.handle}' has no host site. It installs into the deploy's target site, but no site path is configured.`,
       "INPUT_INVALID",
       {
-        hint:
-          "Add the SiteRecipe with handle '" +
-          recipe.site +
-          "' to the same `compileRecipeSet` call, or set `context.crossRecipeSitePaths` so the dictionary can compose `<sitePath>/Dictionary/<recipe.name>`.",
+        hint: recipe.site
+          ? `Add the SiteRecipe with handle '${recipe.site}' to the same push/compile, or drop the \`site\` field so the dictionary installs into the deploy's target site.`
+          : "Set `site` and `siteCollection` on the active envProfile in sitecoreai.cli.json — scai lands the dictionary at `/sitecore/content/<siteCollection>/<site>/Dictionary/<name>`, the same target every page/enum install uses.",
       }
     );
   }
 
+  // GUID-seed handle for site-scoped refKeys. When the dictionary pins
+  // an explicit host site, seed off that handle; otherwise seed off the
+  // deploy's target site name (falling back to the `default` sentinel,
+  // mirroring `resolveSeedSite`) so identity stays stable across
+  // re-pushes of the same install.
+  const siteSeed = recipe.site ?? context.site ?? "default";
+
   const policy = defaultPolicyForRecipe(recipe.kind);
   const operations: Operation[] = [];
 
-  // Folder identity is site-scoped on the recipe.site handle so two
+  // Folder identity is site-scoped on the `siteSeed` handle so two
   // DictionaryRecipes targeting two different sites can share the
   // same recipe.name (the host-site qualifier disambiguates).
-  const folderRefKey = dictionaryFolderId(recipe.site, recipe.name);
+  const folderRefKey = dictionaryFolderId(siteSeed, recipe.name);
   const dictionaryRootPath = joinPath(sitePath, "Dictionary");
   const folderPath = joinPath(dictionaryRootPath, recipe.name);
 
@@ -120,7 +131,7 @@ export function compileDictionaryRecipe(
   const phraseKeys = Object.keys(recipe.phrases).sort();
   for (const phraseKey of phraseKeys) {
     const phrase = recipe.phrases[phraseKey];
-    const entryRefKey = dictionaryPhraseId(recipe.site, phraseKey);
+    const entryRefKey = dictionaryPhraseId(siteSeed, phraseKey);
     const entryPath = joinPath(folderPath, phraseKey);
 
     operations.push({
@@ -199,30 +210,44 @@ export function compileDictionaryRecipe(
 }
 
 /**
- * Resolve a `DictionaryRecipe`'s host-site content-tree path. Two
- * resolution paths:
+ * Resolve a `DictionaryRecipe`'s host-site content-tree path.
+ *
+ * The common case is a dictionary with NO `site` — it installs into the
+ * deploy's TARGET site, exactly like pages and enums: compose
+ * `/sitecore/content/<context.sitePathSegment>` (the
+ * `<siteCollection>/<site>` derived from the active env profile). No
+ * in-set `SiteRecipe` is required.
+ *
+ * When the dictionary DOES pin an explicit `site` handle (the
+ * shared-site override), resolve it against the in-set sites:
  *
  *   1. `context.crossRecipeSitePaths[recipe.site]` — pre-seeded by
  *      `compileRecipeSet` from every `SiteRecipe`'s resolved
- *      `<collectionPath>/<siteName>` shape. Preferred for the
- *      common multi-recipe compile.
+ *      `<collectionPath>/<siteName>` shape.
  *   2. `context.sitesByHandle.get(recipe.site)` — when only the
  *      recipe set is available, derive the path the same way
  *      `compileSiteRecipe`'s `resolveSiteContentTreePath` does
  *      (collectionPath override → collectionName-derived default).
  *
- * Returns `undefined` when neither resolves; the caller throws an
- * INPUT_INVALID with a hint.
+ * Returns `undefined` when nothing resolves; the caller throws an
+ * INPUT_INVALID with a targeted hint.
  */
 const resolveHostSitePath = (
   recipe: DictionaryRecipe,
   context: CompileContext
 ): string | undefined => {
-  const pre = context.crossRecipeSitePaths?.[recipe.site];
-  if (pre) return trimEndChar(pre, "/");
-  const host = context.sitesByHandle?.get(recipe.site);
-  if (!host) return undefined;
-  return deriveSitePath(host);
+  if (recipe.site) {
+    const pre = context.crossRecipeSitePaths?.[recipe.site];
+    if (pre) return trimEndChar(pre, "/");
+    const host = context.sitesByHandle?.get(recipe.site);
+    return host ? deriveSitePath(host) : undefined;
+  }
+  // No host override → land under the deploy's target site, mirroring
+  // the `{site}` substitution pages use (`page.ts` `resolvePagePath`).
+  if (context.sitePathSegment) {
+    return `/sitecore/content/${trimEndChar(context.sitePathSegment, "/")}`;
+  }
+  return undefined;
 };
 
 const deriveSitePath = (site: Extract<Recipe, { kind: "site" }>): string | undefined => {

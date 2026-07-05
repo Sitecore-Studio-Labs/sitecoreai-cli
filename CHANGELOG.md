@@ -1,5 +1,25 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.17.0
+
+### Minor Changes
+
+- 86c7e74: Brandable image defaults: image fields can declare a semantic `role` (`hero`, `avatar`, `product`, …) — on `FieldDefinition` for SV defaults and on structured image values for content items/pages. A push/compile run can then supply `--image-defaults <file.json>` (or `SITECOREAI_IMAGE_DEFAULTS`), a flat role → external-URL map; any image whose role appears in the map materialises the mapped URL instead of the recipe-authored one, so a single brand-agnostic recipe yields brand-appropriate media per install. The refKey derives from the effective URL, so different brands' maps produce distinct media items on the same field. No map or unmatched role → recipe defaults apply unchanged; non-http(s) map values fail fast with `INPUT_INVALID`.
+
+### Patch Changes
+
+- 7e0aecc: Items created during the current push run bypass three-way baseline
+  classification for their follow-up update ops.
+
+  A brand-new item cannot carry CMS edits, but a stale baseline (same
+  deterministic refKey, previous item at an old path — exactly what a
+  layout relocation like the Components → Pages bucket move produces)
+  made the fresh item's server-default field values classify as
+  `cms-edit`/`conflict`, blocking the write under the default conflict
+  policy and shipping items with default values. The executor now tracks
+  every CreateItem applied in the run (shared across the push's IRs) and
+  the planner skips baseline lookup for update ops targeting them.
+
 ## 0.16.0
 
 ### Minor Changes

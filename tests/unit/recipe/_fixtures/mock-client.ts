@@ -108,7 +108,11 @@ export class MockAuthoringClient implements AuthoringApiClient {
     const parentItem = this.peek({ path: input.parent }) ?? this.peek({ itemId: input.parent });
     const parentPath = parentItem?.path ?? input.parent;
     const itemPath = `${parentPath.replace(/\/$/, "")}/${input.name}`;
-    const itemId = randomUUID();
+    // Faithful to the real Authoring API: `createItem` returns DASHLESS
+    // itemIds. Keeping the mock dashed hid a real bug — dashless captured
+    // ids were written verbatim into multilist fields, which Sitecore
+    // silently ignores (e.g. `__Masters` insert options never resolved).
+    const itemId = randomUUID().replace(/-/g, "");
 
     const item: MockItem = {
       itemId,

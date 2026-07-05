@@ -41,6 +41,7 @@ import {
   sharedDataFolderStandardValuesId,
   sharedDataFolderTemplateId,
   siteDataFolderTemplateId,
+  siteDataFolderTemplateIdForLocation,
   siteDataRootStandardValuesId,
   templateId,
 } from "../items/guids";
@@ -68,7 +69,14 @@ import {
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import { type ComponentSectionRecipe, type Recipe, resolveAllowedHandles } from "../schema/recipe";
-import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
+import {
+  datasourceTemplateHandles,
+  joinPath,
+  sharedField,
+  siteOf,
+  versionedField,
+  type CompileContext,
+} from "./shared";
 
 /** Stable handle for the per-section `Available Renderings` aggregate. */
 export const AVAILABLE_RENDERINGS_AGGREGATE_HANDLE = "__available-renderings__";
@@ -335,8 +343,17 @@ export const buildComponentSectionSubtreeOwnershipAggregate = (
  * Recorded by the pre-pass walk in `compileRecipeSet`.
  */
 export interface SharedSubfolderContribution {
-  /** Recipe handle — used as the seed for `templateId(site, handle)`. */
+  /** Recipe handle — display/dedup identity for the contribution. */
   recipeHandle: string;
+  /**
+   * The content-template handles the recipe's datasource items conform
+   * to (see `datasourceTemplateHandles`). The shared folder's Insert
+   * Options union references THESE — not the recipe handle — because
+   * external-template components (`datasource.template` /
+   * `datasource.templates[]`) never create a template under their own
+   * handle.
+   */
+  datasourceTemplateHandles: string[];
 }
 
 /**
@@ -357,7 +374,10 @@ export const detectSharedSubfolders = (
       if (location.scope !== "site" || !location.subfolder) continue;
       const key = `${site}::${location.subfolder}`;
       const list = all.get(key) ?? [];
-      list.push({ recipeHandle: recipe.handle });
+      list.push({
+        recipeHandle: recipe.handle,
+        datasourceTemplateHandles: datasourceTemplateHandles(recipe),
+      });
       all.set(key, list);
     }
   }
@@ -505,10 +525,11 @@ export const buildSharedDataFolderInsertOptionsAggregate = (
     const { subfolder, segments } = subfolderSegmentsOf(key);
     if (segments.length === 0) continue;
 
-    // Sort by handle so re-pushes don't drift the field value.
-    const sortedHandles = contributions
-      .map((c) => c.recipeHandle)
-      .sort((a, b) => a.localeCompare(b));
+    // Union of every contribution's datasource template handles,
+    // deduped + sorted so re-pushes don't drift the field value.
+    const sortedHandles = [
+      ...new Set(contributions.flatMap((c) => c.datasourceTemplateHandles)),
+    ].sort((a, b) => a.localeCompare(b));
     operations.push({
       op: "SetField",
       policy,
@@ -531,27 +552,54 @@ export const buildSharedDataFolderInsertOptionsAggregate = (
   });
 };
 
-/** Walk recipes once for the site-data-root union: singleton handles + shared subfolders. */
+/**
+ * Walk recipes once for the site-data-root union. Mirrors the template
+ * selection in `emitSiteDataFolderTemplate` /`emitSiteSubfolderPool`
+ * exactly — every ref this aggregate emits must name a template some
+ * per-recipe compile actually creates:
+ *
+ *   - shared subfolder (≥2 recipes)      → shared `<Subfolder> Data Folder`
+ *   - singleton WITH `allowedTemplates`  → per-LOCATION template
+ *   - singleton WITHOUT                  → legacy per-RECIPE template
+ */
 const collectSiteDataRootMembers = (
   recipes: readonly Recipe[],
   sharedSubfolders: ReadonlySet<string>
-): { singletonHandles: string[]; sharedSubfolderRefs: string[]; hasAny: boolean } => {
-  const singletonHandles = new Set<string>();
+): {
+  legacySingletonHandles: string[];
+  perLocationRefs: { recipeHandle: string; subfolder: string }[];
+  sharedSubfolderRefs: string[];
+  hasAny: boolean;
+} => {
+  const legacySingletonHandles = new Set<string>();
+  const perLocationKeys = new Set<string>();
+  const perLocationRefs: { recipeHandle: string; subfolder: string }[] = [];
   const sharedSubfolderRefs = new Set<string>();
   let hasAny = false;
   for (const recipe of recipes) {
     if (recipe.kind !== "component-template") continue;
-    let hasSingleton = false;
     for (const location of recipe.datasource?.locations ?? []) {
       if (location.scope !== "site" || !location.subfolder) continue;
       hasAny = true;
-      if (sharedSubfolders.has(location.subfolder)) sharedSubfolderRefs.add(location.subfolder);
-      else hasSingleton = true;
+      if (sharedSubfolders.has(location.subfolder)) {
+        sharedSubfolderRefs.add(location.subfolder);
+      } else if ((location.allowedTemplates ?? []).length > 0) {
+        const key = `${recipe.handle}::${location.subfolder}`;
+        if (!perLocationKeys.has(key)) {
+          perLocationKeys.add(key);
+          perLocationRefs.push({ recipeHandle: recipe.handle, subfolder: location.subfolder });
+        }
+      } else {
+        legacySingletonHandles.add(recipe.handle);
+      }
     }
-    if (hasSingleton) singletonHandles.add(recipe.handle);
   }
+  perLocationRefs.sort((a, b) =>
+    `${a.recipeHandle}::${a.subfolder}`.localeCompare(`${b.recipeHandle}::${b.subfolder}`)
+  );
   return {
-    singletonHandles: [...singletonHandles].sort((a, b) => a.localeCompare(b)),
+    legacySingletonHandles: [...legacySingletonHandles].sort((a, b) => a.localeCompare(b)),
+    perLocationRefs,
     sharedSubfolderRefs: [...sharedSubfolderRefs].sort((a, b) => a.localeCompare(b)),
     hasAny,
   };
@@ -573,10 +621,8 @@ export const buildSiteDataRootAggregate = (
 ): OperationIr | null => {
   if (!context.contentItemsRoot) return null;
 
-  const { singletonHandles, sharedSubfolderRefs, hasAny } = collectSiteDataRootMembers(
-    recipes,
-    sharedSubfolders
-  );
+  const { legacySingletonHandles, perLocationRefs, sharedSubfolderRefs, hasAny } =
+    collectSiteDataRootMembers(recipes, sharedSubfolders);
   if (!hasAny) return null;
 
   const policy = defaultPolicyForRecipe("component-template");
@@ -585,7 +631,10 @@ export const buildSiteDataRootAggregate = (
 
   const refKeys: string[] = [
     SITECORE_TEMPLATES.FOLDER,
-    ...singletonHandles.map((handle) => siteDataFolderTemplateId(site, handle)),
+    ...legacySingletonHandles.map((handle) => siteDataFolderTemplateId(site, handle)),
+    ...perLocationRefs.map(({ recipeHandle, subfolder }) =>
+      siteDataFolderTemplateIdForLocation(site, recipeHandle, subfolder)
+    ),
     ...sharedSubfolderRefs.map((subfolder) => sharedDataFolderTemplateId(site, subfolder)),
   ];
 

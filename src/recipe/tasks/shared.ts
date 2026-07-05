@@ -309,6 +309,7 @@ export const withDerivedRecipeRoots = (
     partialDesignsRoot: environment.partialDesignsRoot ?? derived.partialDesigns,
     pageDesignsRoot: environment.pageDesignsRoot ?? derived.pageDesigns,
     contentItemsRoot: environment.contentItemsRoot ?? derived.contentItems,
+    mediaLibraryRoot: environment.mediaLibraryRoot ?? derived.mediaLibrary,
     headlessVariantsRoot: environment.headlessVariantsRoot ?? derived.headlessVariants,
     availableRenderingsRoot: environment.availableRenderingsRoot ?? derived.availableRenderings,
     presentationStylesRoot: environment.presentationStylesRoot ?? derived.presentationStyles,

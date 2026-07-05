@@ -15,6 +15,9 @@ import {
   placeholderSettingsId,
   renderingId,
   sectionId,
+  sharedDataFolderTemplateId,
+  siteDataFolderTemplateId,
+  siteDataFolderTemplateIdForLocation,
   standardValuesId,
   templateId,
   variantId,
@@ -664,6 +667,48 @@ describe("compileRecipeSet — Shared Data Folders aggregate", () => {
     expect((insertOptions!.value as { refKeys: string[] }).refKeys).toHaveLength(2);
   });
 
+  it("shared Insert Options union references each contributor's DATASOURCE templates, not its recipe handle", () => {
+    // A compatible-datasources contributor (datasource.templates[])
+    // creates no template under its own handle — the union must carry
+    // its listed content templates instead.
+    const compatible: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "link-list@1",
+      name: "LinkList",
+      displayName: "Link List",
+      datasource: {
+        templates: [{ handle: "link-list-content@1" }],
+        autoCreate: false,
+        openPropertiesAfterAdd: false,
+        locations: [{ scope: "site", subfolder: "ui/badges" }],
+      },
+    };
+    const irs = compileRecipeSet(
+      [componentWithSiteSubfolder("badge@1", "Badge", "ui/badges"), compatible],
+      CTX
+    );
+    const insertOptionsIr = irs.find(
+      (ir) => ir.recipeHandle === "__shared-data-folder-insert-options__"
+    );
+    const insertOptions = insertOptionsIr!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    const refKeys = (insertOptions!.value as { refKeys: string[] }).refKeys;
+    expect(refKeys).toContain(templateId(SITE, "badge@1"));
+    expect(refKeys).toContain(templateId(SITE, "link-list-content@1"));
+    expect(refKeys).not.toContain(templateId(SITE, "link-list@1"));
+    // The shared subfolder still lands in the site-data-root union as a
+    // shared template ref.
+    const rootAggregate = irs.find((ir) => ir.recipeHandle === "__site-data-root__");
+    const rootRefKeys = (
+      rootAggregate!.operations.find((op): op is SetFieldOp => op.op === "SetField")!.value as {
+        refKeys: string[];
+      }
+    ).refKeys;
+    expect(rootRefKeys).toContain(sharedDataFolderTemplateId(SITE, "ui/badges"));
+  });
+
   it("creates the shared Data Folder template BEFORE any folder item that references it", () => {
     // Regression: a shared family datasource folder (e.g. cards-and-lists
     // "Articles", shared by article-card + articles-list-grid +
@@ -743,6 +788,53 @@ describe("compileRecipeSet — Site Data Root aggregate", () => {
     const refKeys = (insertOptions!.value as { refKeys: string[] }).refKeys;
     // Folder template + 1 singleton (hero) + 1 shared subfolder (badges).
     expect(refKeys).toHaveLength(3);
+  });
+
+  it("references the per-LOCATION template for singletons with allowedTemplates — not the never-created legacy per-recipe template", () => {
+    // Regression: avatar-block@1's only site location declares
+    // `allowedTemplates`, so `emitSiteDataFolderTemplate` emits a
+    // per-LOCATION template and skips the legacy per-recipe one. The
+    // root aggregate referenced the legacy id anyway — a refKey no
+    // CreateItem defines, written to the tenant as a broken GUID.
+    const avatar: Recipe = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "avatar-block@1",
+      name: "AvatarBlock",
+      displayName: "Avatar Block",
+      section: { handle: "ui-section@1" },
+      datasource: {
+        templates: [{ handle: "author@1" }],
+        autoCreate: false,
+        openPropertiesAfterAdd: false,
+        locations: [
+          { scope: "site", subfolder: "Authors", allowedTemplates: [{ handle: "author@1" }] },
+        ],
+      },
+    };
+    const irs = compileRecipeSet([uiSection, avatar], CTX);
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__site-data-root__");
+    expect(aggregate).toBeDefined();
+    const insertOptions = aggregate!.operations.find(
+      (op): op is SetFieldOp => op.op === "SetField"
+    );
+    const refKeys = (insertOptions!.value as { refKeys: string[] }).refKeys;
+    expect(refKeys).toContain(
+      siteDataFolderTemplateIdForLocation(SITE, "avatar-block@1", "Authors")
+    );
+    expect(refKeys).not.toContain(siteDataFolderTemplateId(SITE, "avatar-block@1"));
+
+    // Closed loop: every refKey the aggregate emits must be defined by
+    // some CreateItem in the compiled set (or be the well-known Folder
+    // template) — an undefined refKey aborts or corrupts the apply.
+    const defined = new Set(
+      irs.flatMap((ir) =>
+        ir.operations.filter((op): op is CreateItemOp => op.op === "CreateItem").map((op) => op.id)
+      )
+    );
+    for (const refKey of refKeys) {
+      expect(defined.has(refKey) || refKey === SITECORE_TEMPLATES.FOLDER).toBe(true);
+    }
   });
 });
 

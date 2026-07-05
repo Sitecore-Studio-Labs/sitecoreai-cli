@@ -30,6 +30,7 @@ import type { Recipe } from "../schema/recipe";
 import {
   ensureAllowWrite,
   ensureSiteCollection,
+  loadImageDefaults,
   recipeSetNeedsRoots,
   resolveRecipeInputs,
   resolveRecipeRoots,
@@ -513,6 +514,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     tenant.envName,
     recipeSetNeedsRoots(recipes)
   );
+  const imageDefaults = await loadImageDefaults(options.imageDefaults);
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
@@ -522,6 +524,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pageDesignsRoot,
     contentItemsRoot,
     mediaLibraryRoot,
+    imageDefaults,
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,
@@ -683,6 +686,10 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // can have ordering dependencies that the topological IR encoding
   // already respects in a serial walk.
   const planConcurrency = options.planConcurrency ?? DEFAULT_PLAN_CONCURRENCY;
+  // ONE set across every IR in this push: update-ops in later IRs must
+  // see creations from earlier IRs so baseline classification is
+  // bypassed for items that didn't exist before this run.
+  const createdItemRefKeys = new Set<string>();
   const runOne = async (ir: OperationIr): Promise<ExecutionResult> =>
     executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
@@ -713,6 +720,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       // the planner routes per `conflictPolicy`.
       baselineIndex: baselineIndexByHandle.get(ir.recipeHandle),
       conflictPolicy: options.conflictPolicy,
+      createdItemRefKeys,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {

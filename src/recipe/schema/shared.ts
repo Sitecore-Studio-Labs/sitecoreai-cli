@@ -212,6 +212,21 @@ export const FieldDefinitionSchema = z.object({
   multiple: z.boolean().optional(),
   /** Default value at the abstract layer (also passable via `sitecore.defaultValue`). */
   default: z.string().optional(),
+  /**
+   * Semantic image role for brandable defaults (`hero`, `avatar`,
+   * `product`, `logo`, …). Only meaningful on image-shaped fields whose
+   * default is an external URL: when a push supplies an image-defaults
+   * map (`--image-defaults <file.json>`, role → URL), a field whose
+   * role appears in the map materialises the mapped URL instead of the
+   * recipe's stock default. No map, or role absent from it → the stock
+   * default applies unchanged. This keeps recipes brand-agnostic while
+   * letting an installer (e.g. the orchestrator's per-brand theme
+   * assets) substitute brand-appropriate imagery at install time.
+   */
+  role: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{0,31}$/, "role must be a short kebab-case slug")
+    .optional(),
   sitecore: SitecoreFieldAugmentSchema.optional(),
 });
 

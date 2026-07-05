@@ -7868,6 +7868,7 @@ scai provision recipe compile [options]
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
 - `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
+- `--image-defaults <path>` — JSON file mapping image roles to external URLs (role → https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default — per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI\_IMAGE\_DEFAULTS (also a path).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -7915,6 +7916,7 @@ scai provision recipe diff [options]
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
 - `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
+- `--image-defaults <path>` — JSON file mapping image roles to external URLs (role → https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default — per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI\_IMAGE\_DEFAULTS (also a path).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-c, --config <path>` — Path to a sitecoreai.cli.json file, or a directory containing one (walks up if not in the dir itself).
 - `-v, --verbose` — Write some additional diagnostic and performance data
@@ -7971,6 +7973,7 @@ scai provision recipe pull [options]
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
 - `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
+- `--image-defaults <path>` — JSON file mapping image roles to external URLs (role → https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default — per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI\_IMAGE\_DEFAULTS (also a path).
 - `--pages-root <path>` — Sitecore parent path for page items. Falls back to envProfiles[<name>].pagesRoot.
 - `--enumerations-root <path>` — Sitecore parent path for enumeration containers. Falls back to envProfiles[<name>].enumerationsRoot.
 - `--placeholder-settings-root <path>` — Sitecore parent path for Placeholder Settings items. Falls back to envProfiles[<name>].placeholderSettingsRoot.
@@ -8002,6 +8005,7 @@ scai provision recipe push [options]
 - `--page-designs-root <path>` — Sitecore parent path for page-design items (Phase 4). Falls back to envProfiles[<name>].pageDesignsRoot.
 - `--content-items-root <path>` — Sitecore parent path for shared content items (Phase 4). Falls back to envProfiles[<name>].contentItemsRoot.
 - `--media-library-root <path>` — Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>.
+- `--image-defaults <path>` — JSON file mapping image roles to external URLs (role → https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default — per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI\_IMAGE\_DEFAULTS (also a path).
 - `-n, --environment-name <name>` — Config environment name from sitecoreai.cli.json (alias: --env-name)
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 - `--allow-write` — Allow write operations for this command without updating config

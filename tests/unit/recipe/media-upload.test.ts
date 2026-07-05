@@ -72,6 +72,76 @@ describe("MediaUpload — planner", () => {
     expect(action.mutation.mimeType).toBe("image/png");
   });
 
+  // Sitecore's MediaCreator picks the media item's template (Image / Jpeg /
+  // Movie / Pdf / … vs the generic File) from the uploaded FILENAME's
+  // extension — the multipart content type plays no part. The planner must
+  // therefore always hand the executor a fileName with a real extension.
+  describe("upload filename extension → media template selection", () => {
+    const actionFor = async (url: string, contentType: string) => {
+      globalThis.fetch = vi.fn(
+        async () =>
+          new Response(TINY_PNG, {
+            status: 200,
+            headers: { "content-type": contentType },
+          })
+      ) as unknown as typeof globalThis.fetch;
+      const action = await buildAction({
+        index: 0,
+        op: externalUrlOp({ source: { kind: "external-url", url } }),
+        client: new MockAuthoringClient(),
+        capturedItemIds: new Map(),
+      });
+      if (action.mutation?.kind !== "mediaUpload") throw new Error("expected mediaUpload mutation");
+      return action.mutation;
+    };
+
+    it("derives the extension from Content-Type when the URL path has none (dicebear-style)", async () => {
+      // `/svg` is a path segment, not an extension — without the
+      // Content-Type fallback this uploaded as extensionless and landed
+      // on the File template instead of Image.
+      const mutation = await actionFor(
+        "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+        "image/svg+xml; charset=utf-8"
+      );
+      expect(mutation.fileName).toBe("thumbnail.svg");
+      expect(mutation.mimeType).toBe("image/svg+xml");
+    });
+
+    it("prefers the URL path's own extension when it has one", async () => {
+      // S3-style hosts commonly serve images as application/octet-stream;
+      // the `.jpg` in the path is the better signal.
+      const mutation = await actionFor(
+        "https://cdn.example.invalid/photos/hero.JPG",
+        "application/octet-stream"
+      );
+      expect(mutation.fileName).toBe("thumbnail.jpg");
+    });
+
+    it("maps non-image media types too (video/mp4 → .mp4)", async () => {
+      const mutation = await actionFor("https://cdn.example.invalid/render?id=42", "video/mp4");
+      expect(mutation.fileName).toBe("thumbnail.mp4");
+      expect(mutation.mimeType).toBe("video/mp4");
+    });
+
+    it("falls back to .bin when neither URL nor Content-Type identifies the type", async () => {
+      const mutation = await actionFor(
+        "https://cdn.example.invalid/blob",
+        "application/octet-stream"
+      );
+      expect(mutation.fileName).toBe("thumbnail.bin");
+    });
+
+    it("names the file after the destination leaf, not the URL tail", async () => {
+      const mutation = await actionFor(
+        "https://cdn.example.invalid/f8a91c/download.png",
+        "image/png"
+      );
+      // destination leaf is `thumbnail` (from destinationPath) — the URL's
+      // opaque tail contributes only its extension.
+      expect(mutation.fileName).toBe("thumbnail.png");
+    });
+  });
+
   it("skips re-upload when the refKey is already captured", async () => {
     const client = new MockAuthoringClient();
     const captured = new Map<string, string>([[MEDIA_REF_KEY, "existing-item-id"]]);
@@ -137,6 +207,7 @@ describe("MediaUpload — executor end-to-end", () => {
     expect(result.summary.create).toBe(1);
     expect(client.mediaUploads).toHaveLength(1);
     expect(client.mediaUploads[0].itemPath).toBe("SiteTemplates/CclBrandTemplate/thumbnail");
+    expect(client.mediaUploads[0].fileName).toBe("thumbnail.png");
     expect(client.mediaUploads[0].alt).toBe("ccl-brand thumbnail");
     expect(client.mediaUploads[0].overwriteExisting).toBe(true);
     // capturedItemIds carries the server-assigned media item GUID under

@@ -1,3 +1,4 @@
+import mime from "mime";
 import { createScaiError } from "@/shared/errors";
 import type {
   AddItemVersionOp,
@@ -196,7 +197,12 @@ export interface PlannedAction {
         bytes: Uint8Array;
         /** MIME type for the multipart form. */
         mimeType: string;
-        /** Optional file name surfaced in the multipart form `file` part. */
+        /**
+         * File name surfaced in the multipart form `file` part. Its
+         * extension is what Sitecore's MediaCreator uses to pick the
+         * media item's template (Image / Jpeg / Movie / Pdf / … vs the
+         * generic File) — the planner guarantees it carries one.
+         */
         fileName?: string;
         /** Optional alt text applied to the resulting media item. */
         altText?: string;
@@ -1818,6 +1824,28 @@ const planMediaUpload = async (
     };
   }
 
+  // destinationPath is the SXA-rooted absolute path the compiler emits
+  // (`/sitecore/media library/SiteTemplates/<recipe>/<basename>`). The
+  // Authoring GraphQL mutation rejects both the `/sitecore/media library/`
+  // prefix AND any leaf with a `.` in it. Strip both for the wire call;
+  // the file extension is stored on the underlying blob field, not on
+  // the item name. (Computed before byte sourcing because the sanitized
+  // leaf also names the uploaded file below.)
+  const absolutePath = op.destinationPath ?? `/sitecore/media library/${op.label}`;
+  const MEDIA_LIBRARY_PREFIX = "/sitecore/media library/";
+  let mediaLibraryRelative = absolutePath.startsWith(MEDIA_LIBRARY_PREFIX)
+    ? absolutePath.slice(MEDIA_LIBRARY_PREFIX.length)
+    : absolutePath.replace(/^\/+/, "");
+  // Drop trailing extension on the leaf only (intermediate folder names
+  // are unaffected). Sitecore stores the extension on the underlying
+  // blob, not the item name.
+  const lastSlash = mediaLibraryRelative.lastIndexOf("/");
+  const leaf = lastSlash >= 0 ? mediaLibraryRelative.slice(lastSlash + 1) : mediaLibraryRelative;
+  const folder = lastSlash >= 0 ? mediaLibraryRelative.slice(0, lastSlash + 1) : "";
+  const dot = leaf.lastIndexOf(".");
+  const sanitizedLeaf = dot > 0 ? leaf.slice(0, dot) : leaf;
+  mediaLibraryRelative = `${folder}${sanitizedLeaf}`;
+
   let bytes: Uint8Array;
   let mimeType = "image/png";
   let fileName: string | undefined;
@@ -1840,8 +1868,22 @@ const planMediaUpload = async (
         // Strip charset suffix (e.g. `image/svg+xml; charset=utf-8`).
         mimeType = headerMime.split(";")[0].trim() || mimeType;
       }
-      const tail = new URL(url).pathname.split("/").filter(Boolean).pop();
-      if (tail) fileName = tail;
+      // Sitecore's MediaCreator selects the media item's TEMPLATE (Image /
+      // Jpeg / Movie / Pdf / … vs the generic catch-all File) from the
+      // uploaded filename's extension — the multipart content type plays
+      // no part in template selection. Generated-image URLs often carry no
+      // extension in their path (dicebear's `/svg?seed=x` ends in `svg`
+      // the path segment, not `.svg` the extension), so the filename must
+      // always be given a real one: the URL path's own extension when it
+      // has one, else the extension implied by the response Content-Type
+      // (`bin` only when both are absent/unrecognized — an honest File).
+      const tail = new URL(url).pathname.split("/").filter(Boolean).pop() ?? "";
+      const tailDot = tail.lastIndexOf(".");
+      const urlExtension = tailDot > 0 ? tail.slice(tailDot + 1).toLowerCase() : "";
+      const extension = /^[a-z0-9]{1,8}$/.test(urlExtension)
+        ? urlExtension
+        : (mime.getExtension(mimeType) ?? "bin");
+      fileName = `${sanitizedLeaf}.${extension}`;
     } else {
       // kind === "asset" — read from disk relative to cwd. The compiler
       // already resolved relative paths against the recipe file's
@@ -1855,12 +1897,7 @@ const planMediaUpload = async (
         ? op.source.path
         : path.resolve(op.source.path);
       bytes = await fs.readFile(absPath);
-      const ext = path.extname(absPath).slice(1).toLowerCase();
-      if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
-      else if (ext === "png") mimeType = "image/png";
-      else if (ext === "svg") mimeType = "image/svg+xml";
-      else if (ext === "webp") mimeType = "image/webp";
-      else if (ext === "gif") mimeType = "image/gif";
+      mimeType = mime.getType(absPath) ?? mimeType;
       fileName = path.basename(absPath);
     }
   } catch (error) {
@@ -1872,27 +1909,6 @@ const planMediaUpload = async (
       reason: `MediaUpload: failed to source bytes (${op.source.kind}): ${message}`,
     };
   }
-
-  // destinationPath is the SXA-rooted absolute path the compiler emits
-  // (`/sitecore/media library/SiteTemplates/<recipe>/<basename>`). The
-  // Authoring GraphQL mutation rejects both the `/sitecore/media library/`
-  // prefix AND any leaf with a `.` in it. Strip both for the wire call;
-  // the file extension is stored on the underlying blob field, not on
-  // the item name.
-  const absolutePath = op.destinationPath ?? `/sitecore/media library/${op.label}`;
-  const MEDIA_LIBRARY_PREFIX = "/sitecore/media library/";
-  let mediaLibraryRelative = absolutePath.startsWith(MEDIA_LIBRARY_PREFIX)
-    ? absolutePath.slice(MEDIA_LIBRARY_PREFIX.length)
-    : absolutePath.replace(/^\/+/, "");
-  // Drop trailing extension on the leaf only (intermediate folder names
-  // are unaffected). Sitecore stores the extension on the underlying
-  // blob, not the item name.
-  const lastSlash = mediaLibraryRelative.lastIndexOf("/");
-  const leaf = lastSlash >= 0 ? mediaLibraryRelative.slice(lastSlash + 1) : mediaLibraryRelative;
-  const folder = lastSlash >= 0 ? mediaLibraryRelative.slice(0, lastSlash + 1) : "";
-  const dot = leaf.lastIndexOf(".");
-  const sanitizedLeaf = dot > 0 ? leaf.slice(0, dot) : leaf;
-  mediaLibraryRelative = `${folder}${sanitizedLeaf}`;
 
   return {
     index,

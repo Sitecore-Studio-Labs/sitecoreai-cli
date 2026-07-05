@@ -2,6 +2,7 @@ import { createScaiError } from "@/shared/errors";
 import { trimEndChar } from "@/shared/strings";
 import { dictionaryFolderId, dictionaryPhraseId } from "../items/guids";
 import {
+  type AddItemVersionOp,
   type CreateItemOp,
   type Operation,
   type OperationIr,
@@ -173,6 +174,20 @@ export function compileDictionaryRecipe(
         // the CreateItem above, and a duplicate SetField at the same
         // (item, field, language, version) triple would no-op anyway.
         if (locale === primaryLocale) continue;
+        // `CreateItem` only materialises the primary-locale version; a
+        // SetField against a language that has no version yet fails with
+        // "item ... does not contain version #1 in '<locale>'". Ensure
+        // the locale's version exists first (mirrors content-item /
+        // page multi-language emission). The executor creates the
+        // language version as part of adding version 1.
+        operations.push({
+          op: "AddItemVersion",
+          policy,
+          label: `dictionary-entry-version:${recipe.handle}/${phraseKey}:${locale}`,
+          itemRefKey: entryRefKey,
+          language: locale,
+          version: DEFAULT_VERSION,
+        } satisfies AddItemVersionOp);
         operations.push({
           op: "SetField",
           policy,

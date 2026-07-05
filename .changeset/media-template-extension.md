@@ -1,5 +1,0 @@
----
-"@sitecoreai-labs/sitecoreai-cli": patch
----
-
-Recipe-materialised media items now land on the correct media template (Image / Jpeg / Movie / Pdf / …) instead of the generic File template. Sitecore's MediaCreator selects the template from the uploaded filename's extension, and external-URL sources whose path carries no extension (e.g. dicebear's `/svg?seed=…`) were uploaded with an extensionless filename — so every generated image materialised as a File item, which image fields and Pages don't treat as an image. The upload filename is now always given a real extension: the URL path's own extension when present, else the one implied by the response `Content-Type` (via the full IANA registry — images, video, audio, documents), falling back to `.bin` only when neither identifies the type. Local-asset uploads also resolve their MIME type from the same registry instead of a five-entry image map. Re-pushing a recipe re-creates affected media items on the right template (delete the old File-template items first — re-push skips paths that already exist).

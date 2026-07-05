@@ -191,6 +191,17 @@ export interface ExecuteOptions {
    */
   baselineIndex?: BaselineIndex;
   conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
+  /**
+   * Shared accumulator of item refKeys CREATED during this push run.
+   * The executor adds every applied CreateItem's `op.id`; the planner
+   * bypasses baseline classification for update-ops targeting these
+   * (a brand-new item has no CMS edits to preserve — see
+   * `BuildActionOptions.createdThisRun`). Callers pushing multiple IRs
+   * (recipe push) pass ONE set across every `executeIr` call so
+   * cross-IR update ops see creations from earlier IRs; defaults to a
+   * per-call set for standalone use.
+   */
+  createdItemRefKeys?: Set<string>;
 }
 
 /**
@@ -784,6 +795,7 @@ export const executeIr = async (
         snapshotLanguages: options.snapshotLanguages,
         baselineIndex: options.baselineIndex,
         conflictPolicy: options.conflictPolicy,
+        createdThisRun: options.createdItemRefKeys,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -822,6 +834,12 @@ export const executeIr = async (
         emit: options.emit,
       });
       applied.push(action);
+      // Record fresh creations so later update-ops (this IR or a
+      // sibling IR sharing options.createdItemRefKeys) bypass baseline
+      // classification for them — see ExecuteOptions.createdItemRefKeys.
+      if (op.op === "CreateItem" && action.status === "create") {
+        options.createdItemRefKeys?.add(op.id);
+      }
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

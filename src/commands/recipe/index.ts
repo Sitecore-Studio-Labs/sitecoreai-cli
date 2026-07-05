@@ -88,6 +88,12 @@ const addRecipeRootOptions = (command: Command): Command =>
         "--media-library-root <path>",
         "Media-library folder for recipe-materialised media (external-URL image fields upload here). Falls back to envProfiles[<name>].mediaLibraryRoot, else /sitecore/media library/RecipeImages/<site>."
       )
+    )
+    .addOption(
+      new Option(
+        "--image-defaults <path>",
+        "JSON file mapping image roles to external URLs (role \u2192 https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default \u2014 per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI_IMAGE_DEFAULTS (also a path)."
+      )
     );
 
 const createCompileCommand = (): Command => {

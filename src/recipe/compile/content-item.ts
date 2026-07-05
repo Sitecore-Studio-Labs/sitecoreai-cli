@@ -299,6 +299,7 @@ export function compileContentItemRecipe(
     policy,
     mediaOps: [],
     ...(context.mediaLibraryRoot ? { mediaLibraryRoot: context.mediaLibraryRoot } : {}),
+    ...(context.imageDefaults ? { imageDefaults: context.imageDefaults } : {}),
     ...(mediaLocationFolder ? { locationFolder: mediaLocationFolder } : {}),
   };
 
@@ -530,6 +531,7 @@ export const encodeContentFieldValue = (
           fieldName: imageMedia.fieldName,
           url: value.mediaPath,
           ...(value.alt ? { alt: value.alt } : {}),
+          ...(value.role ? { role: value.role } : {}),
           ...(value.mediaLibraryFolder ? { folder: value.mediaLibraryFolder } : {}),
           sink: imageMedia,
         });

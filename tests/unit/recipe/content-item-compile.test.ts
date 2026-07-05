@@ -258,6 +258,47 @@ describe("compileContentItemRecipe — field encoders", () => {
     expect(uploadIndex).toBeLessThan(setIndex);
   });
 
+  it("image with a role + context imageDefaults map → materialises the mapped brand URL", () => {
+    const BRAND_URL = "https://assets.example.invalid/brands/sync/avatar-bot.png";
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+          alt: "AI Assistant",
+          role: "avatar",
+        },
+      }),
+      { ...CONTEXT, imageDefaults: { avatar: BRAND_URL } }
+    );
+    const uploads = ir.operations.filter((op) => op.op === "MediaUpload");
+    expect(uploads).toHaveLength(1);
+    if (uploads[0].op !== "MediaUpload") return;
+    expect(uploads[0].source).toEqual({ kind: "external-url", url: BRAND_URL });
+    // Recipe alt survives; only the URL is branded.
+    expect(uploads[0].altText).toBe("AI Assistant");
+  });
+
+  it("image with a role but NO map → recipe URL applies unchanged", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({
+        X: {
+          shape: "image",
+          mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+          role: "avatar",
+        },
+      }),
+      CONTEXT
+    );
+    const uploads = ir.operations.filter((op) => op.op === "MediaUpload");
+    expect(uploads).toHaveLength(1);
+    if (uploads[0].op !== "MediaUpload") return;
+    expect(uploads[0].source).toEqual({
+      kind: "external-url",
+      url: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+    });
+  });
+
   it("honors context.mediaLibraryRoot for the upload destination", () => {
     const ir = compileContentItemRecipe(
       buildRecipe({

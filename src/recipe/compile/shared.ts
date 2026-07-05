@@ -154,6 +154,25 @@ export interface CompileContext {
    */
   imageDefaults?: Readonly<Record<string, string>>;
   /**
+   * Languages available on the target environment — the Sites API
+   * `listLanguages` set (matched by `iso` and `regionalIsoCode`), the
+   * same source the brand-kit Glossary reads for its locales.
+   *
+   * When set, `compileDictionaryRecipe` filters each phrase's
+   * translation locales to this set: the dictionary materialises only
+   * the language versions the environment actually has, so a brand gets
+   * exactly its languages and a push never tries to add a version in an
+   * unregistered language (which the Authoring API rejects). The primary
+   * locale is always emitted (the default-language fallback). Locale
+   * comparison is case-insensitive.
+   *
+   * When unset (standalone compile, or a push that couldn't resolve the
+   * language list), every authored translation is emitted — the
+   * pre-filter behaviour, so nothing regresses for callers without a
+   * live tenant.
+   */
+  availableLanguages?: readonly string[];
+  /**
    * Required for `SiteTemplateRecipe` compilation. Where SXA
    * Site Template items land — typically `/sitecore/templates/Project/<brand>`
    * or a sub-folder for module groupings. Site templates are reusable

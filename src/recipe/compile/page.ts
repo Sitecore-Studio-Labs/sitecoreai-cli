@@ -4,6 +4,7 @@ import {
   contentItemId,
   datasourceId,
   fieldId,
+  itemPathRefKey,
   pageDesignId,
   pageItemId,
   renderingId,
@@ -13,13 +14,14 @@ import {
 } from "../items/guids";
 import {
   type AddItemVersionOp,
+  type AppendToMultiListOp,
   type CreateItemOp,
   type Operation,
   type OperationIr,
   OperationIrSchema,
   type SetFieldOp,
 } from "../ir/operations";
-import { defaultPolicyForRecipe } from "../runtime/policy";
+import { defaultPolicyForRecipe, policyFor } from "../runtime/policy";
 import {
   DEFAULT_DEVICE_ID,
   DEFAULT_ICON,
@@ -291,6 +293,27 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // carries the slot GUIDs `emitLayoutXml`'s `scopedDatasourceIdFor`
   // resolves.
   const operations: Operation[] = [createItem];
+
+  // Parent Insert Options: append this page's template to the PARENT
+  // item's `__Masters` so authors can create more pages of the same
+  // type in place — the Pages editor's "Create page (+)" flow lists
+  // exactly the selected node's insert options, and without this the
+  // installed page type never appears there. Item-level (not template
+  // standard-values) because the parent usually conforms to a
+  // tenant-owned template (the scaffolded collection Page) the recipe
+  // set must not mutate. `merge-unique` keeps it additive + idempotent;
+  // `latePath` resolves pre-existing parents the set doesn't create.
+  operations.push({
+    op: "AppendToMultiList",
+    policy: policyFor("composition-structure"),
+    label: `page-parent-insert-options:${recipe.handle}`,
+    itemRefKey: itemPathRefKey(parentPath),
+    latePath: parentPath,
+    fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
+    values: [{ kind: "ref-recipe", refKey: templateId(site, recipe.template) }],
+    appendPolicy: "merge-unique",
+  } satisfies AppendToMultiListOp);
+
   operations.push(...versionOps);
   if (scopedSlots.size > 0) {
     const dataFolderPath = joinPath(itemPath, "Data");

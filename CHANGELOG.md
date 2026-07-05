@@ -1,5 +1,33 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.15.0
+
+### Minor Changes
+
+- 6bcbee8: Page templates land in their own `Pages` bucket and inherit the
+  tenant's SXA-scaffolded collection `Page` template.
+  - `deriveRecipeRoots` now derives `pageTemplates` →
+    `/sitecore/templates/Project/<collection>/<site>/Pages`. Previously
+    the root wasn't derived at all, so the compiler's fallback dumped
+    page templates into the `Components` bucket alongside component
+    datasource templates.
+  - `SetBaseTemplates` gains optional `pathBases` — base templates
+    resolved by TENANT PATH at plan/apply time (found → the live item's
+    id joins the base list; missing → per-entry `fallbackTemplates`
+    join instead). Exists for pre-existing tenant scaffolding whose GUID
+    is per-tenant and unknowable at compile time.
+  - `compilePageTemplateRecipe` uses it: when the site collection is
+    known (`sitePathSegment`), page templates inherit
+    `/sitecore/templates/Project/<collection>/Page` — the Content Editor
+    shows the expected chain and collection-level Page customisations
+    flow — falling back to chaining the SXA Foundation page facets
+    directly when the scaffold is absent (or the collection unknown),
+    which was the previous unconditional behaviour.
+
+### Patch Changes
+
+- 5147cd2: Recipe-materialised media items now land on the correct media template (Image / Jpeg / Movie / Pdf / …) instead of the generic File template. Sitecore's MediaCreator selects the template from the uploaded filename's extension, and external-URL sources whose path carries no extension (e.g. dicebear's `/svg?seed=…`) were uploaded with an extensionless filename — so every generated image materialised as a File item, which image fields and Pages don't treat as an image. The upload filename is now always given a real extension: the URL path's own extension when present, else the one implied by the response `Content-Type` (via the full IANA registry — images, video, audio, documents), falling back to `.bin` only when neither identifies the type. Local-asset uploads also resolve their MIME type from the same registry instead of a five-entry image map. Re-pushing a recipe re-creates affected media items on the right template (delete the old File-template items first — re-push skips paths that already exist).
+
 ## 0.14.3
 
 ### Patch Changes

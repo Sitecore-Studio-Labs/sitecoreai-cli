@@ -703,6 +703,69 @@ describe("rendering datasource locations — per-component Data Folder template"
       refKeys: [templateId(SITE, "card-b@1")],
     });
   });
+
+  it("compatible-datasources recipe (datasource.templates[]) emits Insert Options referencing the LISTED content templates — never the recipe's own handle", () => {
+    // Regression: link-list@1 declares `datasource.templates:
+    // [link-list-content@1, social-follow-content@1]` and NO inline
+    // fields, so no `templateId(site, 'link-list@1')` item ever exists.
+    // The legacy per-recipe Data Folder's Insert Options referenced the
+    // recipe's own handle anyway, leaving a refKey no CreateItem defines
+    // — the executor then wrote a literal broken GUID into the field.
+    const ir = compileComponentTemplateRecipe(
+      baseRecipe({
+        handle: "link-list@1",
+        name: "LinkList",
+        displayName: "Link List",
+        fields: undefined,
+        datasource: {
+          autoCreate: false,
+          openPropertiesAfterAdd: false,
+          templates: [{ handle: "link-list-content@1" }, { handle: "social-follow-content@1" }],
+          locations: [{ scope: "site", subfolder: "FooterLinks" }],
+        },
+      }),
+      CONTEXT
+    );
+
+    const insertOp = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-data-folder-insert-options:link-list@1"
+    );
+    expect(insertOp?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [
+        templateId(SITE, "link-list-content@1"),
+        templateId(SITE, "social-follow-content@1"),
+      ],
+    });
+  });
+
+  it("single external datasource.template emits Insert Options referencing that content template", () => {
+    const ir = compileComponentTemplateRecipe(
+      baseRecipe({
+        handle: "quote-block@1",
+        name: "QuoteBlock",
+        displayName: "Quote Block",
+        fields: undefined,
+        datasource: {
+          autoCreate: true,
+          openPropertiesAfterAdd: false,
+          template: { handle: "quote-content@1" },
+          locations: [{ scope: "site", subfolder: "Quotes" }],
+        },
+      }),
+      CONTEXT
+    );
+
+    const insertOp = ir.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "site-data-folder-insert-options:quote-block@1"
+    );
+    expect(insertOp?.value).toEqual({
+      kind: "ref-recipe-list",
+      refKeys: [templateId(SITE, "quote-content@1")],
+    });
+  });
 });
 
 describe("rendering datasource locations — IsAutoDatasourceRendering / OtherProperties", () => {

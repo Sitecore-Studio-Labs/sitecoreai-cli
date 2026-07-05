@@ -51,6 +51,7 @@ import {
   PARAMS_SORT_ORDER_BASE,
   buildFieldOp,
   buildStandardValuesFieldEntries,
+  datasourceTemplateHandles,
   emitDatasourceTemplate,
   ensureComponentFoldersBucket,
   ensurePresentationDesignParametersBucket,
@@ -561,7 +562,7 @@ function emitSiteDataFolderTemplate(
     fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
     value: {
       kind: "ref-recipe-list",
-      refKeys: [templateId(site, recipe.handle)],
+      refKeys: datasourceTemplateHandles(recipe).map((handle) => templateId(site, handle)),
     },
   } satisfies SetFieldOp);
 }

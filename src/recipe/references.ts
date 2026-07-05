@@ -350,7 +350,12 @@ export function recipeReferences(recipe: Recipe): readonly RecipeReference[] {
       }
       break;
     case "dictionary":
-      out.push({ handle: recipe.site, field: "site", expectedKinds: SITE_KINDS });
+      // `site` is an optional host-site override. When omitted, the
+      // dictionary installs into the deploy's target site (no in-set
+      // SiteRecipe required) — only validate the ref when it's set.
+      if (recipe.site !== undefined) {
+        out.push({ handle: recipe.site, field: "site", expectedKinds: SITE_KINDS });
+      }
       break;
     case "variant":
       // Brand-scoped sidecar variant — depends on its canonical

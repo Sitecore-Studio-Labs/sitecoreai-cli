@@ -953,11 +953,20 @@ const baseDictionary = {
 };
 
 describe("DictionaryRecipe Zod schema", () => {
-  it("accepts the minimum shape (kind + handle + name + displayName + site)", () => {
+  it("accepts the minimum shape (kind + handle + name + displayName; site optional)", () => {
     const result = DictionaryRecipeSchema.safeParse(baseDictionary);
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.phrases).toEqual({});
+    }
+  });
+
+  it("accepts a dictionary with NO site (installs into the deploy target site)", () => {
+    const { site: _site, ...siteless } = baseDictionary;
+    const result = DictionaryRecipeSchema.safeParse(siteless);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.site).toBeUndefined();
     }
   });
 

@@ -437,16 +437,26 @@ export const DictionaryRecipeSchema = z.object({
   displayName: z.string().min(1),
   description: z.string().optional(),
   /**
-   * The site whose `/Dictionary/` subtree this recipe lands under. For
-   * a shareable phrase library, point at a `SiteRecipe` with
-   * `siteRole: "shared"` — sibling sites in the collection inherit the
-   * phrases via SXA's resolution chain. For a site-private dictionary,
-   * point at a regular site. Cross-recipe validation enforces that the
-   * handle resolves to a `SiteRecipe` in the set.
+   * Optional host-site override. Omit it for the common case: the
+   * dictionary lands under the deploy's TARGET site (the single site
+   * the push targets, resolved from `context.sitePathSegment` — the
+   * same `<siteCollection>/<site>` every page/enum install uses). This
+   * gives dictionaries parity with pages, components, and enums, which
+   * never carry a `site` handle and just install into the current site.
+   *
+   * Set it ONLY to host the phrases on a DIFFERENT in-set site than the
+   * deploy target — e.g. a shareable phrase library pinned to a
+   * `SiteRecipe` with `siteRole: "shared"` so sibling sites inherit it
+   * via SXA's resolution chain. When set, the handle must resolve to a
+   * `SiteRecipe` in the set (cross-recipe validation enforces this);
+   * when omitted, no in-set `SiteRecipe` is required at all.
    */
-  site: z.string().regex(HANDLE_PATTERN, {
-    message: "site must reference a SiteRecipe by handle, e.g. showcase-shared@1",
-  }),
+  site: z
+    .string()
+    .regex(HANDLE_PATTERN, {
+      message: "site must reference a SiteRecipe by handle, e.g. showcase-shared@1",
+    })
+    .optional(),
   /**
    * Primary locale these phrases are authored in (e.g. `"en"`,
    * `"en-US"`). Falls back to the host site's primary `language` when

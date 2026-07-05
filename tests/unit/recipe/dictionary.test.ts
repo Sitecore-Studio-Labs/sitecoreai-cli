@@ -261,6 +261,40 @@ describe("compileDictionaryRecipe — per-locale version emission", () => {
     }
   });
 
+  it("emits an AddItemVersion for each translation locale BEFORE its Phrase SetField", () => {
+    // Regression: a SetField against a language with no version yet fails
+    // with "item ... does not contain version #1 in '<locale>'". Each
+    // translation locale needs its version materialised first — and that
+    // AddItemVersion must precede the locale's SetField in op order (the
+    // executor applies ops sequentially by index).
+    const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);
+    for (const locale of ["de", "fr"]) {
+      const addVersionIdx = ir.operations.findIndex(
+        (o) =>
+          o.op === "AddItemVersion" &&
+          o.label === `dictionary-entry-version:${SHARED_LABELS.handle}/cta-learn-more:${locale}`
+      );
+      const setFieldIdx = ir.operations.findIndex(
+        (o) =>
+          o.op === "SetField" &&
+          o.label ===
+            `dictionary-entry-translation:${SHARED_LABELS.handle}/cta-learn-more:${locale}`
+      );
+      expect(addVersionIdx).toBeGreaterThanOrEqual(0);
+      expect(setFieldIdx).toBeGreaterThan(addVersionIdx);
+      const addVersion = ir.operations[addVersionIdx];
+      expect(addVersion).toMatchObject({ language: locale, version: 1 });
+    }
+  });
+
+  it("emits NO AddItemVersion for the primary locale (CreateItem already made it)", () => {
+    const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);
+    const primaryVersionOps = ir.operations.filter(
+      (o) => o.op === "AddItemVersion" && "language" in o && o.language === "en"
+    );
+    expect(primaryVersionOps).toHaveLength(0);
+  });
+
   it("emits NO translation SetField ops for a phrase whose translations are omitted", () => {
     const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);
     const ops = ir.operations.filter(

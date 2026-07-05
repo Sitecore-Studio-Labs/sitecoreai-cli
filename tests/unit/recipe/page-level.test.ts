@@ -115,7 +115,7 @@ describe("compilePageTemplateRecipe", () => {
     }
   });
 
-  it("inherits the collection's scaffolded Page template by path (facet fallback) when the collection is known", () => {
+  it("chains the facet set directly even when the collection is known — a PEER of the scaffolded Page, never a subtype", () => {
     const ir2 = compilePageTemplateRecipe(articlePage, {
       ...CONTEXT,
       sitePathSegment: "Acme Collection/acme",
@@ -123,15 +123,8 @@ describe("compilePageTemplateRecipe", () => {
     const base = ir2.operations.find(
       (op): op is SetBaseTemplatesOp => op.op === "SetBaseTemplates"
     )!;
-    // Static list carries only Standard — the SXA page chain arrives via
-    // the path-resolved collection Page (or its facet fallbacks).
-    expect(base.baseTemplates).toEqual([STANDARD_TEMPLATE_ID]);
-    expect(base.pathBases).toEqual([
-      {
-        path: "/sitecore/templates/Project/Acme Collection/Page",
-        fallbackTemplates: [...SXA_HEADLESS_PAGE_BASE_TEMPLATES],
-      },
-    ]);
+    expect(base.pathBases).toBeUndefined();
+    expect(base.baseTemplates).toEqual([STANDARD_TEMPLATE_ID, ...SXA_HEADLESS_PAGE_BASE_TEMPLATES]);
   });
 
   it("stamps the standard-values __Renderings with the JSON-layout shell", () => {

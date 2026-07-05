@@ -1370,8 +1370,23 @@ export function buildStandardValuesFieldEntries(
 ): FieldValue[] {
   const entries: FieldValue[] = [];
   for (const field of fields) {
-    const raw = field.sitecore?.defaultValue ?? field.default;
-    if (raw === undefined) continue;
+    let raw = field.sitecore?.defaultValue ?? field.default;
+    if (raw === undefined) {
+      // A role-annotated image field with no authored default still
+      // gets the brand's image-default when the installer's map covers
+      // its role — the role IS the dependency declaration; recipes
+      // shouldn't need a throwaway stock URL for substitution to work.
+      // The mapped URL feeds the normal encode path, where
+      // `externalImageMediaRef` re-applies the same override and
+      // materialises the shared site-level media item.
+      const role = "role" in field ? field.role : undefined;
+      const mapped =
+        field.shape === "image" && role !== undefined
+          ? imageMediaSink?.imageDefaults?.[role]
+          : undefined;
+      if (mapped === undefined) continue;
+      raw = mapped;
+    }
     const value = encodeStandardValueDefaultForField(raw, field, site, handle, imageMediaSink);
     if (value === undefined) continue;
     entries.push({
@@ -1745,6 +1760,16 @@ export const resolveMediaLocationFolder = (
  *      i.e. env-profile `recipeRoots.mediaLibrary` / `--media-library-root`)
  *      — uploads nest under `<root>/<recipeName>/`.
  *   4. Fallback: `/sitecore/media library/RecipeImages/<site>/<recipeName>/`.
+ *
+ * **Role-substituted images are SITE-LEVEL, not per-recipe.** When an
+ * image-defaults override fires, the media item is a brand default the
+ * whole site shares — so its refKey is scoped to (site, role, URL)
+ * instead of (site, recipe, field, URL), and it lands under
+ * `<root>/Defaults/<role>-<hash>`. Every component/recipe that maps the
+ * same role resolves the SAME refKey: within one push the first
+ * MediaUpload captures the itemId and later duplicates skip; across
+ * pushes the executor's path-based idempotency lookup reuses the
+ * existing item. One brand image per role per site, uploaded once.
  */
 export const externalImageMediaRef = (opts: {
   site: string;
@@ -1773,20 +1798,36 @@ export const externalImageMediaRef = (opts: {
     );
   }
   const url = override ?? opts.url;
-  const refKey = mediaFieldId(site, recipeHandle, fieldName, url);
+  // Brand-substituted images are shared site assets: identity is
+  // (site, role, URL) so every consumer of the role converges on one
+  // media item in the site's Defaults folder. Recipe-authored images
+  // keep the per-(recipe, field) identity and folders documented above.
+  const isSiteDefault = override !== undefined && opts.role !== undefined;
+  const refKey = isSiteDefault
+    ? mediaFieldId(site, "site-image-defaults", opts.role as string, url)
+    : mediaFieldId(site, recipeHandle, fieldName, url);
   if (!sink.mediaOps.some((op) => op.id === refKey)) {
+    const mediaRoot = (
+      sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`
+    ).replace(/\/+$/, "");
     const recipeName = recipeHandle.split("@")[0];
-    const destinationFolder = folder
-      ? folder.replace(/\/+$/, "")
-      : (sink.locationFolder?.replace(/\/+$/, "") ??
-        `${(sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`).replace(/\/+$/, "")}/${recipeName}`);
+    const destinationFolder = isSiteDefault
+      ? `${mediaRoot}/Defaults`
+      : folder
+        ? folder.replace(/\/+$/, "")
+        : (sink.locationFolder?.replace(/\/+$/, "") ?? `${mediaRoot}/${recipeName}`);
+    const leaf = isSiteDefault
+      ? `${opts.role}-${refKey.slice(0, 8)}`
+      : `${fieldName}-${refKey.slice(0, 8)}`;
     sink.mediaOps.push({
       op: "MediaUpload",
       policy: sink.policy,
-      label: `media-upload:${recipeHandle}:${fieldName}`,
+      label: isSiteDefault
+        ? `media-upload:site-image-defaults:${opts.role}`
+        : `media-upload:${recipeHandle}:${fieldName}`,
       id: refKey,
       source: { kind: "external-url", url },
-      destinationPath: `${destinationFolder}/${fieldName}-${refKey.slice(0, 8)}`,
+      destinationPath: `${destinationFolder}/${leaf}`,
       ...(alt ? { altText: alt } : {}),
     });
   }

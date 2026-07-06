@@ -14,15 +14,15 @@
  * both off the root element's namespace declarations:
  *
  *  - **canonical** — `<r xmlns:xsd xmlns:xsi><d id="{device}" [l="{layout}"]>
- *    <r id placeh ds par uid /></d></r>`. The default form; Page Design
+ *    <r id ph ds par uid /></d></r>`. The default form; Page Design
  *    items round-trip it byte-for-byte.
  *
  *  - **delta** — SXA Partial Design form: `<r xmlns:p xmlns:s p:p="1"><d>
- *    <p:da name="l" /><r uid p:before|p:after s:placeh s:ds s:id s:par />
+ *    <p:da name="l" /><r uid p:before|p:after s:ph s:ds s:id s:par />
  *    </d></r>`. The Partial Design Layout pipeline normalises canonical
  *    input into this form on first write.
  *
- * The two forms differ only in attribute prefixes (`s:placeh` vs `placeh`),
+ * The two forms differ only in attribute prefixes (`s:ph` vs `ph`; legacy `placeh` accepted),
  * the always-present `s:par=""` in delta, the `<p:da name="l" />` directive
  * element delta carries, and the per-placement anchor attributes
  * (`p:before` / `p:after`) delta uses instead of document order. Either
@@ -37,7 +37,7 @@
  * Each `<r>` rendering element yields a `ParsedPlacement`:
  *
  *   id    → renderingGuid   (bare 32-hex, lower-case)
- *   placeh→ placeholderKey  (the `Layout.placeholders` dictionary key)
+ *   ph    → placeholderKey  (the `Layout.placeholders` dictionary key)
  *   ds    → datasourceGuid  (bare hex) — or a `local:<slot>` sentinel
  *   par   → variant + params (URL-decoded; the `FieldNames` param lifts
  *           out to `variant`, the rest stay in `params`)
@@ -123,7 +123,7 @@ const unescapeXmlAttribute = (value: string): string =>
  * Pull every `name="value"` (or `name='value'`) attribute off a single XML
  * element's start tag into a map. Attribute values are XML-unescaped; the
  * map key is the raw attribute name including any namespace prefix
- * (`s:placeh`, `p:before`). Sitecore's layout XML never nests quotes inside
+ * (`s:ph`, `p:before`). Sitecore's layout XML never nests quotes inside
  * an attribute value other than via the `&quot;` entity, so a
  * non-greedy `"[^"]*"` / `'[^']*'` scan is exact for this format.
  */
@@ -189,8 +189,8 @@ export const decodeParBlob = (
 
 /**
  * Build a `ParsedPlacement` from one `<r>` rendering element's attributes.
- * Handles both wire forms by reading either the prefixed (`s:placeh`,
- * `s:ds`, `s:id`, `s:par`) or the canonical (`placeh`, `ds`, `id`, `par`)
+ * Handles both wire forms by reading either the prefixed (`s:ph`,
+ * `s:ds`, `s:id`, `s:par`) or the canonical (`ph`, `ds`, `id`, `par`)
  * attribute name — delta-form `<r>` elements only ever carry the prefixed
  * set, canonical only the bare set, so a prefer-prefixed-then-bare lookup
  * is unambiguous.
@@ -210,7 +210,10 @@ const placementFromAttributes = (attrs: Record<string, string>): ParsedPlacement
       "INPUT_INVALID"
     );
   }
-  const placeholderKey = pick("s:placeh", "placeh") ?? "";
+  // `ph`/`s:ph` is the attribute Sitecore itself reads and writes.
+  // `placeh`/`s:placeh` is accepted for back-compat: earlier scai
+  // versions emitted that (bugged) name and tenants still carry it.
+  const placeholderKey = pick("s:ph", "ph", "s:placeh", "placeh") ?? "";
   const uid = pick("uid");
 
   const placement: ParsedPlacement = {

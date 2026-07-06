@@ -17,16 +17,22 @@ import { createScaiError } from "@/shared/errors";
  *
  *   <r xmlns:xsd="..." xmlns:xsi="...">
  *     <d id="{deviceGuid}">
- *       <r id="{renderingId}" placeh="/header" ds="{datasourceId}"
+ *       <r id="{renderingId}" ph="/header" ds="{datasourceId}"
  *          par="FieldNames=default&Size=lg" uid="{placementUid}" />
  *       ...
  *     </d>
  *   </r>
  *
+ * The placeholder attribute is `ph` (`s:ph` in delta form) — Sitecore's
+ * layout engine reads exactly that name and silently ignores anything
+ * else. An earlier iteration wrote `placeh`, which Sitecore stored
+ * verbatim but never bound to a placeholder, so pushed pages rendered
+ * empty until a first save in Pages rewrote the XML.
+ *
  * Recipe → wire mapping:
  *
  *   componentHandle              → id (renderingId(handle), curly-uppercase)
- *   placeholder key (dict key)   → placeh
+ *   placeholder key (dict key)   → ph
  *   datasourceRef.kind=shared    → ds (contentItemId(handle), curly-uppercase)
  *   datasourceRef.kind=scoped    → REJECTED for partial/page designs
  *                                  (no host page to resolve against)
@@ -91,12 +97,12 @@ export interface LayoutEmitContext {
   /**
    * Wire form for the emitted XML.
    *
-   * - `"canonical"` (default) — `<r xmlns:xsd=… xmlns:xsi=…><d><r id placeh
+   * - `"canonical"` (default) — `<r xmlns:xsd=… xmlns:xsi=…><d><r id ph
    *   ds par uid /></d></r>`. What our recipe inputs naturally describe.
    *   Page Design items round-trip this byte-for-byte.
    *
    * - `"delta"` — SXA Partial Design wire form: `<r xmlns:p xmlns:s
-   *   p:p="1"><d><p:da name="l"/><r uid p:before|p:after s:placeh s:ds
+   *   p:p="1"><d><p:da name="l"/><r uid p:before|p:after s:ph s:ds
    *   s:id s:par /></d></r>`. The Partial Design Layout pipeline
    *   normalizes canonical input INTO this form on first write, so
    *   emitting it directly means the first push round-trips and
@@ -254,7 +260,7 @@ const emitCanonical = (
       const r = resolvePlacement(placement, placeholderKey, idx, ctx);
       const parAttr = r.parValue ? ` par="${escapeXmlAttribute(r.parValue)}"` : "";
       elements.push(
-        `<r id="${r.renderingId}" placeh="${escapeXmlAttribute(r.placeholderKey)}"${r.dsAttr}${parAttr} uid="${r.uid}" />`
+        `<r id="${r.renderingId}" ph="${escapeXmlAttribute(r.placeholderKey)}"${r.dsAttr}${parAttr} uid="${r.uid}" />`
       );
     });
   }
@@ -273,7 +279,7 @@ const emitCanonical = (
  * placeholders, anchor sequences are independent — each placeholder's
  * placements form their own first/middle/last sequence in the order
  * the recipe declares them. Attribute names get the `s:` prefix
- * (`s:placeh`, `s:ds`, `s:id`, `s:par`); `uid` stays unprefixed; and
+ * (`s:ph`, `s:ds`, `s:id`, `s:par`); `uid` stays unprefixed; and
  * `s:par=""` is always present (canonical form omits empty `par`).
  */
 const emitDelta = (
@@ -310,7 +316,7 @@ const emitDelta = (
       const sParAttr = ` s:par="${escapeXmlAttribute(r.parValue)}"`;
 
       elements.push(
-        `<r uid="${r.uid}"${anchorAttr} s:placeh="${escapeXmlAttribute(r.placeholderKey)}"${sDsAttr} s:id="${r.renderingId}"${sParAttr} />`
+        `<r uid="${r.uid}"${anchorAttr} s:ph="${escapeXmlAttribute(r.placeholderKey)}"${sDsAttr} s:id="${r.renderingId}"${sParAttr} />`
       );
       prevUid = r.uid;
     });

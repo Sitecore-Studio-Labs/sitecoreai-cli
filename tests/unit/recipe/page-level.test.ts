@@ -245,6 +245,15 @@ describe("compilePageRecipe", () => {
     expect(layout.version).toBe(1);
     if (layout.value.kind !== "string") throw new Error("expected string layout");
     expect(layout.value.value).toContain("<r id=");
+    // Placeholder binding rides the `ph` attribute — Sitecore's layout
+    // engine reads exactly that name (an earlier iteration wrote
+    // `placeh`, which Sitecore stored but never bound, so pushed pages
+    // rendered empty until a first Pages save rewrote the XML).
+    expect(layout.value.value).toContain(' ph="');
+    expect(layout.value.value).not.toContain("placeh=");
+    // A canonical layout on the page REPLACES the standard-values layout
+    // wholesale, so it must carry its own JSON-layout pointer.
+    expect(layout.value.value).toContain(`l="{${SXA_JSON_LAYOUT_ID.toUpperCase()}}"`);
   });
 
   it("throws INPUT_INVALID when pagesRoot is unconfigured", () => {
@@ -1052,8 +1061,8 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
   });
 
   it("emits children under path-qualified dynamic keys", () => {
-    expect(xml).toContain('placeh="/headless-main/column-1-1"');
-    expect(xml).toContain('placeh="/headless-main/column-2-1"');
+    expect(xml).toContain('ph="/headless-main/column-1-1"');
+    expect(xml).toContain('ph="/headless-main/column-2-1"');
   });
 
   it("respects an author-set DynamicPlaceholderId and never re-mints it", () => {
@@ -1076,7 +1085,7 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
     const authoredLayout = findSetField(authoredIr.operations, "page-layout:authored@1:en");
     const authoredXml = authoredLayout.value.kind === "string" ? authoredLayout.value.value : "";
     expect(authoredXml).toMatch(/par="[^"]*DynamicPlaceholderId=7[^"]*"/);
-    expect(authoredXml).toContain('placeh="/headless-main/column-1-7"');
+    expect(authoredXml).toContain('ph="/headless-main/column-1-7"');
   });
 
   it("mints distinct ids for sibling parents (skipping author-used values)", () => {
@@ -1109,8 +1118,8 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
     const twoXml = twoLayout.value.kind === "string" ? twoLayout.value.value : "";
     // Author used 2; the minted id skips it and lands on 1... then 3 would
     // follow. First parent keeps its authored 2, second parent gets 1.
-    expect(twoXml).toContain('placeh="/headless-main/column-1-2"');
-    expect(twoXml).toContain('placeh="/headless-main/column-1-1"');
+    expect(twoXml).toContain('ph="/headless-main/column-1-2"');
+    expect(twoXml).toContain('ph="/headless-main/column-1-1"');
   });
 
   it("compiles arbitrarily deep placement trees (recursive schema)", () => {
@@ -1137,7 +1146,7 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
     // Six nested splitters (DynamicPlaceholderIds 1..6), then the card at
     // the innermost path-qualified key.
     expect(deepXml).toContain(
-      'placeh="/headless-main/column-1-1/column-1-2/column-1-3/column-1-4/column-1-5/column-1-6"'
+      'ph="/headless-main/column-1-1/column-1-2/column-1-3/column-1-4/column-1-5/column-1-6"'
     );
     // The innermost scoped datasource still materialises under <page>/Data.
     const deepCard = findCreate(deepIr.operations, "page-datasource:deep@1:DeepCard");

@@ -1056,16 +1056,16 @@ const resolveEffectiveBaseTemplates = async (
   for (const pathBase of op.pathBases ?? []) {
     const remote = await readByPath(pathBase.path);
     if (remote) {
-      effective.push(normaliseGuid(remote.itemId));
+      effective.push(remote.itemId);
     } else {
       effective.push(...pathBase.fallbackTemplates);
     }
   }
-  return [...new Set(effective.map((guid) => guid.toLowerCase()))];
+  // `dashifyGuid` (not a bare lowercase) — Authoring `getItem`/`createItem`
+  // return DASHLESS itemIds, and `ref-guid-list` values must carry the
+  // dashed form Sitecore resolves.
+  return [...new Set(effective.map((guid) => dashifyGuid(guid)))];
 };
-
-/** Lowercase, brace-less GUID — the shape `ref-guid-list` values carry. */
-const normaliseGuid = (guid: string): string => guid.replace(/[{}]/g, "").toLowerCase();
 
 const setStandardValuesDesired = (op: SetStandardValuesOp): FieldValue[] => [
   {
@@ -1365,15 +1365,25 @@ export const buildAction = async ({
  */
 const parseMultiList = (value: string | null | undefined): string[] => {
   if (!value) return [];
-  return value
-    .split("|")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((s) => s.replace(/^\{|\}$/g, "").toLowerCase());
+  return (
+    value
+      .split("|")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      // `dashifyGuid` (idempotent) so dashless entries — operator edits or
+      // values written before the formatMultiList dashify fix — compare
+      // equal to their dashed form instead of producing duplicates.
+      .map((s) => dashifyGuid(s.replace(/^\{|\}$/g, "")))
+  );
 };
 
 const formatMultiList = (guids: readonly string[]): string =>
-  guids.map((g) => `{${g.toUpperCase()}}`).join("|");
+  // `dashifyGuid` is load-bearing: captured itemIds from `createItem`
+  // arrive DASHLESS, and Sitecore silently ignores dashless GUIDs in
+  // TreelistEx/multilist fields (e.g. `__Masters` insert options never
+  // resolved, so installed page types never appeared in Pages' Create
+  // page flow).
+  guids.map((g) => `{${dashifyGuid(g).toUpperCase()}}`).join("|");
 
 /**
  * Plan an `AppendToMultiList` op. Reads the target's current field
@@ -1401,7 +1411,7 @@ const planAppendToMultiList = (
   const desired: string[] = [];
   for (const entry of op.values) {
     if (entry.kind === "ref-guid") {
-      desired.push(entry.value.toLowerCase());
+      desired.push(dashifyGuid(entry.value));
     } else {
       const itemId = capturedItemIds.get(entry.refKey);
       if (!itemId) {
@@ -1412,7 +1422,7 @@ const planAppendToMultiList = (
           reason: `AppendToMultiList: refKey ${entry.refKey} not yet captured — producer recipe hasn't landed.`,
         };
       }
-      desired.push(itemId.toLowerCase());
+      desired.push(dashifyGuid(itemId));
     }
   }
 

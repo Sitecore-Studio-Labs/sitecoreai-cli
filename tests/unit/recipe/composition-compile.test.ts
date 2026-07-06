@@ -67,7 +67,7 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(xml).toContain('p:after="r[@uid=');
     expect(xml).toContain('p:after="*[1=2]"');
     // Namespaced attribute names + always-present empty s:par.
-    expect(xml).toContain("s:placeh=");
+    expect(xml).toContain("s:ph=");
     expect(xml).toContain("s:ds=");
     expect(xml).toContain("s:id=");
     expect(xml).toContain('s:par=""');
@@ -208,7 +208,7 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
     expect(xml).not.toContain('xmlns:p="p"');
     expect(xml).not.toContain("<p:da");
     expect(xml).not.toContain("p:before");
-    expect(xml).not.toContain("s:placeh");
+    expect(xml).not.toContain("s:ph");
   });
 
   it("partials list has only standard-footer@1 (landing skips the header)", () => {

@@ -30,6 +30,7 @@ import {
   LAYOUT_FIELDS,
   PAGE_DESIGN_FIELD_ID,
   SITECORE_TEMPLATES,
+  SXA_JSON_LAYOUT_ID,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import {
@@ -235,6 +236,9 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     version: number,
     labelTag: string
   ): void => {
+    const hasPlacements = Object.values(layout.placeholders).some(
+      (placements) => placements.length > 0
+    );
     const layoutXml = emitLayoutXml(layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
@@ -245,6 +249,14 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       allowScoped: true,
       scopedDatasourceIdFor: (slot) => datasourceId(itemRefKey, slot),
       mode: "canonical",
+      // A canonical layout on the page FULLY REPLACES the template's
+      // standard-values layout (Sitecore's delta merge only applies to
+      // delta-form values), so the device element must carry its own
+      // `l="{JSON layout}"` pointer — without it the page has no layout
+      // definition at all and renders nothing. Only stamped when there
+      // are placements: an empty layout emits nothing and the page
+      // inherits the standard-values shell untouched.
+      ...(hasPlacements && { layoutId: SXA_JSON_LAYOUT_ID }),
     });
     if (layoutXml.length === 0) return;
     fieldOps.push({

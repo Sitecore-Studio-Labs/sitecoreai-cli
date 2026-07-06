@@ -300,6 +300,25 @@ describe("parseLayoutXml — emit → parse round-trip", () => {
     expect(canonical.placeholders["/footer"][0].params).toBeUndefined();
   });
 
+  it("accepts the legacy `placeh`/`s:placeh` attribute written by earlier scai versions", () => {
+    // Before the ph fix, scai emitted `placeh` (canonical) / `s:placeh`
+    // (delta). Sitecore ignored the attribute but stored the XML — those
+    // values are still on tenants, and the reverse projection must keep
+    // reading them.
+    const canonical =
+      `<r xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` +
+      `<d id="{${FAKE_DEVICE.toUpperCase()}}">` +
+      `<r id="{${FAKE_RENDER_LOGO.toUpperCase()}}" placeh="/header" uid="{11111111-1111-1111-1111-111111111111}" />` +
+      `</d></r>`;
+    expect(parseLayoutXml(canonical).placeholders["/header"]).toHaveLength(1);
+
+    const delta =
+      `<r xmlns:p="p" xmlns:s="s" p:p="1"><d id="{${FAKE_DEVICE.toUpperCase()}}">` +
+      `<r uid="{11111111-1111-1111-1111-111111111111}" p:before="*" s:placeh="/header" s:id="{${FAKE_RENDER_LOGO.toUpperCase()}}" s:par="" />` +
+      `</d></r>`;
+    expect(parseLayoutXml(delta).placeholders["/header"]).toHaveLength(1);
+  });
+
   it("round-trips a scoped placement's local: sentinel", () => {
     // allowScoped + no resolver → emitLayoutXml writes a `local:<slot>` ds.
     const scopedLayout = {

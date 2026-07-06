@@ -92,7 +92,7 @@ const addRecipeRootOptions = (command: Command): Command =>
     .addOption(
       new Option(
         "--image-defaults <path>",
-        "JSON file mapping image roles to external URLs (role \u2192 https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default \u2014 per-brand imagery from one brand-agnostic recipe. Falls back to SITECOREAI_IMAGE_DEFAULTS (also a path)."
+        "JSON file mapping image roles to external URLs (role \u2192 https URL). Image fields/SV defaults declaring a matching `role` materialise the mapped URL instead of the recipe's stock default \u2014 per-brand imagery from one brand-agnostic recipe. Substituted images upload ONCE per (site, role) into the site-level `Defaults` media folder and are shared by every consuming component. Falls back to SITECOREAI_IMAGE_DEFAULTS (also a path)."
       )
     );
 

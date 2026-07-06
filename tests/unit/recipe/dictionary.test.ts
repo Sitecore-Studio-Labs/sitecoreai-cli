@@ -341,6 +341,78 @@ describe("compileDictionaryRecipe — per-locale version emission", () => {
   });
 });
 
+describe("compileDictionaryRecipe — language alignment (availableLanguages)", () => {
+  const translationLocales = (ir: ReturnType<typeof compileDictionaryRecipe>, phraseKey: string) =>
+    ir.operations
+      .filter(
+        (o): o is SetFieldOp =>
+          o.op === "SetField" &&
+          o.label.startsWith(`dictionary-entry-translation:${SHARED_LABELS.handle}/${phraseKey}:`)
+      )
+      .map((o) => o.language);
+
+  it("filters translation locales to the environment's languages (drops the rest)", () => {
+    // cta-learn-more authors fr + de; the environment only has en + de.
+    const ir = compileDictionaryRecipe(SHARED_LABELS, {
+      ...CONTEXT_WITH_HOST,
+      availableLanguages: ["en", "de"],
+    });
+    expect(translationLocales(ir, "cta-learn-more")).toEqual(["de"]);
+    // The dropped locale emits neither a SetField nor an AddItemVersion.
+    const frOps = ir.operations.filter((o) => o.label.endsWith("cta-learn-more:fr"));
+    expect(frOps).toHaveLength(0);
+  });
+
+  it("matches case-insensitively and on the regional ISO form (pt-BR)", () => {
+    const recipe: DictionaryRecipe = {
+      ...SHARED_LABELS,
+      phrases: {
+        greeting: {
+          defaultValue: "Hi",
+          translations: { fr: "Salut", "pt-BR": "Oi" },
+        },
+      },
+    };
+    const ir = compileDictionaryRecipe(recipe, {
+      ...CONTEXT_WITH_HOST,
+      // Regional form, different case — still matches pt-BR; fr is absent.
+      availableLanguages: ["EN", "PT-br"],
+    });
+    const locales = ir.operations
+      .filter(
+        (o): o is SetFieldOp =>
+          o.op === "SetField" &&
+          o.label.startsWith(`dictionary-entry-translation:${recipe.handle}/greeting:`)
+      )
+      .map((o) => o.language);
+    expect(locales).toEqual(["pt-BR"]);
+  });
+
+  it("emits every authored translation when availableLanguages is unset (pre-alignment behaviour)", () => {
+    const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);
+    expect(translationLocales(ir, "cta-learn-more")).toEqual(["de", "fr"]);
+  });
+
+  it("always emits the primary locale even when it isn't in availableLanguages", () => {
+    // Environment has only 'de'; the primary 'en' CreateItem still lands
+    // (it's the default-language fallback).
+    const ir = compileDictionaryRecipe(SHARED_LABELS, {
+      ...CONTEXT_WITH_HOST,
+      availableLanguages: ["de"],
+    });
+    const learnMore = ir.operations.find(
+      (o): o is CreateItemOp =>
+        o.op === "CreateItem" &&
+        o.label === `dictionary-entry:${SHARED_LABELS.handle}/cta-learn-more`
+    );
+    const enPhrase = learnMore?.fields.find(
+      (f) => f.fieldId === DICTIONARY_ENTRY_FIELDS.PHRASE && f.language === "en"
+    );
+    expect(enPhrase).toBeDefined();
+    expect(translationLocales(ir, "cta-learn-more")).toEqual(["de"]);
+  });
+});
+
 describe("compileDictionaryRecipe — description (translator note)", () => {
   it("emits a separate __Help text SetField when phrase.description is set", () => {
     const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);

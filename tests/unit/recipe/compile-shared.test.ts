@@ -1043,4 +1043,91 @@ describe("image-role substitution (imageDefaults map)", () => {
       expect((e as { code?: string }).code).toBe("INPUT_INVALID");
     }
   });
+
+  it("uploads a substituted image ONCE as a site-level Defaults item shared across recipes", () => {
+    // Two different recipes, two different field names, same role: both
+    // resolve the same (site, role, URL) refKey, so the second sink's op
+    // is the same media item — dedup happens at plan time via the
+    // captured-itemId map, and the destination is the shared Defaults
+    // folder rather than either recipe's own folder.
+    const sinkA = sinkWith({ avatar: BRAND_URL });
+    const sinkB = sinkWith({ avatar: BRAND_URL });
+    const entriesA = buildStandardValuesFieldEntries(
+      "default",
+      "ai-chat@1",
+      [avatarField()],
+      undefined,
+      sinkA
+    );
+    const entriesB = buildStandardValuesFieldEntries(
+      "default",
+      "person-card@1",
+      [
+        field({
+          name: "Portrait",
+          shape: "image",
+          role: "avatar",
+          default: `Portrait|${STOCK_URL}`,
+        }),
+      ],
+      undefined,
+      sinkB
+    );
+    expect(sinkA.mediaOps[0].id).toBe(sinkB.mediaOps[0].id);
+    expect(sinkA.mediaOps[0].destinationPath).toBe(sinkB.mediaOps[0].destinationPath);
+    expect(sinkA.mediaOps[0].destinationPath).toMatch(
+      /^\/sitecore\/media library\/RecipeImages\/default\/Defaults\/avatar-[0-9a-f]{8}$/
+    );
+    expect(sinkA.mediaOps[0].label).toBe("media-upload:site-image-defaults:avatar");
+    // Both SV entries reference the shared refKey.
+    expect(entriesA[0].value).toEqual(entriesB[0].value);
+  });
+
+  it("nests the Defaults folder under mediaLibraryRoot when configured", () => {
+    const sink = {
+      ...sinkWith({ avatar: BRAND_URL }),
+      mediaLibraryRoot: "/sitecore/media library/Project/sync-site",
+    };
+    buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, sink);
+    expect(sink.mediaOps[0].destinationPath).toMatch(
+      /^\/sitecore\/media library\/Project\/sync-site\/Defaults\/avatar-[0-9a-f]{8}$/
+    );
+  });
+
+  it("keeps per-recipe folders + identity for unsubstituted stock defaults", () => {
+    const sink = sinkWith();
+    buildStandardValuesFieldEntries("default", "ai-chat@1", [avatarField()], undefined, sink);
+    expect(sink.mediaOps[0].destinationPath).toMatch(
+      /^\/sitecore\/media library\/RecipeImages\/default\/ai-chat\/Avatar-[0-9a-f]{8}$/
+    );
+    expect(sink.mediaOps[0].label).toBe("media-upload:ai-chat@1:Avatar");
+  });
+
+  it("materialises a role-mapped image even when the field has NO authored default", () => {
+    const bareRoleField = field({ name: "Image", shape: "image", role: "hero" });
+    const mapped = sinkWith({ hero: BRAND_URL });
+    const entries = buildStandardValuesFieldEntries(
+      "default",
+      "hero@1",
+      [bareRoleField],
+      undefined,
+      mapped
+    );
+    expect(entries).toHaveLength(1);
+    expect(mapped.mediaOps).toHaveLength(1);
+    expect(mapped.mediaOps[0].source).toEqual({ kind: "external-url", url: BRAND_URL });
+    expect(mapped.mediaOps[0].destinationPath).toMatch(/\/Defaults\/hero-[0-9a-f]{8}$/);
+
+    // Without a map entry the field stays defaultless — no synthetic SV.
+    const unmapped = sinkWith({ avatar: BRAND_URL });
+    const none = buildStandardValuesFieldEntries(
+      "default",
+      "hero@1",
+      [bareRoleField],
+      undefined,
+      unmapped
+    );
+    expect(none).toHaveLength(0);
+    expect(unmapped.mediaOps).toHaveLength(0);
+  });
 });

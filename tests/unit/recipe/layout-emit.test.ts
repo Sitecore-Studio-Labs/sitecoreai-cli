@@ -54,7 +54,7 @@ describe("emitLayoutXml — single placement shapes", () => {
     );
     expect(xml).toContain('<d id="{FE5D7FDF-89C0-4D99-9AA3-B5FBD009C9F3}">');
     expect(xml).toContain(`id="{${FAKE_RENDER_LOGO.toUpperCase()}}"`);
-    expect(xml).toContain('placeh="/header"');
+    expect(xml).toContain('ph="/header"');
     expect(xml).toContain(`ds="{${FAKE_CONTENT_LOGO.toUpperCase()}}"`);
     expect(xml).toMatch(/uid="\{[0-9A-F-]{36}\}"/);
   });

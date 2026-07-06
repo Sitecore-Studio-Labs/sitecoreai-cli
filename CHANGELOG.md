@@ -1,5 +1,20 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.19.0
+
+### Minor Changes
+
+- 49df457: Layout XML now resolves against real tenant item ids, and variant selections reference their Variant Definition items:
+
+  - **Plan-time refKey substitution in string field values.** Layout XML is compiled with uuidv5 refKeys (`renderingId`, `contentItemId`, `variantId`) baked into the string, but the Authoring API mints its own item ids at create time — so every `s:id`/`ds` in a pushed layout pointed at an item id that doesn't exist on the tenant, and the layout service could never resolve the renderings (pages rendered empty even with a well-formed delta). `resolveRecipeRefs` now scans string values for GUID tokens and substitutes captured tenant ids (braced and bare/URL-encoded forms); non-captured GUIDs — device ids, Sitecore constants, tenant-pre-existing items — pass through untouched.
+  - **`FieldNames` references the headless Variant Definition item by GUID** when the component recipe declares the variant (the items the component compiler already emits under `Presentation/Headless Variants/<Component>`), matching XM Cloud Pages' own convention so its variant picker shows the selection; the layout service resolves the GUID back to the item's name for the front end's export lookup. Undeclared variants — and standalone compiles without `componentsByHandle` — keep the raw-name form.
+
+- 826c9ab: Page `__Final Renderings` is now emitted in the exact delta wire form XM Cloud Pages itself writes (operator-verified against working tenant pages), replacing the canonical full-replace form the Pages editor rejected as malformed:
+
+  - **Delta form** (`<r xmlns:p="p" xmlns:s="s" p:p="1">`) merging over the page template's standard values — which supply the `l="{JSON layout}"` device pointer — instead of a canonical document that replaced them. No `<p:da name="l" />` directive on page deltas (partial-design emission is unchanged; the directive is now opt-out via `deltaDeviceDirective`).
+  - **Page-local datasources ride as `ds="local:/Data/<slot>"`** page-relative paths (Pages' own convention — resolves against the context item, survives page copies) instead of resolved item GUIDs. The parser strips the `/Data/` prefix when reverse-projecting, so round-trips and legacy `local:<slot>` sentinels keep working.
+  - **Every placement gets a page-unique `DynamicPlaceholderId`** rendering parameter — leaves included, not just placements hosting nested children — matching Pages' per-rendering assignment. Author-set ids are still respected and never re-minted.
+
 ## 0.18.0
 
 ### Minor Changes

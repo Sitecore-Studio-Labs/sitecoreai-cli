@@ -1,5 +1,11 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.23.1
+
+### Patch Changes
+
+- 1729754: Image-defaults substitution no longer overrides authored content values. The role→URL map substitutes ONLY into template Standard Values (the component's stock defaults); page and content-item image values — authored content — always win, matching Sitecore's page-value-over-standard-value semantics.
+
 ## 0.23.0
 
 ### Minor Changes

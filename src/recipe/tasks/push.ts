@@ -26,6 +26,7 @@ import {
   type ExecutionEvent,
   type ExecutionResult,
 } from "../runtime/execute";
+import { writeProgressLine } from "./progress-stream";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
@@ -891,6 +892,15 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       const result = await runOne(ir);
       results.push(result);
       renderResult(ir, result);
+      // Opt-in machine-readable per-recipe progress on stderr for
+      // orchestrators driving the push with `--json` (which silences
+      // renderResult). See progress-stream.ts.
+      writeProgressLine({
+        recipeHandle: ir.recipeHandle,
+        index: results.length,
+        total: irsToExecute.length,
+        result,
+      });
     }
   }
 

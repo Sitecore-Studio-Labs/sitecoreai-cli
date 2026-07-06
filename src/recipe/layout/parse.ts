@@ -225,9 +225,16 @@ const placementFromAttributes = (attrs: Record<string, string>): ParsedPlacement
   const rawDs = pick("s:ds", "ds");
   if (rawDs !== undefined && rawDs.trim() !== "") {
     if (rawDs.startsWith("local:")) {
-      // The `local:<slot>` sentinel emitLayoutXml writes for an
-      // unresolved scoped datasource ref.
-      placement.datasource = { kind: "local", slot: rawDs.slice("local:".length) };
+      // Page-relative datasource — `local:/Data/<slot>` is the form both
+      // emitLayoutXml and XM Cloud Pages write for page-local items. The
+      // recipe-level slot name is the path under the page's Data folder,
+      // so the `/Data/` prefix is stripped when present (legacy
+      // `local:<slot>` sentinels without it parse unchanged).
+      const rawSlot = rawDs.slice("local:".length);
+      placement.datasource = {
+        kind: "local",
+        slot: rawSlot.replace(/^\/Data\//i, ""),
+      };
     } else {
       placement.datasource = { kind: "guid", guid: normalizeGuid(rawDs) };
     }

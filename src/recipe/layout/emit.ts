@@ -86,12 +86,15 @@ export interface LayoutEmitContext {
   /**
    * Resolver for `kind: "scoped"` datasource refs — maps a placement's
    * `slot` to the GUID of the page-local datasource item the caller
-   * materialises at `<page>/Data/<slot>`. `PageRecipe` passes this; the
-   * scoped `<r>` element then carries `ds="{resolvedGuid}"`.
+   * materialises at `<page>/Data/<slot>`; the scoped `<r>` element then
+   * carries `ds="{resolvedGuid}"`.
    *
-   * When `allowScoped` is true but this is absent, a scoped ref falls
-   * back to a `ds="local:<slot>"` sentinel (recognisable, fails loudly
-   * if executed) — kept only for forward-compat / diagnostics.
+   * When `allowScoped` is true but this is absent, a scoped ref emits
+   * the page-relative `ds="local:/Data/<slot>"` form — the wire form
+   * XM Cloud Pages itself writes for page-local datasources (resolved
+   * against the context item at render time, and re-pointed for free
+   * when a page is copied). `PageRecipe` layouts use this form; the
+   * GUID resolver remains for callers that need absolute references.
    */
   scopedDatasourceIdFor?: (slot: string) => string;
   /**
@@ -101,15 +104,27 @@ export interface LayoutEmitContext {
    *   ds par uid /></d></r>`. What our recipe inputs naturally describe.
    *   Page Design items round-trip this byte-for-byte.
    *
-   * - `"delta"` — SXA Partial Design wire form: `<r xmlns:p xmlns:s
-   *   p:p="1"><d><p:da name="l"/><r uid p:before|p:after s:ph s:ds
-   *   s:id s:par /></d></r>`. The Partial Design Layout pipeline
-   *   normalizes canonical input INTO this form on first write, so
+   * - `"delta"` — the SXA delta wire form: `<r xmlns:p xmlns:s
+   *   p:p="1"><d><r uid p:before|p:after s:ph s:ds s:id s:par
+   *   /></d></r>`, merged over the base layout (a page's template
+   *   standard values; a partial design's inherited layout) by
+   *   Sitecore's XmlDeltas at read time. This is the form XM Cloud
+   *   Pages writes to `__Final Renderings` on every author save, so
    *   emitting it directly means the first push round-trips and
    *   converges in one cycle. Page Design layouts must NOT use this
    *   mode (they preserve canonical and would diverge).
    */
   mode?: "canonical" | "delta";
+  /**
+   * Whether delta mode emits the `<p:da name="l" />` device-attributes
+   * directive as the first child of `<d>`. Defaults to true — the form
+   * the SXA Partial Design pipeline round-trips. Page `__Final
+   * Renderings` deltas must pass false: operator-verified Pages-authored
+   * deltas never carry the directive, and the page inherits its
+   * `l="{JSON layout}"` pointer from the template's standard values.
+   * Ignored in canonical mode.
+   */
+  deltaDeviceDirective?: boolean;
   /**
    * SXA JSON Layout definition GUID. When set, the device element
    * carries an `l="{layoutId}"` attribute — `<d id="{device}"
@@ -193,13 +208,14 @@ const resolvePlacement = (
           );
         }
         if (ctx.scopedDatasourceIdFor) {
-          // Page-local datasource — resolved to the GUID of the item the
-          // page compiler materialises at `<page>/Data/<slot>`.
+          // Absolute form — the GUID of the item the caller materialises
+          // at `<page>/Data/<slot>`.
           dsAttr = ` ds="${formatGuidCurly(ctx.scopedDatasourceIdFor(placement.datasourceRef.slot))}"`;
         } else {
-          // No resolver — emit an explicit `local:` sentinel so any
-          // premature execution fails loudly with a recognizable marker.
-          dsAttr = ` ds="local:${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
+          // Page-relative form — what XM Cloud Pages itself writes for
+          // page-local datasources. Resolved against the context item at
+          // render time; survives page copy without re-pointing.
+          dsAttr = ` ds="local:/Data/${escapeXmlAttribute(placement.datasourceRef.slot)}"`;
         }
         break;
       case "none":
@@ -286,7 +302,7 @@ const emitDelta = (
   placeholderEntries: ReadonlyArray<[string, readonly ComponentPlacementInput[]]>,
   ctx: LayoutEmitContext
 ): string => {
-  const elements: string[] = [`<p:da name="l" />`];
+  const elements: string[] = (ctx.deltaDeviceDirective ?? true) ? [`<p:da name="l" />`] : [];
   for (const [placeholderKey, placements] of placeholderEntries) {
     let prevUid: string | null = null;
     placements.forEach((placement, idx) => {

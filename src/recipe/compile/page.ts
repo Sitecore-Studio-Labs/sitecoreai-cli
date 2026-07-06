@@ -30,7 +30,6 @@ import {
   LAYOUT_FIELDS,
   PAGE_DESIGN_FIELD_ID,
   SITECORE_TEMPLATES,
-  SXA_JSON_LAYOUT_ID,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import {
@@ -236,27 +235,26 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     version: number,
     labelTag: string
   ): void => {
-    const hasPlacements = Object.values(layout.placeholders).some(
-      (placements) => placements.length > 0
-    );
+    // Delta form — the wire shape XM Cloud Pages itself writes to
+    // `__Final Renderings` on every author save (operator-verified
+    // against multiple working tenant pages). The delta merges over the
+    // page template's standard-values layout, which supplies the
+    // `l="{JSON layout}"` device pointer; an earlier canonical
+    // full-replace iteration had to carry `l` itself and still didn't
+    // match what the Pages editor expects. No `<p:da name="l" />`
+    // directive (deltaDeviceDirective: false) — Pages-authored page
+    // deltas never carry it, and it would sever the inherited layout
+    // pointer. Scoped datasources ride as `ds="local:/Data/<slot>"`
+    // page-relative paths (no scopedDatasourceIdFor), matching both the
+    // materialised `<page>/Data/<slot>` items and Pages' own convention.
     const layoutXml = emitLayoutXml(layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
       renderingIdFor: (handle) => renderingId(site, handle),
       contentItemIdFor: (handle) => contentItemId(site, handle),
-      // A page has a content home — scoped placements resolve against
-      // the `<page>/Data/<slot>` items materialised just above.
       allowScoped: true,
-      scopedDatasourceIdFor: (slot) => datasourceId(itemRefKey, slot),
-      mode: "canonical",
-      // A canonical layout on the page FULLY REPLACES the template's
-      // standard-values layout (Sitecore's delta merge only applies to
-      // delta-form values), so the device element must carry its own
-      // `l="{JSON layout}"` pointer — without it the page has no layout
-      // definition at all and renders nothing. Only stamped when there
-      // are placements: an empty layout emits nothing and the page
-      // inherits the standard-values shell untouched.
-      ...(hasPlacements && { layoutId: SXA_JSON_LAYOUT_ID }),
+      mode: "delta",
+      deltaDeviceDirective: false,
     });
     if (layoutXml.length === 0) return;
     fieldOps.push({
@@ -473,11 +471,12 @@ type PagePlacement = Layout["placeholders"][string][number];
  * `placement.placeholders` — into the flat SXA dynamic-placeholder wire
  * shape the rest of the compiler consumes:
  *
- *  - Each placement WITH children gets a page-unique integer
- *    `DynamicPlaceholderId` rendering parameter (author-set values are
- *    respected and never re-assigned; assigned ids skip any value an
- *    author already used). This is the parameter SXA Headless
- *    components read to construct their placeholder names.
+ *  - EVERY placement gets a page-unique integer `DynamicPlaceholderId`
+ *    rendering parameter (author-set values are respected and never
+ *    re-assigned; assigned ids skip any value an author already used).
+ *    XM Cloud Pages assigns one to every rendering it places; SXA
+ *    Headless components additionally read it to construct their
+ *    dynamic placeholder names.
  *  - Each child group keyed by a LOGICAL name (`column-1`) lands in the
  *    path-qualified concrete key
  *    `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>` — e.g.
@@ -523,12 +522,18 @@ const flattenRecipeLayouts = (recipe: PageRecipeParsed): void => {
       const childGroups: Array<{ key: string; placements: readonly PagePlacement[] }> = [];
       for (const placement of placements) {
         const { placeholders: children, ...rest } = placement;
+        // EVERY placement gets a page-unique DynamicPlaceholderId — not
+        // just the ones hosting children. XM Cloud Pages assigns one to
+        // every rendering it places (operator-verified across working
+        // tenant pages), and the Pages editor relies on it to key the
+        // rendering instance; leaf renderings without one are part of
+        // what the editor rejects as malformed.
+        const dynamicPlaceholderId = rest.params?.DynamicPlaceholderId ?? takeId();
+        flat.push({
+          ...rest,
+          params: { ...(rest.params ?? {}), DynamicPlaceholderId: dynamicPlaceholderId },
+        });
         if (children && Object.keys(children).length > 0) {
-          const dynamicPlaceholderId = rest.params?.DynamicPlaceholderId ?? takeId();
-          flat.push({
-            ...rest,
-            params: { ...(rest.params ?? {}), DynamicPlaceholderId: dynamicPlaceholderId },
-          });
           // Child keys are path-qualified against the parent's own
           // (already-concrete) key; the top level stays unqualified so
           // existing single-level layouts emit byte-identical XML.
@@ -539,8 +544,6 @@ const flattenRecipeLayouts = (recipe: PageRecipeParsed): void => {
               placements: childPlacements,
             });
           }
-        } else {
-          flat.push(rest);
         }
       }
       out[key] = [...(out[key] ?? []), ...flat];

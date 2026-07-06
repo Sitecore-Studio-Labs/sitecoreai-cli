@@ -1,5 +1,10 @@
 import { createScaiError } from "@/shared/errors";
-import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "../api/client";
+import type {
+  AuthoringApiClient,
+  RemoteItem,
+  RemoteFieldValue,
+  UpdateItemInput,
+} from "../api/client";
 import { renderRefValue } from "../api/ref-encoding";
 import type { Language, SitesApiClient } from "../api/sites-client";
 import type { FieldValue, Operation, OperationIr } from "../ir/operations";
@@ -214,6 +219,24 @@ export interface ExecuteOptions {
    * per-call set for standalone use.
    */
   createdItemRefKeys?: Set<string>;
+  /**
+   * Apply-time concurrency for `updateItem` mutations. Default 1 —
+   * the historical strictly-sequential apply. Values > 1 route
+   * update mutations through a flush pool that (a) COALESCES writes
+   * targeting the same (item, language, version) cell into one
+   * `updateItem` call — a page's N per-field SetFields become one
+   * POST — and (b) runs updates to DISTINCT items concurrently, up
+   * to this limit. Ordering guarantees preserved: writes to the same
+   * item stay in op order (per-item serialization), every other
+   * mutation kind (creates, versions, media, prune, sites) is a full
+   * pool barrier, and read-merge-write ops (`AppendToMultiList`)
+   * drain the pool before planning so their reads never race an
+   * in-flight write. On a pooled failure the coalesced call is
+   * retried per-op sequentially to isolate the failing op, which then
+   * follows the exact sequential-error semantics (language-skip
+   * tolerance, else rollback + abort).
+   */
+  applyConcurrency?: number;
 }
 
 /**
@@ -354,6 +377,9 @@ const isAlreadyAddedLanguageError = (err: unknown): boolean => {
  * whole push abort. See `nonPrimaryLanguageOfOp` for the guard that keeps
  * this scoped to non-primary-language ops only.
  */
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 const isUnavailableLanguageError = (message: string): boolean =>
   /does not contain version/i.test(message) ||
   /\blanguage\b[^.]*\bnot\b\s+(?:defined|found|registered|available|configured|valid|supported|installed)/i.test(
@@ -422,7 +448,7 @@ const presentLanguageCodes = (languages: Language[]): Set<string> => {
  * org locales — so a recipe's `additionalLanguages` provisions brand locales
  * as a side effect.
  */
-const ensureEnvironmentLanguages = async (
+export const ensureEnvironmentLanguages = async (
   sitesClient: SitesApiClient,
   languages: string[]
 ): Promise<void> => {
@@ -638,6 +664,168 @@ const resolveSiteContentPath = async (
   );
 };
 
+/** One planned `updateItem` action queued into the flush pool. */
+interface PooledUpdate {
+  index: number;
+  op: Operation;
+  action: PlannedAction & { mutation: { kind: "updateItem"; input: UpdateItemInput } };
+}
+
+/**
+ * Bounded-concurrency flush pool for `updateItem` mutations — the apply
+ * loop's throughput lever (see `ExecuteOptions.applyConcurrency`).
+ *
+ * Invariants:
+ *  - **Per-item serialization.** Tasks chain on the target itemId, so two
+ *    writes to the same item always apply in op order, even across
+ *    different (language, version) cells.
+ *  - **Cell coalescing.** Consecutive queued-but-not-started entries for
+ *    the same (itemId, language, version) cell merge into ONE
+ *    `updateItem` call with their `fields` concatenated — semantically
+ *    identical to N sequential single-field calls (`UpdateItemInput`
+ *    carries language/version at the input level, so only same-cell
+ *    entries may merge).
+ *  - **Failure isolation.** A failed coalesced call is retried per-entry
+ *    sequentially so the failing op is identified; each entry failure
+ *    then follows the sequential apply-error semantics — language-skip
+ *    tolerance first, otherwise the first failure is recorded as
+ *    `fatal` for the main loop to turn into rollback + abort at the
+ *    next drain point.
+ *
+ * The pool never rejects: every task traps its own errors into `fatal`,
+ * and `drain()` resolves once all in-flight work settles.
+ */
+class UpdateItemPool {
+  private readonly limit: number;
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+  private readonly chains = new Map<string, Promise<void>>();
+  private readonly pendingCells = new Map<string, PooledUpdate[]>();
+  private readonly tasks: Promise<void>[] = [];
+  fatal?: { entry: PooledUpdate; message: string };
+
+  constructor(
+    limit: number,
+    private readonly deps: {
+      client: AuthoringApiClient;
+      summary: PlanSummary;
+      applied: PlannedAction[];
+      emit: ExecuteOptions["emit"];
+    }
+  ) {
+    this.limit = Math.max(1, limit);
+  }
+
+  private async acquire(): Promise<void> {
+    if (this.active < this.limit) {
+      this.active += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => this.waiters.push(resolve));
+    this.active += 1;
+  }
+
+  private release(): void {
+    this.active -= 1;
+    this.waiters.shift()?.();
+  }
+
+  enqueue(entry: PooledUpdate): void {
+    if (this.fatal) return; // push is already doomed — drain will abort
+    const input = entry.action.mutation.input;
+    const cellKey = `${input.itemId.toLowerCase()}|${input.language ?? ""}|${input.version ?? ""}`;
+    const existing = this.pendingCells.get(cellKey);
+    if (existing) {
+      existing.push(entry);
+      return;
+    }
+    const cell: PooledUpdate[] = [entry];
+    this.pendingCells.set(cellKey, cell);
+    const itemKey = input.itemId.toLowerCase();
+    const prev = this.chains.get(itemKey) ?? Promise.resolve();
+    const task = prev.then(async () => {
+      // Claim the cell at start — entries enqueued after this point open
+      // a NEW cell chained behind this task (per-item order preserved).
+      this.pendingCells.delete(cellKey);
+      if (this.fatal) return;
+      await this.acquire();
+      try {
+        await this.flushCell(cell);
+      } finally {
+        this.release();
+      }
+    });
+    this.chains.set(itemKey, task);
+    this.tasks.push(task);
+  }
+
+  private async flushCell(entries: PooledUpdate[]): Promise<void> {
+    const first = entries[0].action.mutation.input;
+    const merged: UpdateItemInput =
+      entries.length === 1
+        ? first
+        : {
+            itemId: first.itemId,
+            ...(first.language !== undefined && { language: first.language }),
+            ...(first.version !== undefined && { version: first.version }),
+            fields: entries.flatMap((e) => e.action.mutation.input.fields),
+          };
+    try {
+      await this.deps.client.updateItem(merged);
+      for (const entry of entries) {
+        this.deps.applied.push(entry.action);
+        this.deps.emit?.({ kind: "apply-success", action: entry.action });
+      }
+      return;
+    } catch (error) {
+      if (entries.length === 1) {
+        this.recordFailure(entries[0], error);
+        return;
+      }
+    }
+    // Coalesced call failed — isolate per entry, sequentially.
+    for (const entry of entries) {
+      if (this.fatal) return;
+      try {
+        await this.deps.client.updateItem(entry.action.mutation.input);
+        this.deps.applied.push(entry.action);
+        this.deps.emit?.({ kind: "apply-success", action: entry.action });
+      } catch (error) {
+        this.recordFailure(entry, error);
+      }
+    }
+  }
+
+  private recordFailure(entry: PooledUpdate, error: unknown): void {
+    const message = errorMessage(error);
+    if (
+      trySkipUnavailableLanguage(entry.op, entry.action, message, this.deps.summary, this.deps.emit)
+    ) {
+      return;
+    }
+    entry.action.status = "error";
+    entry.action.reason = message;
+    this.deps.emit?.({ kind: "apply-error", action: entry.action, error: message });
+    if (!this.fatal) this.fatal = { entry, message };
+  }
+
+  async drain(): Promise<void> {
+    // enqueue() only runs from the (single-threaded) main loop, which is
+    // awaiting us — the task list cannot grow while draining.
+    await Promise.all(this.tasks);
+    this.tasks.length = 0;
+  }
+}
+
+/** Pool when `applyConcurrency` asks for overlap, undefined for the historical serial apply. */
+const maybeCreateUpdatePool = (
+  options: ExecuteOptions,
+  deps: ConstructorParameters<typeof UpdateItemPool>[1]
+): UpdateItemPool | undefined => {
+  const limit = options.applyConcurrency ?? 1;
+  return limit > 1 ? new UpdateItemPool(limit, deps) : undefined;
+};
+
 interface BuildResultInput {
   ir: OperationIr;
   actions: PlannedAction[];
@@ -838,21 +1026,136 @@ export const executeIr = async (
     );
   }
 
-  for (let index = 0; index < ir.operations.length; index += 1) {
-    if (options.signal?.aborted) {
-      const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
+  // Optional updateItem flush pool — see ExecuteOptions.applyConcurrency.
+  const pool = maybeCreateUpdatePool(options, { client, summary, applied, emit: options.emit });
+  /**
+   * Drain the pool and, if a pooled apply failed fatally, return the
+   * abort result via the exact sequential apply-error semantics
+   * (rollback of everything applied, aborted ExecutionResult).
+   */
+  const drainPool = async (): Promise<ExecutionResult | undefined> => {
+    if (!pool) return undefined;
+    await pool.drain();
+    const fatal = pool.fatal;
+    if (!fatal) return undefined;
+    const rollbackResult = await runRollback({
+      applied,
+      client,
+      capturedItemIds,
+      options,
+      recipeHandle: ir.recipeHandle,
+      summary: { trigger: "apply-error", forwardError: fatal.message },
+    });
+    emitFailed(options, fatal.entry.index, applied, rollbackResult, fatal.message);
+    return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+  };
+
+  /**
+   * Client cancellation. Lets in-flight pooled writes settle first so the
+   * rollback covers them; a pooled fatal takes precedence over the
+   * cancellation.
+   */
+  const abortForCancellation = async (index: number): Promise<ExecutionResult> => {
+    const poolAbort = await drainPool();
+    if (poolAbort) return poolAbort;
+    const cancelMessage = `Cancelled by client before op ${index} of ${ir.operations.length}.`;
+    const rollbackResult = await runRollback({
+      applied,
+      client,
+      capturedItemIds,
+      options,
+      recipeHandle: ir.recipeHandle,
+      summary: { trigger: "cancelled", forwardError: cancelMessage },
+    });
+    emitFailed(options, index, applied, rollbackResult, cancelMessage);
+    return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+  };
+
+  /**
+   * Sequential dispatch for every non-updateItem mutation. Drains the pool
+   * first — creates capture ids later ops resolve, version adds change the
+   * stacks versioned writes target, prunes delete what pooled writes may
+   * touch — then applies with the historical error handling. Returns the
+   * aborted ExecutionResult on failure, undefined to continue the loop.
+   */
+  const applySequential = async (
+    index: number,
+    op: Operation,
+    action: PlannedAction
+  ): Promise<ExecutionResult | undefined> => {
+    const poolAbort = await drainPool();
+    if (poolAbort) return poolAbort;
+    options.emit?.({ kind: "apply-start", action });
+    try {
+      await dispatchMutation({
+        client,
+        sitesClient: options.sitesClient,
+        action,
+        capturedItemIds,
+        pathItemIdCache: options.pathItemIdCache,
+        pathSnapshotCache: options.pathSnapshotCache,
+        allowPrune: options.allowPrune ?? false,
+        emit: options.emit,
+      });
+      applied.push(action);
+      // Record fresh creations so later update-ops (this IR or a
+      // sibling IR sharing options.createdItemRefKeys) bypass baseline
+      // classification for them — see ExecuteOptions.createdItemRefKeys.
+      if (op.op === "CreateItem" && action.status === "create") {
+        options.createdItemRefKeys?.add(op.id);
+      }
+      options.emit?.({ kind: "apply-success", action });
+      return undefined;
+    } catch (error) {
+      const message = errorMessage(error);
+      // Unregistered-language tolerance. A recipe may fan content out
+      // across locales (dictionary translations, `__Standard Values`
+      // locale-map defaults) into languages the target environment hasn't
+      // provisioned. The Authoring API rejects the version write for a
+      // missing language; `trySkipUnavailableLanguage` turns that single
+      // op into a SKIP and returns undefined so the loop keeps going — the
+      // primary language and every registered locale still install instead
+      // of the whole push aborting + rolling back. Scoped to
+      // non-primary-language version writes so a genuine `en` failure
+      // still aborts. `applied` is untouched here (dispatchMutation threw
+      // before recording), so there's nothing to roll back for this op.
+      if (trySkipUnavailableLanguage(op, action, message, summary, options.emit)) {
+        return undefined;
+      }
+      // Attach the apply-time error to the action so the top-level
+      // command summary surfaces the actual server message in
+      // `details[]`. The planner only sets `reason` for plan-time
+      // outcomes (skip/error during plan); apply-time errors emitted
+      // via `apply-error` were previously only on the event stream.
+      action.status = "error";
+      action.reason = message;
+      options.emit?.({ kind: "apply-error", action, error: message });
       const rollbackResult = await runRollback({
         applied,
         client,
         capturedItemIds,
         options,
         recipeHandle: ir.recipeHandle,
-        summary: { trigger: "cancelled", forwardError: cancelMessage },
+        summary: { trigger: "apply-error", forwardError: message },
       });
-      emitFailed(options, index, applied, rollbackResult, cancelMessage);
+      emitFailed(options, index, applied, rollbackResult, message);
       return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
     }
+  };
+
+  for (let index = 0; index < ir.operations.length; index += 1) {
+    if (options.signal?.aborted) {
+      return abortForCancellation(index);
+    }
     const op = ir.operations[index];
+    // Read-merge-write ops read the very field an in-flight pooled write
+    // may be changing (two AppendToMultiList to the same parent's
+    // __Masters, e.g.) — their plan must see settled state. No-op when
+    // the pool is off.
+    if (op.op === "AppendToMultiList") {
+      const poolAbort = await drainPool();
+      if (poolAbort) return poolAbort;
+    }
     options.emit?.({ kind: "op-start", index, operation: op });
 
     let action: PlannedAction;
@@ -870,7 +1173,7 @@ export const executeIr = async (
         createdThisRun: options.createdItemRefKeys,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       action = { index, operation: op, status: "error", reason: message };
       options.emit?.({ kind: "op-error", index, operation: op, error: message });
       summary.error += 1;
@@ -893,61 +1196,23 @@ export const executeIr = async (
 
     if (!action.mutation) continue;
 
-    options.emit?.({ kind: "apply-start", action });
-    try {
-      await dispatchMutation({
-        client,
-        sitesClient: options.sitesClient,
-        action,
-        capturedItemIds,
-        pathItemIdCache: options.pathItemIdCache,
-        pathSnapshotCache: options.pathSnapshotCache,
-        allowPrune: options.allowPrune ?? false,
-        emit: options.emit,
-      });
-      applied.push(action);
-      // Record fresh creations so later update-ops (this IR or a
-      // sibling IR sharing options.createdItemRefKeys) bypass baseline
-      // classification for them — see ExecuteOptions.createdItemRefKeys.
-      if (op.op === "CreateItem" && action.status === "create") {
-        options.createdItemRefKeys?.add(op.id);
-      }
-      options.emit?.({ kind: "apply-success", action });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // Unregistered-language tolerance. A recipe may fan content out
-      // across locales (dictionary translations, `__Standard Values`
-      // locale-map defaults) into languages the target environment hasn't
-      // provisioned. The Authoring API rejects the version write for a
-      // missing language; `trySkipUnavailableLanguage` turns that single
-      // op into a SKIP and returns true so we keep going — the primary
-      // language and every registered locale still install instead of the
-      // whole push aborting + rolling back. Scoped to non-primary-language
-      // version writes so a genuine `en` failure still aborts. `applied` is
-      // untouched here (dispatchMutation threw before recording), so
-      // there's nothing to roll back for this op.
-      if (trySkipUnavailableLanguage(op, action, message, summary, options.emit)) {
-        continue;
-      }
-      // Attach the apply-time error to the action so the top-level
-      // command summary surfaces the actual server message in
-      // `details[]`. The planner only sets `reason` for plan-time
-      // outcomes (skip/error during plan); apply-time errors emitted
-      // via `apply-error` were previously only on the event stream.
-      action.status = "error";
-      action.reason = message;
-      options.emit?.({ kind: "apply-error", action, error: message });
-      const rollbackResult = await runRollback({
-        applied,
-        client,
-        capturedItemIds,
-        options,
-        recipeHandle: ir.recipeHandle,
-        summary: { trigger: "apply-error", forwardError: message },
-      });
-      emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+    if (pool && action.mutation.kind === "updateItem") {
+      // Route through the flush pool: coalesced with same-cell writes,
+      // concurrent across items, per-item ordered. Failures surface at
+      // the next drain point with sequential-identical semantics.
+      options.emit?.({ kind: "apply-start", action });
+      pool.enqueue({ index, op, action } as PooledUpdate);
+      continue;
     }
+    // Every non-updateItem mutation is a pool barrier — applySequential
+    // drains before dispatching.
+    const abort = await applySequential(index, op, action);
+    if (abort) return abort;
+  }
+
+  {
+    const poolAbort = await drainPool();
+    if (poolAbort) return poolAbort;
   }
 
   return buildResult({ ir, actions, summary, aborted: false, capturedItemIds });

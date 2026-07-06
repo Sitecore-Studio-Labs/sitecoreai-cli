@@ -126,6 +126,20 @@ export interface LayoutEmitContext {
    */
   deltaDeviceDirective?: boolean;
   /**
+   * Optional resolver mapping (componentHandle, variantName) to the
+   * headless Variant Definition item's refKey GUID. When it returns a
+   * GUID, the placement's `FieldNames` rendering parameter carries the
+   * curly-braced GUID — the form XM Cloud Pages writes, which its
+   * variant picker displays as the selection and the layout service
+   * resolves back to the variant item's NAME for the front end's
+   * export lookup. When absent (or when it returns undefined — e.g.
+   * the component recipe doesn't declare the variant, so no Variant
+   * Definition item exists to reference), `FieldNames` falls back to
+   * the raw variant name, which the layout service passes through
+   * unresolved and the front end matches by name directly.
+   */
+  variantRefFor?: (componentHandle: string, variantName: string) => string | undefined;
+  /**
    * SXA JSON Layout definition GUID. When set, the device element
    * carries an `l="{layoutId}"` attribute — `<d id="{device}"
    * l="{layout}">…</d>` — and `emitLayoutXml` emits the wrapper shell
@@ -227,8 +241,12 @@ const resolvePlacement = (
   const allParams: Record<string, string> = { ...(placement.params ?? {}) };
   if (placement.variant !== undefined) {
     // SXA Rendering Variant selection rides as the FieldNames
-    // rendering parameter — this is the SXA convention.
-    allParams.FieldNames = placement.variant;
+    // rendering parameter — as the Variant Definition item's GUID when
+    // one exists (Pages' own convention; its picker needs the item
+    // reference), by name otherwise (front-end export lookup matches
+    // the raw name).
+    const variantRef = ctx.variantRefFor?.(placement.componentHandle, placement.variant);
+    allParams.FieldNames = variantRef ? formatGuidCurly(variantRef) : placement.variant;
   }
   const parValue = Object.keys(allParams).length > 0 ? encodeParams(allParams) : "";
 

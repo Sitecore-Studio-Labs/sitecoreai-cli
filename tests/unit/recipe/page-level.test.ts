@@ -19,6 +19,7 @@ import {
   renderingId,
   standardValuesId,
   templateId,
+  variantId,
 } from "../../../src/recipe/items/guids";
 import type {
   CreateItemOp,
@@ -312,6 +313,50 @@ describe("compilePageRecipe", () => {
 
     // Variant rides FieldNames alongside the id.
     expect(xml).toMatch(/s:par="[^"]*FieldNames=FullBleed[^"]*"/);
+  });
+
+  it("references a declared variant by its Variant Definition GUID; undeclared variants by name", () => {
+    // Pages' variant picker displays the Variant Definition item the
+    // FieldNames GUID references; the layout service resolves it back
+    // to the item's NAME for the front end's export lookup. A variant
+    // the component recipe doesn't declare has no item to reference —
+    // it stays a raw name, which the front end matches directly.
+    const variantComponent: ComponentTemplateRecipe = {
+      ...component("vary-block@1"),
+      variants: [{ name: "FullBleed" }],
+    };
+    const variantPage = {
+      ...homePage,
+      handle: "variant-page@1",
+      name: "VariantPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "vary-block@1",
+              variant: "FullBleed",
+              datasourceRef: { kind: "none" },
+            },
+            {
+              componentHandle: "vary-block@1",
+              variant: "Undeclared",
+              datasourceRef: { kind: "none" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const irs = compileRecipeSet([articlePage, variantComponent, variantPage], {
+      ...CONTEXT,
+      headlessVariantsRoot: "/sitecore/content/Demo/Presentation/Headless Variants",
+    });
+    const pageIr = irs.find((ir) => ir.recipeHandle === "variant-page@1")!;
+    const layout = findSetField(pageIr.operations, "page-layout:variant-page@1:en");
+    if (layout.value.kind !== "string") throw new Error("expected string layout");
+    const xml = layout.value.value;
+    const declaredRef = variantId("default", "vary-block@1", "FullBleed").toUpperCase();
+    expect(xml).toContain(`FieldNames=${encodeURIComponent(`{${declaredRef}}`)}`);
+    expect(xml).toContain("FieldNames=Undeclared");
   });
 
   it("throws INPUT_INVALID when pagesRoot is unconfigured", () => {

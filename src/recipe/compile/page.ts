@@ -9,6 +9,7 @@ import {
   pageItemId,
   renderingId,
   templateId,
+  variantId,
   workflowId,
   workflowStateId,
 } from "../items/guids";
@@ -255,6 +256,18 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       allowScoped: true,
       mode: "delta",
       deltaDeviceDirective: false,
+      // Variant selections reference the headless Variant Definition
+      // item by GUID when the component recipe declares the variant
+      // (so the item exists for Pages' variant picker to display);
+      // undeclared variants — and standalone compiles without
+      // componentsByHandle — fall back to the raw name, which the
+      // front end matches against its exports directly.
+      variantRefFor: (componentHandle, variantName) => {
+        const declared = context.componentsByHandle
+          ?.get(componentHandle)
+          ?.variants.some((variant) => variant.name === variantName);
+        return declared ? variantId(site, componentHandle, variantName) : undefined;
+      },
     });
     if (layoutXml.length === 0) return;
     fieldOps.push({

@@ -422,7 +422,7 @@ const presentLanguageCodes = (languages: Language[]): Set<string> => {
  * org locales — so a recipe's `additionalLanguages` provisions brand locales
  * as a side effect.
  */
-const ensureEnvironmentLanguages = async (
+export const ensureEnvironmentLanguages = async (
   sitesClient: SitesApiClient,
   languages: string[]
 ): Promise<void> => {

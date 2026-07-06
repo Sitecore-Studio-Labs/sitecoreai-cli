@@ -20,7 +20,12 @@ import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
 import { loadIr, loadRecipe } from "../io";
-import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
+import {
+  ensureEnvironmentLanguages,
+  executeIr,
+  type ExecutionEvent,
+  type ExecutionResult,
+} from "../runtime/execute";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
@@ -228,6 +233,50 @@ const resolveCompileRoots = (
  * (e.g. `["en", "fr", "pt", "pt-BR"]`), which the compiler matches
  * case-insensitively against phrase-translation locales.
  */
+/**
+ * Register every language a `SiteRecipe` in the set declares (`language` +
+ * `languages`) on the environment BEFORE compile.
+ *
+ * `SiteRecipe.languages` is documented as "recipe push adds missing ones",
+ * but the only place scai provisioned them was the `createSite` mutation —
+ * which never runs when the site already exists. Meanwhile the compiler
+ * filters each recipe's authored `__Standard Values` locale-map defaults and
+ * dictionary translations down to the environment's *registered* languages
+ * (`resolveEnvironmentLanguages` → `listLanguages`, resolved just below).
+ * The net effect: on a re-push of an existing site, a declared-but-unregistered
+ * locale (e.g. `ar-SA`) was dropped from the emitted IR entirely — so the
+ * localized Standard Values and dictionary phrases never installed, even
+ * though the recipe authored them.
+ *
+ * Provisioning here, ahead of language resolution, closes that gap: the
+ * subsequent `listLanguages` sees the freshly-added locales, so the compiler
+ * emits their versions and the push installs them — no site (re)creation
+ * required. Idempotent (addLanguage 409s are treated as success) and
+ * best-effort: an auth/network failure is swallowed so the push still
+ * proceeds with whatever is already registered, matching the pre-existing
+ * `resolveEnvironmentLanguages` failure stance.
+ */
+const ensureSiteRecipeLanguages = async (
+  recipes: readonly Recipe[],
+  environment: EnvironmentConfiguration
+): Promise<void> => {
+  const codes = new Set<string>();
+  for (const recipe of recipes) {
+    if (recipe.kind !== "site") continue;
+    if (recipe.language) codes.add(recipe.language);
+    for (const code of recipe.languages ?? []) codes.add(code);
+  }
+  if (codes.size === 0) return;
+  const accessToken = await getAccessToken(environment);
+  if (!accessToken) return;
+  try {
+    await ensureEnvironmentLanguages(createSitesApiClient({ accessToken }), [...codes]);
+  } catch {
+    // Non-fatal — see resolveEnvironmentLanguages. The push proceeds; a
+    // locale that couldn't be registered is simply filtered out downstream.
+  }
+};
+
 const resolveEnvironmentLanguages = async (
   recipes: readonly Recipe[],
   environment: EnvironmentConfiguration
@@ -551,6 +600,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     recipeSetNeedsRoots(recipes)
   );
   const imageDefaults = await loadImageDefaults(options.imageDefaults);
+  // Provision any SiteRecipe-declared languages on the environment BEFORE
+  // resolving the registered-language list, so a re-push of an existing site
+  // installs its localized Standard Values / dictionary phrases (which the
+  // compiler filters to registered languages) instead of dropping them.
+  await ensureSiteRecipeLanguages(recipes, tenant.environment);
   const availableLanguages = await resolveEnvironmentLanguages(recipes, tenant.environment);
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,

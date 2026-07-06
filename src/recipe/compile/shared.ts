@@ -1473,19 +1473,18 @@ export function buildStandardValuesFieldEntries(
   // sink's mediaOps BEFORE the CreateItem carrying these entries.
   imageMediaSink?: ImageMediaSink,
   // Languages registered on the target environment (Sites API
-  // `listLanguages`). When set, locale-map defaults filter their
-  // non-primary versions to this set — a template installs SV versions
+  // `listLanguages`). When set, locale-map defaults resolve their
+  // non-primary versions against it — a template installs SV versions
   // only in the brand's languages and never emits an AddItemVersion for a
   // language the tenant doesn't have (which the Authoring API rejects).
-  // The primary language is always emitted. Unset ⇒ emit every authored
-  // locale (standalone compile / no live tenant).
+  // A bare base-language key (`de`) fans out to every registered regional
+  // variant (`de-DE`, `de-AT`, …); an explicit regional key overrides the
+  // base for its exact locale. The primary language is always emitted.
+  // Unset ⇒ emit every authored locale verbatim (standalone compile).
   availableLanguages?: readonly string[]
 ): StandardValuesBuild {
   const primary: FieldValue[] = [];
   const localeVersions: StandardValuesLocaleVersion[] = [];
-  const availableLocales = availableLanguages
-    ? new Set(availableLanguages.map((l) => l.toLowerCase()))
-    : undefined;
 
   for (const field of fields) {
     const rawDefault = field.sitecore?.defaultValue ?? field.default;
@@ -1499,7 +1498,7 @@ export function buildStandardValuesFieldEntries(
         handle,
         fieldIdResolver,
         imageMediaSink,
-        availableLocales,
+        availableLanguages,
         primary,
         localeVersions,
       });
@@ -1547,6 +1546,19 @@ export function buildStandardValuesFieldEntries(
  * numeric default can't meaningfully differ by language, and silently
  * accepting one would encode the same value N times. The map must carry
  * the primary language (`en`) as its base version.
+ *
+ * **Base-language expansion.** A map key may be a bare base language
+ * (`de`, `zh`) or a full regional code (`de-DE`, `zh-TW`). Against a live
+ * environment, keys resolve to the tenant's actual registered languages:
+ * a base key fans out to every registered regional variant of that
+ * language (`de` → `de-DE`, `de-AT`, …), each carrying the base value,
+ * so authors write one translation per language rather than one per
+ * region — matching how the dictionary's pre-expanded translations
+ * behave, but done in the compiler. An explicit regional key overrides
+ * the base expansion for that exact locale (`{ de: "…", "de-CH": "…" }`
+ * gives every `de-*` the base copy except `de-CH`). Keys that match no
+ * registered language are dropped. With no environment (standalone
+ * compile) keys are emitted verbatim.
  */
 function appendLocalizedStandardValue(args: {
   field: FieldDefinition | DesignParameter;
@@ -1555,7 +1567,7 @@ function appendLocalizedStandardValue(args: {
   handle: string;
   fieldIdResolver: (site: string, handle: string, fieldName: string) => string;
   imageMediaSink?: ImageMediaSink;
-  availableLocales?: Set<string>;
+  availableLanguages?: readonly string[];
   primary: FieldValue[];
   localeVersions: StandardValuesLocaleVersion[];
 }): void {
@@ -1566,7 +1578,7 @@ function appendLocalizedStandardValue(args: {
     handle,
     fieldIdResolver,
     imageMediaSink,
-    availableLocales,
+    availableLanguages,
     primary,
     localeVersions,
   } = args;
@@ -1611,21 +1623,54 @@ function appendLocalizedStandardValue(args: {
     });
   }
 
-  // Sort for deterministic op ordering (re-pushes produce identical IRs).
-  for (const locale of Object.keys(localeMap).sort()) {
-    if (locale === DEFAULT_LANGUAGE) continue;
-    // Skip locales the target environment doesn't have — aligns the
-    // installed SV versions to the brand's languages (Sites API).
-    if (availableLocales && !availableLocales.has(locale.toLowerCase())) continue;
-    const value = encodeStandardValueDefaultForField(
-      localeMap[locale],
-      field,
-      site,
-      handle,
-      imageMediaSink
-    );
+  const encodeKey = (key: string): RefValue | undefined =>
+    encodeStandardValueDefaultForField(localeMap[key], field, site, handle, imageMediaSink);
+
+  const nonPrimaryKeys = Object.keys(localeMap).filter((k) => k !== DEFAULT_LANGUAGE);
+
+  // Standalone compile (no live environment): emit each authored key
+  // verbatim, sorted for deterministic op ordering.
+  if (availableLanguages === undefined) {
+    for (const key of nonPrimaryKeys.sort()) {
+      const value = encodeKey(key);
+      if (value === undefined) continue;
+      localeVersions.push({ fieldId: refKey, fieldName: field.name, language: key, value });
+    }
+    return;
+  }
+
+  // Resolve authored keys to the environment's actual registered codes.
+  // Explicit regional keys win over base-language expansion for their
+  // exact locale; `resolved` maps registered-code → value keyed by the
+  // registered code's own casing so we emit exactly what the tenant has.
+  const resolved = new Map<string, RefValue>();
+  const isRegional = (key: string) => /[-_]/.test(key);
+  const baseOf = (code: string) => code.split(/[-_]/)[0].toLowerCase();
+
+  // Pass 1 — exact matches (a key equal to a registered code, case-
+  // insensitively). Authoritative, so a regional override sticks.
+  for (const key of nonPrimaryKeys.sort()) {
+    const matches = availableLanguages.filter((l) => l.toLowerCase() === key.toLowerCase());
+    if (matches.length === 0) continue;
+    const value = encodeKey(key);
     if (value === undefined) continue;
-    localeVersions.push({ fieldId: refKey, fieldName: field.name, language: locale, value });
+    for (const lang of matches) if (!resolved.has(lang)) resolved.set(lang, value);
+  }
+
+  // Pass 2 — base-language expansion: a bare base key fans out to every
+  // registered regional variant not already pinned by an exact key.
+  for (const key of nonPrimaryKeys.sort()) {
+    if (isRegional(key)) continue;
+    const matches = availableLanguages.filter((l) => baseOf(l) === key.toLowerCase());
+    if (matches.length === 0) continue;
+    const value = encodeKey(key);
+    if (value === undefined) continue;
+    for (const lang of matches) if (!resolved.has(lang)) resolved.set(lang, value);
+  }
+
+  const sortedTargets = [...resolved.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [lang, value] of sortedTargets) {
+    localeVersions.push({ fieldId: refKey, fieldName: field.name, language: lang, value });
   }
 }
 

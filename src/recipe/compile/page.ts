@@ -46,6 +46,7 @@ import {
   type CompileContext,
   type ImageMediaSink,
   joinPath,
+  paramWireValue,
   resolveMediaLocationFolder,
   sharedField,
   siteOf,
@@ -267,6 +268,21 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
           ?.get(componentHandle)
           ?.variants.some((variant) => variant.name === variantName);
         return declared ? variantId(site, componentHandle, variantName) : undefined;
+      },
+      // Type-map param values to what the parameter's Sitecore field
+      // stores (enum Droplinks → enum-value GUIDs, checkboxes → 1/"")
+      // so Pages' properties panel displays them as set. The param
+      // definition comes from the component's inline `params` or its
+      // external `parameters: { handle }` recipe; unknown params (or
+      // standalone compiles without the lookup maps) keep raw values.
+      paramValueFor: (componentHandle, paramName, rawValue) => {
+        const component = context.componentsByHandle?.get(componentHandle);
+        if (!component) return undefined;
+        const defs = component.parameters
+          ? (context.parametersByHandle?.get(component.parameters.handle)?.params ?? [])
+          : component.params;
+        const def = defs.find((param) => param.name === paramName);
+        return def ? paramWireValue(def, rawValue, site) : undefined;
       },
     });
     if (layoutXml.length === 0) return;

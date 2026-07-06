@@ -286,6 +286,19 @@ export interface CompileContext {
     import("../schema/recipe").ComponentTemplateRecipeParsed
   >;
   /**
+   * Every `DesignParametersTemplateRecipe` in the set, keyed by handle.
+   * The page compiler consults this (via a component's external
+   * `parameters: { handle }` reference) to type-map layout `par` values
+   * — enum-backed Droplink params must carry enum-value item GUIDs, and
+   * checkbox params `1`/`""`, for Pages' properties panel to display
+   * them as set. Absent for standalone compiles — params then pass
+   * through as raw names.
+   */
+  parametersByHandle?: ReadonlyMap<
+    string,
+    import("../schema/recipe").DesignParametersTemplateRecipeParsed
+  >;
+  /**
    * SXA Available Renderings root, e.g.
    * `/sitecore/content/<siteCollection>/<site>/Presentation/Available Renderings`.
    * `compileRecipeSet` aggregates every component-template recipe by
@@ -1340,6 +1353,38 @@ function resolveSitecoreType(field: FieldDefinition | DesignParameter): Sitecore
   }
   const multiple = "multiple" in field ? field.multiple : undefined;
   return defaultSitecoreFieldType(field.shape, multiple);
+}
+
+/**
+ * Map a recipe-level rendering-parameter VALUE to the wire form the
+ * parameter's Sitecore field type stores — the form XM Cloud Pages'
+ * properties panel reads back (operator-verified against working tenant
+ * pages, where enum params ride as `%7BGUID%7D` and checkboxes as `1`):
+ *
+ *  - **checkbox** — `"true"`/`"1"` → `"1"`, anything else → `""`.
+ *    A checkbox field holding the literal `true` displays as unchecked.
+ *  - **enum-backed Droplink** (`shape: "enum"` + `sitecore.enumHandle`,
+ *    not overridden to droplist) — the value NAME becomes the enum
+ *    value item's curly-braced refKey GUID (`enumValueId` under
+ *    `enumerationFolderId`), which plan-time captured-id substitution
+ *    resolves to the real tenant item. A Droplink holding a raw name
+ *    displays as unset and Edge's params resolution can't map it.
+ *  - **droplist** (pipe-list Source) — stores the raw name; no mapping.
+ *  - anything else — `undefined` (caller keeps the raw value).
+ */
+export function paramWireValue(
+  param: DesignParameter,
+  raw: string,
+  site: string
+): string | undefined {
+  const type = resolveSitecoreType(param);
+  if (type === "checkbox") {
+    return raw === "true" || raw === "1" ? "1" : "";
+  }
+  if (param.shape === "enum" && type !== "droplist" && param.sitecore?.enumHandle) {
+    return `{${enumValueId(enumerationFolderId(site, param.sitecore.enumHandle), raw).toUpperCase()}}`;
+  }
+  return undefined;
 }
 
 /**

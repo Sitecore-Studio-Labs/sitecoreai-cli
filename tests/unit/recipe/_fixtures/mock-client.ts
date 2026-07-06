@@ -36,7 +36,18 @@ export class MockAuthoringClient implements AuthoringApiClient {
   public readonly versionAdds: AddItemVersionInput[] = [];
   /** itemId (lowercased) → language → version count. Seeded to {en:1} by createItem. */
   private readonly versionsByItem = new Map<string, Map<string, number>>();
-  public throwOn?: { method: "createItem" | "updateItem"; match: string; message: string };
+  /**
+   * Opt-in failure injection. `match` is compared against the createItem
+   * `name` / updateItem `itemId` / addItemVersion `language` depending on
+   * `method`, so a test can simulate e.g. "the environment rejects a
+   * version write for the `fr` language" by matching addItemVersion on
+   * `"fr"`.
+   */
+  public throwOn?: {
+    method: "createItem" | "updateItem" | "addItemVersion";
+    match: string;
+    message: string;
+  };
 
   /** Pre-load an item, e.g. for idempotency-on-second-push tests. */
   preload(item: MockItem): void {
@@ -182,6 +193,9 @@ export class MockAuthoringClient implements AuthoringApiClient {
   }
 
   async addItemVersion(input: AddItemVersionInput): Promise<AddItemVersionResult> {
+    if (this.throwOn?.method === "addItemVersion" && input.language === this.throwOn.match) {
+      throw new Error(this.throwOn.message);
+    }
     this.versionAdds.push(input);
     const key = lower(input.itemId);
     let byLanguage = this.versionsByItem.get(key);

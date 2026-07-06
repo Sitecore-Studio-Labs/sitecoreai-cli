@@ -212,20 +212,22 @@ describe("emitLayoutXml — scoped datasourceRef", () => {
     ).toThrow(/scoped datasourceRef is invalid/);
   });
 
-  it("emits a local: sentinel when allowScoped is true", () => {
+  it("emits the page-relative local:/Data form when allowScoped is true without a GUID resolver", () => {
     const xml = emitLayoutXml(
       {
         placeholders: {
           "/main": [
             {
               componentHandle: "site-logo@1",
-              datasourceRef: { kind: "scoped", slot: "/main/0" },
+              datasourceRef: { kind: "scoped", slot: "HeroContent" },
             },
           ],
         },
       },
       { ...baseCtx, allowScoped: true }
     );
-    expect(xml).toContain('ds="local:/main/0"');
+    // The form XM Cloud Pages itself writes for page-local datasources —
+    // resolved against the context item at render time.
+    expect(xml).toContain('ds="local:/Data/HeroContent"');
   });
 });

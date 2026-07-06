@@ -1,5 +1,5 @@
 ---
-"sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": minor
 ---
 
 Page `__Final Renderings` is now emitted in the exact delta wire form XM Cloud Pages itself writes (operator-verified against working tenant pages), replacing the canonical full-replace form the Pages editor rejected as malformed:

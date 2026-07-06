@@ -264,6 +264,12 @@ export const registerRecipeTools = (registry: McpRegistry): void => {
                 undefined,
                 `[${recipe}] error op ${event.action.index}: ${event.error}`
               );
+            } else if (event.kind === "apply-skip") {
+              void extra.sendProgress(
+                opCount,
+                undefined,
+                `[${recipe}] skipped op ${event.action.index}: language "${event.language}" not registered`
+              );
             }
           },
         }) as never

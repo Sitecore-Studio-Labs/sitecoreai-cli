@@ -13,6 +13,8 @@ import {
 } from "../../../src/recipe/compile";
 import {
   datasourceId,
+  enumerationFolderId,
+  enumValueId,
   pageDesignId,
   pageItemId,
   placeholderSettingsId,
@@ -357,6 +359,62 @@ describe("compilePageRecipe", () => {
     const declaredRef = variantId("default", "vary-block@1", "FullBleed").toUpperCase();
     expect(xml).toContain(`FieldNames=${encodeURIComponent(`{${declaredRef}}`)}`);
     expect(xml).toContain("FieldNames=Undeclared");
+  });
+
+  it("stores enum param values as enum-value GUIDs and checkbox values as 1", () => {
+    // Params compile to Droplink fields sourced at enum folders and
+    // Checkbox fields — Pages' properties panel reads GUIDs and 1/""
+    // back. Raw names display as unset (operator-verified).
+    const paramComponent: ComponentTemplateRecipe = {
+      ...component("param-block@1"),
+      params: [
+        {
+          name: "Layout",
+          shape: "enum",
+          values: ["start", "center"],
+          sitecore: { enumHandle: "layout-align@1" },
+        },
+        { name: "OverlayEnabled", shape: "boolean" },
+        { name: "FreeText", shape: "text" },
+      ],
+    };
+    const paramPage = {
+      ...homePage,
+      handle: "param-page@1",
+      name: "ParamPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "param-block@1",
+              params: { Layout: "start", OverlayEnabled: "true", FreeText: "hello" },
+              datasourceRef: { kind: "none" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const layoutAlignEnum = {
+      kind: "enumeration",
+      schemaVersion: "1",
+      handle: "layout-align@1",
+      name: "LayoutAlign",
+      values: [{ name: "start" }, { name: "center" }],
+    } as const;
+    const irs = compileRecipeSet([articlePage, paramComponent, layoutAlignEnum, paramPage], {
+      ...CONTEXT,
+      enumerationsRoot: "/sitecore/content/Demo/Presentation/Enumerations",
+    });
+    const pageIr = irs.find((ir) => ir.recipeHandle === "param-page@1")!;
+    const layout = findSetField(pageIr.operations, "page-layout:param-page@1:en");
+    if (layout.value.kind !== "string") throw new Error("expected string layout");
+    const xml = layout.value.value;
+    const enumRef = enumValueId(enumerationFolderId("default", "layout-align@1"), "start");
+    expect(xml).toContain(`Layout=${encodeURIComponent(`{${enumRef.toUpperCase()}}`)}`);
+    expect(xml).toMatch(/OverlayEnabled=1(&|")/);
+    expect(xml).not.toContain("OverlayEnabled=true");
+    // Non-enum, non-checkbox params keep their raw values.
+    expect(xml).toContain("FreeText=hello");
   });
 
   it("throws INPUT_INVALID when pagesRoot is unconfigured", () => {

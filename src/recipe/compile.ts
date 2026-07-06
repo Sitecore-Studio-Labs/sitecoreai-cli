@@ -39,6 +39,7 @@ import {
 import type {
   ComponentSectionRecipeParsed,
   ComponentTemplateRecipeParsed,
+  DesignParametersTemplateRecipeParsed,
   EnumerationRecipeParsed,
   SiteRecipeParsed,
 } from "./schema/recipe";
@@ -128,6 +129,10 @@ const buildPerRecipeContext = (
     string,
     ComponentTemplateRecipeParsed
   >;
+  const parametersByHandle = indexByKind(recipes, "design-parameters-template") as Map<
+    string,
+    DesignParametersTemplateRecipeParsed
+  >;
   const sitesByHandle = indexByKind(recipes, "site") as Map<string, SiteRecipeParsed>;
   return {
     ...context,
@@ -135,6 +140,7 @@ const buildPerRecipeContext = (
     ...(sectionsByHandle.size > 0 ? { sectionsByHandle } : {}),
     ...(enumsByHandle.size > 0 ? { enumsByHandle } : {}),
     ...(componentsByHandle.size > 0 ? { componentsByHandle } : {}),
+    ...(parametersByHandle.size > 0 ? { parametersByHandle } : {}),
     ...(sitesByHandle.size > 0 ? { sitesByHandle } : {}),
   };
 };

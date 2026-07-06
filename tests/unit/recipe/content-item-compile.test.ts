@@ -258,13 +258,18 @@ describe("compileContentItemRecipe — field encoders", () => {
     expect(uploadIndex).toBeLessThan(setIndex);
   });
 
-  it("image with a role + context imageDefaults map → materialises the mapped brand URL", () => {
+  it("image with a role + context imageDefaults map → the AUTHORED URL still wins", () => {
+    // Content-item image values are authored content. The brand
+    // image-defaults map substitutes ONLY into template Standard Values
+    // (the stock defaults) — an author's actual page/content image must
+    // never be overridden by a role default.
     const BRAND_URL = "https://assets.example.invalid/brands/sync/avatar-bot.png";
+    const AUTHORED_URL = "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat";
     const ir = compileContentItemRecipe(
       buildRecipe({
         X: {
           shape: "image",
-          mediaPath: "https://api.dicebear.com/9.x/bottts/svg?seed=ai-chat",
+          mediaPath: AUTHORED_URL,
           alt: "AI Assistant",
           role: "avatar",
         },
@@ -274,8 +279,7 @@ describe("compileContentItemRecipe — field encoders", () => {
     const uploads = ir.operations.filter((op) => op.op === "MediaUpload");
     expect(uploads).toHaveLength(1);
     if (uploads[0].op !== "MediaUpload") return;
-    expect(uploads[0].source).toEqual({ kind: "external-url", url: BRAND_URL });
-    // Recipe alt survives; only the URL is branded.
+    expect(uploads[0].source).toEqual({ kind: "external-url", url: AUTHORED_URL });
     expect(uploads[0].altText).toBe("AI Assistant");
   });
 

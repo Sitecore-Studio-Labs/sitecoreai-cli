@@ -215,6 +215,42 @@ const resolveCompileRoots = (
 };
 
 /**
+ * Resolve the target environment's languages (Sites API `listLanguages`)
+ * so `compileDictionaryRecipe` can align a dictionary's translation
+ * locales to the brand's languages — the same language source the
+ * brand-kit Glossary reads.
+ *
+ * Only queried when the set actually carries a `dictionary` recipe (a
+ * component/page-only push pays no token mint). Best-effort: an auth or
+ * network failure returns `undefined`, so the compiler falls back to
+ * emitting every authored translation rather than aborting the push.
+ * Returns the union of each language's `iso` and `regionalIsoCode`
+ * (e.g. `["en", "fr", "pt", "pt-BR"]`), which the compiler matches
+ * case-insensitively against phrase-translation locales.
+ */
+const resolveEnvironmentLanguages = async (
+  recipes: readonly Recipe[],
+  environment: EnvironmentConfiguration
+): Promise<string[] | undefined> => {
+  if (!recipes.some((r) => r.kind === "dictionary")) return undefined;
+  const accessToken = await getAccessToken(environment);
+  if (!accessToken) return undefined;
+  try {
+    const languages = await createSitesApiClient({ accessToken }).listLanguages();
+    const codes = new Set<string>();
+    for (const lang of languages) {
+      if (lang.iso) codes.add(lang.iso);
+      if (lang.regionalIsoCode) codes.add(lang.regionalIsoCode);
+    }
+    return codes.size > 0 ? [...codes] : undefined;
+  } catch {
+    // Non-fatal: without the list the compiler emits all authored
+    // translations (pre-alignment behaviour). The push proceeds.
+    return undefined;
+  }
+};
+
+/**
  * Surface cache-skips as zero-effect ExecutionResults so downstream callers
  * (orchestrator, JSON consumers) see a uniform shape across skipped +
  * executed recipes. Pushes one result per skipped IR and logs the skip in
@@ -515,6 +551,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     recipeSetNeedsRoots(recipes)
   );
   const imageDefaults = await loadImageDefaults(options.imageDefaults);
+  const availableLanguages = await resolveEnvironmentLanguages(recipes, tenant.environment);
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
@@ -525,6 +562,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     contentItemsRoot,
     mediaLibraryRoot,
     imageDefaults,
+    availableLanguages,
     headlessVariantsRoot,
     availableRenderingsRoot,
     enumerationsRoot,

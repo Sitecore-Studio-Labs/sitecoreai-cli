@@ -31,7 +31,12 @@ import { joinPath, versionedField, type CompileContext } from "./shared";
  *     consuming components reference). Shared field.
  *   - The `Phrase` field — versioned: one item version per locale
  *     present on the phrase (`primaryLocale` from `defaultValue`,
- *     plus every locale in `phrases[*].translations`).
+ *     plus every locale in `phrases[*].translations`). When
+ *     `context.availableLanguages` is set (Sites API `listLanguages`),
+ *     translation locales are filtered to the environment's languages —
+ *     the dictionary installs exactly the brand's languages and never
+ *     adds a version in a locale the tenant doesn't have. The primary
+ *     locale is always emitted.
  *   - A `__Help text` (description) shared field — optional, sourced
  *     from `phrases[*].description`. Translator-facing context only.
  *
@@ -126,6 +131,16 @@ export function compileDictionaryRecipe(
 
   const primaryLocale = recipe.primaryLocale ?? DEFAULT_LANGUAGE;
 
+  // When the push resolved the environment's languages (Sites API
+  // `listLanguages`), restrict translation locales to that set so a
+  // dictionary installs exactly the brand's languages — and never emits
+  // an AddItemVersion for a language the tenant doesn't have (which the
+  // Authoring API rejects). Case-insensitive; the primary locale is
+  // always emitted regardless. Unset ⇒ emit every authored translation.
+  const availableLocales = context.availableLanguages
+    ? new Set(context.availableLanguages.map((l) => l.toLowerCase()))
+    : undefined;
+
   // Sort phrase keys for deterministic op ordering — re-pushes against
   // an unchanged recipe produce identical IRs (golden tests, planner
   // no-ops, diff stability).
@@ -174,6 +189,9 @@ export function compileDictionaryRecipe(
         // the CreateItem above, and a duplicate SetField at the same
         // (item, field, language, version) triple would no-op anyway.
         if (locale === primaryLocale) continue;
+        // Skip locales the target environment doesn't have — aligns the
+        // installed dictionary to the brand's languages (Sites API).
+        if (availableLocales && !availableLocales.has(locale.toLowerCase())) continue;
         // `CreateItem` only materialises the primary-locale version; a
         // SetField against a language that has no version yet fails with
         // "item ... does not contain version #1 in '<locale>'". Ensure

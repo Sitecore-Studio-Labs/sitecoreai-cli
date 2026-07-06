@@ -2,7 +2,8 @@ import { createScaiError } from "@/shared/errors";
 import type { AuthoringApiClient, RemoteItem, RemoteFieldValue } from "../api/client";
 import { renderRefValue } from "../api/ref-encoding";
 import type { Language, SitesApiClient } from "../api/sites-client";
-import type { FieldValue, OperationIr } from "../ir/operations";
+import type { FieldValue, Operation, OperationIr } from "../ir/operations";
+import { DEFAULT_LANGUAGE } from "../ir/sitecore-templates";
 import {
   buildAction,
   buildPlan,
@@ -61,6 +62,17 @@ export type ExecutionEvent =
   | { kind: "apply-start"; action: PlannedAction }
   | { kind: "apply-success"; action: PlannedAction }
   | { kind: "apply-error"; action: PlannedAction; error: string }
+  /**
+   * Emitted when an apply-time mutation targets a language version stack
+   * for a language the environment hasn't registered, and the op is a
+   * non-primary-language version write (dictionary translation or a
+   * component `__Standard Values` locale-map default). Rather than abort
+   * the whole push + roll back, the executor skips just that op — the
+   * primary language and every registered locale still install — and
+   * surfaces the skip here so operators can see what was left out and
+   * why.
+   */
+  | { kind: "apply-skip"; action: PlannedAction; language: string; error: string }
   /**
    * Emitted on each Sites API job poll while waiting for an async op
    * (createSite, deleteSite). Lets operators and orchestrators see
@@ -329,6 +341,66 @@ const synthesizeCreateSnapshot = ({
 const isAlreadyAddedLanguageError = (err: unknown): boolean => {
   const message = err instanceof Error ? err.message : String(err);
   return /\b409\b/.test(message) || /already/i.test(message);
+};
+
+/**
+ * True when an apply-time error means the op's target language has no
+ * registered version stack on the environment — i.e. that language isn't
+ * provisioned. The Authoring API rejects a version write (AddItemVersion /
+ * versioned SetField) against an unregistered language with one of these
+ * shapes. Dictionary translations and component `__Standard Values`
+ * locale-map defaults both emit per-language version writes, so an
+ * operator whose environment lacks (say) `fr` would otherwise see the
+ * whole push abort. See `nonPrimaryLanguageOfOp` for the guard that keeps
+ * this scoped to non-primary-language ops only.
+ */
+const isUnavailableLanguageError = (message: string): boolean =>
+  /does not contain version/i.test(message) ||
+  /\blanguage\b[^.]*\bnot\b\s+(?:defined|found|registered|available|configured|valid|supported|installed)/i.test(
+    message
+  ) ||
+  /\b(?:no such|unknown|invalid|unsupported)\s+language\b/i.test(message);
+
+/**
+ * If this op writes a NON-primary-language version, return that language;
+ * otherwise `undefined`. Only `AddItemVersion` and a `SetField` carrying an
+ * explicit non-`en` language qualify — a failure on the primary language
+ * (`en`) or a language-agnostic op is always a real error and must never be
+ * swallowed. Used to scope the unregistered-language skip to the ops that
+ * fan a recipe's content out across locales (dictionary translations, SV
+ * locale-map defaults).
+ */
+const nonPrimaryLanguageOfOp = (op: Operation): string | undefined => {
+  if (op.op !== "AddItemVersion" && op.op !== "SetField") return undefined;
+  const language = op.language;
+  if (!language || language.toLowerCase() === DEFAULT_LANGUAGE) return undefined;
+  return language;
+};
+
+/**
+ * Apply-error handler for the unregistered-language case. When `op` writes a
+ * non-primary-language version and `message` says that language isn't
+ * registered on the environment, rewrite the action from its planned status
+ * to `skip`, reconcile the summary, emit `apply-skip`, and return true so the
+ * apply loop `continue`s instead of aborting + rolling back. Returns false for
+ * any other failure, which the caller then treats as a fatal apply error.
+ * Factored out of `executeIr` to keep that function under the complexity gate.
+ */
+const trySkipUnavailableLanguage = (
+  op: Operation,
+  action: PlannedAction,
+  message: string,
+  summary: PlanSummary,
+  emit?: (event: ExecutionEvent) => void
+): boolean => {
+  const language = nonPrimaryLanguageOfOp(op);
+  if (language === undefined || !isUnavailableLanguageError(message)) return false;
+  summary[action.status] -= 1;
+  action.status = "skip";
+  action.reason = `Skipped: environment has no "${language}" language registered (${message}).`;
+  summary.skip += 1;
+  emit?.({ kind: "apply-skip", action, language, error: message });
+  return true;
 };
 
 /** Regional + iso codes currently on the environment, lowercased for matching. */
@@ -843,6 +915,20 @@ export const executeIr = async (
       options.emit?.({ kind: "apply-success", action });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Unregistered-language tolerance. A recipe may fan content out
+      // across locales (dictionary translations, `__Standard Values`
+      // locale-map defaults) into languages the target environment hasn't
+      // provisioned. The Authoring API rejects the version write for a
+      // missing language; `trySkipUnavailableLanguage` turns that single
+      // op into a SKIP and returns true so we keep going — the primary
+      // language and every registered locale still install instead of the
+      // whole push aborting + rolling back. Scoped to non-primary-language
+      // version writes so a genuine `en` failure still aborts. `applied` is
+      // untouched here (dispatchMutation threw before recording), so
+      // there's nothing to roll back for this op.
+      if (trySkipUnavailableLanguage(op, action, message, summary, options.emit)) {
+        continue;
+      }
       // Attach the apply-time error to the action so the top-level
       // command summary surfaces the actual server message in
       // `details[]`. The planner only sets `reason` for plan-time

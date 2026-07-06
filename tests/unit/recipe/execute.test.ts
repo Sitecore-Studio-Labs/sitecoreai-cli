@@ -216,6 +216,97 @@ describe("executeIr — topological invariant of compiled IR", () => {
   });
 });
 
+describe("executeIr — unregistered-language tolerance", () => {
+  // A component whose Heading field carries a locale-map `__Standard
+  // Values` default (en + fr). Compiling with both languages "available"
+  // makes the compiler emit a primary en version on the SV item plus a
+  // non-primary `fr` AddItemVersion + versioned SetField.
+  const localeRecipe = {
+    kind: "component-template",
+    schemaVersion: "1",
+    handle: "locale-card@1",
+    name: "LocaleCard",
+    displayName: "Locale Card",
+    description: "Component with a locale-map Standard Values default for testing.",
+    fields: [
+      {
+        name: "Heading",
+        shape: "text",
+        default: { en: "Welcome", fr: "Bienvenue" },
+        sitecore: { type: "single-line-text", sortOrder: 100 },
+      },
+    ],
+  } as const;
+
+  const compileLocale = () =>
+    compileComponentTemplateRecipe(localeRecipe as never, {
+      ...CONTEXT,
+      availableLanguages: ["en", "fr"],
+    });
+
+  it("skips a non-primary-language version write against an unregistered language instead of aborting", async () => {
+    const ir = compileLocale();
+    // Sanity: the IR must contain a non-primary `fr` AddItemVersion for the
+    // test to exercise the branch it targets.
+    const frAddVersion = ir.operations.find(
+      (op) => op.op === "AddItemVersion" && op.language === "fr"
+    );
+    expect(frAddVersion).toBeDefined();
+
+    const client = new MockAuthoringClient();
+    // The environment has no `fr` registered — the Authoring API rejects the
+    // version write with an "unavailable language" shaped error.
+    client.throwOn = {
+      method: "addItemVersion",
+      match: "fr",
+      message: "The specified language 'fr' is not defined on this environment.",
+    };
+
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      emit: (e) => events.push(e),
+    });
+
+    // The push completes — primary-language content installed, only the
+    // unregistered-language version was skipped.
+    expect(result.aborted).toBe(false);
+    expect(result.summary.create).toBeGreaterThan(0);
+    expect(result.rollback).toBeUndefined();
+
+    // The `fr` AddItemVersion op surfaced as a skip, not an error.
+    const skipEvent = events.find((e) => e.kind === "apply-skip");
+    expect(skipEvent).toBeDefined();
+    expect(skipEvent).toMatchObject({ kind: "apply-skip", language: "fr" });
+    expect(result.summary.skip).toBeGreaterThan(0);
+    expect(events.some((e) => e.kind === "apply-error")).toBe(false);
+    expect(events.some((e) => e.kind === "failed")).toBe(false);
+  });
+
+  it("still aborts when a version write fails for a reason other than an unregistered language", async () => {
+    const ir = compileLocale();
+    const client = new MockAuthoringClient();
+    // A non-language failure on the same op must NOT be swallowed.
+    client.throwOn = {
+      method: "addItemVersion",
+      match: "fr",
+      message: "Timeout contacting the Authoring API.",
+    };
+
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      emit: (e) => events.push(e),
+    });
+
+    // A non-language failure aborts + rolls back; it is NOT swallowed as a skip.
+    expect(result.aborted).toBe(true);
+    expect(result.rollback).toBeDefined();
+    expect(events.some((e) => e.kind === "apply-error")).toBe(true);
+    expect(events.some((e) => e.kind === "apply-skip")).toBe(false);
+  });
+});
+
 describe("executeIr — crossRecipeRefs seeding", () => {
   it("seeds capturedItemIds for cross-recipe refs that exist on the tenant", async () => {
     const ir = compileCta();

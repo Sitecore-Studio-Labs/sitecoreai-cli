@@ -1901,6 +1901,9 @@ function encodeStandardValueDefault(
           url: parsed.src,
           ...(parsed.alt ? { alt: parsed.alt } : {}),
           ...(imageCtx.role !== undefined ? { role: imageCtx.role } : {}),
+          // Standard Values ARE the stock defaults — the one place the
+          // brand image-defaults map is meant to substitute.
+          substituteRole: true,
           sink: imageCtx.sink,
         });
       }
@@ -2096,18 +2099,31 @@ export const externalImageMediaRef = (opts: {
   url: string;
   alt?: string;
   /**
-   * Semantic image role — when set AND `sink.imageDefaults` maps it,
-   * the mapped URL replaces `url` before materialisation (brand
-   * substitution). The refKey derives from the EFFECTIVE URL, so two
-   * brands' maps yield distinct media items on the same field.
+   * Semantic image role — when set AND `substituteRole` is true AND
+   * `sink.imageDefaults` maps it, the mapped URL replaces `url` before
+   * materialisation (brand substitution). The refKey derives from the
+   * EFFECTIVE URL, so two brands' maps yield distinct media items on
+   * the same field.
    */
   role?: string;
+  /**
+   * Opt-in for image-defaults substitution. Set ONLY by the template
+   * Standard-Values path — SV defaults are the component's stock
+   * imagery, which is exactly what the brand map exists to replace.
+   * AUTHORED content values (page/content-item images, exported story
+   * imagery) must never be overridden by a role default: the author's
+   * value always wins over the standard value.
+   */
+  substituteRole?: boolean;
   /** Per-value destination folder override (`image.mediaLibraryFolder`). */
   folder?: string;
   sink: ImageMediaSink;
 }): RefValue => {
   const { site, recipeHandle, fieldName, alt, folder, sink } = opts;
-  const override = opts.role !== undefined ? sink.imageDefaults?.[opts.role] : undefined;
+  const override =
+    opts.substituteRole === true && opts.role !== undefined
+      ? sink.imageDefaults?.[opts.role]
+      : undefined;
   if (override !== undefined && !isExternalMediaUrl(override)) {
     throw createScaiError(
       `Image-defaults entry for role '${opts.role}' is not an http(s) URL: '${override}'.`,

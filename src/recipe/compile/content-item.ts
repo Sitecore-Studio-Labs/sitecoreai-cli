@@ -531,6 +531,10 @@ export const encodeContentFieldValue = (
           fieldName: imageMedia.fieldName,
           url: value.mediaPath,
           ...(value.alt ? { alt: value.alt } : {}),
+          // Role is carried for provenance but substitution is NOT
+          // opted into here: content values are AUTHORED — a page's
+          // actual image must always win over the brand's role default
+          // (which substitutes only into template Standard Values).
           ...(value.role ? { role: value.role } : {}),
           ...(value.mediaLibraryFolder ? { folder: value.mediaLibraryFolder } : {}),
           sink: imageMedia,

@@ -129,6 +129,38 @@ export type SitecoreFieldSource = z.infer<typeof SitecoreFieldSourceSchema>;
  */
 const LEGACY_SOURCE_KEYS = ["sourceTypes", "sourceQuery", "sourceScope", "sourceRaw"] as const;
 
+/**
+ * A per-locale field default: a map of locale code → value, e.g.
+ * `{ en: "Get in touch", de: "Kontakt aufnehmen", fr: "Contactez-nous" }`.
+ *
+ * Materialises as one `__Standard Values` field version per locale, so a
+ * template-specific default *content* string localises without leaning on
+ * the shared `core-ui-labels` dictionary. Only meaningful on
+ * text / rich-text fields — the compiler rejects a locale map on any
+ * other shape (a GUID reference / image / boolean default can't vary by
+ * language). The map MUST include the primary language (`en`) as the base
+ * version; every other locale becomes an additional language version.
+ *
+ * Non-primary keys are matched (case-insensitively) against the
+ * environment's registered languages at push time (Sites API
+ * `listLanguages`) — like the dictionary's `translations`, they are the
+ * environment's actual language codes, typically regional (`de-DE`,
+ * `fr-FR`), so a locale absent from the environment is dropped and the
+ * template installs exactly the brand's languages. A standalone compile
+ * (no live environment) emits every authored locale.
+ */
+export const LocalizedDefaultSchema = z.record(z.string().min(1), z.string());
+
+export type LocalizedDefault = z.infer<typeof LocalizedDefaultSchema>;
+
+/**
+ * A field/parameter default — either a single string (primary-language
+ * only, unchanged) or a {@link LocalizedDefaultSchema} locale map.
+ */
+export const FieldDefaultSchema = z.union([z.string(), LocalizedDefaultSchema]);
+
+export type FieldDefault = z.infer<typeof FieldDefaultSchema>;
+
 export const SitecoreFieldAugmentSchema = z
   .object({
     /** Override the default shape→Sitecore type mapping. */
@@ -143,8 +175,13 @@ export const SitecoreFieldAugmentSchema = z
     hint: z.string().optional(),
     /** Required marker (translates to a Sitecore validation rule). */
     required: z.boolean().optional(),
-    /** Default value via the template's __Standard Values item. */
-    defaultValue: z.string().optional(),
+    /**
+     * Default value via the template's `__Standard Values` item. A plain
+     * string sets the primary-language (`en`) version; a locale map
+     * (`{ en, de, … }`) sets one `__Standard Values` version per language.
+     * See {@link FieldDefaultSchema}.
+     */
+    defaultValue: FieldDefaultSchema.optional(),
     /**
      * For enum-shaped fields: handle of an `EnumerationRecipe` whose
      * value items back this field's dropdown. When set, the compiler:
@@ -210,8 +247,14 @@ export const FieldDefinitionSchema = z.object({
   values: z.array(z.string()).optional(),
   /** For `shape === "reference"`: false = single (Droplink), true = multi (Treelist). */
   multiple: z.boolean().optional(),
-  /** Default value at the abstract layer (also passable via `sitecore.defaultValue`). */
-  default: z.string().optional(),
+  /**
+   * Default value at the abstract layer (also passable via
+   * `sitecore.defaultValue`). A plain string sets the primary-language
+   * default; a locale map (`{ en, de, … }`) sets a per-language
+   * `__Standard Values` version and is only valid on text / rich-text
+   * shapes. See {@link FieldDefaultSchema}.
+   */
+  default: FieldDefaultSchema.optional(),
   /**
    * Semantic image role for brandable defaults (`hero`, `avatar`,
    * `product`, `logo`, …). Only meaningful on image-shaped fields whose
@@ -236,7 +279,12 @@ export const DesignParameterSchema = z.object({
   name: z.string().min(1),
   shape: FieldShapeSchema,
   values: z.array(z.string()).optional(),
-  default: z.string().optional(),
+  /**
+   * Parameter default. String = primary-language only; locale map
+   * (`{ en, de, … }`) = per-language `__Standard Values` version, valid
+   * only on text / rich-text shapes. See {@link FieldDefaultSchema}.
+   */
+  default: FieldDefaultSchema.optional(),
   sitecore: SitecoreFieldAugmentSchema.optional(),
 });
 

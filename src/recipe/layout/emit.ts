@@ -140,6 +140,21 @@ export interface LayoutEmitContext {
    */
   variantRefFor?: (componentHandle: string, variantName: string) => string | undefined;
   /**
+   * Optional per-param wire-value mapper. Called for every rendering
+   * parameter (except the reserved `DynamicPlaceholderId` and
+   * `FieldNames`) with the placement's componentHandle, the param name,
+   * and the recipe-level raw value; a returned string REPLACES the raw
+   * value in the emitted `par` blob. `PageRecipe` uses this to store
+   * enum-backed Droplink values as enum-value item GUIDs and checkbox
+   * values as `1`/`""` — the forms XM Cloud Pages' properties panel
+   * reads back. Returning undefined keeps the raw value.
+   */
+  paramValueFor?: (
+    componentHandle: string,
+    paramName: string,
+    rawValue: string
+  ) => string | undefined;
+  /**
    * SXA JSON Layout definition GUID. When set, the device element
    * carries an `l="{layoutId}"` attribute — `<d id="{device}"
    * l="{layout}">…</d>` — and `emitLayoutXml` emits the wrapper shell
@@ -239,6 +254,15 @@ const resolvePlacement = (
   }
 
   const allParams: Record<string, string> = { ...(placement.params ?? {}) };
+  if (ctx.paramValueFor) {
+    for (const [name, raw] of Object.entries(allParams)) {
+      // DynamicPlaceholderId is scai/SXA plumbing, never a template
+      // field; FieldNames is handled by variantRefFor below.
+      if (name === "DynamicPlaceholderId" || name === "FieldNames") continue;
+      const mapped = ctx.paramValueFor(placement.componentHandle, name, raw);
+      if (mapped !== undefined) allParams[name] = mapped;
+    }
+  }
   if (placement.variant !== undefined) {
     // SXA Rendering Variant selection rides as the FieldNames
     // rendering parameter — as the Variant Definition item's GUID when

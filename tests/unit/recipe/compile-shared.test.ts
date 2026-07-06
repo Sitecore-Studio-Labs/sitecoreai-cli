@@ -575,12 +575,12 @@ describe("buildFieldOp — sort order + storage axis", () => {
 
 describe("buildStandardValuesFieldEntries", () => {
   it("skips a field with no declared default", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [field({})]);
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [field({})]);
     expect(entries).toEqual([]);
   });
 
   it("encodes a string default for a text field", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({ name: "Title", default: "Hello" }),
     ]);
     expect(entries).toHaveLength(1);
@@ -591,28 +591,28 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("prefers sitecore.defaultValue over the abstract default", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({ name: "Title", default: "abstract", sitecore: { defaultValue: "override" } }),
     ]);
     expect(entries[0].value).toMatchObject({ value: "override" });
   });
 
   it("encodes a checkbox default as '1' for truthy strings", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({ name: "Flag", shape: "boolean", default: "yes" }),
     ]);
     expect(entries[0].value).toMatchObject({ kind: "string", value: "1" });
   });
 
   it("encodes a checkbox default as '' for falsey strings", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({ name: "Flag", shape: "boolean", default: "no" }),
     ]);
     expect(entries[0].value).toMatchObject({ kind: "string", value: "" });
   });
 
   it("encodes an image default with alt|src as the Sitecore image XML payload", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Hero",
         shape: "image",
@@ -627,7 +627,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes an image default with just a src (no pipe) as src-only image XML", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Hero",
         shape: "image",
@@ -645,7 +645,7 @@ describe("buildStandardValuesFieldEntries", () => {
     // Service render — the sink-less `src=` XML fallback above only
     // shows a thumbnail in Pages' field editor.
     const sink = { policy: "CreateAndUpdate" as const, mediaOps: [] as MediaUploadOp[] };
-    const entries = buildStandardValuesFieldEntries(
+    const { primary: entries } = buildStandardValuesFieldEntries(
       "default",
       "ai-chat@1",
       [
@@ -675,7 +675,7 @@ describe("buildStandardValuesFieldEntries", () => {
 
   it("keeps media-library-path image defaults as XML even with a sink", () => {
     const sink = { policy: "CreateAndUpdate" as const, mediaOps: [] as MediaUploadOp[] };
-    const entries = buildStandardValuesFieldEntries(
+    const { primary: entries } = buildStandardValuesFieldEntries(
       "default",
       "h@1",
       [
@@ -696,7 +696,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("escapes XML attribute special chars in image defaults", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Hero",
         shape: "image",
@@ -710,7 +710,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("skips an image default with no src (e.g. alt-only)", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Hero",
         shape: "image",
@@ -721,7 +721,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a file default with alt|src as the Sitecore file XML payload", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Document",
         shape: "image",
@@ -740,7 +740,7 @@ describe("buildStandardValuesFieldEntries", () => {
   // for materialising those content items in the same compile run; if
   // the handle doesn't resolve, the SV write fails at apply time.
   it("encodes a single-reference (Droplink) default as a ref-recipe pointing at the handle's contentItemId", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Author",
         shape: "reference",
@@ -762,7 +762,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a multi-reference (Treelist) default as a pipe-separated ref-recipe-list", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Authors",
         shape: "reference",
@@ -781,7 +781,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("skips a single-reference default when the trimmed handle is empty", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Author",
         shape: "reference",
@@ -794,7 +794,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("skips a multi-reference default when no handles parse out (e.g. only pipes/whitespace)", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Authors",
         shape: "reference",
@@ -812,7 +812,7 @@ describe("buildStandardValuesFieldEntries", () => {
   // the enum's value-item folder, not a content-item GUID that doesn't
   // exist. Same author-error contract as the enum-shape SV.
   it("encodes a multi-reference default with enumHandle as enum-value ref-recipe-list", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Platforms",
         shape: "reference",
@@ -837,7 +837,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a single-reference default with enumHandle as a single enum-value ref-recipe", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Platform",
         shape: "reference",
@@ -858,7 +858,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a general-link default with text|url as the Sitecore link XML payload", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Link",
         shape: "link",
@@ -874,7 +874,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a general-link default with no pipe as text + anchor URL", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Link",
         shape: "link",
@@ -889,7 +889,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a general-link default with mailto: as linktype mailto", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Link",
         shape: "link",
@@ -904,7 +904,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("escapes XML attribute special chars in general-link defaults", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Link",
         shape: "link",
@@ -920,7 +920,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("skips a general-link default with empty raw string", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Link",
         shape: "link",
@@ -936,7 +936,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes an inline droplist enum default as the raw string", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Size",
         shape: "enum",
@@ -949,7 +949,7 @@ describe("buildStandardValuesFieldEntries", () => {
   });
 
   it("encodes a shared-enum (droplink + enumHandle) default as a ref-recipe", () => {
-    const entries = buildStandardValuesFieldEntries("default", "h@1", [
+    const { primary: entries } = buildStandardValuesFieldEntries("default", "h@1", [
       field({
         name: "Color",
         shape: "enum",
@@ -992,7 +992,7 @@ describe("image-role substitution (imageDefaults map)", () => {
 
   it("materialises the mapped URL when the field's role is in the map", () => {
     const sink = sinkWith({ avatar: BRAND_URL });
-    const entries = buildStandardValuesFieldEntries(
+    const { primary: entries } = buildStandardValuesFieldEntries(
       "default",
       "ai-chat@1",
       [avatarField()],
@@ -1052,14 +1052,14 @@ describe("image-role substitution (imageDefaults map)", () => {
     // folder rather than either recipe's own folder.
     const sinkA = sinkWith({ avatar: BRAND_URL });
     const sinkB = sinkWith({ avatar: BRAND_URL });
-    const entriesA = buildStandardValuesFieldEntries(
+    const { primary: entriesA } = buildStandardValuesFieldEntries(
       "default",
       "ai-chat@1",
       [avatarField()],
       undefined,
       sinkA
     );
-    const entriesB = buildStandardValuesFieldEntries(
+    const { primary: entriesB } = buildStandardValuesFieldEntries(
       "default",
       "person-card@1",
       [
@@ -1106,7 +1106,7 @@ describe("image-role substitution (imageDefaults map)", () => {
   it("materialises a role-mapped image even when the field has NO authored default", () => {
     const bareRoleField = field({ name: "Image", shape: "image", role: "hero" });
     const mapped = sinkWith({ hero: BRAND_URL });
-    const entries = buildStandardValuesFieldEntries(
+    const { primary: entries } = buildStandardValuesFieldEntries(
       "default",
       "hero@1",
       [bareRoleField],
@@ -1120,7 +1120,7 @@ describe("image-role substitution (imageDefaults map)", () => {
 
     // Without a map entry the field stays defaultless — no synthetic SV.
     const unmapped = sinkWith({ avatar: BRAND_URL });
-    const none = buildStandardValuesFieldEntries(
+    const { primary: none } = buildStandardValuesFieldEntries(
       "default",
       "hero@1",
       [bareRoleField],

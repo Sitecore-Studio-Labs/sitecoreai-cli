@@ -53,6 +53,7 @@ import {
   buildStandardValuesFieldEntries,
   datasourceTemplateHandles,
   emitDatasourceTemplate,
+  emitStandardValuesLocaleVersions,
   ensureComponentFoldersBucket,
   ensurePresentationDesignParametersBucket,
   ensureRenderingsSectionFolder,
@@ -682,13 +683,15 @@ function emitParamsTemplate({
   // least one param declares a `default` / `sitecore.defaultValue`;
   // empty SV items are noise and would still resolve identical GUIDs
   // across pushes if added later.
-  const paramsSvFieldEntries = buildStandardValuesFieldEntries(
+  const paramsSv = buildStandardValuesFieldEntries(
     site,
     recipe.handle,
     recipe.params,
-    designParameterFieldId
+    designParameterFieldId,
+    undefined,
+    context.availableLanguages
   );
-  if (paramsSvFieldEntries.length > 0) {
+  if (paramsSv.primary.length > 0) {
     const paramsSvRefKey = designParametersStandardValuesId(site, recipe.handle);
     const paramsSvPath = joinPath(paramsTplPath, "__Standard Values");
     operations.push({
@@ -700,7 +703,7 @@ function emitParamsTemplate({
       parent: { kind: "ref-recipe", refKey: paramsTplRefKey },
       templateOf: paramsTplRefKey,
       name: "__Standard Values",
-      fields: paramsSvFieldEntries,
+      fields: paramsSv.primary,
     } satisfies CreateItemOp);
 
     operations.push({
@@ -710,6 +713,15 @@ function emitParamsTemplate({
       templateRefKey: paramsTplRefKey,
       standardValuesRefKey: paramsSvRefKey,
     } satisfies SetStandardValuesOp);
+
+    // Per-language versions from any locale-map param defaults.
+    emitStandardValuesLocaleVersions(
+      operations,
+      paramsSvRefKey,
+      paramsSv.localeVersions,
+      policy,
+      `params-standard-values:${recipe.handle}`
+    );
   }
 }
 

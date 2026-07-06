@@ -65,7 +65,7 @@ describe("buildStandardValuesFieldEntries — locale-map default", () => {
     );
   });
 
-  it("filters non-primary locales to the environment's registered languages", () => {
+  it("resolves exact regional keys to the registered code, dropping unregistered ones", () => {
     const build = buildStandardValuesFieldEntries(
       SITE,
       HANDLE,
@@ -78,10 +78,63 @@ describe("buildStandardValuesFieldEntries — locale-map default", () => {
       ],
       undefined,
       undefined,
-      ["en-US", "DE-DE"] // case-insensitive; fr-FR absent → dropped
+      ["en-US", "de-DE"] // fr-FR absent → dropped
     );
     expect(build.primary).toHaveLength(1); // primary always emitted
     expect(build.localeVersions.map((v) => v.language)).toEqual(["de-DE"]);
+  });
+
+  it("fans a base-language key out to every registered regional variant", () => {
+    const build = buildStandardValuesFieldEntries(
+      SITE,
+      HANDLE,
+      // Author one `de` translation; environment has three German regions.
+      [textField("Label", { en: "Get in touch", de: "Kontakt aufnehmen" })],
+      undefined,
+      undefined,
+      ["en-US", "de-DE", "de-AT", "de-CH", "fr-FR"]
+    );
+    // `de` fans to all de-*; fr-FR has no authored key → not emitted.
+    expect(build.localeVersions.map((v) => v.language)).toEqual(["de-AT", "de-CH", "de-DE"]);
+    for (const v of build.localeVersions) {
+      expect(v.value).toEqual({ kind: "string", value: "Kontakt aufnehmen" });
+    }
+  });
+
+  it("lets an explicit regional key override the base-language expansion", () => {
+    const build = buildStandardValuesFieldEntries(
+      SITE,
+      HANDLE,
+      [textField("Label", { en: "Get in touch", de: "Kontakt aufnehmen", "de-CH": "Grüezi" })],
+      undefined,
+      undefined,
+      ["en-US", "de-DE", "de-CH"]
+    );
+    const byLang = Object.fromEntries(
+      build.localeVersions.map((v) => [
+        v.language,
+        v.value.kind === "string" ? v.value.value : undefined,
+      ])
+    );
+    expect(byLang).toEqual({ "de-DE": "Kontakt aufnehmen", "de-CH": "Grüezi" });
+  });
+
+  it("handles the zh Simplified/Traditional split via explicit regional keys", () => {
+    const build = buildStandardValuesFieldEntries(
+      SITE,
+      HANDLE,
+      [textField("Label", { en: "Search", "zh-CN": "搜索", "zh-TW": "搜尋" })],
+      undefined,
+      undefined,
+      ["en-US", "zh-CN", "zh-TW"]
+    );
+    const byLang = Object.fromEntries(
+      build.localeVersions.map((v) => [
+        v.language,
+        v.value.kind === "string" ? v.value.value : undefined,
+      ])
+    );
+    expect(byLang).toEqual({ "zh-CN": "搜索", "zh-TW": "搜尋" });
   });
 
   it("rejects a locale map missing the primary language", () => {

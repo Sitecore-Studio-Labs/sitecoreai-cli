@@ -515,6 +515,17 @@ const bootstrapMarkerField = async (
   }
 };
 
+/**
+ * Apply-time updateItem concurrency (see `ExecuteOptions.applyConcurrency`).
+ * Default 4 keeps push wall-clock down on large sets;
+ * `SITECOREAI_APPLY_CONCURRENCY=1` restores the historical strictly-serial
+ * apply.
+ */
+const resolveApplyConcurrency = (): number => {
+  const raw = Number.parseInt(process.env.SITECOREAI_APPLY_CONCURRENCY ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 4;
+};
+
 export const runRecipePush = async (options: RecipePushOptions): Promise<ExecutionResult[]> => {
   const logger = toLogger(options);
   // Workspace-wide path → itemId cache. Shared between the AuthoringApiClient
@@ -813,6 +824,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       baselineIndex: baselineIndexByHandle.get(ir.recipeHandle),
       conflictPolicy: options.conflictPolicy,
       createdItemRefKeys,
+      applyConcurrency: resolveApplyConcurrency(),
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {

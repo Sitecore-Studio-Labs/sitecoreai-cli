@@ -1,5 +1,5 @@
 ---
-"sitecoreai-cli": minor
+"@sitecoreai-labs/sitecoreai-cli": minor
 ---
 
 Layout XML now resolves against real tenant item ids, and variant selections reference their Variant Definition items:

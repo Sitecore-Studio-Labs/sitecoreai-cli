@@ -141,13 +141,16 @@ const LEGACY_SOURCE_KEYS = ["sourceTypes", "sourceQuery", "sourceScope", "source
  * language). The map MUST include the primary language (`en`) as the base
  * version; every other locale becomes an additional language version.
  *
- * Non-primary keys are matched (case-insensitively) against the
+ * Non-primary keys are resolved (case-insensitively) against the
  * environment's registered languages at push time (Sites API
- * `listLanguages`) — like the dictionary's `translations`, they are the
- * environment's actual language codes, typically regional (`de-DE`,
- * `fr-FR`), so a locale absent from the environment is dropped and the
- * template installs exactly the brand's languages. A standalone compile
- * (no live environment) emits every authored locale.
+ * `listLanguages`). A key may be a **base language** (`de`, `ar`, `ja`)
+ * or a full **regional code** (`de-DE`, `pt-BR`): a base key fans out to
+ * every registered regional variant of that language, each carrying the
+ * base value, so you author one translation per language rather than one
+ * per region; an explicit regional key overrides the base for that exact
+ * locale (handy for the `zh-CN` vs `zh-TW` / `pt-BR` vs `pt-PT` splits).
+ * A locale that matches no registered language is dropped. A standalone
+ * compile (no live environment) emits every authored key verbatim.
  */
 export const LocalizedDefaultSchema = z.record(z.string().min(1), z.string());
 

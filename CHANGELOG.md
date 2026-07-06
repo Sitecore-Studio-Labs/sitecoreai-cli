@@ -1,5 +1,42 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.18.0
+
+### Minor Changes
+
+- cfc1d54: Align dictionary translations to the target environment's languages.
+
+  `recipe push` now resolves the environment's languages from the Sites API
+  (`listLanguages` — the same language source the brand-kit Glossary reads) and
+  passes them to the dictionary compiler as `context.availableLanguages`.
+  `compileDictionaryRecipe` filters each phrase's translation locales to that
+  set: a dictionary installs exactly the brand's languages and never emits an
+  `AddItemVersion` for a locale the tenant doesn't have.
+
+  - One shared dictionary can author every supported translation; each install
+    materialises only the locales its environment has (matched case-insensitively
+    on both `iso` and `regionalIsoCode`, e.g. `pt` / `pt-BR`). Authored locales
+    the environment lacks are skipped; environment locales the dictionary doesn't
+    author fall back to the primary via SXA dictionary resolution.
+  - The primary locale is always emitted (the default-language fallback).
+  - Best-effort: the Sites API call runs only when the set contains a
+    `dictionary` recipe, and an auth/network failure falls back to emitting every
+    authored translation (the previous behaviour) rather than aborting the push.
+  - Standalone `compileDictionaryRecipe` callers that don't set
+    `availableLanguages` are unaffected.
+
+- 3c45b7e: Image-defaults substitution now materialises brand images as shared site-level media items: a role-substituted image uploads ONCE per (site, role, URL) into the `Defaults` folder under the media-library root (`<root>/Defaults/<role>-<hash>`), and every component or content item mapping that role references the same media item. Role-annotated image fields with no authored default also materialise the mapped URL now — the role alone declares the dependency, no throwaway stock URL required.
+
+### Patch Changes
+
+- 3346f24: Recipe multilist writes now normalize GUIDs to the dashed `{8-4-4-4-12}` form. The Authoring API's `createItem` returns dashless itemIds, and Sitecore silently ignores dashless GUIDs in TreelistEx/multilist fields — so page-template insert options appended to a parent's `__Masters` never resolved in Pages' "Create page (+)". `formatMultiList`, `parseMultiList`, `AppendToMultiList` desired values, and path-resolved base templates all dashify now, and merge-unique recognises previously written dashless entries as equal to their dashed form (no duplicate entries on re-push).
+- e7af4cf: Replace polynomial trailing-slash regexes in the media-path builders with
+  the loop-based `trimEndChar` helper. The `/\/+$/` `.replace(...)` calls on
+  `mediaLibraryRoot` / `folder` / `locationFolder` were flagged by CodeQL as a
+  polynomial-time ReDoS pattern; `trimEndChar` trims trailing `/` in linear
+  time with no backtracking. No behavioural change.
+- 3346f24: Layout XML now binds placements with Sitecore's real placeholder attribute — `ph` (canonical) / `s:ph` (delta) — instead of the invalid `placeh`/`s:placeh`, which Sitecore stored verbatim but never bound, so pushed pages rendered empty until a first save in Pages rewrote the XML. The parser still accepts the legacy `placeh` forms already written to tenants. A page's canonical `__Final Renderings` also carries its own `l="{JSON layout}"` device pointer now: the canonical form fully replaces the template's standard-values layout, so without it the page had no layout definition at all.
+
 ## 0.17.4
 
 ### Patch Changes

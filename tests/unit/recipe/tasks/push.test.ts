@@ -27,6 +27,7 @@ vi.mock("../../../../src/recipe/compile", () => ({
 }));
 vi.mock("../../../../src/recipe/runtime/execute", () => ({
   executeIr: vi.fn(),
+  ensureEnvironmentLanguages: vi.fn(),
 }));
 vi.mock("../../../../src/recipe/runtime/cache", () => ({
   loadRecipeCache: vi.fn(),
@@ -56,7 +57,7 @@ import { runRecipePush } from "../../../../src/recipe/tasks/push";
 import * as shared from "../../../../src/recipe/tasks/shared";
 import * as io from "../../../../src/recipe/io";
 import { compileRecipeSet } from "../../../../src/recipe/compile";
-import { executeIr } from "../../../../src/recipe/runtime/execute";
+import { ensureEnvironmentLanguages, executeIr } from "../../../../src/recipe/runtime/execute";
 import * as cache from "../../../../src/recipe/runtime/cache";
 import { createRollbackLogger } from "../../../../src/recipe/rollback/rollback-log";
 import { getAccessToken } from "../../../../src/recipe/api/auth";
@@ -296,6 +297,37 @@ describe("runRecipePush — Sites API token", () => {
     await expect(runRecipePush({ allowWrite: true } as never)).rejects.toMatchObject({
       code: "AUTH_REQUIRED",
     });
+  });
+});
+
+describe("runRecipePush — SiteRecipe language provisioning", () => {
+  it("registers a SiteRecipe's declared languages on the environment before compile", async () => {
+    // A SiteRecipe carrying additional languages — the localized SV /
+    // dictionary content the compiler would otherwise filter out on an
+    // existing site whose createSite mutation never runs.
+    vi.mocked(io.loadRecipe).mockResolvedValue({
+      kind: "site",
+      handle: "showcase-site@1",
+      name: "showcase",
+      language: "en",
+      languages: ["ar-SA", "de-DE"],
+    } as never);
+    vi.mocked(getAccessToken).mockResolvedValue("site-token" as never);
+
+    await runRecipePush({ allowWrite: true } as never);
+
+    expect(createSitesApiClient).toHaveBeenCalledWith({ accessToken: "site-token" });
+    expect(ensureEnvironmentLanguages).toHaveBeenCalledWith(
+      { kind: "sites-client" },
+      expect.arrayContaining(["en", "ar-SA", "de-DE"])
+    );
+  });
+
+  it("does not provision languages when the set carries no SiteRecipe", async () => {
+    // Default loadRecipe is a component-template — no languages to register.
+    await runRecipePush({ allowWrite: true } as never);
+
+    expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
   });
 });
 

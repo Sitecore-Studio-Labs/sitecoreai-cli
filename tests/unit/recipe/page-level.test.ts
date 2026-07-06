@@ -19,6 +19,7 @@ import {
   renderingId,
   standardValuesId,
   templateId,
+  variantId,
 } from "../../../src/recipe/items/guids";
 import type {
   CreateItemOp,
@@ -239,21 +240,123 @@ describe("compilePageRecipe", () => {
     expect(field.value).toEqual({ kind: "string", value: "Welcome" });
   });
 
-  it("writes the page layout to __Final Renderings (versioned)", () => {
+  it("writes the page layout to __Final Renderings as a Pages-native delta", () => {
     const layout = findSetField(ir.operations, "page-layout:home@1:en");
     expect(layout.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
     expect(layout.version).toBe(1);
     if (layout.value.kind !== "string") throw new Error("expected string layout");
-    expect(layout.value.value).toContain("<r id=");
-    // Placeholder binding rides the `ph` attribute — Sitecore's layout
-    // engine reads exactly that name (an earlier iteration wrote
-    // `placeh`, which Sitecore stored but never bound, so pushed pages
-    // rendered empty until a first Pages save rewrote the XML).
-    expect(layout.value.value).toContain(' ph="');
-    expect(layout.value.value).not.toContain("placeh=");
-    // A canonical layout on the page REPLACES the standard-values layout
-    // wholesale, so it must carry its own JSON-layout pointer.
-    expect(layout.value.value).toContain(`l="{${SXA_JSON_LAYOUT_ID.toUpperCase()}}"`);
+    const xml = layout.value.value;
+    // Delta wire form — what XM Cloud Pages writes on every author save
+    // (operator-verified against working tenant pages). Merges over the
+    // page template's standard values, which supply the JSON-layout
+    // pointer, so no `l=` and no xsd/xsi canonical wrapper here.
+    expect(xml).toContain('<r xmlns:p="p" xmlns:s="s" p:p="1">');
+    expect(xml).toContain(' s:ph="');
+    expect(xml).toContain(' s:id="');
+    expect(xml).toContain('p:before="*"');
+    expect(xml).not.toContain("placeh=");
+    expect(xml).not.toContain('l="');
+    // Pages-authored page deltas never carry the device-attributes
+    // directive; it would sever the inherited layout pointer.
+    expect(xml).not.toContain("<p:da");
+    // Every rendering carries a page-unique DynamicPlaceholderId.
+    expect(xml).toContain("DynamicPlaceholderId");
+  });
+
+  it("emits the exact Pages-authored delta shape for a multi-placement layout", () => {
+    // Mirrors operator-verified `__Final Renderings` values from working
+    // tenant pages: anchor chain p:before="*" → p:after="r[@uid='{PREV}']"
+    // → p:after="*[1=2]", local:/Data datasources, and a page-unique
+    // DynamicPlaceholderId on EVERY rendering — leaves included.
+    const page = {
+      ...homePage,
+      handle: "shape@1",
+      name: "Shape",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "alpha-block@1",
+              datasourceRef: { kind: "scoped", slot: "Hero 1" },
+            },
+            { componentHandle: "alpha-block@1", datasourceRef: { kind: "none" } },
+            {
+              componentHandle: "alpha-block@1",
+              variant: "FullBleed",
+              datasourceRef: { kind: "scoped", slot: "Hero 2" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const shapeIr = compilePageRecipe(page, CONTEXT);
+    const layout = findSetField(shapeIr.operations, "page-layout:shape@1:en");
+    if (layout.value.kind !== "string") throw new Error("expected string layout");
+    const xml = layout.value.value;
+
+    // One <r> per placement, chained in declaration order.
+    const uids = [...xml.matchAll(/<r uid="({[0-9A-F-]+})"/g)].map((m) => m[1]);
+    expect(uids).toHaveLength(3);
+    expect(xml).toContain(`uid="${uids[0]}" p:before="*"`);
+    expect(xml).toContain(`uid="${uids[1]}" p:after="r[@uid='${uids[0]}']"`);
+    expect(xml).toContain(`uid="${uids[2]}" p:after="*[1=2]"`);
+
+    // Page-relative datasources; the config-driven placement has no ds.
+    expect(xml).toContain('s:ds="local:/Data/Hero 1"');
+    expect(xml).toContain('s:ds="local:/Data/Hero 2"');
+
+    // Every rendering — including datasource-less leaves — carries a
+    // page-unique DynamicPlaceholderId.
+    expect(xml).toMatch(/DynamicPlaceholderId=1/);
+    expect(xml).toMatch(/DynamicPlaceholderId=2/);
+    expect(xml).toMatch(/DynamicPlaceholderId=3/);
+
+    // Variant rides FieldNames alongside the id.
+    expect(xml).toMatch(/s:par="[^"]*FieldNames=FullBleed[^"]*"/);
+  });
+
+  it("references a declared variant by its Variant Definition GUID; undeclared variants by name", () => {
+    // Pages' variant picker displays the Variant Definition item the
+    // FieldNames GUID references; the layout service resolves it back
+    // to the item's NAME for the front end's export lookup. A variant
+    // the component recipe doesn't declare has no item to reference —
+    // it stays a raw name, which the front end matches directly.
+    const variantComponent: ComponentTemplateRecipe = {
+      ...component("vary-block@1"),
+      variants: [{ name: "FullBleed" }],
+    };
+    const variantPage = {
+      ...homePage,
+      handle: "variant-page@1",
+      name: "VariantPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            {
+              componentHandle: "vary-block@1",
+              variant: "FullBleed",
+              datasourceRef: { kind: "none" },
+            },
+            {
+              componentHandle: "vary-block@1",
+              variant: "Undeclared",
+              datasourceRef: { kind: "none" },
+            },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+    const irs = compileRecipeSet([articlePage, variantComponent, variantPage], {
+      ...CONTEXT,
+      headlessVariantsRoot: "/sitecore/content/Demo/Presentation/Headless Variants",
+    });
+    const pageIr = irs.find((ir) => ir.recipeHandle === "variant-page@1")!;
+    const layout = findSetField(pageIr.operations, "page-layout:variant-page@1:en");
+    if (layout.value.kind !== "string") throw new Error("expected string layout");
+    const xml = layout.value.value;
+    const declaredRef = variantId("default", "vary-block@1", "FullBleed").toUpperCase();
+    expect(xml).toContain(`FieldNames=${encodeURIComponent(`{${declaredRef}}`)}`);
+    expect(xml).toContain("FieldNames=Undeclared");
   });
 
   it("throws INPUT_INVALID when pagesRoot is unconfigured", () => {
@@ -292,14 +395,13 @@ describe("compilePageRecipe", () => {
     // falls back to conforming to the component template itself.
     expect(ds.templateOf).toBe(templateId("default", "alpha-block@1"));
 
-    // The layout `ds` resolves to the materialised item — not a `local:`
-    // sentinel.
+    // The layout `ds` is the page-relative `local:/Data/<slot>` path —
+    // the form XM Cloud Pages writes for page-local datasources. It
+    // resolves against the materialised `<page>/Data/HeroContent` item
+    // at render time and survives page copies without re-pointing.
     const layout = findSetField(scopedIr.operations, "page-layout:scoped@1:en");
     if (layout.value.kind !== "string") throw new Error("expected string layout");
-    expect(layout.value.value).toContain(
-      `ds="{${datasourceId(pageRef, "HeroContent").toUpperCase()}}"`
-    );
-    expect(layout.value.value).not.toContain("local:");
+    expect(layout.value.value).toContain('s:ds="local:/Data/HeroContent"');
   });
 
   it("resolves a scoped datasource template via componentsByHandle", () => {
@@ -1046,10 +1148,9 @@ describe("compilePageRecipe — nested placements (dynamic placeholders)", () =>
   const xml = layout.value.kind === "string" ? layout.value.value : "";
 
   it("materialises datasource items for nested scoped placements", () => {
-    const pageRef = pageItemId("default", "nested@1");
     const left = findCreate(ir.operations, "page-datasource:nested@1:LeftCard");
     expect(left.path).toBe("/sitecore/content/Demo/Home/Nested/Data/LeftCard");
-    expect(xml).toContain(`ds="{${datasourceId(pageRef, "LeftCard").toUpperCase()}}"`);
+    expect(xml).toContain('s:ds="local:/Data/LeftCard"');
     const leftTitle = findSetField(ir.operations, "page-field:nested@1:scoped:LeftCard:Title");
     expect(leftTitle.value).toEqual({ kind: "string", value: "Left" });
   });

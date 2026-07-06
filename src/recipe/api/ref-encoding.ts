@@ -50,18 +50,62 @@ export const renderRefValue = (value: RefValue): string => {
   }
 };
 
+/** Dashed-GUID token, optionally curly-braced, anywhere in a string. */
+const GUID_TOKEN_RE =
+  /\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?/g;
+
+/**
+ * Substitute recipe-internal refKey GUIDs EMBEDDED IN A STRING with their
+ * captured tenant itemIds.
+ *
+ * Layout XML (`__Renderings` / `__Final Renderings`) is compiled to a
+ * plain string with `renderingId(site, handle)` / `contentItemId(...)` /
+ * `variantId(...)` uuidv5 refKeys baked in — but the Authoring API mints
+ * its own item ids at create time (`CreateItemInput` carries no id), so
+ * those refKeys never match anything on the tenant. Every GUID-shaped
+ * token in the string is looked up in the captured map: hits are
+ * replaced with the real (dashed, uppercase) tenant id, misses pass
+ * through untouched — real Sitecore constants (device ids, the JSON
+ * layout definition) and tenant-pre-existing GUIDs are never in the
+ * captured map, so they survive verbatim. A uuidv5 refKey colliding
+ * with an unrelated real GUID is cryptographically negligible.
+ */
+export const substituteCapturedGuids = (
+  text: string,
+  capturedItemIds: ReadonlyMap<string, string>
+): string => {
+  if (capturedItemIds.size === 0 || !text.includes("-")) return text;
+  return text.replace(GUID_TOKEN_RE, (token) => {
+    const braced = token.startsWith("{");
+    // Tokens with exactly one brace are malformed — leave them alone.
+    if (braced !== token.endsWith("}")) return token;
+    const captured = capturedItemIds.get(dashifyGuid(token.replace(/[{}]/g, "")));
+    if (!captured) return token;
+    const dashed = dashifyGuid(captured).toUpperCase();
+    return braced ? `{${dashed}}` : dashed;
+  });
+};
+
 /**
  * Substitute every `ref-recipe` / `ref-recipe-list` against the captured
  * Sitecore itemId map. Returns a new `RefValue` with `ref-guid` /
  * `ref-guid-list` in their place. Throws when a refKey is missing — that
  * indicates a topological ordering bug (executor referenced an item that
  * hadn't been created yet).
+ *
+ * `string` values are scanned for embedded refKey GUIDs (see
+ * `substituteCapturedGuids`) — the seam that makes compile-time layout
+ * XML resolve against server-assigned item ids.
  */
 export const resolveRecipeRefs = (
   value: RefValue,
   capturedItemIds: ReadonlyMap<string, string>
 ): RefValue => {
   switch (value.kind) {
+    case "string": {
+      const substituted = substituteCapturedGuids(value.value, capturedItemIds);
+      return substituted === value.value ? value : { kind: "string", value: substituted };
+    }
     case "ref-recipe": {
       const itemId = capturedItemIds.get(value.refKey);
       if (itemId) return { kind: "ref-guid", value: itemId };

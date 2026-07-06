@@ -24,6 +24,7 @@ import {
   templateId,
 } from "../items/guids";
 import {
+  type AddItemVersionOp,
   type CreateItemOp,
   type FieldValue,
   type MediaUploadOp,
@@ -1167,12 +1168,13 @@ export function emitDatasourceTemplate(
     ...(context.imageDefaults ? { imageDefaults: context.imageDefaults } : {}),
     ...(svMediaLocationFolder ? { locationFolder: svMediaLocationFolder } : {}),
   };
-  const svFieldEntries = buildStandardValuesFieldEntries(
+  const sv = buildStandardValuesFieldEntries(
     site,
     recipe.handle,
     recipe.fields,
     fieldId,
-    svImageMediaSink
+    svImageMediaSink,
+    context.availableLanguages
   );
   operations.push(...svImageMediaSink.mediaOps);
   operations.push({
@@ -1190,8 +1192,10 @@ export function emitDatasourceTemplate(
     // These pre-fill new datasource items so authors see meaningful
     // initial content instead of an empty form. Link defaults encode as
     // link XML; image defaults with external URLs resolve via the
-    // MediaUpload ops emitted above.
-    fields: svFieldEntries,
+    // MediaUpload ops emitted above. Locale-map defaults contribute the
+    // primary-language version here; non-primary versions follow the
+    // SetStandardValues link below.
+    fields: sv.primary,
   } satisfies CreateItemOp);
 
   operations.push({
@@ -1201,6 +1205,16 @@ export function emitDatasourceTemplate(
     templateRefKey: tplRefKey,
     standardValuesRefKey: svRefKey,
   } satisfies SetStandardValuesOp);
+
+  // Per-language __Standard Values versions from locale-map defaults —
+  // AddItemVersion + versioned SetField, after the SV item exists.
+  emitStandardValuesLocaleVersions(
+    operations,
+    svRefKey,
+    sv.localeVersions,
+    policy,
+    `standard-values:${recipe.handle}`
+  );
 
   if (recipe.insertOptions && recipe.insertOptions.length > 0) {
     operations.push({
@@ -1417,6 +1431,32 @@ export function paramWireValue(
  * derived GUID won't exist on the tenant and the SV write fails at
  * apply time — author error, not silently masked here.
  */
+/**
+ * One non-primary-language `__Standard Values` field version — emitted
+ * (via {@link emitStandardValuesLocaleVersions}) as an `AddItemVersion`
+ * followed by a versioned `SetField` after the SV `CreateItem`.
+ */
+export interface StandardValuesLocaleVersion {
+  fieldId: string;
+  fieldName: string;
+  language: string;
+  value: RefValue;
+}
+
+/**
+ * Result of {@link buildStandardValuesFieldEntries}: the primary-language
+ * (`en`) field entries that go straight into the SV `CreateItem.fields`,
+ * plus any non-primary language versions a locale-map default declared.
+ */
+export interface StandardValuesBuild {
+  primary: FieldValue[];
+  localeVersions: StandardValuesLocaleVersion[];
+}
+
+// Cohesive SV builder: positional args keep the 30+ call sites terse; an
+// options object for the two trailing optionals would be the only thing over
+// the limit. Same justification as serialization/api/items.ts.
+// eslint-disable-next-line max-params
 export function buildStandardValuesFieldEntries(
   site: string,
   handle: string,
@@ -1431,11 +1471,43 @@ export function buildStandardValuesFieldEntries(
   // stores a `media-xml-ref` instead of the legacy `<image src=…>` XML
   // (which Pages/Layout Service never render). The caller must push the
   // sink's mediaOps BEFORE the CreateItem carrying these entries.
-  imageMediaSink?: ImageMediaSink
-): FieldValue[] {
-  const entries: FieldValue[] = [];
+  imageMediaSink?: ImageMediaSink,
+  // Languages registered on the target environment (Sites API
+  // `listLanguages`). When set, locale-map defaults filter their
+  // non-primary versions to this set — a template installs SV versions
+  // only in the brand's languages and never emits an AddItemVersion for a
+  // language the tenant doesn't have (which the Authoring API rejects).
+  // The primary language is always emitted. Unset ⇒ emit every authored
+  // locale (standalone compile / no live tenant).
+  availableLanguages?: readonly string[]
+): StandardValuesBuild {
+  const primary: FieldValue[] = [];
+  const localeVersions: StandardValuesLocaleVersion[] = [];
+  const availableLocales = availableLanguages
+    ? new Set(availableLanguages.map((l) => l.toLowerCase()))
+    : undefined;
+
   for (const field of fields) {
-    let raw = field.sitecore?.defaultValue ?? field.default;
+    const rawDefault = field.sitecore?.defaultValue ?? field.default;
+
+    // Locale-map default → one __Standard Values version per language.
+    if (rawDefault !== undefined && typeof rawDefault === "object") {
+      appendLocalizedStandardValue({
+        field,
+        localeMap: rawDefault,
+        site,
+        handle,
+        fieldIdResolver,
+        imageMediaSink,
+        availableLocales,
+        primary,
+        localeVersions,
+      });
+      continue;
+    }
+
+    // Plain-string (or absent) default → single primary-language entry.
+    let raw = rawDefault;
     if (raw === undefined) {
       // A role-annotated image field with no authored default still
       // gets the brand's image-default when the installer's map covers
@@ -1454,7 +1526,7 @@ export function buildStandardValuesFieldEntries(
     }
     const value = encodeStandardValueDefaultForField(raw, field, site, handle, imageMediaSink);
     if (value === undefined) continue;
-    entries.push({
+    primary.push({
       fieldId: fieldIdResolver(site, handle, field.name),
       fieldName: field.name,
       language: DEFAULT_LANGUAGE,
@@ -1462,7 +1534,142 @@ export function buildStandardValuesFieldEntries(
       value,
     });
   }
-  return entries;
+  return { primary, localeVersions };
+}
+
+/**
+ * Expand a locale-map default (`{ en, de, … }`) into a primary-language
+ * `__Standard Values` entry plus one non-primary language version per
+ * additional (environment-registered) locale.
+ *
+ * Locale maps only make sense for language-varying copy, so this rejects
+ * any non-text/rich-text shape — a GUID reference, image, boolean, or
+ * numeric default can't meaningfully differ by language, and silently
+ * accepting one would encode the same value N times. The map must carry
+ * the primary language (`en`) as its base version.
+ */
+function appendLocalizedStandardValue(args: {
+  field: FieldDefinition | DesignParameter;
+  localeMap: Record<string, string>;
+  site: string;
+  handle: string;
+  fieldIdResolver: (site: string, handle: string, fieldName: string) => string;
+  imageMediaSink?: ImageMediaSink;
+  availableLocales?: Set<string>;
+  primary: FieldValue[];
+  localeVersions: StandardValuesLocaleVersion[];
+}): void {
+  const {
+    field,
+    localeMap,
+    site,
+    handle,
+    fieldIdResolver,
+    imageMediaSink,
+    availableLocales,
+    primary,
+    localeVersions,
+  } = args;
+
+  if (field.shape !== "text" && field.shape !== "richText") {
+    throw createScaiError(
+      `Field '${field.name}' on recipe '${handle}' declares a per-locale default map but has shape='${field.shape}'. Locale-map defaults are only supported on text / rich-text fields — other shapes (enum, reference, image, boolean, number) can't vary a default by language.`,
+      "INPUT_INVALID",
+      {
+        hint: "Use a plain string `default` for non-text fields, or change the field to shape `text` / `richText`.",
+      }
+    );
+  }
+
+  const primaryRaw = localeMap[DEFAULT_LANGUAGE];
+  if (primaryRaw === undefined) {
+    throw createScaiError(
+      `Field '${field.name}' on recipe '${handle}' declares a per-locale default map without the primary language '${DEFAULT_LANGUAGE}'. The base __Standard Values version is always the primary language, so the map must include it.`,
+      "INPUT_INVALID",
+      {
+        hint: `Add an '${DEFAULT_LANGUAGE}' entry to the default map, e.g. { ${DEFAULT_LANGUAGE}: "…", de: "…" }.`,
+      }
+    );
+  }
+
+  const refKey = fieldIdResolver(site, handle, field.name);
+
+  const primaryValue = encodeStandardValueDefaultForField(
+    primaryRaw,
+    field,
+    site,
+    handle,
+    imageMediaSink
+  );
+  if (primaryValue !== undefined) {
+    primary.push({
+      fieldId: refKey,
+      fieldName: field.name,
+      language: DEFAULT_LANGUAGE,
+      version: DEFAULT_VERSION,
+      value: primaryValue,
+    });
+  }
+
+  // Sort for deterministic op ordering (re-pushes produce identical IRs).
+  for (const locale of Object.keys(localeMap).sort()) {
+    if (locale === DEFAULT_LANGUAGE) continue;
+    // Skip locales the target environment doesn't have — aligns the
+    // installed SV versions to the brand's languages (Sites API).
+    if (availableLocales && !availableLocales.has(locale.toLowerCase())) continue;
+    const value = encodeStandardValueDefaultForField(
+      localeMap[locale],
+      field,
+      site,
+      handle,
+      imageMediaSink
+    );
+    if (value === undefined) continue;
+    localeVersions.push({ fieldId: refKey, fieldName: field.name, language: locale, value });
+  }
+}
+
+/**
+ * Emit the non-primary language versions a locale-map default produced.
+ * Mirrors the dictionary translation pattern: a `SetField` against a
+ * language with no version yet fails with "item … does not contain
+ * version #1 in '<locale>'", so each new language gets one
+ * `AddItemVersion` before its `SetField`(s). Call AFTER the SV
+ * `CreateItem` (which materialises the primary-language version) and its
+ * `SetStandardValues` link.
+ */
+export function emitStandardValuesLocaleVersions(
+  operations: Operation[],
+  standardValuesRefKey: string,
+  localeVersions: readonly StandardValuesLocaleVersion[],
+  policy: PushPolicy,
+  labelPrefix: string
+): void {
+  const versioned = new Set<string>();
+  for (const lv of localeVersions) {
+    if (!versioned.has(lv.language)) {
+      versioned.add(lv.language);
+      operations.push({
+        op: "AddItemVersion",
+        policy,
+        label: `${labelPrefix}-version:${lv.language}`,
+        itemRefKey: standardValuesRefKey,
+        language: lv.language,
+        version: DEFAULT_VERSION,
+      } satisfies AddItemVersionOp);
+    }
+    operations.push({
+      op: "SetField",
+      policy,
+      label: `${labelPrefix}-locale:${lv.fieldName}:${lv.language}`,
+      itemRefKey: standardValuesRefKey,
+      fieldId: lv.fieldId,
+      fieldName: lv.fieldName,
+      language: lv.language,
+      version: DEFAULT_VERSION,
+      value: lv.value,
+    } satisfies SetFieldOp);
+  }
 }
 
 /**

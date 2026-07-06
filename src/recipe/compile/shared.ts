@@ -35,6 +35,7 @@ import {
   type SetStandardValuesOp,
 } from "../ir/operations";
 import { createScaiError } from "../../shared/errors";
+import { trimEndChar } from "../../shared/strings";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
@@ -1736,9 +1737,10 @@ export const resolveMediaLocationFolder = (
   }
 ): string | undefined => {
   if (!location) return undefined;
-  const base = (
-    opts.context.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${opts.site}`
-  ).replace(/\/+$/, "");
+  const base = trimEndChar(
+    opts.context.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${opts.site}`,
+    "/"
+  );
   if (location.scope === "site") {
     return location.subfolder ? `${base}/${location.subfolder}` : base;
   }
@@ -1826,15 +1828,18 @@ export const externalImageMediaRef = (opts: {
     ? mediaFieldId(site, "site-image-defaults", opts.role as string, url)
     : mediaFieldId(site, recipeHandle, fieldName, url);
   if (!sink.mediaOps.some((op) => op.id === refKey)) {
-    const mediaRoot = (
-      sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`
-    ).replace(/\/+$/, "");
+    const mediaRoot = trimEndChar(
+      sink.mediaLibraryRoot ?? `/sitecore/media library/RecipeImages/${site}`,
+      "/"
+    );
     const recipeName = recipeHandle.split("@")[0];
     const destinationFolder = isSiteDefault
       ? `${mediaRoot}/Defaults`
       : folder
-        ? folder.replace(/\/+$/, "")
-        : (sink.locationFolder?.replace(/\/+$/, "") ?? `${mediaRoot}/${recipeName}`);
+        ? trimEndChar(folder, "/")
+        : sink.locationFolder !== undefined
+          ? trimEndChar(sink.locationFolder, "/")
+          : `${mediaRoot}/${recipeName}`;
     const leaf = isSiteDefault
       ? `${opts.role}-${refKey.slice(0, 8)}`
       : `${fieldName}-${refKey.slice(0, 8)}`;

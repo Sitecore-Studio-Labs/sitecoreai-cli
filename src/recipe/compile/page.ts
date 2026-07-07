@@ -30,7 +30,7 @@ import {
   DEFAULT_VERSION,
   LAYOUT_FIELDS,
   PAGE_DESIGN_FIELD_ID,
-  SITECORE_TEMPLATES,
+  SITECORE_TEMPLATE_PATHS,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import {
@@ -363,7 +363,9 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       id: dataFolderRefKey,
       path: dataFolderPath,
       parent: { kind: "ref-recipe", refKey: itemRefKey },
-      templateOf: SITECORE_TEMPLATES.FOLDER,
+      // SXA's Page Data template — NOT the generic Common Folder — so
+      // SXA/Pages recognise the folder as page-local datasource storage.
+      templateOf: { kind: "ref-path", value: SITECORE_TEMPLATE_PATHS.SXA_PAGE_DATA },
       name: "Data",
       fields: [],
     } satisfies CreateItemOp);

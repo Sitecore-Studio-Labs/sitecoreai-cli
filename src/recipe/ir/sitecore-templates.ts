@@ -10,6 +10,24 @@
  * executor layer.
  */
 
+/**
+ * Well-known template PATHS, for `templateOf: { kind: "ref-path" }`
+ * references resolved by a batched `getItemsByPaths` lookup at plan
+ * time. Use these when the canonical path is the stable contract and
+ * hardcoding the GUID would be guesswork.
+ */
+export const SITECORE_TEMPLATE_PATHS = {
+  /**
+   * SXA local-datasources folder template. The `<page>/Data` folder
+   * must conform to THIS (not the generic Common Folder) for SXA /
+   * Pages to treat it as page-local datasource storage — correct
+   * `page:` datasource resolution, hidden-from-navigation behavior,
+   * icon, and insert semantics.
+   */
+  SXA_PAGE_DATA:
+    "/sitecore/templates/Foundation/Experience Accelerator/Local Datasources/Page Data",
+} as const;
+
 export const SITECORE_TEMPLATES = {
   /** Item conforms to this when it *is* a data template. */
   TEMPLATE: "ab86861a-6030-46c5-b394-e8f99e8b87db",

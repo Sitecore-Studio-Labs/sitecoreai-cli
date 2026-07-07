@@ -446,6 +446,13 @@ describe("compilePageRecipe", () => {
     const dataFolder = findCreate(scopedIr.operations, "page-data-folder:scoped@1");
     expect(dataFolder.name).toBe("Data");
     expect(dataFolder.parent).toEqual({ kind: "ref-recipe", refKey: pageRef });
+    // SXA's Page Data template (by canonical path), NOT the generic
+    // Common Folder — SXA/Pages key page-local datasource behavior
+    // (page: resolution, nav hiding, insert semantics) off it.
+    expect(dataFolder.templateOf).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/templates/Foundation/Experience Accelerator/Local Datasources/Page Data",
+    });
 
     const ds = findCreate(scopedIr.operations, "page-datasource:scoped@1:HeroContent");
     expect(ds.parent).toEqual({ kind: "ref-recipe", refKey: dataFolder.id });

@@ -590,6 +590,13 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // bulk prefetch (single batched `getItemsByPaths` call across every
   // CreateItem path); consulted by `buildAction` for plan-time reads.
   const pathSnapshotCache = new Map<string, RemoteItem | null>();
+  // Workspace-wide itemId-keyed snapshot + version-stack caches with
+  // executor write-through — collapse the per-op `getItem({ itemId })` /
+  // `getItemVersions` plan reads that dominated localized pushes (a
+  // 9-locale dictionary paid ~2 serial round trips per translation op).
+  // See ExecuteOptions.idSnapshotCache / versionStackCache.
+  const idSnapshotCache = new Map<string, RemoteItem>();
+  const versionStackCache = new Map<string, Map<string, number>>();
 
   const tenant = resolveTenant(options, { pathItemIdCache });
 
@@ -878,6 +885,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       conflictPolicy: options.conflictPolicy,
       createdItemRefKeys,
       applyConcurrency: resolveApplyConcurrency(),
+      idSnapshotCache,
+      versionStackCache,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {

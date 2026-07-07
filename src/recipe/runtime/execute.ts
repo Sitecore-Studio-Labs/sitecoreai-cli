@@ -241,6 +241,33 @@ export interface ExecuteOptions {
    * rollback + abort).
    */
   applyConcurrency?: number;
+  /**
+   * Push-scoped itemId → RemoteItem snapshot cache (keys lowercased).
+   * ItemId-selector plan reads (`SetField`/`AddItemVersion`/… targeting a
+   * captured refKey) consult it before the wire — without it, every op on
+   * an N-op item pays its own `getItem({ itemId })` round trip even
+   * though all N reads return identical data (the selector carries no
+   * language/version). Write-through keeps it truthful: `createItem`
+   * seeds the same synthetic snapshot the path cache gets, and every
+   * update-write MERGES its fields in copy-on-write (earlier actions'
+   * `snapshot` references must stay frozen — rollback builds inverse ops
+   * from them). Merging at enqueue time (not flush) gives plans
+   * read-your-writes over in-flight pooled cells, which also dedupes
+   * redundant re-writes of values an earlier op in the same push set.
+   * Callers pushing multiple IRs pass ONE map so cross-IR ops reuse it.
+   */
+  idSnapshotCache?: Map<string, RemoteItem>;
+  /**
+   * Push-scoped itemId → (language → max version) stacks (keys
+   * lowercased). `planAddItemVersion` reads through it: on first touch
+   * of an item it fetches EVERY language the current IR adds to that
+   * item in ONE `getItemPerLanguageBatch` call, instead of one
+   * `getItemVersions` round trip per add op — a 9-locale dictionary
+   * phrase's version reconciliation costs 1 read, not 9. Each
+   * dispatched/enqueued version add bumps its stack to the op's target
+   * version. Callers pushing multiple IRs pass ONE map.
+   */
+  versionStackCache?: Map<string, Map<string, number>>;
 }
 
 /**
@@ -364,6 +391,59 @@ const synthesizeCreateSnapshot = ({
   return { itemId, parentId: parentItemId, templateId, name, path, fields: remoteFields };
 };
 
+/**
+ * Write-through for the push-scoped caches (see
+ * `ExecuteOptions.idSnapshotCache` / `versionStackCache`): merge an
+ * update-write's fields into the cached snapshot, or bump a version
+ * add's stack to the op's declared target. Called from the apply loop
+ * at enqueue/dispatch time — BEFORE the wire call resolves — so plans
+ * of later ops read their predecessors' writes. A write that
+ * subsequently fails either aborts the push (fatal → rollback; the
+ * poisoned cache is never read again) or skips on the
+ * unregistered-language tolerance (later ops on that language fail and
+ * skip identically, so the optimistic cache stays consistent).
+ *
+ * Snapshot merges are COPY-ON-WRITE: `buildAction` attaches the cached
+ * object to each action as its rollback `snapshot`, so mutating it in
+ * place would corrupt the pre-op state rollback restores from.
+ */
+const recordPendingWrite = (
+  mutation: PooledMutation,
+  op: Operation,
+  options: Pick<ExecuteOptions, "idSnapshotCache" | "versionStackCache">
+): void => {
+  if (mutation.kind === "addItemVersion") {
+    if (!options.versionStackCache || op.op !== "AddItemVersion") return;
+    const key = mutation.itemId.toLowerCase();
+    const stack = options.versionStackCache.get(key) ?? new Map<string, number>();
+    stack.set(mutation.language.toLowerCase(), op.version);
+    options.versionStackCache.set(key, stack);
+    return;
+  }
+  const input = mutation.input;
+  const snapshot = options.idSnapshotCache?.get(input.itemId.toLowerCase());
+  if (!snapshot) return;
+  const merged = [...snapshot.fields];
+  for (const f of input.fields) {
+    const rendered: RemoteFieldValue = {
+      fieldId: f.fieldId,
+      ...(f.fieldName !== undefined && { name: f.fieldName }),
+      value: renderRefValue(f.value),
+      ...(input.language !== undefined && { language: input.language }),
+      ...(input.version !== undefined && { version: input.version }),
+    };
+    const at = merged.findIndex(
+      (existing) =>
+        existing.fieldId.toLowerCase() === f.fieldId.toLowerCase() &&
+        existing.language === input.language &&
+        existing.version === input.version
+    );
+    if (at >= 0) merged[at] = rendered;
+    else merged.push(rendered);
+  }
+  options.idSnapshotCache?.set(input.itemId.toLowerCase(), { ...snapshot, fields: merged });
+};
+
 /** True when an `addLanguage` error means the language is already present. */
 const isAlreadyAddedLanguageError = (err: unknown): boolean => {
   const message = err instanceof Error ? err.message : String(err);
@@ -475,9 +555,49 @@ interface DispatchMutationOptions {
   capturedItemIds: Map<string, string>;
   pathItemIdCache: Map<string, string> | undefined;
   pathSnapshotCache: Map<string, RemoteItem | null> | undefined;
+  idSnapshotCache: Map<string, RemoteItem> | undefined;
   allowPrune: boolean;
   emit?: (event: ExecutionEvent) => void;
 }
+
+/**
+ * Dispatch a `createItem` mutation and record the new item everywhere
+ * later ops resolve it from: the captured refKey map, both path caches
+ * (a synthetic snapshot dodges Sitecore's path-index propagation lag),
+ * and the itemId-keyed snapshot cache — the ops that FOLLOW a create
+ * (SetField/AddItemVersion/SetBaseTemplates on the new item) look up by
+ * captured itemId, not path, and this seed is what saves their per-op
+ * getItem round trips.
+ */
+const dispatchCreateItem = async (
+  client: AuthoringApiClient,
+  action: PlannedAction,
+  mutation: Extract<NonNullable<PlannedAction["mutation"]>, { kind: "createItem" }>,
+  {
+    capturedItemIds,
+    pathItemIdCache,
+    pathSnapshotCache,
+    idSnapshotCache,
+  }: Pick<
+    DispatchMutationOptions,
+    "capturedItemIds" | "pathItemIdCache" | "pathSnapshotCache" | "idSnapshotCache"
+  >
+): Promise<void> => {
+  const result = await client.createItem(mutation.input);
+  if (action.operation.op !== "CreateItem") return;
+  capturedItemIds.set(action.operation.id, result.itemId);
+  pathItemIdCache?.set(action.operation.path, result.itemId);
+  const synthetic = synthesizeCreateSnapshot({
+    itemId: result.itemId,
+    parentItemId: mutation.input.parent,
+    templateId: mutation.input.templateId,
+    name: mutation.input.name,
+    path: action.operation.path,
+    fields: mutation.input.fields,
+  });
+  pathSnapshotCache?.set(action.operation.path, synthetic);
+  idSnapshotCache?.set(result.itemId.toLowerCase(), synthetic);
+};
 
 const dispatchMutation = async ({
   client,
@@ -486,31 +606,18 @@ const dispatchMutation = async ({
   capturedItemIds,
   pathItemIdCache,
   pathSnapshotCache,
+  idSnapshotCache,
   allowPrune,
   emit,
 }: DispatchMutationOptions): Promise<void> => {
   if (!action.mutation) return;
   if (action.mutation.kind === "createItem") {
-    const result = await client.createItem(action.mutation.input);
-    if (action.operation.op === "CreateItem") {
-      capturedItemIds.set(action.operation.id, result.itemId);
-      pathItemIdCache?.set(action.operation.path, result.itemId);
-      // Replace the prefetch's null/stale entry with a synthetic snapshot
-      // built from the input we just wrote. Subsequent reads of this
-      // path within the push see "exists" via the cache, dodging
-      // Sitecore's path-index propagation lag.
-      pathSnapshotCache?.set(
-        action.operation.path,
-        synthesizeCreateSnapshot({
-          itemId: result.itemId,
-          parentItemId: action.mutation.input.parent,
-          templateId: action.mutation.input.templateId,
-          name: action.mutation.input.name,
-          path: action.operation.path,
-          fields: action.mutation.input.fields,
-        })
-      );
-    }
+    await dispatchCreateItem(client, action, action.mutation, {
+      capturedItemIds,
+      pathItemIdCache,
+      pathSnapshotCache,
+      idSnapshotCache,
+    });
     return;
   }
   if (action.mutation.kind === "updateItem") {
@@ -578,6 +685,7 @@ const dispatchMutation = async ({
       for (const pruned of action.prunedItems) {
         pathSnapshotCache?.delete(pruned.path);
         pathItemIdCache?.delete(pruned.path);
+        idSnapshotCache?.delete(pruned.itemId.toLowerCase());
       }
     }
     return;
@@ -916,6 +1024,18 @@ class WritePool {
   }
 }
 
+/** Per-IR refKey → languages its `AddItemVersion` ops target — see `ExecuteOptions.versionStackCache`. */
+const indexAddVersionLanguages = (ir: OperationIr): Map<string, string[]> => {
+  const byRef = new Map<string, string[]>();
+  for (const candidate of ir.operations) {
+    if (candidate.op !== "AddItemVersion") continue;
+    const langs = byRef.get(candidate.itemRefKey) ?? [];
+    if (!langs.includes(candidate.language)) langs.push(candidate.language);
+    byRef.set(candidate.itemRefKey, langs);
+  }
+  return byRef;
+};
+
 /** Pool when `applyConcurrency` asks for overlap, undefined for the historical serial apply. */
 const maybeCreateWritePool = (
   options: ExecuteOptions,
@@ -1166,6 +1286,15 @@ export const executeIr = async (
 
   // Optional updateItem flush pool — see ExecuteOptions.applyConcurrency.
   const pool = maybeCreateWritePool(options, { client, summary, applied, emit: options.emit });
+
+  // Per-IR index of which languages get version adds on each target
+  // refKey — planAddItemVersion's first read of an item batches ALL of
+  // them into one getItemPerLanguageBatch call instead of paying one
+  // getItemVersions round trip per add op (see
+  // ExecuteOptions.versionStackCache).
+  const addVersionLanguagesByRef = options.versionStackCache
+    ? indexAddVersionLanguages(ir)
+    : new Map<string, string[]>();
   /**
    * Drain the pool and, if a pooled apply failed fatally, return the
    * abort result via the exact sequential apply-error semantics
@@ -1232,6 +1361,7 @@ export const executeIr = async (
         capturedItemIds,
         pathItemIdCache: options.pathItemIdCache,
         pathSnapshotCache: options.pathSnapshotCache,
+        idSnapshotCache: options.idSnapshotCache,
         allowPrune: options.allowPrune ?? false,
         emit: options.emit,
       });
@@ -1311,6 +1441,10 @@ export const executeIr = async (
         baselineIndex: options.baselineIndex,
         conflictPolicy: options.conflictPolicy,
         createdThisRun: options.createdItemRefKeys,
+        idSnapshotCache: options.idSnapshotCache,
+        versionStackCache: options.versionStackCache,
+        addVersionLanguagesHint:
+          op.op === "AddItemVersion" ? addVersionLanguagesByRef.get(op.itemRefKey) : undefined,
       });
     } catch (error) {
       const message = errorMessage(error);
@@ -1335,6 +1469,13 @@ export const executeIr = async (
     options.emit?.({ kind: "op-result", action });
 
     if (!action.mutation) continue;
+
+    // Cache write-through BEFORE dispatch (pooled or sequential) so the
+    // ops that follow plan against this write's outcome without a wire
+    // read — see recordPendingWrite for the failure-path reasoning.
+    if (isPooledMutation(action.mutation)) {
+      recordPendingWrite(action.mutation, op, options);
+    }
 
     if (pool && isPooledMutation(action.mutation)) {
       // Route through the flush pool: field writes coalesce per cell,

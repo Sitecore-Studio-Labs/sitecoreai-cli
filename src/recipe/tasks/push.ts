@@ -259,13 +259,22 @@ const resolveCompileRoots = (
  */
 const ensureSiteRecipeLanguages = async (
   recipes: readonly Recipe[],
-  environment: EnvironmentConfiguration
+  environment: EnvironmentConfiguration,
+  languageScope?: readonly string[]
 ): Promise<void> => {
   const codes = new Set<string>();
   for (const recipe of recipes) {
     if (recipe.kind !== "site") continue;
     if (recipe.language) codes.add(recipe.language);
     for (const code of recipe.languages ?? []) codes.add(code);
+  }
+  // `--languages` scope: register only the scoped locales. An en-first
+  // install shouldn't spend environment-language provisioning (or unlock
+  // compile emission) for locales a later localize pass will handle.
+  if (languageScope) {
+    for (const code of [...codes]) {
+      if (!languageScopeMatches(languageScope, code)) codes.delete(code);
+    }
   }
   if (codes.size === 0) return;
   const accessToken = await getAccessToken(environment);
@@ -276,6 +285,50 @@ const ensureSiteRecipeLanguages = async (
     // Non-fatal — see resolveEnvironmentLanguages. The push proceeds; a
     // locale that couldn't be registered is simply filtered out downstream.
   }
+};
+
+/**
+ * Case-insensitive `--languages` scope match: a scope entry matches its
+ * exact code (`fr-FR`) and, for bare base-language entries, every regional
+ * variant (`fr` matches `fr-FR` / `fr-CA`) — mirroring the compiler's own
+ * base-language expansion for `__Standard Values` locale maps.
+ */
+const languageScopeMatches = (scope: readonly string[], code: string): boolean => {
+  const lower = code.toLowerCase();
+  const base = lower.split(/[-_]/)[0];
+  return scope.some((entry) => {
+    const entryLower = entry.toLowerCase();
+    return entryLower === lower || entryLower === base;
+  });
+};
+
+/**
+ * Language provisioning + resolution under an optional `--languages` scope.
+ *
+ * Provisions any SiteRecipe-declared languages on the environment BEFORE
+ * resolving the registered-language list, so a re-push of an existing site
+ * installs its localized Standard Values / dictionary phrases (which the
+ * compiler filters to registered languages) instead of dropping them.
+ *
+ * The scope narrows BOTH steps: registration only provisions scoped
+ * locales, and the returned availableLanguages narrows to the scope so
+ * out-of-scope translations / locale-map defaults aren't emitted at all.
+ * The primary locale always installs regardless (the compilers emit it
+ * unconditionally), so `--languages en` is the "content now, locales
+ * later" install shape. Scope unset = full declared-locale behaviour.
+ */
+const resolveScopedLanguages = async (
+  recipes: readonly Recipe[],
+  environment: EnvironmentConfiguration,
+  languagesOption: readonly string[] | undefined
+): Promise<string[] | undefined> => {
+  const languageScope = languagesOption
+    ?.map((code) => code.trim())
+    .filter((code) => code.length > 0);
+  await ensureSiteRecipeLanguages(recipes, environment, languageScope);
+  const resolved = await resolveEnvironmentLanguages(recipes, environment);
+  if (!languageScope || languageScope.length === 0) return resolved;
+  return (resolved ?? languageScope).filter((code) => languageScopeMatches(languageScope, code));
 };
 
 const resolveEnvironmentLanguages = async (
@@ -537,6 +590,13 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // bulk prefetch (single batched `getItemsByPaths` call across every
   // CreateItem path); consulted by `buildAction` for plan-time reads.
   const pathSnapshotCache = new Map<string, RemoteItem | null>();
+  // Workspace-wide itemId-keyed snapshot + version-stack caches with
+  // executor write-through — collapse the per-op `getItem({ itemId })` /
+  // `getItemVersions` plan reads that dominated localized pushes (a
+  // 9-locale dictionary paid ~2 serial round trips per translation op).
+  // See ExecuteOptions.idSnapshotCache / versionStackCache.
+  const idSnapshotCache = new Map<string, RemoteItem>();
+  const versionStackCache = new Map<string, Map<string, number>>();
 
   const tenant = resolveTenant(options, { pathItemIdCache });
 
@@ -612,12 +672,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     recipeSetNeedsRoots(recipes)
   );
   const imageDefaults = await loadImageDefaults(options.imageDefaults);
-  // Provision any SiteRecipe-declared languages on the environment BEFORE
-  // resolving the registered-language list, so a re-push of an existing site
-  // installs its localized Standard Values / dictionary phrases (which the
-  // compiler filters to registered languages) instead of dropping them.
-  await ensureSiteRecipeLanguages(recipes, tenant.environment);
-  const availableLanguages = await resolveEnvironmentLanguages(recipes, tenant.environment);
+  const availableLanguages = await resolveScopedLanguages(
+    recipes,
+    tenant.environment,
+    options.languages
+  );
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
@@ -826,6 +885,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       conflictPolicy: options.conflictPolicy,
       createdItemRefKeys,
       applyConcurrency: resolveApplyConcurrency(),
+      idSnapshotCache,
+      versionStackCache,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {

@@ -329,6 +329,56 @@ describe("runRecipePush — SiteRecipe language provisioning", () => {
 
     expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
   });
+
+  it("--languages scopes registration to matching locales (base covers regionals)", async () => {
+    vi.mocked(io.loadRecipe).mockResolvedValue({
+      kind: "site",
+      handle: "showcase-site@1",
+      name: "showcase",
+      language: "en",
+      languages: ["ar-SA", "de-DE", "fr-FR"],
+    } as never);
+    vi.mocked(getAccessToken).mockResolvedValue("site-token" as never);
+
+    await runRecipePush({ allowWrite: true, languages: ["en", "fr"] } as never);
+
+    const [, registered] = vi.mocked(ensureEnvironmentLanguages).mock.calls[0];
+    expect([...(registered as string[])].sort()).toEqual(["en", "fr-FR"]);
+  });
+
+  it("--languages narrows the compiler's availableLanguages to the scope", async () => {
+    vi.mocked(io.loadRecipe).mockResolvedValue({
+      kind: "dictionary",
+      handle: "ui-labels@1",
+      name: "UI Labels",
+      phrases: {},
+    } as never);
+    // No Sites API token → registered-language resolution degrades to
+    // undefined, so the scope itself becomes availableLanguages.
+    vi.mocked(getAccessToken).mockResolvedValue(undefined as never);
+
+    await runRecipePush({ allowWrite: true, languages: ["en", "de-DE"] } as never);
+
+    expect(vi.mocked(compileRecipeSet).mock.calls[0][1]).toMatchObject({
+      availableLanguages: ["en", "de-DE"],
+    });
+  });
+
+  it("without --languages the resolved registered set passes through untouched", async () => {
+    vi.mocked(io.loadRecipe).mockResolvedValue({
+      kind: "dictionary",
+      handle: "ui-labels@1",
+      name: "UI Labels",
+      phrases: {},
+    } as never);
+    vi.mocked(getAccessToken).mockResolvedValue(undefined as never);
+
+    await runRecipePush({ allowWrite: true } as never);
+
+    expect(vi.mocked(compileRecipeSet).mock.calls[0][1]).toMatchObject({
+      availableLanguages: undefined,
+    });
+  });
 });
 
 describe("runRecipePush — placeholder allow-controls post-phase", () => {

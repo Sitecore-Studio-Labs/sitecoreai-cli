@@ -178,6 +178,21 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    */
   handles?: readonly string[];
   /**
+   * Optional locale scope (`--languages`). When set, the push only
+   * REGISTERS scoped locales on the environment and only EMITS localized
+   * content (dictionary translations, `__Standard Values` locale-map
+   * defaults) for locales matching the scope — an entry matches its exact
+   * code and, for bare base languages, every regional variant (`fr`
+   * covers `fr-FR`). The primary locale always installs regardless, so
+   * `--languages en` is the fast "content now, locales later" install
+   * shape; a later push without the flag adds the remaining locales
+   * (version adds + translations are idempotent). Unset = full
+   * declared-locale behaviour. Note: `ContentItemRecipe` story versions
+   * are not scoped by this flag — they carry explicit per-language
+   * authoring and rely on apply-time unregistered-language skips.
+   */
+  languages?: readonly string[];
+  /**
    * Three-way merge conflict policy. Governs how the planner resolves
    * drift entries whose tenant value differs from the last-applied
    * baseline:

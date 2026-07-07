@@ -1690,11 +1690,19 @@ export function emitStandardValuesLocaleVersions(
   policy: PushPolicy,
   labelPrefix: string
 ): void {
+  // PHASED: every language's AddItemVersion first, then every SetField.
+  // Version stacks for different languages are independent, so the
+  // executor's write pool fans the grouped adds out `applyConcurrency`-
+  // wide; the old add→set→add→set interleave gated each locale's add on
+  // the previous locale's field write (one round-trip at a time — ×9
+  // locales on every component's SV item).
+  const versionAdds: AddItemVersionOp[] = [];
+  const fieldWrites: SetFieldOp[] = [];
   const versioned = new Set<string>();
   for (const lv of localeVersions) {
     if (!versioned.has(lv.language)) {
       versioned.add(lv.language);
-      operations.push({
+      versionAdds.push({
         op: "AddItemVersion",
         policy,
         label: `${labelPrefix}-version:${lv.language}`,
@@ -1703,7 +1711,7 @@ export function emitStandardValuesLocaleVersions(
         version: DEFAULT_VERSION,
       } satisfies AddItemVersionOp);
     }
-    operations.push({
+    fieldWrites.push({
       op: "SetField",
       policy,
       label: `${labelPrefix}-locale:${lv.fieldName}:${lv.language}`,
@@ -1715,6 +1723,7 @@ export function emitStandardValuesLocaleVersions(
       value: lv.value,
     } satisfies SetFieldOp);
   }
+  operations.push(...versionAdds, ...fieldWrites);
 }
 
 /**

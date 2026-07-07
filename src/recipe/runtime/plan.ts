@@ -1167,6 +1167,24 @@ export interface BuildActionOptions {
    * stale baseline classified the fresh item as a cms-edit/conflict).
    */
   createdThisRun?: ReadonlySet<string>;
+  /**
+   * Push-scoped itemId → snapshot cache for itemId-selector reads, with
+   * write-through from the executor's apply loop — see
+   * `ExecuteOptions.idSnapshotCache`. When absent, every op pays its own
+   * `getItem({ itemId })` round trip (the historical behavior).
+   */
+  idSnapshotCache?: Map<string, RemoteItem>;
+  /**
+   * Push-scoped itemId → (language → max version) stacks for
+   * `planAddItemVersion` — see `ExecuteOptions.versionStackCache`.
+   */
+  versionStackCache?: Map<string, Map<string, number>>;
+  /**
+   * Every language the current IR adds versions to on THIS op's target
+   * refKey (only set for `AddItemVersion` ops). Lets the version-stack
+   * seed read fetch all of them in one batch.
+   */
+  addVersionLanguagesHint?: readonly string[];
 }
 
 export const buildAction = async ({
@@ -1180,6 +1198,9 @@ export const buildAction = async ({
   baselineIndex,
   conflictPolicy,
   createdThisRun,
+  idSnapshotCache,
+  versionStackCache,
+  addVersionLanguagesHint,
 }: BuildActionOptions): Promise<PlannedAction> => {
   // Baseline classification only applies to PRE-EXISTING items — an
   // item created earlier in this run has no CMS history to preserve
@@ -1240,6 +1261,17 @@ export const buildAction = async ({
   let remote = await (async (): Promise<RemoteItem | null> => {
     if (!selector) return null;
     if (selector.path) return cachedReadByPath(selector.path);
+    // ItemId-selector reads carry no language/version, so every op on
+    // the same item reads identical data — dedupe through the push-wide
+    // cache (write-through kept current by the executor's apply loop;
+    // see ExecuteOptions.idSnapshotCache).
+    if (selector.itemId !== undefined) {
+      const cached = idSnapshotCache?.get(selector.itemId.toLowerCase());
+      if (cached) return cached;
+      const wire = await client.getItem(selector);
+      if (wire) idSnapshotCache?.set(selector.itemId.toLowerCase(), wire);
+      return wire;
+    }
     return client.getItem(selector);
   })();
   if (op.op === "CreateItem" && remote) {
@@ -1347,7 +1379,10 @@ export const buildAction = async ({
       case "AppendToMultiList":
         return planAppendToMultiList(index, op, remote, capturedItemIds);
       case "AddItemVersion":
-        return planAddItemVersion(index, op, remote, client);
+        return planAddItemVersion(index, op, remote, client, {
+          versionStackCache,
+          languagesHint: addVersionLanguagesHint,
+        });
       case "PruneChildren":
         return planPruneChildren(index, op, capturedItemIds, client, snapshotLanguages);
       case "MediaUpload":
@@ -1786,11 +1821,56 @@ const planPruneChildren = async (
  * no versions yet `currentMax` is 0, and adding version 1 also creates the
  * language version.
  */
+/**
+ * Resolve the current max version of `(item, language)` for
+ * `planAddItemVersion`. With a `versionStackCache`, the first read of an
+ * item fetches its stacks for EVERY language the IR adds to it
+ * (`languagesHint`) in one `getItemPerLanguageBatch` call — a 9-locale
+ * item's version reconciliation costs 1 round trip, not 9 — and the
+ * executor's write-through keeps the stacks current across ops. Without
+ * a cache, fall back to the historical per-op `getItemVersions` read.
+ */
+const readCurrentMaxVersion = async (
+  client: AuthoringApiClient,
+  itemId: string,
+  language: string,
+  versionStackCache: Map<string, Map<string, number>> | undefined,
+  languagesHint: readonly string[] | undefined
+): Promise<number> => {
+  const itemKey = itemId.toLowerCase();
+  const languageKey = language.toLowerCase();
+  const cachedStack = versionStackCache?.get(itemKey);
+  const cachedMax = cachedStack?.get(languageKey);
+  if (cachedMax !== undefined) return cachedMax;
+  if (versionStackCache) {
+    const languages = [...new Set([language, ...(languagesHint ?? [])])];
+    const perLanguage = await client.getItemPerLanguageBatch({ itemId }, languages);
+    const stack = cachedStack ?? new Map<string, number>();
+    for (const entry of perLanguage) {
+      // Never clobber a write-through value with a wire read that may
+      // predate an in-flight add on another stack of the same item.
+      if (stack.has(entry.language.toLowerCase())) continue;
+      stack.set(
+        entry.language.toLowerCase(),
+        entry.versions.length > 0 ? Math.max(...entry.versions) : 0
+      );
+    }
+    versionStackCache.set(itemKey, stack);
+    return stack.get(languageKey) ?? 0;
+  }
+  const existing = await client.getItemVersions({ itemId }, language);
+  return existing.length > 0 ? Math.max(...existing) : 0;
+};
+
 const planAddItemVersion = async (
   index: number,
   op: AddItemVersionOp,
   remote: RemoteItem | null,
-  client: AuthoringApiClient
+  client: AuthoringApiClient,
+  caches?: {
+    versionStackCache?: Map<string, Map<string, number>>;
+    languagesHint?: readonly string[];
+  }
 ): Promise<PlannedAction> => {
   if (!remote) {
     return {
@@ -1800,8 +1880,13 @@ const planAddItemVersion = async (
       reason: `Target item (refKey ${op.itemRefKey}) not yet captured/created.`,
     };
   }
-  const existing = await client.getItemVersions({ itemId: remote.itemId }, op.language);
-  const currentMax = existing.length > 0 ? Math.max(...existing) : 0;
+  const currentMax = await readCurrentMaxVersion(
+    client,
+    remote.itemId,
+    op.language,
+    caches?.versionStackCache,
+    caches?.languagesHint
+  );
   if (currentMax >= op.version) {
     return {
       index,

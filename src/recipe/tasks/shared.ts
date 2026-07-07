@@ -178,6 +178,18 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    */
   handles?: readonly string[];
   /**
+   * Apply ONLY the synthetic cross-recipe aggregate IRs (the `__name__`
+   * handles `compileRecipeSet` synthesizes: Available Renderings lists,
+   * shared Data Folder insert options, placeholder settings, subtree
+   * ownership prunes, …). The batch-driver complement to `handles`:
+   * handle-scoped pushes DROP the aggregates (their synthetic handles are
+   * never in a driver's chunk), so a driver runs its chunks with
+   * `--handles` and then one `--aggregates-only` pass to land the
+   * shared-item writes exactly once, after every referenced per-recipe
+   * item exists. Mutually exclusive with `handles` (the CLI enforces it).
+   */
+  aggregatesOnly?: boolean;
+  /**
    * Optional locale scope (`--languages`). When set, the push only
    * REGISTERS scoped locales on the environment and only EMITS localized
    * content (dictionary translations, `__Standard Values` locale-map

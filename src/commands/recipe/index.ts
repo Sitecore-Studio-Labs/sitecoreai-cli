@@ -232,6 +232,12 @@ const createPushCommand = (): Command => {
         .filter((s) => s.length > 0)
     )
   );
+  command.addOption(
+    new Option(
+      "--aggregates-only",
+      "Apply ONLY the synthetic cross-recipe aggregate IRs (`__available-renderings__`, shared Data Folder insert options, placeholder settings, …). For batch drivers: `--handles`-scoped pushes drop the aggregates, so after all batches run this once to land the shared-item writes exactly once. Mutually exclusive with --handles."
+    ).conflicts("handles")
+  );
   addConfigOption(command);
   addVerbosityOptions(command);
 

@@ -221,6 +221,17 @@ const createPushCommand = (): Command => {
         .filter((s) => s.length > 0)
     )
   );
+  command.addOption(
+    new Option(
+      "--languages <list>",
+      "Comma-separated locale scope. Only scoped locales are registered on the environment and emitted for localized content (dictionary translations, Standard Values locale maps); a bare base language covers its regional variants (`fr` matches `fr-FR`). The primary locale always installs, so `--languages en` is the fast content-first push — re-push without the flag later to add the remaining locales."
+    ).argParser((value: string) =>
+      value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    )
+  );
   addConfigOption(command);
   addVerbosityOptions(command);
 

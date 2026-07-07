@@ -227,6 +227,24 @@ describe("compileDictionaryRecipe — per-phrase IR shape", () => {
   });
 });
 
+describe("compileDictionaryRecipe — phased emission for pooled apply", () => {
+  it("groups every CreateItem before every AddItemVersion before every SetField", () => {
+    // The executor's write pool overlaps version adds across (item,
+    // language) stacks, but only when the adds are ADJACENT — the old
+    // per-phrase interleave (create → add → set → add → set…) gated each
+    // add behind the previous phrase's field write, one round-trip at a
+    // time. Pin the phase boundaries.
+    const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);
+    const kinds = ir.operations.map((o) => o.op);
+    const lastCreate = kinds.lastIndexOf("CreateItem");
+    const firstAdd = kinds.indexOf("AddItemVersion");
+    const lastAdd = kinds.lastIndexOf("AddItemVersion");
+    const firstSet = kinds.indexOf("SetField");
+    expect(firstAdd).toBeGreaterThan(lastCreate);
+    expect(firstSet).toBeGreaterThan(lastAdd);
+  });
+});
+
 describe("compileDictionaryRecipe — per-locale version emission", () => {
   it("includes the primary-locale Phrase value on the CreateItem (no extra SetField)", () => {
     const ir = compileDictionaryRecipe(SHARED_LABELS, CONTEXT_WITH_HOST);

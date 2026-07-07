@@ -72,8 +72,13 @@ export const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
  * asserts every handle resolves to an extant recipe of the right kind;
  * this extractor assumes input has already been validated and doesn't
  * re-check.)
+ *
+ * Exported for `recipe list --json`: the emitted `dependsOn` edges are
+ * exactly the edges this module's topo-sort schedules by, so a batch
+ * driver partitioning the set into parallel waves works from the same
+ * graph the sequential apply order derives from.
  */
-const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
+export const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
   const deps = new Set<string>();
   for (const ref of recipeReferences(recipe)) {
     if (ref.handle && ref.handle !== recipe.handle) deps.add(ref.handle);

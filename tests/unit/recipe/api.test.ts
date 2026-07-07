@@ -849,6 +849,81 @@ describe("createAuthoringClient — idempotent createItem fallback", () => {
     ).rejects.toThrow(/already defined on this level/);
   });
 
+  it("ensurePathExists tolerates losing a concurrent auto-provision race for a folder segment", async () => {
+    // Two concurrent pushes (the batched workflow's parallel chunks) can
+    // both probe-miss the same missing path segment and race the folder
+    // create; the loser's mutation errors "already defined on this level"
+    // and must resolve the winner's folder by parent-children lookup
+    // instead of aborting the whole recipe.
+    const fetchMock = vi
+      .fn()
+      // ensurePathExists: getItem for the full parent path → miss.
+      .mockResolvedValueOnce(okResponse({ data: { item: null } }))
+      // ensurePathExists (recursive): getItem for the grandparent → hit.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "grandparent-id-aaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      // Folder auto-create for "Missing" → the concurrent winner already
+      // created it.
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: 'The item name "Missing" is already defined on this level.' }],
+        })
+      )
+      // Fallback fetchChildren on the grandparent → the winner's folder.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "winner-folder-id-bbbbbbbbbbbb",
+                    name: "Missing",
+                    path: "/sitecore/templates/parent/Missing",
+                    parent: { itemId: "grandparent-id-aaaaaaaaaaaaaa" },
+                    template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+                    fields: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        })
+      )
+      // The actual recipe-driven createItem under the resolved folder.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: { createItem: { item: { itemId: "22222222-2222-2222-2222-222222222222" } } },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      parent: "/sitecore/templates/parent/Missing",
+      templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+      name: "CtaButton",
+      fields: [],
+    });
+
+    expect(result.itemId).toBe("22222222-2222-2222-2222-222222222222");
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const finalCreateBody = JSON.parse(fetchMock.mock.calls[4][1].body);
+    expect(finalCreateBody.variables.input.parent).toBe("winner-folder-id-bbbbbbbbbbbb");
+  });
+
   // Regression: rapid second push used to create duplicate-named siblings
   // because the planner's path-index lookup lagged and Sitecore's create
   // mutation didn't always reject the duplicate. The opt-in

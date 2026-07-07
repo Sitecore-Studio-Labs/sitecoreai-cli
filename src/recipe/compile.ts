@@ -26,6 +26,7 @@ import { compileVariantRecipe } from "./compile/variant";
 import { siteOf, type CompileContext } from "./compile/shared";
 import { stableTopologicalSortWithinRanks } from "./compile/ordering";
 import {
+  AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
   buildAvailableRenderingsAggregate,
   buildComponentSectionSubtreeOwnershipAggregate,
   buildEnumerationsRootAggregate,
@@ -33,7 +34,13 @@ import {
   buildSharedDataFolderInsertOptionsAggregate,
   buildSharedDataFoldersAggregate,
   buildSiteDataRootAggregate,
+  COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
   detectSharedSubfolders,
+  ENUMERATIONS_ROOT_AGGREGATE_HANDLE,
+  PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
+  SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE,
+  SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
+  SITE_DATA_ROOT_AGGREGATE_HANDLE,
   type SharedSubfolderContribution,
 } from "./compile/aggregates";
 import type {
@@ -255,6 +262,35 @@ const buildTemplatesMappingAggregate = (
  * component-section ownership prune MUST be last — see the invariant
  * guard in `compileRecipeSet`.
  */
+/**
+ * The synthetic aggregate handle inventory, split by IR-list position.
+ * Consumed by `recipe list --json` so a batch driver knows which handles
+ * a `--handles`-scoped push drops and where to re-add them:
+ *
+ *   - FRONT aggregates compile BEFORE the per-recipe IRs (they create
+ *     templates per-recipe items reference via `templateOf`) — a driver
+ *     carries them with its FIRST chunk.
+ *   - TAIL aggregates compile AFTER (their ref-lists reference per-recipe
+ *     items) — a driver pushes them once after every chunk has applied
+ *     (or uses `--aggregates-only`).
+ *
+ * Static inventory, not per-set: a builder may return null for a given
+ * set, but pushing an absent handle is a logged no-op, so drivers can
+ * pass the full list unconditionally. MUST stay in sync with
+ * `compileRecipeSet` / `appendTrailingAggregates` below — the unit test
+ * cross-checks membership against the exported aggregate constants.
+ */
+export const FRONT_AGGREGATE_HANDLES: readonly string[] = [SHARED_DATA_FOLDERS_AGGREGATE_HANDLE];
+export const TAIL_AGGREGATE_HANDLES: readonly string[] = [
+  TEMPLATES_MAPPING_AGGREGATE_HANDLE,
+  AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
+  SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE,
+  SITE_DATA_ROOT_AGGREGATE_HANDLE,
+  ENUMERATIONS_ROOT_AGGREGATE_HANDLE,
+  PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
+  COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
+];
+
 const appendTrailingAggregates = ({
   irs,
   recipes,

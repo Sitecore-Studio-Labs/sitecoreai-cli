@@ -157,6 +157,54 @@ const buildCrossRecipeRefs = (
   return crossRecipeRefs;
 };
 
+/**
+ * Post-compile IR scoping for batch drivers.
+ *
+ * `--aggregates-only` keeps ONLY the synthetic cross-recipe aggregate IRs
+ * (`__name__` handles) — the complement of `--handles`: chunked pushes drop
+ * the aggregates, so a batch driver runs this once after its chunks to land
+ * the shared-item writes (Available Renderings lists, insert-option unions,
+ * placeholder settings, ownership prunes) exactly once, with every
+ * referenced per-recipe item already applied. The aggregates'
+ * `ref-recipe-list` refs resolve against the tenant by their deterministic
+ * GUIDs — same mechanism as cross-batch refs.
+ *
+ * `--handles` narrows the IR set to the operator-named handles after
+ * compile. Cross-recipe references already resolved against the full set,
+ * so dropping unmatched IRs here is safe. Unknown handles are diagnostic
+ * only; an all-unknown filter yields an empty push (no-op).
+ */
+const applyIrScopeFilters = (
+  input: { ir: OperationIr }[],
+  options: RecipePushOptions,
+  logger: ReturnType<typeof toLogger>
+): { ir: OperationIr }[] => {
+  let irs = input;
+  if (options.aggregatesOnly) {
+    irs = irs.filter(({ ir }) => /^__.+__$/.test(ir.recipeHandle));
+    logger.info(
+      `--aggregates-only: pushing ${irs.length} aggregate IR(s) of ${input.length} compiled (${irs
+        .map(({ ir }) => ir.recipeHandle)
+        .join(", ")})`
+    );
+  }
+  if (options.handles && options.handles.length > 0) {
+    const requested = new Set(options.handles);
+    const handlesInSet = new Set(irs.map(({ ir }) => ir.recipeHandle));
+    const unknown = [...requested].filter((h) => !handlesInSet.has(h));
+    if (unknown.length > 0) {
+      logger.info(
+        `--handles: ignoring unknown handle(s): ${unknown.join(", ")} (not present in compiled recipe set).`
+      );
+    }
+    irs = irs.filter(({ ir }) => requested.has(ir.recipeHandle));
+    logger.info(
+      `--handles: pushing ${irs.length} of ${input.length} recipe(s) (filtered to ${[...requested].filter((h) => handlesInSet.has(h)).join(", ") || "none"}).`
+    );
+  }
+  return irs;
+};
+
 /** Flatten one collected `{ recipe, event }` into the JSON output shape. */
 const eventToJson = ({
   recipe,
@@ -754,30 +802,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
-  let irs: { ir: OperationIr }[] = [
-    ...compiled.map((ir) => ({ ir })),
-    ...loadedIrs.map((ir) => ({ ir })),
-  ];
-
-  // Optional `--handles` filter — narrow the IR set to the operator-
-  // named handles after compile. Cross-recipe references already
-  // resolved against the full set, so dropping unmatched IRs here is
-  // safe. Unknown handles are diagnostic only; an all-unknown filter
-  // yields an empty push (no-op).
-  if (options.handles && options.handles.length > 0) {
-    const requested = new Set(options.handles);
-    const handlesInSet = new Set(irs.map(({ ir }) => ir.recipeHandle));
-    const unknown = [...requested].filter((h) => !handlesInSet.has(h));
-    if (unknown.length > 0) {
-      logger.info(
-        `--handles: ignoring unknown handle(s): ${unknown.join(", ")} (not present in compiled recipe set).`
-      );
-    }
-    irs = irs.filter(({ ir }) => requested.has(ir.recipeHandle));
-    logger.info(
-      `--handles: pushing ${irs.length} of ${compiled.length + loadedIrs.length} recipe(s) (filtered to ${[...requested].filter((h) => handlesInSet.has(h)).join(", ") || "none"}).`
-    );
-  }
+  const irs = applyIrScopeFilters(
+    [...compiled.map((ir) => ({ ir })), ...loadedIrs.map((ir) => ({ ir }))],
+    options,
+    logger
+  );
 
   const crossRecipeRefs = buildCrossRecipeRefs(irs, pageDesignsRoot);
 

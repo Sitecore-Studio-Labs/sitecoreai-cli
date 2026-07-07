@@ -593,22 +593,42 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const parentItemId = await ensurePathExists(parentPath);
     const templateId = folderTemplateForPath(path);
 
-    const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
-      environment,
-      CREATE_ITEM_MUTATION,
-      {
-        input: {
-          parent: parentItemId,
-          templateId,
-          name,
-          database: "master",
-          language: "en",
-          fields: [],
+    let itemId: string | undefined;
+    try {
+      const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
+        environment,
+        CREATE_ITEM_MUTATION,
+        {
+          input: {
+            parent: parentItemId,
+            templateId,
+            name,
+            database: "master",
+            language: "en",
+            fields: [],
+          },
         },
-      },
-      writeRequest
-    );
-    const itemId = data.createItem?.item?.itemId;
+        writeRequest
+      );
+      itemId = data.createItem?.item?.itemId ?? undefined;
+    } catch (error) {
+      // Same idempotent-create fallback as `createItem` below. Two ways to
+      // reach it: Sitecore's path index (the `fetchOne({path})` probe
+      // above) lags writes, so a folder created seconds ago can read as
+      // missing — and CONCURRENT pushes (the orchestrator's parallel
+      // localize chunks / batch waves) can both probe-miss the same
+      // missing segment and race the create; the loser lands here. The
+      // parent-child read is not lag-prone, so resolving the existing
+      // sibling by name and continuing is correct in both cases.
+      if (isAlreadyExistsError(error)) {
+        const existing = await findChildByName(parentItemId, name);
+        if (existing) {
+          pathItemIdCache?.set(path, existing.itemId);
+          return existing.itemId;
+        }
+      }
+      throw error;
+    }
     if (!itemId) {
       throw createScaiError(
         `Auto-provisioning failed: Authoring API returned no itemId after creating folder '${path}'.`,

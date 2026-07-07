@@ -6,6 +6,7 @@ import { createScaiError } from "@/shared/errors";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { discoverSites } from "@/authoring";
 import { getAccessToken } from "../api/auth";
+import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
 import {
@@ -31,6 +32,7 @@ import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runti
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
+import { alignMediaLibraryRootWithSite } from "./media-root";
 import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
@@ -641,6 +643,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pagesRoot,
   } = resolveCompileRoots(options, environment);
 
+  // Align the site-scoped media root with the folder the Sites API
+  // actually scaffolded (named after the site's DISPLAY name) so recipe
+  // media and Pages-authored media share one tree instead of splitting
+  // across `<Site Display Name>/` and `<site-name>/` siblings. An
+  // explicit --media-library-root flag is used verbatim; everything
+  // else is best-effort and falls back to the configured root.
+  const mediaLibraryRootAligned = await alignMediaLibraryRootWithSite({
+    configuredRoot: mediaLibraryRoot,
+    explicitFlag: options.mediaLibraryRoot,
+    site: environment.site,
+    discover: () => discoverSites(environment),
+    getItemsByPaths: (paths) =>
+      createAuthoringClient({ environment, pathItemIdCache }).getItemsByPaths(paths),
+    logger,
+  });
+
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
   const allEvents: Array<{ recipe: string; event: ExecutionEvent }> = [];
@@ -685,7 +703,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,
-    mediaLibraryRoot,
+    mediaLibraryRoot: mediaLibraryRootAligned,
     imageDefaults,
     availableLanguages,
     headlessVariantsRoot,

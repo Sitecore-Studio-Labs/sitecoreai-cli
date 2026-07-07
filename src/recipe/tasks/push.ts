@@ -6,6 +6,7 @@ import { createScaiError } from "@/shared/errors";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { discoverSites } from "@/authoring";
 import { getAccessToken } from "../api/auth";
+import { createAuthoringClient } from "../api/authoring-client";
 import type { AuthoringApiClient, RemoteItem } from "../api/client";
 import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
 import {
@@ -31,6 +32,7 @@ import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runti
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
+import { alignMediaLibraryRootWithSite } from "./media-root";
 import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
@@ -331,11 +333,48 @@ const resolveScopedLanguages = async (
   return (resolved ?? languageScope).filter((code) => languageScopeMatches(languageScope, code));
 };
 
+/** True when a value is a locale map (`{ en, de, … }`), not a plain string. */
+const isLocaleMap = (value: unknown): boolean =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * True when a component-/content-template recipe authors any per-locale
+ * `__Standard Values` default — a field or param whose `default` (or
+ * `sitecore.defaultValue`) is a `{ en, de, … }` locale map rather than a
+ * plain string.
+ *
+ * Such a recipe needs the environment's registered languages resolved for
+ * the SAME reason a dictionary does: the compiler fans a bare base-language
+ * key (`ar`) out to the tenant's registered regional variants (`ar-AE`,
+ * `ar-SA`) only when `availableLanguages` is known. Without it, the
+ * standalone-compile branch emits each key verbatim — so `ar` lands on the
+ * bare `ar` version, a language the site never renders, instead of the
+ * regional `ar-AE` it actually uses. Gating language resolution on
+ * dictionaries alone left a component-only push (no dictionary in the set)
+ * writing localized SV to the wrong language.
+ */
+const recipeHasLocaleMapDefaults = (recipe: Recipe): boolean => {
+  if (recipe.kind !== "component-template" && recipe.kind !== "content-template") {
+    return false;
+  }
+  const entries = [
+    ...((recipe as { fields?: unknown[] }).fields ?? []),
+    ...((recipe as { params?: unknown[] }).params ?? []),
+  ];
+  return entries.some((entry) => {
+    const e = entry as { default?: unknown; sitecore?: { defaultValue?: unknown } };
+    return isLocaleMap(e.default) || isLocaleMap(e.sitecore?.defaultValue);
+  });
+};
+
 const resolveEnvironmentLanguages = async (
   recipes: readonly Recipe[],
   environment: EnvironmentConfiguration
 ): Promise<string[] | undefined> => {
-  if (!recipes.some((r) => r.kind === "dictionary")) return undefined;
+  const needsLanguages = recipes.some(
+    (r) => r.kind === "dictionary" || recipeHasLocaleMapDefaults(r)
+  );
+  if (!needsLanguages) return undefined;
   const accessToken = await getAccessToken(environment);
   if (!accessToken) return undefined;
   try {
@@ -641,6 +680,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pagesRoot,
   } = resolveCompileRoots(options, environment);
 
+  // Align the site-scoped media root with the folder the Sites API
+  // actually scaffolded (named after the site's DISPLAY name) so recipe
+  // media and Pages-authored media share one tree instead of splitting
+  // across `<Site Display Name>/` and `<site-name>/` siblings. An
+  // explicit --media-library-root flag is used verbatim; everything
+  // else is best-effort and falls back to the configured root.
+  const mediaLibraryRootAligned = await alignMediaLibraryRootWithSite({
+    configuredRoot: mediaLibraryRoot,
+    explicitFlag: options.mediaLibraryRoot,
+    site: environment.site,
+    discover: () => discoverSites(environment),
+    getItemsByPaths: (paths) =>
+      createAuthoringClient({ environment, pathItemIdCache }).getItemsByPaths(paths),
+    logger,
+  });
+
   const { files, source } = await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
   const allEvents: Array<{ recipe: string; event: ExecutionEvent }> = [];
@@ -685,7 +740,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     partialDesignsRoot,
     pageDesignsRoot,
     contentItemsRoot,
-    mediaLibraryRoot,
+    mediaLibraryRoot: mediaLibraryRootAligned,
     imageDefaults,
     availableLanguages,
     headlessVariantsRoot,

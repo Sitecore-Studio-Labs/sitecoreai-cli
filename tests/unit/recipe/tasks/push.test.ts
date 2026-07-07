@@ -381,6 +381,43 @@ describe("runRecipePush — SiteRecipe language provisioning", () => {
   });
 });
 
+describe("runRecipePush — locale-map SV language resolution", () => {
+  it("resolves environment languages for a component recipe with a locale-map default (no dictionary)", async () => {
+    // A component recipe whose field carries a `{ en, ar }` Standard-Values
+    // locale map — but NO dictionary in the set. The compiler must still get
+    // `availableLanguages` so the base `ar` key fans out to the tenant's
+    // registered `ar-AE` instead of landing on the bare `ar` version.
+    vi.mocked(io.loadRecipe).mockResolvedValue({
+      kind: "component-template",
+      handle: "hero",
+      name: "Hero",
+      fields: [{ name: "Heading", shape: "text", default: { en: "Hi", ar: "مرحبا" } }],
+    } as never);
+    vi.mocked(getAccessToken).mockResolvedValue("cm-token" as never);
+    vi.mocked(createSitesApiClient).mockReturnValue({
+      listLanguages: async () => [{ iso: "en" }, { regionalIsoCode: "ar-AE" }],
+    } as never);
+
+    await runRecipePush({ allowWrite: true } as never);
+
+    const opts = vi.mocked(compileRecipeSet).mock.calls[0][1] as {
+      availableLanguages?: string[];
+    };
+    expect(opts.availableLanguages).toEqual(expect.arrayContaining(["en", "ar-AE"]));
+  });
+
+  it("skips language resolution for a plain-string component recipe (no locale maps, no dictionary)", async () => {
+    // Default beforeEach loadRecipe is a plain component-template with no
+    // locale-map defaults — a component-only push pays no token mint.
+    await runRecipePush({ allowWrite: true } as never);
+
+    const opts = vi.mocked(compileRecipeSet).mock.calls[0][1] as {
+      availableLanguages?: string[];
+    };
+    expect(opts.availableLanguages).toBeUndefined();
+  });
+});
+
 describe("runRecipePush — placeholder allow-controls post-phase", () => {
   it("registers placeholders when a component recipe declares placedIn", async () => {
     vi.mocked(io.loadRecipe).mockResolvedValue({

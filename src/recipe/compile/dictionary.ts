@@ -144,6 +144,18 @@ export function compileDictionaryRecipe(
   // Sort phrase keys for deterministic op ordering — re-pushes against
   // an unchanged recipe produce identical IRs (golden tests, planner
   // no-ops, diff stability).
+  //
+  // PHASED emission — creates, THEN every version add, THEN every
+  // translation write — instead of interleaving per phrase. The executor's
+  // write pool overlaps writes across (item, language) stacks but a
+  // version add still gates the plan of the SetField that targets it; the
+  // per-phrase interleave (create → add → set → add → set…) therefore ran
+  // one round-trip at a time. Grouping the adds lets N phrases × M locales
+  // fan out `applyConcurrency`-wide — the difference between ~1,400 serial
+  // round-trips and a few hundred overlapped ones on a 70-phrase,
+  // 9-locale dictionary.
+  const versionAddOps: AddItemVersionOp[] = [];
+  const translationOps: SetFieldOp[] = [];
   const phraseKeys = Object.keys(recipe.phrases).sort();
   for (const phraseKey of phraseKeys) {
     const phrase = recipe.phrases[phraseKey];
@@ -196,9 +208,9 @@ export function compileDictionaryRecipe(
         // SetField against a language that has no version yet fails with
         // "item ... does not contain version #1 in '<locale>'". Ensure
         // the locale's version exists first (mirrors content-item /
-        // page multi-language emission). The executor creates the
-        // language version as part of adding version 1.
-        operations.push({
+        // page multi-language emission) — collected into the grouped
+        // version-add phase, ahead of every translation write.
+        versionAddOps.push({
           op: "AddItemVersion",
           policy,
           label: `dictionary-entry-version:${recipe.handle}/${phraseKey}:${locale}`,
@@ -206,7 +218,7 @@ export function compileDictionaryRecipe(
           language: locale,
           version: DEFAULT_VERSION,
         } satisfies AddItemVersionOp);
-        operations.push({
+        translationOps.push({
           op: "SetField",
           policy,
           label: `dictionary-entry-translation:${recipe.handle}/${phraseKey}:${locale}`,
@@ -223,8 +235,9 @@ export function compileDictionaryRecipe(
     // Optional translator-facing description — landed as a shared
     // `__Help text` field write so it surfaces in Sitecore's Content
     // Editor "Help" tooltip + any translation tooling that reads it.
+    // Rides with the grouped translation phase (poolable field write).
     if (phrase.description) {
-      operations.push({
+      translationOps.push({
         op: "SetField",
         policy,
         label: `dictionary-entry-description:${recipe.handle}/${phraseKey}`,
@@ -234,6 +247,8 @@ export function compileDictionaryRecipe(
       } satisfies SetFieldOp);
     }
   }
+
+  operations.push(...versionAddOps, ...translationOps);
 
   return OperationIrSchema.parse({
     schemaVersion: "1",

@@ -3,6 +3,7 @@ import { ctaButtonRecipe } from "../../../example/recipes/cta-button.recipe";
 import type { UpdateItemInput } from "../../../src/recipe/api/client";
 import { compileComponentTemplateRecipe } from "../../../src/recipe/compile";
 import type {
+  AddItemVersionOp,
   AppendToMultiListOp,
   CreateItemOp,
   OperationIr,
@@ -53,7 +54,8 @@ const setFieldOp = (
   target: number,
   field: number,
   value: string,
-  language?: string
+  language?: string,
+  version?: number
 ): SetFieldOp => ({
   op: "SetField",
   policy: "CreateAndUpdate",
@@ -63,6 +65,16 @@ const setFieldOp = (
   fieldName: `Field${field}`,
   value: { kind: "string", value },
   ...(language !== undefined ? { language } : {}),
+  ...(version !== undefined ? { version } : {}),
+});
+
+const addVersionOp = (target: number, language: string): AddItemVersionOp => ({
+  op: "AddItemVersion",
+  policy: "CreateAndUpdate",
+  label: `add-version:${target}:${language}`,
+  itemRefKey: refKey(target),
+  language,
+  version: 1,
 });
 
 const ir = (operations: OperationIr["operations"]): OperationIr => ({
@@ -95,6 +107,40 @@ class SlowUpdateClient extends MockAuthoringClient {
     } finally {
       this.inFlight -= 1;
     }
+  }
+}
+
+/**
+ * Mock client whose `addItemVersion` holds the wire open — observes
+ * version-add overlap (the localization hot path) and records the wire
+ * order across both mutation kinds.
+ */
+class SlowVersionClient extends MockAuthoringClient {
+  addsInFlight = 0;
+  maxAddsInFlight = 0;
+  wireOrder: string[] = [];
+
+  constructor(private readonly delayMs: number) {
+    super();
+  }
+
+  override async addItemVersion(
+    input: Parameters<MockAuthoringClient["addItemVersion"]>[0]
+  ): ReturnType<MockAuthoringClient["addItemVersion"]> {
+    this.addsInFlight += 1;
+    this.maxAddsInFlight = Math.max(this.maxAddsInFlight, this.addsInFlight);
+    try {
+      await sleep(this.delayMs);
+      this.wireOrder.push(`add:${input.language}`);
+      return await super.addItemVersion(input);
+    } finally {
+      this.addsInFlight -= 1;
+    }
+  }
+
+  override async updateItem(input: UpdateItemInput): Promise<void> {
+    this.wireOrder.push(`update:${input.language ?? "shared"}`);
+    return super.updateItem(input);
   }
 }
 
@@ -261,6 +307,89 @@ describe("executeIr — applyConcurrency pool", () => {
     expect(events.some((e) => e.kind === "apply-error")).toBe(false);
     expect(result.summary.skip).toBe(1);
     expect(fieldValueOf(client, `${ROOT}/A`, fieldId(2))).toBe("Welcome");
+  });
+
+  it("overlaps version adds for distinct language stacks on the same item", async () => {
+    // The localization hot path: one SV-like item, N locale version adds
+    // grouped ahead of their field writes (the compilers' phased emission).
+    const client = new SlowVersionClient(25);
+    const locales = ["da-DK", "de-DE", "fr-FR", "ja-JP"];
+    const operations = [
+      createOp(1, "SV"),
+      ...locales.map((locale) => addVersionOp(1, locale)),
+      ...locales.map((locale, i) => setFieldOp(1, i + 1, `value-${locale}`, locale, 1)),
+    ];
+
+    const result = await executeIr(ir(operations), client, {
+      mode: "apply",
+      applyConcurrency: 4,
+    });
+
+    expect(result.aborted).toBe(false);
+    // Version stacks are per-language — the grouped adds must fan out
+    // instead of running one round-trip at a time.
+    expect(client.maxAddsInFlight).toBeGreaterThanOrEqual(2);
+    // Every locale's field write landed, and never before its own add.
+    for (const locale of locales) {
+      const addAt = client.wireOrder.indexOf(`add:${locale}`);
+      const updateAt = client.wireOrder.indexOf(`update:${locale}`);
+      expect(addAt).toBeGreaterThanOrEqual(0);
+      expect(updateAt).toBeGreaterThan(addAt);
+    }
+  });
+
+  it("handles the legacy interleaved add/set/add/set shape correctly", async () => {
+    // Pre-phasing emission order — correctness must not depend on the
+    // compilers' grouping.
+    const client = new SlowVersionClient(10);
+    const operations = [
+      createOp(1, "Entry"),
+      addVersionOp(1, "fr-FR"),
+      setFieldOp(1, 1, "Bonjour", "fr-FR", 1),
+      addVersionOp(1, "de-DE"),
+      setFieldOp(1, 1, "Hallo", "de-DE", 1),
+    ];
+
+    const result = await executeIr(ir(operations), client, {
+      mode: "apply",
+      applyConcurrency: 4,
+    });
+
+    expect(result.aborted).toBe(false);
+    for (const locale of ["fr-FR", "de-DE"]) {
+      const addAt = client.wireOrder.indexOf(`add:${locale}`);
+      const updateAt = client.wireOrder.indexOf(`update:${locale}`);
+      expect(updateAt).toBeGreaterThan(addAt);
+    }
+  });
+
+  it("skips a pooled version add against an unregistered language and keeps going", async () => {
+    const client = new MockAuthoringClient();
+    client.throwOn = {
+      method: "addItemVersion",
+      match: "ar-SA",
+      message: "The specified language 'ar-SA' is not defined on this environment.",
+    };
+    const operations = [
+      createOp(1, "Entry"),
+      addVersionOp(1, "ar-SA"),
+      setFieldOp(1, 1, "مرحبا", "ar-SA", 1),
+      // A different stack must still land after the skip.
+      setFieldOp(1, 2, "Welcome", "en"),
+    ];
+
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(ir(operations), client, {
+      mode: "apply",
+      applyConcurrency: 4,
+      emit: (e) => events.push(e),
+    });
+
+    expect(result.aborted).toBe(false);
+    expect(result.rollback).toBeUndefined();
+    expect(events.some((e) => e.kind === "apply-skip" && e.language === "ar-SA")).toBe(true);
+    expect(events.some((e) => e.kind === "apply-error")).toBe(false);
+    expect(fieldValueOf(client, `${ROOT}/Entry`, fieldId(2))).toBe("Welcome");
   });
 
   it("pooled apply converges: summary matches sequential, and a re-push is all skips", async () => {

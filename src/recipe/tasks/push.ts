@@ -802,13 +802,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     marketplacePluginOverrides: tenant.root.marketplacePluginOverrides,
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
-  const irs = applyIrScopeFilters(
-    [...compiled.map((ir) => ({ ir })), ...loadedIrs.map((ir) => ({ ir }))],
-    options,
-    logger
-  );
+  // The full compiled set, BEFORE `--handles` / `--aggregates-only` scoping.
+  const allIrs = [...compiled.map((ir) => ({ ir })), ...loadedIrs.map((ir) => ({ ir }))];
 
-  const crossRecipeRefs = buildCrossRecipeRefs(irs, pageDesignsRoot);
+  // Cross-recipe ref pre-seed MUST be built from the FULL set, not the pushed
+  // subset. A chunked/batched push (`--handles`) references items produced by
+  // recipes in OTHER batches — e.g. `link-list-content@1`'s `Items` field
+  // (a `ref-source-fields` source restriction) points at `link-list-item@1`,
+  // which lands in a different batch. Those items already exist on the tenant
+  // (earlier batch); the executor resolves them by reading their expectedPath.
+  // Building this from the post-filter `irs` drops every cross-batch ref and
+  // fails resolution with "not yet in captured map". This matches
+  // `applyIrScopeFilters`' contract: "Cross-recipe references already resolved
+  // against the full set, so dropping unmatched IRs here is safe."
+  const crossRecipeRefs = buildCrossRecipeRefs(allIrs, pageDesignsRoot);
+
+  const irs = applyIrScopeFilters(allIrs, options, logger);
 
   // Lazy-build a SitesApiClient only when an IR in the set needs one
   // (i.e. carries a CreateSiteFromTemplate op). Component / partial /

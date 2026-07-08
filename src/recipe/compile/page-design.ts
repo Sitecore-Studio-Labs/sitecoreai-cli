@@ -18,6 +18,11 @@ import {
 } from "../ir/sitecore-templates";
 import { type PageDesignRecipe, PageDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import {
+  collectDataInsertOptions,
+  collectScopedSlots,
+  materializeScopedDatasources,
+} from "./scoped-datasources";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 
 /**
@@ -85,12 +90,32 @@ export function compilePageDesignRecipe(
   }
 
   if (recipe.layout && Object.keys(recipe.layout.placeholders).length > 0) {
+    // A page design hosts its own scoped datasources at
+    // `<page-design>/Data/<slot>`, shared across every page it applies to, and
+    // referenced by absolute GUID (a design isn't the render context, so the
+    // page-relative `local:/Data/<slot>` form would miss the item).
+    const scoped = materializeScopedDatasources({
+      hostItemRefKey: itemRefKey,
+      hostItemPath: itemPath,
+      scopedSlots: collectScopedSlots(recipe.layout),
+      insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
+      site,
+      policy,
+      context,
+      recipeHandle: recipe.handle,
+      labelPrefix: "page-design",
+    });
+    operations.push(...scoped.structureOps);
+
     const layoutXml = emitLayoutXml(recipe.layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
       renderingIdFor: (handle) => renderingId(site, handle),
       contentItemIdFor: (handle) => contentItemId(site, handle),
-      allowScoped: false,
+      // The page design item IS the host — scoped placements resolve against
+      // the `<page-design>/Data/<slot>` items materialised above (by GUID).
+      allowScoped: true,
+      scopedDatasourceIdFor: scoped.scopedDatasourceIdFor,
       // Page Design preserves canonical input on read-back — keep emitting
       // canonical so the layout XML round-trips byte-for-byte.
       mode: "canonical",
@@ -105,6 +130,7 @@ export function compilePageDesignRecipe(
         value: { kind: "string", value: layoutXml },
       } satisfies SetFieldOp);
     }
+    operations.push(...scoped.fieldOps);
   }
 
   return OperationIrSchema.parse({

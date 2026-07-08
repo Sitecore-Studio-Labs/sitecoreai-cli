@@ -17,6 +17,11 @@ import {
 } from "../ir/sitecore-templates";
 import { type PartialDesignRecipe, PartialDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import {
+  collectDataInsertOptions,
+  collectScopedSlots,
+  materializeScopedDatasources,
+} from "./scoped-datasources";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
 
 /**
@@ -65,12 +70,36 @@ export function compilePartialDesignRecipe(
     ],
   } satisfies CreateItemOp);
 
+  // A partial design hosts its own scoped datasources at
+  // `<partial-design>/Data/<slot>` — every page that uses the partial shares
+  // the one materialised item (the right semantics for design chrome, e.g. a
+  // footer sign-off). Structure ops land before the layout SetField (whose
+  // `ds="{guid}"` resolves against them); field ops after the items exist.
+  // A design references its slot by ABSOLUTE GUID, not the page-relative
+  // `local:/Data/<slot>` form pages use — a partial's render context is the
+  // page, so `local:` would resolve under the page and miss the item.
+  const scoped = materializeScopedDatasources({
+    hostItemRefKey: itemRefKey,
+    hostItemPath: itemPath,
+    scopedSlots: collectScopedSlots(recipe.layout),
+    insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
+    site,
+    policy,
+    context,
+    recipeHandle: recipe.handle,
+    labelPrefix: "partial-design",
+  });
+  operations.push(...scoped.structureOps);
+
   const layoutXml = emitLayoutXml(recipe.layout, {
     parentItemId: itemRefKey,
     deviceId: DEFAULT_DEVICE_ID,
     renderingIdFor: (handle) => renderingId(site, handle),
     contentItemIdFor: (handle) => contentItemId(site, handle),
-    allowScoped: false,
+    // The partial design item IS the host — scoped placements resolve against
+    // the `<partial-design>/Data/<slot>` items materialised above (by GUID).
+    allowScoped: true,
+    scopedDatasourceIdFor: scoped.scopedDatasourceIdFor,
     // SXA Partial Design's Layout pipeline normalizes canonical input
     // into delta form on first write — emit delta directly so first
     // push converges in one cycle (the alternative is the two-cycle
@@ -88,6 +117,7 @@ export function compilePartialDesignRecipe(
       value: { kind: "string", value: layoutXml },
     } satisfies SetFieldOp);
   }
+  operations.push(...scoped.fieldOps);
 
   return OperationIrSchema.parse({
     schemaVersion: "1",

@@ -9,7 +9,6 @@ import {
   pageItemId,
   renderingId,
   templateId,
-  variantId,
   workflowId,
   workflowStateId,
 } from "../items/guids";
@@ -42,11 +41,11 @@ import {
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
+import { layoutEncodingOptions } from "./layout-encoding";
 import {
   type CompileContext,
   type ImageMediaSink,
   joinPath,
-  paramWireValue,
   resolveMediaLocationFolder,
   sharedField,
   siteOf,
@@ -257,33 +256,11 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       allowScoped: true,
       mode: "delta",
       deltaDeviceDirective: false,
-      // Variant selections reference the headless Variant Definition
-      // item by GUID when the component recipe declares the variant
-      // (so the item exists for Pages' variant picker to display);
-      // undeclared variants — and standalone compiles without
-      // componentsByHandle — fall back to the raw name, which the
-      // front end matches against its exports directly.
-      variantRefFor: (componentHandle, variantName) => {
-        const declared = context.componentsByHandle
-          ?.get(componentHandle)
-          ?.variants.some((variant) => variant.name === variantName);
-        return declared ? variantId(site, componentHandle, variantName) : undefined;
-      },
-      // Type-map param values to what the parameter's Sitecore field
-      // stores (enum Droplinks → enum-value GUIDs, checkboxes → 1/"")
-      // so Pages' properties panel displays them as set. The param
-      // definition comes from the component's inline `params` or its
-      // external `parameters: { handle }` recipe; unknown params (or
-      // standalone compiles without the lookup maps) keep raw values.
-      paramValueFor: (componentHandle, paramName, rawValue) => {
-        const component = context.componentsByHandle?.get(componentHandle);
-        if (!component) return undefined;
-        const defs = component.parameters
-          ? (context.parametersByHandle?.get(component.parameters.handle)?.params ?? [])
-          : component.params;
-        const def = defs.find((param) => param.name === paramName);
-        return def ? paramWireValue(def, rawValue, site) : undefined;
-      },
+      // Encode variant selections + rendering params in the wire form Pages
+      // reads back (variant → Variant Definition GUID; params → the field's
+      // wire value). Shared with the partial/page-design compilers so all
+      // three layout-holders encode identically.
+      ...layoutEncodingOptions(site, context),
     });
     if (layoutXml.length === 0) return;
     fieldOps.push({

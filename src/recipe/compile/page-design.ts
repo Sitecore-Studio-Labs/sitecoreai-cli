@@ -18,6 +18,7 @@ import {
 } from "../ir/sitecore-templates";
 import { type PageDesignRecipe, PageDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import { layoutEncodingOptions } from "./layout-encoding";
 import {
   collectDataInsertOptions,
   collectScopedSlots,
@@ -116,6 +117,9 @@ export function compilePageDesignRecipe(
       // the `<page-design>/Data/<slot>` items materialised above (by GUID).
       allowScoped: true,
       scopedDatasourceIdFor: scoped.scopedDatasourceIdFor,
+      // Encode variants + params in the wire form Pages reads back — SAME as
+      // pages, so the design's renderings don't render with unresolved variants.
+      ...layoutEncodingOptions(site, context),
       // Page Design preserves canonical input on read-back — keep emitting
       // canonical so the layout XML round-trips byte-for-byte.
       mode: "canonical",

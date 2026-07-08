@@ -214,6 +214,30 @@ describe("runRecipePush — apply vs dry-run", () => {
     expect(lines.some((l) => l.includes("Summary: 1 create"))).toBe(true);
   });
 
+  it("builds crossRecipeRefs from the FULL set, not the --handles subset", async () => {
+    // A chunked/batched push (`--handles`) pushes one recipe but references
+    // items produced by OTHER batches (e.g. a component's `ref-source-fields`
+    // source restriction points at a datasource-item template in a different
+    // batch). Those refs must still be pre-seeded so the executor resolves
+    // them against the tenant — otherwise the push fails with
+    // "not yet in captured map". Regression guard for that ordering bug.
+    vi.mocked(compileRecipeSet).mockReturnValue([
+      makeIr("hero", [createItemOp("hero-op", "/t/Hero")]),
+      makeIr("card", [createItemOp("card-op", "/t/Card")]),
+    ]);
+
+    await runRecipePush({ allowWrite: true, handles: ["hero"] } as never);
+
+    // Only `hero` is pushed (card lands in another batch)...
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    // ...but the cross-recipe pre-seed still carries `card`'s item.
+    const opts = vi.mocked(executeIr).mock.calls[0][2] as {
+      crossRecipeRefs: ReadonlyMap<string, string>;
+    };
+    expect(opts.crossRecipeRefs.get("card-op")).toBe("/t/Card");
+    expect(opts.crossRecipeRefs.get("hero-op")).toBe("/t/Hero");
+  });
+
   it("emits a JSON envelope in --json mode", async () => {
     jsonMode = true;
     await runRecipePush({ allowWrite: true } as never);

@@ -17,6 +17,7 @@ import {
 } from "../ir/sitecore-templates";
 import { type PartialDesignRecipe, PartialDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import { layoutEncodingOptions } from "./layout-encoding";
 import {
   collectDataInsertOptions,
   collectScopedSlots,
@@ -100,6 +101,9 @@ export function compilePartialDesignRecipe(
     // the `<partial-design>/Data/<slot>` items materialised above (by GUID).
     allowScoped: true,
     scopedDatasourceIdFor: scoped.scopedDatasourceIdFor,
+    // Encode variants + params in the wire form Pages reads back — SAME as
+    // pages, so a partial's renderings don't render with unresolved variants.
+    ...layoutEncodingOptions(site, context),
     // SXA Partial Design's Layout pipeline normalizes canonical input
     // into delta form on first write — emit delta directly so first
     // push converges in one cycle (the alternative is the two-cycle

@@ -10,6 +10,7 @@ import {
   compilePageDesignRecipe,
   compilePartialDesignRecipe,
   compileRecipe,
+  compileRecipeSet,
 } from "../../../src/recipe/compile";
 import {
   contentItemId,
@@ -17,6 +18,7 @@ import {
   pageDesignId,
   partialDesignId,
   renderingId,
+  variantId,
 } from "../../../src/recipe/items/guids";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
@@ -342,6 +344,66 @@ describe("compilePartialDesignRecipe — scoped datasource (partial hosts its ow
     const xml = (setLayout.value as { value: string }).value;
     expect(xml).toContain(`{${datasourceId(partialRefKey, "LetsSync").toUpperCase()}}`);
     expect(xml).not.toContain("local:");
+  });
+});
+
+describe("compilePartialDesignRecipe — variant encoding matches pages", () => {
+  // Partial/page-design layouts must encode variants + params in the same
+  // wire form pages do (variant → Variant Definition GUID via `variantRefFor`),
+  // else a design's renderings render with unresolved variants. Regression
+  // guard for the shared `layoutEncodingOptions` wiring.
+  it("references a declared variant by GUID, an undeclared one by raw name", () => {
+    const variantComponent = {
+      kind: "component-template",
+      schemaVersion: "1",
+      handle: "vary-block@1",
+      name: "varyblock",
+      displayName: "Vary Block",
+      fields: [],
+      variants: [{ name: "FullBleed" }],
+      params: [],
+      placedIn: [],
+      placeholders: [],
+      dynamicPlaceholders: false,
+    };
+    const partial = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "variant-partial@1",
+      name: "variant-partial",
+      displayName: "Variant Partial",
+      layout: {
+        placeholders: {
+          "headless-header": [
+            {
+              componentHandle: "vary-block@1",
+              variant: "FullBleed",
+              datasourceRef: { kind: "none" },
+            },
+            {
+              componentHandle: "vary-block@1",
+              variant: "Undeclared",
+              datasourceRef: { kind: "none" },
+            },
+          ],
+        },
+      },
+    };
+    const irs = compileRecipeSet(
+      [variantComponent, partial] as never,
+      {
+        ...CONTEXT,
+        headlessVariantsRoot: "/sitecore/content/Demo/Presentation/Headless Variants",
+      } as never
+    );
+    const partialIr = irs.find((ir) => ir.recipeHandle === "variant-partial@1")!;
+    const layout = findSetField(partialIr.operations, "partial-design-layout:variant-partial@1");
+    const xml = (layout.value as { value: string }).value;
+    // Declared variant → its Variant Definition GUID (same as pages).
+    const declaredRef = variantId(SITE, "vary-block@1", "FullBleed").toUpperCase();
+    expect(xml).toContain(`FieldNames=${encodeURIComponent(`{${declaredRef}}`)}`);
+    // Undeclared variant → raw name (front end matches by export name).
+    expect(xml).toContain("FieldNames=Undeclared");
   });
 });
 

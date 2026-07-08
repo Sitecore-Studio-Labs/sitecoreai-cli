@@ -64,6 +64,16 @@ export interface RetryOptions {
    * set since no request was sent.
    */
   retryableStatuses?: ReadonlySet<number>;
+  /**
+   * Whether AMBIGUOUS network failures — a client-side abort (our own
+   * timeout) or a `TypeError: fetch failed` — are retryable. Default true.
+   * Reads and idempotent callers leave it on. Mutation callers set it false:
+   * after such a failure the request MAY have applied server-side, so a retry
+   * risks a duplicate write. A server-side "operation was canceled" GraphQL
+   * error is NOT gated by this — a cancelled op is rolled back (never applied)
+   * so it is always safe to retry.
+   */
+  retryAmbiguousNetwork?: boolean;
 }
 
 /**
@@ -79,7 +89,20 @@ const DEFAULT_RETRY: Required<RetryOptions> = {
   baseDelayMs: 500,
   maxDelayMs: 15_000,
   retryableStatuses: new Set([408, 425, 429, 503]),
+  retryAmbiguousNetwork: true,
 };
+
+/**
+ * A server-side cancellation of a GraphQL operation — the Authoring API's
+ * `OperationCanceledException`, surfaced as an error message like "The
+ * operation was canceled." under load or on a long-running mutation (e.g. a
+ * localize pass writing many language versions at once). A cancelled operation
+ * is aborted and rolled back, so it did NOT apply — always safe to retry, even
+ * for a write.
+ */
+const CANCELLATION_MESSAGE_RE = /operation was cancel?led|operationcancell?ed/i;
+const isCancellationErrors = (errors: ReadonlyArray<{ message?: string }>): boolean =>
+  errors.some((e) => CANCELLATION_MESSAGE_RE.test(e.message ?? ""));
 
 /**
  * Read-only callers can opt in to a broader retry set that includes
@@ -275,11 +298,17 @@ export const runSitecoreGraphQL = async <T>(
         const details = result.errors
           .map((error) => (error.extensions ? JSON.stringify(error.extensions) : undefined))
           .filter((line): line is string => typeof line === "string");
-        throw createScaiError(
+        const gqlError = createScaiError(
           redactSecrets(`${transport.label} GraphQL errors: ${message}`),
           "NETWORK",
           details.length > 0 ? { details } : undefined
         );
+        // A server-side cancellation is rolled back (never applied), so flag
+        // it retryable even for writes — the retry loop honors this.
+        if (isCancellationErrors(result.errors)) {
+          (gqlError as { retryableCancellation?: boolean }).retryableCancellation = true;
+        }
+        throw gqlError;
       }
       if (!result.data) {
         throw createScaiError(
@@ -306,9 +335,22 @@ export const runSitecoreGraphQL = async <T>(
           continue;
         }
       } else if (
+        // Server-side "operation was canceled" — rolled back, never applied,
+        // so safe to retry even for writes. NOT gated by
+        // `retryAmbiguousNetwork` (unlike aborts/blips, a cancellation is an
+        // unambiguous did-not-apply signal).
+        (error as { retryableCancellation?: boolean })?.retryableCancellation === true &&
+        attempt < retryCfg.maxAttempts - 1
+      ) {
+        await sleep(computeBackoff(attempt, retryCfg));
+        continue;
+      } else if (
         error instanceof Error &&
         error.name === "AbortError" &&
         attempt < retryCfg.maxAttempts - 1 &&
+        // Ambiguous: the request may have applied before we aborted, so
+        // mutation callers opt out via `retryAmbiguousNetwork: false`.
+        retryCfg.retryAmbiguousNetwork &&
         // Honor explicit per-call timeoutMs as a hard cap — if the caller
         // set one, an abort means "took longer than the budget", and
         // silently retrying behind their back violates their intent.
@@ -320,9 +362,11 @@ export const runSitecoreGraphQL = async <T>(
         continue;
       } else if (
         // `fetch` failures from network blips (DNS, ECONNRESET, EAI_AGAIN, etc.)
-        // surface as `TypeError: fetch failed` in Node's undici. Retry these.
+        // surface as `TypeError: fetch failed` in Node's undici. Ambiguous for
+        // writes (the request may have reached the server), so gated too.
         error instanceof TypeError &&
-        attempt < retryCfg.maxAttempts - 1
+        attempt < retryCfg.maxAttempts - 1 &&
+        retryCfg.retryAmbiguousNetwork
       ) {
         await sleep(computeBackoff(attempt, retryCfg));
         continue;

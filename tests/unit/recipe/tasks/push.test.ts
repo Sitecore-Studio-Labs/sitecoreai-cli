@@ -324,11 +324,12 @@ describe("runRecipePush — Sites API token", () => {
   });
 });
 
-describe("runRecipePush — SiteRecipe language provisioning", () => {
-  it("registers a SiteRecipe's declared languages on the environment before compile", async () => {
-    // A SiteRecipe carrying additional languages — the localized SV /
-    // dictionary content the compiler would otherwise filter out on an
-    // existing site whose createSite mutation never runs.
+describe("runRecipePush — localization scopes to installed languages", () => {
+  it("does NOT auto-provision a SiteRecipe's declared languages (installed-only)", async () => {
+    // A SiteRecipe declaring locales the environment doesn't have. The push
+    // must NOT create them — localization scopes to what's already installed,
+    // so a base-language default can't fan out into every regional variant the
+    // CLI would otherwise register (the "5 installed → 25 written" bug).
     vi.mocked(io.loadRecipe).mockResolvedValue({
       kind: "site",
       handle: "showcase-site@1",
@@ -340,11 +341,10 @@ describe("runRecipePush — SiteRecipe language provisioning", () => {
 
     await runRecipePush({ allowWrite: true } as never);
 
-    expect(createSitesApiClient).toHaveBeenCalledWith({ accessToken: "site-token" });
-    expect(ensureEnvironmentLanguages).toHaveBeenCalledWith(
-      { kind: "sites-client" },
-      expect.arrayContaining(["en", "ar-SA", "de-DE"])
-    );
+    // No language provisioning during the push. `createSite` is the only
+    // place that adds languages, and this set has no createSite op — so the
+    // declared-but-uninstalled ar-SA / de-DE are never created or written.
+    expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
   });
 
   it("does not provision languages when the set carries no SiteRecipe", async () => {
@@ -352,22 +352,6 @@ describe("runRecipePush — SiteRecipe language provisioning", () => {
     await runRecipePush({ allowWrite: true } as never);
 
     expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
-  });
-
-  it("--languages scopes registration to matching locales (base covers regionals)", async () => {
-    vi.mocked(io.loadRecipe).mockResolvedValue({
-      kind: "site",
-      handle: "showcase-site@1",
-      name: "showcase",
-      language: "en",
-      languages: ["ar-SA", "de-DE", "fr-FR"],
-    } as never);
-    vi.mocked(getAccessToken).mockResolvedValue("site-token" as never);
-
-    await runRecipePush({ allowWrite: true, languages: ["en", "fr"] } as never);
-
-    const [, registered] = vi.mocked(ensureEnvironmentLanguages).mock.calls[0];
-    expect([...(registered as string[])].sort()).toEqual(["en", "fr-FR"]);
   });
 
   it("--languages narrows the compiler's availableLanguages to the scope", async () => {

@@ -21,12 +21,7 @@ import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
 import { loadIr, loadRecipe } from "../io";
-import {
-  ensureEnvironmentLanguages,
-  executeIr,
-  type ExecutionEvent,
-  type ExecutionResult,
-} from "../runtime/execute";
+import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import { writeProgressLine } from "./progress-stream";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
@@ -285,59 +280,6 @@ const resolveCompileRoots = (
  * case-insensitively against phrase-translation locales.
  */
 /**
- * Register every language a `SiteRecipe` in the set declares (`language` +
- * `languages`) on the environment BEFORE compile.
- *
- * `SiteRecipe.languages` is documented as "recipe push adds missing ones",
- * but the only place scai provisioned them was the `createSite` mutation —
- * which never runs when the site already exists. Meanwhile the compiler
- * filters each recipe's authored `__Standard Values` locale-map defaults and
- * dictionary translations down to the environment's *registered* languages
- * (`resolveEnvironmentLanguages` → `listLanguages`, resolved just below).
- * The net effect: on a re-push of an existing site, a declared-but-unregistered
- * locale (e.g. `ar-SA`) was dropped from the emitted IR entirely — so the
- * localized Standard Values and dictionary phrases never installed, even
- * though the recipe authored them.
- *
- * Provisioning here, ahead of language resolution, closes that gap: the
- * subsequent `listLanguages` sees the freshly-added locales, so the compiler
- * emits their versions and the push installs them — no site (re)creation
- * required. Idempotent (addLanguage 409s are treated as success) and
- * best-effort: an auth/network failure is swallowed so the push still
- * proceeds with whatever is already registered, matching the pre-existing
- * `resolveEnvironmentLanguages` failure stance.
- */
-const ensureSiteRecipeLanguages = async (
-  recipes: readonly Recipe[],
-  environment: EnvironmentConfiguration,
-  languageScope?: readonly string[]
-): Promise<void> => {
-  const codes = new Set<string>();
-  for (const recipe of recipes) {
-    if (recipe.kind !== "site") continue;
-    if (recipe.language) codes.add(recipe.language);
-    for (const code of recipe.languages ?? []) codes.add(code);
-  }
-  // `--languages` scope: register only the scoped locales. An en-first
-  // install shouldn't spend environment-language provisioning (or unlock
-  // compile emission) for locales a later localize pass will handle.
-  if (languageScope) {
-    for (const code of [...codes]) {
-      if (!languageScopeMatches(languageScope, code)) codes.delete(code);
-    }
-  }
-  if (codes.size === 0) return;
-  const accessToken = await getAccessToken(environment);
-  if (!accessToken) return;
-  try {
-    await ensureEnvironmentLanguages(createSitesApiClient({ accessToken }), [...codes]);
-  } catch {
-    // Non-fatal — see resolveEnvironmentLanguages. The push proceeds; a
-    // locale that couldn't be registered is simply filtered out downstream.
-  }
-};
-
-/**
  * Case-insensitive `--languages` scope match: a scope entry matches its
  * exact code (`fr-FR`) and, for bare base-language entries, every regional
  * variant (`fr` matches `fr-FR` / `fr-CA`) — mirroring the compiler's own
@@ -353,19 +295,23 @@ const languageScopeMatches = (scope: readonly string[], code: string): boolean =
 };
 
 /**
- * Language provisioning + resolution under an optional `--languages` scope.
+ * Resolve the languages a push localizes to, under an optional `--languages`
+ * scope.
  *
- * Provisions any SiteRecipe-declared languages on the environment BEFORE
- * resolving the registered-language list, so a re-push of an existing site
- * installs its localized Standard Values / dictionary phrases (which the
- * compiler filters to registered languages) instead of dropping them.
+ * Localization scopes to the languages ALREADY INSTALLED on the environment
+ * (`resolveEnvironmentLanguages` → `listLanguages`). A recipe that declares
+ * more locales than the environment has does NOT auto-provision + write them:
+ * a declared-but-unregistered locale's Standard Values / dictionary phrases
+ * are dropped rather than the CLI silently creating the language and localizing
+ * into it. Provisioning a genuinely-new language is the operator's step (or
+ * happens via `createSite` for a fresh site). This keeps a base-language
+ * default (`ar`) from fanning out across every regional variant the CLI would
+ * otherwise register — the localize targets exactly what the environment
+ * supports (e.g. 5 installed locales, not 25 auto-created ones).
  *
- * The scope narrows BOTH steps: registration only provisions scoped
- * locales, and the returned availableLanguages narrows to the scope so
- * out-of-scope translations / locale-map defaults aren't emitted at all.
- * The primary locale always installs regardless (the compilers emit it
- * unconditionally), so `--languages en` is the "content now, locales
- * later" install shape. Scope unset = full declared-locale behaviour.
+ * `--languages` narrows further: the returned availableLanguages is filtered
+ * to the scope, and `--languages en` is the "content now, locales later"
+ * install shape. Scope unset = every installed language.
  */
 const resolveScopedLanguages = async (
   recipes: readonly Recipe[],
@@ -375,7 +321,6 @@ const resolveScopedLanguages = async (
   const languageScope = languagesOption
     ?.map((code) => code.trim())
     .filter((code) => code.length > 0);
-  await ensureSiteRecipeLanguages(recipes, environment, languageScope);
   const resolved = await resolveEnvironmentLanguages(recipes, environment);
   if (!languageScope || languageScope.length === 0) return resolved;
   return (resolved ?? languageScope).filter((code) => languageScopeMatches(languageScope, code));

@@ -1,5 +1,12 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.28.5
+
+### Patch Changes
+
+- df0754a: Recipe push no longer auto-provisions a SiteRecipe's declared languages, and localization now scopes to the languages ALREADY installed on the environment. Previously `recipe push` registered every language a SiteRecipe declared (`addLanguage`) before resolving the localize set, so a recipe declaring many locales would create them on the CM and then fan base-language `__Standard Values` defaults (e.g. `ar`) out across every registered regional variant — turning a 5-locale environment into a 25-locale localize pass that overloaded the Authoring API. The localize pass now targets exactly what the environment supports; a declared-but-uninstalled locale's content is dropped rather than silently created. Provisioning a genuinely new language is the operator's step (or happens via `createSite` for a fresh site, which is unchanged).
+- 3cd723d: Recipe pushes now retry a write when the Authoring API returns a server-side "operation was canceled" — the failure a heavy localize pass hits when a batch of language-version writes exceeds the endpoint's timeout (`[NETWORK] Authoring GraphQL errors: The operation was canceled.`). A cancelled operation is aborted and rolled back, so it never applied and re-sending it is safe. Writes stay fail-fast on everything else (408/425/429/503 and ambiguous aborts / `fetch failed` can all be returned AFTER the mutation applied, so retrying them risks a duplicate) — a new `retryAmbiguousNetwork` gate keeps those out of the write path while the cancellation branch (unambiguously did-not-apply) is honored.
+
 ## 0.28.4
 
 ### Patch Changes

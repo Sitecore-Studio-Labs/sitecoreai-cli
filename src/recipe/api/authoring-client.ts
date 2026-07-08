@@ -397,22 +397,28 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
   };
 
   /**
-   * Per-call request options for write operations — hard-disables retries
-   * (maxAttempts: 1). The Authoring GraphQL endpoint has no idempotency-key
-   * mechanism, so ANY retry on a write is a duplicate-mutation risk: 408,
-   * 425, 429 and 503 can all be returned AFTER the upstream applied the
-   * mutation, leading the retry to silently double-apply (especially on
-   * updateItem, where the "already exists" suppression in createItem doesn't
-   * help). The recipe rollback flow recovers from partial-write states by
-   * replay, not by silent retries — so making writes fail fast on first
-   * error is what the rollback layer actually expects.
+   * Per-call request options for write operations. Writes retry ONLY on a
+   * server-side "operation was canceled" — a cancelled operation is aborted
+   * and rolled back, so it never applied and re-sending it is safe (this is
+   * what a heavy localize pass hits when the Authoring API times out a batch
+   * of language-version writes). Everything else stays fail-fast: the
+   * Authoring GraphQL endpoint has no idempotency key, so 408/425/429/503 can
+   * all be returned AFTER the upstream applied the mutation, and an ambiguous
+   * abort / `fetch failed` may also have applied — retrying any of those risks
+   * a silent double-apply. `retryableStatuses: ∅` + `retryAmbiguousNetwork:
+   * false` leave exactly the cancellation branch active. The rollback flow
+   * still recovers genuine partial-write states by replay.
    *
    * If 429 throttling becomes a real operational issue, add an
-   * `Idempotency-Key` header on writes BEFORE re-enabling retries here.
+   * `Idempotency-Key` header on writes BEFORE widening this.
    */
   const writeRequest: AuthoringRequestOptions = {
     ...(request ?? {}),
-    retry: { maxAttempts: 1 },
+    retry: {
+      maxAttempts: 3,
+      retryableStatuses: new Set(),
+      retryAmbiguousNetwork: false,
+    },
   };
 
   // Per-client cache for the tenant's configured language ISO codes.

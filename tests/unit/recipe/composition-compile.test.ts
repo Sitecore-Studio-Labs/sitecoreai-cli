@@ -13,6 +13,7 @@ import {
 } from "../../../src/recipe/compile";
 import {
   contentItemId,
+  datasourceId,
   pageDesignId,
   partialDesignId,
   renderingId,
@@ -21,6 +22,7 @@ import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir
 import {
   COMPOSITION_FIELDS,
   LAYOUT_FIELDS,
+  SITECORE_TEMPLATE_PATHS,
   SITECORE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
@@ -271,5 +273,113 @@ describe("compile compositional recipes — context validation", () => {
         renderingsRoot: CONTEXT.renderingsRoot,
       })
     ).toThrow(/pageDesignsRoot/);
+  });
+});
+
+describe("compilePartialDesignRecipe — scoped datasource (partial hosts its own Data item)", () => {
+  // A footer sign-off owned by this partial: `scoped` inline content. The
+  // partial design item hosts the materialised item at
+  // `<partial-design>/Data/LetsSync`; every page using the partial shares it.
+  const scopedFooter = {
+    kind: "partial-design",
+    schemaVersion: "1",
+    handle: "scoped-footer@1",
+    name: "scoped-footer",
+    displayName: "Scoped Footer",
+    layout: {
+      placeholders: {
+        "headless-footer": [
+          {
+            componentHandle: "tagline-banner@1",
+            variant: "Default",
+            datasourceRef: {
+              kind: "scoped",
+              slot: "LetsSync",
+              fields: { Tagline: "LET'S SYNC." },
+            },
+          },
+        ],
+      },
+    },
+  } as unknown as Parameters<typeof compilePartialDesignRecipe>[0];
+
+  const ir = compilePartialDesignRecipe(scopedFooter, CONTEXT);
+  const partialRefKey = partialDesignId(SITE, "scoped-footer@1");
+
+  it("compiles without rejecting the scoped ref", () => {
+    expect(ir.operations.length).toBeGreaterThan(0);
+  });
+
+  it("materialises a Data folder (SXA Page Data) under the partial-design item", () => {
+    const dataFolder = findCreate(ir.operations, "partial-design-data-folder:scoped-footer@1");
+    expect(dataFolder.name).toBe("Data");
+    expect(dataFolder.templateOf).toEqual({
+      kind: "ref-path",
+      value: SITECORE_TEMPLATE_PATHS.SXA_PAGE_DATA,
+    });
+    expect(dataFolder.parent).toEqual({ kind: "ref-recipe", refKey: partialRefKey });
+  });
+
+  it("materialises the slot datasource item at <partial-design>/Data/<slot>", () => {
+    const slot = findCreate(ir.operations, "partial-design-datasource:scoped-footer@1:LetsSync");
+    expect(slot.name).toBe("LetsSync");
+    expect(slot.id).toBe(datasourceId(partialRefKey, "LetsSync"));
+  });
+
+  it("writes the inline scoped field value onto the slot item", () => {
+    const field = findSetField(
+      ir.operations,
+      "partial-design-scoped:scoped-footer@1:LetsSync:Tagline"
+    );
+    expect(field.fieldName).toBe("Tagline");
+    expect(field.value).toEqual({ kind: "string", value: "LET'S SYNC." });
+  });
+
+  it("references the slot by ABSOLUTE GUID, not the page-relative local: form", () => {
+    // A design isn't the render context, so it can't use `local:/Data/<slot>`
+    // (that resolves under the page). It must point at the design-hosted item.
+    const setLayout = findSetField(ir.operations, "partial-design-layout:scoped-footer@1");
+    const xml = (setLayout.value as { value: string }).value;
+    expect(xml).toContain(`{${datasourceId(partialRefKey, "LetsSync").toUpperCase()}}`);
+    expect(xml).not.toContain("local:");
+  });
+});
+
+describe("compilePageDesignRecipe — scoped datasource (page design hosts its own Data item)", () => {
+  const scopedPageDesign = {
+    kind: "page-design",
+    schemaVersion: "1",
+    handle: "scoped-page-design@1",
+    name: "scoped-page-design",
+    displayName: "Scoped Page Design",
+    appliesTo: ["page@1"],
+    partials: [],
+    layout: {
+      placeholders: {
+        "headless-main": [
+          {
+            componentHandle: "tagline-banner@1",
+            variant: "Default",
+            datasourceRef: {
+              kind: "scoped",
+              slot: "Hero",
+              fields: { Tagline: "WELCOME" },
+            },
+          },
+        ],
+      },
+    },
+  } as unknown as Parameters<typeof compilePageDesignRecipe>[0];
+
+  const ir = compilePageDesignRecipe(scopedPageDesign, CONTEXT);
+  const designRefKey = pageDesignId(SITE, "scoped-page-design@1");
+
+  it("materialises the slot item under the page-design item and references it by GUID", () => {
+    const slot = findCreate(ir.operations, "page-design-datasource:scoped-page-design@1:Hero");
+    expect(slot.id).toBe(datasourceId(designRefKey, "Hero"));
+    const setLayout = findSetField(ir.operations, "page-design-layout:scoped-page-design@1");
+    const xml = (setLayout.value as { value: string }).value;
+    expect(xml).toContain(`{${datasourceId(designRefKey, "Hero").toUpperCase()}}`);
+    expect(xml).not.toContain("local:");
   });
 });

@@ -881,8 +881,12 @@ const collectScopedSlots = (recipe: PageRecipeParsed): Map<string, ScopedSlotInf
  *  - object with `src`  → `{ shape: "image", mediaPath: src, alt?, width?, height? }`
  *  - object with `href` → `{ shape: "link-external", href, text?, target?, title? }`
  *  - object with `shape` → already a `ContentFieldValue`, pass through
+ *
+ * Exported so the shared scoped-datasource materialiser
+ * (`compile/scoped-datasources.ts`) normalises inline
+ * `datasourceRef.scoped.fields` exactly as the page compiler does.
  */
-const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
+export const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === "string") return { shape: "text", value: raw };
   if (typeof raw === "boolean") return { shape: "boolean", value: raw };

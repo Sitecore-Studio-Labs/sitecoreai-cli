@@ -5,6 +5,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
 import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
+import { resolveMediaUpload } from "./media-filename";
 import { dashifyGuid, renderRefValue } from "./ref-encoding";
 import {
   type AddItemVersionInput,
@@ -1088,10 +1089,19 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       // `{Id, Name, ItemPath}` on success.
       const token = await getAccessToken(environment);
       const form = new FormData();
-      const blob = new Blob([new Uint8Array(input.bytes)], {
-        type: input.mimeType ?? "image/png",
-      });
-      form.append("file", blob, input.fileName ?? "media");
+      // Sitecore derives the media item's `Extension` AND `Mime Type` fields
+      // from the multipart file — NOT from the item name or the mutation input.
+      // A missing extension (an `external-url` tail with none, or the `"media"`
+      // fallback) leaves `Extension` empty and the blob won't render; a junk
+      // `Content-Type` forwarded from a CDN produces a bizarre `Mime Type`.
+      // `resolveMediaUpload` guarantees a filename extension and a canonical
+      // image MIME type derived from it. See `media-filename.ts`.
+      const { fileName, mimeType } = resolveMediaUpload(
+        input.fileName ?? "media",
+        input.mimeType ?? "image/png"
+      );
+      const blob = new Blob([new Uint8Array(input.bytes)], { type: mimeType });
+      form.append("file", blob, fileName);
       const uploadResponse = await fetch(presignedUrl, {
         method: "POST",
         body: form,

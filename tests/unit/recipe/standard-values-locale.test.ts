@@ -101,6 +101,46 @@ describe("buildStandardValuesFieldEntries — locale-map default", () => {
     }
   });
 
+  it("fans a base key to its regional variant even when the base itself is also registered", () => {
+    // The reported field case: Content Editor carries the base language
+    // `ar` (an environment/system language) AND the site renders the
+    // regional `ar-AE`. `listLanguages` returns both. A base-`ar` authored
+    // key must reach `ar-AE` (the site's rendering locale) — not stop at the
+    // useless base `ar` version. Pass 1 pins the exact `ar`; pass 2 must
+    // still fan the base key out to `ar-AE`.
+    const build = buildStandardValuesFieldEntries(
+      SITE,
+      HANDLE,
+      [textField("Label", { en: "Get in touch", ar: "تواصل معنا" })],
+      undefined,
+      undefined,
+      ["en", "ar", "ar-AE"]
+    );
+    const byLang = Object.fromEntries(
+      build.localeVersions.map((v) => [
+        v.language,
+        v.value.kind === "string" ? v.value.value : undefined,
+      ])
+    );
+    // Both the base version and the site's regional version carry the copy.
+    expect(byLang).toEqual({ ar: "تواصل معنا", "ar-AE": "تواصل معنا" });
+  });
+
+  it("fans a base key to its regional variant when only the region is registered", () => {
+    // If the environment exposes only the regional `ar-AE` (no bare `ar`),
+    // the base authored key must still land on `ar-AE` via base expansion.
+    const build = buildStandardValuesFieldEntries(
+      SITE,
+      HANDLE,
+      [textField("Label", { en: "Get in touch", ar: "تواصل معنا" })],
+      undefined,
+      undefined,
+      ["en", "ar-AE"]
+    );
+    expect(build.localeVersions.map((v) => v.language)).toEqual(["ar-AE"]);
+    expect(build.localeVersions[0].value).toEqual({ kind: "string", value: "تواصل معنا" });
+  });
+
   it("lets an explicit regional key override the base-language expansion", () => {
     const build = buildStandardValuesFieldEntries(
       SITE,

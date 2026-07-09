@@ -14,6 +14,7 @@ import {
   DEFAULT_ICON,
   LAYOUT_FIELDS,
   SITECORE_TEMPLATES,
+  SXA_JSON_LAYOUT_ID,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import { type PageDesignRecipe, PageDesignRecipeSchema } from "../schema/recipe";
@@ -29,10 +30,11 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
 /**
  * Compile a `PageDesignRecipe` to an Operation IR.
  *
- * Emits up to three ops:
+ * Emits:
  *   1. `CreateItem` for the page-design item (SXA Page Design template)
  *   2. `SetField(PartialDesigns)` — pipe-separated GUID list of partials
- *   3. `SetField(__Renderings)` — only when recipe.layout is non-empty
+ *   3. `SetField(__Renderings)` — the device + JSON-layout shell (always
+ *      emitted), plus any own placements the design declares
  *
  * The recipe's `appliesTo` contributions to the Page Designs root's
  * `TemplatesMapping` field are NOT emitted here — that field is
@@ -90,52 +92,57 @@ export function compilePageDesignRecipe(
     } satisfies SetFieldOp);
   }
 
-  if (recipe.layout && Object.keys(recipe.layout.placeholders).length > 0) {
-    // A page design hosts its own scoped datasources at
-    // `<page-design>/Data/<slot>`, shared across every page it applies to, and
-    // referenced by absolute GUID (a design isn't the render context, so the
-    // page-relative `local:/Data/<slot>` form would miss the item).
-    const scoped = materializeScopedDatasources({
-      hostItemRefKey: itemRefKey,
-      hostItemPath: itemPath,
-      scopedSlots: collectScopedSlots(recipe.layout),
-      insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
-      site,
-      policy,
-      context,
-      recipeHandle: recipe.handle,
-      labelPrefix: "page-design",
-    });
-    operations.push(...scoped.structureOps);
-
-    const layoutXml = emitLayoutXml(recipe.layout, {
-      parentItemId: itemRefKey,
-      deviceId: DEFAULT_DEVICE_ID,
-      renderingIdFor: (handle) => renderingId(site, handle),
-      contentItemIdFor: (handle) => contentItemId(site, handle),
-      // The page design item IS the host — scoped placements resolve against
-      // the `<page-design>/Data/<slot>` items materialised above (by GUID).
-      allowScoped: true,
-      scopedDatasourceIdFor: scoped.scopedDatasourceIdFor,
-      // Encode variants + params in the wire form Pages reads back — SAME as
-      // pages, so the design's renderings don't render with unresolved variants.
-      ...layoutEncodingOptions(site, context),
-      // Page Design preserves canonical input on read-back — keep emitting
-      // canonical so the layout XML round-trips byte-for-byte.
-      mode: "canonical",
-    });
-    if (layoutXml.length > 0) {
-      operations.push({
-        op: "SetField",
+  // Always stamp the `__Renderings` shell — device + `l="{JSON layout}"`
+  // pointer — on the page-design item (a page design that applies to `page@1`
+  // must carry the shell so pages using it render through the headless JSON
+  // layout pipeline). A page design's own placements (rare — it's usually just
+  // partial references) ride in this same canonical field; its
+  // `__Final Renderings` stays blank, since the pages that apply the design own
+  // that field. When the design declares no layout, the bare shell is emitted.
+  const hasOwnLayout = recipe.layout != null && Object.keys(recipe.layout.placeholders).length > 0;
+  const scoped = hasOwnLayout
+    ? materializeScopedDatasources({
+        hostItemRefKey: itemRefKey,
+        hostItemPath: itemPath,
+        scopedSlots: collectScopedSlots(recipe.layout),
+        insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
+        site,
         policy,
-        label: `page-design-layout:${recipe.handle}`,
-        itemRefKey,
-        fieldId: LAYOUT_FIELDS.RENDERINGS,
-        value: { kind: "string", value: layoutXml },
-      } satisfies SetFieldOp);
-    }
-    operations.push(...scoped.fieldOps);
-  }
+        context,
+        recipeHandle: recipe.handle,
+        labelPrefix: "page-design",
+      })
+    : undefined;
+  if (scoped) operations.push(...scoped.structureOps);
+
+  const layoutXml = emitLayoutXml(recipe.layout ?? { placeholders: {} }, {
+    parentItemId: itemRefKey,
+    deviceId: DEFAULT_DEVICE_ID,
+    // `layoutId` makes the emitter produce `<r><d id l /></r>` even for an
+    // empty layout — the device + JSON-layout shell a page design needs.
+    layoutId: SXA_JSON_LAYOUT_ID,
+    renderingIdFor: (handle) => renderingId(site, handle),
+    contentItemIdFor: (handle) => contentItemId(site, handle),
+    // The page design item IS the host — scoped placements resolve against
+    // the `<page-design>/Data/<slot>` items materialised above (by GUID).
+    allowScoped: true,
+    scopedDatasourceIdFor: scoped?.scopedDatasourceIdFor,
+    // Encode variants + params in the wire form Pages reads back — SAME as
+    // pages, so the design's renderings don't render with unresolved variants.
+    ...layoutEncodingOptions(site, context),
+    // Page Design preserves canonical input on read-back — keep emitting
+    // canonical so the layout XML round-trips byte-for-byte.
+    mode: "canonical",
+  });
+  operations.push({
+    op: "SetField",
+    policy,
+    label: `page-design-layout:${recipe.handle}`,
+    itemRefKey,
+    fieldId: LAYOUT_FIELDS.RENDERINGS,
+    value: { kind: "string", value: layoutXml },
+  } satisfies SetFieldOp);
+  if (scoped) operations.push(...scoped.fieldOps);
 
   return OperationIrSchema.parse({
     schemaVersion: "1",

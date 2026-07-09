@@ -452,12 +452,16 @@ export const TEMPLATE_FIELD_FIELDS = {
 /**
  * Sitecore layout fields. `__Renderings` carries the shared layout
  * (applies across all language versions); `__Final Renderings` carries
- * the per-version final layout. Recipe-emitted partial designs and page
- * designs write their layout XML to `__Renderings` (shared, since these
- * are reusable design artifacts that don't vary per language version).
+ * the per-version final layout.
  *
- * Page placements (PageRecipe) write to `__Final Renderings` so
- * authors can override per-version.
+ * Layout-holding items follow the two-field model XM Cloud Pages authors:
+ * `__Renderings` holds the device + JSON-layout shell (`<r><d id l /></r>`),
+ * and `__Final Renderings` holds the placements as an SXA delta patched over
+ * it. Pages inherit the shell from their template's standard values and write
+ * placements to `__Final Renderings`; partial designs carry the shell on their
+ * own item and write placements to `__Final Renderings` the same way. A page
+ * design's `__Renderings` holds the shell (plus any own placements) and its
+ * `__Final Renderings` stays blank — the pages that apply it own that field.
  */
 export const LAYOUT_FIELDS = {
   RENDERINGS: "f1a1fe9e-a60c-4ddb-a3a0-bb5b29fe732e",

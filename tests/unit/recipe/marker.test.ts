@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
+import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
 import type {
   CreateItemOp,
   FieldValue,
@@ -68,5 +69,39 @@ describe("injectHandleMarker", () => {
     const op = result.operations[0] as CreateItemOp;
     expect(op.fields).toHaveLength(2);
     expect(op.fields[0]).toEqual(existing);
+  });
+
+  // Template-authoring items (template / section / field) don't carry the
+  // marker field — the Authoring API aborts a `Scai Handle` write on them
+  // ("Cannot find a field with the name Scai Handle"). They must be skipped.
+  const templateSystemOp = (id: string, templateOf: string): CreateItemOp => ({
+    op: "CreateItem",
+    policy: "CreateAndUpdate",
+    label: `create ${id}`,
+    id,
+    path: "/sitecore/templates/Demo/Hero",
+    parent: { kind: "ref-path", value: "/sitecore/templates/Demo" },
+    templateOf,
+    fields: [],
+  });
+
+  it.each([
+    ["template", SITECORE_TEMPLATES.TEMPLATE],
+    ["template section", SITECORE_TEMPLATES.TEMPLATE_SECTION],
+    ["template field", SITECORE_TEMPLATES.TEMPLATE_FIELD],
+  ])("skips the marker for a %s creation", (_label, templateOf) => {
+    const result = injectHandleMarker(ir([templateSystemOp(GUID_A, templateOf)]));
+    expect(markerOf(result.operations[0])).toBeUndefined();
+  });
+
+  it("skips template-authoring items but still marks content items in the same IR", () => {
+    const result = injectHandleMarker(
+      ir([templateSystemOp(GUID_A, SITECORE_TEMPLATES.TEMPLATE), createOp(GUID_B)])
+    );
+    expect(markerOf(result.operations[0])).toBeUndefined();
+    expect(markerOf(result.operations[1])?.value).toEqual({
+      kind: "string",
+      value: "cta-button@1",
+    });
   });
 });

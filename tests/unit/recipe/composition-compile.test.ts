@@ -23,9 +23,11 @@ import {
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import {
   COMPOSITION_FIELDS,
+  DEFAULT_DEVICE_ID,
   LAYOUT_FIELDS,
   SITECORE_TEMPLATE_PATHS,
   SITECORE_TEMPLATES,
+  SXA_JSON_LAYOUT_ID,
   SYSTEM_FIELDS,
 } from "../../../src/recipe/ir/sitecore-templates";
 
@@ -47,8 +49,22 @@ const findSetField = (ops: Operation[], label: string): SetFieldOp =>
 describe("compilePartialDesignRecipe — standard-header@1", () => {
   const ir = compilePartialDesignRecipe(standardHeaderRecipe, CONTEXT);
 
-  it("emits exactly two ops: CreateItem + SetField(__Renderings)", () => {
-    expect(ir.operations).toHaveLength(2);
+  it("emits three ops: CreateItem + SetField(__Renderings shell) + SetField(__Final Renderings)", () => {
+    expect(ir.operations).toHaveLength(3);
+  });
+
+  it("SetField(__Renderings) carries the shared device + JSON-layout shell only (no placements)", () => {
+    const shell = findSetField(ir.operations, "partial-design-renderings-shell:standard-header@1");
+    expect(shell.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    // Shared field — no language/version.
+    expect(shell.language).toBeUndefined();
+    expect(shell.version).toBeUndefined();
+    if (shell.value.kind !== "string") throw new Error("expected string");
+    const xml = shell.value.value;
+    // Canonical shell: device + `l="{JSON layout}"`, and NO rendering elements.
+    expect(xml).toContain(`{${SXA_JSON_LAYOUT_ID.toUpperCase()}}`);
+    expect(xml).toContain("xmlns:xsd");
+    expect(xml).not.toContain(`{${renderingId(SITE, "site-logo@1").toUpperCase()}}`);
   });
 
   it("layout XML uses SXA delta form (first push converges in one cycle)", () => {
@@ -64,7 +80,10 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(xml).toContain('xmlns:p="p"');
     expect(xml).toContain('xmlns:s="s"');
     expect(xml).toContain('p:p="1"');
-    expect(xml).toContain('<p:da name="l" />');
+    // No `<p:da name="l" />` device directive — the `l=` pointer lives in the
+    // `__Renderings` shell, so the `__Final Renderings` delta omits it (matching
+    // a page's final-renderings delta and UI-authored partial designs).
+    expect(xml).not.toContain('<p:da name="l" />');
     // Three placements: first p:before="*", middle p:after="r[@uid='…']",
     // last p:after="*[1=2]" sentinel.
     expect(xml).toContain('p:before="*"');
@@ -97,9 +116,12 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(displayName?.value).toEqual({ kind: "string", value: "Standard Header" });
   });
 
-  it("SetField(__Renderings) carries the layout XML with all three rendering GUIDs", () => {
+  it("SetField(__Final Renderings) carries the layout XML with all three rendering GUIDs", () => {
     const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
-    expect(setLayout.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    expect(setLayout.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
+    // Versioned field — default language, version 1 (like a page's).
+    expect(setLayout.language).toBe("en");
+    expect(setLayout.version).toBe(1);
     expect(setLayout.value.kind).toBe("string");
     if (setLayout.value.kind === "string") {
       const xml = setLayout.value.value;
@@ -142,18 +164,25 @@ describe("compilePartialDesignRecipe — article-byline@1 (no datasource + param
 describe("compilePageDesignRecipe — default-page-design@1 (partials only, no own layout)", () => {
   const ir = compilePageDesignRecipe(defaultPageDesignRecipe, CONTEXT);
 
-  it("emits two ops: CreateItem + SetField(PartialDesigns)", () => {
+  it("emits three ops: CreateItem + SetField(PartialDesigns) + SetField(__Renderings shell)", () => {
     // TemplatesMapping is a cross-recipe aggregate — emitted by compileRecipeSet,
     // not compilePageDesignRecipe. See composition-compile-set.test.ts.
-    expect(ir.operations).toHaveLength(2);
+    expect(ir.operations).toHaveLength(3);
   });
 
-  it("does NOT emit a SetField(__Renderings) when the recipe has no own layout", () => {
+  it("emits a SetField(__Renderings) device + JSON-layout shell even with no own layout", () => {
     const layoutOp = ir.operations.find(
       (op): op is SetFieldOp =>
         op.op === "SetField" && op.label === "page-design-layout:default-page-design@1"
     );
-    expect(layoutOp).toBeUndefined();
+    expect(layoutOp?.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    if (layoutOp?.value.kind !== "string") throw new Error("expected string");
+    const xml = layoutOp.value.value;
+    // Bare shell: device + `l="{JSON layout}"`, no rendering elements.
+    expect(xml).toContain(`{${SXA_JSON_LAYOUT_ID.toUpperCase()}}`);
+    expect(xml).toContain(`{${DEFAULT_DEVICE_ID.toUpperCase()}}`);
+    expect(xml).not.toContain("<r id=");
+    expect(xml).not.toContain("s:id=");
   });
 
   it("does NOT emit a per-recipe SetField(TemplatesMapping)", () => {
@@ -227,8 +256,8 @@ describe("compilePageDesignRecipe — landing-design@1 (own layout in addition t
 describe("compilePageDesignRecipe — article-design@1 (three partials, no own layout)", () => {
   const ir = compilePageDesignRecipe(articleDesignRecipe, CONTEXT);
 
-  it("emits two ops (no own layout to write; templates-mapping is cross-recipe)", () => {
-    expect(ir.operations).toHaveLength(2);
+  it("emits three ops (CreateItem + PartialDesigns + __Renderings shell; templates-mapping is cross-recipe)", () => {
+    expect(ir.operations).toHaveLength(3);
   });
 
   it("PartialDesigns refKeys preserve render order [header, byline, footer]", () => {
@@ -337,13 +366,16 @@ describe("compilePartialDesignRecipe — scoped datasource (partial hosts its ow
     expect(field.value).toEqual({ kind: "string", value: "LET'S SYNC." });
   });
 
-  it("references the slot by ABSOLUTE GUID, not the page-relative local: form", () => {
-    // A design isn't the render context, so it can't use `local:/Data/<slot>`
-    // (that resolves under the page). It must point at the design-hosted item.
+  it("references the slot with the page-relative local:/Data/<slot> form (matching UI-authored partials)", () => {
+    // A partial design's renderings reference their scoped datasource with the
+    // same `local:/Data/<slot>` wire form XM Cloud Pages writes — the items live
+    // under the partial design (materialised above), where `local:` resolves
+    // for the partial's renderings.
     const setLayout = findSetField(ir.operations, "partial-design-layout:scoped-footer@1");
     const xml = (setLayout.value as { value: string }).value;
-    expect(xml).toContain(`{${datasourceId(partialRefKey, "LetsSync").toUpperCase()}}`);
-    expect(xml).not.toContain("local:");
+    expect(xml).toContain('s:ds="local:/Data/LetsSync"');
+    // No absolute-GUID datasource ref.
+    expect(xml).not.toContain(`{${datasourceId(partialRefKey, "LetsSync").toUpperCase()}}`);
   });
 });
 

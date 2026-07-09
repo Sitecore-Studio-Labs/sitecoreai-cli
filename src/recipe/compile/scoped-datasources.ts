@@ -28,11 +28,14 @@ import { type CompileContext, joinPath, sharedField, versionedField } from "./sh
  * right semantics for design chrome like a footer sign-off.
  *
  * The page compiler materialises the same `<page>/Data/<slot>` structure
- * (`compile/page.ts`); it references its slots with the page-relative
- * `ds="local:/Data/<slot>"` form because the page IS the render context. A
- * design is not — a partial's context item at render time is the page — so a
- * design MUST reference its slot by absolute GUID (`scopedDatasourceIdFor`),
- * or `local:/Data/<slot>` would resolve under the page and miss the item.
+ * (`compile/page.ts`) and references its slots with the page-relative
+ * `ds="local:/Data/<slot>"` form. Partial designs reference their slots the
+ * same way: XM Cloud Pages authors a partial design's own datasources with
+ * `local:/Data/<slot>` (resolved for the partial's renderings against the
+ * items materialised under the partial design), so the compiler mirrors that
+ * form rather than an absolute GUID. Page designs still pass
+ * `scopedDatasourceIdFor` for any own placements (an absolute GUID), since a
+ * page design's `__Renderings` round-trips canonical byte-for-byte.
  */
 
 export interface ScopedSlotInfo {

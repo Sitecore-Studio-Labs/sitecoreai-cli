@@ -84,6 +84,7 @@ const createItemOp = (id: string, itemPath: string) => ({
   path: itemPath,
   parent: { kind: "ref-path", value: `${itemPath}/..` },
   templateOf: "tpl",
+  fields: [] as unknown[],
 });
 
 const makeResult = (recipeHandle: string, overrides: Record<string, unknown> = {}) => {
@@ -101,6 +102,9 @@ const makeResult = (recipeHandle: string, overrides: Record<string, unknown> = {
     },
     summary,
     aborted: false,
+    // Real executeIr always returns this Map; baseline capture reads it when
+    // walking CreateItem fields (now non-empty thanks to the injected marker).
+    capturedItemIds: new Map<string, string>(),
     ...overrides,
   };
 };
@@ -191,6 +195,21 @@ describe("runRecipePush — apply vs dry-run", () => {
     await runRecipePush({ whatIf: true } as never);
     // Dry-run writes nothing, so it must not touch the Standard Template.
     expect(ensureMarkerField).not.toHaveBeenCalled();
+  });
+
+  it("stamps the `Scai Handle` identity marker onto every CreateItem op", async () => {
+    await runRecipePush({ allowWrite: true } as never);
+
+    // The compiled IR reaching the executor must carry the marker value, not
+    // just rely on the field being bootstrapped — otherwise pushed items get
+    // an empty `Scai Handle` and identity falls back to path/name matching.
+    const executedIr = vi.mocked(executeIr).mock.calls[0][0] as {
+      operations: Array<{ op: string; fields?: Array<{ fieldName: string; value: unknown }> }>;
+    };
+    const createOp = executedIr.operations.find((op) => op.op === "CreateItem");
+    const marker = createOp?.fields?.find((f) => f.fieldName === "Scai Handle");
+    expect(marker).toBeDefined();
+    expect(marker?.value).toEqual({ kind: "string", value: "hero" });
   });
 
   it("continues the push (best-effort) when the marker bootstrap fails", async () => {
@@ -580,6 +599,7 @@ describe("runRecipePush — IR-file and prefetch branches", () => {
           parent: { kind: "ref-path", value: "/t" },
           // templateOf as a ref-path → its parent path is also prefetched.
           templateOf: { kind: "ref-path", value: "/t/BaseTemplate" },
+          fields: [],
         },
         // SetField carrying a latePath → also collected.
         { op: "SetField", itemRefKey: "op-1", fieldId: "f", latePath: "/t/Late/Path" },

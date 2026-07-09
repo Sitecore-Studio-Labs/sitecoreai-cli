@@ -20,6 +20,7 @@ import {
 import { compileRecipeSet } from "../compile";
 import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
+import { injectHandleMarker } from "../items/marker";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import { writeProgressLine } from "./progress-stream";
@@ -748,7 +749,17 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   });
   const loadedIrs: OperationIr[] = await mapWithConcurrency(irFiles, (f) => loadIr(f));
   // The full compiled set, BEFORE `--handles` / `--aggregates-only` scoping.
-  const allIrs = [...compiled.map((ir) => ({ ir })), ...loadedIrs.map((ir) => ({ ir }))];
+  // Stamp the `Scai Handle` identity marker onto every CreateItem op — the
+  // same step the sync path runs in `recipe-kind.ts`. Without it, a plain
+  // `recipe push` bootstraps the marker FIELD (see `bootstrapMarkerField`)
+  // but never writes its VALUE, leaving every pushed item with an empty
+  // `Scai Handle` and forcing identity back to path/name matching.
+  // `injectHandleMarker` is idempotent, so pre-compiled `.ir.json` inputs
+  // that already carry the marker pass through unchanged.
+  const allIrs = [
+    ...compiled.map((ir) => ({ ir: injectHandleMarker(ir) })),
+    ...loadedIrs.map((ir) => ({ ir: injectHandleMarker(ir) })),
+  ];
 
   // Cross-recipe ref pre-seed MUST be built from the FULL set, not the pushed
   // subset. A chunked/batched push (`--handles`) references items produced by

@@ -5,7 +5,7 @@ import type {
   RemoteFieldValue,
   UpdateItemInput,
 } from "../api/client";
-import { renderRefValue } from "../api/ref-encoding";
+import { type MediaFallback, renderRefValue } from "../api/ref-encoding";
 import type { Language, SitesApiClient } from "../api/sites-client";
 import type { FieldValue, Operation, OperationIr } from "../ir/operations";
 import { DEFAULT_LANGUAGE } from "../ir/sitecore-templates";
@@ -268,6 +268,18 @@ export interface ExecuteOptions {
    * version. Callers pushing multiple IRs pass ONE map.
    */
   versionStackCache?: Map<string, Map<string, number>>;
+  /**
+   * Hotlink fallbacks for failed external-URL media uploads. The
+   * planner's `planMediaUpload` writes an entry when it can't source an
+   * external URL's bytes (fetch error, non-OK status, timeout, guard
+   * rejection); every subsequent `media-xml-ref` resolution reads it and
+   * degrades the referencing field to the legacy `<image src="…" />`
+   * form instead of throwing — so one dead image URL degrades one field
+   * rather than aborting + rolling back the whole recipe. Callers
+   * pushing multiple IRs pass ONE map so the push task can summarise
+   * the degradations; standalone calls default to a per-call map.
+   */
+  mediaFallbacks?: Map<string, MediaFallback>;
 }
 
 /**
@@ -1222,6 +1234,10 @@ export const executeIr = async (
   client: AuthoringApiClient,
   options: ExecuteOptions
 ): Promise<ExecutionResult> => {
+  // Degrade-don't-abort is the default: standalone callers that don't
+  // thread a shared map still get per-IR hotlink fallbacks for failed
+  // external-URL media uploads.
+  const mediaFallbacks = options.mediaFallbacks ?? new Map<string, MediaFallback>();
   if (options.mode === "plan") {
     const capturedItemIds = new Map<string, string>();
     // Pre-seed path-keyed entries from the workspace path-itemId cache
@@ -1261,6 +1277,7 @@ export const executeIr = async (
       // surface apply would gate on.
       baselineIndex: options.baselineIndex,
       conflictPolicy: options.conflictPolicy,
+      mediaFallbacks,
     });
     return { plan, summary: plan.summary, aborted: false, capturedItemIds };
   }
@@ -1445,6 +1462,7 @@ export const executeIr = async (
         versionStackCache: options.versionStackCache,
         addVersionLanguagesHint:
           op.op === "AddItemVersion" ? addVersionLanguagesByRef.get(op.itemRefKey) : undefined,
+        mediaFallbacks,
       });
     } catch (error) {
       const message = errorMessage(error);

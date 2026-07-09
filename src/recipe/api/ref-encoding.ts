@@ -87,6 +87,43 @@ export const substituteCapturedGuids = (
 };
 
 /**
+ * Hotlink fallback for a `media-xml-ref` whose producer `MediaUpload`
+ * failed to source its bytes from an EXTERNAL URL (dead link, blocked
+ * host, transient 5xx). Keyed by the MediaUpload op's refKey; populated
+ * by `planMediaUpload` when it marks the upload `error`. The resolver
+ * degrades the referencing field to the legacy `<image src="…" />` form
+ * instead of aborting the whole recipe — imagery is progressive
+ * enhancement, so hotlinking stays the fallback when ingest fails.
+ * Asset-source (repo-local file) failures never populate this map: a
+ * missing checked-in asset is an authoring bug and must keep failing
+ * hard via the resolver throw below.
+ */
+export interface MediaFallback {
+  url: string;
+  alt?: string;
+}
+
+const escapeXmlAttr = (s: string): string =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+/**
+ * The legacy hotlink image XML (`<image src="…" alt="…" />`). Known
+ * trade-off: the `src=` form shows in Pages' field editor but does not
+ * render via the Layout Service — an author can re-pick the image. It
+ * is still strictly better than losing the whole page install.
+ */
+export const renderMediaFallbackXml = (fallback: MediaFallback): string => {
+  const attrs = [`src="${escapeXmlAttr(fallback.url)}"`];
+  if (fallback.alt !== undefined) attrs.push(`alt="${escapeXmlAttr(fallback.alt)}"`);
+  return `<image ${attrs.join(" ")} />`;
+};
+
+/**
  * Substitute every `ref-recipe` / `ref-recipe-list` against the captured
  * Sitecore itemId map. Returns a new `RefValue` with `ref-guid` /
  * `ref-guid-list` in their place. Throws when a refKey is missing — that
@@ -96,10 +133,16 @@ export const substituteCapturedGuids = (
  * `string` values are scanned for embedded refKey GUIDs (see
  * `substituteCapturedGuids`) — the seam that makes compile-time layout
  * XML resolve against server-assigned item ids.
+ *
+ * `mediaFallbacks` (optional) degrades `media-xml-ref` misses whose
+ * producer `MediaUpload` failed on an external URL — see
+ * {@link MediaFallback}. A miss with NEITHER capture nor fallback is a
+ * real producer/ordering bug and keeps throwing.
  */
 export const resolveRecipeRefs = (
   value: RefValue,
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  mediaFallbacks?: ReadonlyMap<string, MediaFallback>
 ): RefValue => {
   switch (value.kind) {
     case "string": {
@@ -194,6 +237,16 @@ export const resolveRecipeRefs = (
       // empty `__Thumbnail`.
       const itemId = capturedItemIds.get(value.refKey);
       if (!itemId) {
+        // Graceful degrade: the producer MediaUpload failed to source
+        // its bytes from an EXTERNAL URL and registered a hotlink
+        // fallback. Emit the legacy `<image src="…" />` form so one
+        // dead image URL degrades that one field instead of killing
+        // the entire page install. Asset-source failures never register
+        // a fallback, so they (and genuine ordering bugs) still throw.
+        const fallback = mediaFallbacks?.get(value.refKey);
+        if (fallback) {
+          return { kind: "string", value: renderMediaFallbackXml(fallback) };
+        }
         throw createScaiError(
           `media-xml-ref refKey ${value.refKey} not in captured map — the producer MediaUploadOp didn't capture an itemId for this push. Check the plan/event stream for the upstream MediaUpload op's outcome.`,
           "UNKNOWN"

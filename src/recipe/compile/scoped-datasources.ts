@@ -14,7 +14,11 @@ import {
 } from "../ir/sitecore-templates";
 import type { Layout } from "../schema/recipe";
 import { encodeContentFieldValue } from "./content-item";
-import { normalizeFieldValue } from "./page";
+import {
+  isInlineChildArray,
+  materializeInlineChildren,
+  normalizeFieldValue,
+} from "./inline-children";
 import { type CompileContext, joinPath, sharedField, versionedField } from "./shared";
 
 /**
@@ -208,6 +212,41 @@ export function materializeScopedDatasources(params: {
     } satisfies CreateItemOp);
 
     for (const [fieldName, rawValue] of Object.entries(info.fields)) {
+      // Inline treelist child arrays — materialise real child items
+      // under the slot item (mirrors the page compiler). Child creates
+      // ride `structureOps` (before the layout SetField and fieldOps);
+      // the parent field becomes the children's GUID list. Unresolvable
+      // child template → fall through to the legacy drop.
+      if (isInlineChildArray(rawValue)) {
+        const materialized = materializeInlineChildren({
+          entries: rawValue,
+          fieldName,
+          parentItemRefKey: slotItemRefKey,
+          parentItemPath: joinPath(dataFolderPath, slot),
+          parentTemplateHandle: datasourceTemplateHandle,
+          recipeHandle,
+          site,
+          policy,
+          context,
+          labelPrefix: `${labelPrefix}-inline:${recipeHandle}`,
+        });
+        if (materialized) {
+          structureOps.push(...materialized.createOps);
+          fieldOps.push(...materialized.fieldOps);
+          fieldOps.push({
+            op: "SetField",
+            policy,
+            label: `${labelPrefix}-scoped:${recipeHandle}:${slot}:${fieldName}`,
+            itemRefKey: slotItemRefKey,
+            fieldId: fieldId(site, datasourceTemplateHandle, fieldName),
+            fieldName,
+            language: DEFAULT_LANGUAGE,
+            version: DEFAULT_VERSION,
+            value: materialized.parentValue,
+          } satisfies SetFieldOp);
+          continue;
+        }
+      }
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
       const value = encodeContentFieldValue(normalised, recipeHandle, site);

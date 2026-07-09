@@ -33,7 +33,6 @@ import {
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import {
-  type ContentFieldValue,
   type Layout,
   type PageRecipe,
   type PageRecipeParsed,
@@ -41,6 +40,11 @@ import {
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
+import {
+  isInlineChildArray,
+  materializeInlineChildren,
+  normalizeFieldValue,
+} from "./inline-children";
 import { layoutEncodingOptions } from "./layout-encoding";
 import {
   type CompileContext,
@@ -194,6 +198,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     labelTag,
     targetItemRefKey = itemRefKey,
     templateHandle = recipe.template,
+    inlineChildren,
   }: {
     fields: Record<string, unknown>;
     language: string | undefined;
@@ -201,8 +206,51 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     labelTag: string;
     targetItemRefKey?: string;
     templateHandle?: string;
+    /**
+     * Opt-in for inline treelist child materialisation — set by the
+     * scoped-datasource call site only (children live under the slot
+     * item; a page item's own fields have no sane child home).
+     * `structureOps` receives the child `CreateItem` ops; the caller
+     * must place them in the final IR BEFORE the fieldOps spread.
+     */
+    inlineChildren?: { parentPath: string; structureOps: Operation[] };
   }): void => {
     for (const [fieldName, rawValue] of Object.entries(fields)) {
+      // Inline treelist child arrays: materialise real child items
+      // under the datasource item and write the parent field as the
+      // children's GUID list. Falls through to the legacy drop when
+      // the child template can't be resolved.
+      if (inlineChildren && isInlineChildArray(rawValue)) {
+        const materialized = materializeInlineChildren({
+          entries: rawValue,
+          fieldName,
+          parentItemRefKey: targetItemRefKey,
+          parentItemPath: inlineChildren.parentPath,
+          parentTemplateHandle: templateHandle,
+          recipeHandle: recipe.handle,
+          site,
+          policy,
+          context,
+          labelPrefix: `page-inline:${recipe.handle}`,
+          imageMedia: imageMediaSink,
+        });
+        if (materialized) {
+          inlineChildren.structureOps.push(...materialized.createOps);
+          fieldOps.push(...materialized.fieldOps);
+          fieldOps.push({
+            op: "SetField",
+            policy,
+            label: `page-field:${recipe.handle}:${labelTag}:${fieldName}`,
+            itemRefKey: targetItemRefKey,
+            fieldId: fieldId(site, templateHandle, fieldName),
+            fieldName,
+            ...(language !== undefined && { language }),
+            ...(version !== undefined && { version }),
+            value: materialized.parentValue,
+          } satisfies SetFieldOp);
+          continue;
+        }
+      }
       const normalised = normalizeFieldValue(rawValue);
       if (normalised === null) continue;
       const value = encodeContentFieldValue(normalised, recipe.handle, site, {
@@ -423,7 +471,12 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       // flat shapes and scai-native discriminated values via
       // `encodeContentFieldValue`). Fields land on the slot item's own
       // refKey, scoped to that item's template for fieldId derivation.
+      // Inline treelist child arrays materialise as REAL child items
+      // under the slot item — their CreateItems land right here (after
+      // the slot's own CreateItem, before the mediaOps/fieldOps spreads
+      // below) so the parent field's ref-recipe-list resolves at apply.
       if (Object.keys(info.fields).length > 0) {
+        const inlineChildOps: Operation[] = [];
         emitFields({
           fields: info.fields,
           language: DEFAULT_LANGUAGE,
@@ -431,7 +484,12 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
           labelTag: `scoped:${slot}`,
           targetItemRefKey: slotItemRefKey,
           templateHandle: datasourceTemplateHandle,
+          inlineChildren: {
+            parentPath: joinPath(dataFolderPath, slot),
+            structureOps: inlineChildOps,
+          },
         });
+        operations.push(...inlineChildOps);
       }
     }
   }
@@ -845,63 +903,10 @@ const collectScopedSlots = (recipe: PageRecipeParsed): Map<string, ScopedSlotInf
   return slots;
 };
 
-/**
- * Normalise a raw field value (registry flat shape OR scai-native
- * discriminated shape) to a `ContentFieldValue` for
- * `encodeContentFieldValue`. Returns `null` when the value is not
- * recognised (drops it from emission).
- *
- * Registry shape mapping:
- *  - string  → `{ shape: "text" }`
- *  - boolean → `{ shape: "boolean" }`
- *  - number  → `{ shape: "integer" }` when an integer, else `{ shape: "number" }`
- *  - object with `src`  → `{ shape: "image", mediaPath: src, alt?, width?, height? }`
- *  - object with `href` → `{ shape: "link-external", href, text?, target?, title? }`
- *  - object with `shape` → already a `ContentFieldValue`, pass through
- *
- * Exported so the shared scoped-datasource materialiser
- * (`compile/scoped-datasources.ts`) normalises inline
- * `datasourceRef.scoped.fields` exactly as the page compiler does.
- */
-export const normalizeFieldValue = (raw: unknown): ContentFieldValue | null => {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "string") return { shape: "text", value: raw };
-  if (typeof raw === "boolean") return { shape: "boolean", value: raw };
-  if (typeof raw === "number") {
-    return Number.isInteger(raw)
-      ? { shape: "integer", value: raw }
-      : { shape: "number", value: raw };
-  }
-  if (typeof raw === "object") {
-    const obj = raw as Record<string, unknown>;
-    // Already a scai-native discriminated ContentFieldValue.
-    if (typeof obj.shape === "string") return obj as unknown as ContentFieldValue;
-    // Registry image shape: { src, alt?, width?, height?, mediaLibraryFolder? }.
-    if (typeof obj.src === "string") {
-      return {
-        shape: "image",
-        mediaPath: obj.src,
-        ...(typeof obj.alt === "string" ? { alt: obj.alt } : {}),
-        ...(typeof obj.width === "number" ? { width: obj.width } : {}),
-        ...(typeof obj.height === "number" ? { height: obj.height } : {}),
-        ...(typeof obj.mediaLibraryFolder === "string"
-          ? { mediaLibraryFolder: obj.mediaLibraryFolder }
-          : {}),
-      };
-    }
-    // Registry external-link shape: { href, text?, target?, title? }.
-    if (typeof obj.href === "string") {
-      return {
-        shape: "link-external",
-        href: obj.href,
-        ...(typeof obj.text === "string" ? { text: obj.text } : {}),
-        ...(typeof obj.target === "string" ? { target: obj.target } : {}),
-        ...(typeof obj.title === "string" ? { title: obj.title } : {}),
-      };
-    }
-  }
-  return null;
-};
+// `normalizeFieldValue` moved to `./inline-children` (the inline-child
+// materialiser recursion needs it without a page-compiler dependency
+// cycle). Re-exported here for back-compat with existing import paths.
+export { normalizeFieldValue } from "./inline-children";
 
 /**
  * Stable refKey for a Sitecore standard field on `itemRefKey`. Same

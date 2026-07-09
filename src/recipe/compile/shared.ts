@@ -287,6 +287,21 @@ export interface CompileContext {
     import("../schema/recipe").ComponentTemplateRecipeParsed
   >;
   /**
+   * Cross-recipe map of content-template handles → `ContentTemplateRecipe`,
+   * populated by `compileRecipeSet`. The inline-children materialiser
+   * (`compile/inline-children.ts`) uses it — together with
+   * `componentsByHandle` — to look up a treelist/multilist field's
+   * definition on an EXTERNAL datasource template so an inline array of
+   * child items resolves its child template via the field's
+   * `sitecore.source.types`. Absent for standalone single-recipe
+   * compiles — inline child arrays then only resolve against the
+   * component's own fields.
+   */
+  contentTemplatesByHandle?: ReadonlyMap<
+    string,
+    import("../schema/recipe").ContentTemplateRecipeParsed
+  >;
+  /**
    * Every `DesignParametersTemplateRecipe` in the set, keyed by handle.
    * The page compiler consults this (via a component's external
    * `parameters: { handle }` reference) to type-map layout `par` values

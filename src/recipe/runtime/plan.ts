@@ -19,7 +19,12 @@ import type {
 import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { SCAI_HANDLE_FIELD_NAME } from "../items/marker";
 import { templatePathRefKey } from "../items/guids";
-import { dashifyGuid, renderRefValue, resolveRecipeRefs } from "../api/ref-encoding";
+import {
+  dashifyGuid,
+  type MediaFallback,
+  renderRefValue,
+  resolveRecipeRefs,
+} from "../api/ref-encoding";
 import {
   layoutXmlEquivalent,
   layoutXmlEquivalentFromParsed,
@@ -387,6 +392,11 @@ export interface PlanOptions {
    * drift surfaces as `"update"` regardless of policy.
    */
   conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
+  /**
+   * Hotlink fallbacks for failed external-URL media uploads — see
+   * `BuildActionOptions.mediaFallbacks`.
+   */
+  mediaFallbacks?: Map<string, MediaFallback>;
 }
 
 const lookupField = (
@@ -418,11 +428,12 @@ const lookupField = (
 /** Resolve every recipe-ref / source-prefix in a field value list. */
 const resolveAll = (
   fields: FieldValue[],
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  mediaFallbacks?: ReadonlyMap<string, MediaFallback>
 ): FieldValue[] =>
   fields.map((field) => ({
     ...field,
-    value: resolveRecipeRefs(field.value, capturedItemIds),
+    value: resolveRecipeRefs(field.value, capturedItemIds, mediaFallbacks),
   }));
 
 /**
@@ -491,16 +502,21 @@ const classifyAgainstBaseline = ({
   return classifyPushDrift(recipeHash, tenantHash, baselineHash);
 };
 
+interface FieldDriftOptions {
+  itemRefKey?: string;
+  baselineIndex?: BaselineIndex;
+  mediaFallbacks?: ReadonlyMap<string, MediaFallback>;
+}
+
 const computeFieldDrift = (
   desired: FieldValue[],
   remote: RemoteItem,
   capturedItemIds: ReadonlyMap<string, string>,
-  itemRefKey?: string,
-  baselineIndex?: BaselineIndex
+  { itemRefKey, baselineIndex, mediaFallbacks }: FieldDriftOptions = {}
 ): FieldDiffEntry[] => {
   const drift: FieldDiffEntry[] = [];
   for (const field of desired) {
-    const resolvedValue: RefValue = resolveRecipeRefs(field.value, capturedItemIds);
+    const resolvedValue: RefValue = resolveRecipeRefs(field.value, capturedItemIds, mediaFallbacks);
     const want = renderRefValue(resolvedValue);
     const found = lookupField(
       remote,
@@ -808,6 +824,7 @@ interface PlanCreateItemOptions {
   capturedItemIds: ReadonlyMap<string, string>;
   baselineIndex?: BaselineIndex;
   conflictPolicy?: PlanOptions["conflictPolicy"];
+  mediaFallbacks?: ReadonlyMap<string, MediaFallback>;
 }
 
 const planCreateItem = ({
@@ -817,6 +834,7 @@ const planCreateItem = ({
   capturedItemIds,
   baselineIndex,
   conflictPolicy,
+  mediaFallbacks,
 }: PlanCreateItemOptions): PlannedAction => {
   if (!remote) {
     const parent = resolveCreateItemParent(op, capturedItemIds);
@@ -844,7 +862,7 @@ const planCreateItem = ({
     // are present and resolveAll succeeds.
     let resolvedFields: FieldValue[];
     try {
-      resolvedFields = resolveAll(op.fields, capturedItemIds);
+      resolvedFields = resolveAll(op.fields, capturedItemIds, mediaFallbacks);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
@@ -885,7 +903,11 @@ const planCreateItem = ({
       reason: "Item already exists and policy is CreateOnly.",
     };
   }
-  const drift = computeFieldDrift(op.fields, remote, capturedItemIds, op.id, baselineIndex);
+  const drift = computeFieldDrift(op.fields, remote, capturedItemIds, {
+    itemRefKey: op.id,
+    baselineIndex,
+    mediaFallbacks,
+  });
   if (drift.length === 0) {
     return {
       index,
@@ -899,7 +921,8 @@ const planCreateItem = ({
   );
   const fieldsToSet = resolveAll(
     op.fields.filter((f) => driftedSet.has(`${f.fieldId}:${f.language ?? ""}:${f.version ?? ""}`)),
-    capturedItemIds
+    capturedItemIds,
+    mediaFallbacks
   );
   const resolved = resolveConflictStatus(drift, conflictPolicy);
   if (resolved.status === "skip") {
@@ -943,6 +966,7 @@ interface PlanUpdateOpOptions {
   capturedItemIds: ReadonlyMap<string, string>;
   baselineIndex?: BaselineIndex;
   conflictPolicy?: PlanOptions["conflictPolicy"];
+  mediaFallbacks?: ReadonlyMap<string, MediaFallback>;
 }
 
 const planUpdateOp = ({
@@ -955,6 +979,7 @@ const planUpdateOp = ({
   capturedItemIds,
   baselineIndex,
   conflictPolicy,
+  mediaFallbacks,
 }: PlanUpdateOpOptions): PlannedAction => {
   if (!remote) {
     return {
@@ -964,13 +989,11 @@ const planUpdateOp = ({
       reason: `Target item (refKey ${itemRefKey}) not yet captured/created.`,
     };
   }
-  const drift = computeFieldDrift(
-    desiredFields,
-    remote,
-    capturedItemIds,
+  const drift = computeFieldDrift(desiredFields, remote, capturedItemIds, {
     itemRefKey,
-    baselineIndex
-  );
+    baselineIndex,
+    mediaFallbacks,
+  });
   if (drift.length === 0) {
     return {
       index,
@@ -1017,7 +1040,10 @@ const planUpdateOp = ({
     ...(resolved.reason && { reason: resolved.reason }),
     mutation: {
       kind: "updateItem",
-      input: toUpdateItemInput(remote.itemId, resolveAll(desiredFields, capturedItemIds)),
+      input: toUpdateItemInput(
+        remote.itemId,
+        resolveAll(desiredFields, capturedItemIds, mediaFallbacks)
+      ),
     },
   };
 };
@@ -1185,6 +1211,14 @@ export interface BuildActionOptions {
    * seed read fetch all of them in one batch.
    */
   addVersionLanguagesHint?: readonly string[];
+  /**
+   * Hotlink fallbacks for failed external-URL media uploads — written
+   * by `planMediaUpload` when byte sourcing fails, read by every
+   * `media-xml-ref` resolution so the referencing field degrades to
+   * `<image src="…" />` instead of aborting the push. Callers pushing
+   * multiple IRs pass ONE map so cross-IR refs see earlier failures.
+   */
+  mediaFallbacks?: Map<string, MediaFallback>;
 }
 
 export const buildAction = async ({
@@ -1201,6 +1235,7 @@ export const buildAction = async ({
   idSnapshotCache,
   versionStackCache,
   addVersionLanguagesHint,
+  mediaFallbacks,
 }: BuildActionOptions): Promise<PlannedAction> => {
   // Baseline classification only applies to PRE-EXISTING items — an
   // item created earlier in this run has no CMS history to preserve
@@ -1334,6 +1369,7 @@ export const buildAction = async ({
           capturedItemIds,
           baselineIndex,
           conflictPolicy,
+          mediaFallbacks,
         });
       case "SetField":
         return planUpdateOp({
@@ -1346,6 +1382,7 @@ export const buildAction = async ({
           capturedItemIds,
           baselineIndex: baselineFor(op.itemRefKey),
           conflictPolicy,
+          mediaFallbacks,
         });
       case "SetBaseTemplates":
         return planUpdateOp({
@@ -1386,7 +1423,7 @@ export const buildAction = async ({
       case "PruneChildren":
         return planPruneChildren(index, op, capturedItemIds, client, snapshotLanguages);
       case "MediaUpload":
-        return planMediaUpload(index, op, capturedItemIds);
+        return planMediaUpload(index, op, capturedItemIds, mediaFallbacks);
     }
   })();
   return { ...action, snapshot: remote };
@@ -1933,10 +1970,41 @@ const planAddItemVersion = async (
  * always emits `MediaUpload` even on re-pushes; the dispatcher reads
  * remote state and short-circuits if the item exists.
  */
+/** Per-fetch timeout for external-URL media byte sourcing. */
+const MEDIA_FETCH_TIMEOUT_MS = 15_000;
+/** Response-size cap for external-URL media byte sourcing. */
+const MEDIA_FETCH_MAX_BYTES = 20 * 1024 * 1024;
+
+/**
+ * SSRF hygiene for external-URL media fetches: recipe files can come
+ * from third-party registries, so refuse loopback / RFC1918 /
+ * link-local / unique-local hosts. Literal-hostname checks only — no
+ * DNS resolution (a resolver-based guard is still TOCTOU-racy; runners
+ * that need stronger isolation put an egress proxy in front).
+ */
+const isPrivateMediaHost = (url: URL): boolean => {
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0") return true;
+  // IPv6: loopback, link-local (fe80::/10), unique-local (fc00::/7).
+  if (host === "::1" || /^fe[89ab]/i.test(host) || /^f[cd]/i.test(host)) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!v4) return false;
+  const a = Number(v4[1]);
+  const b = Number(v4[2]);
+  return (
+    a === 127 ||
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+};
+
 const planMediaUpload = async (
   index: number,
   op: MediaUploadOp,
-  capturedItemIds: Map<string, string>
+  capturedItemIds: Map<string, string>,
+  mediaFallbacks?: Map<string, MediaFallback>
 ): Promise<PlannedAction> => {
   // If a prior plan-pass or cross-recipe pre-seeding already captured
   // an itemId for this MediaUpload's refKey, skip without re-uploading.
@@ -1977,25 +2045,68 @@ const planMediaUpload = async (
   let bytes: Uint8Array;
   let mimeType = "image/png";
   let fileName: string | undefined;
+  // Degrade-don't-abort for EXTERNAL-URL sourcing failures: record the
+  // failure on the action (status "error", visible in --json / NDJSON
+  // progress) AND register a hotlink fallback so every referencing
+  // `media-xml-ref` SetField resolves to the legacy `<image src="…"/>`
+  // form instead of throwing (which would abort + roll back the whole
+  // recipe). Asset-source failures deliberately never register one —
+  // a missing checked-in asset is an authoring bug, not an
+  // environmental hazard.
+  const failExternal = (url: string, reason: string): PlannedAction => {
+    mediaFallbacks?.set(op.id, {
+      url,
+      ...(op.altText !== undefined ? { alt: op.altText } : {}),
+    });
+    return { index, operation: op, status: "error", reason };
+  };
   try {
     if (op.source.kind === "external-url") {
       const url = op.source.url;
-      const res = await fetch(url);
-      if (!res.ok) {
-        return {
-          index,
-          operation: op,
-          status: "error",
-          reason: `MediaUpload: fetch ${url} → ${res.status} ${res.statusText}`,
-        };
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return failExternal(url, `MediaUpload: invalid external URL '${url}'.`);
       }
-      const buf = await res.arrayBuffer();
-      bytes = new Uint8Array(buf);
+      if (isPrivateMediaHost(parsedUrl)) {
+        return failExternal(
+          url,
+          `MediaUpload: refusing to fetch private/loopback host '${parsedUrl.hostname}' (SSRF guard).`
+        );
+      }
+      const res = await fetch(url, { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
+      if (!res.ok) {
+        return failExternal(url, `MediaUpload: fetch ${url} → ${res.status} ${res.statusText}`);
+      }
       const headerMime = res.headers.get("content-type");
       if (headerMime) {
         // Strip charset suffix (e.g. `image/svg+xml; charset=utf-8`).
         mimeType = headerMime.split(";")[0].trim() || mimeType;
       }
+      // Soft-404 guard: hosts that answer dead image URLs with an HTML
+      // error page would otherwise upload an HTML blob as media.
+      if (mimeType === "text/html") {
+        return failExternal(
+          url,
+          `MediaUpload: fetch ${url} returned content-type text/html — not a media asset (soft 404?).`
+        );
+      }
+      const declaredLength = Number(res.headers.get("content-length") ?? Number.NaN);
+      if (Number.isFinite(declaredLength) && declaredLength > MEDIA_FETCH_MAX_BYTES) {
+        return failExternal(
+          url,
+          `MediaUpload: fetch ${url} declares ${declaredLength} bytes — exceeds the ${MEDIA_FETCH_MAX_BYTES}-byte cap.`
+        );
+      }
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > MEDIA_FETCH_MAX_BYTES) {
+        return failExternal(
+          url,
+          `MediaUpload: fetch ${url} returned ${buf.byteLength} bytes — exceeds the ${MEDIA_FETCH_MAX_BYTES}-byte cap.`
+        );
+      }
+      bytes = new Uint8Array(buf);
       // Sitecore's MediaCreator selects the media item's TEMPLATE (Image /
       // Jpeg / Movie / Pdf / … vs the generic catch-all File) from the
       // uploaded filename's extension — the multipart content type plays
@@ -2030,12 +2141,11 @@ const planMediaUpload = async (
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      index,
-      operation: op,
-      status: "error",
-      reason: `MediaUpload: failed to source bytes (${op.source.kind}): ${message}`,
-    };
+    const reason = `MediaUpload: failed to source bytes (${op.source.kind}): ${message}`;
+    if (op.source.kind === "external-url") {
+      return failExternal(op.source.url, reason);
+    }
+    return { index, operation: op, status: "error", reason };
   }
 
   return {
@@ -2162,6 +2272,7 @@ export const buildPlan = async (
         snapshotLanguages: options.snapshotLanguages,
         baselineIndex: options.baselineIndex,
         conflictPolicy: options.conflictPolicy,
+        mediaFallbacks: options.mediaFallbacks,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

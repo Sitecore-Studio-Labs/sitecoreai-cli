@@ -78,6 +78,62 @@ describe("resolveRecipeRefs / media-xml-ref", () => {
     );
   });
 
+  it("degrades to the legacy hotlink form when a media fallback is registered", () => {
+    const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
+    const fallbacks = new Map([
+      [refKey, { url: "https://cdn.example.invalid/hero.png", alt: "Hero image" }],
+    ]);
+    const resolved = resolveRecipeRefs({ kind: "media-xml-ref", refKey }, new Map(), fallbacks);
+    expect(resolved).toEqual({
+      kind: "string",
+      value: '<image src="https://cdn.example.invalid/hero.png" alt="Hero image" />',
+    });
+  });
+
+  it("XML-escapes fallback URL and alt attributes", () => {
+    const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
+    const fallbacks = new Map([
+      [refKey, { url: "https://x.invalid/a?b=1&c=2", alt: 'says "hi" <now>' }],
+    ]);
+    const resolved = resolveRecipeRefs({ kind: "media-xml-ref", refKey }, new Map(), fallbacks);
+    expect(resolved).toEqual({
+      kind: "string",
+      value:
+        '<image src="https://x.invalid/a?b=1&amp;c=2" alt="says &quot;hi&quot; &lt;now&gt;" />',
+    });
+  });
+
+  it("omits alt from the hotlink form when the fallback has none", () => {
+    const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
+    const fallbacks = new Map([[refKey, { url: "https://x.invalid/a.png" }]]);
+    const resolved = resolveRecipeRefs({ kind: "media-xml-ref", refKey }, new Map(), fallbacks);
+    expect(resolved).toEqual({
+      kind: "string",
+      value: '<image src="https://x.invalid/a.png" />',
+    });
+  });
+
+  it("prefers a captured itemId over a stale fallback entry", () => {
+    const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
+    const captured = new Map([[refKey, "dc97e7c3c91849e48da1137cba29855a"]]);
+    const fallbacks = new Map([[refKey, { url: "https://x.invalid/a.png" }]]);
+    const resolved = resolveRecipeRefs({ kind: "media-xml-ref", refKey }, captured, fallbacks);
+    expect(resolved).toEqual({
+      kind: "string",
+      value: '<image mediaid="{DC97E7C3-C918-49E4-8DA1-137CBA29855A}" />',
+    });
+  });
+
+  it("still throws when the refKey has neither capture nor fallback (real ordering bug)", () => {
+    const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
+    const fallbacks = new Map([
+      ["11111111-1111-1111-1111-111111111111", { url: "https://x.invalid/other.png" }],
+    ]);
+    expect(() =>
+      resolveRecipeRefs({ kind: "media-xml-ref", refKey }, new Map(), fallbacks)
+    ).toThrow(/not in captured map/);
+  });
+
   it("rejects render of an unresolved media-xml-ref", () => {
     const refKey = "603df982-441a-5e9c-82d0-2c4e016f0f7b";
     expect(() => renderRefValue({ kind: "media-xml-ref", refKey })).toThrow(

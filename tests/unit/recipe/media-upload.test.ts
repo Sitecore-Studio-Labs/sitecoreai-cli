@@ -10,6 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaUploadOp, OperationIr } from "../../../src/recipe/ir/operations";
+import type { MediaFallback } from "../../../src/recipe/api/ref-encoding";
 import { buildAction } from "../../../src/recipe/runtime/plan";
 import { executeIr } from "../../../src/recipe/runtime/execute";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
@@ -173,6 +174,205 @@ describe("MediaUpload — planner", () => {
 
     expect(action.status).toBe("error");
     expect(action.reason).toMatch(/404/);
+  });
+});
+
+describe("MediaUpload — graceful degrade for dead external URLs", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const planWithFallbacks = async (op: MediaUploadOp) => {
+    const mediaFallbacks = new Map<string, MediaFallback>();
+    const action = await buildAction({
+      index: 0,
+      op,
+      client: new MockAuthoringClient(),
+      capturedItemIds: new Map(),
+      mediaFallbacks,
+    });
+    return { action, mediaFallbacks };
+  };
+
+  it("registers a hotlink fallback (url + alt) when the external fetch fails", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 404, statusText: "Not Found" })
+    ) as unknown as typeof globalThis.fetch;
+
+    const { action, mediaFallbacks } = await planWithFallbacks(externalUrlOp());
+
+    expect(action.status).toBe("error");
+    expect(mediaFallbacks.get(MEDIA_REF_KEY)).toEqual({
+      url: "https://example.invalid/thumb.png",
+      alt: "ccl-brand thumbnail",
+    });
+  });
+
+  it("registers a fallback when the fetch itself throws (dead host / timeout)", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("getaddrinfo ENOTFOUND example.invalid");
+    }) as unknown as typeof globalThis.fetch;
+
+    const { action, mediaFallbacks } = await planWithFallbacks(externalUrlOp());
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/failed to source bytes \(external-url\)/);
+    expect(mediaFallbacks.has(MEDIA_REF_KEY)).toBe(true);
+  });
+
+  it("does NOT register a fallback for an asset-source failure (authoring bug stays hard)", async () => {
+    const { action, mediaFallbacks } = await planWithFallbacks(
+      externalUrlOp({ source: { kind: "asset", path: "/nonexistent/asset/dir/missing.png" } })
+    );
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/failed to source bytes \(asset\)/);
+    expect(mediaFallbacks.size).toBe(0);
+  });
+
+  it("refuses private/loopback hosts without fetching (SSRF guard) and degrades", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
+
+    for (const url of [
+      "http://localhost/x.png",
+      "http://127.0.0.1/x.png",
+      "http://10.1.2.3/x.png",
+      "http://172.16.9.9/x.png",
+      "http://192.168.1.1/x.png",
+      "http://169.254.169.254/latest/meta-data",
+      "http://[::1]/x.png",
+    ]) {
+      const { action, mediaFallbacks } = await planWithFallbacks(
+        externalUrlOp({ source: { kind: "external-url", url } })
+      );
+      expect(action.status).toBe("error");
+      expect(action.reason).toMatch(/SSRF guard/);
+      expect(mediaFallbacks.get(MEDIA_REF_KEY)?.url).toBe(url);
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects text/html responses (soft 404) and degrades", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("<html>not found</html>", {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        })
+    ) as unknown as typeof globalThis.fetch;
+
+    const { action, mediaFallbacks } = await planWithFallbacks(externalUrlOp());
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/text\/html/);
+    expect(mediaFallbacks.has(MEDIA_REF_KEY)).toBe(true);
+  });
+
+  it("rejects responses over the size cap (declared content-length) and degrades", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(TINY_PNG, {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": String(21 * 1024 * 1024),
+          },
+        })
+    ) as unknown as typeof globalThis.fetch;
+
+    const { action, mediaFallbacks } = await planWithFallbacks(externalUrlOp());
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/exceeds the \d+-byte cap/);
+    expect(mediaFallbacks.has(MEDIA_REF_KEY)).toBe(true);
+  });
+
+  // The spec's core apply-mode contract, exercised via the exact seam
+  // that used to kill the push: a SetField carrying a `media-xml-ref`
+  // whose producer MediaUpload failed.
+  const HERO_REF = "55555555-5555-5555-5555-555555555555";
+  const HERO_PATH = "/sitecore/content/Demo/Home/Data/Hero";
+  const preloadHero = (client: MockAuthoringClient): void => {
+    client.preload({
+      itemId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      templateId: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      parentId: "",
+      name: "Hero",
+      path: HERO_PATH,
+      fields: [],
+    });
+  };
+  const imageSetFieldIr = (mediaOp: MediaUploadOp): OperationIr => ({
+    schemaVersion: "1",
+    recipeHandle: "home@1",
+    operations: [
+      mediaOp,
+      {
+        op: "SetField",
+        policy: "CreateAndUpdate",
+        label: "page-field:home@1:en:Image",
+        itemRefKey: HERO_REF,
+        fieldId: "66666666-6666-6666-6666-666666666666",
+        fieldName: "Image",
+        language: "en",
+        version: 1,
+        value: { kind: "media-xml-ref", refKey: MEDIA_REF_KEY },
+      },
+    ],
+  });
+
+  it("apply mode: a dead external image degrades ONE field to a hotlink instead of aborting", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 410, statusText: "Gone" })
+    ) as unknown as typeof globalThis.fetch;
+    const client = new MockAuthoringClient();
+    preloadHero(client);
+
+    const result = await executeIr(imageSetFieldIr(externalUrlOp()), client, {
+      mode: "apply",
+      crossRecipeRefs: new Map([[HERO_REF, HERO_PATH]]),
+    });
+
+    // The media op fails, but the push completes — no abort, no rollback.
+    expect(result.aborted).toBe(false);
+    expect(result.rollback).toBeUndefined();
+    expect(result.summary.error).toBe(1);
+    expect(result.summary.update).toBe(1);
+    // The referencing field degraded to the legacy hotlink form.
+    expect(client.updates).toHaveLength(1);
+    expect(client.updates[0].fields[0].value).toEqual({
+      kind: "string",
+      value: '<image src="https://example.invalid/thumb.png" alt="ccl-brand thumbnail" />',
+    });
+  });
+
+  it("apply mode: an asset-source failure still aborts + rolls back (no fallback)", async () => {
+    const client = new MockAuthoringClient();
+    preloadHero(client);
+
+    const result = await executeIr(
+      imageSetFieldIr(
+        externalUrlOp({ source: { kind: "asset", path: "/nonexistent/asset/missing.png" } })
+      ),
+      client,
+      {
+        mode: "apply",
+        crossRecipeRefs: new Map([[HERO_REF, HERO_PATH]]),
+      }
+    );
+
+    expect(result.aborted).toBe(true);
+    expect(result.rollback).toBeDefined();
+    expect(client.updates).toHaveLength(0);
+    const last = result.plan.actions[result.plan.actions.length - 1];
+    expect(last.reason).toMatch(/not in captured map/);
   });
 });
 

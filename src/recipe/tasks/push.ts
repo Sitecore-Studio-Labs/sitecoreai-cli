@@ -23,6 +23,7 @@ import { ensureMarkerField } from "../items/ensure-marker-field";
 import { injectHandleMarker } from "../items/marker";
 import { loadIr, loadRecipe } from "../io";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
+import type { MediaFallback } from "../api/ref-encoding";
 import { writeProgressLine } from "./progress-stream";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
@@ -902,6 +903,11 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // see creations from earlier IRs so baseline classification is
   // bypassed for items that didn't exist before this run.
   const createdItemRefKeys = new Set<string>();
+  // ONE map across every IR: a failed external-URL MediaUpload registers
+  // a hotlink fallback here, and every later `media-xml-ref` resolution
+  // (same IR or a sibling) degrades to `<image src="…" />` instead of
+  // aborting. See ExecuteOptions.mediaFallbacks.
+  const mediaFallbacks = new Map<string, MediaFallback>();
   const runOne = async (ir: OperationIr): Promise<ExecutionResult> =>
     executeIr(ir, tenant.client, {
       mode: isDryRun ? "plan" : "apply",
@@ -936,6 +942,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       applyConcurrency: resolveApplyConcurrency(),
       idSnapshotCache,
       versionStackCache,
+      mediaFallbacks,
     });
 
   const renderResult = (ir: OperationIr, result: ExecutionResult): void => {
@@ -976,6 +983,15 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       for (const err of result.rollback.errors) {
         logger.warn(`  ! rollback failed at ${err.label}: ${err.error}`);
       }
+    }
+    // Media-ingest degradation summary: failed external-URL uploads left
+    // their referencing image fields on the legacy hotlink form. Surface
+    // it so operators see the degradation without diffing the tenant.
+    const fallbackCount = countMediaFallbacks(result);
+    if (fallbackCount > 0) {
+      logger.warn(
+        `  ${fallbackCount} media upload(s) failed; affected image fields fell back to hotlink URLs.`
+      );
     }
     logger.info(
       `  Summary: ${result.summary.create} create / ${result.summary.update} update / ${result.summary.skip} skip${
@@ -1068,6 +1084,9 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
         summary: r.summary,
         aborted: r.aborted,
         rollback: r.rollback ?? null,
+        // Failed external-URL media uploads whose referencing image
+        // fields degraded to the legacy hotlink form (`<image src>`).
+        mediaFallbackCount: countMediaFallbacks(r),
       })),
       events: allEvents.map(eventToJson),
     };
@@ -1090,6 +1109,22 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
 
   return results;
 };
+
+/**
+ * Failed external-URL MediaUpload actions in a result — each one
+ * registered a hotlink fallback, so every image field referencing it
+ * degraded to `<image src="…" />` instead of aborting the push.
+ * External-URL sourcing failures are plan-time (`planMediaUpload`);
+ * asset-source failures also plan `error` but abort downstream when the
+ * `media-xml-ref` resolves, so an intact result never counts them here.
+ */
+const countMediaFallbacks = (result: ExecutionResult): number =>
+  result.plan.actions.filter(
+    (a) =>
+      a.operation.op === "MediaUpload" &&
+      a.status === "error" &&
+      a.operation.source.kind === "external-url"
+  ).length;
 
 const formatActionTag = (status: ExecutionResult["plan"]["actions"][number]["status"]): string => {
   switch (status) {

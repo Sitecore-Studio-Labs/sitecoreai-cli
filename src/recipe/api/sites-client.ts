@@ -4,6 +4,8 @@ import {
   addLanguage,
   listLanguages,
   parseLanguageCode,
+  updateLanguage,
+  type EditLanguageInput,
   type Language,
 } from "../../sites/api/languages";
 import {
@@ -63,6 +65,13 @@ export interface SitesApiClient {
    * surfaces a 409-style error which the executor treats as success.
    */
   addLanguage(languageCode: string): Promise<Language>;
+  /**
+   * Update an environment language's metadata by its (regional) ISO
+   * code. The push pipeline uses this to wire `fallbackLanguageIso`
+   * on provisioned languages so Sitecore's language-fallback chain
+   * matches the authored base-locale model.
+   */
+  updateLanguage(isoCode: string, input: EditLanguageInput): Promise<void>;
 }
 
 /**
@@ -83,6 +92,19 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
   listCollections: () => listCollections(options),
   listLanguages: () => listLanguages(options),
   addLanguage: (languageCode) => addLanguage(options, parseLanguageCode(languageCode)),
+  updateLanguage: (isoCode, input) => updateLanguage(options, isoCode, input),
 });
 
-export type { Job, JobResponse, Language, NewSiteInput, Site, SiteCollection, SiteTemplate };
+// Language-code helpers re-exported for the executor's fallback wiring —
+// recipe runtime code consumes the Sites API through this seam only.
+export { fallbackLanguageIsoFor, parseLanguageCode } from "../../sites/api/languages";
+export type {
+  EditLanguageInput,
+  Job,
+  JobResponse,
+  Language,
+  NewSiteInput,
+  Site,
+  SiteCollection,
+  SiteTemplate,
+};

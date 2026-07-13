@@ -62,6 +62,7 @@ export {
   updateLanguage,
   removeLanguage,
   parseLanguageCode,
+  fallbackLanguageIsoFor,
   type Language,
   type AddLanguageModel,
   type SupportedLanguage,

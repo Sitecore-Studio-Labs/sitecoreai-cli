@@ -53,6 +53,34 @@ export const parseLanguageCode = (isoCode: string): AddLanguageModel => {
 };
 
 /**
+ * The fallback language an environment language should carry so
+ * Sitecore's language-fallback chain matches the authored base-locale
+ * model (regional content falls back to its base translation, and
+ * everything bottoms out at `en`):
+ *
+ *   - a REGIONAL code falls back to its base language when the
+ *     environment carries it (`ar-AE` → `ar`), else straight to `en`;
+ *   - a BASE language (`ar`, `de`) falls back to `en`;
+ *   - `en` itself gets none (`null` — leave the field untouched).
+ *
+ * `presentCodes` is the environment's language codes, lowercased (both
+ * `iso` and `regionalIsoCode` forms), including any codes the caller is
+ * about to add — wire bases before regionals so the target exists.
+ */
+export const fallbackLanguageIsoFor = (
+  code: string,
+  presentCodes: ReadonlySet<string>
+): string | null => {
+  const lower = code.trim().toLowerCase();
+  if (!lower || lower === "en") return null;
+  const dash = lower.indexOf("-");
+  const base = dash === -1 ? lower : lower.slice(0, dash);
+  if (base === "en") return "en";
+  if (base !== lower && presentCodes.has(base)) return base;
+  return "en";
+};
+
+/**
  * Add a language to the environment so sites can be created with it (and
  * so it surfaces to the environment's language consumers, e.g. the
  * brand-kit Glossary). Pass a raw `AddLanguageModel`; callers holding a

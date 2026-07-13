@@ -66,7 +66,9 @@ import {
  *    primary language at version 1; per translation language, an
  *    `AddItemVersion` that materialises the language version, plus its
  *    `SetField`s. Item-level `layout` is written to every language's
- *    `__Final Renderings` so each language version sees the same layout.
+ *    `__Final Renderings` so each language version sees the same layout —
+ *    or, with `layoutScope: "shared"`, ONCE to the item's `__Renderings`
+ *    (Sitecore's Shared Layout) with no per-language copies.
  *  - **story** (`versions`) — per (language, numbered version): an
  *    `AddItemVersion` (except the default-language v1 the `CreateItem`
  *    already made) and that version's `SetField`s + per-version layout
@@ -97,18 +99,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // can't carry a refine on a discriminated-union member, so the compiler
   // enforces it.
   const isStory = recipe.versions !== undefined;
-  if (isStory && (recipe.translations !== undefined || Object.keys(recipe.fields).length > 0)) {
-    throw createScaiError(
-      `PageRecipe '${recipe.handle}': a recipe is either simple (fields/translations) or a story (versions), not both.`,
-      "INPUT_INVALID"
-    );
-  }
-  if (isStory && recipe.layout !== undefined) {
-    throw createScaiError(
-      `PageRecipe '${recipe.handle}': item-level 'layout' is not allowed in story mode — declare layout on each versions[lang][n].layout entry instead.`,
-      "INPUT_INVALID"
-    );
-  }
+  if (isStory) assertStoryModeInvariants(recipe);
 
   // Flatten nested placements (layout components hosting children in
   // their own placeholders) into SXA dynamic-placeholder wire form
@@ -339,6 +330,36 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   const scopedSlots = collectScopedSlots(recipe);
   const dataFolderRefKey = datasourceId(itemRefKey, "Data");
 
+  /**
+   * Emit the item-level layout ONCE to the page's `__Renderings` —
+   * Sitecore's SHARED layout, rendered identically by every language
+   * version (`layoutScope: "shared"`). Same Pages-native delta form as
+   * the versioned path: the shared layer merges over the template's
+   * standard-values layout, and Pages author edits land in each
+   * version's Final Layout on top of it.
+   */
+  const emitSharedLayout = (layout: Layout): void => {
+    const layoutXml = emitLayoutXml(layout, {
+      parentItemId: itemRefKey,
+      deviceId: DEFAULT_DEVICE_ID,
+      renderingIdFor: (handle) => renderingId(site, handle),
+      contentItemIdFor: (handle) => contentItemId(site, handle),
+      allowScoped: true,
+      mode: "delta",
+      deltaDeviceDirective: false,
+      ...layoutEncodingOptions(site, context),
+    });
+    if (layoutXml.length === 0) return;
+    fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `page-layout:${recipe.handle}:shared`,
+      itemRefKey,
+      fieldId: LAYOUT_FIELDS.RENDERINGS,
+      value: { kind: "string", value: layoutXml },
+    } satisfies SetFieldOp);
+  };
+
   const emitters: PageEmitters = {
     recipe,
     policy,
@@ -347,6 +368,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     fieldOps,
     emitFields,
     emitLayout,
+    emitSharedLayout,
   };
   if (isStory) emitStoryVersions(emitters);
   else emitSimpleMode(emitters);
@@ -711,7 +733,38 @@ interface PageEmitters {
     templateHandle?: string;
   }) => void;
   emitLayout: (layout: Layout, language: string, version: number, labelTag: string) => void;
+  /** Shared-layout emitter (`layoutScope: "shared"`) — one `__Renderings` write. */
+  emitSharedLayout: (layout: Layout) => void;
 }
+
+/**
+ * Story-mode input invariants (Zod can't carry a refine on a
+ * discriminated-union member, so the compiler enforces them):
+ * `versions` excludes `fields`/`translations`, item-level `layout`
+ * (per-version layout is the only layout home), and
+ * `layoutScope: "shared"` (per-version layouts are inherently
+ * versioned).
+ */
+const assertStoryModeInvariants = (recipe: PageRecipeParsed): void => {
+  if (recipe.translations !== undefined || Object.keys(recipe.fields).length > 0) {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': a recipe is either simple (fields/translations) or a story (versions), not both.`,
+      "INPUT_INVALID"
+    );
+  }
+  if (recipe.layout !== undefined) {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': item-level 'layout' is not allowed in story mode — declare layout on each versions[lang][n].layout entry instead.`,
+      "INPUT_INVALID"
+    );
+  }
+  if (recipe.layoutScope === "shared") {
+    throw createScaiError(
+      `PageRecipe '${recipe.handle}': layoutScope 'shared' is not allowed in story mode — per-version layouts are inherently versioned.`,
+      "INPUT_INVALID"
+    );
+  }
+};
 
 /** One `AddItemVersion` op for a (language, version) cell. */
 const addVersionOp = (e: PageEmitters, language: string, version: number): AddItemVersionOp => ({
@@ -799,10 +852,12 @@ const emitStoryVersions = (e: PageEmitters): void => {
 /**
  * Simple mode — primary language at version 1, then a version per
  * translation language. The item-level `layout` lands on every
- * language's `__Final Renderings` (per-language layout is story mode).
+ * language's `__Final Renderings` (per-language layout is story mode),
+ * or once on the shared `__Renderings` when `layoutScope: "shared"`.
  */
 const emitSimpleMode = (e: PageEmitters): void => {
   const { recipe } = e;
+  const sharedLayout = recipe.layoutScope === "shared";
   e.emitFields({
     fields: recipe.fields,
     language: DEFAULT_LANGUAGE,
@@ -810,7 +865,8 @@ const emitSimpleMode = (e: PageEmitters): void => {
     labelTag: DEFAULT_LANGUAGE,
   });
   if (recipe.layout !== undefined) {
-    e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+    if (sharedLayout) e.emitSharedLayout(recipe.layout);
+    else e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
   }
   for (const [language, translation] of Object.entries(recipe.translations ?? {})) {
     e.versionOps.push(addVersionOp(e, language, DEFAULT_VERSION));
@@ -820,7 +876,7 @@ const emitSimpleMode = (e: PageEmitters): void => {
       version: DEFAULT_VERSION,
       labelTag: language,
     });
-    if (recipe.layout !== undefined) {
+    if (recipe.layout !== undefined && !sharedLayout) {
       e.emitLayout(recipe.layout, language, DEFAULT_VERSION, language);
     }
   }

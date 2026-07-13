@@ -6,7 +6,12 @@ import type {
   UpdateItemInput,
 } from "../api/client";
 import { type MediaFallback, renderRefValue } from "../api/ref-encoding";
-import type { Language, SitesApiClient } from "../api/sites-client";
+import {
+  fallbackLanguageIsoFor,
+  parseLanguageCode,
+  type Language,
+  type SitesApiClient,
+} from "../api/sites-client";
 import type { FieldValue, Operation, OperationIr } from "../ir/operations";
 import { DEFAULT_LANGUAGE } from "../ir/sitecore-templates";
 import {
@@ -550,14 +555,50 @@ export const ensureEnvironmentLanguages = async (
   languages: string[]
 ): Promise<void> => {
   if (languages.length === 0) return;
-  const present = presentLanguageCodes(await sitesClient.listLanguages());
-  for (const code of languages) {
+  const current = await sitesClient.listLanguages();
+  const present = presentLanguageCodes(current);
+  // Bases before regionals so a regional's fallback target exists by the
+  // time its own fallback is wired (`ar` lands before `ar-AE`).
+  const ordered = [...languages].sort(
+    (a, b) => a.split("-").length - b.split("-").length || a.localeCompare(b)
+  );
+  const added: string[] = [];
+  for (const code of ordered) {
     if (present.has(code.toLowerCase())) continue;
     try {
       await sitesClient.addLanguage(code);
     } catch (err) {
       if (!isAlreadyAddedLanguageError(err)) throw err;
     }
+    present.add(code.toLowerCase());
+    added.push(code);
+  }
+
+  // Fallback wiring: every environment language should carry a fallback
+  // so Sitecore's language-fallback chain matches the authored
+  // base-locale model (regional → base → en). Newly-added languages are
+  // wired outright; pre-existing languages are only REPAIRED when their
+  // fallback is empty — an operator-configured fallback is never
+  // overwritten. Best-effort by design: a failed PATCH must not fail the
+  // site create (fallback affects rendering completeness, not push
+  // integrity), so errors are swallowed per language.
+  const wire = async (code: string): Promise<void> => {
+    const fallback = fallbackLanguageIsoFor(code, present);
+    if (!fallback) return;
+    try {
+      await sitesClient.updateLanguage(code, {
+        ...parseLanguageCode(code),
+        fallbackLanguageIso: fallback,
+      });
+    } catch {
+      // Best-effort — see above.
+    }
+  };
+  for (const code of added) await wire(code);
+  for (const language of current) {
+    if (language.fallbackLanguageIso?.trim()) continue;
+    const code = (language.regionalIsoCode || language.iso || "").trim();
+    if (code) await wire(code);
   }
 };
 

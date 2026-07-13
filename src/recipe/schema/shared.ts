@@ -611,3 +611,45 @@ export const RecipeMetaSchema = z
   .optional();
 
 export type RecipeMeta = z.infer<typeof RecipeMetaSchema>;
+
+/**
+ * Content-affinity dimensions a page declares — the tags Sitecore
+ * Personalize should associate with a visitor who views this page.
+ *
+ * IMPORTANT (verified against doc.sitecore.com): affinity is NOT a stored
+ * Sitecore/CDP field, so this facet is authoring metadata only — the
+ * compiler does not emit a Sitecore field for it. A downstream consumer
+ * (the demo orchestrator's synthetic-event generator) projects it into the
+ * CDP event `ext` custom-data object — the one mechanism CDP exposes for
+ * affinity — on the page's VIEW events, so a guest's affinity *emerges*
+ * from the pages they walk. Each axis is a tag list; the generator stamps
+ * the primary tag of each axis as a flat `ext` value (arrays are
+ * unsupported on the CDP wire), and multi-interest pages are modelled by
+ * the page graph rather than arrays on one event.
+ */
+export const PageAffinityFacetSchema = z
+  .object({
+    dimensions: z
+      .object({
+        category: z.array(z.string().min(1)).optional(),
+        brand: z.array(z.string().min(1)).optional(),
+        topic: z.array(z.string().min(1)).optional(),
+      })
+      .refine(
+        (dimensions) =>
+          (dimensions.category?.length ?? 0) +
+            (dimensions.brand?.length ?? 0) +
+            (dimensions.topic?.length ?? 0) >
+          0,
+        { message: "affinity.dimensions must declare at least one tag" }
+      ),
+    /**
+     * Relative visit weight vs. sibling pages when the generator walks the
+     * brand's page graph — a home/hero page can pull more traffic than a
+     * deep leaf. Defaults to 1 at the consumer.
+     */
+    weight: z.number().positive().optional(),
+  })
+  .strict();
+
+export type PageAffinityFacet = z.infer<typeof PageAffinityFacetSchema>;

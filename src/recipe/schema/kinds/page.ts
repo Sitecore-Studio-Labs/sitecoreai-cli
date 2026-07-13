@@ -9,6 +9,7 @@ import {
   FieldDefinitionSchema,
   HANDLE_PATTERN,
   MediaLocationSchema,
+  PageAffinityFacetSchema,
   RecipeMetaSchema,
 } from "../shared";
 
@@ -176,6 +177,17 @@ export const PageRecipeSchema = z.object({
    * `mediaLibraryFolder` still overrides.
    */
   mediaLocation: MediaLocationSchema.optional(),
+  /**
+   * Optional content-affinity facet — the categories/brands/topics this
+   * page represents. Authoring metadata only: the compiler emits NO
+   * Sitecore field for it (affinity is not a stored CDP/Sitecore concept —
+   * verified against doc.sitecore.com). It exists so a page in a brand's
+   * experience-story graph can declare what it's "about"; the demo
+   * orchestrator projects it into CDP event `ext` custom data on the
+   * page's VIEW events so a guest's affinity emerges from the pages they
+   * walk. See `PageAffinityFacetSchema`.
+   */
+  affinity: PageAffinityFacetSchema.optional(),
   /**
    * Field values keyed by field name on the page template — the primary
    * language, single version. Simple-mode common case; mutually exclusive

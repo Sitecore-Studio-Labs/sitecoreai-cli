@@ -1,5 +1,35 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.31.0
+
+### Minor Changes
+
+- be1c311: Environment-language fallback wiring + shared page layout.
+
+  **Fallback languages**: every environment language provisioned by scai now
+  gets its `fallbackLanguageIso` wired to match the base-locale model —
+  a regional code falls back to its base language when the environment
+  carries it (`ar-AE` → `ar`), otherwise to `en`; base languages fall back
+  to `en`. Applied by `provision sites language add` and by the recipe
+  push's `ensureEnvironmentLanguages` (which also repairs pre-existing
+  languages missing a fallback — operator-configured fallbacks are never
+  overwritten). Best-effort: a failed fallback PATCH never fails the add
+  or the push. New exported helper: `fallbackLanguageIsoFor`;
+  `SitesApiClient` gains `updateLanguage`.
+
+  **Shared page layout**: `PageRecipe.layoutScope: "shared"` writes the
+  item-level layout ONCE to the page's `__Renderings` (Sitecore's Shared
+  Layout) instead of copying it into every language version's
+  `__Final Renderings` — all languages render the same layout, content
+  still localizes via datasource versions and dictionary, and Pages author
+  edits land per-version on top. Default (`"versioned"`) is unchanged.
+  Story mode rejects `"shared"` (per-version layouts are inherently
+  versioned).
+
+### Patch Changes
+
+- a0e0e49: Fix `recipe push --json` crashing with `RangeError: Invalid string length` after a fully successful apply. The JSON envelope's `events` array serialized every action's raw mutation snapshot — full field values per locale and, for media uploads, the asset bytes themselves — which overflowed V8's maximum string length on large multi-locale pushes. `mutation` is now a presence flag, diff values are capped at 2 KB each, and if envelope serialization still overflows the push re-emits the envelope with `events: []` and `eventsOmitted: true` instead of exiting non-zero.
+
 ## 0.30.0
 
 ### Minor Changes

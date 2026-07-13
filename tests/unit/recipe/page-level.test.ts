@@ -979,6 +979,55 @@ describe("compilePageRecipe — multi-language (translations)", () => {
   });
 });
 
+describe("compilePageRecipe — layoutScope: shared", () => {
+  it("writes the layout ONCE to the shared __Renderings with no language/version", () => {
+    const page = {
+      ...homePage,
+      layoutScope: "shared",
+      translations: {
+        fr: { fields: { MetaTitle: { shape: "text", value: "Bienvenue" } as const } },
+      },
+    } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+
+    const shared = findSetField(ir.operations, "page-layout:home@1:shared");
+    expect(shared.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    expect(shared.language).toBeUndefined();
+    expect(shared.version).toBeUndefined();
+
+    // No per-language Final Renderings copies — the shared layer is the
+    // ONLY layout write (Pages edits still land per-version on top).
+    const finalWrites = ir.operations.filter(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && (op as SetFieldOp).fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS
+    );
+    expect(finalWrites).toEqual([]);
+  });
+
+  it("default (no layoutScope) keeps the per-language Final Renderings behaviour", () => {
+    const ir = compilePageRecipe(homePage, CONTEXT);
+    const layout = findSetField(ir.operations, "page-layout:home@1:en");
+    expect(layout.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
+    expect(layout.language).toBe("en");
+  });
+
+  it("rejects layoutScope shared in story mode", () => {
+    const page = {
+      kind: "page",
+      schemaVersion: "1",
+      handle: "story@1",
+      name: "Story",
+      displayName: "Story",
+      template: "article-page@1",
+      layoutScope: "shared",
+      versions: {
+        en: [{ version: 1, fields: {} }],
+      },
+    } satisfies PageRecipe;
+    expect(() => compilePageRecipe(page, CONTEXT)).toThrowError(/layoutScope 'shared'/);
+  });
+});
+
 describe("compilePageRecipe — story mode (versions)", () => {
   const storyPage = {
     kind: "page",

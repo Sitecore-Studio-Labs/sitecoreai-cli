@@ -14,10 +14,12 @@ import { ensureAllowWrite } from "@/policy/allow-write";
 import { resolveEnvironment } from "@/policy/environment";
 import {
   addLanguage,
+  fallbackLanguageIsoFor,
   listLanguages,
   listSupportedLanguages,
   parseLanguageCode,
   removeLanguage,
+  updateLanguage,
   type SitesApiClientOptions,
 } from "@/sites";
 import { toLogger } from "@/shared/cli-tasks";
@@ -85,13 +87,41 @@ export const runSitesLanguageListSupported = async (
   emit(logger, envName, "sites.language.list-supported", await listSupportedLanguages(client));
 };
 
-/** Add a language to the environment (idempotent server-side). */
+/**
+ * Add a language to the environment (idempotent server-side), then wire
+ * its fallback language so Sitecore's language-fallback chain matches
+ * the base-locale model (regional → base when present → `en`; base →
+ * `en`). Fallback wiring is best-effort — a failed PATCH never fails
+ * the add.
+ */
 export const runSitesLanguageAdd = async (options: SitesLanguageOptions): Promise<void> => {
   const logger = toLogger(options);
   const code = requireCode(options);
   const { envName, root, client } = await resolveSites(options);
   ensureAllowWrite(root, envName, options.allowWrite);
-  emit(logger, envName, "sites.language.add", await addLanguage(client, parseLanguageCode(code)));
+  const added = await addLanguage(client, parseLanguageCode(code));
+  const wireFallback = async (): Promise<string | null> => {
+    try {
+      const present = new Set<string>();
+      for (const lang of await listLanguages(client)) {
+        if (lang.iso) present.add(lang.iso.toLowerCase());
+        if (lang.regionalIsoCode) present.add(lang.regionalIsoCode.toLowerCase());
+      }
+      present.add(code.toLowerCase());
+      const fallback = fallbackLanguageIsoFor(code, present);
+      if (fallback) {
+        await updateLanguage(client, code, {
+          ...parseLanguageCode(code),
+          fallbackLanguageIso: fallback,
+        });
+      }
+      return fallback;
+    } catch {
+      return null; // best-effort — the add itself succeeded
+    }
+  };
+  const fallbackLanguageIso = await wireFallback();
+  emit(logger, envName, "sites.language.add", { ...added, fallbackLanguageIso });
 };
 
 /** Remove a language from the environment (destructive — gated by --apply). */

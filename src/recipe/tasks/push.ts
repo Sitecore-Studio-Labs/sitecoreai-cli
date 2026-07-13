@@ -202,7 +202,37 @@ const applyIrScopeFilters = (
   return irs;
 };
 
-/** Flatten one collected `{ recipe, event }` into the JSON output shape. */
+/**
+ * Cap on each diff entry's `before`/`after` value in the JSON envelope.
+ * Field values (localized rich text, media XML) can run to megabytes;
+ * the envelope only needs enough of the value to show what changed.
+ */
+const DIFF_VALUE_CAP = 2048;
+
+const truncateDiffValue = (value: unknown): unknown =>
+  typeof value === "string" && value.length > DIFF_VALUE_CAP
+    ? `${value.slice(0, DIFF_VALUE_CAP)}… [truncated ${value.length - DIFF_VALUE_CAP} chars]`
+    : value;
+
+const diffToJson = (diff: unknown): unknown =>
+  Array.isArray(diff)
+    ? diff.map((entry: Record<string, unknown>) => ({
+        ...entry,
+        before: truncateDiffValue(entry.before),
+        after: truncateDiffValue(entry.after),
+      }))
+    : diff;
+
+/**
+ * Flatten one collected `{ recipe, event }` into the JSON output shape.
+ *
+ * Payload discipline: `mutation` is reduced to a presence flag and diff
+ * values are capped. Mutation snapshots carry every field value the
+ * executor dispatches — and, for `mediaUpload`, the raw asset bytes —
+ * so serializing them verbatim blew past V8's maximum string length on
+ * large multi-locale pushes (`RangeError: Invalid string length` after
+ * every recipe had already applied cleanly).
+ */
 const eventToJson = ({
   recipe,
   event,
@@ -221,8 +251,8 @@ const eventToJson = ({
         : undefined,
   status: "action" in event ? event.action.status : undefined,
   reason: "action" in event ? event.action.reason : undefined,
-  diff: "action" in event ? event.action.diff : undefined,
-  mutation: "action" in event ? event.action.mutation : undefined,
+  diff: "action" in event ? diffToJson(event.action.diff) : undefined,
+  mutation: "action" in event && event.action.mutation ? true : undefined,
   error: "error" in event ? event.error : undefined,
 });
 
@@ -1078,33 +1108,45 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   }
 
   if (logger.isJson()) {
-    const data = {
-      results: results.map((r) => ({
-        recipeHandle: r.plan.recipeHandle,
-        summary: r.summary,
-        aborted: r.aborted,
-        rollback: r.rollback ?? null,
-        // Failed external-URL media uploads whose referencing image
-        // fields degraded to the legacy hotlink form (`<image src>`).
-        mediaFallbackCount: countMediaFallbacks(r),
-      })),
-      events: allEvents.map(eventToJson),
-    };
-    logger.json(
-      buildScaiEnvelope({
-        command: "recipe.push",
-        environment: tenant.envName,
-        data,
-        extra: {
-          source,
-          ...(isDryRun ? { whatIf: true as const } : {}),
-          ...(placeholderAllowSummary ? { placeholderAllowControls: placeholderAllowSummary } : {}),
-          ...(rollbackLog.wasUsed
-            ? { rollbackLog: { runId: rollbackLog.runId, path: rollbackLog.logPath } }
-            : {}),
-        },
-      }) as unknown as Record<string, unknown>
-    );
+    const resultsJson = results.map((r) => ({
+      recipeHandle: r.plan.recipeHandle,
+      summary: r.summary,
+      aborted: r.aborted,
+      rollback: r.rollback ?? null,
+      // Failed external-URL media uploads whose referencing image
+      // fields degraded to the legacy hotlink form (`<image src>`).
+      mediaFallbackCount: countMediaFallbacks(r),
+    }));
+    const emitEnvelope = (events: Array<Record<string, unknown>>, eventsOmitted?: true): void =>
+      logger.json(
+        buildScaiEnvelope({
+          command: "recipe.push",
+          environment: tenant.envName,
+          data: { results: resultsJson, events },
+          extra: {
+            source,
+            ...(isDryRun ? { whatIf: true as const } : {}),
+            ...(eventsOmitted ? { eventsOmitted } : {}),
+            ...(placeholderAllowSummary
+              ? { placeholderAllowControls: placeholderAllowSummary }
+              : {}),
+            ...(rollbackLog.wasUsed
+              ? { rollbackLog: { runId: rollbackLog.runId, path: rollbackLog.logPath } }
+              : {}),
+          },
+        }) as unknown as Record<string, unknown>
+      );
+    try {
+      emitEnvelope(allEvents.map(eventToJson));
+    } catch (error) {
+      // The push has already applied by the time the envelope is built —
+      // a serialization failure (a pathological event set overflowing
+      // V8's max string length) must not turn a successful push into a
+      // non-zero exit. Re-emit with events dropped so consumers still
+      // get the per-recipe summaries.
+      if (!(error instanceof RangeError)) throw error;
+      emitEnvelope([], true);
+    }
   }
 
   return results;

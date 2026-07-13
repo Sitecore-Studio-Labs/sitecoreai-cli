@@ -242,6 +242,23 @@ export const PageRecipeSchema = z.object({
    */
   layout: LayoutSchema.optional(),
   /**
+   * Where the item-level `layout` is stored:
+   *
+   *   - `"versioned"` (default, current behaviour) — written to every
+   *     language version's `__Final Renderings`; each language carries
+   *     its own copy and Pages edits stay per-language.
+   *   - `"shared"` — written ONCE to the page item's `__Renderings`
+   *     (Sitecore's Shared Layout), so every language renders the same
+   *     layout with no per-language copies; content still localizes via
+   *     datasource versions and dictionary. Pages author edits land in
+   *     the per-version Final Layout ON TOP of the shared base.
+   *
+   * Simple mode only — story mode's per-version layouts are inherently
+   * versioned, so `"shared"` alongside `versions` is rejected
+   * (`INPUT_INVALID`).
+   */
+  layoutScope: z.enum(["versioned", "shared"]).optional(),
+  /**
    * Optional `WorkflowRecipe` handle — sets the page item's
    * `__Workflow` field. Mirrors `ContentItemRecipe.workflow`.
    */

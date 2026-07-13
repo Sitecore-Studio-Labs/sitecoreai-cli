@@ -32,6 +32,26 @@ describe("PageAffinityFacetSchema", () => {
     );
   });
 
+  it("accepts arbitrary camelCase brand-authored axes (open taxonomy)", () => {
+    expect(
+      PageAffinityFacetSchema.safeParse({
+        dimensions: {
+          category: ["living-room"],
+          material: ["solid-oak"],
+          lifeStage: ["first-home"],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects a non-camelCase axis name (would be an illegal ext key)", () => {
+    for (const axis of ["Category", "life-stage", "life stage", "2cool"]) {
+      expect(PageAffinityFacetSchema.safeParse({ dimensions: { [axis]: ["x"] } }).success).toBe(
+        false
+      );
+    }
+  });
+
   it("rejects a facet with no tags on any axis", () => {
     expect(PageAffinityFacetSchema.safeParse({ dimensions: {} }).success).toBe(false);
     expect(PageAffinityFacetSchema.safeParse({ dimensions: { category: [] } }).success).toBe(false);

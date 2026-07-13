@@ -626,23 +626,26 @@ export type RecipeMeta = z.infer<typeof RecipeMetaSchema>;
  * the primary tag of each axis as a flat `ext` value (arrays are
  * unsupported on the CDP wire), and multi-interest pages are modelled by
  * the page graph rather than arrays on one event.
+ *
+ * `dimensions` is an **open, brand-authored taxonomy**: each key is an
+ * axis name and its value that axis's tag list. Because axis names become
+ * flat CDP `ext.<axis>` attribute keys, they must be camelCase (lower-first,
+ * alphanumeric). There is no fixed axis set — `category` / `topic` are the
+ * common defaults, `brand` is used only for multi-brand tenants, and a
+ * brand may add its own (`material`, `lifeStage`, …).
  */
 export const PageAffinityFacetSchema = z
   .object({
     dimensions: z
-      .object({
-        category: z.array(z.string().min(1)).optional(),
-        brand: z.array(z.string().min(1)).optional(),
-        topic: z.array(z.string().min(1)).optional(),
-      })
-      .refine(
-        (dimensions) =>
-          (dimensions.category?.length ?? 0) +
-            (dimensions.brand?.length ?? 0) +
-            (dimensions.topic?.length ?? 0) >
-          0,
-        { message: "affinity.dimensions must declare at least one tag" }
-      ),
+      .record(
+        z.string().regex(/^[a-z][a-zA-Z0-9]*$/, {
+          message: "affinity axis names must be camelCase (a CDP ext attribute)",
+        }),
+        z.array(z.string().min(1))
+      )
+      .refine((dimensions) => Object.values(dimensions).some((tags) => tags.length > 0), {
+        message: "affinity.dimensions must declare at least one tag",
+      }),
     /**
      * Relative visit weight vs. sibling pages when the generator walks the
      * brand's page graph — a home/hero page can pull more traffic than a

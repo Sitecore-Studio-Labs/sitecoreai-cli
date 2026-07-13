@@ -7,7 +7,18 @@ vi.mock("../../../../src/sites", () => ({
   listLanguages: vi.fn(),
   listSupportedLanguages: vi.fn(),
   addLanguage: vi.fn(),
+  updateLanguage: vi.fn(),
   removeLanguage: vi.fn(),
+  // Real policy so the add task's fallback wiring is exercised for real.
+  fallbackLanguageIsoFor: (code: string, present: ReadonlySet<string>) => {
+    const lower = code.trim().toLowerCase();
+    if (!lower || lower === "en") return null;
+    const dash = lower.indexOf("-");
+    const base = dash === -1 ? lower : lower.slice(0, dash);
+    if (base === "en") return "en";
+    if (base !== lower && present.has(base)) return base;
+    return "en";
+  },
   // Real-ish splitter so the add task converts `fr-FR` → {languageCode, regionCode}.
   parseLanguageCode: (code: string) => {
     const dash = code.indexOf("-");
@@ -25,6 +36,7 @@ import {
   listLanguages,
   listSupportedLanguages,
   removeLanguage,
+  updateLanguage,
 } from "../../../../src/sites";
 import {
   runSitesLanguageAdd,
@@ -81,6 +93,32 @@ describe("sites language tasks", () => {
       { accessToken: "tkn" },
       { languageCode: "fr", regionCode: "FR" }
     );
+  });
+
+  it("add wires the new language's fallback (base present → base)", async () => {
+    vi.mocked(listLanguages).mockResolvedValue([{ iso: "en" }, { iso: "fr" }] as never);
+    await runSitesLanguageAdd({ ...base, code: "fr-FR" });
+    expect(vi.mocked(updateLanguage)).toHaveBeenCalledWith({ accessToken: "tkn" }, "fr-FR", {
+      languageCode: "fr",
+      regionCode: "FR",
+      fallbackLanguageIso: "fr",
+    });
+  });
+
+  it("add wires the fallback to en when the base language is absent", async () => {
+    vi.mocked(listLanguages).mockResolvedValue([{ iso: "en" }] as never);
+    await runSitesLanguageAdd({ ...base, code: "da-DK" });
+    expect(vi.mocked(updateLanguage)).toHaveBeenCalledWith({ accessToken: "tkn" }, "da-DK", {
+      languageCode: "da",
+      regionCode: "DK",
+      fallbackLanguageIso: "en",
+    });
+  });
+
+  it("a failed fallback PATCH never fails the add", async () => {
+    vi.mocked(updateLanguage).mockRejectedValue(new Error("403"));
+    await expect(runSitesLanguageAdd({ ...base, code: "fr-FR" })).resolves.toBeUndefined();
+    expect(vi.mocked(addLanguage)).toHaveBeenCalled();
   });
 
   it("rm removes the language by code", async () => {

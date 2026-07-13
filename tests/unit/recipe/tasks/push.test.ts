@@ -700,6 +700,79 @@ describe("runRecipePush — aborted result rendering", () => {
     expect(events[2]).toMatchObject({ kind: "ir-error", error: "executor blew up" });
   });
 
+  it("strips mutation payloads to a presence flag and caps diff values in the envelope", async () => {
+    jsonMode = true;
+    const hugeValue = "x".repeat(10_000);
+    vi.mocked(executeIr).mockImplementation(async (ir, _client, opts) => {
+      const emit = (opts as { emit?: (e: unknown) => void }).emit;
+      emit?.({
+        kind: "op-applied",
+        action: {
+          index: 0,
+          status: "update",
+          operation: { label: "Upload logo" },
+          diff: [
+            { fieldId: "f1", before: hugeValue, after: hugeValue, language: "da-DK" },
+            { fieldId: "f2", before: null, after: "short" },
+          ],
+          // Realistic mediaUpload snapshot: raw asset bytes must never
+          // reach the envelope (they overflowed V8's max string length).
+          mutation: {
+            kind: "mediaUpload",
+            itemPath: "logos/logo.png",
+            bytes: new Uint8Array(1024),
+            mimeType: "image/png",
+            mediaRefKey: "ref-1",
+          },
+        },
+      });
+      return makeResult((ir as { recipeHandle: string }).recipeHandle) as never;
+    });
+
+    await runRecipePush({ allowWrite: true } as never);
+
+    const envelope = logger.json.mock.calls[0][0] as {
+      data: { events: Array<Record<string, unknown>> };
+    };
+    const event = envelope.data.events[0];
+    // Mutation is a bare presence flag — no payload, no bytes.
+    expect(event.mutation).toBe(true);
+    // Long diff values are capped; short ones and nulls pass through.
+    const diff = event.diff as Array<Record<string, unknown>>;
+    expect(String(diff[0].before).length).toBeLessThan(2200);
+    expect(String(diff[0].before)).toContain("[truncated");
+    expect(diff[0].language).toBe("da-DK");
+    expect(diff[1]).toMatchObject({ fieldId: "f2", before: null, after: "short" });
+    // The whole event must serialize small even though the source
+    // action held ~20KB of field values plus raw bytes.
+    expect(JSON.stringify(event).length).toBeLessThan(6_000);
+  });
+
+  it("re-emits the envelope without events when serialization overflows", async () => {
+    jsonMode = true;
+    vi.mocked(executeIr).mockImplementation(async (ir, _client, opts) => {
+      const emit = (opts as { emit?: (e: unknown) => void }).emit;
+      emit?.({ kind: "op-start", index: 0, operation: { label: "Create A" } });
+      return makeResult((ir as { recipeHandle: string }).recipeHandle) as never;
+    });
+    // First logger.json call throws the V8 overflow; the fallback path
+    // must re-emit rather than let the push exit non-zero after a
+    // fully-applied run.
+    logger.json.mockImplementationOnce(() => {
+      throw new RangeError("Invalid string length");
+    });
+
+    await runRecipePush({ allowWrite: true } as never);
+
+    expect(logger.json).toHaveBeenCalledTimes(2);
+    const fallback = logger.json.mock.calls[1][0] as {
+      data: { events: unknown[] };
+      meta: Record<string, unknown>;
+    };
+    expect(fallback.data.events).toEqual([]);
+    expect(fallback.meta).toMatchObject({ eventsOmitted: true });
+  });
+
   it("renders an error-summary action tag for an errored op", async () => {
     vi.mocked(executeIr).mockResolvedValue(
       makeResult("hero", {

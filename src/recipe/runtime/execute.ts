@@ -12,6 +12,7 @@ import { DEFAULT_LANGUAGE } from "../ir/sitecore-templates";
 import {
   buildAction,
   buildPlan,
+  buildSiblingCreateNames,
   type Plan,
   type PlanEvent,
   type PlannedAction,
@@ -1428,6 +1429,13 @@ export const executeIr = async (
     }
   };
 
+  // Which item names this IR's creates claim under each parent. Apply mode
+  // plans each op just-in-time (so every op sees the items the previous ones
+  // just created), which is exactly when the sibling-rename fallback is most
+  // likely to mistake a not-yet-created sibling's item for a rename of this
+  // one. Same index the plan path builds; see `findCreateItemSibling`.
+  const siblingCreateNames = buildSiblingCreateNames(ir.operations);
+
   for (let index = 0; index < ir.operations.length; index += 1) {
     if (options.signal?.aborted) {
       return abortForCancellation(index);
@@ -1452,6 +1460,7 @@ export const executeIr = async (
         op,
         client,
         capturedItemIds,
+        siblingCreateNames,
         sitesClient: options.sitesClient,
         pathSnapshotCache: options.pathSnapshotCache,
         snapshotLanguages: options.snapshotLanguages,

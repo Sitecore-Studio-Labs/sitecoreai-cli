@@ -731,6 +731,35 @@ const resolveParentItemIdForFallback = (
 };
 
 /**
+ * Key a CreateItem op by the parent it creates under — the same resolution
+ * `resolveParentItemIdForFallback` uses, but as the IR-level identity rather
+ * than the live itemId (available before anything is captured).
+ */
+const createItemParentKey = (op: CreateItemOp): string =>
+  op.parent.kind === "ref-path" ? op.parent.value : op.parent.refKey;
+
+/**
+ * Every item NAME this push's CreateItem ops claim, grouped by parent.
+ *
+ * The sibling-rename fallback needs this to tell "a CMS user renamed my item"
+ * apart from "that item belongs to a DIFFERENT op in this same push".
+ * See {@link findCreateItemSibling}.
+ */
+export const buildSiblingCreateNames = (
+  operations: readonly Operation[]
+): Map<string, Set<string>> => {
+  const byParent = new Map<string, Set<string>>();
+  for (const op of operations) {
+    if (op.op !== "CreateItem") continue;
+    const key = createItemParentKey(op);
+    const names = byParent.get(key) ?? new Set<string>();
+    names.add(op.name);
+    byParent.set(key, names);
+  }
+  return byParent;
+};
+
+/**
  * Sibling fallback for a CreateItem whose path lookup returned null —
  * find the live item the planner would otherwise duplicate. Two cases:
  *
@@ -738,11 +767,27 @@ const resolveParentItemIdForFallback = (
  *      sees `getItem({path})` return null for a path the tenant has. A
  *      name match among the parent's children is the lag-immune fix.
  *   2. Rename — a CMS user renamed the item, so neither path nor sibling
- *      NAME matches. The `Scai Handle` marker survives a rename. The
- *      marker carries the *recipe* handle (shared across siblings one
- *      recipe creates), so the match is trusted only when exactly one
- *      sibling carries it; >1 falls through to no match, never risking a
- *      wrong rebind.
+ *      NAME matches. The `Scai Handle` marker survives a rename.
+ *
+ * The marker carries the *recipe* handle, so EVERY item one recipe creates
+ * under a shared parent carries the SAME marker. A bare "exactly one marked
+ * sibling ⇒ it was renamed" test is therefore wrong the moment a recipe
+ * creates several items under one parent — which is exactly what inline
+ * treelist children do (`Items-1`…`Items-7` under one datasource item):
+ *
+ *   - `Items-1` creates, and is stamped with the recipe marker.
+ *   - `Items-2` misses on path AND on name, sees exactly ONE marked sibling
+ *     (`Items-1`, created seconds ago in this same push), concludes "rename",
+ *     and rebinds onto it — updating `Items-1` instead of creating `Items-2`.
+ *   - The collapse keeps the marked count at one, so `Items-3`…`Items-7` all
+ *     rebind onto that same item too.
+ *
+ * Net effect: N children silently become 1 item, each overwriting the last —
+ * a 7-entry nav renders its last entry 7 times. `siblingCreateNames` is the
+ * fix: a marked sibling whose NAME is claimed by another CreateItem op in
+ * THIS push is that op's item, not a rename of this one, so it is not a
+ * rebind candidate. A genuine rename still matches — a renamed item's name is
+ * precisely the one no op claims.
  *
  * Returns `null` when the parent itemId isn't known yet (true first push)
  * or no sibling matches — the caller then plans a create as normal.
@@ -750,7 +795,8 @@ const resolveParentItemIdForFallback = (
 const findCreateItemSibling = async (
   op: CreateItemOp,
   capturedItemIds: ReadonlyMap<string, string>,
-  client: AuthoringApiClient
+  client: AuthoringApiClient,
+  siblingCreateNames?: ReadonlyMap<string, ReadonlySet<string>>
 ): Promise<RemoteItem | null> => {
   const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
   if (!parentItemId) return null;
@@ -759,7 +805,18 @@ const findCreateItemSibling = async (
   if (byName) return byName;
   const handle = opHandleMarker(op);
   if (handle === undefined) return null;
-  const marked = siblings.filter((s) => remoteHandleMarker(s) === handle);
+
+  // Names other CreateItem ops in this push will materialise under this same
+  // parent. `op.name` itself is excluded from the exclusion set: the byName
+  // probe above already handled that case, and keeping it out here would only
+  // matter if it somehow reappeared.
+  const claimedByOtherOps = siblingCreateNames?.get(createItemParentKey(op));
+
+  const marked = siblings.filter(
+    (s) =>
+      remoteHandleMarker(s) === handle &&
+      !(s.name !== op.name && claimedByOtherOps?.has(s.name) === true)
+  );
   return marked.length === 1 ? marked[0] : null;
 };
 
@@ -1194,6 +1251,17 @@ export interface BuildActionOptions {
    */
   createdThisRun?: ReadonlySet<string>;
   /**
+   * Item names this push's CreateItem ops claim, grouped by parent — built
+   * once per plan by {@link buildSiblingCreateNames}.
+   *
+   * Guards the sibling-rename fallback against rebinding one op onto ANOTHER
+   * op's item when a single recipe creates several items under one parent
+   * (inline treelist children). Omitting it restores the old, unsafe
+   * "exactly one marked sibling ⇒ rename" behavior — see
+   * {@link findCreateItemSibling}.
+   */
+  siblingCreateNames?: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
    * Push-scoped itemId → snapshot cache for itemId-selector reads, with
    * write-through from the executor's apply loop — see
    * `ExecuteOptions.idSnapshotCache`. When absent, every op pays its own
@@ -1236,6 +1304,7 @@ export const buildAction = async ({
   versionStackCache,
   addVersionLanguagesHint,
   mediaFallbacks,
+  siblingCreateNames,
 }: BuildActionOptions): Promise<PlannedAction> => {
   // Baseline classification only applies to PRE-EXISTING items — an
   // item created earlier in this run has no CMS history to preserve
@@ -1351,7 +1420,7 @@ export const buildAction = async ({
   // Gated on parent-itemId-known so we don't pay an extra getChildren round
   // trip on a true first push (where the parent itself is null too).
   if (op.op === "CreateItem" && !remote) {
-    const match = await findCreateItemSibling(op, capturedItemIds, client);
+    const match = await findCreateItemSibling(op, capturedItemIds, client, siblingCreateNames);
     if (match) {
       remote = match;
       capturedItemIds.set(op.id, match.itemId);
@@ -2256,6 +2325,9 @@ export const buildPlan = async (
   const actions: PlannedAction[] = [];
   const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0, prune: 0, conflict: 0 };
   const capturedItemIds = options.capturedItemIds ?? new Map<string, string>();
+  // Which names this IR's creates claim under each parent — lets the
+  // sibling-rename fallback avoid rebinding one create onto another's item.
+  const siblingCreateNames = buildSiblingCreateNames(ir.operations);
 
   for (let index = 0; index < ir.operations.length; index += 1) {
     const op = ir.operations[index];
@@ -2267,6 +2339,7 @@ export const buildPlan = async (
         op,
         client,
         capturedItemIds,
+        siblingCreateNames,
         sitesClient: options.sitesClient,
         pathSnapshotCache: options.pathSnapshotCache,
         snapshotLanguages: options.snapshotLanguages,

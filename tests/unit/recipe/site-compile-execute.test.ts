@@ -285,6 +285,8 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
 
     const sitesClient = makeStubSitesClient({
       listSites: vi.fn(async () => [{ id: "preexisting-site-id", name: op.siteName }] as Site[]),
+      // Every declared language already registered → nothing to provision.
+      listLanguages: vi.fn(async () => [{ iso: "en", regionalIsoCode: "en" }] as Language[]),
     });
 
     const authoring = makeStubAuthoringClient();
@@ -305,6 +307,53 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
 
     expect(result.summary.skip).toBe(1);
     expect(result.summary.create).toBe(0);
+    expect(sitesClient.createSite).not.toHaveBeenCalled();
+    expect(sitesClient.addLanguage).not.toHaveBeenCalled();
+  });
+
+  it("provisions missing declared languages when the site already exists (versioned brand-language growth)", async () => {
+    const { ir, op } = buildIrWithSeeding(solterraCoRecipe);
+
+    const sitesClient = makeStubSitesClient({
+      listSites: vi.fn(async () => [{ id: "preexisting-site-id", name: op.siteName }] as Site[]),
+      // Environment has NO languages registered — the declared primary
+      // (`en`) is missing, e.g. a language added to the brand after the
+      // site was first installed.
+      listLanguages: vi.fn(async () => [] as Language[]),
+    });
+
+    const authoring = makeStubAuthoringClient();
+    // Resolve ONLY the seeded template path — the dictionary-override
+    // SetField's latePath must miss so it skips instead of planning an
+    // update against the throwing stub updateItem.
+    authoring.getItem = vi.fn(async (selector) =>
+      selector.path === "/seeded"
+        ? {
+            itemId: "captured-template-id",
+            templateId: "t",
+            parentId: "p",
+            name: "n",
+            path: "/seeded",
+            fields: [],
+          }
+        : null
+    );
+
+    const result = await executeIr(ir, authoring, {
+      mode: "apply",
+      sitesClient,
+      crossRecipeRefs: new Map([[op.templateRefKey, "/seeded"]]),
+    });
+
+    expect(result.aborted).toBe(false);
+    const action = result.plan.actions[0];
+    expect(action.status).toBe("update");
+    expect(action.reason).toMatch(/registering missing environment language\(s\): en/);
+    if (action.mutation?.kind !== "ensureLanguages") throw new Error("expected ensureLanguages");
+    expect(action.mutation.missing).toEqual(["en"]);
+    // Apply ran the same idempotent ensure the create path uses — the
+    // missing language was registered, but no site was created.
+    expect(sitesClient.addLanguage).toHaveBeenCalledWith("en");
     expect(sitesClient.createSite).not.toHaveBeenCalled();
   });
 

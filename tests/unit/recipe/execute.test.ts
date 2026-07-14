@@ -715,7 +715,10 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
       path: "/sitecore/templates/SiteTemplate",
       fields: [],
     });
-    const sitesClient = makeSitesClient();
+    // The declared language is registered → nothing to provision either.
+    const sitesClient = makeSitesClient({
+      listLanguages: async () => [{ iso: "en", regionalIsoCode: "en" }] as never,
+    });
     const result = await executeIr(createSiteIr(), client, {
       mode: "apply",
       sitesClient,

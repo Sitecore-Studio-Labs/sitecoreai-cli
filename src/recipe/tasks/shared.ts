@@ -205,6 +205,21 @@ export interface RecipePushOptions extends RecipeTenantOptions {
    */
   languages?: readonly string[];
   /**
+   * Provision the `--languages` scope onto the environment before the
+   * push resolves its localize targets (`--provision-languages`).
+   *
+   * By default a push treats the environment's registered languages as
+   * authoritative: a scoped locale the environment lacks is DROPPED, not
+   * created — provisioning is the operator's step. Install pipelines
+   * that derive the scope from a trusted source (the brand's language
+   * list) opt in here so the environment converges on that list instead
+   * of silently narrowing it. Idempotent (present codes are skipped,
+   * "already added" tolerated) and additive only; newly-added languages
+   * get their fallback chain wired (regional → base → en). Requires
+   * `--languages` — with no scope there is nothing to provision.
+   */
+  provisionLanguages?: boolean;
+  /**
    * Three-way merge conflict policy. Governs how the planner resolves
    * drift entries whose tenant value differs from the last-applied
    * baseline:

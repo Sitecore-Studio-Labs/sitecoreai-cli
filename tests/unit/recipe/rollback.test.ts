@@ -590,6 +590,27 @@ describe("rollback — restoreItems executes createItem per snapshot", () => {
   });
 });
 
+describe("inverseOf — ensureLanguages is warn-only (no inverse)", () => {
+  it("returns null: language registration is additive and environment-wide", () => {
+    const action: PlannedAction = {
+      index: 0,
+      operation: {
+        op: "CreateSiteFromTemplate",
+        policy: "CreateAndUpdate",
+        label: "site:solterra-co@1",
+        templateRefKey: "11111111-1111-1111-1111-111111111111",
+        siteRefKey: "22222222-2222-2222-2222-222222222222",
+        siteName: "solterra",
+        language: "en",
+        collectionName: "Solterra",
+      } as never,
+      status: "update",
+      mutation: { kind: "ensureLanguages", languages: ["en", "da"], missing: ["da"] },
+    };
+    expect(inverseOf(action, new Map())).toBeNull();
+  });
+});
+
 describe("inverseOf — actions without a forward mutation have no inverse", () => {
   it("returns null for skipped actions", () => {
     const op: CreateItemOp = {

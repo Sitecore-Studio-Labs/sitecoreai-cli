@@ -367,6 +367,45 @@ describe("buildFieldOp — sort order + storage axis", () => {
     );
   });
 
+  it("image fields default to SHARED storage (brand imagery is language-invariant)", () => {
+    // The registry's role-based image defaults must show in every locale;
+    // versioned image fields were empty everywhere but `en` (Sitecore has
+    // no field-level fallback by default).
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ name: "Background", shape: "image" }),
+      zeroBasedIndex: 0,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    expect(created.fields.some((f) => f.value.kind === "string" && f.value.value === "1")).toBe(
+      true
+    );
+  });
+
+  it("an explicit storage: versioned opts an image field back out of SHARED", () => {
+    const ops = buildFieldOp({
+      recipeHandle: "h@1",
+      fieldRefKey: "fk",
+      fieldPath: "/p/Field",
+      parentRefKey: "pk",
+      labelPrefix: "field:h@1",
+      field: field({ name: "Background", shape: "image", sitecore: { storage: "versioned" } }),
+      zeroBasedIndex: 0,
+      policy: "CreateOnly",
+      site: "default",
+    });
+    const created = ops[0] as CreateItemOp;
+    expect(created.fields.some((f) => f.value.kind === "string" && f.value.value === "1")).toBe(
+      false
+    );
+  });
+
   it("emits an Unversioned flag for unversioned-storage fields", () => {
     const ops = buildFieldOp({
       recipeHandle: "h@1",

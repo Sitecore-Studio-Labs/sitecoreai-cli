@@ -1,3 +1,5 @@
+> **Archived/superseded** — point-in-time note, kept for history.
+
 # `agents` area — unstable surface & follow-ups
 
 The `agents` area (Sitecore **Agentic Studio**) is a deliberate **stopgap**.

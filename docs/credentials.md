@@ -40,7 +40,7 @@ one client at org vs. env scope.
 **Used by:** Deploy API, Authoring / Management GraphQL (serialization,
 recipes, hygiene), Publishing, Sites, Pages, Brief. **Not** Campaign — the
 Orchestrate (Campaign) API is an AI API and uses the brand / AI APIs key
-below (verified 2026-05-16). An env profile that has a project +
+below. An env profile that has a project +
 environment uses its **env-scoped** client; an org-level profile (no
 project/environment of its own — e.g. `agents`) uses the **org-scoped**
 client.
@@ -59,9 +59,9 @@ operator creates it in Cloud Portal → Stream → Admin → AI APIs keys, then
 
 **Used by:** `scai brand` **and** `scai ops campaign` — the Orchestrate
 (Campaign) API is an AI API and authenticates with this key, not the
-automation client (verified 2026-05-16: a token minted from the AI APIs
-key calls `/api/orchestrate/v1/projects`; a `cm`/`deploy` automation
-client gets `403 Insufficient scope`). The automation client cannot do
+automation client: a token minted from the AI APIs key calls
+`/api/orchestrate/v1/projects`, whereas a `cm`/`deploy` automation
+client gets `403 Insufficient scope`. The automation client cannot do
 brand/campaign work and vice versa — hence two credentials.
 
 ## Tokens are not credentials
@@ -142,39 +142,11 @@ caller reads the `clientId`s from the resolved config and passes them in
 secret this way before the OAuth call. Brand uses its own org key
 (`getBrandClientSecret(orgId)`), not this chain.
 
-## Migration notes (for the consistency sweep)
-
-- `clientSecret` on the env profile is **removed** — no back-compat. The
-  bring-your-own-client secret is supplied via
-  `SITECOREAI_ENV_<ENV>_CLIENT_SECRET` and resolved at the auth layer
-  (`resolveEnvClientSecret`). A stale `clientSecret` left in a legacy
-  config is scrubbed on the next config write; the schema's
-  `additionalProperties: false` rule means a legacy config still carrying
-  it is rejected as `CONFIG_INVALID` until repaired (`scai setup init`).
-- The scai-minted automation client is split per the storage principle:
-  its non-secret metadata (`clientId` / `name` / `mintedAt`) lives in the
-  config (`automationClient` / `orgClients[orgId]`); only the secret lives
-  in the keychain (`cm-client:<env>` / `org-client:<orgId>`). The keychain
-  no longer stores the whole `{ clientId, clientSecret, name, mintedAt }`
-  bundle.
-- `deployTokenExpiresIn` / `deployTokenLastUpdated` live **on the env
-  profile** in the config — freshness metadata is non-secret, so it
-  follows the storage principle. `isDeployTokenExpired` reads those config
-  fields. `deployToken` itself stays as the legacy token-cache field (the
-  `SITECOREAI_ENV_<ENV>_DEPLOY_TOKEN` env-var override target). There is
-  no keychain `deploy-meta:` slot.
-- `credential-matrix.ts` rows reflect the model: env automation client,
-  org automation client, brand. A scai-minted automation client is
-  reported present only when **both halves agree** — the non-secret
-  metadata in the config AND the secret in the keychain. The
-  bring-your-own-client `envClient` presence check is `clientId` +
-  `useClientCredentials` (the matrix never reads secrets).
-
 ## Representations that must agree with this document
 
 - `EnvironmentConfiguration` / config types (`src/config/types.ts`)
 - `src/config/schema.json`
-- `sitecore.cli.example.json`
+- `sitecoreai.cli.example.json`
 - the keychain slots (`src/shared/keychain.ts`)
 - `src/shared/credential-matrix.ts`
 - the `scai setup client` command surface (incl. the brand verb)

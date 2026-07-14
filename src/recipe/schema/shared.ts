@@ -616,16 +616,17 @@ export type RecipeMeta = z.infer<typeof RecipeMetaSchema>;
  * Content-affinity dimensions a page declares — the tags Sitecore
  * Personalize should associate with a visitor who views this page.
  *
- * IMPORTANT (verified against doc.sitecore.com): affinity is NOT a stored
- * Sitecore/CDP field, so this facet is authoring metadata only — the
- * compiler does not emit a Sitecore field for it. A downstream consumer
- * (the demo orchestrator's synthetic-event generator) projects it into the
- * CDP event `ext` custom-data object — the one mechanism CDP exposes for
- * affinity — on the page's VIEW events, so a guest's affinity *emerges*
- * from the pages they walk. Each axis is a tag list; the generator stamps
- * the primary tag of each axis as a flat `ext` value (arrays are
- * unsupported on the CDP wire), and multi-interest pages are modelled by
- * the page graph rather than arrays on one event.
+ * This facet is a page-recipe concept, NOT a Sitecore item field — the
+ * compiler does not emit a Sitecore field for it. Downstream, the demo
+ * orchestrator consumes it two ways. (1) Its synthetic-event generator
+ * projects it into the CDP event `ext` custom-data object on the page's
+ * VIEW events, so a guest's affinity *emerges* from the pages they walk —
+ * each axis is a tag list, and the generator stamps the primary tag of each
+ * axis as a flat `ext` value (arrays are unsupported on the CDP wire), with
+ * multi-interest pages modelled by the page graph rather than arrays on one
+ * event. (2) It registers the facet with the CDP **affinities API**
+ * (`PUT /v2/tenants/affinities`, keyed site → page → tags) at install, so
+ * affinity is also stored tenant config, not only event data.
  *
  * `dimensions` is an **open, brand-authored taxonomy**: each key is an
  * axis name and its value that axis's tag list. Because axis names become

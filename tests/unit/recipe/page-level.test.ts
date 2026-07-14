@@ -1004,6 +1004,27 @@ describe("compilePageRecipe — layoutScope: shared", () => {
     expect(finalWrites).toEqual([]);
   });
 
+  it('emits the Pages shared wire form: <p:da name="xsi"/> root directive, anchor-less renderings', () => {
+    // Operator-verified against a Pages-authored shared layout
+    // (2026-07-14): the shared __Renderings delta carries a root
+    // `<p:da name="xsi" />` directive and anchor-less `<r>` elements
+    // with attributes ordered uid, s:ds, s:id, s:par, s:ph. The
+    // anchored partial-design delta form does not place against the
+    // template standard-values base.
+    const page = { ...homePage, layoutScope: "shared" } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+    const shared = findSetField(ir.operations, "page-layout:home@1:shared");
+    const xml = (shared.value as { value: string }).value;
+    expect(xml.startsWith('<r xmlns:p="p" xmlns:s="s" p:p="1"><p:da name="xsi" /><d id="')).toBe(
+      true
+    );
+    expect(xml).not.toContain("p:before");
+    expect(xml).not.toContain("p:after");
+    expect(xml).toMatch(
+      /<r uid="\{[0-9A-F-]+\}"( s:ds="[^"]+")? s:id="\{[0-9A-F-]+\}" s:par="[^"]*" s:ph="[^"]+" \/>/
+    );
+  });
+
   it("default (no layoutScope) keeps the per-language Final Renderings behaviour", () => {
     const ir = compilePageRecipe(homePage, CONTEXT);
     const layout = findSetField(ir.operations, "page-layout:home@1:en");

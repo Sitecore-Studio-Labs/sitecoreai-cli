@@ -1,16 +1,14 @@
 # Recipe / Sync architecture
 
-**Status:** implemented — `src/sync/` engine plus four kinds:
-`brand-kit`, `brief-type`, `campaign`, and `recipe` (the Sitecore-item
-compiler). The first three have CLI `sync` verbs + `*_recipe_*` MCP
-tools. The `recipe` kind (`src/recipe/recipe-kind.ts`) implements the
-contract — `plan`/`apply` wrap `compileRecipeSet`/`executeIr`;
-`readCurrent` reverse-projects four item kinds (ComponentTemplate,
-Enumeration, ComponentSection, ContentTemplate). Remaining: the
-`Scai Handle` marker field (recipe identity — foundational, sequenced
-first; see "Recipe identity" below); wire the `recipe` kind into the
-CLI/MCP; reverse-projection for the other recipe kinds (PageDesign,
-Site, …); component/page/site as CLI surfaces.
+The `src/sync/` engine implements a unified declarative layer over four
+kinds — `brand-kit`, `brief-type`, `campaign`, and `recipe` (the
+Sitecore-item compiler). The first three expose CLI `sync` verbs +
+`*_recipe_*` MCP tools; the `recipe` kind (`src/recipe/recipe-kind.ts`)
+implements the same contract, with `plan`/`apply` wrapping
+`compileRecipeSet`/`executeIr` and `readCurrent` reverse-projecting the
+ComponentTemplate, Enumeration, ComponentSection, and ContentTemplate
+item kinds.
+
 **Scope:** a unified declarative layer for every scai surface (Sitecore
 items, brand kits, briefs, campaigns, and future component/page/site
 areas), plus the engine that moves it.
@@ -414,52 +412,15 @@ walkthrough including `--conflict-policy` / `--write-plan` /
   (environment-specific, and unreadable in content references). See
   "Recipe identity — the marker field" above.
 
-## Build sequence
+## Design notes
 
-Brand-first, because `brand-kit`'s `readCurrent` is a trivial API GET,
-while the Sitecore-item kind's `readCurrent` (reverse-engineering items
-into a _clean_ recipe) is the hard research problem. Brand proves the
-engine; items follow once that is solved.
-
-1. **`src/sync/`** — `RecipeKind` contract, plan types, the
-   pull/diff/push engine, kind registry, consent gating. Pure, no domain
-   imports; unit-tested in isolation.
-2. **`brand-kit` kind** — `src/brand/recipe/schema.ts`
-   (`BrandKitRecipeSchema`: `name`, `description?`, `industry?`,
-   `documents[]`, `sections{}`) + `kind.ts`:
-   - `readCurrent` — `getBrandKit` + `listBrandKitSections` +
-     `listBrandKitFields`, projected into the recipe shape (server
-     `id`s dropped).
-   - `diff` — match sections/fields by name; emit a _heterogeneous_
-     plan: kit-lifecycle stages (create / publish / ingest / enrich,
-     when the kit or its sections are absent) plus per-field value
-     changes.
-   - `apply` — run the needed lifecycle stages via `seedBrandKit`, then
-     `updateBrandKitField` per value change. Idempotent: skip
-     seed/ingest when the kit already has populated sections.
-     `seedBrandKit` accepts a `documents` array — a multi-document
-     brand-kit recipe uploads them all before a single ingest/enrich pass.
-3. **CLI** — `sync` verbs for the brand surface (`pull`/`push`/`diff`),
-   `--what-if`/`--allow-write`, fit into the reorganized command tree.
-4. **MCP** — derive the brand-kit tool `inputSchema` from
-   `BrandKitRecipeSchema`; expose "current kit as recipe" as a resource.
-5. **Tests** — `diff` is pure (highest-value unit target); schema
-   validation; mocked `apply`; CLI; `smoke-exports`-style coverage.
-
-Fast-follow: adapt `src/recipe/` to implement `RecipeKind` (an adapter,
-not a rewrite — `recipe push` keeps working, routed through `sync`).
-Then `brief`, `campaign`, then `component`/`page`/`site` as kinds.
-
-## Open questions
-
-- CLI verb placement — `scai brand sync push` vs `scai sync push --kind
-brand`; how `recipe compile/plan/push` verbs reconcile with `sync`.
-- ~~Whether existing `.recipe.ts` item recipes convert to JSON/YAML.~~
-  Resolved: every kind accepts both. `.recipe.ts` for authoring (Zod
-  `satisfies` checks), YAML for `sync pull` round-trips, JSON for
-  non-engineer authoring. One loader handles all three.
-- `serialization` retirement — scope and timing of the migration.
-- The hard one: turning arbitrary live Sitecore items into a _clean_
-  recipe (`readCurrent` for the item kind) without leaking raw item YAML.
-- How `what-if` surfaces paid-pipeline cost (two ~5-min AI runs) in the
-  plan output so the operator sees it before approving `apply`.
+- **Brand-first engine bring-up.** The engine was proven on `brand-kit`
+  first, because its `readCurrent` is a trivial API GET, while the
+  Sitecore-item kind's `readCurrent` (reverse-projecting live items into
+  a _clean_ recipe without leaking raw item YAML) is the hard problem.
+- **One loader, three formats.** Every kind accepts `.recipe.ts`
+  (authoring, with Zod `satisfies` checks), YAML (`sync pull`
+  round-trips), and JSON (non-engineer authoring).
+- **Paid-pipeline cost surfacing.** Brand-kit `apply` may trigger two
+  ~5-min AI pipeline runs; `what-if` spells out that cost before the
+  operator approves `apply`.

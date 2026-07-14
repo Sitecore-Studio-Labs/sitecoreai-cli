@@ -39,7 +39,11 @@ Other defenses already in place:
   `package.json` — a planted `/tmp/sitecoreai.cli.json` won't get
   silently picked up
 
-## Recipe kinds (0.1.0 stability)
+## Recipe kinds
+
+**Five recipe kinds are stable** — they carry the SemVer stability
+promise and ship as named exports from
+`@sitecoreai-labs/sitecoreai-cli/recipe`:
 
 | Kind                             | Purpose                                                                                    |
 | -------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -48,14 +52,26 @@ Other defenses already in place:
 | `ComponentSectionRecipe`         | Reusable field section shared between components                                           |
 | `DesignParametersTemplateRecipe` | Reusable rendering-parameters template                                                     |
 | `EnumerationRecipe`              | Droplink-backed reusable enum (e.g. ColorScheme)                                           |
-| `WorkflowRecipe`                 | Sitecore workflow + states + commands + submit/validation webhook actions                  |
-| `WebhookAuthorizationRecipe`     | Reusable webhook Authorization item (ApiKey / Basic / OAuth2)                              |
 
-Composition kinds (`PartialDesignRecipe`, `PageDesignRecipe`,
-`PageTemplateRecipe`, `PageRecipe`, `PlaceholderRecipe`,
-`SiteTemplateRecipe`, `SiteRecipe`, `ContentItemRecipe`) are present in
-the source but not part of the 0.1.0 stability promise. They'll graduate
-in a follow-up release.
+Every other kind is **present in the source and usable, but not part of
+the stability promise** — its schema, type, or compiler may change shape
+between minor releases:
+
+| Kind                                                                        | Purpose                                                                   |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `WorkflowRecipe`                                                            | Sitecore workflow + states + commands + submit/validation webhook actions |
+| `WebhookAuthorizationRecipe`                                                | Reusable webhook Authorization item (ApiKey / Basic / OAuth2)             |
+| `PageTemplateRecipe`, `PageRecipe`, `PlaceholderRecipe`                     | Page-level and placeholder templates (see below)                          |
+| `VariantRecipe`                                                             | Standalone SXA Headless rendering variant                                 |
+| `PartialDesignRecipe`, `PageDesignRecipe`                                   | Presentation designs                                                      |
+| `SiteTemplateRecipe`, `SiteRecipe`, `ContentItemRecipe`, `DictionaryRecipe` | Site structure + shared content items                                     |
+
+The composition kinds (`ContentItem`, `PageDesign`, `PartialDesign`,
+`SiteRecipe`, `SiteTemplate`, `Dictionary`) live on the separate
+`@sitecoreai-labs/sitecoreai-cli/recipe/unstable` entry. `WorkflowRecipe`
+and `WebhookAuthorizationRecipe` are reachable only through the
+`compileRecipe` / `compileRecipeSet` union dispatch, not as individual
+named exports.
 
 `PageTemplateRecipe` is the page-level peer of `ComponentTemplateRecipe`
 — a Sitecore template that inherits the SXA Headless page base set so
@@ -175,7 +191,7 @@ sees "update these existing items" rather than "create duplicates" — a
 recipe set pushed twice yields zero mutations the second time.
 
 The namespace root is frozen — a hardcoded literal in
-[`src/recipe/guids.ts`](../src/recipe/guids.ts), not a value recomputed
+[`src/recipe/items/guids.ts`](../src/recipe/items/guids.ts), not a value recomputed
 at runtime — so changes to the derivation code can never silently
 re-namespace items on a tenant that already has a push.
 
@@ -232,7 +248,22 @@ scai provision recipe push -n sandbox --allow-write
 
 # Diff: compute the same plan but in a human-readable summary
 scai provision recipe diff -n sandbox
+
+# List the recipes discovered by the `recipes` glob (no tenant access)
+scai provision recipe list
+
+# Print the resolved recipe target roots for an env (templates, renderings, …)
+scai provision recipe roots -n sandbox
+
+# Pull tenant state back into *.recipe.json
+scai provision recipe pull -n sandbox
+
+# Prune the OOTB defaults SXA seeds (e.g. the default Styles buckets)
+scai provision recipe prune-defaults -n sandbox --allow-write
 ```
+
+The full verb set is `compile`, `list`, `plan`, `diff`, `push`, `pull`,
+`prune-defaults`, and `roots` (`scai provision recipe --help`).
 
 A second push is idempotent (zero mutations). A partial failure rolls
 back the operations it already applied via a LIFO unwind of

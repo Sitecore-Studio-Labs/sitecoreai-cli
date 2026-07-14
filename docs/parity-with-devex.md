@@ -65,19 +65,7 @@ manage their schemas.
 **Decision:** no scai equivalent. If on-prem support ever becomes a
 goal, this is a natural plugin to revive.
 
-### `sitecore publish` (Publishing plugin) — ✅ shipped + live-validated (REST API + tiered consent model, 2026-05-14)
-
-**Live validation (2026-05-14, sandbox-equivalent tenant):** end-to-end
-exercise of submit → list → get → cancel against a real env confirmed
-the request shape, all four operations, state-transition handling
-(`Queued` → `Running` → `Canceling`), and the `canceledBy` audit info
-returned by the API. Two minor bugs found and fixed during the live
-run: `PublishJob.canCancel` was blindly mirroring
-`permissions.canCancel` (a permission flag, always true) instead of
-combining permission with state-cancellability; and the response
-statistics shape uses `itemsSent` / `itemsProcessed` / `itemsFailed`
-rather than the flat `processedCount` / `totalCount` from the spec
-extract.
+### `sitecore publish` (Publishing plugin) — ✅ shipped (REST API + tiered consent model)
 
 The dotnet plugin publishes from CM to one or more publishing targets
 via the Authoring GraphQL `publish()` mutation. On XM Cloud the only
@@ -97,9 +85,9 @@ automation-client JWT auth as the Sites and Pages APIs.
   Maximum gating, see Tier 2 below. **Naming note:** the underlying
   API field is `xmc.site.mode` — legacy XM terminology where "site"
   meant "publishing target" (one DB → one Edge endpoint), NOT a site
-  collection. Empirically verified 2026-05-14 against the agents env:
-  a Smart-mode `publish all` considered ~17K items across every site
-  in the environment, with no API field accepting a site identifier.
+  collection. The field is whole-environment: a Smart-mode `publish all`
+  considers every item across every site in the environment, and no API
+  field accepts a site identifier.
   To publish a single site's subtree, use
   `scai content publish item --site <name> --include-subitems`.
 - `scai content publish status [<jobId>]` → `GET /authoring/publishing/v1/jobs/{id}`
@@ -222,8 +210,7 @@ Redocly on api-docs.sitecore.com and not retrievable via plain HTTP.
 Lock it during implementation from a real tenant's browser network
 traffic or from the OpenAPI YAML directly.
 
-**Auth model (resolved 2026-05-14, after consulting the Publishing
-API architect):** automation clients in Sitecore Cloud Portal are
+**Auth model:** automation clients in Sitecore Cloud Portal are
 either **organization-level** (for org/project/env management
 operations) or **environment-level** (for per-env operations
 including publishing). The Publishing API requires an
@@ -281,19 +268,6 @@ DID get** and infers the likely cause — e.g. "looks like an
 org-level client; the Publishing API requires env-level" — so the
 operator knows whether to re-login or fix their credential
 configuration.
-
-**Note on prior research artifacts:** a multi-hour investigation
-earlier on 2026-05-14 wrongly concluded the publishing scopes lived
-on the `https://api-webapp.sitecorecloud.io` resource server and
-that no scai-provisioned automation client had grants for them.
-Both conclusions were wrong: the agent had copied `.a` admin-tier
-scopes from a decoded Pages JWT instead of trying the `.t`
-tenant-tier variants the api-docs page also documented. The Auth0
-error "client has not been granted scopes" was literal — those
-specific (admin) scopes weren't granted, but the tenant variants
-were. Recorded here so future readers know to ignore commit
-messages and earlier doc revisions claiming the REST API needs
-operator-side client-grant work.
 
 ### `sitecore dbcleanup` (Database plugin) — ✅ replaced by `scai hygiene audit` + `scai hygiene cleanup` (shipped 2026-05-13)
 

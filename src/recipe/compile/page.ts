@@ -347,6 +347,14 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       allowScoped: true,
       mode: "delta",
       deltaDeviceDirective: false,
+      // The SHARED `__Renderings` wire form Pages itself writes:
+      // anchor-less `<r>` elements (document order) + the root
+      // `<p:da name="xsi" />` directive. The anchored partial-design
+      // delta form fails to place against the (typically empty)
+      // template standard-values base — operator-verified 2026-07-14
+      // against a Pages-authored shared layout.
+      deltaAnchors: false,
+      deltaSharedForm: true,
       ...layoutEncodingOptions(site, context),
     });
     if (layoutXml.length === 0) return;

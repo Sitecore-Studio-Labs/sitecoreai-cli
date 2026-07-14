@@ -995,13 +995,62 @@ describe("compilePageRecipe — layoutScope: shared", () => {
     expect(shared.language).toBeUndefined();
     expect(shared.version).toBeUndefined();
 
-    // No per-language Final Renderings copies — the shared layer is the
-    // ONLY layout write (Pages edits still land per-version on top).
+    // No per-language Final Renderings COPIES — the shared layer is the
+    // only layout write. The remaining FINAL_RENDERINGS ops are the
+    // guarded transition CLEARS (value "", clearWhenEquivalentTo set)
+    // that remove finals a previous versioned push wrote.
     const finalWrites = ir.operations.filter(
       (op): op is SetFieldOp =>
         op.op === "SetField" && (op as SetFieldOp).fieldId === LAYOUT_FIELDS.FINAL_RENDERINGS
     );
-    expect(finalWrites).toEqual([]);
+    expect(finalWrites).toHaveLength(2); // en + fr transition clears
+    for (const write of finalWrites) {
+      expect(write.value).toEqual({ kind: "string", value: "" });
+      expect(write.clearWhenEquivalentTo).toBeDefined();
+    }
+  });
+
+  it("emits guarded per-language __Final Renderings clears for the versioned → shared transition", () => {
+    const page = {
+      ...homePage,
+      layoutScope: "shared",
+      translations: {
+        fr: { fields: { MetaTitle: { shape: "text", value: "Bienvenue" } as const } },
+      },
+    } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+
+    const enClear = findSetField(ir.operations, "page-layout-clear-final:home@1:en");
+    const frClear = findSetField(ir.operations, "page-layout-clear-final:home@1:fr");
+    for (const [clear, language] of [
+      [enClear, "en"],
+      [frClear, "fr"],
+    ] as const) {
+      expect(clear.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
+      expect(clear.language).toBe(language);
+      expect(clear.version).toBe(1);
+      expect(clear.value).toEqual({ kind: "string", value: "" });
+    }
+
+    // The ownership guard is the byte-exact XML the VERSIONED emission of
+    // this same layout writes — what an earlier versioned push left in
+    // each language's Final Layout.
+    const versionedIr = compilePageRecipe(
+      { ...homePage, translations: page.translations },
+      CONTEXT
+    );
+    const versionedLayout = findSetField(versionedIr.operations, "page-layout:home@1:en");
+    if (versionedLayout.value.kind !== "string") throw new Error("expected string layout");
+    expect(enClear.clearWhenEquivalentTo).toBe(versionedLayout.value.value);
+    expect(frClear.clearWhenEquivalentTo).toBe(versionedLayout.value.value);
+  });
+
+  it("versioned (default) mode emits no transition clears", () => {
+    const ir = compilePageRecipe(homePage, CONTEXT);
+    const clears = ir.operations.filter(
+      (op) => op.op === "SetField" && op.label.startsWith("page-layout-clear-final:")
+    );
+    expect(clears).toEqual([]);
   });
 
   it('emits the Pages shared wire form: <p:da name="xsi"/> root directive, anchor-less renderings', () => {

@@ -26,7 +26,7 @@ import {
   WorkflowRecipeSchema,
 } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@/shared/uuid";
 
 /**
  * Compile a `WorkflowRecipe` to an Operation IR.

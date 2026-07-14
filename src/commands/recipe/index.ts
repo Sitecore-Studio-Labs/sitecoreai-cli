@@ -259,20 +259,24 @@ const createPushCommand = (): Command => {
     if (failed || conflicted) {
       const abortedRecipes = results.filter((r) => r.aborted);
       const errored = results.reduce((acc, r) => acc + r.summary.error, 0);
-      // Pull each aborted recipe's last action's reason / rollback summary
-      // so the top-level error message names which recipes failed and (if
-      // the action's reason is set) why. Truncated event logs in
-      // orchestrator stdout often hide the apply-error events; surfacing
-      // it here makes diagnosis cheap.
+      // Pull each aborted recipe's FAILING action (the executor stamps
+      // `status: "error"` + the error message onto the action that
+      // aborted the apply) so the top-level error names which op actually
+      // failed and why. Falling back to the last plan action was
+      // misleading — plan order isn't apply order, so it often quoted a
+      // benign trailing skip ("Field already at desired value") while
+      // the real apply-error hid in truncated orchestrator stdout.
       const abortDetails = abortedRecipes.map((r) => {
-        const lastAction = r.plan.actions[r.plan.actions.length - 1];
+        const failedAction =
+          r.plan.actions.find((a) => a.status === "error") ??
+          r.plan.actions[r.plan.actions.length - 1];
         const rollback = r.rollback
           ? ` rolled back ${r.rollback.rolledBack} of ${
               r.plan.actions.filter((a) => a.mutation).length
             } applied`
           : "";
-        return `${r.plan.recipeHandle}: ${lastAction?.operation.label ?? "(unknown op)"} — ${
-          lastAction?.reason ?? "apply error (see events[])"
+        return `${r.plan.recipeHandle}: ${failedAction?.operation.label ?? "(unknown op)"} — ${
+          failedAction?.reason ?? "apply error (see events[])"
         }${rollback}`;
       });
       // Conflict surface — one line per (recipe, op) that the three-way

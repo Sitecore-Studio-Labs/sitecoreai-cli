@@ -12,10 +12,18 @@ import { fallbackLanguageIsoFor } from "../../../../src/sites/api/languages";
  */
 
 const makeClient = (
-  existing: Array<{ iso?: string; regionalIsoCode?: string; fallbackLanguageIso?: string | null }>
+  existing: Array<{ iso?: string; regionalIsoCode?: string; fallbackLanguageIso?: string | null }>,
+  supported: Array<{
+    name?: string | null;
+    languageCode?: string | null;
+    regionCode?: string | null;
+  }> = []
 ) => {
   const client = {
     listLanguages: vi.fn().mockResolvedValue(existing),
+    // Default [] = "catalog unknown" — the ensure treats an empty catalog
+    // as no gate, so the pre-catalog tests keep their semantics.
+    listSupportedLanguages: vi.fn().mockResolvedValue(supported),
     addLanguage: vi.fn().mockResolvedValue({}),
     updateLanguage: vi.fn().mockResolvedValue(undefined),
   } as unknown as SitesApiClient;
@@ -74,5 +82,66 @@ describe("ensureEnvironmentLanguages — fallback wiring", () => {
     vi.mocked(client.updateLanguage).mockRejectedValue(new Error("403"));
     await expect(ensureEnvironmentLanguages(client, ["da-DK"])).resolves.toBeUndefined();
     expect(client.addLanguage).toHaveBeenCalledWith("da-DK");
+  });
+});
+
+describe("ensureEnvironmentLanguages — supported-catalog gate", () => {
+  const CATALOG = [
+    { name: "en", languageCode: "en", regionCode: "" },
+    { name: "de-DE", languageCode: "de", regionCode: "DE" },
+  ];
+
+  it("registers only catalog codes — a base admission code (de) is skipped, its regional (de-DE) lands", async () => {
+    // The localize fan-out legitimately scopes a step to bare `de` (base-
+    // fallback content for a brand declaring de-DE) — provisioning must
+    // NOT try to register it: the Sites API rejects it and aborts the push.
+    const client = makeClient([{ iso: "en" }], CATALOG);
+    await ensureEnvironmentLanguages(client, ["de", "de-DE"]);
+
+    const addOrder = vi.mocked(client.addLanguage).mock.calls.map((c) => c[0]);
+    expect(addOrder).toEqual(["de-DE"]);
+    // No fallback wiring for the skipped code either.
+    const updated = vi.mocked(client.updateLanguage).mock.calls.map((c) => c[0]);
+    expect(updated).not.toContain("de");
+  });
+
+  it("a regional catalog entry does NOT make its bare base registrable", async () => {
+    const client = makeClient(
+      [{ iso: "en" }],
+      [{ name: "de-DE", languageCode: "de", regionCode: "DE" }]
+    );
+    await ensureEnvironmentLanguages(client, ["de"]);
+    expect(client.addLanguage).not.toHaveBeenCalled();
+  });
+
+  it("an unreadable catalog degrades to per-code tolerance: an unregistrable code skips, the rest land", async () => {
+    const client = makeClient([{ iso: "en" }]);
+    vi.mocked(client.listSupportedLanguages).mockRejectedValue(new Error("500"));
+    vi.mocked(client.addLanguage).mockImplementation(async (code: string) => {
+      if (code === "de") {
+        throw new Error("The provided language 'de' with region code '' is not supported.");
+      }
+      return {} as never;
+    });
+
+    await expect(ensureEnvironmentLanguages(client, ["de", "de-DE"])).resolves.toBeUndefined();
+    const addOrder = vi.mocked(client.addLanguage).mock.calls.map((c) => c[0]);
+    expect(addOrder).toEqual(["de", "de-DE"]);
+    const updated = vi.mocked(client.updateLanguage).mock.calls.map((c) => c[0]);
+    expect(updated).not.toContain("de");
+    expect(updated).toContain("de-DE");
+  });
+
+  it("a genuine addLanguage failure still throws", async () => {
+    const client = makeClient([{ iso: "en" }], CATALOG);
+    vi.mocked(client.addLanguage).mockRejectedValue(new Error("502 upstream exploded"));
+    await expect(ensureEnvironmentLanguages(client, ["de-DE"])).rejects.toThrow("502");
+  });
+
+  it("does not fetch the catalog when nothing is missing", async () => {
+    const client = makeClient([{ iso: "en" }, { iso: "de", regionalIsoCode: "de-DE" }], CATALOG);
+    await ensureEnvironmentLanguages(client, ["en", "de-DE"]);
+    expect(client.listSupportedLanguages).not.toHaveBeenCalled();
+    expect(client.addLanguage).not.toHaveBeenCalled();
   });
 });

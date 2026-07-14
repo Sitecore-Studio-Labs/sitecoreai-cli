@@ -73,6 +73,7 @@ const makeStubSitesClient = (overrides: Partial<SitesApiClient> = {}): SitesApiC
   listSiteTemplates: vi.fn(async (): Promise<SiteTemplate[]> => []),
   listCollections: vi.fn(async (): Promise<SiteCollection[]> => []),
   listLanguages: vi.fn(async (): Promise<Language[]> => []),
+  listSupportedLanguages: vi.fn(async () => []),
   addLanguage: vi.fn(
     async (_languageCode: string): Promise<Language> =>
       ({

@@ -3,10 +3,12 @@ import { getJobStatus, type Job } from "../../sites/api/jobs";
 import {
   addLanguage,
   listLanguages,
+  listSupportedLanguages,
   parseLanguageCode,
   updateLanguage,
   type EditLanguageInput,
   type Language,
+  type SupportedLanguage,
 } from "../../sites/api/languages";
 import {
   createSite,
@@ -58,6 +60,14 @@ export interface SitesApiClient {
   listCollections(): Promise<SiteCollection[]>;
   listLanguages(): Promise<Language[]>;
   /**
+   * The languages SitecoreAI *supports* — the catalog you can add from
+   * (`GET /api/v1/languages/supported`). The provisioning ensure gates
+   * `addLanguage` on it: the Sites API rejects codes outside the
+   * catalog (e.g. bare base codes like `de` — only `de-DE` etc. are
+   * registrable), and attempting one aborts the push.
+   */
+  listSupportedLanguages(): Promise<SupportedLanguage[]>;
+  /**
    * Add a language to the environment by ISO code (e.g. `"en"`, `"da"`,
    * `"fr-CA"`). The Sites API distinguishes language code from
    * regional code; the recipe push pipeline only needs to declare the
@@ -106,6 +116,7 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
   listSiteTemplates: () => listSiteTemplates(options),
   listCollections: () => listCollections(options),
   listLanguages: () => listLanguages(options),
+  listSupportedLanguages: () => listSupportedLanguages(options),
   addLanguage: (languageCode) => addLanguage(options, parseLanguageCode(languageCode)),
   updateLanguage: (isoCode, input) => updateLanguage(options, isoCode, input),
 });
@@ -122,4 +133,5 @@ export type {
   Site,
   SiteCollection,
   SiteTemplate,
+  SupportedLanguage,
 };

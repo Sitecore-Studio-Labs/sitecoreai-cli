@@ -584,6 +584,7 @@ const makeSitesClient = (
     listSiteTemplates: async () => [],
     listCollections: async () => [],
     listLanguages: async () => [],
+    listSupportedLanguages: async () => [],
     addLanguage: async () => ({}) as never,
     ...overrides,
   };

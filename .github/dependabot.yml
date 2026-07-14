@@ -13,6 +13,23 @@ updates:
     # `dev` — route dependency PRs there so they flow through the normal
     # dev → main merge, not straight at the release branch.
     target-branch: dev
+    ignore:
+      # mime ≥4 is ESM-only; dist/ is CommonJS and require()s it, so a
+      # major bump crashes every CJS consumer (twice now: dependabot #211
+      # → 0.25.0, dependabot #266 → 0.32.0, the second taking down the
+      # orchestrator's dev environment). The smoke guard now reproduces
+      # strict-CJS consumers (--no-experimental-require-module), but
+      # don't keep opening PRs that can never merge. Remove both entries
+      # only when dist ships ESM (or dual).
+      - dependency-name: "mime"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/mime"
+        update-types: ["version-update:semver-major"]
+      # Same class: uuid ≥12 dropped CJS; dist/recipe/items/guids.js
+      # require()s it. v11 is the last dual-format major (v5 output is
+      # identical across majors — RFC 4122).
+      - dependency-name: "uuid"
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
     commit-message:

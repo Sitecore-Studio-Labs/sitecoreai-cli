@@ -40,11 +40,7 @@ import {
  *     broader content-text scan when this audit returns nothing.
  */
 export type TemplateReferenceKind =
-  | "primary-template"
-  | "base-template"
-  | "insert-options"
-  | "branch-source"
-  | "datasource-template";
+  "primary-template" | "base-template" | "insert-options" | "branch-source" | "datasource-template";
 
 export interface AuditTemplateDependenciesOptions extends HygieneCommonOptions {
   /** Target template ID — GUID in any standard form ({…}, dashes, flat). Required. */

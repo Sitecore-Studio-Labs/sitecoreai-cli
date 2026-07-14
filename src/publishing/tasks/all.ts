@@ -112,8 +112,7 @@ const findLastWholeEnvPublish = async (
   // object.
   const wholeEnv = completed.filter((j) => {
     const xmc = j.raw.options?.xmc as
-      | { site?: unknown; type?: string; items?: unknown }
-      | undefined;
+      { site?: unknown; type?: string; items?: unknown } | undefined;
     if (!xmc) return false;
     if (xmc.items) return false;
     return Boolean(xmc.site) || xmc.type === "Site";
@@ -173,8 +172,7 @@ const printPublishAllPreflight = async (
     const inflight = await listPublishJobs(client, { statuses: ["Queued", "Running"] });
     const inflightWholeEnv = inflight.find((j) => {
       const xmc = j.raw.options?.xmc as
-        | { site?: unknown; type?: string; items?: unknown }
-        | undefined;
+        { site?: unknown; type?: string; items?: unknown } | undefined;
       if (!xmc || xmc.items) return false;
       return Boolean(xmc.site) || xmc.type === "Site";
     });

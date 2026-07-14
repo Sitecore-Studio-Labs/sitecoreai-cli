@@ -21,10 +21,7 @@ import type { Recipe } from "../schema/recipe";
  * `datasource-item` + `page-item` cover seeded content (`CreateOnly`).
  */
 export type OpPurpose =
-  | "template-structure"
-  | "composition-structure"
-  | "datasource-item"
-  | "page-item";
+  "template-structure" | "composition-structure" | "datasource-item" | "page-item";
 
 const PURPOSE_BY_RECIPE_KIND: Record<Recipe["kind"], OpPurpose> = {
   // Component sections own organisational folders that components live

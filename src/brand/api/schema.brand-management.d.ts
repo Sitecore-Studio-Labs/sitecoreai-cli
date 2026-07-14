@@ -337,8 +337,7 @@ export interface components {
        * @description An array of references associated with the brand kit subsection.
        */
       references?:
-        | components["schemas"]["CreateBrandKitSectionFieldReferenceModelRequest"][]
-        | null;
+        components["schemas"]["CreateBrandKitSectionFieldReferenceModelRequest"][] | null;
       /**
        * Deletable
        * @description Whether the subsection can be deleted.

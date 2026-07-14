@@ -80,8 +80,7 @@ const setup = (params: {
       // resolution; (b) the cleanup uses _path CONTAINS for descendant
       // enumeration. Distinguish by the criteria field.
       const stmt = input.searchStatement as
-        | { criteria?: { field?: string; value?: string }; subStatements?: unknown[] }
-        | undefined;
+        { criteria?: { field?: string; value?: string }; subStatements?: unknown[] } | undefined;
       const field = stmt?.criteria?.field;
       const value = stmt?.criteria?.value;
       if (field === "_fullpath") {
@@ -396,8 +395,7 @@ describe("cleanup site-residue — failure + multi-finding + text mode", () => {
     (client.search as ReturnType<typeof vi.fn>).mockImplementation(
       async (input: { searchStatement?: unknown }) => {
         const stmt = input.searchStatement as
-          | { criteria?: { field?: string; value?: string } }
-          | undefined;
+          { criteria?: { field?: string; value?: string } } | undefined;
         const fieldName = stmt?.criteria?.field;
         const value = stmt?.criteria?.value;
         if (fieldName === "_fullpath") {

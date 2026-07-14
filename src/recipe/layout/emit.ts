@@ -126,6 +126,25 @@ export interface LayoutEmitContext {
    */
   deltaDeviceDirective?: boolean;
   /**
+   * Whether delta mode emits per-placement position anchors
+   * (`p:before="*"` / `p:after="…"`). Defaults to true — the SXA
+   * Partial Design pipeline's form, also what page `__Final
+   * Renderings` deltas carry. Page `__Renderings` (SHARED layout,
+   * `layoutScope: "shared"`) must pass false: operator-verified
+   * Pages-authored shared layouts carry anchor-less `<r>` elements
+   * (placement order is document order), plus a root-level
+   * `<p:da name="xsi" />` directive — pass `deltaSharedForm` to emit
+   * that too. Anchored deltas against the (typically empty) template
+   * standard-values base fail to place. Ignored in canonical mode.
+   */
+  deltaAnchors?: boolean;
+  /**
+   * Emit the `<p:da name="xsi" />` root directive as the first child of
+   * the delta root — the form XM Cloud Pages writes for the SHARED
+   * `__Renderings` delta. Defaults to false. Ignored in canonical mode.
+   */
+  deltaSharedForm?: boolean;
+  /**
    * Optional resolver mapping (componentHandle, variantName) to the
    * headless Variant Definition item's refKey GUID. When it returns a
    * GUID, the placement's `FieldNames` rendering parameter carries the
@@ -344,14 +363,34 @@ const emitDelta = (
   placeholderEntries: ReadonlyArray<[string, readonly ComponentPlacementInput[]]>,
   ctx: LayoutEmitContext
 ): string => {
+  const anchors = ctx.deltaAnchors ?? true;
   const elements: string[] = (ctx.deltaDeviceDirective ?? true) ? [`<p:da name="l" />`] : [];
   for (const [placeholderKey, placements] of placeholderEntries) {
     let prevUid: string | null = null;
     placements.forEach((placement, idx) => {
       const r = resolvePlacement(placement, placeholderKey, idx, ctx);
+
+      // Convert canonical `ds="…"` → namespaced `s:ds="…"`. The dsAttr
+      // string already includes a leading space + `ds=` prefix, so we
+      // splice the `s:` prefix in.
+      const sDsAttr = r.dsAttr ? r.dsAttr.replace(/^ ds=/, " s:ds=") : "";
+      // s:par is always emitted in delta form (canonical omits empty par).
+      const sParAttr = ` s:par="${escapeXmlAttribute(r.parValue)}"`;
+      const sPhAttr = ` s:ph="${escapeXmlAttribute(r.placeholderKey)}"`;
+
+      if (!anchors) {
+        // Anchor-less form (page SHARED `__Renderings`): placement order
+        // is document order. Attribute order mirrors the wire form XM
+        // Cloud Pages writes (uid, s:ds, s:id, s:par, s:ph) so a pushed
+        // value round-trips byte-for-byte against Pages rewrites.
+        elements.push(
+          `<r uid="${r.uid}"${sDsAttr} s:id="${r.renderingId}"${sParAttr}${sPhAttr} />`
+        );
+        return;
+      }
+
       const isFirst = idx === 0;
       const isLast = idx === placements.length - 1;
-
       let anchorAttr: string;
       if (isFirst) {
         anchorAttr = ` p:before="*"`;
@@ -366,18 +405,12 @@ const emitDelta = (
         anchorAttr = ` p:after="*[1=2]"`;
       }
 
-      // Convert canonical `ds="…"` → namespaced `s:ds="…"`. The dsAttr
-      // string already includes a leading space + `ds=` prefix, so we
-      // splice the `s:` prefix in.
-      const sDsAttr = r.dsAttr ? r.dsAttr.replace(/^ ds=/, " s:ds=") : "";
-      // s:par is always emitted in delta form (canonical omits empty par).
-      const sParAttr = ` s:par="${escapeXmlAttribute(r.parValue)}"`;
-
       elements.push(
-        `<r uid="${r.uid}"${anchorAttr} s:ph="${escapeXmlAttribute(r.placeholderKey)}"${sDsAttr} s:id="${r.renderingId}"${sParAttr} />`
+        `<r uid="${r.uid}"${anchorAttr}${sPhAttr}${sDsAttr} s:id="${r.renderingId}"${sParAttr} />`
       );
       prevUid = r.uid;
     });
   }
-  return `<r xmlns:p="p" xmlns:s="s" p:p="1"><d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
+  const rootDirective = ctx.deltaSharedForm ? `<p:da name="xsi" />` : "";
+  return `<r xmlns:p="p" xmlns:s="s" p:p="1">${rootDirective}<d id="${formatGuidCurly(ctx.deviceId)}">${elements.join("")}</d></r>`;
 };

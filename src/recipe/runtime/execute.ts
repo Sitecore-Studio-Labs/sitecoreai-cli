@@ -469,6 +469,42 @@ const isAlreadyAddedLanguageError = (err: unknown): boolean => {
 };
 
 /**
+ * True when `addLanguage` rejected the CODE itself as unregistrable —
+ * the Sites API's "The provided language 'de' with region code '' is
+ * not supported" shape. Reuses the unavailable-language matcher (same
+ * message family). Backstop for the supported-catalog gate in
+ * `ensureEnvironmentLanguages` when the catalog itself can't be read.
+ */
+const isUnsupportedLanguageAddError = (err: unknown): boolean =>
+  isUnavailableLanguageError(err instanceof Error ? err.message : String(err));
+
+/**
+ * Lowercased registrable codes from the environment's supported-language
+ * catalog. `name` is the canonical form (`de-DE`; bare `en`/`da` for the
+ * base entries Sitecore ships); when absent, compose
+ * `languageCode-regionCode`. A REGIONAL entry's bare `languageCode` is
+ * deliberately NOT admitted — `de-DE` in the catalog does not make bare
+ * `de` registrable.
+ */
+const supportedLanguageCodeSet = (
+  catalog: ReadonlyArray<{
+    name?: string | null;
+    languageCode?: string | null;
+    regionCode?: string | null;
+  }>
+): Set<string> => {
+  const out = new Set<string>();
+  for (const entry of catalog) {
+    const composed = entry.languageCode
+      ? `${entry.languageCode}${entry.regionCode ? `-${entry.regionCode}` : ""}`
+      : undefined;
+    const code = entry.name?.trim() || composed;
+    if (code) out.add(code.toLowerCase());
+  }
+  return out;
+};
+
+/**
  * True when an apply-time error means the op's target language has no
  * registered version stack on the environment — i.e. that language isn't
  * provisioned. The Authoring API rejects a version write (AddItemVersion /
@@ -552,12 +588,36 @@ export const ensureEnvironmentLanguages = async (
   const ordered = [...languages].sort(
     (a, b) => a.split("-").length - b.split("-").length || a.localeCompare(b)
   );
+  // Registrable-code gate: the Sites API rejects `addLanguage` for codes
+  // outside its supported catalog, aborting the push. The localize
+  // fan-out legitimately scopes pushes to BASE admission codes (a brand
+  // declaring `de-DE` rides a `de` step so base-authored fallback
+  // content lands where the base is registered) — but bare bases other
+  // than the ones Sitecore ships (`en`, `da`) are NOT registrable, and
+  // provisioning must register exactly the supported codes and skip the
+  // rest, matching the installed-languages filter's semantics for them.
+  // The catalog is only fetched when something is actually missing; an
+  // unreadable/empty catalog degrades to no gate — the per-code
+  // tolerance in the loop below still keeps an unregistrable code from
+  // aborting the push.
+  const missing = ordered.filter((code) => !present.has(code.toLowerCase()));
+  let supported: Set<string> | undefined;
+  if (missing.length > 0) {
+    try {
+      const catalog = await sitesClient.listSupportedLanguages();
+      supported = catalog.length > 0 ? supportedLanguageCodeSet(catalog) : undefined;
+    } catch {
+      supported = undefined;
+    }
+  }
   const added: string[] = [];
   for (const code of ordered) {
     if (present.has(code.toLowerCase())) continue;
+    if (supported && !supported.has(code.toLowerCase())) continue;
     try {
       await sitesClient.addLanguage(code);
     } catch (err) {
+      if (isUnsupportedLanguageAddError(err)) continue;
       if (!isAlreadyAddedLanguageError(err)) throw err;
     }
     present.add(code.toLowerCase());

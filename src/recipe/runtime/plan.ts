@@ -1105,6 +1105,117 @@ const planUpdateOp = ({
   };
 };
 
+/**
+ * Plan a shared-layout transition clear — a SetField carrying
+ * `clearWhenEquivalentTo` (see `SetFieldOpSchema`). Clears the op's
+ * (language, version) `__Final Renderings` cell ONLY while its current
+ * value is layout-equivalent to the XML the recipe's own versioned
+ * emission writes; an author-edited final (Pages writes author changes
+ * into Final Layout) fails the equivalence check and is preserved with
+ * an explicit skip reason.
+ *
+ * Reads the target cell explicitly via `getItem({ itemId, language,
+ * version })` — the generic drift read is default-language only, so a
+ * final edited in just one language would otherwise be judged by
+ * another language's value and clobbered. The language-scoped snapshot
+ * is returned on the action so rollback restores the exact cell.
+ */
+const planGuardedLayoutClear = async ({
+  index,
+  op,
+  remote,
+  client,
+  createdThisRun,
+}: {
+  index: number;
+  op: SetFieldOp;
+  remote: RemoteItem | null;
+  client: AuthoringApiClient;
+  createdThisRun?: ReadonlySet<string>;
+}): Promise<PlannedAction> => {
+  const expected = op.clearWhenEquivalentTo;
+  if (expected === undefined) {
+    throw createScaiError(
+      `planGuardedLayoutClear requires clearWhenEquivalentTo on '${op.label}'.`,
+      "UNKNOWN"
+    );
+  }
+  // An item created earlier in this push has no per-language finals to
+  // clear — skip without paying the language-scoped read.
+  if (createdThisRun?.has(op.itemRefKey)) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: "Item created this push — no prior __Final Renderings to clear.",
+    };
+  }
+  if (!remote) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `Target item (refKey ${op.itemRefKey}) not yet captured/created.`,
+    };
+  }
+  const cell = await client.getItem(
+    { itemId: remote.itemId },
+    {
+      ...(op.language !== undefined && { language: op.language }),
+      ...(op.version !== undefined && { version: op.version }),
+    }
+  );
+  const current = cell
+    ? lookupField(cell, op.fieldId, op.fieldName, undefined, undefined)
+    : undefined;
+  if (!cell || current === undefined || current.value === "") {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `No __Final Renderings to clear in '${op.language ?? "default"}'.`,
+    };
+  }
+  if (!layoutXmlEquivalent(current.value, expected)) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason:
+        `__Final Renderings in '${op.language ?? "default"}' differs from the recipe's ` +
+        "versioned layout — author-edited Final Layout preserved. Clear it in Pages " +
+        "(or reset the Final Layout) to adopt the shared layout for this language.",
+    };
+  }
+  const fields: FieldValue[] = [
+    {
+      fieldId: op.fieldId,
+      fieldName: op.fieldName,
+      language: op.language,
+      version: op.version,
+      value: { kind: "string", value: "" },
+    },
+  ];
+  return {
+    index,
+    operation: op,
+    status: "update",
+    diff: [
+      {
+        fieldId: op.fieldId,
+        before: current.value,
+        after: "",
+        language: op.language,
+        version: op.version,
+      },
+    ],
+    mutation: { kind: "updateItem", input: toUpdateItemInput(remote.itemId, fields) },
+    // The language-scoped cell, not the default-language `remote` —
+    // rollback's inverse restores the value this clear actually removed.
+    snapshot: cell,
+  };
+};
+
 const setFieldDesired = (op: SetFieldOp): FieldValue[] => [
   {
     fieldId: op.fieldId,
@@ -1441,6 +1552,12 @@ export const buildAction = async ({
           mediaFallbacks,
         });
       case "SetField":
+        // Shared-layout transition clears own their whole plan path —
+        // the ownership guard needs the op's exact (language, version)
+        // cell, which the generic default-language read can't supply.
+        if (op.clearWhenEquivalentTo !== undefined) {
+          return planGuardedLayoutClear({ index, op, remote, client, createdThisRun });
+        }
         return planUpdateOp({
           index,
           op,
@@ -1495,7 +1612,10 @@ export const buildAction = async ({
         return planMediaUpload(index, op, capturedItemIds, mediaFallbacks);
     }
   })();
-  return { ...action, snapshot: remote };
+  // A planner that captured its own snapshot (e.g. the guarded layout
+  // clear's language-scoped cell) keeps it — the default-language
+  // `remote` would point rollback at the wrong (language, version).
+  return { ...action, snapshot: action.snapshot !== undefined ? action.snapshot : remote };
 };
 
 /**

@@ -257,6 +257,13 @@ export const PageRecipeSchema = z.object({
    * Simple mode only — story mode's per-version layouts are inherently
    * versioned, so `"shared"` alongside `versions` is rejected
    * (`INPUT_INVALID`).
+   *
+   * Flipping an already-pushed page from versioned to `"shared"` is
+   * supported: the compiler also emits guarded per-language clears of
+   * `__Final Renderings` (which would otherwise override the shared
+   * layer at render time). A language's final is cleared only while it
+   * still matches the recipe's own versioned layout; author-edited
+   * finals are preserved and reported as plan skips.
    */
   layoutScope: z.enum(["versioned", "shared"]).optional(),
   /**

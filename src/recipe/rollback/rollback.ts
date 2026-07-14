@@ -325,7 +325,21 @@ export const inverseOf = (
 
   return {
     kind: "updateItem",
-    input: { itemId: action.mutation.input.itemId, fields: priorFields },
+    // Carry the forward input's language/version: the Authoring API
+    // writes fields at the INPUT-level language/version (per-field
+    // values are not on the wire), so an inverse without them would
+    // restore a localized write into the default language's latest
+    // version — smearing one language's prior value over another.
+    input: {
+      itemId: action.mutation.input.itemId,
+      ...(action.mutation.input.language !== undefined && {
+        language: action.mutation.input.language,
+      }),
+      ...(action.mutation.input.version !== undefined && {
+        version: action.mutation.input.version,
+      }),
+      fields: priorFields,
+    },
   };
 };
 

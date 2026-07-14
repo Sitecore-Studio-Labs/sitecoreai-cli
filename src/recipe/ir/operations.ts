@@ -212,6 +212,25 @@ export const SetFieldOpSchema = z.object({
    * recipe itself creates leave this undefined.
    */
   latePath: z.string().min(1).optional(),
+  /**
+   * Shared-layout transition guard (`layoutScope: "shared"` on a page
+   * whose earlier pushes wrote per-language `__Final Renderings`).
+   *
+   * When set, this SetField CLEARS the field (its `value` is the empty
+   * string) and applies ONLY while the tenant's current value is
+   * layout-equivalent to this XML — the exact per-language final this
+   * recipe's own versioned emission writes. Equivalence means the final
+   * is still recipe-owned; any other value is an author edit (Pages
+   * writes author changes into Final Layout), so the clear is skipped
+   * and the edit survives. Without the clear, stale per-language finals
+   * override the shared `__Renderings` at render time and a versioned →
+   * shared flip is invisible.
+   *
+   * Planned via `planGuardedLayoutClear`, which reads the op's exact
+   * (language, version) cell — the generic drift read is
+   * default-language only and would mis-attribute ownership.
+   */
+  clearWhenEquivalentTo: z.string().min(1).optional(),
 });
 
 export const SetBaseTemplatesOpSchema = z.object({

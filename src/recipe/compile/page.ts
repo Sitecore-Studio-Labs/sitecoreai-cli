@@ -269,25 +269,23 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
    * cell. No-op when the layout has no placements after compile (keeps
    * round-trips clean — an empty layout doesn't write the field).
    */
-  const emitLayout = (
-    layout: Layout,
-    language: string,
-    version: number,
-    labelTag: string
-  ): void => {
-    // Delta form — the wire shape XM Cloud Pages itself writes to
-    // `__Final Renderings` on every author save (operator-verified
-    // against multiple working tenant pages). The delta merges over the
-    // page template's standard-values layout, which supplies the
-    // `l="{JSON layout}"` device pointer; an earlier canonical
-    // full-replace iteration had to carry `l` itself and still didn't
-    // match what the Pages editor expects. No `<p:da name="l" />`
-    // directive (deltaDeviceDirective: false) — Pages-authored page
-    // deltas never carry it, and it would sever the inherited layout
-    // pointer. Scoped datasources ride as `ds="local:/Data/<slot>"`
-    // page-relative paths (no scopedDatasourceIdFor), matching both the
-    // materialised `<page>/Data/<slot>` items and Pages' own convention.
-    const layoutXml = emitLayoutXml(layout, {
+  // Delta form — the wire shape XM Cloud Pages itself writes to
+  // `__Final Renderings` on every author save (operator-verified
+  // against multiple working tenant pages). The delta merges over the
+  // page template's standard-values layout, which supplies the
+  // `l="{JSON layout}"` device pointer; an earlier canonical
+  // full-replace iteration had to carry `l` itself and still didn't
+  // match what the Pages editor expects. No `<p:da name="l" />`
+  // directive (deltaDeviceDirective: false) — Pages-authored page
+  // deltas never carry it, and it would sever the inherited layout
+  // pointer. Scoped datasources ride as `ds="local:/Data/<slot>"`
+  // page-relative paths (no scopedDatasourceIdFor), matching both the
+  // materialised `<page>/Data/<slot>` items and Pages' own convention.
+  //
+  // Extracted so the shared-layout transition clears can compute the
+  // byte-exact XML the versioned path writes (their ownership guard).
+  const versionedLayoutXml = (layout: Layout): string =>
+    emitLayoutXml(layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
       renderingIdFor: (handle) => renderingId(site, handle),
@@ -301,6 +299,14 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       // three layout-holders encode identically.
       ...layoutEncodingOptions(site, context),
     });
+
+  const emitLayout = (
+    layout: Layout,
+    language: string,
+    version: number,
+    labelTag: string
+  ): void => {
+    const layoutXml = versionedLayoutXml(layout);
     if (layoutXml.length === 0) return;
     fieldOps.push({
       op: "SetField",
@@ -368,6 +374,37 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     } satisfies SetFieldOp);
   };
 
+  /**
+   * Transition ops for a page flipping versioned → shared: one guarded
+   * clearing SetField per recipe-declared language's `__Final
+   * Renderings`. An earlier push of this recipe with versioned scope
+   * wrote the item-level layout into every declared language's Final
+   * Layout; those per-language finals override the shared `__Renderings`
+   * at render time, so without clearing them the flip is invisible. The
+   * guard (`clearWhenEquivalentTo`) carries the exact XML the versioned
+   * emission writes — the planner clears a language's final only while
+   * it is still layout-equivalent to it (recipe-owned) and preserves
+   * author-edited finals (see `planGuardedLayoutClear`).
+   */
+  const emitSharedLayoutTransitionClears = (layout: Layout): void => {
+    const expected = versionedLayoutXml(layout);
+    if (expected.length === 0) return;
+    const languages = [...new Set([DEFAULT_LANGUAGE, ...Object.keys(recipe.translations ?? {})])];
+    for (const language of languages) {
+      fieldOps.push({
+        op: "SetField",
+        policy,
+        label: `page-layout-clear-final:${recipe.handle}:${language}`,
+        itemRefKey,
+        fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
+        language,
+        version: DEFAULT_VERSION,
+        value: { kind: "string", value: "" },
+        clearWhenEquivalentTo: expected,
+      } satisfies SetFieldOp);
+    }
+  };
+
   const emitters: PageEmitters = {
     recipe,
     policy,
@@ -377,6 +414,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     emitFields,
     emitLayout,
     emitSharedLayout,
+    emitSharedLayoutTransitionClears,
   };
   if (isStory) emitStoryVersions(emitters);
   else emitSimpleMode(emitters);
@@ -743,6 +781,11 @@ interface PageEmitters {
   emitLayout: (layout: Layout, language: string, version: number, labelTag: string) => void;
   /** Shared-layout emitter (`layoutScope: "shared"`) — one `__Renderings` write. */
   emitSharedLayout: (layout: Layout) => void;
+  /**
+   * Versioned → shared transition — guarded per-language
+   * `__Final Renderings` clears (see `emitSharedLayoutTransitionClears`).
+   */
+  emitSharedLayoutTransitionClears: (layout: Layout) => void;
 }
 
 /**
@@ -873,8 +916,16 @@ const emitSimpleMode = (e: PageEmitters): void => {
     labelTag: DEFAULT_LANGUAGE,
   });
   if (recipe.layout !== undefined) {
-    if (sharedLayout) e.emitSharedLayout(recipe.layout);
-    else e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+    if (sharedLayout) {
+      e.emitSharedLayout(recipe.layout);
+      // Versioned → shared transition: an earlier versioned push wrote
+      // this layout into every declared language's `__Final Renderings`,
+      // which would override the shared layer at render time. Guarded
+      // clears remove exactly those recipe-owned finals.
+      e.emitSharedLayoutTransitionClears(recipe.layout);
+    } else {
+      e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+    }
   }
   for (const [language, translation] of Object.entries(recipe.translations ?? {})) {
     e.versionOps.push(addVersionOp(e, language, DEFAULT_VERSION));

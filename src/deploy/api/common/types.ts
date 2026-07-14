@@ -31,12 +31,7 @@ export type DeployProject = {
  * never compare the raw `provisioningStatus` number directly.
  */
 export type DeployEnvironmentProvisioningStatus =
-  | "unprovisioned"
-  | "provisioning"
-  | "provisioned"
-  | "failed"
-  | "deleting"
-  | "unknown";
+  "unprovisioned" | "provisioning" | "provisioned" | "failed" | "deleting" | "unknown";
 
 export type DeployEnvironment = {
   id?: string;

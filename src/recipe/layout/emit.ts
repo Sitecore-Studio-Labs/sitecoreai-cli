@@ -47,9 +47,7 @@ export interface ComponentPlacementInput {
   variant?: string;
   params?: Record<string, string>;
   datasourceRef?:
-    | { kind: "shared"; handle: string }
-    | { kind: "scoped"; slot: string }
-    | { kind: "none" };
+    { kind: "shared"; handle: string } | { kind: "scoped"; slot: string } | { kind: "none" };
   /**
    * Nested placements (schema-legal on any placement). ONLY a
    * `PageRecipe` layout can host them — `compilePageRecipe` flattens

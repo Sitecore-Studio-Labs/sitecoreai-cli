@@ -132,8 +132,7 @@ export type ScopeTokenVerificationFailure =
     };
 
 export type ScopeTokenVerification =
-  | { ok: true; payload: ScopeTokenPayload }
-  | ScopeTokenVerificationFailure;
+  { ok: true; payload: ScopeTokenPayload } | ScopeTokenVerificationFailure;
 
 /**
  * Verify a scope token against the operator's current request. The

@@ -124,8 +124,7 @@ const probeEnvironment = async (
     return { kind: "skipped", reason: "Missing environment ID." };
   }
   const dep = (await fetchEnvironmentDeployments(apiOptions, envId)) as
-    | { data?: unknown[]; deployments?: unknown[] }
-    | unknown[];
+    { data?: unknown[]; deployments?: unknown[] } | unknown[];
   const list = Array.isArray(dep)
     ? (dep as Array<Record<string, unknown>>)
     : ((dep?.data as Array<Record<string, unknown>>) ??

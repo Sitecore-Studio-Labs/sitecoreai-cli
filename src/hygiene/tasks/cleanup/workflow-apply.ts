@@ -75,11 +75,7 @@ export interface CleanupWorkflowApplyOptions extends HygieneCommonOptions {
 }
 
 export type WorkflowApplyActionStatus =
-  | "applied"
-  | "what-if"
-  | "failed"
-  | "skipped-already-attached"
-  | "skipped-template-mismatch";
+  "applied" | "what-if" | "failed" | "skipped-already-attached" | "skipped-template-mismatch";
 
 export interface WorkflowApplyAction {
   itemId: string;

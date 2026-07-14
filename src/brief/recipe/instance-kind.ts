@@ -506,8 +506,7 @@ const assertNoPolicyError = (instanceChange: RecipeChange, ref: KindRef): void =
   if (instanceChange.meta?.policyError !== true) return;
   const errors =
     (instanceChange.meta?.policyErrors as
-      | Array<{ path: string; classification: string }>
-      | undefined) ?? [];
+      Array<{ path: string; classification: string }> | undefined) ?? [];
   throw createScaiError(
     `Brief "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
     "POLICY_DENIED",

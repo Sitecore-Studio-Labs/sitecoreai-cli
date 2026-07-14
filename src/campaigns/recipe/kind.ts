@@ -335,8 +335,7 @@ const assertNoPolicyError = (plan: RecipePlan, ref: KindRef): void => {
   if (!policyErrorChange) return;
   const errors =
     (policyErrorChange.meta?.policyErrors as
-      | Array<{ path: string; classification: string }>
-      | undefined) ?? [];
+      Array<{ path: string; classification: string }> | undefined) ?? [];
   throw createScaiError(
     `Campaign "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
     "POLICY_DENIED",
@@ -458,8 +457,8 @@ const addProjectMembers = async (
 ): Promise<void> => {
   const members =
     (projectChange.meta?.members as
-      | Array<{ authorId: string; role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER" }>
-      | undefined) ?? [];
+      Array<{ authorId: string; role?: "ADMIN" | "EDITOR" | "VIEWER" | "MEMBER" }> | undefined) ??
+    [];
   if (members.length === 0) return;
   const ensured = members.some((m) => m.role === "ADMIN")
     ? members
@@ -890,8 +889,7 @@ const writeTaskChange = async (
     // fields (id, org_id, start_date, …) are present, then override the
     // recipe-owned fields. A partial body is silently ignored.
     const wireTask = (parent.tasks ?? []).find((t) => t.id === taskId) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     await updateTask(client, project.id, parent.id, taskId, {
       ...(wireTask ?? {}),
       name: task.name,

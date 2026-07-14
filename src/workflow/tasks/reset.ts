@@ -18,11 +18,7 @@ export interface WorkflowResetOptions extends WorkflowTaskOptions {
 }
 
 export type WorkflowResetStatus =
-  | "reset"
-  | "what-if"
-  | "failed"
-  | "skipped-no-workflow"
-  | "skipped-already-initial";
+  "reset" | "what-if" | "failed" | "skipped-no-workflow" | "skipped-already-initial";
 
 export interface WorkflowResetResult {
   itemId: string | null;

@@ -53,8 +53,7 @@ const setup = (params: {
   const client = {
     search: vi.fn().mockImplementation((input: { searchStatement?: unknown }) => {
       const stmt = input.searchStatement as
-        | { criteria?: { field?: string; value?: string } }
-        | undefined;
+        { criteria?: { field?: string; value?: string } } | undefined;
       const field = stmt?.criteria?.field;
       const value = stmt?.criteria?.value;
       if (field === "_fullpath") {

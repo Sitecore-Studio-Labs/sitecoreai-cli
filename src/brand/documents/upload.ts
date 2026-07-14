@@ -20,8 +20,7 @@ export interface DocumentUploadReference {
 }
 
 export type UploadDocumentSource =
-  | { kind: "url"; url: string }
-  | { kind: "bytes"; bytes: Buffer | Uint8Array; mimeType?: string };
+  { kind: "url"; url: string } | { kind: "bytes"; bytes: Buffer | Uint8Array; mimeType?: string };
 
 /**
  * Why local-file (`bytes`) upload is rejected. The documents API

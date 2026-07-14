@@ -1,4 +1,4 @@
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@/shared/uuid";
 import { standardValuesId, workflowId } from "../items/guids";
 import {
   type Operation,

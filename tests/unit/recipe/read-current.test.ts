@@ -14,7 +14,7 @@
  * relative-path-mock concerns.
  */
 import { describe, expect, it } from "vitest";
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "../../../src/shared/uuid";
 import type {
   AuthoringApiClient,
   CreateItemInput,

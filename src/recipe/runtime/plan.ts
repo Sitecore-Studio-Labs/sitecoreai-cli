@@ -1,5 +1,5 @@
-import mime from "mime";
 import { createScaiError } from "@/shared/errors";
+import { extensionForMediaMimeType, mediaMimeTypeForPath } from "@/shared/media-types";
 import type {
   AddItemVersionOp,
   AppendToMultiListOp,
@@ -2324,7 +2324,7 @@ const planMediaUpload = async (
       const urlExtension = tailDot > 0 ? tail.slice(tailDot + 1).toLowerCase() : "";
       const extension = /^[a-z0-9]{1,8}$/.test(urlExtension)
         ? urlExtension
-        : (mime.getExtension(mimeType) ?? "bin");
+        : (extensionForMediaMimeType(mimeType) ?? "bin");
       fileName = `${sanitizedLeaf}.${extension}`;
     } else {
       // kind === "asset" — read from disk relative to cwd. The compiler
@@ -2339,7 +2339,7 @@ const planMediaUpload = async (
         ? op.source.path
         : path.resolve(op.source.path);
       bytes = await fs.readFile(absPath);
-      mimeType = mime.getType(absPath) ?? mimeType;
+      mimeType = mediaMimeTypeForPath(absPath) ?? mimeType;
       fileName = path.basename(absPath);
     }
   } catch (error) {

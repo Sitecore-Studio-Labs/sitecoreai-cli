@@ -1,4 +1,4 @@
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@/shared/uuid";
 
 /**
  * Deterministic GUID derivation for recipe-emitted Sitecore items.

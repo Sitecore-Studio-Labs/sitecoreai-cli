@@ -408,6 +408,52 @@ describe("runRecipePush — localization scopes to installed languages", () => {
   });
 });
 
+describe("runRecipePush — --provision-languages", () => {
+  it("provisions the --languages scope onto the environment before language resolution", async () => {
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+
+    await runRecipePush({
+      allowWrite: true,
+      languages: ["en", "da", "ar-AE"],
+      provisionLanguages: true,
+    } as never);
+
+    expect(ensureEnvironmentLanguages).toHaveBeenCalledWith({ kind: "sites-client" }, [
+      "en",
+      "da",
+      "ar-AE",
+    ]);
+  });
+
+  it("fails loud (AUTH_REQUIRED) when no Sites API token can be minted for provisioning", async () => {
+    vi.mocked(getAccessToken).mockResolvedValue(null as never);
+
+    await expect(
+      runRecipePush({
+        allowWrite: true,
+        languages: ["en", "da"],
+        provisionLanguages: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+    expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
+  });
+
+  it("rejects --provision-languages without a --languages scope (INPUT_INVALID)", async () => {
+    await expect(
+      runRecipePush({ allowWrite: true, provisionLanguages: true } as never)
+    ).rejects.toMatchObject({ code: "INPUT_INVALID" });
+    expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
+  });
+
+  it("does not provision when the flag is absent, even with a --languages scope", async () => {
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+
+    await runRecipePush({ allowWrite: true, languages: ["en", "da"] } as never);
+
+    expect(ensureEnvironmentLanguages).not.toHaveBeenCalled();
+  });
+});
+
 describe("runRecipePush — locale-map SV language resolution", () => {
   it("resolves environment languages for a component recipe with a locale-map default (no dictionary)", async () => {
     // A component recipe whose field carries a `{ en, ar }` Standard-Values

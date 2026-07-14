@@ -75,6 +75,21 @@ export interface SitesApiClient {
 }
 
 /**
+ * Regional + iso codes currently on the environment, lowercased for
+ * membership checks. Shared by the executor's language ensure and the
+ * planner's existing-site language diff (the planner can't import from
+ * `runtime/execute` — that would be an import cycle).
+ */
+export const presentLanguageCodes = (languages: Language[]): Set<string> => {
+  const set = new Set<string>();
+  for (const lang of languages) {
+    if (lang.iso) set.add(lang.iso.toLowerCase());
+    if (lang.regionalIsoCode) set.add(lang.regionalIsoCode.toLowerCase());
+  }
+  return set;
+};
+
+/**
  * Adapter: build a `SitesApiClient` over the function-style Sites API
  * surface. The `options` arg carries the OAuth-resolved auth header and
  * base URL; the underlying `sitesRequest` re-uses these per call.

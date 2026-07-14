@@ -234,6 +234,12 @@ const createPushCommand = (): Command => {
   );
   command.addOption(
     new Option(
+      "--provision-languages",
+      "Register the --languages scope on the environment before the push (idempotent, additive; newly-added languages get their fallback chain wired). Without this flag, scoped locales the environment lacks are dropped rather than created. For install pipelines whose scope comes from a trusted source (the brand's language list). Requires --languages."
+    )
+  );
+  command.addOption(
+    new Option(
       "--aggregates-only",
       "Apply ONLY the synthetic cross-recipe aggregate IRs (`__available-renderings__`, shared Data Folder insert options, placeholder settings, …). For batch drivers: `--handles`-scoped pushes drop the aggregates, so after all batches run this once to land the shared-item writes exactly once. Mutually exclusive with --handles."
     ).conflicts("handles")

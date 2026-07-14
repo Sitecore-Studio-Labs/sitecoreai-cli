@@ -77,12 +77,7 @@ import {
 
 /** Per-recipe merge classification (see runRecipePull JSDoc). */
 export type RecipeMergeStatus =
-  | "in-sync"
-  | "disk-ahead"
-  | "tenant-edited"
-  | "conflict"
-  | "disk-only"
-  | "tenant-only";
+  "in-sync" | "disk-ahead" | "tenant-edited" | "conflict" | "disk-only" | "tenant-only";
 
 /**
  * Per-field winner pick for a recipe — operator's manual reconciliation
@@ -841,13 +836,9 @@ export const mergeTemplateRecipe = ({
   winnerOverrides,
 }: {
   diskRecipe:
-    | ComponentTemplateRecipeParsed
-    | ContentTemplateRecipeParsed
-    | PageTemplateRecipeParsed;
+    ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed;
   tenantRecipe:
-    | ComponentTemplateRecipeParsed
-    | ContentTemplateRecipeParsed
-    | PageTemplateRecipeParsed;
+    ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed;
   statuses: PerFieldStatuses;
   diskIr: OperationIr;
   tenantIr: OperationIr;
@@ -920,9 +911,7 @@ export const mergeTemplateRecipe = ({
   // variants, placeholders, section, meta, datasource, etc. that
   // template-level merge doesn't tackle.
   const merged = { ...tenantRecipe } as
-    | ComponentTemplateRecipeParsed
-    | ContentTemplateRecipeParsed
-    | PageTemplateRecipeParsed;
+    ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed;
 
   merged.fields = mergeFieldList(diskRecipe.fields, tenantRecipe.fields, "fields");
 
@@ -1467,13 +1456,9 @@ const selectRecipeToWrite = (args: {
     if (diskIr !== undefined && tenantIr !== undefined) {
       return mergeTemplateRecipe({
         diskRecipe: diskRecipe as
-          | ComponentTemplateRecipeParsed
-          | ContentTemplateRecipeParsed
-          | PageTemplateRecipeParsed,
+          ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed,
         tenantRecipe: tenantRecipe as
-          | ComponentTemplateRecipeParsed
-          | ContentTemplateRecipeParsed
-          | PageTemplateRecipeParsed,
+          ComponentTemplateRecipeParsed | ContentTemplateRecipeParsed | PageTemplateRecipeParsed,
         statuses: fieldStatuses,
         diskIr,
         tenantIr,

@@ -9,7 +9,7 @@ import { type MediaFallback, renderRefValue } from "../api/ref-encoding";
 import {
   fallbackLanguageIsoFor,
   parseLanguageCode,
-  type Language,
+  presentLanguageCodes,
   type SitesApiClient,
 } from "../api/sites-client";
 import type { FieldValue, Operation, OperationIr } from "../ir/operations";
@@ -531,16 +531,6 @@ const trySkipUnavailableLanguage = (
   return true;
 };
 
-/** Regional + iso codes currently on the environment, lowercased for matching. */
-const presentLanguageCodes = (languages: Language[]): Set<string> => {
-  const set = new Set<string>();
-  for (const lang of languages) {
-    if (lang.iso) set.add(lang.iso.toLowerCase());
-    if (lang.regionalIsoCode) set.add(lang.regionalIsoCode.toLowerCase());
-  }
-  return set;
-};
-
 /**
  * Ensure each required language exists on the environment before
  * `createSite` (which fails on an unknown `language`). Idempotent: skip
@@ -710,6 +700,18 @@ const dispatchMutation = async ({
       overwriteExisting: true,
     });
     capturedItemIds.set(action.mutation.mediaRefKey, result.itemId);
+    return;
+  }
+  if (action.mutation.kind === "ensureLanguages") {
+    // Existing-site language provisioning — same idempotent ensure the
+    // createSite path runs, minus the site creation.
+    if (!sitesClient) {
+      throw createScaiError(
+        "ensureLanguages mutation requires a SitesApiClient — none threaded into the executor.",
+        "UNKNOWN"
+      );
+    }
+    await ensureEnvironmentLanguages(sitesClient, action.mutation.languages);
     return;
   }
   if (action.mutation.kind === "pruneChildren") {

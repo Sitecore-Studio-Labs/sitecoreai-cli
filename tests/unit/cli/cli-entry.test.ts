@@ -205,8 +205,7 @@ describe("cli entrypoint", () => {
     await import("../../../src/cli");
 
     const payload = jsonSpy.mock.calls.at(-1)?.[0] as
-      | { code?: string; exitCode?: number; hint?: string }
-      | undefined;
+      { code?: string; exitCode?: number; hint?: string } | undefined;
     expect(payload?.code).toBe("UNKNOWN");
     expect(payload?.exitCode).toBe(1);
     expect(payload?.hint).toBeUndefined();

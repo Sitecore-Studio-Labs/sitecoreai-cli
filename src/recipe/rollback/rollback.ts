@@ -222,6 +222,15 @@ export const inverseOf = (
     return null;
   }
 
+  if (action.mutation.kind === "ensureLanguages") {
+    // Language provisioning rollback is intentionally warn-only.
+    // Registration is additive and environment-wide: removing a language
+    // during a half-failed push could break OTHER sites (or operator
+    // content) already authored in it, and re-adding on the next push is
+    // idempotent anyway.
+    return null;
+  }
+
   if (action.mutation.kind === "addItemVersion") {
     // Version-add rollback is warn-only. When the item itself was created
     // by this push, the `createItem` inverse (deleteItem) removes the whole

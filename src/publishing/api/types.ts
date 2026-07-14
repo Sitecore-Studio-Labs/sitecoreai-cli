@@ -23,20 +23,10 @@
  * what the API actually sent.
  */
 export type PublishJobStatusWire =
-  | "Queued"
-  | "Running"
-  | "Completed"
-  | "Failed"
-  | "Canceled"
-  | "Canceling";
+  "Queued" | "Running" | "Completed" | "Failed" | "Canceled" | "Canceling";
 
 export type PublishJobState =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "cancelling";
+  "queued" | "running" | "completed" | "failed" | "cancelled" | "cancelling";
 
 /** A single item in the Tier 1 (`publish item`) request body. */
 export interface PublishItemModel {

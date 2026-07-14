@@ -39,7 +39,7 @@ import type {
   RemoteItem,
   UpdateItemInput,
 } from "../api/client";
-import type { NewSiteInput, SitesApiClient } from "../api/sites-client";
+import { presentLanguageCodes, type NewSiteInput, type SitesApiClient } from "../api/sites-client";
 import { hashFieldValueForBaseline, type BaselineIndex } from "./baseline";
 import { classifyPushDrift } from "./merge";
 
@@ -184,6 +184,20 @@ export interface PlannedAction {
          * org locales).
          */
         languages: string[];
+      }
+    | {
+        /**
+         * Existing-site language provisioning: the CreateSiteFromTemplate
+         * target already exists but the environment is missing declared
+         * languages. The executor runs the same idempotent ensure the
+         * create path runs before `createSite` (registration + fallback
+         * wiring); registration is additive and environment-wide.
+         */
+        kind: "ensureLanguages";
+        /** Full declared list (primary + additionals) the ensure runs over. */
+        languages: string[];
+        /** The subset not present at plan time — for display/diagnostics. */
+        missing: string[];
       }
     | {
         kind: "addItemVersion";
@@ -2399,15 +2413,38 @@ const planCreateSite = async (
       reason: `siteTemplate refKey ${op.templateRefKey} not yet captured (push the SiteTemplate first or via cross-recipe ref).`,
     };
   }
+  // Languages the recipe declares for this site — the primary plus any
+  // additionals, de-duped and order-preserving. Both the create path
+  // (pre-createSite ensure) and the existing-site path (below) provision
+  // from this same list.
+  const declaredLanguages = Array.from(new Set([op.language, ...(op.additionalLanguages ?? [])]));
   const sites = await sitesClient.listSites();
   const existing = sites.find((s) => s.name === op.siteName);
   if (existing?.id) {
     capturedItemIds.set(op.siteRefKey, existing.id);
+    // The site exists, but the environment may still be missing declared
+    // languages — e.g. a language added to the brand AFTER the site was
+    // first installed. The create path ensures languages before
+    // `createSite`; without this branch an existing-site install never
+    // provisions them and the later localize pass silently drops the
+    // locales the environment lacks. Plan an idempotent ensure for the
+    // missing set (registration is additive and environment-wide).
+    const present = presentLanguageCodes(await sitesClient.listLanguages());
+    const missing = declaredLanguages.filter((code) => !present.has(code.toLowerCase()));
+    if (missing.length > 0) {
+      return {
+        index,
+        operation: op,
+        status: "update",
+        reason: `Site '${op.siteName}' exists; registering missing environment language(s): ${missing.join(", ")}.`,
+        mutation: { kind: "ensureLanguages", languages: declaredLanguages, missing },
+      };
+    }
     return {
       index,
       operation: op,
       status: "skip",
-      reason: `Site '${op.siteName}' already exists.`,
+      reason: `Site '${op.siteName}' already exists and all declared languages are registered.`,
     };
   }
   const input: NewSiteInput = {
@@ -2426,14 +2463,16 @@ const planCreateSite = async (
       collectionDescription: op.collectionDescription,
     }),
   };
-  // Languages to ensure on the environment before createSite — the primary
-  // plus any declared additionals, de-duped and order-preserving.
-  const languages = Array.from(new Set([op.language, ...(op.additionalLanguages ?? [])]));
   return {
     index,
     operation: op,
     status: "create",
-    mutation: { kind: "createSite", input, siteRefKey: op.siteRefKey, languages },
+    mutation: {
+      kind: "createSite",
+      input,
+      siteRefKey: op.siteRefKey,
+      languages: declaredLanguages,
+    },
   };
 };
 

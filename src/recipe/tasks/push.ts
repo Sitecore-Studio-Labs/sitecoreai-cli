@@ -22,7 +22,12 @@ import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
 import { injectHandleMarker } from "../items/marker";
 import { loadIr, loadRecipe } from "../io";
-import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
+import {
+  ensureEnvironmentLanguages,
+  executeIr,
+  type ExecutionEvent,
+  type ExecutionResult,
+} from "../runtime/execute";
 import type { MediaFallback } from "../api/ref-encoding";
 import { writeProgressLine } from "./progress-stream";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
@@ -344,15 +349,45 @@ const languageScopeMatches = (scope: readonly string[], code: string): boolean =
  * `--languages` narrows further: the returned availableLanguages is filtered
  * to the scope, and `--languages en` is the "content now, locales later"
  * install shape. Scope unset = every installed language.
+ *
+ * `--provision-languages` inverts the drop for the scoped set: the scope
+ * is ensured onto the environment FIRST (idempotent registration +
+ * fallback wiring via `ensureEnvironmentLanguages`), so the resolution
+ * below sees the scoped locales as installed instead of dropping them.
+ * Install pipelines opt in when the scope comes from a trusted source
+ * (the brand's language list); a missing Sites API credential fails loud
+ * — silently skipping the provision would reintroduce the silent narrow
+ * the flag exists to prevent.
  */
 const resolveScopedLanguages = async (
   recipes: readonly Recipe[],
   environment: EnvironmentConfiguration,
-  languagesOption: readonly string[] | undefined
+  languagesOption: readonly string[] | undefined,
+  provisionLanguages?: boolean
 ): Promise<string[] | undefined> => {
   const languageScope = languagesOption
     ?.map((code) => code.trim())
     .filter((code) => code.length > 0);
+  if (provisionLanguages && (!languageScope || languageScope.length === 0)) {
+    throw createScaiError(
+      "--provision-languages requires a --languages scope — there is nothing to provision without one.",
+      "INPUT_INVALID",
+      { hint: "Pass the locale list to provision, e.g. --languages en,da,ar-AE." }
+    );
+  }
+  if (provisionLanguages && languageScope && languageScope.length > 0) {
+    const accessToken = await getAccessToken(environment);
+    if (!accessToken) {
+      throw createScaiError(
+        "--provision-languages could not mint a Sites API access token for the target environment.",
+        "AUTH_REQUIRED",
+        {
+          hint: "Run `scai auth login` (or configure client credentials) for this environment, or drop --provision-languages to fall back to the environment's already-registered languages.",
+        }
+      );
+    }
+    await ensureEnvironmentLanguages(createSitesApiClient({ accessToken }), [...languageScope]);
+  }
   const resolved = await resolveEnvironmentLanguages(recipes, environment);
   if (!languageScope || languageScope.length === 0) return resolved;
   return (resolved ?? languageScope).filter((code) => languageScopeMatches(languageScope, code));
@@ -755,7 +790,8 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   const availableLanguages = await resolveScopedLanguages(
     recipes,
     tenant.environment,
-    options.languages
+    options.languages,
+    options.provisionLanguages
   );
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,

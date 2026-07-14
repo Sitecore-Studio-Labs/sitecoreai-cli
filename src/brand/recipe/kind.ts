@@ -417,8 +417,7 @@ const assertNoPolicyError = (plan: RecipePlan, ref: KindRef): void => {
   if (!policyErrorChange) return;
   const errors =
     (policyErrorChange.meta?.policyErrors as
-      | Array<{ path: string; classification: string }>
-      | undefined) ?? [];
+      Array<{ path: string; classification: string }> | undefined) ?? [];
   throw createScaiError(
     `Brand kit "${ref.id}" has ${errors.length} unresolved three-way merge conflict(s).`,
     "POLICY_DENIED",

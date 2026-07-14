@@ -58,8 +58,7 @@ async function main(): Promise<void> {
   const before = await getBrief(client, briefId);
   const fields = (before.fields ?? {}) as Record<string, unknown>;
   const original = fields[fieldName] as
-    | { type?: string; value?: Record<string, unknown> }
-    | undefined;
+    { type?: string; value?: Record<string, unknown> } | undefined;
   if (!original || original.type !== "Timeline") {
     console.error(
       `Field "${fieldName}" on brief ${briefId} is not a Timeline (got ${original?.type}).`
@@ -91,8 +90,7 @@ async function main(): Promise<void> {
   // Re-read and compare.
   const after = await getBrief(client, briefId);
   const afterField = (after.fields ?? {})[fieldName] as
-    | { type?: string; value?: { events?: unknown[]; [k: string]: unknown } }
-    | undefined;
+    { type?: string; value?: { events?: unknown[]; [k: string]: unknown } } | undefined;
   const afterValue = afterField?.value ?? {};
   console.log(`\nAfter PUT — server-stored value:`, JSON.stringify(afterValue, null, 2));
 

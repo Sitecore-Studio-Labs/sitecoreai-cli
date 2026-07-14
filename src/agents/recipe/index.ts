@@ -37,12 +37,7 @@ export { resolveAgentsSession } from "./client";
 
 /** The Agentic Studio recipe kind names. */
 export type AgentKindName =
-  | "agent"
-  | "skill"
-  | "widget"
-  | "custom-mcp"
-  | "schema"
-  | "html-template";
+  "agent" | "skill" | "widget" | "custom-mcp" | "schema" | "html-template";
 
 /**
  * The Agentic Studio recipe kinds keyed by name. Values are erased to

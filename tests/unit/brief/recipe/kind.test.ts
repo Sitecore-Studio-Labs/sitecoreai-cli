@@ -425,8 +425,7 @@ describe("three-way merge — plan", () => {
       const carrier = plan.changes.find((c) => c.meta?.policyError === true);
       expect(carrier).toBeDefined();
       const errors = carrier?.meta?.policyErrors as
-        | Array<{ path: string; classification: string }>
-        | undefined;
+        Array<{ path: string; classification: string }> | undefined;
       expect(errors?.[0]?.path).toBe("description");
       expect(errors?.[0]?.classification).toBe("cms-edit");
 
@@ -518,8 +517,7 @@ describe("three-way merge — plan", () => {
       const plan = await briefTypeKind.plan(desired, ref, syncCtx);
       const carrier = plan.changes.find((c) => c.meta?.policyError === true);
       const errors = carrier?.meta?.policyErrors as
-        | Array<{ path: string; classification: string }>
-        | undefined;
+        Array<{ path: string; classification: string }> | undefined;
       expect(errors?.[0]?.classification).toBe("conflict");
       await expect(briefTypeKind.apply(plan, ref, syncCtx)).rejects.toThrow(
         /unresolved three-way merge conflict/
@@ -596,8 +594,7 @@ describe("three-way merge — plan", () => {
         (c) => c.path === "briefType.fields" && c.meta?.stage === "field"
       );
       const perField = fieldsChange?.meta?.perFieldClassification as
-        | Record<string, string>
-        | undefined;
+        Record<string, string> | undefined;
       expect(perField?.audience).toBe("first-push");
       expect(perField?.summary).toBe("recipe-change");
     });
@@ -646,8 +643,7 @@ describe("three-way merge — plan", () => {
         (c) => c.path === "briefType.fields" && c.meta?.stage === "field"
       );
       const perField = fieldsChange?.meta?.perFieldClassification as
-        | Record<string, string>
-        | undefined;
+        Record<string, string> | undefined;
       expect(perField?.dueDate).toBe("recipe-change");
     });
   });

@@ -2,32 +2,33 @@
 
 scai's SDK, CLI, and MCP server can read and overwrite a lot. This document
 describes the **workspace policy** layer that bounds _which environments scai
-may operate against_ and makes the boundary tamper-evident.
+may operate against_, gates _what may be done there_, and makes the boundary
+tamper-evident.
 
-This is **Phase 1**. Phases 2–3 (credential provenance, step-up auth, mint
-gating, a unified `authorize()` chokepoint) are summarised at the end and are
-out of scope here.
+The system is built in layers, described top to bottom: environment
+enrollment + identity pinning, caller-context and risk-tier gating, an
+operation risk registry with step-up freshness, and — orthogonally —
+recipe-execution sandboxing.
 
 ## Why
 
-The weakness Phase 1 closes: **`sitecoreai.cli.json` is both the target list
-and the permission grant.** `EnvironmentConfiguration` carries the tenant
+The weakness this layer closes: **`sitecoreai.cli.json` is both the target
+list and the permission grant.** `EnvironmentConfiguration` carries the tenant
 identity _and_ `allowWrite` / `denyMcpElevation` in the same object, and
 `resolveRootConfigurationPath` trusts any `sitecoreai.cli.json` it finds.
 Anyone who can write that file can both add a production environment and
 grant themselves write to it in one edit. The protections sit _beside_ the
 targets, not above them.
 
-Threat model Phase 1 addresses:
+The threats it addresses:
 
 1. **Scope creep** — an agent (over MCP) or a script retargets scai at an
    environment the operator never set it up for (typically production).
 2. **Identity swap** — an enrolled environment name (`staging`) has its
    `organizationId` / `projectId` / `environmentId` quietly changed
    underneath it to point at a different tenant.
-
-Not addressed here (see Phase 2/3): who _minted_ a credential, whether a
-human is present for a destructive op, and clamping minted client scopes.
+3. **Over-powerful mutations** — credential minting and irreversible
+   operations run from an unattended CI or agent caller.
 
 ## The model in one paragraph
 
@@ -77,9 +78,9 @@ User-global `~/.sitecoreai/policy.json`:
   field is individually optional (an org-level profile has no
   `projectId` / `environmentId`); enforcement compares only the fields the
   policy actually pinned.
-- `ceiling` — `read` \| `write` \| `destructive` \| `mint`. **Phase 1 records
-  it but enforces only enrollment + identity.** Ceiling enforcement (and the
-  `destructive` / `mint` tiers) arrives in Phase 2.
+- `ceiling` — `read` \| `write` \| `destructive` \| `mint`. Recorded at
+  enrollment and enforced by the tier gate (see [Caller context and tier
+  gating](#caller-context-and-tier-gating)).
 - `enrolledVia` — `setup-login` \| `mcp-serve` \| `policy-allow` \|
   `setup-init` \| `policy-init`. Provenance of the enrollment, for `policy show`.
 
@@ -100,10 +101,10 @@ Repo `scai.policy.json` (every field optional, narrowing-only):
 
 ## Risk tiers
 
-`read < write < destructive < mint`. Phase 1 wires the type and stores a
-ceiling per environment; it does **not** yet gate operations by tier — that
-is Phase 2, where the existing publishing consent model generalises to the
-`destructive` tier and minting (`scai setup client create`) becomes `mint`.
+`read < write < destructive < mint`. Each environment stores a ceiling, and
+the tier gate (`authorizeOperation`) enforces it: the publishing consent model
+generalises to the `destructive` tier and minting (`scai setup client create`)
+is gated as `mint`.
 
 ## Layered resolution
 
@@ -119,7 +120,7 @@ identity = userGlobal.environments[envName].identity
 Effective permission is always the **intersection** of the layers — never the
 union. A missing user-global policy means _unmanaged mode_ (see below).
 
-## Identity pinning (the Phase 1 TOFU)
+## Identity pinning (trust-on-first-use)
 
 Trust-on-first-use here is the **environment identity pin**. When an
 environment is enrolled, its tenant triple + host are copied into the policy.
@@ -130,12 +131,12 @@ and an instruction to re-pin via `scai policy trust <env>` once the change is
 confirmed legitimate. The allowlist catches _new_ environments; the identity
 pin catches _swapped_ ones.
 
-(The repo policy can only narrow, so it carries no fingerprint ceremony in
-Phase 1. If a future repo policy gains widening-capable fields, it gets one.)
+(The repo policy can only narrow, so it carries no fingerprint ceremony. If a
+future repo policy gains widening-capable fields, it gets one.)
 
 ## Enforcement point
 
-Enforcement lives **inside `resolveEnvironment()`** (`src/shared/env.ts`) —
+Enforcement lives **inside `resolveEnvironment()`** (`src/policy/environment.ts`) —
 the single resolver every surface (CLI, SDK, MCP) already routes through, so
 no call site can miss it. After the environment is resolved it calls
 `enforceEnvironmentPolicy(envName, environment, configPath)`, which throws
@@ -189,27 +190,29 @@ contract (`--json`, `--non-interactive`).
 
 ```
 src/policy/
-  types.ts      WorkspacePolicy, RepoPolicy, PolicyEnvironment, RiskTier,
-                EnvIdentity, EffectivePolicy
-  schema.ts     Zod schemas + parse helpers for both policy files
-  paths.ts      resolveUserPolicyPath(), resolveRepoPolicyPath(configPath)
-  store.ts      sync read / atomic write of the user-global policy
-  load.ts       load + validate user-global and repo policies
-  identity.ts   extract an EnvIdentity from EnvironmentConfiguration; compare
-  resolve.ts    resolveEffectivePolicy() — the layered intersection
-  enforce.ts    enforceEnvironmentPolicy() — the deny-by-default gate
-  enroll.ts     enrollEnvironment() — idempotent auto-populate
-  index.ts      SDK-facing exports
-src/commands/policy/
-  index.ts      Commander registration
-  show.ts allow.ts remove.ts trust.ts init.ts
+  types.ts         WorkspacePolicy, RepoPolicy, PolicyEnvironment, RiskTier,
+                   EnvIdentity, EffectivePolicy
+  schema.ts        Zod schemas + parse helpers for both policy files
+  paths.ts         resolveUserPolicyPath(), resolveRepoPolicyPath(configPath)
+  store.ts         sync read / atomic write of the user-global policy
+  resolve.ts       resolveEffectivePolicy() — the layered intersection
+  identity.ts      extract an EnvIdentity from EnvironmentConfiguration; compare
+  enforce.ts       enforceEnvironmentPolicy() — the deny-by-default gate
+  enroll.ts        enrollEnvironment() — idempotent auto-populate
+  environment.ts   resolveEnvironment() — the single resolver, policy-enforced
+  allow-write.ts   ensureAllowWrite() — the write/destructive/mint tier gate
+  authorize.ts     authorizeOperation() — caller-context + risk-tier decision
+  caller.ts        resolveCallerContext() — mcp / ci / interactive-human / m2m
+  operations.ts    the operation risk registry (OperationId → RiskTier)
+  organization.ts  organization-policy.ts  access-check.ts  identity/index barrels
+src/commands/policy.ts   Commander registration for the `scai policy` verbs
 ```
 
-`src/policy/` is a new inward domain. It imports `@/config/types` (types
-only), `@/shared/errors`, and `@/shared/logger`; it does **not** import
-`@/shared/env` — `resolveEnvironment` imports `policy/`, not the reverse, so
-`enforce.ts` takes primitives (`envName`, `environment`, `configPath`), not
-`ResolvedEnvironment`.
+`src/policy/` is the inward guardrail domain. It imports `@/config/types`
+(types only), `@/shared/errors`, and `@/shared/logger`. `resolveEnvironment`
+now lives here (`policy/environment.ts`, moved out of `shared/` to break the
+former `shared↔policy` cycle), and `enforce.ts` takes primitives
+(`envName`, `environment`, `configPath`), not `ResolvedEnvironment`.
 
 Validation uses **Zod** (as recipe/brand/agent schemas do) — the policy file
 is a standalone artifact, not part of the AJV-validated `sitecoreai.cli.json`
@@ -230,26 +233,22 @@ stable exit code.
 Policy paths honour `SITECOREAI_POLICY_HOME` so tests run against a temp
 directory and never touch the real `~/.sitecoreai/`.
 
-## Phase 2 — caller context and tier gating
+## Caller context and tier gating
 
-Phase 1 answered _which environments_. Phase 2 answers _who is calling, and
-what may they do there_ — it makes the stored `ceiling` enforce, gates
-credential minting, and governs CI writes per environment.
+Beyond _which environments_, the gate decides _who is calling, and what may
+they do there_ — it enforces the stored `ceiling`, gates credential minting,
+and governs CI writes per environment.
 
-### The reframe: caller context, not token provenance
+### Caller context, not token provenance
 
-The Phase 1 plan said "tag tokens with provenance (`interactive-human` /
-`m2m` / `ci`)". Mapping the code showed that to be the wrong primitive. A
-token is acquired once and reused for weeks; a token minted by a human at a
-laptop is later replayed by an unattended cron. The token's _birth_ says
-`interactive-human` while the _caller_ is a machine. Stored token provenance
-answers "how was this token born", not "who is invoking right now" — and the
-latter is what a guardrail needs.
-
-So Phase 2 computes **caller context per invocation**, from the process
-environment — no token metadata, no keychain changes, and no chokepoint
-problem (token acquisition is scattered across many call sites; the process
-environment is one thing, readable anywhere).
+Caller identity is computed **per invocation** from the process environment,
+not from stored token provenance. A token is acquired once and reused for
+weeks; a token minted by a human at a laptop is later replayed by an
+unattended cron, so the token's _birth_ (`interactive-human`) says nothing
+about who is invoking _now_. Reading the process environment avoids that, needs
+no token metadata or keychain changes, and has no chokepoint problem (token
+acquisition is scattered across many call sites; the process environment is
+one thing, readable anywhere).
 
 | Caller context      | Detected from                                                                               |
 | ------------------- | ------------------------------------------------------------------------------------------- |
@@ -260,9 +259,9 @@ environment is one thing, readable anywhere).
 
 First match wins, in that order.
 
-### Policy additions
+### Policy fields for tier gating
 
-`PolicyEnvironment` gains two booleans (both default `false`, both
+`PolicyEnvironment` carries two booleans (both default `false`, both
 narrowable — never widenable — by a repo policy):
 
 - `mintCredentials` — may `scai setup client create` mint an automation
@@ -288,21 +287,19 @@ narrowable — never widenable — by a repo policy):
 minting a standing credential is categorically different from an in-tenant
 write.
 
-### What Phase 2 wires
+### Where the tiers are wired
 
-- **`write`** — folded into `ensureAllowWrite` (`src/shared/allow-write.ts`),
+- **`write`** — folded into `ensureAllowWrite` (`src/policy/allow-write.ts`),
   which every write runner already calls. The policy check runs
   unconditionally; `--allow-write` still bypasses the _config_ `allowWrite`
   requirement but **not** the policy ceiling / caller check.
 - **`mint`** — `scai setup client create` (env- and org-scoped) calls the
-  `mint` gate before minting. This closes the original "credential creation
-  is too powerful" concern: an agent or CI run can never mint a client —
-  only a human at a terminal, on an environment the policy marks
-  mint-eligible.
-- **`destructive`** — the tier and its rule exist in `authorizeOperation`,
-  but wiring each destructive operation to call it is **Phase 3** (it belongs
-  with the operation risk registry). Phase 2 does not change the behaviour of
-  publish / unpublish / recipe push / env delete.
+  `mint` gate before minting. This closes the "credential creation is too
+  powerful" concern: an agent or CI run can never mint a client — only a
+  human at a terminal, on an environment the policy marks mint-eligible.
+- **`destructive`** — irreversible operations declare themselves via the
+  operation risk registry (below), which `ensureAllowWrite` consults to
+  authorize at the `destructive` tier.
 
 ### Command surface
 
@@ -311,22 +308,16 @@ write.
 enrolled environment. `scai policy show` displays `ceiling`,
 `mintCredentials`, and `ciWrites` per environment.
 
-### Not in Phase 2
+### Known limitations
 
-- True step-up (re-proving identity with a _fresh_ token within N minutes) —
-  caller context already proves a human is present _now_ via the TTY; a
-  freshness requirement is a Phase 3 refinement.
-- Replacing every scattered ad-hoc TTY check with `resolveCallerContext` —
-  Phase 2 adds the helper and uses it in the new gates only.
 - A minted-client scope ceiling — the Deploy clients API assigns scopes
   server-side by client type; clamping them needs API support.
 
-## Phase 3 — operation risk registry, destructive-tier wiring, step-up
+## Operation risk registry, destructive-tier wiring, and step-up
 
-Phase 2 built the `destructive` tier rule into `authorizeOperation` but left
-it unwired — no operation declared itself destructive. Phase 3 classifies the
-mutating operations, wires the irreversible ones to the `destructive` tier,
-and adds a per-environment freshness ("step-up") requirement.
+Irreversible operations are classified in a single registry, wired to the
+`destructive` tier, and — where an operator opts in — subject to a
+per-environment token-freshness ("step-up") requirement.
 
 ### Operation risk registry
 
@@ -355,27 +346,27 @@ scattered across runners, is the source of truth.
 
 ### Wiring: one parameter, no new chokepoint
 
-`ensureAllowWrite` — which every write runner already calls, and which Phase
-2 made consult the policy — gains an optional `operation` argument. When
-given, the gate looks the operation up in the registry and authorizes at that
-tier instead of the default `write`:
+`ensureAllowWrite` — which every write runner already calls and which consults
+the policy — takes an optional `operation` argument. When given, the gate looks
+the operation up in the registry and authorizes at that tier instead of the
+default `write`:
 
 ```ts
 ensureAllowWrite(root, envName, override, "cleanup-versions-prune");
 ```
 
 A destructive runner passes its operation id; everything else is unchanged.
-Operations that already had a gate keep it — Phase 3 layers the policy tier
-on top, it does not remove `--apply` or `confirmDestructive`. The gate stays
-a no-op in unmanaged mode.
+Operations that already had a gate keep it — the policy tier layers on top, it
+does not remove `--apply` or `confirmDestructive`. The gate stays a no-op in
+unmanaged mode.
 
 The net effect: an irreversible operation is refused for a `m2m` or `mcp`
 caller, and for a `ci` caller without `ciWrites`, on a managed environment —
-exactly the `destructive` rule from Phase 2.
+exactly the `destructive` rule.
 
 ### Step-up — a freshness requirement
 
-`PolicyEnvironment` gains an optional `stepUpMinutes`. When set, a
+`PolicyEnvironment` carries an optional `stepUpMinutes`. When set, a
 `destructive` or `mint` operation on that environment requires the deploy
 token to have been minted within that many minutes — otherwise the gate
 refuses with `POLICY_DENIED` and an instruction to re-run `scai setup login`.
@@ -390,16 +381,15 @@ only _shorten_ the window, never lengthen it.
 `scai policy set <env> --step-up <minutes>` (and `--step-up off`) configures
 it; `scai policy show` displays it.
 
-### What Phase 3 does not change
+### Scope
 
 - Operations not in the registry stay `write`-tier — their existing
   `--apply` / `confirmDestructive` gates are untouched.
-- Recipe execution still runs `.recipe.ts` as in-process code — see Phase 4.
 
-## Phase 4 — recipe execution sandboxing
+## Recipe execution sandboxing
 
-`.recipe.ts` files are compiled and `require()`d to load them. Phase 4 moves
-that out of scai's process into a confined child, so a hostile recipe a
-weaponized config could point at can no longer run with scai's privileges.
-This is a workstream distinct from the authorization model — see
-[recipe-sandbox.md](recipe-sandbox.md).
+Orthogonal to the authorization model: `.recipe.ts` files are compiled and
+loaded to read them, so by default scai runs that load in a confined child
+process — a hostile recipe a weaponized config could point at cannot run with
+scai's privileges. See [recipe-sandbox.md](recipe-sandbox.md) for the full
+design.

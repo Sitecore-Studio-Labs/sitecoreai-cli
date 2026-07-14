@@ -115,13 +115,19 @@ scai content publish unpublish \
 
 The default `--strategy never-publish` writes `__Never publish: true`
 on the version, then submits a follow-up publish job so Edge picks up
-the removal. Reverse later with:
+the removal.
 
-```sh
-scai content version set-never-publish \
-  --item-id <guid> --value false -n sandbox --allow-write
-scai content publish item --items <guid> -n sandbox --allow-write
-```
+> **Reversal is not yet a single CLI verb.** The `scai content version`
+> command group (`inspect` / `set-validity` / `set-never-publish`) that
+> would flip `__Never publish` back is written but **not registered** —
+> it stays hidden until content items can be authored through the CLI
+> (see the note in the README Publishing section). To reverse today,
+> clear `__Never publish` on the version through another surface (the CM
+> UI, a recipe, or the `version-fields` SDK helper) and then re-publish:
+>
+> ```sh
+> scai content publish item --items <guid> -n sandbox --allow-write
+> ```
 
 Other strategies (use sparingly):
 

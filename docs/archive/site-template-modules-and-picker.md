@@ -1,3 +1,5 @@
+> **Archived/superseded** — point-in-time note, kept for history.
+
 # Site Template — Modules + Picker-Tile Gaps
 
 Cold-pickup plan to close two gaps in `compileSiteTemplateRecipe` so a

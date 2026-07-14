@@ -35,7 +35,7 @@ top-level groups:
 **Taxonomy.** Some surfaces are nested under a parent group
 (`provision` holds deploy / serialization / recipe; `ops` holds brief /
 campaign) while others — `brand`, `agents`, `sync` — sit at the top
-level. This is intentional and **not** being renamed for 0.1.0: the
+level. This is intentional and stable: the
 command paths are part of the agent contract documented in
 [AGENTS.md](./AGENTS.md), and external MCP-client configs depend on
 `scai mcp serve`, so the paths are stable.
@@ -127,10 +127,12 @@ environment:
 scai mcp serve --environment-name dev
 ```
 
-It exposes scai's developer surfaces as **54 workflow-shaped tools** —
+It exposes scai's developer surfaces as **50+ workflow-shaped tools** —
 deploy, serialization, recipes, hygiene, publishing, brand, brief,
 campaign, workflow, webhook, agent automation, and inspection —
 designed around real tasks rather than 1:1 wrappers of library calls.
+The tool set is a live inventory; run `scai mcp tools list` for the
+authoritative list on your installed version.
 Every write tool requires an explicit per-call `allowWrite: true`;
 there is no session-wide override. Compatible with Claude Code, Claude
 Desktop, Cursor, Cline, and any other MCP-speaking client.
@@ -149,7 +151,7 @@ tool inventory, write-gate semantics, and v1 limitations.
 
 Declarative Sitecore template + rendering definitions, authored as
 TypeScript files alongside React components and pushed to the CMS via the
-Authoring GraphQL API. Five recipe kinds are stable in 0.1.0:
+Authoring GraphQL API. Five recipe kinds are stable:
 `ComponentTemplate`, `ContentTemplate`, `ComponentSection`,
 `DesignParametersTemplate`, `Enumeration`.
 
@@ -204,7 +206,7 @@ deterministic GUIDs at compile time.
 See [docs/recipes.md](./docs/recipes.md) for the full surface, including
 the trust-model defenses, authoring examples, and graduation roadmap for
 composition kinds (PartialDesign, PageDesign, SiteTemplate, SiteRecipe,
-ContentItem — present in source, not in the 0.1.0 stability promise).
+ContentItem — present in source, not part of the stability promise).
 
 ## Publishing
 
@@ -235,9 +237,14 @@ Verbs:
 | `publish cancel <jobId>`   | Cancel a single job, or `--all-queued` to sweep the env.                                                                          |
 | `publish history`          | Read the local audit log (`~/.sitecoreai/audit.log`) with env/since/command/outcome filters.                                      |
 
-The companion `scai content version` verbs (`inspect`,
-`set-validity`, `set-never-publish`) handle the CM-side content-state
-fields that affect what `scai content publish` picks up.
+> **Planned, not yet available:** a companion `scai content version`
+> command group (`inspect`, `set-validity`, `set-never-publish`) for the
+> CM-side per-version publish-state fields (`__Never publish`,
+> `__Valid from` / `__Valid to`) is written but intentionally not
+> registered — the version-state verbs only make sense once content
+> items can be authored through the CLI, so they stay hidden until item
+> primitives land. The SDK (`src/content/api/version-fields.ts`) and
+> `scai hygiene cleanup versions` already operate on these fields today.
 
 **Auth:** publishing needs an **environment-level** automation client
 (carries `xmcpub.jobs.t:*` scopes), not the org-level client most other
@@ -303,8 +310,8 @@ const allSites = await sites.listSites(env);
 const review = await brand.runBrandReview(opts);
 
 // Publishing, webhooks, and workflow are available through the `scai` CLI
-// (e.g. `scai content publish`, `scai content workflow`); they are no
-// longer standalone SDK subpaths as of 0.4.2.
+// (e.g. `scai content publish`, `scai content workflow`); they are not
+// standalone SDK subpaths.
 
 // Errors — every subpath throws `ScaiError`; import the type from `/errors`
 import { ScaiError, type ScaiErrorCode } from "@sitecoreai-labs/sitecoreai-cli/errors";
@@ -322,9 +329,9 @@ below:
 ./hygiene  ./errors   ./envelope
 ```
 
-The surface was slimmed in 0.4.2: `./config`, `./content`, `./publishing`,
-`./webhooks`, and `./workflow` are no longer published subpaths (those
-operations remain available through the `scai` CLI).
+The stable core is intentionally narrow: `./config`, `./content`,
+`./publishing`, `./webhooks`, and `./workflow` are **not** published
+subpaths (those operations remain available through the `scai` CLI).
 
 **Unstable** — carries **no stability promise**. The shape may change in
 any release without a major bump or a changeset. The `brand`, `brief`,
@@ -334,13 +341,13 @@ observed traffic. Pin an exact scai version if you depend on them:
 ```
 ./unstable          — one barrel, namespaced: `agents`, `brand`, `brandSchema`,
                       `brief`, `briefSchema`, `campaigns`, `campaignsSchema`,
-                      `scripting`, `sites` (consolidated from the former
-                      ./unstable/* subpaths in 0.4.2)
+                      `scripting`, `sites` (one consolidated barrel, not
+                      per-surface ./unstable/* subpaths)
 ./recipe/unstable   — recipe composition kinds (PageDesignRecipeSchema,
                       SiteRecipeSchema, PartialDesign, …)
 ```
 
-### Stability contract (0.1.0)
+### Stability contract
 
 The symbols re-exported from a **stable-core** subpath's `index.ts` are
 the public SDK contract. Anything reachable only via the `@/...` path

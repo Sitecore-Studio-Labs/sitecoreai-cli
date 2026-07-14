@@ -1,3 +1,5 @@
+> **Archived/superseded** — point-in-time note, kept for history.
+
 # Page-design schema reconciliation with registry — handoff brief
 
 **Date opened:** 2026-06-06

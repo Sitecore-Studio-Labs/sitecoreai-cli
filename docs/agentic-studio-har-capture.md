@@ -1,106 +1,22 @@
-# Verifying Agentic Studio update / delete endpoints
+# Capturing Agentic Studio endpoints (HAR procedure)
 
-Every Agentic Studio resource was probed against a live tenant on
-2026-05-17 (agentic-studio-euw): a throwaway of each kind was created,
-read, updated (both `PUT` and re-POST), run where applicable, and deleted.
+Contributor reference for discovering and wiring Agentic Studio
+(`agents` area) endpoints. Agentic Studio's BFF is an unversioned,
+undocumented Next.js app, so scai learns its update/delete endpoints by
+**capturing HARs** of the real browser talking to the BFF and replaying
+them. This document is the reusable procedure for doing that; use it
+whenever an `agents` resource operation is gated behind `--unverified`
+or when Agentic Studio ships a new resource.
 
-## Verification results (2026-05-17, agentic-studio-euw)
+The helper scripts referenced below — `pnpm scan:agentic-actions`
+(enumerate `createServerReference` hashes) and `pnpm
+record:agentic-actions` (capture a live write request's hash + payload)
+— are the two tools that turn a capture into a wired endpoint. Action
+hashes rotate on every Agentic Studio deploy, so any hash you capture is
+a point-in-time value, not a durable constant; `scai agents login`
+rediscovers the current hash via `discoverActionHash`.
 
-| Resource          | create | read   | update                           | delete |
-| ----------------- | ------ | ------ | -------------------------------- | ------ |
-| **agent**         | ✅     | ✅     | ✅ `PUT /api/agents`             | ✅     |
-| **skill**         | ✅     | ✅     | ✅ `PUT /api/skills/{id}`        | ✅     |
-| **widget**        | ✅     | ✅     | ✅ `PUT /api/widgets/{id}`       | ✅     |
-| **mcp**           | ✅     | ✅     | ❌ none                          | ✅     |
-| **schema**        | ✅     | ✅     | ✅ re-POST `/schemas/create`     | ❌ 405 |
-| **html-template** | ⚠️ 2xx | ❌ 404 | ⚠️ `updateHtmlTemplateAction`    | ❌ 404 |
-| **space**         | ✅     | ❌ 404 | ✅ `PUT /api/spaces/{id}/config` | ❌ 404 |
-
-`agent` also runs: `runAgent` streamed output back from a created agent.
-
-### The "re-POST as update" question
-
-Re-POSTing a create endpoint with the same name was tested directly:
-
-- **schema** — ✅ **upserts.** Re-running the `/schemas/create` server
-  action with the same name updated the schema in place (description
-  A→B). `updateSchema` now does exactly this — no `--unverified` needed.
-- **mcp** — ❌ **duplicates.** Re-POSTing `POST /api/custom-mcps` with the
-  same name created a _second_ row. A custom MCP has no update; delete
-  and recreate instead.
-
-The pattern: a **Next.js server-action create upserts** (schema — and
-likely html-template, though its 404 read path blocks confirmation); a
-**plain REST `POST` create duplicates** (mcp).
-
-### Still unconfirmed (gated behind `--unverified`)
-
-- **schema delete** — `DELETE /api/schemas/{id}` → 405; no delete server
-  action captured.
-- **mcp update** — no mechanism (`PUT` 405, re-POST duplicates).
-- **html-template** — `update` replays the real `updateHtmlTemplateAction`
-  server action (recorded 2026-05-17 — see below), but `GET /api/html-templates`
-  → 404, so a template cannot be listed or read back; it is addressed by
-  id only. `delete` has no captured endpoint.
-- **space** — `POST /api/spaces` (+ `PUT /api/spaces/{id}/config`) work,
-  but `GET /api/spaces` → 405 and `GET`/`DELETE /api/spaces/{id}` → 404.
-  A space is create-only through the known paths.
-
-The rest of this document explains how to capture and wire the real
-endpoints for the ones that don't work yet.
-
-## Discovered server actions (2026-05-17 — `pnpm scan:agentic-actions`)
-
-`scripts/scan-agentic-actions.ts` enumerated the `createServerReference`
-call sites in the page JS. Hashes rotate per Agentic Studio deploy — these
-are "as of 2026-05-17".
-
-| Action name                | Page                   | Hash (2026-05-17)                            |
-| -------------------------- | ---------------------- | -------------------------------------------- |
-| `createCustomSchemaAction` | /schemas/create        | `60087ab4468f98b69c7cd3b32c83a5d7b1ca883ff1` |
-| `updateSchemaAction`       | /schemas/create        | `60917babdf1fc847d7283062a35be04684162b88a7` |
-| `createHtmlTemplateAction` | /html-templates/create | `60702b611beeb3886f6a3d118e6332d1f6a3a29610` |
-| `updateHtmlTemplateAction` | /html-templates/create | `6077abcec88bb09d86dd7229fce7031d84a96daa3c` |
-| `renameSpace`              | /spaces                | `608639a79f26505b1b7e89699906a23e2530751cf5` |
-
-`createCustomSchemaAction` / `createHtmlTemplateAction` match the constants
-already in `api/schemas.ts` / `api/html-templates.ts` — confirmed current.
-`updateSchemaAction` and `updateHtmlTemplateAction` are real dedicated
-update actions; `renameSpace` renames a space.
-
-**Not found by a page-load scan** — almost certainly lazy-loaded behind a
-button or menu (the scanner loads pages, it does not click): an
-html-template **delete** action, an html-template **list/read** action
-(the list may be a server component with no action), and a space
-**delete** action.
-
-## Recorded action payloads (2026-05-17 — `pnpm record:agentic-actions`)
-
-`scripts/record-agentic-actions.ts` captures live write requests while the
-operator drives the UI — the hash _and_ the argument payload. The
-`updateHtmlTemplateAction` request was recorded in full and `updateHtmlTemplate`
-in `api/html-templates.ts` now replays it exactly:
-
-```
-POST /html-templates/{id}      Next-Action: 6077abce…
-args: [ "{id}", { templateId, name, description, code, tags } ]
-```
-
-`createHtmlTemplateAction` was confirmed as `[null, { templateId, name,
-code, description, tags }]`. Space create / rename were confirmed as plain
-REST (`POST /api/spaces`, `PUT /api/spaces/{id}/config`).
-
-**Space delete — confirmed unavailable.** A recording in which the operator
-deleted a space captured no delete request: the only calls were the
-`601817a6…` action — three idempotent `200`s on the same space id, i.e. a
-read ("load space"), not a delete. With `DELETE /api/spaces/{id}` also 404,
-Agentic Studio exposes no space-delete scai can use; spaces accumulate, and
-`agents space` has no `delete` by design.
-
-**Still uncaptured** — an html-template _delete_ action; and the
-html-template list/read path is a GET, so the write-recorder can't see it.
-
-## Why these are unverified
+## Why an endpoint may be unverified
 
 The Agentic Studio BFF (`agentic-studio-<region>.sitecorecloud.io`) is an
 unversioned, undocumented Next.js app. scai's knowledge of it comes from

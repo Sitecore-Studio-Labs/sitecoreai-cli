@@ -29,35 +29,28 @@ deploy, serialization, recipes, publishing, brand, brief, and campaign:
 
 New areas below are scoped against this four-surface checklist.
 
-## Now — 0.1.0, the publish gate
+## Now — near-term hardening
 
-Everything required before the first public npm release.
+Foundational hardening carried forward on the shipped 0.31.x CLI. (The
+recipe trust model and the `doctor` command that gated the first public
+release have shipped; the remaining items below are still open.)
 
-- **Security-audit remediation.** Close the 0.1.0 security audit — 7
-  blockers and 8 mediums, tracked as GitHub issues. The big-ticket item
-  is the **recipe trust model**: `.recipe.ts` files are executed code,
-  so the sandboxed-compile path (`.recipe.ts` → `.recipe.json` in
-  isolation, then operate on the JSON form) needs to become a
-  first-class, documented workflow rather than a README caveat.
 - **CI preflight** — checks for publish credentials, org access, and
   release gating before a release job runs.
-- **npm provenance** — publishing via OIDC Trusted Publishing was wired
-  2026-05-13; provenance attestation stays off until the repo goes
-  public. Flip it on at that point (see [release.md](./release.md)).
-- **A `doctor` command** — validate env / auth / config and surface
-  actionable fixes in one command.
+- **npm provenance** — publishing via OIDC Trusted Publishing is wired;
+  provenance attestation stays off until the repo goes public. Flip it
+  on at that point (see [release.md](./release.md)).
 - **Config-schema enforcement** for module configs loaded from packages.
 - **Config storage location** — make `sitecoreai.cli.json`'s location
   configurable (currently fixed at the project root, `--config` to
   override).
-- **Changeset / CHANGELOG hygiene** — the publishing + content-version
-  surface shipped without a CHANGELOG entry. Make sure the 0.1.0
-  changeset names every new verb and the publishing auth model.
+- **Changeset / CHANGELOG hygiene** — keep every new verb and the
+  publishing auth model named in a changeset so the CHANGELOG stays
+  complete.
 
 ## Next — the Content side: Pages & Sites
 
-The user-facing content APIs scai hasn't surfaced yet. This is the
-priority once 0.1.0 is out.
+The user-facing content APIs scai hasn't surfaced yet.
 
 ### Sites API — CLI + MCP surface
 
@@ -105,9 +98,9 @@ non-template surfaces).
 - **Graduate the composition kinds.** `PartialDesignRecipe`,
   `PageDesignRecipe`, `PageTemplateRecipe`, `PageRecipe`,
   `PlaceholderRecipe`, `SiteTemplateRecipe`, `SiteRecipe`, and
-  `ContentItemRecipe` are present in source but not in the 0.1.0
+  `ContentItemRecipe` are present in source but not part of the
   stability promise. Stabilize them in a follow-up release with the same
-  idempotent re-push + LIFO rollback guarantees as the seven stable
+  idempotent re-push + LIFO rollback guarantees as the five stable
   kinds. `PageTemplateRecipe` (page-level templates with SXA page base
   inheritance) and `PlaceholderRecipe` (the hybrid placeholder model —
   standalone + inline `ComponentTemplateRecipe.placeholders`, with
@@ -309,13 +302,13 @@ Recorded so they don't get re-proposed. Full rationale in
 
 ## Recently shipped
 
-| Area                                                              | Shipped       |
-| ----------------------------------------------------------------- | ------------- |
-| `scai mcp serve` — MCP server, 24+ workflow-shaped tools          | 2026-05-14    |
-| `scai hygiene audit` (12 verbs) + `scai hygiene cleanup`          | 2026-05-13/14 |
-| `scai content publish` + `content version` (SAI Publishing API)   | 2026-05-14    |
-| Two-environment `ser diff` (`--source-env` / `--target-env`)      | 2026-05-14    |
-| `scai ops brief` — Content Operations brief types + instances     | 2026-05-15    |
-| `scai ops campaign` — Orchestrate projects / deliverables / tasks | 2026-05-15    |
-| `scai brand` — Brand Management + Brand Review                    | 2026-05       |
-| npm publish via OIDC Trusted Publishing                           | 2026-05-13    |
+| Area                                                                                  | Shipped       |
+| ------------------------------------------------------------------------------------- | ------------- |
+| `scai mcp serve` — MCP server (run `scai mcp tools list` for the live tool inventory) | 2026-05-14    |
+| `scai hygiene audit` (12 verbs) + `scai hygiene cleanup`                              | 2026-05-13/14 |
+| `scai content publish` (SAI Publishing API)                                           | 2026-05-14    |
+| Two-environment `ser diff` (`--source-env` / `--target-env`)                          | 2026-05-14    |
+| `scai ops brief` — Content Operations brief types + instances                         | 2026-05-15    |
+| `scai ops campaign` — Orchestrate projects / deliverables / tasks                     | 2026-05-15    |
+| `scai brand` — Brand Management + Brand Review                                        | 2026-05       |
+| npm publish via OIDC Trusted Publishing                                               | 2026-05-13    |

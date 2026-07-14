@@ -52,7 +52,7 @@ This file is informational — it does not gate releases. CI does.
 
 | Gate               | Enforced by                                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Node engine        | `package.json` `engines.node: ">=20"`                                                                         |
+| Node engine        | `package.json` `engines.node: ">=22.12.0"`                                                                    |
 | OS matrix          | `.github/workflows/smoke.yml` — runs `pnpm smoke` on macOS/Windows/Linux                                      |
 | Headless / non-TTY | Smoke workflow runs in CI (no TTY); `cli.ts` falls back to non-interactive mode when stdin/stdout aren't TTYs |
 

@@ -22,13 +22,14 @@ CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers and module boundaries
 
-`src/` is organized into ~19 **domain areas** plus three cross-cutting
+`src/` is organized into 20 **domain areas** plus three cross-cutting
 layers. The domain areas:
 
 ```
 deploy   serialization  recipe   brand    brief    campaigns
 sites    publishing     content  hygiene  webhooks workflow
 agents   policy         mcp      scripting sync     auth      authoring
+doctor
 ```
 
 Each domain area is a directory under `src/` that owns one product

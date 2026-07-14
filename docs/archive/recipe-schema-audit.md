@@ -1,3 +1,5 @@
+> **Archived/superseded** — point-in-time note, kept for history.
+
 # Recipe Schema Audit (2026-05-26)
 
 Structural audit of every recipe kind across scai and the registry's

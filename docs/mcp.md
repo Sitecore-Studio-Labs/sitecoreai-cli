@@ -114,9 +114,10 @@ agent intends to perform.
 ## Tool surface
 
 The library exports ~60+ fetch/mutate primitives across its domain
-areas. The MCP tool surface re-shapes those into **54 workflow-shaped
+areas. The MCP tool surface re-shapes those into **50+ workflow-shaped
 tools** — one per task an agent actually reasons about, not a 1:1
-wrapper of every library call.
+wrapper of every library call. The exact count is a live inventory
+(`scai mcp tools list`), not a fixed number.
 
 The surface is that size because scai covers a broad product surface
 (deploy, serialization, recipes, hygiene, publishing, brand, brief,
@@ -132,9 +133,9 @@ small, fixed set of tools following a **discriminator pattern**:
 
 Without the discriminator pattern the raw primitive count would put
 the surface well past 100 tools; collapsing each domain's writes
-behind an `action` keeps it at 54. Deploy is the largest single
-domain (12 tools) because the XM Cloud Deploy API itself has the most
-distinct lifecycle objects.
+behind an `action` keeps it to a few dozen. Deploy is the largest
+single domain (12 tools) because the XM Cloud Deploy API itself has the
+most distinct lifecycle objects.
 
 Full inventory: `scai mcp tools list` (TSV) or
 `scai mcp tools list --json`. Per-tool input schemas:

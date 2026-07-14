@@ -21,7 +21,7 @@ For one-off binaries, use `pnpm exec <bin>`.
 
 ## Module structure
 
-`src/` is ~17 **domain areas** plus three cross-cutting layers. A domain
+`src/` is 20 **domain areas** plus three cross-cutting layers. A domain
 area owns one product surface — its API client, task runners, and (where
 it has one) an `index.ts` SDK barrel.
 
@@ -37,7 +37,7 @@ src/
 └── <domain areas>/    ← deploy, serialization, recipe, brand, brief,
                           campaigns, sites, publishing, content, hygiene,
                           webhooks, workflow, agents, policy, mcp,
-                          scripting, sync
+                          scripting, sync, auth, authoring, doctor
 ```
 
 A typical domain area (e.g. `serialization/`) holds `tasks/` (task

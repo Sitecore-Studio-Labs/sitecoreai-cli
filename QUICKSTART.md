@@ -10,7 +10,7 @@ A **recipe** is a TypeScript object describing one thing you want in Sitecore (a
 component template, a content template, an enumeration, …). scai compiles it to
 idempotent Authoring operations and applies them. Re-running a push is a no-op.
 
-> Requires Node.js >= 20.
+> Requires Node.js >= 22.12.0.
 
 ## 1. Install
 
@@ -76,11 +76,11 @@ export default {
 } satisfies ComponentTemplateRecipe;
 ```
 
-The stable recipe kinds (`ComponentTemplateRecipe`, `ContentTemplateRecipe`,
-`EnumerationRecipe`, `PageTemplateRecipe`, `ComponentSectionRecipe`,
-`DesignParametersTemplateRecipe`, `VariantRecipe`) live on
-`@sitecoreai-labs/sitecoreai-cli/recipe`. The composition kinds (`ContentItem`,
-`Page*Design`, `PartialDesign`, `Site`, `SiteTemplate`, `Dictionary`) live on
+The five stable recipe kinds (`ComponentTemplateRecipe`, `ContentTemplateRecipe`,
+`ComponentSectionRecipe`, `DesignParametersTemplateRecipe`, `EnumerationRecipe`)
+live on `@sitecoreai-labs/sitecoreai-cli/recipe`. The composition kinds
+(`ContentItem`, `PageDesign`, `PartialDesign`, `SiteRecipe`, `SiteTemplate`,
+`Dictionary`) are present and usable but carry no stability promise, and live on
 `@sitecoreai-labs/sitecoreai-cli/recipe/unstable`. See
 [docs/recipes.md](./docs/recipes.md) for every kind and field.
 
@@ -94,10 +94,16 @@ scai provision recipe push -n dev --allow-write  # applies (needs allowWrite in 
 Useful neighbors:
 
 ```sh
+scai provision recipe list           # list recipes found by the `recipes` glob
 scai provision recipe diff -n dev    # human-readable diff vs the tenant (read-only)
 scai provision recipe plan -n dev    # operational plan diff (read-only)
+scai provision recipe roots -n dev   # print the resolved recipe target roots
 scai provision recipe pull -n dev    # extract tenant state back into *.recipe.json
+scai provision recipe prune-defaults -n dev --allow-write  # remove OOTB SXA defaults
 ```
+
+The full verb set: `compile`, `list`, `plan`, `diff`, `push`, `pull`,
+`prune-defaults`, `roots`.
 
 A second push is idempotent (zero mutations). A partial failure rolls back via a
 LIFO unwind of the snapshot-driven inverse operations.

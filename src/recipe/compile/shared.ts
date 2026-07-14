@@ -1354,7 +1354,13 @@ export function buildFieldOp(input: BuildFieldOpInput): Operation[] {
 
   // Field storage axis. `versioned` is Sitecore's default for a new
   // Template Field (Shared + Unversioned both unset) — emit nothing.
-  const storage = field.sitecore?.storage;
+  // IMAGE fields default to SHARED: brand imagery is language-invariant
+  // (the registry's role-based image defaults must show in every locale,
+  // and per-language image versions were empty everywhere but `en` —
+  // Sitecore has no field-level fallback by default). A recipe that
+  // genuinely wants per-locale imagery opts out with an explicit
+  // `sitecore.storage: "versioned"`.
+  const storage = field.sitecore?.storage ?? (field.shape === "image" ? "shared" : undefined);
   if (storage === "shared") {
     fields.push(sharedField(TEMPLATE_FIELD_FIELDS.SHARED, { kind: "string", value: "1" }));
   } else if (storage === "unversioned") {

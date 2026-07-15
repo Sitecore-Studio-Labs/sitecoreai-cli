@@ -70,6 +70,7 @@ const makeStubSitesClient = (overrides: Partial<SitesApiClient> = {}): SitesApiC
       }) as unknown as Job
   ),
   listSites: vi.fn(async (): Promise<Site[]> => []),
+  retrieveSite: vi.fn(async (): Promise<Site> => ({}) as Site),
   updateSite: vi.fn(async (): Promise<Site> => ({}) as Site),
   listSiteTemplates: vi.fn(async (): Promise<SiteTemplate[]> => []),
   listCollections: vi.fn(async (): Promise<SiteCollection[]> => []),
@@ -292,10 +293,11 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
     const { ir, op } = buildIrWithSeeding(solterraCoRecipe);
 
     const sitesClient = makeStubSitesClient({
-      // The site's own language list already carries every declared
-      // language — nothing to add at the site level either.
+      // The site's own CONFIGURED language list already carries every
+      // declared language — nothing to add at the site level either.
       listSites: vi.fn(
-        async () => [{ id: "preexisting-site-id", name: op.siteName, languages: ["en"] }] as Site[]
+        async () =>
+          [{ id: "preexisting-site-id", name: op.siteName, supportedLanguages: ["en"] }] as Site[]
       ),
       // Every declared language already registered → nothing to provision.
       listLanguages: vi.fn(async () => [{ iso: "en", regionalIsoCode: "en" }] as Language[]),
@@ -368,12 +370,46 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
     // missing language was registered, but no site was created.
     expect(sitesClient.addLanguage).toHaveBeenCalledWith("en");
     expect(sitesClient.createSite).not.toHaveBeenCalled();
-    // The site's own language list was missing the declared language too
-    // (fixture site has no `languages`) — the executor PATCHes it after
-    // the environment ensure registers the code.
+    // The site's own configured language list was missing the declared
+    // language too (fixture site has no `supportedLanguages`) — the
+    // executor PATCHes it after the environment ensure registers the code.
     expect(sitesClient.updateSite).toHaveBeenCalledWith("preexisting-site-id", {
       supportedLanguages: ["en"],
     });
+  });
+
+  it("provisions languages for an existing site even when the templateRefKey is not captured", async () => {
+    const { ir, op } = buildIrWithSeeding(solterraCoRecipe);
+
+    const sitesClient = makeStubSitesClient({
+      listSites: vi.fn(
+        async () =>
+          [{ id: "preexisting-site-id", name: op.siteName, supportedLanguages: [] }] as Site[]
+      ),
+      retrieveSite: vi.fn(
+        async () => ({ id: "preexisting-site-id", supportedLanguages: [] }) as Site
+      ),
+      listLanguages: vi.fn(async () => [{ iso: "en", regionalIsoCode: "en" }] as Language[]),
+    });
+
+    const authoring = makeStubAuthoringClient();
+    // NO crossRecipeRefs seeding and getItem resolves nothing — the
+    // templateRefKey stays uncaptured. Language provisioning must run
+    // anyway: an existing site doesn't need its template, and the old
+    // template-first early skip silently swallowed the ensure.
+    const result = await executeIr(ir, authoring, {
+      mode: "apply",
+      sitesClient,
+    });
+
+    expect(result.aborted).toBe(false);
+    const action = result.plan.actions[0];
+    expect(action.status).toBe("update");
+    expect(action.reason).toMatch(/adding missing site language\(s\): en/);
+    expect(sitesClient.updateSite).toHaveBeenCalledWith("preexisting-site-id", {
+      supportedLanguages: ["en"],
+    });
+    expect(sitesClient.createSite).not.toHaveBeenCalled();
   });
 
   it("adds a declared language to the SITE list when the environment already has it (env-registered but site-invisible locale)", async () => {
@@ -381,10 +417,25 @@ describe("executeIr — CreateSiteFromTemplate apply path", () => {
 
     const sitesClient = makeStubSitesClient({
       // Environment already registered `en` (say, via --provision-languages
-      // on a localize pass) — but the SITE's language list never gained it,
-      // so Pages doesn't offer the locale on the site.
+      // on a localize pass), and the localize pass already wrote `en`
+      // content under the site — so the derived "in use" list contains it.
+      // But the SITE's CONFIGURED list (`supportedLanguages`, what Pages
+      // offers locales from) never gained it. The diff must read the
+      // configured list: keying off `languages` is the exact false
+      // negative that left env-registered locales invisible in Pages.
       listSites: vi.fn(
-        async () => [{ id: "preexisting-site-id", name: op.siteName, languages: [] }] as Site[]
+        async () =>
+          [
+            {
+              id: "preexisting-site-id",
+              name: op.siteName,
+              languages: ["en"],
+              supportedLanguages: [],
+            },
+          ] as Site[]
+      ),
+      retrieveSite: vi.fn(
+        async () => ({ id: "preexisting-site-id", supportedLanguages: [] }) as Site
       ),
       listLanguages: vi.fn(async () => [{ iso: "en", regionalIsoCode: "en" }] as Language[]),
     });

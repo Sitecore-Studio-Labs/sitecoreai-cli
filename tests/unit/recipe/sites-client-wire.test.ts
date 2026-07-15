@@ -98,6 +98,16 @@ describe("createSitesApiClient — wire path", () => {
     });
   });
 
+  it("retrieveSite issues GET /api/v1/sites/{siteId}", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "s-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSitesApiClient(options).retrieveSite("s-1");
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method?: string }];
+    expect(url).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/s-1`);
+    expect(init.method ?? "GET").toBe("GET");
+  });
+
   it("updateSite issues PATCH /api/v1/sites/{siteId} with only the patched fields", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "s-1" }));
     vi.stubGlobal("fetch", fetchMock);

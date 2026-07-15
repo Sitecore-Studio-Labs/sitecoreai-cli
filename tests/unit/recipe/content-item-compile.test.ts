@@ -5,17 +5,27 @@ import {
   type CompileContext,
   compileContentItemRecipe,
   compileRecipe,
+  compileRecipeSet,
 } from "../../../src/recipe/compile";
 import {
   contentItemId,
+  contentItemsFolderId,
   fieldId,
   templateId,
   workflowId,
   workflowStateId,
 } from "../../../src/recipe/items/guids";
-import type { ContentFieldValue, ContentItemRecipe } from "../../../src/recipe/schema/recipe";
+import type {
+  ContentFieldValue,
+  ContentItemRecipe,
+  PartialDesignRecipe,
+} from "../../../src/recipe/schema/recipe";
 import type { CreateItemOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
-import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
+import {
+  LAYOUT_FIELDS,
+  SITECORE_TEMPLATES,
+  SYSTEM_FIELDS,
+} from "../../../src/recipe/ir/sitecore-templates";
 
 const CONTEXT: CompileContext = {
   templatesRoot: "/sitecore/templates/Project/Demo/Components",
@@ -656,6 +666,131 @@ describe("compileContentItemRecipe — story mode (versions)", () => {
     );
     expect(created?.version).toBe(1);
     expect(created?.value).toEqual({ kind: "string", value: "20260110T000000Z" });
+  });
+});
+
+describe("compileContentItemRecipe — folder", () => {
+  const createOps = (ops: Operation[]): CreateItemOp[] =>
+    ops.filter((op): op is CreateItemOp => op.op === "CreateItem");
+  const itemCreate = (ops: Operation[], handle = "test-content@1"): CreateItemOp =>
+    ops.find(
+      (op): op is CreateItemOp => op.op === "CreateItem" && op.label === `content-item:${handle}`
+    )!;
+
+  it("slash-string folder nests the item under a CreateOnly generic-Folder op", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}, { folder: "Cocktails" }), CONTEXT);
+    const creates = createOps(ir.operations);
+    expect(creates).toHaveLength(2);
+    const [folderOp, itemOp] = creates;
+    expect(folderOp.label).toBe("content-items-folder:default:Cocktails");
+    expect(folderOp.policy).toBe("CreateOnly");
+    expect(folderOp.id).toBe(contentItemsFolderId(SITE, "Cocktails"));
+    expect(folderOp.path).toBe("/sitecore/content/Demo/Data/Cocktails");
+    expect(folderOp.parent).toEqual({ kind: "ref-path", value: CONTEXT.contentItemsRoot });
+    expect(folderOp.templateOf).toBe(SITECORE_TEMPLATES.FOLDER);
+    expect(folderOp.name).toBe("Cocktails");
+    expect(itemOp.label).toBe("content-item:test-content@1");
+    expect(itemOp.path).toBe("/sitecore/content/Demo/Data/Cocktails/TestContent");
+    expect(itemOp.parent).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/content/Demo/Data/Cocktails",
+    });
+  });
+
+  it("array folder emits one folder op per segment, cumulative paths, before the item", () => {
+    const ir = compileContentItemRecipe(
+      buildRecipe({}, { folder: ["Data", "Cocktails"] }),
+      CONTEXT
+    );
+    const creates = createOps(ir.operations);
+    expect(creates.map((op) => op.path)).toEqual([
+      "/sitecore/content/Demo/Data/Data",
+      "/sitecore/content/Demo/Data/Data/Cocktails",
+      "/sitecore/content/Demo/Data/Data/Cocktails/TestContent",
+    ]);
+    const [first, second] = creates;
+    expect(first.id).toBe(contentItemsFolderId(SITE, "Data"));
+    expect(second.id).toBe(contentItemsFolderId(SITE, "Data/Cocktails"));
+    // Each segment parents at the previous level.
+    expect(second.parent).toEqual({ kind: "ref-path", value: "/sitecore/content/Demo/Data/Data" });
+  });
+
+  it("no folder keeps the legacy flat path and emits no folder ops", () => {
+    const ir = compileContentItemRecipe(buildRecipe({}), CONTEXT);
+    const creates = createOps(ir.operations);
+    expect(creates).toHaveLength(1);
+    expect(creates[0].path).toBe("/sitecore/content/Demo/Data/TestContent");
+    expect(creates[0].parent).toEqual({ kind: "ref-path", value: CONTEXT.contentItemsRoot });
+  });
+
+  it("a folder shared by several content items materialises once per recipe set", () => {
+    const a = buildRecipe({}, { folder: ["Cocktails"] });
+    const b = buildRecipe(
+      {},
+      { handle: "other-content@1", name: "OtherContent", folder: "Cocktails" }
+    );
+    const irs = compileRecipeSet([a, b], CONTEXT);
+    const folderOps = irs
+      .flatMap((ir) => ir.operations)
+      .filter(
+        (op): op is CreateItemOp =>
+          op.op === "CreateItem" && op.label === "content-items-folder:default:Cocktails"
+      );
+    expect(folderOps).toHaveLength(1);
+    // Both items still land under the shared folder.
+    const itemPaths = irs
+      .flatMap((ir) => ir.operations)
+      .filter(
+        (op): op is CreateItemOp => op.op === "CreateItem" && op.label.startsWith("content-item:")
+      )
+      .map((op) => op.path);
+    expect(itemPaths).toEqual([
+      "/sitecore/content/Demo/Data/Cocktails/TestContent",
+      "/sitecore/content/Demo/Data/Cocktails/OtherContent",
+    ]);
+  });
+
+  it("a shared datasourceRef to a foldered item resolves by handle GUID, not path", () => {
+    // Identity is handle-derived: the folder changes only the item's
+    // path, never its refKey…
+    const ir = compileContentItemRecipe(
+      buildRecipe({}, { folder: ["Data", "Cocktails"] }),
+      CONTEXT
+    );
+    expect(itemCreate(ir.operations).id).toBe(contentItemId(SITE, "test-content@1"));
+
+    // …so a layout placement binding the item as a shared datasource
+    // embeds the same contentItemId GUID regardless of the folder.
+    const partial = {
+      kind: "partial-design",
+      schemaVersion: "1",
+      handle: "header-partial@1",
+      name: "HeaderPartial",
+      displayName: "Header Partial",
+      layout: {
+        placeholders: {
+          "/header": [
+            {
+              componentHandle: "site-logo@1",
+              datasourceRef: { kind: "shared", handle: "test-content@1" },
+            },
+          ],
+        },
+      },
+    } satisfies PartialDesignRecipe;
+    const partialIr = compileRecipe(partial, {
+      ...CONTEXT,
+      partialDesignsRoot: "/sitecore/content/Demo/Presentation/Partial Designs",
+    });
+    const layoutSet = partialIr.operations.find(
+      (op): op is SetFieldOp =>
+        op.op === "SetField" && op.label === "partial-design-layout:header-partial@1"
+    )!;
+    expect(layoutSet).toBeDefined();
+    if (layoutSet.value.kind !== "string") throw new Error("expected string layout");
+    expect(layoutSet.value.value).toContain(
+      `{${contentItemId(SITE, "test-content@1").toUpperCase()}}`
+    );
   });
 });
 

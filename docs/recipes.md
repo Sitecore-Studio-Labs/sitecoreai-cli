@@ -134,6 +134,23 @@ by `itemPath` ancestry as well as handle references — so the wildcard
 child never forces its parent segment to be auto-created as a plain
 folder.
 
+### Content items: `folder` placement
+
+By default a `ContentItemRecipe` lands flat at
+`<contentItemsRoot>/<name>`. The optional `folder` field nests it —
+array form (`["Data", "Cocktails"]`) or slash-string (`"Data/Cocktails"`)
+— at `<contentItemsRoot>/<folder…>/<name>`. The compiler emits one
+CreateOnly generic-`Folder` item per segment (shared folders
+materialise once per recipe set), ordered before the item itself.
+
+Identity is handle-derived (`contentItemId(site, handle)`), never
+path-derived, so `reference` field refs and layout
+`datasourceRef: { kind: "shared" }` bindings resolve identically with
+or without a folder. **Caveat:** plan-time existence is path-based —
+changing `folder` on an already-pushed item plans a fresh create at the
+new path; the live item is not moved. Move it first (Authoring
+`moveItem` / the CMS) or prune the old item after the push.
+
 The workflow + webhook-authorization kinds have a dedicated reference
 covering payload shape, endpoint contract, authorization handling, and
 failure modes: [`docs/recipes/workflow.md`](recipes/workflow.md).

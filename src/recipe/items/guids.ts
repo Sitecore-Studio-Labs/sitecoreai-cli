@@ -464,6 +464,24 @@ export const siteDataFolderId = (site: string, subfolder: string): string =>
   uuidv5(`${site}::data-folder::${subfolder}`, NAMESPACE_PROJECT);
 
 /**
+ * Deterministic refKey for an organisational folder segment under
+ * `<contentItemsRoot>/<folderPath>` — the home of a `ContentItemRecipe`
+ * that declares a `folder`. `folderPath` is the slash-joined cumulative
+ * path (`Cocktails`, `Data/Cocktails`), so every nesting level has its
+ * own identity and multiple content items sharing a folder converge on
+ * one CreateOnly op per recipe set (deduped via `emittedFolders`).
+ *
+ * Deliberately a DISTINCT seed from `siteDataFolderId` (the
+ * datasource-location pool at the same base): if a datasource pool and
+ * a content-item folder target the same path, both ops emit and the
+ * later one no-ops at apply via the already-exists fallback — the
+ * rank-0 pool folder (with its Insert-Options-bearing template) wins
+ * over this rank-1 generic folder, never the reverse.
+ */
+export const contentItemsFolderId = (site: string, folderPath: string): string =>
+  uuidv5(`${site}::content-items-folder::${folderPath}`, NAMESPACE_PROJECT);
+
+/**
  * Per-component Data Folder TEMPLATE emitted when a recipe declares a
  * site-scoped datasource location. Lands at
  * `Components/<section>/Data Folders/<Component> Data Folder`. The

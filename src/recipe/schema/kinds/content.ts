@@ -7,6 +7,7 @@ import {
 import {
   DesignParameterSchema,
   FieldDefinitionSchema,
+  FolderPath,
   HANDLE_PATTERN,
   MediaLocationSchema,
   RecipeMetaSchema,
@@ -155,6 +156,27 @@ export const ContentItemRecipeSchema = z.object({
   templateType: z.string().regex(HANDLE_PATTERN, {
     message: "templateType must match `<kebab-name>@<major>`, e.g. nav-link@1",
   }),
+  /**
+   * Optional organisational folder path under `contentItemsRoot`. Array
+   * form (`["Data", "Cocktails"]`) or slash-string (`"Data/Cocktails"`)
+   * — both normalise to segments. When set, the item lands at
+   * `<contentItemsRoot>/<folder…>/<name>` instead of flat at
+   * `<contentItemsRoot>/<name>`; the compiler emits one CreateOnly
+   * generic-`Folder` CreateItem per segment (deduped once per recipe
+   * set), ordered before the item's own CreateItem.
+   *
+   * Identity note — the item's GUID refKey derives from the HANDLE
+   * (`contentItemId(site, handle)`, see `items/guids.ts`), never from
+   * the path, so cross-recipe references (`reference` field refs,
+   * layout `datasourceRef: shared`) resolve identically with or
+   * without a folder. But plan-time existence is PATH-based: changing
+   * `folder` on an already-pushed item makes the planner miss at the
+   * new path and plan a fresh create there — the existing item is NOT
+   * moved; it stays at its old path (and keeps receiving nothing).
+   * Move the live item first (Authoring `moveItem` / the CMS) or
+   * accept the duplicate and prune the old one manually.
+   */
+  folder: FolderPath.optional(),
   /**
    * Where this item's external-URL images land in the media library.
    * Only `scope: "site"` is valid here — a shared content item has no

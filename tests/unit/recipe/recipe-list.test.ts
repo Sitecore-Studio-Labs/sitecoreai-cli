@@ -82,6 +82,55 @@ describe("recipe list — apply-order manifest", () => {
 });
 
 /**
+ * Page-tree nesting edges: pages all share one apply rank and carry no
+ * handle reference to each other, so a page nested under another page's
+ * `itemPath` (the wildcard detail-page pattern — an item literally named
+ * `*` under a sibling page recipe) orders by itemPath ancestry instead.
+ * Without the edge, a child that executes first makes `ensurePathExists`
+ * auto-materialise the parent segment as a generic Folder, which the
+ * parent page's own CreateItem (CreateOnly) can never repair.
+ */
+describe("apply ordering — page-tree nesting via itemPath", () => {
+  const page = (handle: string, name: string, itemPath: string): Recipe => ({
+    kind: "page",
+    schemaVersion: "1",
+    handle,
+    name,
+    displayName: name,
+    template: "article-page@1",
+    itemPath,
+    fields: {},
+  });
+
+  const parentPage = page("cocktails@1", "Cocktails", "/sitecore/content/{site}/Home/Cocktails");
+  const wildcardChild = page("cocktail-detail@1", "*", "/sitecore/content/{site}/Home/Cocktails/*");
+
+  it("orders a wildcard child page after its ancestor page even when supplied first", () => {
+    const order = stableTopologicalSortWithinRanks([wildcardChild, parentPage]).map(
+      (recipe) => recipe.handle
+    );
+    expect(order).toEqual(["cocktails@1", "cocktail-detail@1"]);
+  });
+
+  it("emits the itemPath-ancestry edge in dependsOn when the set is passed", () => {
+    expect(extractRecipeDependencies(wildcardChild, [wildcardChild, parentPage])).toContain(
+      "cocktails@1"
+    );
+    // The ancestor gains no reverse edge — nesting is child → parent only.
+    expect(extractRecipeDependencies(parentPage, [wildcardChild, parentPage])).not.toContain(
+      "cocktail-detail@1"
+    );
+  });
+
+  it("adds no edge between path-unrelated pages", () => {
+    const sibling = page("about@1", "About", "/sitecore/content/{site}/Home/About");
+    const deps = extractRecipeDependencies(sibling, [sibling, parentPage, wildcardChild]);
+    // The page's template reference remains; no page-nesting edges appear.
+    expect(deps).toEqual(["article-page@1"]);
+  });
+});
+
+/**
  * The aggregate handle inventory `recipe list --json` emits so a batch
  * driver knows which synthetic IRs its `--handles`-scoped pushes drop:
  * `pre` rides with the first chunk (shared Data Folder templates must

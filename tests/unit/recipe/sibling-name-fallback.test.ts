@@ -254,3 +254,111 @@ describe("CreateItem — marker-match fallback for renamed items", () => {
     expect(action.status).toBe("create");
   });
 });
+
+/**
+ * Template guard on the marker fallback: a recipe that swaps the component
+ * behind a slot (e.g. a partial design's header moving from `main-nav@1` to
+ * `header@1`) renames its scoped datasource AND changes its template. The
+ * stale item still carries the recipe's marker, but it is NOT a rename —
+ * rebinding onto it leaves the old template in place and every SetField for
+ * a new-template-only field aborts with "Cannot find a field with the name
+ * <X>". A marked sibling only counts as a rename when its live templateId
+ * matches the op's expected template (when that is knowable).
+ */
+describe("CreateItem — marker-match template guard (component swap)", () => {
+  // The op's templateOf refKey, resolved to a live template itemId the way
+  // `seedCrossRecipeRefs` does before planning starts.
+  const TEMPLATE_REF_KEY = "44444444-4444-4444-4444-444444444444";
+  const LIVE_NEW_TEMPLATE_ID = "77777777-7777-4777-8777-777777777777";
+  const LIVE_OLD_TEMPLATE_ID = "88888888-8888-4888-8888-888888888888";
+
+  const capturedWithTemplate = (): Map<string, string> =>
+    new Map<string, string>([
+      [PARENT_PATH, PARENT_ITEM_ID],
+      [TEMPLATE_REF_KEY, LIVE_NEW_TEMPLATE_ID],
+    ]);
+
+  /** Preload the parent + a marked child under `oldName` with a given live template. */
+  const seedSwappedChild = (client: LaggingMockClient, liveTemplateId: string): void => {
+    client.preload({
+      itemId: PARENT_ITEM_ID,
+      templateId: "55555555-5555-5555-5555-555555555555",
+      parentId: "00000000-0000-0000-0000-000000000000",
+      name: "sandbox",
+      path: PARENT_PATH,
+      fields: [],
+    });
+    client.preload({
+      itemId: CHILD_ITEM_ID,
+      templateId: liveTemplateId,
+      parentId: PARENT_ITEM_ID,
+      name: "OldSlotName",
+      path: `${PARENT_PATH}/OldSlotName`,
+      fields: [remoteMarker(HANDLE)],
+    });
+  };
+
+  it("declines the rebind when the marked sibling's template differs (plans a create)", async () => {
+    const client = new LaggingMockClient();
+    seedSwappedChild(client, LIVE_OLD_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: capturedWithTemplate(),
+    });
+
+    // Different template = component swap, not a CMS rename — create fresh.
+    expect(action.status).toBe("create");
+  });
+
+  it("still rebinds when the marked sibling's template matches the resolved template", async () => {
+    const client = new LaggingMockClient();
+    seedSwappedChild(client, LIVE_NEW_TEMPLATE_ID);
+    const captured = capturedWithTemplate();
+
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    expect(action.status).toBe("skip");
+    expect(captured.get(CHILD_REF_KEY)).toBe(CHILD_ITEM_ID);
+  });
+
+  it("normalizes GUID shape before comparing (undashed uppercase still matches)", async () => {
+    const client = new LaggingMockClient();
+    seedSwappedChild(client, LIVE_NEW_TEMPLATE_ID.replace(/-/g, "").toUpperCase());
+
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: capturedWithTemplate(),
+    });
+
+    expect(action.status).toBe("skip");
+  });
+
+  it("skips the guard when the expected template can't be resolved to a live id", async () => {
+    const client = new LaggingMockClient();
+    // Old-template child, but the captured map has NO entry for the op's
+    // templateOf refKey — ambiguous (built-in constant vs unseeded
+    // deterministic refKey), so the guard must stay inactive and the
+    // rename fallback keep its pre-guard behavior.
+    seedSwappedChild(client, LIVE_OLD_TEMPLATE_ID);
+    const captured = new Map<string, string>([[PARENT_PATH, PARENT_ITEM_ID]]);
+
+    const action = await buildAction({
+      index: 0,
+      op: markedCreateOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    expect(action.status).toBe("skip");
+  });
+});

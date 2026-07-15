@@ -22,6 +22,7 @@ const apiMocks = vi.hoisted(() => ({
   createSite: vi.fn(),
   listSites: vi.fn(),
   listSiteTemplates: vi.fn(),
+  retrieveSite: vi.fn(),
   updateSite: vi.fn(),
 }));
 
@@ -43,6 +44,7 @@ vi.mock("../../../src/sites/api/sites", () => ({
   createSite: apiMocks.createSite,
   listSites: apiMocks.listSites,
   listSiteTemplates: apiMocks.listSiteTemplates,
+  retrieveSite: apiMocks.retrieveSite,
   updateSite: apiMocks.updateSite,
 }));
 
@@ -102,6 +104,16 @@ describe("createSitesApiClient — delegation", () => {
     const client = createSitesApiClient(options);
     await expect(client.listLanguages()).resolves.toEqual([{ languageCode: "en" }]);
     expect(apiMocks.listLanguages).toHaveBeenCalledWith(options);
+  });
+
+  it("retrieveSite forwards the shared options + siteId", async () => {
+    apiMocks.retrieveSite.mockResolvedValue({ id: "s-1", supportedLanguages: ["en"] });
+    const client = createSitesApiClient(options);
+    await expect(client.retrieveSite("s-1")).resolves.toEqual({
+      id: "s-1",
+      supportedLanguages: ["en"],
+    });
+    expect(apiMocks.retrieveSite).toHaveBeenCalledWith(options, "s-1");
   });
 
   it("updateSite forwards the shared options + siteId + patch", async () => {

@@ -210,7 +210,12 @@ export interface PlannedAction {
         site?: {
           siteId: string;
           siteName: string;
-          /** The site's language list at plan time (`Site.languages`). */
+          /**
+           * The site's CONFIGURED language list at plan time
+           * (`Site.supportedLanguages` — the property the PATCH writes).
+           * Display/diagnostics only: the executor re-reads the site
+           * before PATCHing and merges into the fresh list.
+           */
           currentLanguages: string[];
           /** Declared languages absent from the site's list at plan time. */
           missing: string[];
@@ -2421,15 +2426,6 @@ const planCreateSite = async (
         "CreateSiteFromTemplate requires a SitesApiClient — none was provided to the executor.",
     };
   }
-  const templateId = capturedItemIds.get(op.templateRefKey);
-  if (!templateId) {
-    return {
-      index,
-      operation: op,
-      status: "skip",
-      reason: `siteTemplate refKey ${op.templateRefKey} not yet captured (push the SiteTemplate first or via cross-recipe ref).`,
-    };
-  }
   // Languages the recipe declares for this site — the primary plus any
   // additionals, de-duped and order-preserving. Both the create path
   // (pre-createSite ensure) and the existing-site path (below) provision
@@ -2437,6 +2433,11 @@ const planCreateSite = async (
   const declaredLanguages = Array.from(new Set([op.language, ...(op.additionalLanguages ?? [])]));
   const sites = await sitesClient.listSites();
   const existing = sites.find((s) => s.name === op.siteName);
+  // The existing-site branch runs BEFORE the templateRefKey check on
+  // purpose: language provisioning doesn't need the site template, and an
+  // install step that pushes the site recipe without its SiteTemplate ref
+  // captured must still keep the environment + site language lists in
+  // step (the early template skip used to silently swallow the ensure).
   if (existing?.id) {
     capturedItemIds.set(op.siteRefKey, existing.id);
     // The site exists, but the environment may still be missing declared
@@ -2451,8 +2452,13 @@ const planCreateSite = async (
     // The site keeps its own language list independent of the environment
     // registry — a locale registered on the environment still doesn't show
     // up in Pages until it's on the site's list too. Diff against
-    // `Site.languages` ("the list of languages in use by the site").
-    const siteLanguages = existing.languages ?? [];
+    // `Site.supportedLanguages` — the site's CONFIGURED list, the same
+    // property the update PATCH writes and the one Pages offers locales
+    // from. NOT `Site.languages`: that's "languages in use by the site"
+    // (content-derived), and a localize pass that already wrote de-DE
+    // versions makes the locale look present there while Pages still
+    // doesn't offer it.
+    const siteLanguages = existing.supportedLanguages ?? [];
     const onSite = new Set(siteLanguages.map((code) => code.toLowerCase()));
     const missingOnSite = declaredLanguages.filter((code) => !onSite.has(code.toLowerCase()));
     if (missing.length > 0 || missingOnSite.length > 0) {
@@ -2488,6 +2494,15 @@ const planCreateSite = async (
       operation: op,
       status: "skip",
       reason: `Site '${op.siteName}' already exists and all declared languages are registered.`,
+    };
+  }
+  const templateId = capturedItemIds.get(op.templateRefKey);
+  if (!templateId) {
+    return {
+      index,
+      operation: op,
+      status: "skip",
+      reason: `siteTemplate refKey ${op.templateRefKey} not yet captured (push the SiteTemplate first or via cross-recipe ref).`,
     };
   }
   const input: NewSiteInput = {

@@ -227,7 +227,9 @@ export const inverseOf = (
     // Registration is additive and environment-wide: removing a language
     // during a half-failed push could break OTHER sites (or operator
     // content) already authored in it, and re-adding on the next push is
-    // idempotent anyway.
+    // idempotent anyway. The site-list PATCH the mutation may carry is
+    // additive for the same reason — shrinking a site's language list
+    // could hide locales operators authored in.
     return null;
   }
 

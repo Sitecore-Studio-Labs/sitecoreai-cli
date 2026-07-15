@@ -575,12 +575,16 @@ const trySkipUnavailableLanguage = (
  * makes it available environment-wide — e.g. to the brand-kit Glossary's
  * org locales — so a recipe's `additionalLanguages` provisions brand locales
  * as a side effect.
+ *
+ * Returns the environment's language-code set (lowercased regional + iso
+ * codes) after the ensure, so callers can gate site-level language writes
+ * to codes the environment actually registered.
  */
 export const ensureEnvironmentLanguages = async (
   sitesClient: SitesApiClient,
   languages: string[]
-): Promise<void> => {
-  if (languages.length === 0) return;
+): Promise<Set<string>> => {
+  if (languages.length === 0) return new Set();
   const current = await sitesClient.listLanguages();
   const present = presentLanguageCodes(current);
   // Bases before regionals so a regional's fallback target exists by the
@@ -650,6 +654,38 @@ export const ensureEnvironmentLanguages = async (
     const code = (language.regionalIsoCode || language.iso || "").trim();
     if (code) await wire(code);
   }
+  // The environment's language codes after the ensure (lowercased) —
+  // callers use this to gate SITE-level language writes to codes the
+  // environment actually registered (e.g. bare base admission codes the
+  // catalog gate skipped must not land on a site's language list either).
+  return present;
+};
+
+/**
+ * Append missing declared languages to the SITE's own language list.
+ * Environment registration alone doesn't put a locale on a site — Pages
+ * only offers locales on the site's list — so the existing-site branch of
+ * CreateSiteFromTemplate PATCHes `supportedLanguages` with the union.
+ * Gated to codes the environment actually registered after the ensure
+ * (bare base admission codes the catalog gate skipped stay off the site
+ * list too), and additive only — the list is never shrunk.
+ */
+const appendSiteLanguages = async (
+  sitesClient: SitesApiClient,
+  site: { siteId: string; currentLanguages: string[]; missing: string[] } | undefined,
+  envPresent: Set<string>
+): Promise<void> => {
+  if (!site) return;
+  const addable = site.missing.filter((code) => envPresent.has(code.toLowerCase()));
+  if (addable.length === 0) return;
+  const merged = [...site.currentLanguages];
+  const seen = new Set(merged.map((code) => code.toLowerCase()));
+  for (const code of addable) {
+    if (seen.has(code.toLowerCase())) continue;
+    seen.add(code.toLowerCase());
+    merged.push(code);
+  }
+  await sitesClient.updateSite(site.siteId, { supportedLanguages: merged });
 };
 
 interface DispatchMutationOptions {
@@ -771,7 +807,8 @@ const dispatchMutation = async ({
         "UNKNOWN"
       );
     }
-    await ensureEnvironmentLanguages(sitesClient, action.mutation.languages);
+    const envPresent = await ensureEnvironmentLanguages(sitesClient, action.mutation.languages);
+    await appendSiteLanguages(sitesClient, action.mutation.site, envPresent);
     return;
   }
   if (action.mutation.kind === "pruneChildren") {
@@ -819,8 +856,17 @@ const dispatchMutation = async ({
   const { input, siteRefKey, languages } = action.mutation;
   // createSite fails on a language the environment doesn't have yet — add
   // the site's primary + additional languages first (idempotent).
-  await ensureEnvironmentLanguages(sitesClient, languages);
-  const jobResponse = await sitesClient.createSite(input);
+  const envPresent = await ensureEnvironmentLanguages(sitesClient, languages);
+  // Declare the full language list on the SITE at creation, not just the
+  // primary — otherwise Pages never offers the additional locales on the
+  // site even though the environment has them. Gated to codes the
+  // environment actually registered (bare base admission codes the
+  // catalog gate skipped must not ride into the site definition).
+  const siteLanguages = languages.filter((code) => envPresent.has(code.toLowerCase()));
+  const jobResponse = await sitesClient.createSite({
+    ...input,
+    ...(siteLanguages.length > 0 && { languages: siteLanguages }),
+  });
   const jobHandle = jobResponse.handle ?? jobResponse.jobHandle;
   if (!jobHandle) {
     throw createScaiError(

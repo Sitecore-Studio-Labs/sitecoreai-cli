@@ -22,6 +22,7 @@ const apiMocks = vi.hoisted(() => ({
   createSite: vi.fn(),
   listSites: vi.fn(),
   listSiteTemplates: vi.fn(),
+  updateSite: vi.fn(),
 }));
 
 vi.mock("../../../src/sites/api/collections", () => ({
@@ -42,6 +43,7 @@ vi.mock("../../../src/sites/api/sites", () => ({
   createSite: apiMocks.createSite,
   listSites: apiMocks.listSites,
   listSiteTemplates: apiMocks.listSiteTemplates,
+  updateSite: apiMocks.updateSite,
 }));
 
 import { createSitesApiClient } from "../../../src/recipe/api/sites-client";
@@ -100,6 +102,14 @@ describe("createSitesApiClient — delegation", () => {
     const client = createSitesApiClient(options);
     await expect(client.listLanguages()).resolves.toEqual([{ languageCode: "en" }]);
     expect(apiMocks.listLanguages).toHaveBeenCalledWith(options);
+  });
+
+  it("updateSite forwards the shared options + siteId + patch", async () => {
+    apiMocks.updateSite.mockResolvedValue({ id: "s-1" });
+    const client = createSitesApiClient(options);
+    const patch = { supportedLanguages: ["en", "de-DE"] };
+    await expect(client.updateSite("s-1", patch)).resolves.toEqual({ id: "s-1" });
+    expect(apiMocks.updateSite).toHaveBeenCalledWith(options, "s-1", patch);
   });
 
   it("addLanguage wraps the bare code in a { languageCode } body", async () => {

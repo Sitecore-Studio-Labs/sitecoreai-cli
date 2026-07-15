@@ -98,6 +98,19 @@ describe("createSitesApiClient — wire path", () => {
     });
   });
 
+  it("updateSite issues PATCH /api/v1/sites/{siteId} with only the patched fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: "s-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSitesApiClient(options).updateSite("s-1", {
+      supportedLanguages: ["en", "de-DE"],
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe(`${DEFAULT_SITES_API_BASE}/api/v1/sites/s-1`);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ supportedLanguages: ["en", "de-DE"] });
+  });
+
   it("addLanguage issues POST /api/v1/languages with a { languageCode } body", async () => {
     const fetchMock = vi.fn().mockResolvedValue(okResponse({ languageCode: "da" }));
     vi.stubGlobal("fetch", fetchMock);

@@ -54,8 +54,10 @@ export const runRecipeList = async (options: RecipeCompileOptions): Promise<void
     kind: recipe.kind,
     rank: RECIPE_APPLY_RANK[recipe.kind],
     // In-set edges only — a reference to a handle outside the loaded set
-    // can't be scheduled and already resolves against the tenant.
-    dependsOn: extractRecipeDependencies(recipe).filter((handle) => inSet.has(handle)),
+    // can't be scheduled and already resolves against the tenant. The
+    // set is passed so page-tree nesting edges (itemPath ancestry) ride
+    // along — the same edges the apply-order topo-sort schedules by.
+    dependsOn: extractRecipeDependencies(recipe, ordered).filter((handle) => inSet.has(handle)),
     languages: collectRecipeLanguages(recipe),
   }));
 

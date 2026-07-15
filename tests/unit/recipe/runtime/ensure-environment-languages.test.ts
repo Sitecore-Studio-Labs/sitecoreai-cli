@@ -80,7 +80,8 @@ describe("ensureEnvironmentLanguages — fallback wiring", () => {
   it("a failed fallback PATCH never fails the provisioning", async () => {
     const client = makeClient([]);
     vi.mocked(client.updateLanguage).mockRejectedValue(new Error("403"));
-    await expect(ensureEnvironmentLanguages(client, ["da-DK"])).resolves.toBeUndefined();
+    // Resolves (with the env's post-ensure code set) despite the PATCH failure.
+    await expect(ensureEnvironmentLanguages(client, ["da-DK"])).resolves.toContain("da-dk");
     expect(client.addLanguage).toHaveBeenCalledWith("da-DK");
   });
 });
@@ -124,7 +125,11 @@ describe("ensureEnvironmentLanguages — supported-catalog gate", () => {
       return {} as never;
     });
 
-    await expect(ensureEnvironmentLanguages(client, ["de", "de-DE"])).resolves.toBeUndefined();
+    // Resolves despite the per-code rejection; the skipped code stays OUT
+    // of the returned env set so it can't leak into site-level writes.
+    const result = await ensureEnvironmentLanguages(client, ["de", "de-DE"]);
+    expect(result.has("de-de")).toBe(true);
+    expect(result.has("de")).toBe(false);
     const addOrder = vi.mocked(client.addLanguage).mock.calls.map((c) => c[0]);
     expect(addOrder).toEqual(["de", "de-DE"]);
     const updated = vi.mocked(client.updateLanguage).mock.calls.map((c) => c[0]);

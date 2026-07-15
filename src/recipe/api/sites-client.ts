@@ -15,10 +15,12 @@ import {
   deleteSite,
   listSites,
   listSiteTemplates,
+  updateSite,
   type JobResponse,
   type NewSiteInput,
   type Site,
   type SiteTemplate,
+  type UpdateSiteInput,
 } from "../../sites/api/sites";
 import type { SitesApiClientOptions as RawSitesApiClientOptions } from "../../sites/api/types";
 
@@ -54,6 +56,13 @@ export interface SitesApiClient {
    * client interface.
    */
   deleteSite(siteId: string): Promise<JobResponse>;
+  /**
+   * PATCH mutable site properties. The push pipeline uses this to keep
+   * the SITE's language list (`supportedLanguages`) in step with the
+   * recipe's declared languages — environment registration alone doesn't
+   * surface a locale on the site, so Pages won't offer it there.
+   */
+  updateSite(siteId: string, patch: Partial<UpdateSiteInput>): Promise<Site>;
   getJobStatus(jobHandle: string): Promise<Job>;
   listSites(): Promise<Site[]>;
   listSiteTemplates(): Promise<SiteTemplate[]>;
@@ -111,6 +120,7 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
   // leaves orphans on the tenant. Integration-test teardowns always
   // want this; the recipe push path doesn't dispatch deleteSite at all.
   deleteSite: (siteId) => deleteSite(options, siteId, { force: true }),
+  updateSite: (siteId, patch) => updateSite(options, siteId, patch),
   getJobStatus: (jobHandle) => getJobStatus(options, jobHandle),
   listSites: () => listSites(options),
   listSiteTemplates: () => listSiteTemplates(options),
@@ -134,4 +144,5 @@ export type {
   SiteCollection,
   SiteTemplate,
   SupportedLanguage,
+  UpdateSiteInput,
 };

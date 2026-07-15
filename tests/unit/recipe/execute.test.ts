@@ -5,7 +5,7 @@ import { executeIr, type ExecutionEvent } from "../../../src/recipe/runtime/exec
 import { SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../../../src/recipe/ir/sitecore-templates";
 import type { CreateItemOp, OperationIr } from "../../../src/recipe/ir/operations";
 import type { AuthoringApiClient, RemoteItem } from "../../../src/recipe/api/client";
-import type { SitesApiClient } from "../../../src/recipe/api/sites-client";
+import type { NewSiteInput, SitesApiClient } from "../../../src/recipe/api/sites-client";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 const CONTEXT = {
@@ -580,7 +580,8 @@ const makeSitesClient = (
       return { handle: "job-1" } as never;
     },
     getJobStatus: async () => ({ state: "Done" }) as never,
-    listSites: async () => [{ id: "site-id-1", name: "MarketingSite" }] as never,
+    listSites: async () => [{ id: "site-id-1", name: "MarketingSite", languages: ["en"] }] as never,
+    updateSite: async () => ({}) as never,
     listSiteTemplates: async () => [],
     listCollections: async () => [],
     listLanguages: async () => [],
@@ -660,6 +661,7 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
 
     const added: string[] = [];
     const order: string[] = [];
+    const createInputs: NewSiteInput[] = [];
     const sitesClient = makeSitesClient({
       listSites: async () => [] as never,
       // "en" already present on the environment; da/fr-FR are not.
@@ -669,8 +671,9 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
         order.push(`add:${code}`);
         return {} as never;
       },
-      createSite: async () => {
+      createSite: async (input) => {
         order.push("createSite");
+        createInputs.push(input);
         return { handle: "job-1" } as never;
       },
     });
@@ -704,6 +707,9 @@ describe("executeIr — CreateSiteFromTemplate dispatch", () => {
     expect(added).toEqual(["da", "fr-FR"]);
     // ...and every add runs BEFORE the site is created.
     expect(order).toEqual(["add:da", "add:fr-FR", "createSite"]);
+    // The full declared list rides the SITE definition (all three passed
+    // the env gate), so Pages offers every locale on the site.
+    expect(createInputs[0]?.languages).toEqual(["en", "da", "fr-FR"]);
   });
 
   it("plans createSite as skip when the site already exists in the tenant", async () => {

@@ -198,6 +198,23 @@ export interface PlannedAction {
         languages: string[];
         /** The subset not present at plan time — for display/diagnostics. */
         missing: string[];
+        /**
+         * Site-level language provisioning: environment registration alone
+         * doesn't surface a locale on the site — the site keeps its own
+         * language list (`Site.languages`), and Pages only offers locales
+         * on that list. When the existing site's list is missing declared
+         * languages, the executor PATCHes the site's `supportedLanguages`
+         * with the union — gated at apply time to codes actually
+         * registered on the environment after the ensure.
+         */
+        site?: {
+          siteId: string;
+          siteName: string;
+          /** The site's language list at plan time (`Site.languages`). */
+          currentLanguages: string[];
+          /** Declared languages absent from the site's list at plan time. */
+          missing: string[];
+        };
       }
     | {
         kind: "addItemVersion";
@@ -2431,13 +2448,39 @@ const planCreateSite = async (
     // missing set (registration is additive and environment-wide).
     const present = presentLanguageCodes(await sitesClient.listLanguages());
     const missing = declaredLanguages.filter((code) => !present.has(code.toLowerCase()));
-    if (missing.length > 0) {
+    // The site keeps its own language list independent of the environment
+    // registry — a locale registered on the environment still doesn't show
+    // up in Pages until it's on the site's list too. Diff against
+    // `Site.languages` ("the list of languages in use by the site").
+    const siteLanguages = existing.languages ?? [];
+    const onSite = new Set(siteLanguages.map((code) => code.toLowerCase()));
+    const missingOnSite = declaredLanguages.filter((code) => !onSite.has(code.toLowerCase()));
+    if (missing.length > 0 || missingOnSite.length > 0) {
+      const reasons: string[] = [];
+      if (missing.length > 0) {
+        reasons.push(`registering missing environment language(s): ${missing.join(", ")}`);
+      }
+      if (missingOnSite.length > 0) {
+        reasons.push(`adding missing site language(s): ${missingOnSite.join(", ")}`);
+      }
       return {
         index,
         operation: op,
         status: "update",
-        reason: `Site '${op.siteName}' exists; registering missing environment language(s): ${missing.join(", ")}.`,
-        mutation: { kind: "ensureLanguages", languages: declaredLanguages, missing },
+        reason: `Site '${op.siteName}' exists; ${reasons.join("; ")}.`,
+        mutation: {
+          kind: "ensureLanguages",
+          languages: declaredLanguages,
+          missing,
+          ...(missingOnSite.length > 0 && {
+            site: {
+              siteId: existing.id,
+              siteName: op.siteName,
+              currentLanguages: siteLanguages,
+              missing: missingOnSite,
+            },
+          }),
+        },
       };
     }
     return {

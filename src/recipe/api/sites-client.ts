@@ -15,6 +15,7 @@ import {
   deleteSite,
   listSites,
   listSiteTemplates,
+  retrieveSite,
   updateSite,
   type JobResponse,
   type NewSiteInput,
@@ -56,6 +57,13 @@ export interface SitesApiClient {
    * client interface.
    */
   deleteSite(siteId: string): Promise<JobResponse>;
+  /**
+   * Retrieve a single site by ID (`GET /api/v1/sites/{siteId}`). The push
+   * pipeline reads the site fresh right before a language-list PATCH so
+   * the merge base is the authoritative detail view, not a possibly
+   * stale/partial `listSites` row.
+   */
+  retrieveSite(siteId: string): Promise<Site>;
   /**
    * PATCH mutable site properties. The push pipeline uses this to keep
    * the SITE's language list (`supportedLanguages`) in step with the
@@ -120,6 +128,7 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
   // leaves orphans on the tenant. Integration-test teardowns always
   // want this; the recipe push path doesn't dispatch deleteSite at all.
   deleteSite: (siteId) => deleteSite(options, siteId, { force: true }),
+  retrieveSite: (siteId) => retrieveSite(options, siteId),
   updateSite: (siteId, patch) => updateSite(options, siteId, patch),
   getJobStatus: (jobHandle) => getJobStatus(options, jobHandle),
   listSites: () => listSites(options),

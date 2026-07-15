@@ -662,29 +662,36 @@ export const ensureEnvironmentLanguages = async (
 };
 
 /**
- * Append missing declared languages to the SITE's own language list.
- * Environment registration alone doesn't put a locale on a site — Pages
- * only offers locales on the site's list — so the existing-site branch of
- * CreateSiteFromTemplate PATCHes `supportedLanguages` with the union.
- * Gated to codes the environment actually registered after the ensure
- * (bare base admission codes the catalog gate skipped stay off the site
- * list too), and additive only — the list is never shrunk.
+ * Append missing declared languages to the SITE's own configured language
+ * list (`supportedLanguages` — the property Pages offers locales from).
+ * Environment registration alone doesn't put a locale on a site, so the
+ * existing-site branch of CreateSiteFromTemplate PATCHes the list with
+ * the union. Gated to codes the environment actually registered after
+ * the ensure (bare base admission codes the catalog gate skipped stay
+ * off the site list too), and additive only — the list is never shrunk.
+ *
+ * The merge base is a FRESH `retrieveSite` detail read, not the plan-time
+ * `listSites` row: the detail view is authoritative for
+ * `supportedLanguages`, and re-checking there also makes the PATCH a
+ * no-op when the plan-time diff was stale.
  */
 const appendSiteLanguages = async (
   sitesClient: SitesApiClient,
-  site: { siteId: string; currentLanguages: string[]; missing: string[] } | undefined,
+  site: { siteId: string; missing: string[] } | undefined,
   envPresent: Set<string>
 ): Promise<void> => {
   if (!site) return;
   const addable = site.missing.filter((code) => envPresent.has(code.toLowerCase()));
   if (addable.length === 0) return;
-  const merged = [...site.currentLanguages];
+  const current = (await sitesClient.retrieveSite(site.siteId)).supportedLanguages ?? [];
+  const merged = [...current];
   const seen = new Set(merged.map((code) => code.toLowerCase()));
   for (const code of addable) {
     if (seen.has(code.toLowerCase())) continue;
     seen.add(code.toLowerCase());
     merged.push(code);
   }
+  if (merged.length === current.length) return;
   await sitesClient.updateSite(site.siteId, { supportedLanguages: merged });
 };
 

@@ -580,7 +580,9 @@ const makeSitesClient = (
       return { handle: "job-1" } as never;
     },
     getJobStatus: async () => ({ state: "Done" }) as never,
-    listSites: async () => [{ id: "site-id-1", name: "MarketingSite", languages: ["en"] }] as never,
+    listSites: async () =>
+      [{ id: "site-id-1", name: "MarketingSite", supportedLanguages: ["en"] }] as never,
+    retrieveSite: async () => ({ id: "site-id-1", supportedLanguages: ["en"] }) as never,
     updateSite: async () => ({}) as never,
     listSiteTemplates: async () => [],
     listCollections: async () => [],

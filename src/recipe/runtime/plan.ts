@@ -825,6 +825,19 @@ export const buildSiblingCreateNames = (
  * rebind candidate. A genuine rename still matches — a renamed item's name is
  * precisely the one no op claims.
  *
+ * A marked sibling must also carry the op's TEMPLATE (when the expected
+ * template resolves to a live itemId) to count as a rename. A recipe can
+ * swap the component behind a slot — e.g. a partial design's header moving
+ * from `main-nav@1` to `header@1` renames its scoped datasource slot AND
+ * changes its datasource template. The stale item from the previous push
+ * still carries this recipe's marker, so without the template check the
+ * fallback rebinds onto it, the item keeps its old template, and every
+ * SetField for a new-template-only field aborts the recipe with a baffling
+ * "Cannot find a field with the name <X>". A different template means "the
+ * recipe replaced this item's shape", never "a CMS user renamed it" — so
+ * the planner declines the rebind and creates the new item fresh (the stale
+ * sibling is left in place, orphaned but harmless).
+ *
  * Returns `null` when the parent itemId isn't known yet (true first push)
  * or no sibling matches — the caller then plans a create as normal.
  */
@@ -848,12 +861,45 @@ const findCreateItemSibling = async (
   // matter if it somehow reappeared.
   const claimedByOtherOps = siblingCreateNames?.get(createItemParentKey(op));
 
+  const expectedTemplateId = resolveLiveTemplateIdForRebind(op, capturedItemIds);
+
   const marked = siblings.filter(
     (s) =>
       remoteHandleMarker(s) === handle &&
-      !(s.name !== op.name && claimedByOtherOps?.has(s.name) === true)
+      !(s.name !== op.name && claimedByOtherOps?.has(s.name) === true) &&
+      !(
+        expectedTemplateId !== null &&
+        s.templateId !== "" &&
+        dashifyGuid(s.templateId) !== expectedTemplateId
+      )
   );
   return marked.length === 1 ? marked[0] : null;
+};
+
+/**
+ * The live templateId a rebind candidate must carry, or `null` when it
+ * can't be known — in which case the template check is skipped (the
+ * pre-check-era behavior).
+ *
+ * Only `capturedItemIds` hits are trusted: the workspace push seeds every
+ * cross-recipe template refKey to its LIVE itemId before planning
+ * (`seedCrossRecipeRefs`), and same-recipe template creates capture on
+ * apply. An unresolved string `templateOf` is ambiguous — it may be a
+ * Sitecore built-in constant (live) or a deterministic refKey whose
+ * template item simply wasn't looked up (not live) — so it can't be
+ * compared against a candidate's live templateId without producing false
+ * mismatches that would break the rename fallback outright.
+ */
+const resolveLiveTemplateIdForRebind = (
+  op: CreateItemOp,
+  capturedItemIds: ReadonlyMap<string, string>
+): string | null => {
+  const refKey =
+    typeof op.templateOf === "string" ? op.templateOf : templatePathRefKey(op.templateOf.value);
+  const captured = capturedItemIds.get(refKey);
+  // Path-valued entries (pre-seeded ref-path parents) aren't itemIds.
+  if (!captured || captured.startsWith("/")) return null;
+  return dashifyGuid(captured);
 };
 
 /**

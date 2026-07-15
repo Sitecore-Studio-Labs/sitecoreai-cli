@@ -1178,6 +1178,54 @@ describe("compilePageRecipe — {site} itemPath substitution", () => {
   });
 });
 
+describe("compilePageRecipe — wildcard pages (`*` itemPath leaf)", () => {
+  // A Sitecore wildcard item is literally named `*` — it matches any URL
+  // segment at that level (the standard slug-driven detail-page pattern;
+  // slug resolution happens in the head app).
+  const wildcardPage = {
+    ...homePage,
+    handle: "cocktail-detail@1",
+    name: "*",
+    displayName: "Cocktail Detail",
+    itemPath: "/sitecore/content/{site}/Home/Cocktails/*",
+    layout: {
+      placeholders: {
+        "headless-main": [
+          { componentHandle: "alpha-block@1", datasourceRef: { kind: "scoped", slot: "Hero" } },
+        ],
+      },
+    },
+  } satisfies PageRecipe;
+
+  const ir = compilePageRecipe(wildcardPage, {
+    ...CONTEXT,
+    sitePathSegment: "Acme Collection/acme",
+  });
+
+  it("parses through PageRecipeSchema — a `*` name and `*` itemPath leaf are valid", () => {
+    expect(() => PageRecipeSchema.parse(wildcardPage)).not.toThrow();
+  });
+
+  it("creates the page item literally named `*`, parented at the itemPath's directory", () => {
+    const create = findCreate(ir.operations, "page:cocktail-detail@1");
+    expect(create.name).toBe("*");
+    expect(create.path).toBe("/sitecore/content/Acme Collection/acme/Home/Cocktails/*");
+    expect(create.parent).toEqual({
+      kind: "ref-path",
+      value: "/sitecore/content/Acme Collection/acme/Home/Cocktails",
+    });
+    expect(create.templateOf).toBe(templateId("default", "article-page@1"));
+  });
+
+  it("materialises scoped datasources under the wildcard item's own Data folder", () => {
+    const paths = ir.operations
+      .filter((op): op is CreateItemOp => op.op === "CreateItem")
+      .map((op) => op.path);
+    expect(paths).toContain("/sitecore/content/Acme Collection/acme/Home/Cocktails/*/Data");
+    expect(paths).toContain("/sitecore/content/Acme Collection/acme/Home/Cocktails/*/Data/Hero");
+  });
+});
+
 describe("compilePageRecipe — mediaLocation", () => {
   const withImage = (mediaLocation?: { scope: "page" | "site"; subfolder?: string }) =>
     ({

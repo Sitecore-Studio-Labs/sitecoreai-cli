@@ -106,8 +106,10 @@ export type PageTemplateRecipe = z.input<typeof PageTemplateRecipeSchema>;
  * Layout placements bind via `datasourceRef`: `shared` (a
  * `ContentItemRecipe`), `scoped` (a page-local datasource item the
  * compiler materialises at `<page>/Data/<slot>`), or `none`. Pages
- * currently land flat under `pagesRoot` — page-tree nesting (a `parent`
- * page handle) is the one deferred follow-up.
+ * without an `itemPath` land flat under `pagesRoot`; page-tree nesting
+ * is expressed via `itemPath` (a page whose path nests under another
+ * in-set page's path applies after that ancestor — see
+ * `compile/ordering.ts`).
  *
  * Identity: `pageItemId(site, handle)`. `SiteRecipe.initialHome`
  * resolves to a `PageRecipe` handle.
@@ -158,7 +160,14 @@ export const PageRecipeSchema = z.object({
    * `joinPath(context.pagesRoot, name)` (legacy behavior — `pagesRoot`
    * remains required only in that fallback path).
    *
-   * Example: `/sitecore/content/{site}/Home/Homepage Demo`.
+   * A literal `*` leaf creates a Sitecore **wildcard item** — an item
+   * named `*` that matches any URL segment at that level, the standard
+   * pattern for slug-driven detail pages
+   * (e.g. `/sitecore/content/{site}/Home/Cocktails/*`). Slug resolution
+   * happens in the head app; Sitecore just serves the `*` item's layout
+   * for every matching route. When the parent page (`…/Cocktails`) is
+   * another PageRecipe in the same set, apply ordering places the
+   * ancestor first (itemPath-ancestry edges — see `compile/ordering.ts`).
    */
   itemPath: z
     .string()

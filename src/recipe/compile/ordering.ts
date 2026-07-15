@@ -63,6 +63,45 @@ export const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
   dictionary: 6,
 };
 
+/** Normalise an authored `itemPath` for verbatim comparison. */
+const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/, "");
+
+/**
+ * Page-tree nesting edges derived from `itemPath` — a page whose
+ * `itemPath` nests under another in-set page's `itemPath` (e.g. a
+ * wildcard detail page `/…/Home/Cocktails/*` under `/…/Home/Cocktails`)
+ * must apply AFTER that ancestor page. Pages share one apply rank and
+ * carry no handle reference to each other, so without this edge the
+ * child can execute first — and the executor's `ensurePathExists` then
+ * auto-materialises the missing parent segment as a generic `Folder`,
+ * which the ancestor page's own `CreateItem` can never repair (the
+ * already-exists fallback returns the folder's itemId, and `CreateOnly`
+ * policy never rewrites its template).
+ *
+ * Paths are compared verbatim — the `{site}` placeholder included — so
+ * the edge forms exactly when both recipes author the same path shape,
+ * which is the case where the ancestor page owns the child's parent
+ * segment.
+ */
+const pageAncestorDependencies = (recipe: Recipe, set: readonly Recipe[]): string[] => {
+  if (recipe.kind !== "page" || !recipe.itemPath) return [];
+  const handleByPath = new Map<string, string>();
+  for (const other of set) {
+    if (other.kind === "page" && other.itemPath && other.handle !== recipe.handle) {
+      handleByPath.set(trimTrailingSlashes(other.itemPath), other.handle);
+    }
+  }
+  if (handleByPath.size === 0) return [];
+  const deps: string[] = [];
+  let path = trimTrailingSlashes(recipe.itemPath);
+  for (let cut = path.lastIndexOf("/"); cut > 0; cut = path.lastIndexOf("/")) {
+    path = path.slice(0, cut);
+    const handle = handleByPath.get(path);
+    if (handle) deps.push(handle);
+  }
+  return deps;
+};
+
 /**
  * The set of in-set cross-recipe dependency handles for a single recipe.
  *
@@ -73,15 +112,26 @@ export const RECIPE_APPLY_RANK: Record<Recipe["kind"], number> = {
  * this extractor assumes input has already been validated and doesn't
  * re-check.)
  *
+ * When the surrounding recipe `set` is provided, page-tree nesting edges
+ * derived from `itemPath` are included too (see
+ * `pageAncestorDependencies`) — a page nested under another page's path
+ * depends on that ancestor even though no handle reference exists.
+ *
  * Exported for `recipe list --json`: the emitted `dependsOn` edges are
  * exactly the edges this module's topo-sort schedules by, so a batch
  * driver partitioning the set into parallel waves works from the same
  * graph the sequential apply order derives from.
  */
-export const extractRecipeDependencies = (recipe: Recipe): readonly string[] => {
+export const extractRecipeDependencies = (
+  recipe: Recipe,
+  set?: readonly Recipe[]
+): readonly string[] => {
   const deps = new Set<string>();
   for (const ref of recipeReferences(recipe)) {
     if (ref.handle && ref.handle !== recipe.handle) deps.add(ref.handle);
+  }
+  if (set) {
+    for (const handle of pageAncestorDependencies(recipe, set)) deps.add(handle);
   }
   return [...deps];
 };
@@ -116,7 +166,10 @@ const topoSortGroup = (group: readonly Recipe[]): Recipe[] => {
   const inDegree = new Array<number>(group.length).fill(0);
   const adjacency: number[][] = group.map(() => []);
   for (let i = 0; i < group.length; i++) {
-    for (const depHandle of extractRecipeDependencies(group[i])) {
+    // Pass the group so page-tree nesting edges (itemPath ancestry —
+    // pages all share one rank, so any in-set ancestor page is in this
+    // group) participate in the sort alongside handle references.
+    for (const depHandle of extractRecipeDependencies(group[i], group)) {
       const depIdx = handleToIndex.get(depHandle);
       if (depIdx === undefined || depIdx === i) continue;
       adjacency[depIdx].push(i);

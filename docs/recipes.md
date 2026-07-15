@@ -78,14 +78,61 @@ named exports.
 items conforming to it are authorable pages. `PageRecipe` is the
 page-level peer of `ContentItemRecipe` — a concrete, navigable page in
 the site content tree, conforming to a page template and carrying its
-own `__Final Renderings` layout (v1: `shared`/`none` placements; scoped
-datasources and page-tree nesting are deferred). `PlaceholderRecipe` (plus
+own `__Final Renderings` layout (`shared`/`scoped`/`none` placements;
+page-tree nesting is expressed via `itemPath`, and a page nested under
+another in-set page's path applies after that ancestor). `PlaceholderRecipe` (plus
 the inline `ComponentTemplateRecipe.placeholders` slot list) is the
 hybrid placeholder model: standalone recipes for site-chrome slots,
 inline declarations for component-owned slots — both compile to
 Placeholder Settings items with an `Allowed Controls` whitelist, and a
 layout placement into a recipe-defined placeholder is validated against
 it.
+
+### Wildcard pages (slug-driven detail routes)
+
+A Sitecore **wildcard item** is an item literally named `*`. At request
+time it matches any URL segment at its level, which makes it the
+standard pattern for slug-driven detail pages — one wildcard page
+serves `/cocktails/margarita`, `/cocktails/negroni`, and every other
+slug under the same section. Slug resolution happens in the **head
+app** (the route reads the matched segment from the URL and fetches the
+corresponding content); Sitecore just serves the wildcard item's layout
+for every matching route.
+
+A `PageRecipe` authors one by ending its `itemPath` with a `*` leaf
+(set `name: "*"` too — the itemPath leaf supersedes `name` for path
+emission, but keeping them equal keeps the recipe honest):
+
+```ts
+// recipes/cocktail-detail.recipe.ts
+import type { PageRecipe } from "@sitecoreai-labs/sitecoreai-cli/recipe";
+
+export default {
+  kind: "page",
+  schemaVersion: "1",
+  handle: "cocktail-detail@1",
+  name: "*",
+  displayName: "Cocktail Detail",
+  template: "article-page@1",
+  itemPath: "/sitecore/content/{site}/Home/Cocktails/*",
+  layout: {
+    placeholders: {
+      "headless-main": [
+        { componentHandle: "cocktail-hero@1", datasourceRef: { kind: "scoped", slot: "Hero" } },
+      ],
+    },
+  },
+} satisfies PageRecipe;
+```
+
+The compiler emits a plain `CreateItem` with `name: "*"` under the
+itemPath's parent directory — no special casing, and scoped datasources
+land under the wildcard item's own `./Data` folder as usual. When the
+parent section page (`…/Home/Cocktails` above) is another `PageRecipe`
+in the same set, apply ordering places the ancestor first — pages order
+by `itemPath` ancestry as well as handle references — so the wildcard
+child never forces its parent segment to be auto-created as a plain
+folder.
 
 The workflow + webhook-authorization kinds have a dedicated reference
 covering payload shape, endpoint contract, authorization handling, and

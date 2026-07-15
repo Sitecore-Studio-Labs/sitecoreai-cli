@@ -2,6 +2,7 @@ import { v5 as uuidv5 } from "@/shared/uuid";
 import { createScaiError } from "@/shared/errors";
 import {
   contentItemId,
+  contentItemsFolderId,
   fieldId,
   renderingId,
   templateId,
@@ -23,7 +24,9 @@ import {
   DEFAULT_ICON,
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,
+  FOLDER_ICON,
   LAYOUT_FIELDS,
+  SITECORE_TEMPLATES,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import { emitLayoutXml } from "../layout/emit";
@@ -63,8 +66,10 @@ import {
  * can't express the XOR on a `discriminatedUnion` member, so the compiler
  * enforces it.
  *
- * Op order is `CreateItem → AddItemVersion…s → SetField…s` so every
- * per-version `SetField` lands on a version that already exists.
+ * Op order is `folder CreateItem…s → CreateItem → AddItemVersion…s →
+ * SetField…s` — the optional `folder` segments' CreateOnly folder ops
+ * come first so the item's parent path exists, and every per-version
+ * `SetField` lands on a version that already exists.
  *
  * The item's `templateOf` resolves via `templateId(templateType)` — the
  * corresponding template recipe must ship in the same set; the cross-recipe
@@ -238,7 +243,8 @@ const emitStoryVersionEntry = (
 
 export function compileContentItemRecipe(
   input: ContentItemRecipe,
-  context: CompileContext
+  context: CompileContext,
+  emittedFolders: Set<string> = new Set()
 ): OperationIr {
   const recipe = ContentItemRecipeSchema.parse(input);
   if (!context.contentItemsRoot) {
@@ -260,7 +266,43 @@ export function compileContentItemRecipe(
   const policy = defaultPolicyForRecipe(recipe.kind);
   const site = siteOf(context);
   const itemRefKey = contentItemId(site, recipe.handle);
-  const itemPath = joinPath(context.contentItemsRoot, recipe.name);
+
+  // Optional `folder` — organisational nesting under contentItemsRoot.
+  // One CreateOnly generic-Folder op per cumulative segment, deduped
+  // once per recipe set via `emittedFolders` (same mechanism as the
+  // section/group folder `ensure*` helpers), ordered BEFORE the item's
+  // own CreateItem so the parent path exists when the item lands.
+  //
+  // Identity is HANDLE-based (`contentItemId`), never path-based — a
+  // recipe that changes `folder` keeps its refKey, so in-set references
+  // still resolve; but plan-time existence is path-based, so the
+  // planner treats the item as missing at the new path and plans a
+  // fresh create there. The previously-pushed item is NOT moved — see
+  // the `folder` JSDoc on `ContentItemRecipeSchema`.
+  const folderSegments = recipe.folder ?? [];
+  const folderOps: Operation[] = [];
+  let parentPath = context.contentItemsRoot;
+  for (const segment of folderSegments) {
+    const folderPath = joinPath(parentPath, segment);
+    const relativePath = folderPath.slice(context.contentItemsRoot.length + 1);
+    const folderRefKey = contentItemsFolderId(site, relativePath);
+    if (!emittedFolders.has(folderRefKey)) {
+      emittedFolders.add(folderRefKey);
+      folderOps.push({
+        op: "CreateItem",
+        policy: "CreateOnly",
+        label: `content-items-folder:${site}:${relativePath}`,
+        id: folderRefKey,
+        path: folderPath,
+        parent: { kind: "ref-path", value: parentPath },
+        templateOf: SITECORE_TEMPLATES.FOLDER,
+        name: segment,
+        fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
+      } satisfies CreateItemOp);
+    }
+    parentPath = folderPath;
+  }
+  const itemPath = joinPath(parentPath, recipe.name);
   const templateRefKey = templateId(site, recipe.templateType);
 
   const createItem: CreateItemOp = {
@@ -269,7 +311,7 @@ export function compileContentItemRecipe(
     label: `content-item:${recipe.handle}`,
     id: itemRefKey,
     path: itemPath,
-    parent: { kind: "ref-path", value: context.contentItemsRoot },
+    parent: { kind: "ref-path", value: parentPath },
     // String GUID — the executor treats this as a refKey when it matches a
     // captured-itemId entry (the template recipe registers `templateId(handle)`),
     // else as a literal Sitecore template GUID.
@@ -368,6 +410,7 @@ export function compileContentItemRecipe(
   }
 
   const operations: Operation[] = [
+    ...folderOps,
     createItem,
     ...imageMediaSink.mediaOps,
     ...versionOps,

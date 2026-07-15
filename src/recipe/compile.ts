@@ -200,6 +200,10 @@ const compileOneInSet = (
       return compileComponentTemplateRecipe(recipe, context, emittedFolders);
     case "content-template":
       return compileContentTemplateRecipe(recipe, context, emittedFolders);
+    case "content-item":
+      // Threads `emittedFolders` so a `folder` shared by several content
+      // items materialises its CreateOnly folder ops exactly once per set.
+      return compileContentItemRecipe(recipe, context, emittedFolders);
     case "page-template":
       return compilePageTemplateRecipe(recipe, context, emittedFolders);
     case "design-parameters-template":

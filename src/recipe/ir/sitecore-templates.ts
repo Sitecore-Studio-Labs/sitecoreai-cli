@@ -171,6 +171,32 @@ export const SITECORE_TEMPLATES = {
 } as const;
 
 /**
+ * FOLDER-class built-in templates — organisational containers whose
+ * recipe-emitted items carry no authored field data (at most the
+ * `Scai Handle` marker and a display name). Because there is nothing
+ * to lose, the planner's marker-rebind template guard (see
+ * `findCreateItemSibling` in `runtime/plan.ts`) treats these ops as
+ * safe to adopt even when the live sibling's template differs from
+ * the expected one — e.g. a Headless Variants per-rendering folder
+ * created by an older scai under a grouping/legacy folder template.
+ * The datasource/content rebind case the guard was built for (a
+ * component swap behind a slot changing the datasource's template)
+ * never uses these templates, so its protection is unaffected.
+ *
+ * Lowercased for normalized comparison against `CreateItemOp.templateOf`.
+ */
+export const FOLDER_CLASS_TEMPLATE_IDS: ReadonlySet<string> = new Set(
+  [
+    SITECORE_TEMPLATES.FOLDER,
+    SITECORE_TEMPLATES.TEMPLATE_FOLDER,
+    SITECORE_TEMPLATES.RENDERING_FOLDER,
+    SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+    SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING,
+    SITECORE_TEMPLATES.AVAILABLE_RENDERINGS_FOLDER,
+  ].map((id) => id.toLowerCase())
+);
+
+/**
  * Fields of the SXA `Available Renderings` template. The `RENDERINGS`
  * field is a multilist whose value is a pipe-separated string of
  * Sitecore-formatted itemIds (`{GUID}|{GUID}|{GUID}`). Each id points

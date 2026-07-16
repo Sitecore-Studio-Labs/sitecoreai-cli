@@ -629,6 +629,101 @@ describe("createAuthoringClient — getChildren", () => {
   });
 });
 
+/**
+ * The Authoring API's `children` field is a paginated connection with a
+ * server-side default page size — an argument-less read returns only the
+ * FIRST page. getChildren must walk `pageInfo.hasNextPage`/`endCursor`
+ * until exhausted, or children past the first page are invisible to every
+ * sibling-match recovery (the visual-tabs/visual-accordion variants-folder
+ * collision: ~45 folders under one Headless Variants root, the two that
+ * sorted past the page boundary could never be adopted on re-push).
+ */
+describe("createAuthoringClient — getChildren pagination", () => {
+  const PARENT_ID = "00000000-0000-0000-0000-00000000aaaa";
+  const childNode = (itemId: string, name: string) => ({
+    itemId,
+    name,
+    path: `/sitecore/parent/${name}`,
+    parent: { itemId: PARENT_ID },
+    template: { templateId: SITECORE_TEMPLATES.TEMPLATE_FOLDER },
+    fields: { nodes: [] },
+  });
+  const childrenPage = (
+    nodes: unknown[],
+    pageInfo: { hasNextPage: boolean; endCursor: string | null }
+  ) => okResponse({ data: { item: { children: { nodes, pageInfo } } } });
+
+  it("walks hasNextPage/endCursor and concatenates every page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        childrenPage([childNode("11111111-1111-1111-1111-111111111111", "accordion-block")], {
+          hasNextPage: true,
+          endCursor: "cursor-1",
+        })
+      )
+      .mockResolvedValueOnce(
+        childrenPage([childNode("22222222-2222-2222-2222-222222222222", "visual-accordion")], {
+          hasNextPage: false,
+          endCursor: "cursor-2",
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const children = await client.getChildren({ itemId: PARENT_ID });
+
+    expect(children.map((c) => c.name)).toEqual(["accordion-block", "visual-accordion"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // First call omits the cursor; second passes the previous endCursor.
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(firstBody.variables.after).toBeUndefined();
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(secondBody.variables.after).toBe("cursor-1");
+  });
+
+  it("degrades to single-page behavior when the server omits pageInfo", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      okResponse({
+        data: {
+          item: {
+            children: { nodes: [childNode("11111111-1111-1111-1111-111111111111", "only")] },
+          },
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const children = await client.getChildren({ itemId: PARENT_ID });
+    expect(children).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops when the server echoes a stable endCursor (no infinite loop)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        childrenPage([childNode("11111111-1111-1111-1111-111111111111", "a")], {
+          hasNextPage: true,
+          endCursor: "stuck",
+        })
+      )
+      .mockResolvedValue(
+        childrenPage([childNode("22222222-2222-2222-2222-222222222222", "b")], {
+          hasNextPage: true,
+          endCursor: "stuck",
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const children = await client.getChildren({ itemId: PARENT_ID });
+    expect(children.map((c) => c.name)).toEqual(["a", "b"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("createAuthoringClient — getItemsByPaths (batched aliased reads)", () => {
   it("issues one POST per ~25 paths and maps aliased response keys back to caller paths", async () => {
     const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
@@ -983,6 +1078,190 @@ describe("createAuthoringClient — idempotent createItem fallback", () => {
     expect(result.itemId).toBe("existing-sibling-id-cccccccccccc");
     // Exactly 2 wire calls: parent resolve + pre-check. No createItem mutation.
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Regression for the visual-tabs/visual-accordion variants-folder abort:
+  // the conflicting sibling lived past the server's first children page, so
+  // the unpaginated recovery walk never saw it and the raw GraphQL collision
+  // aborted the recipe. The recovery must page through ALL children.
+  it("adopts a conflicting sibling that lives on the SECOND children page", async () => {
+    const parentResolve = okResponse({
+      data: {
+        item: {
+          itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          name: "Headless Variants",
+          path: "/sitecore/content/col/site/Presentation/Headless Variants",
+          parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+          template: { templateId: "11111111-1111-1111-1111-111111111111" },
+          fields: { nodes: [] },
+        },
+      },
+    });
+    const page = (nodes: unknown[], hasNextPage: boolean, endCursor: string) =>
+      okResponse({ data: { item: { children: { nodes, pageInfo: { hasNextPage, endCursor } } } } });
+    const folderNode = (itemId: string, name: string) => ({
+      itemId,
+      name,
+      path: `/sitecore/content/col/site/Presentation/Headless Variants/${name}`,
+      parent: { itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      template: { templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS },
+      fields: { nodes: [] },
+    });
+    const fetchMock = vi
+      .fn()
+      // resolveParentItemId.
+      .mockResolvedValueOnce(parentResolve)
+      // idempotencyCheck pre-check: page 1 (no match), page 2 (no match —
+      // simulate the pre-check ALSO missing so the mutation runs; the
+      // point under test is the post-conflict recovery).
+      .mockResolvedValueOnce(
+        page([folderNode("31111111-1111-1111-1111-111111111111", "accordion-block")], true, "c1")
+      )
+      .mockResolvedValueOnce(
+        page([folderNode("32222222-2222-2222-2222-222222222222", "badge")], false, "c2")
+      )
+      // createItem mutation → conflict (the tenant sees an item our
+      // pre-check read raced past).
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [
+            { message: 'The item name "visual-accordion" is already defined on this level.' },
+          ],
+        })
+      )
+      // Recovery walk: page 1, then the match on page 2.
+      .mockResolvedValueOnce(
+        page([folderNode("31111111-1111-1111-1111-111111111111", "accordion-block")], true, "c1")
+      )
+      .mockResolvedValueOnce(
+        page([folderNode("33333333-3333-3333-3333-333333333333", "visual-accordion")], false, "c2")
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      parent: "/sitecore/content/col/site/Presentation/Headless Variants",
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+      name: "visual-accordion",
+      fields: [],
+      idempotencyCheck: true,
+    });
+
+    expect(result.itemId).toBe("33333333-3333-3333-3333-333333333333");
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("adopts a case-variant sibling (Sitecore names are case-insensitively unique)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      // Pre-check sees only the case-variant sibling — createItem WOULD
+      // reject "visual-accordion" against it, so it must be adopted.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "case-variant-id-dddddddddddddddd",
+                    name: "Visual-Accordion",
+                    path: "/sitecore/templates/parent/Visual-Accordion",
+                    parent: { itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa" },
+                    template: { templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS },
+                    fields: { nodes: [] },
+                  },
+                ],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({
+      parent: "/sitecore/templates/parent",
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+      name: "visual-accordion",
+      fields: [],
+      idempotencyCheck: true,
+    });
+
+    expect(result.itemId).toBe("case-variant-id-dddddddddddddddd");
+    // Parent resolve + pre-check only — no mutation.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a precise conflict error when the collision can't be adopted", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              itemId: "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              name: "parent",
+              path: "/sitecore/templates/parent",
+              parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+              template: { templateId: "11111111-1111-1111-1111-111111111111" },
+              fields: { nodes: [] },
+            },
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: 'The item name "Ghost" is already defined on this level.' }],
+        })
+      )
+      // Recovery walk finds nothing that matches, even case-insensitively.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const error = await client
+      .createItem({
+        parent: "/sitecore/templates/parent",
+        templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+        name: "Ghost",
+        fields: [],
+      })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScaiError);
+    const message = (error as ScaiError).message;
+    // The precise conflict names the item, the parent, and the expected
+    // template — and still carries the original server message.
+    expect(message).toContain("'Ghost'");
+    expect(message).toContain("parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(message).toContain(SITECORE_TEMPLATES.HEADLESS_VARIANTS);
+    expect(message).toMatch(/already defined on this level/);
   });
 
   it("does not invoke the fallback when createItem fails for a non-conflict reason", async () => {

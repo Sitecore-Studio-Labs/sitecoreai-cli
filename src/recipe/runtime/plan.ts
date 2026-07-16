@@ -16,7 +16,7 @@ import type {
   SetFieldOp,
   SetStandardValuesOp,
 } from "../ir/operations";
-import { LAYOUT_FIELDS, SYSTEM_FIELDS } from "../ir/sitecore-templates";
+import { FOLDER_CLASS_TEMPLATE_IDS, LAYOUT_FIELDS, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { SCAI_HANDLE_FIELD_NAME } from "../items/marker";
 import { templatePathRefKey } from "../items/guids";
 import {
@@ -24,6 +24,7 @@ import {
   type MediaFallback,
   renderRefValue,
   resolveRecipeRefs,
+  sameLevelItemName,
 } from "../api/ref-encoding";
 import {
   layoutXmlEquivalent,
@@ -850,7 +851,13 @@ const findCreateItemSibling = async (
   const parentItemId = resolveParentItemIdForFallback(op, capturedItemIds);
   if (!parentItemId) return null;
   const siblings = await client.getChildren({ itemId: parentItemId });
-  const byName = siblings.find((s) => s.name === op.name);
+  // Prefer the exact name; otherwise match with Sitecore's per-level
+  // uniqueness semantics (case-insensitive) — a case-variant sibling
+  // would make the planned create collide with "already defined on this
+  // level", so it IS this op's item and must be adopted, not duplicated.
+  const byName =
+    siblings.find((s) => s.name === op.name) ??
+    siblings.find((s) => sameLevelItemName(s.name, op.name));
   if (byName) return byName;
   const handle = opHandleMarker(op);
   if (handle === undefined) return null;
@@ -862,12 +869,23 @@ const findCreateItemSibling = async (
   const claimedByOtherOps = siblingCreateNames?.get(createItemParentKey(op));
 
   const expectedTemplateId = resolveLiveTemplateIdForRebind(op, capturedItemIds);
+  // FOLDER-class ops (organisational containers — variants folders,
+  // section folders, rendering folders) carry no authored field data, so
+  // adopting a marked sibling whose live template differs is lossless
+  // and self-healing: a folder created by an older scai under a
+  // legacy/grouping template is still THIS recipe's folder. Refusing it
+  // would fall through to a create against the same name and collide.
+  // The guard's protection target — a datasource/content item whose
+  // template changed because the recipe swapped the component behind a
+  // slot — never uses these templates, so it keeps refusing the rebind.
+  const templateGuardApplies = !isFolderClassCreate(op);
 
   const marked = siblings.filter(
     (s) =>
       remoteHandleMarker(s) === handle &&
       !(s.name !== op.name && claimedByOtherOps?.has(s.name) === true) &&
       !(
+        templateGuardApplies &&
         expectedTemplateId !== null &&
         s.templateId !== "" &&
         dashifyGuid(s.templateId) !== expectedTemplateId
@@ -875,6 +893,15 @@ const findCreateItemSibling = async (
   );
   return marked.length === 1 ? marked[0] : null;
 };
+
+/**
+ * True when the op creates an item conforming to a known FOLDER-class
+ * built-in template (see {@link FOLDER_CLASS_TEMPLATE_IDS}). Only the
+ * string-constant form can match — a recipe-created template's refKey or
+ * a `ref-path` templateOf is never folder-class.
+ */
+const isFolderClassCreate = (op: CreateItemOp): boolean =>
+  typeof op.templateOf === "string" && FOLDER_CLASS_TEMPLATE_IDS.has(op.templateOf.toLowerCase());
 
 /**
  * The live templateId a rebind candidate must carry, or `null` when it

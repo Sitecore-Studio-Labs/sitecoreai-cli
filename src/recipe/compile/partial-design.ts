@@ -11,11 +11,8 @@ import { defaultPolicyForRecipe } from "../runtime/policy";
 import {
   DEFAULT_DEVICE_ID,
   DEFAULT_ICON,
-  DEFAULT_LANGUAGE,
-  DEFAULT_VERSION,
   LAYOUT_FIELDS,
   SITECORE_TEMPLATES,
-  SXA_JSON_LAYOUT_ID,
   SYSTEM_FIELDS,
 } from "../ir/sitecore-templates";
 import { type PartialDesignRecipe, PartialDesignRecipeSchema } from "../schema/recipe";
@@ -33,10 +30,13 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  *
  * Emits:
  *   1. `CreateItem` for the partial-design item (SXA Partial Design template)
- *   2. `SetField(__Renderings)` — the shared device + JSON-layout shell only
- *   3. `SetField(__Final Renderings)` — the placements, as an SXA delta patched
- *      over that shell (the same two-field model pages use, verified against a
- *      UI-authored partial design)
+ *   2. `SetField(__Renderings)` — the full layout (SXA delta) written to
+ *      Sitecore's SHARED layout field, so the chrome is language-independent:
+ *      every language version of a page composing this partial inherits it.
+ *      (Writing the placements to a per-language `__Final Renderings @ en`
+ *      delta instead stranded the chrome in the default language's Final
+ *      layout — any other language version, and the Shared Layout view itself,
+ *      then rendered no header/footer.)
  *
  * The compiler resolves component / content-item handles in the layout
  * to deterministic GUIDs at compile time — no executor-side handle
@@ -100,51 +100,25 @@ export function compilePartialDesignRecipe(
   });
   operations.push(...scoped.structureOps);
 
-  // Shared `__Renderings` shell: device + JSON-layout pointer, no placements.
-  // A partial design isn't an instance of a page template, so it can't inherit
-  // this shell from standard values the way a page does — it must carry it on
-  // its own item. `emitLayoutXml` with `layoutId` set emits `<r><d id l /></r>`
-  // even for an empty layout.
-  const shellXml = emitLayoutXml(
-    { placeholders: {} },
-    {
-      parentItemId: itemRefKey,
-      deviceId: DEFAULT_DEVICE_ID,
-      layoutId: SXA_JSON_LAYOUT_ID,
-      renderingIdFor: (handle) => renderingId(site, handle),
-      contentItemIdFor: (handle) => contentItemId(site, handle),
-      allowScoped: false,
-      mode: "canonical",
-    }
-  );
-  operations.push({
-    op: "SetField",
-    policy,
-    label: `partial-design-renderings-shell:${recipe.handle}`,
-    itemRefKey,
-    fieldId: LAYOUT_FIELDS.RENDERINGS,
-    value: { kind: "string", value: shellXml },
-  } satisfies SetFieldOp);
-
   const layoutXml = emitLayoutXml(recipe.layout, {
     parentItemId: itemRefKey,
     deviceId: DEFAULT_DEVICE_ID,
     renderingIdFor: (handle) => renderingId(site, handle),
     contentItemIdFor: (handle) => contentItemId(site, handle),
     // Scoped placements ride as `ds="local:/Data/<slot>"` page-relative paths
-    // (no scopedDatasourceIdFor) — matching XM Cloud Pages' own wire form for a
-    // partial design's datasources and the `<partial-design>/Data/<slot>` items
-    // materialised above.
+    // (no scopedDatasourceIdFor) — the wire form XM Cloud Pages writes for a
+    // partial design's own datasources, resolved against the
+    // `<partial-design>/Data/<slot>` items materialised above. Unchanged from
+    // the prior behavior; only the destination FIELD moves (see below).
     allowScoped: true,
     // Encode variants + params in the wire form Pages reads back — SAME as
     // pages, so a partial's renderings don't render with unresolved variants.
     ...layoutEncodingOptions(site, context),
-    // The placements are the per-version `__Final Renderings`, an SXA delta
-    // merged over the `__Renderings` shell above. No `<p:da name="l" />`
-    // directive (`deltaDeviceDirective: false`) — the `l=` pointer lives in the
-    // shell, matching a page's `__Final Renderings` and UI-authored partials.
+    // Emit delta directly (keeping the default `<p:da name="l" />` device
+    // directive): the SXA Partial Design Layout pipeline normalizes canonical
+    // input into delta on first write, so emitting delta means push #1
+    // round-trips in one cycle.
     mode: "delta",
-    deltaDeviceDirective: false,
   });
 
   if (layoutXml.length > 0) {
@@ -153,9 +127,10 @@ export function compilePartialDesignRecipe(
       policy,
       label: `partial-design-layout:${recipe.handle}`,
       itemRefKey,
-      fieldId: LAYOUT_FIELDS.FINAL_RENDERINGS,
-      language: DEFAULT_LANGUAGE,
-      version: DEFAULT_VERSION,
+      // SHARED layout (`__Renderings`), NOT the per-language `__Final
+      // Renderings` — see the emit summary above. Shared field: no
+      // language/version.
+      fieldId: LAYOUT_FIELDS.RENDERINGS,
       value: { kind: "string", value: layoutXml },
     } satisfies SetFieldOp);
   }

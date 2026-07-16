@@ -49,30 +49,24 @@ const findSetField = (ops: Operation[], label: string): SetFieldOp =>
 describe("compilePartialDesignRecipe — standard-header@1", () => {
   const ir = compilePartialDesignRecipe(standardHeaderRecipe, CONTEXT);
 
-  it("emits three ops: CreateItem + SetField(__Renderings shell) + SetField(__Final Renderings)", () => {
-    expect(ir.operations).toHaveLength(3);
+  it("emits two ops: CreateItem + SetField(__Renderings) shared layout", () => {
+    expect(ir.operations).toHaveLength(2);
   });
 
-  it("SetField(__Renderings) carries the shared device + JSON-layout shell only (no placements)", () => {
-    const shell = findSetField(ir.operations, "partial-design-renderings-shell:standard-header@1");
-    expect(shell.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
-    // Shared field — no language/version.
-    expect(shell.language).toBeUndefined();
-    expect(shell.version).toBeUndefined();
-    if (shell.value.kind !== "string") throw new Error("expected string");
-    const xml = shell.value.value;
-    // Canonical shell: device + `l="{JSON layout}"`, and NO rendering elements.
-    expect(xml).toContain(`{${SXA_JSON_LAYOUT_ID.toUpperCase()}}`);
-    expect(xml).toContain("xmlns:xsd");
-    expect(xml).not.toContain(`{${renderingId(SITE, "site-logo@1").toUpperCase()}}`);
+  it("writes the layout to __Renderings (Sitecore's SHARED layout), not __Final Renderings", () => {
+    const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
+    // A partial design is a reusable, language-independent design artifact, so
+    // its layout lives in `__Renderings` — one write every language version of
+    // a composing page inherits. Shared field: no language/version.
+    expect(setLayout.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    expect(setLayout.language).toBeUndefined();
+    expect(setLayout.version).toBeUndefined();
   });
 
   it("layout XML uses SXA delta form (first push converges in one cycle)", () => {
-    // Phase 5 fix — the SXA Partial Design Layout pipeline normalizes
-    // canonical input into delta form on first write. Emitting delta
-    // directly means push #1 round-trips without server-side rewrite.
-    // See plans/sitecore-relationships.md (orchestrator) "Phase 4
-    // sandbox findings" for the wire-format spec.
+    // The SXA Partial Design Layout pipeline normalizes canonical input into
+    // delta form on first write. Emitting delta directly means push #1
+    // round-trips without a server-side rewrite.
     const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
     if (setLayout.value.kind !== "string") throw new Error("expected string");
     const xml = setLayout.value.value;
@@ -80,10 +74,12 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(xml).toContain('xmlns:p="p"');
     expect(xml).toContain('xmlns:s="s"');
     expect(xml).toContain('p:p="1"');
-    // No `<p:da name="l" />` device directive — the `l=` pointer lives in the
-    // `__Renderings` shell, so the `__Final Renderings` delta omits it (matching
-    // a page's final-renderings delta and UI-authored partial designs).
-    expect(xml).not.toContain('<p:da name="l" />');
+    // The `<p:da name="l" />` device directive IS present — the form the SXA
+    // Partial Design pipeline round-trips. A partial carries its own layout in
+    // the shared `__Renderings` delta, so the `l=` pointer rides in it (unlike
+    // a page's `__Final Renderings` delta, which inherits the pointer from the
+    // template's standard-values shell).
+    expect(xml).toContain('<p:da name="l" />');
     // Three placements: first p:before="*", middle p:after="r[@uid='…']",
     // last p:after="*[1=2]" sentinel.
     expect(xml).toContain('p:before="*"');
@@ -116,12 +112,9 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(displayName?.value).toEqual({ kind: "string", value: "Standard Header" });
   });
 
-  it("SetField(__Final Renderings) carries the layout XML with all three rendering GUIDs", () => {
+  it("SetField(__Renderings) carries the layout XML with all three rendering GUIDs", () => {
     const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
-    expect(setLayout.fieldId).toBe(LAYOUT_FIELDS.FINAL_RENDERINGS);
-    // Versioned field — default language, version 1 (like a page's).
-    expect(setLayout.language).toBe("en");
-    expect(setLayout.version).toBe(1);
+    expect(setLayout.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
     expect(setLayout.value.kind).toBe("string");
     if (setLayout.value.kind === "string") {
       const xml = setLayout.value.value;

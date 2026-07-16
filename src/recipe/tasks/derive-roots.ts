@@ -13,7 +13,7 @@ import { createScaiError } from "@/shared/errors";
  *
  *   templates / components → /sitecore/templates/Project/<collection>/<site>/Components
  *   content models         → /sitecore/templates/Project/<collection>/<site>/Content Models
- *   page templates         → /sitecore/templates/Project/<collection>/<site>/Pages
+ *   page templates         → /sitecore/templates/Project/<collection>/Pages   (COLLECTION-level)
  *   renderings             → /sitecore/layout/Renderings/Project/<collection>/<site>/Components
  *   partial designs        → /sitecore/content/<collection>/<site>/Presentation/Partial Designs
  *   page designs           → /sitecore/content/<collection>/<site>/Presentation/Page Designs
@@ -63,11 +63,19 @@ export const deriveRecipeRoots = (site: string, siteCollection: string): Environ
     templates: `${projectTemplates}/Components`,
     components: `${projectTemplates}/Components`,
     contentModels: `${projectTemplates}/Content Models`,
-    // Page templates get their own bucket, sibling of Components /
-    // Content Models. Without this the compiler's fallback dumped them
-    // into `<templates>` — i.e. the Components bucket — mixing page
-    // templates in with component datasource templates.
-    pageTemplates: `${projectTemplates}/Pages`,
+    // Page templates live at the COLLECTION level — one `Page` shared by
+    // every site in the collection, the same placement SXA's own scaffold
+    // uses (`Project/<collection>/Page`). They were briefly per-site
+    // (`<projectTemplates>/Pages`), which broke idempotency in effect:
+    // the Sites API Solution template is a collection-shared singleton
+    // whose page-template references were re-pointed to the LAST pushing
+    // site's copy on every sync, so which "Page" a newly created site
+    // scaffolded with changed push to push, and every site accumulated
+    // its own duplicate. A collection-level bucket gives the Solution
+    // template one stable target. (Verified live 2026-07-16 on the Duke
+    // tenant: four per-site `Pages/Page` copies + strays, with a new
+    // site's Home conforming to a foreign site's copy.)
+    pageTemplates: `/sitecore/templates/Project/${trimmedCollection}/Pages`,
     renderings: `${projectRenderings}/Components`,
     partialDesigns: `${siteContentRoot}/Presentation/Partial Designs`,
     pageDesigns: `${siteContentRoot}/Presentation/Page Designs`,

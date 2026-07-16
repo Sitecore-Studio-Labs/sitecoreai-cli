@@ -285,6 +285,19 @@ export const dashifyGuid = (guid: string): string => {
 };
 
 /**
+ * Sitecore per-level name equality. Item names are unique per level
+ * CASE-INSENSITIVELY — `createItem` rejects a name that differs from an
+ * existing sibling's only by case (or surrounding whitespace) with
+ * `already defined on this level`. Every sibling-match probe (the
+ * planner's sibling fallback, the authoring client's `idempotencyCheck`
+ * pre-create and already-exists adoption) must compare names with the
+ * same semantics, or an existing item the server treats as a duplicate
+ * becomes an unrecoverable collision.
+ */
+export const sameLevelItemName = (a: string, b: string): boolean =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
  * True when the string is a valid Sitecore item GUID — 32 hex chars,
  * with or without dashes, with or without curly braces. Used by the
  * `ref-recipe` / `ref-recipe-list` resolvers to pass through literal

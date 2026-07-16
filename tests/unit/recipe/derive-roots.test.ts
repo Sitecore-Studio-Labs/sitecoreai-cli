@@ -6,15 +6,18 @@ const COLLECTION = "showcase";
 
 describe("deriveRecipeRoots — golden SXA Headless layout", () => {
   it("derives every root from (site, collection), matching the orchestrator formula", () => {
-    // Golden: any drift in the SXA path formula fails loudly here. These
-    // strings must stay byte-identical to the orchestrator's buildRecipeRoots
-    // (packages/scai-shared/src/execution/ephemeral-cli-config.ts) or hosted
-    // installs and standalone pushes diverge.
+    // Golden: any drift in the SXA path formula fails loudly here. scai is
+    // the single source of this derivation — the orchestrator's ephemeral
+    // CLI config only writes `site` + `siteCollection` and delegates the
+    // full root set to scai at push time.
     expect(deriveRecipeRoots(SITE, COLLECTION)).toEqual({
       templates: "/sitecore/templates/Project/showcase/demo-registry/Components",
       components: "/sitecore/templates/Project/showcase/demo-registry/Components",
       contentModels: "/sitecore/templates/Project/showcase/demo-registry/Content Models",
-      pageTemplates: "/sitecore/templates/Project/showcase/demo-registry/Pages",
+      // COLLECTION-level on purpose (no <site> segment): the Sites API
+      // Solution template is collection-shared and needs ONE stable Page
+      // template target — per-site copies made each sync re-point it.
+      pageTemplates: "/sitecore/templates/Project/showcase/Pages",
       renderings: "/sitecore/layout/Renderings/Project/showcase/demo-registry/Components",
       partialDesigns: "/sitecore/content/showcase/demo-registry/Presentation/Partial Designs",
       pageDesigns: "/sitecore/content/showcase/demo-registry/Presentation/Page Designs",
@@ -38,12 +41,14 @@ describe("deriveRecipeRoots — golden SXA Headless layout", () => {
     expect(deriveRecipeRoots(SITE, COLLECTION)).toEqual(deriveRecipeRoots(SITE, COLLECTION));
   });
 
-  it("scopes every derived root under <collection>/<site>", () => {
-    const roots = deriveRecipeRoots(SITE, COLLECTION);
+  it("scopes every derived root under <collection>/<site> — except the collection-level page-templates bucket", () => {
+    const { pageTemplates, ...siteScoped } = deriveRecipeRoots(SITE, COLLECTION);
     const scoped = `${COLLECTION}/${SITE}`;
-    for (const value of Object.values(roots).flat()) {
+    for (const value of Object.values(siteScoped).flat()) {
       expect(value).toContain(scoped);
     }
+    expect(pageTemplates).toContain(`/${COLLECTION}/`);
+    expect(pageTemplates).not.toContain(SITE);
   });
 
   it("trims surrounding whitespace in site / collection", () => {

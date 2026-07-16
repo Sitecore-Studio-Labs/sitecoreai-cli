@@ -3,6 +3,7 @@ import type { ItemSelector, RemoteFieldValue, RemoteItem } from "../../../src/re
 import type { CreateItemOp } from "../../../src/recipe/ir/operations";
 import { buildAction } from "../../../src/recipe/runtime/plan";
 import { injectHandleMarker, SCAI_HANDLE_FIELD_NAME } from "../../../src/recipe/items/marker";
+import { SITECORE_TEMPLATES } from "../../../src/recipe/ir/sitecore-templates";
 import { MockAuthoringClient } from "./_fixtures/mock-client";
 
 /**
@@ -360,5 +361,151 @@ describe("CreateItem — marker-match template guard (component swap)", () => {
     });
 
     expect(action.status).toBe("skip");
+  });
+});
+
+/**
+ * Variants-folder repeat push — the production abort that motivated this
+ * suite's folder-class handling: `variants-folder:<handle>` ops errored
+ * with `The item name "<x>" is already defined on this level.` because
+ * the planner scheduled a create against a folder the tenant already had.
+ * An existing folder at the same (name, level) must ALWAYS be adopted —
+ * regardless of its live template (a folder carries no authored field
+ * data, unlike the datasource-rebind case the template guard protects).
+ */
+describe("CreateItem — variants-folder repeat push (folder-class adoption)", () => {
+  const ROOT_PATH = "/sitecore/content/col/site/Presentation/Headless Variants";
+  const ROOT_ITEM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const FOLDER_NAME = "visual-accordion";
+  const FOLDER_ITEM_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const FOLDER_REF_KEY = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const VARIANTS_HANDLE = "visual-accordion@1";
+
+  const variantsFolderOp = (): CreateItemOp => ({
+    op: "CreateItem",
+    policy: "CreateAndUpdate",
+    label: `variants-folder:${VARIANTS_HANDLE}`,
+    id: FOLDER_REF_KEY,
+    path: `${ROOT_PATH}/${FOLDER_NAME}`,
+    parent: { kind: "ref-path", value: ROOT_PATH },
+    templateOf: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+    name: FOLDER_NAME,
+    fields: [],
+  });
+
+  const markedVariantsFolderOp = (): CreateItemOp => {
+    const ir = injectHandleMarker({
+      schemaVersion: "1",
+      recipeHandle: VARIANTS_HANDLE,
+      operations: [variantsFolderOp()],
+    });
+    return ir.operations[0] as CreateItemOp;
+  };
+
+  const seedRoot = (client: LaggingMockClient): void => {
+    client.preload({
+      itemId: ROOT_ITEM_ID,
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS_GROUPING,
+      parentId: "00000000-0000-0000-0000-000000000000",
+      name: "Headless Variants",
+      path: ROOT_PATH,
+      fields: [],
+    });
+  };
+
+  it("adopts an existing same-named folder even when its live template differs", async () => {
+    const client = new LaggingMockClient();
+    seedRoot(client);
+    // The live folder was created by an older scai under a DIFFERENT
+    // template (the grouping template) — same name, same level.
+    client.preload({
+      itemId: FOLDER_ITEM_ID,
+      templateId: "da26c636-96e1-45e4-88d6-3fcec70d5699", // HEADLESS_VARIANTS_GROUPING
+      parentId: ROOT_ITEM_ID,
+      name: FOLDER_NAME,
+      path: `${ROOT_PATH}/${FOLDER_NAME}`,
+      fields: [],
+    });
+    // Path read lies (the production failure mode) — only the sibling
+    // walk can find the folder.
+    client.hideFromPathIndex(`${ROOT_PATH}/${FOLDER_NAME}`);
+    const captured = new Map<string, string>([[ROOT_PATH, ROOT_ITEM_ID]]);
+
+    const action = await buildAction({
+      index: 0,
+      op: variantsFolderOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    // Matched and adopted — never a colliding create.
+    expect(action.status).toBe("skip");
+    expect(client.creates).toHaveLength(0);
+    expect(captured.get(FOLDER_REF_KEY)).toBe(FOLDER_ITEM_ID);
+  });
+
+  it("adopts a case-variant folder name (Sitecore names are case-insensitively unique)", async () => {
+    const client = new LaggingMockClient();
+    seedRoot(client);
+    client.preload({
+      itemId: FOLDER_ITEM_ID,
+      templateId: SITECORE_TEMPLATES.HEADLESS_VARIANTS,
+      parentId: ROOT_ITEM_ID,
+      name: "Visual-Accordion",
+      path: `${ROOT_PATH}/Visual-Accordion`,
+      fields: [],
+    });
+    // Force the sibling walk: the mock's path map is case-insensitive
+    // (like Sitecore), so hide both spellings from the path index.
+    client.hideFromPathIndex(`${ROOT_PATH}/${FOLDER_NAME}`);
+    client.hideFromPathIndex(`${ROOT_PATH}/Visual-Accordion`);
+    const captured = new Map<string, string>([[ROOT_PATH, ROOT_ITEM_ID]]);
+
+    const action = await buildAction({
+      index: 0,
+      op: variantsFolderOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    // A create against "visual-accordion" WOULD collide with the
+    // case-variant sibling — it must be adopted instead.
+    expect(action.status).toBe("skip");
+    expect(client.creates).toHaveLength(0);
+    expect(captured.get(FOLDER_REF_KEY)).toBe(FOLDER_ITEM_ID);
+  });
+
+  it("marker-rebinds a RENAMED folder despite a template mismatch (folder-class exemption)", async () => {
+    const client = new LaggingMockClient();
+    seedRoot(client);
+    // Renamed in the CMS AND carrying a legacy template — the marker is
+    // the only remaining identity. The template guard must NOT refuse a
+    // folder-class op: folders carry no authored data, so adoption is
+    // lossless (and avoids orphaning + a future same-name collision).
+    client.preload({
+      itemId: FOLDER_ITEM_ID,
+      templateId: "da26c636-96e1-45e4-88d6-3fcec70d5699", // legacy/grouping template
+      parentId: ROOT_ITEM_ID,
+      name: "visual-accordion-old",
+      path: `${ROOT_PATH}/visual-accordion-old`,
+      fields: [remoteMarker(VARIANTS_HANDLE)],
+    });
+    const captured = new Map<string, string>([
+      [ROOT_PATH, ROOT_ITEM_ID],
+      // The expected template resolves to a live itemId — the exact
+      // condition that engages the guard for non-folder ops.
+      [SITECORE_TEMPLATES.HEADLESS_VARIANTS, "99999999-9999-4999-8999-999999999999"],
+    ]);
+
+    const action = await buildAction({
+      index: 0,
+      op: markedVariantsFolderOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    expect(action.status).not.toBe("create");
+    expect(client.creates).toHaveLength(0);
+    expect(captured.get(FOLDER_REF_KEY)).toBe(FOLDER_ITEM_ID);
   });
 });

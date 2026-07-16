@@ -6,7 +6,7 @@ import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
 import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
 import { resolveMediaUpload } from "./media-filename";
-import { dashifyGuid, renderRefValue } from "./ref-encoding";
+import { dashifyGuid, renderRefValue, sameLevelItemName } from "./ref-encoding";
 import {
   type AddItemVersionInput,
   type AddItemVersionResult,
@@ -185,25 +185,44 @@ query {
   }
 }`;
 
-const GET_CHILDREN_BY_PATH = `
-query($path: String!) {
-  item(where: { path: $path }) {
-    children {
+// Children reads MUST paginate. The Authoring API's `children` field is
+// a GraphQL connection with a server-side default page size — an
+// argument-less `children { nodes }` silently returns only the FIRST
+// page. That truncation blinded every children-based recovery layer
+// (plan-time sibling fallback, `idempotencyCheck` pre-create probe, the
+// already-exists adoption after a name-conflict) for parents with many
+// children — e.g. a Headless Variants root holding one folder per
+// component: the folders that sorted past the first page were invisible,
+// so a repeat push planned a create and Sitecore rejected it with
+// `The item name "<x>" is already defined on this level.`
+//
+// The page size is inlined as a literal (not a typed variable) so the
+// query stays valid whether the server types `first` as `Int` or
+// Sitecore's `PaginationAmount` scalar.
+const CHILDREN_PAGE_SIZE = 50;
+
+const childrenConnection = `
+    children(first: ${CHILDREN_PAGE_SIZE}, after: $after) {
       nodes {
         ${ITEM_FRAGMENT}
       }
-    }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }`;
+
+const GET_CHILDREN_BY_PATH = `
+query($path: String!, $after: String) {
+  item(where: { path: $path }) {
+${childrenConnection}
   }
 }`;
 
 const GET_CHILDREN_BY_ID = `
-query($itemId: ID!) {
+query($itemId: ID!, $after: String) {
   item(where: { itemId: $itemId }) {
-    children {
-      nodes {
-        ${ITEM_FRAGMENT}
-      }
-    }
+${childrenConnection}
   }
 }`;
 
@@ -292,7 +311,15 @@ type RemoteItemNode = {
 
 type GraphQLItemResponse = { item: RemoteItemNode | null };
 type GraphQLChildrenResponse = {
-  item: { children: { nodes: RemoteItemNode[] } } | null;
+  item: {
+    children: {
+      nodes: RemoteItemNode[];
+      // Defensive-optional: a server that doesn't return pageInfo (or an
+      // older recorded fixture) degrades to single-page behavior instead
+      // of crashing the read.
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null } | null;
+    };
+  } | null;
 };
 type GraphQLCreateItemResponse = {
   createItem: { item: { itemId: string } | null } | null;
@@ -536,26 +563,53 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     return paths.map((_, i) => data[`i${i}`] ?? null);
   };
 
+  // Hard page ceiling: 200 pages × CHILDREN_PAGE_SIZE = 10k children —
+  // far beyond any recipe-managed container, and a guarantee that a
+  // misbehaving server echoing a stable cursor can't spin the loop
+  // forever.
+  const CHILDREN_MAX_PAGES = 200;
+
   const fetchChildren = async (selector: ItemSelector): Promise<RemoteItemNode[]> => {
+    let query: string;
+    let baseVariables: Record<string, string>;
     if (selector.itemId) {
-      const data = await runAuthoringGraphQL<GraphQLChildrenResponse>(
+      query = GET_CHILDREN_BY_ID;
+      baseVariables = { itemId: selector.itemId };
+    } else if (selector.path) {
+      query = GET_CHILDREN_BY_PATH;
+      baseVariables = { path: selector.path };
+    } else {
+      throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    }
+    const nodes: RemoteItemNode[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < CHILDREN_MAX_PAGES; page += 1) {
+      // `variables` computed before the call (and `data` explicitly
+      // annotated) so `after`'s reassignment below doesn't put the
+      // awaited result in its own inference cycle (TS7022).
+      const variables: Record<string, string> =
+        after === null ? baseVariables : { ...baseVariables, after };
+      const data: GraphQLChildrenResponse = await runAuthoringGraphQL<GraphQLChildrenResponse>(
         environment,
-        GET_CHILDREN_BY_ID,
-        { itemId: selector.itemId },
+        query,
+        variables,
         readRequest
       );
-      return data.item?.children.nodes ?? [];
+      const connection = data.item?.children;
+      if (!connection) break;
+      nodes.push(...connection.nodes);
+      const pageInfo = connection.pageInfo;
+      if (
+        !pageInfo?.hasNextPage ||
+        !pageInfo.endCursor ||
+        pageInfo.endCursor === after ||
+        connection.nodes.length === 0
+      ) {
+        break;
+      }
+      after = pageInfo.endCursor;
     }
-    if (selector.path) {
-      const data = await runAuthoringGraphQL<GraphQLChildrenResponse>(
-        environment,
-        GET_CHILDREN_BY_PATH,
-        { path: selector.path },
-        readRequest
-      );
-      return data.item?.children.nodes ?? [];
-    }
-    throw createScaiError("ItemSelector requires either path or itemId.", "INPUT_INVALID");
+    return nodes;
   };
 
   /**
@@ -680,7 +734,15 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     name: string
   ): Promise<RemoteItemNode | null> => {
     const children = await fetchChildren({ itemId: parentItemId });
-    return children.find((c) => c.name === name) ?? null;
+    // Exact match wins; otherwise fall back to Sitecore's own per-level
+    // uniqueness semantics (names are case-insensitively unique on a
+    // level) so a case-variant sibling — which the create mutation WILL
+    // reject as "already defined on this level" — is still adoptable.
+    return (
+      children.find((c) => c.name === name) ??
+      children.find((c) => sameLevelItemName(c.name, name)) ??
+      null
+    );
   };
 
   /**
@@ -839,6 +901,25 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
           if (existing) {
             return { itemId: existing.itemId };
           }
+          // The server insists a same-named sibling exists but the
+          // (paginated, case-insensitive) children walk can't see it —
+          // surface a precise conflict instead of the raw GraphQL
+          // collision so the operator knows exactly which item to
+          // inspect and what template the recipe expected.
+          const original = error instanceof Error ? error.message : String(error);
+          throw createScaiError(
+            `createItem '${input.name}' (expected template ${input.templateId}) under parent ` +
+              `${parentItemId} was rejected as a duplicate name, but no matching child was ` +
+              `found among the parent's children — the existing item could not be adopted. ` +
+              `Original error: ${original}`,
+            "NETWORK",
+            {
+              hint:
+                "Open the parent item in the Content Editor and inspect its children for the " +
+                "conflicting item (it may be protected, orphaned, or in an inconsistent index " +
+                "state). Rename or remove it, then re-run the push.",
+            }
+          );
         }
         throw error;
       }

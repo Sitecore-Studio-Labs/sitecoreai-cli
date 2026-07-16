@@ -19,6 +19,7 @@ import {
 } from "../ir/sitecore-templates";
 import { type PageDesignRecipe, PageDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import { flattenLayout } from "./flatten-layout";
 import { layoutEncodingOptions } from "./layout-encoding";
 import {
   collectDataInsertOptions,
@@ -99,13 +100,18 @@ export function compilePageDesignRecipe(
   // partial references) ride in this same canonical field; its
   // `__Final Renderings` stays blank, since the pages that apply the design own
   // that field. When the design declares no layout, the bare shell is emitted.
-  const hasOwnLayout = recipe.layout != null && Object.keys(recipe.layout.placeholders).length > 0;
+  // Nested placements flatten into dynamic-placeholder keys before
+  // anything walks the layout — the same convention as pages and partial
+  // designs (`./flatten-layout`); rare for a page design's own
+  // placements, but the semantics are identical.
+  const layout = recipe.layout != null ? flattenLayout(recipe.layout) : undefined;
+  const hasOwnLayout = layout != null && Object.keys(layout.placeholders).length > 0;
   const scoped = hasOwnLayout
     ? materializeScopedDatasources({
         hostItemRefKey: itemRefKey,
         hostItemPath: itemPath,
-        scopedSlots: collectScopedSlots(recipe.layout),
-        insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
+        scopedSlots: collectScopedSlots(layout),
+        insertOptionHandles: collectDataInsertOptions(layout, context),
         site,
         policy,
         context,
@@ -115,7 +121,7 @@ export function compilePageDesignRecipe(
     : undefined;
   if (scoped) operations.push(...scoped.structureOps);
 
-  const layoutXml = emitLayoutXml(recipe.layout ?? { placeholders: {} }, {
+  const layoutXml = emitLayoutXml(layout ?? { placeholders: {} }, {
     parentItemId: itemRefKey,
     deviceId: DEFAULT_DEVICE_ID,
     // `layoutId` makes the emitter produce `<r><d id l /></r>` even for an

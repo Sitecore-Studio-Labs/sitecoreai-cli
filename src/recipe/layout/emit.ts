@@ -49,12 +49,15 @@ export interface ComponentPlacementInput {
   datasourceRef?:
     { kind: "shared"; handle: string } | { kind: "scoped"; slot: string } | { kind: "none" };
   /**
-   * Nested placements (schema-legal on any placement). ONLY a
-   * `PageRecipe` layout can host them — `compilePageRecipe` flattens
-   * the tree into concrete dynamic-placeholder keys before emission,
-   * so a placement reaching this emitter with children still attached
-   * is a partial-/page-design layout, which has no host page to anchor
-   * the nesting. Rejected loudly rather than silently dropped.
+   * Nested placements (schema-legal on any placement). The emitter
+   * only consumes FLAT layouts — the page, partial-design, and
+   * page-design compilers flatten the tree into concrete
+   * dynamic-placeholder keys before emission
+   * (`compile/flatten-layout.ts`). A placement reaching this emitter
+   * with children still attached comes from a layout context without a
+   * flattening pass (a content-item version layout, a page-template
+   * standard-values layout). Rejected loudly rather than silently
+   * dropped.
    */
   placeholders?: Record<string, readonly ComponentPlacementInput[]>;
 }
@@ -231,7 +234,7 @@ const resolvePlacement = (
       `Placement '${placement.componentHandle}' in placeholder '${placeholderKey}' carries nested placeholders, which this layout context cannot host.`,
       "INPUT_INVALID",
       {
-        hint: "Nested placements are only valid in a PageRecipe layout (the page compiler flattens them into dynamic-placeholder keys). Partial-design and page-design layouts must place components flat.",
+        hint: "Nested placements are valid in page, partial-design, and page-design layouts — their compilers flatten the tree into dynamic-placeholder keys before emission. This layout context (e.g. a content-item version layout or a page-template standard-values layout) has no flattening pass, so it must place components flat.",
       }
     );
   }
@@ -304,8 +307,9 @@ const resolvePlacement = (
  *  - `"delta"` — SXA partial-design wire form so first push converges.
  *
  * Throws when a `kind: "scoped"` datasourceRef appears and
- * `ctx.allowScoped` is false — partial designs and page designs reject
- * scoped refs because they lack a host page.
+ * `ctx.allowScoped` is false — layout contexts without an item to host
+ * a `Data` folder (content-item version layouts, page-template
+ * standard-values layouts) reject scoped refs.
  */
 export function emitLayoutXml(layout: LayoutInput, ctx: LayoutEmitContext): string {
   const placeholderEntries = Object.entries(layout.placeholders).filter(

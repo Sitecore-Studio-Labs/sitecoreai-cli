@@ -17,6 +17,7 @@ import {
 } from "../ir/sitecore-templates";
 import { type PartialDesignRecipe, PartialDesignRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
+import { flattenLayout } from "./flatten-layout";
 import { layoutEncodingOptions } from "./layout-encoding";
 import {
   collectDataInsertOptions,
@@ -43,6 +44,12 @@ import { joinPath, sharedField, siteOf, versionedField, type CompileContext } fr
  * resolution required for the layout body. (Page-template handles in
  * `appliesTo` and partial handles in `partials[]` on `PageDesignRecipe`
  * resolve the same way.)
+ *
+ * Nested placements (a shell component hosting children in its own
+ * logical slots) are flattened into dynamic-placeholder keys before
+ * emission — exactly the page compiler's convention (`./flatten-layout`).
+ * The flattened children ride the same shared `__Renderings` delta as
+ * their parent.
  */
 export function compilePartialDesignRecipe(
   input: PartialDesignRecipe,
@@ -61,6 +68,17 @@ export function compilePartialDesignRecipe(
   const site = siteOf(context);
   const itemRefKey = partialDesignId(site, recipe.handle);
   const itemPath = joinPath(context.partialDesignsRoot, recipe.name);
+
+  // Flatten nested placements — a placeholder-composed shell like
+  // `footer@1` hosting children in its own logical slots (`footer-main`,
+  // `footer-bottom`) — into concrete dynamic-placeholder keys BEFORE
+  // anything walks the layout: scoped-slot collection, insert options,
+  // and emission all consume the flat shape. Identical key derivation to
+  // the page compiler (`./flatten-layout`), so the same shell composes
+  // the same way in a page or in design chrome. Site chrome (headers,
+  // footers) lives in partial designs, which is exactly where the
+  // registry's shell-composed experiences need nesting.
+  const layout = flattenLayout(recipe.layout);
 
   operations.push({
     op: "CreateItem",
@@ -90,8 +108,8 @@ export function compilePartialDesignRecipe(
   const scoped = materializeScopedDatasources({
     hostItemRefKey: itemRefKey,
     hostItemPath: itemPath,
-    scopedSlots: collectScopedSlots(recipe.layout),
-    insertOptionHandles: collectDataInsertOptions(recipe.layout, context),
+    scopedSlots: collectScopedSlots(layout),
+    insertOptionHandles: collectDataInsertOptions(layout, context),
     site,
     policy,
     context,
@@ -100,7 +118,7 @@ export function compilePartialDesignRecipe(
   });
   operations.push(...scoped.structureOps);
 
-  const layoutXml = emitLayoutXml(recipe.layout, {
+  const layoutXml = emitLayoutXml(layout, {
     parentItemId: itemRefKey,
     deviceId: DEFAULT_DEVICE_ID,
     renderingIdFor: (handle) => renderingId(site, handle),

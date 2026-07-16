@@ -40,6 +40,7 @@ import {
 } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
 import { encodeContentFieldValue } from "./content-item";
+import { createLayoutFlattener } from "./flatten-layout";
 import {
   isInlineChildArray,
   materializeInlineChildren,
@@ -596,102 +597,25 @@ interface PagePath {
   itemName: string;
 }
 
-/** One placement in a page layout (post-parse). */
-type PagePlacement = Layout["placeholders"][string][number];
-
 /**
  * Flatten every layout the recipe declares (item-level + per-version)
- * from the recursive authoring shape — placements hosting children in
- * `placement.placeholders` — into the flat SXA dynamic-placeholder wire
- * shape the rest of the compiler consumes:
- *
- *  - EVERY placement gets a page-unique integer `DynamicPlaceholderId`
- *    rendering parameter (author-set values are respected and never
- *    re-assigned; assigned ids skip any value an author already used).
- *    XM Cloud Pages assigns one to every rendering it places; SXA
- *    Headless components additionally read it to construct their
- *    dynamic placeholder names.
- *  - Each child group keyed by a LOGICAL name (`column-1`) lands in the
- *    path-qualified concrete key
- *    `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>` — e.g.
- *    `/headless-main/column-1-1` — the key XM Cloud Pages writes when
- *    an author drops a component into a dynamic placeholder, so
- *    recipe-seeded and author-added children coexist in one layout.
- *
- * One id counter spans ALL of the recipe's layouts: ids are unique per
- * page item, mirroring SXA's per-page assignment, so per-version
- * layouts can never mint a key that collides with the item-level one.
+ * from the recursive authoring shape into the flat SXA
+ * dynamic-placeholder wire shape the rest of the compiler consumes —
+ * see `./flatten-layout` for the key derivation. One id counter spans
+ * ALL of the recipe's layouts: ids are unique per page item, mirroring
+ * SXA's per-page assignment, so per-version layouts can never mint a
+ * key that collides with the item-level one.
  *
  * Mutates `recipe` in place (the object is the compiler's own
  * `PageRecipeSchema.parse` output, never the caller's input).
  */
 const flattenRecipeLayouts = (recipe: PageRecipeParsed): void => {
-  // Pre-scan author-set DynamicPlaceholderId values across every layout
-  // so assigned ids never collide with them.
-  const usedIds = new Set<string>();
-  const scan = (placements: readonly PagePlacement[]): void => {
-    for (const placement of placements) {
-      const authored = placement.params?.DynamicPlaceholderId;
-      if (authored) usedIds.add(authored);
-      for (const children of Object.values(placement.placeholders ?? {})) scan(children);
-    }
-  };
-  const layouts = collectRecipeLayouts(recipe);
-  for (const layout of layouts) {
-    for (const placements of Object.values(layout.placeholders)) scan(placements);
-  }
-
-  let nextId = 1;
-  const takeId = (): string => {
-    while (usedIds.has(String(nextId))) nextId += 1;
-    const id = String(nextId);
-    usedIds.add(id);
-    return id;
-  };
-
-  const flattenLayout = (layout: Layout): Layout => {
-    const out: Record<string, PagePlacement[]> = {};
-    const emit = (key: string, placements: readonly PagePlacement[]): void => {
-      const flat: PagePlacement[] = [];
-      const childGroups: Array<{ key: string; placements: readonly PagePlacement[] }> = [];
-      for (const placement of placements) {
-        const { placeholders: children, ...rest } = placement;
-        // EVERY placement gets a page-unique DynamicPlaceholderId — not
-        // just the ones hosting children. XM Cloud Pages assigns one to
-        // every rendering it places (operator-verified across working
-        // tenant pages), and the Pages editor relies on it to key the
-        // rendering instance; leaf renderings without one are part of
-        // what the editor rejects as malformed.
-        const dynamicPlaceholderId = rest.params?.DynamicPlaceholderId ?? takeId();
-        flat.push({
-          ...rest,
-          params: { ...(rest.params ?? {}), DynamicPlaceholderId: dynamicPlaceholderId },
-        });
-        if (children && Object.keys(children).length > 0) {
-          // Child keys are path-qualified against the parent's own
-          // (already-concrete) key; the top level stays unqualified so
-          // existing single-level layouts emit byte-identical XML.
-          const parentPath = key.startsWith("/") ? key : `/${key}`;
-          for (const [childName, childPlacements] of Object.entries(children)) {
-            childGroups.push({
-              key: `${parentPath}/${childName}-${dynamicPlaceholderId}`,
-              placements: childPlacements,
-            });
-          }
-        }
-      }
-      out[key] = [...(out[key] ?? []), ...flat];
-      for (const group of childGroups) emit(group.key, group.placements);
-    };
-    for (const [key, placements] of Object.entries(layout.placeholders)) emit(key, placements);
-    return { placeholders: out };
-  };
-
-  if (recipe.layout) recipe.layout = flattenLayout(recipe.layout);
+  const flatten = createLayoutFlattener(collectRecipeLayouts(recipe));
+  if (recipe.layout) recipe.layout = flatten(recipe.layout);
   if (recipe.versions) {
     for (const entries of Object.values(recipe.versions)) {
       for (const entry of entries) {
-        if (entry.layout) entry.layout = flattenLayout(entry.layout);
+        if (entry.layout) entry.layout = flatten(entry.layout);
       }
     }
   }

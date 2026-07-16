@@ -85,11 +85,15 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(xml).toContain('p:before="*"');
     expect(xml).toContain('p:after="r[@uid=');
     expect(xml).toContain('p:after="*[1=2]"');
-    // Namespaced attribute names + always-present empty s:par.
+    // Namespaced attribute names + always-present s:par. Since the
+    // flattening pass, EVERY placement carries an item-unique
+    // DynamicPlaceholderId rendering parameter (the page convention —
+    // Pages assigns one to every rendering it places), so s:par is
+    // never empty here.
     expect(xml).toContain("s:ph=");
     expect(xml).toContain("s:ds=");
     expect(xml).toContain("s:id=");
-    expect(xml).toContain('s:par=""');
+    expect(xml).toMatch(/s:par="[^"]*DynamicPlaceholderId=\d/);
     // Canonical xsd/xsi namespaces must NOT appear in delta form.
     expect(xml).not.toContain("xmlns:xsd");
     expect(xml).not.toContain("xmlns:xsi");

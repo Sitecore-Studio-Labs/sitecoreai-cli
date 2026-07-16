@@ -175,15 +175,17 @@ export type ComponentPlacementDatasourceRef =
  * (`column-1`, `column-2` — the static prefix of a dynamic placeholder,
  * no instance suffix).
  *
- * Only valid in a `PageRecipe` layout. `compilePageRecipe` flattens the
- * tree into SXA dynamic-placeholder wire form: the parent placement gets
- * a page-unique integer `DynamicPlaceholderId` rendering parameter
+ * Valid in `PageRecipe`, `PartialDesignRecipe`, and `PageDesignRecipe`
+ * layouts. Their compilers flatten the tree into SXA dynamic-placeholder
+ * wire form (`compile/flatten-layout.ts`): the parent placement gets an
+ * item-unique integer `DynamicPlaceholderId` rendering parameter
  * (unless the author set one) and each child lands in the
  * path-qualified key `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>`
  * — the key shape XM Cloud Pages writes when an author drops a component
  * into a dynamic placeholder, and the shape headless components resolve
- * via `params.DynamicPlaceholderId`. Partial- and page-design layouts
- * reject nesting (no host page). Nesting depth is unbounded.
+ * via `params.DynamicPlaceholderId`. Layout contexts without a
+ * flattening pass (content-item version layouts, page-template
+ * standard-values layouts) reject nesting. Nesting depth is unbounded.
  *
  * The interfaces are hand-declared (rather than `z.infer`red) so the
  * recursion resolves lazily: an inferred recursive schema type gets
@@ -207,10 +209,10 @@ export interface ComponentPlacementInput {
    *
    *   shared  — a `ContentItemRecipe` handle (catalog-shipped reusable
    *             content like `site-logo-content@1`).
-   *   scoped  — page-local content materialised at `<page>/Data/<slot>`;
+   *   scoped  — host-local content materialised at `<host>/Data/<slot>`
+   *             (the page, partial-design, or page-design item);
    *             `fields` accepts both the scai-native discriminated
    *             `ContentFieldValue` shape and the registry's flat shape.
-   *             Only valid in a `PageRecipe` layout.
    *   none    — config-driven rendering with no datasource (rare).
    */
   datasourceRef?: ComponentPlacementDatasourceRefInput;

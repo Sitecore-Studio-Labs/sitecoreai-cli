@@ -1,5 +1,15 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.34.0
+
+### Minor Changes
+
+- 58e3e0a: Partial-design and page-design layouts now support nested placements, flattened into dynamic-placeholder keys exactly like page layouts. Previously a placement carrying children (`placement.placeholders`) in a design layout aborted the push with `INPUT_INVALID` ("carries nested placeholders, which this layout context cannot host") — but site chrome lives in partial designs, and the registry's placeholder-composed shells (a `footer@1` exposing `footer-main-{*}` / `footer-bottom-{*}` slots that children compose into) are exactly this shape.
+
+  The page compiler's flattening now lives in a shared module (`recipe/compile/flatten-layout.ts`) consumed by all three layout-holding compilers: every placement gets an item-unique integer `DynamicPlaceholderId` rendering parameter (author-set values respected, minted ids deterministic in declaration order), and each child group lands in the path-qualified concrete key `/<parent-placeholder-path>/<name>-<DynamicPlaceholderId>` — the key XM Cloud Pages writes when an author drops a component into a dynamic placeholder. Nesting depth is unbounded. For partial designs the flattened children ride the same shared `__Renderings` SXA delta as their parent (one field, one device); page designs keep their canonical form. Nested children follow the host's existing datasource rules — `shared`, `none`, and design-local `scoped` (`local:/Data/<slot>`, materialised under the design item) all work at any depth; contexts without a flattening pass (content-item version layouts, page-template standard values) still reject nesting, with an updated hint.
+
+  Note: since every placement now receives a `DynamicPlaceholderId`, re-pushing an existing flat partial/page design updates its layout `par` blobs once — uids are unchanged, so placements keep their identity and the push stays idempotent thereafter.
+
 ## 0.33.0
 
 ### Minor Changes

@@ -1314,11 +1314,13 @@ describe("createAuthoringClient — idempotent createItem fallback", () => {
  * expected template resolved live. Planner-side coverage lives in
  * content-item-adopt-retemplate.test.ts.
  */
-describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", () => {
+describe("createAuthoringClient — twin convergence on adoption (retemplateOnAdopt)", () => {
   const PARENT_ID = "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa";
   const TWIN_ID = "stranded-twin-id-bbbbbbbbbbbbbb";
+  const FRESH_ID = "fresh-item-id-cccccccccccccccccc";
   const LIVE_TEMPLATE_ID = "77777777-7777-4777-8777-777777777777";
   const STALE_TEMPLATE_ID = "88888888-8888-4888-8888-888888888888";
+  const HANDLE = "footer-link-features@1";
 
   const parentResolve = () =>
     okResponse({
@@ -1334,7 +1336,10 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
       },
     });
 
-  const childrenWithTwin = (templateId: string) =>
+  const childrenWithTwin = (
+    templateId: string,
+    twinFields: Array<{ name: string; value: string }> = []
+  ) =>
     okResponse({
       data: {
         item: {
@@ -1346,7 +1351,9 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
                 path: "/sitecore/content/duke/another-test/Data/features",
                 parent: { itemId: PARENT_ID },
                 template: { templateId },
-                fields: { nodes: [] },
+                fields: {
+                  nodes: twinFields.map((f) => ({ ...f, templateField: null })),
+                },
               },
             ],
             pageInfo: { hasNextPage: false, endCursor: null },
@@ -1355,7 +1362,20 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
       },
     });
 
-  const updateOk = () => okResponse({ data: { updateItem: { item: { itemId: TWIN_ID } } } });
+  const noChildren = () =>
+    okResponse({
+      data: {
+        item: {
+          children: {
+            nodes: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    });
+
+  const deleteOk = () => okResponse({ data: { deleteItem: { successful: true } } });
+  const createdFresh = () => okResponse({ data: { createItem: { item: { itemId: FRESH_ID } } } });
 
   const featuresCreateInput = () => ({
     parent: "/sitecore/content/duke/another-test/Data",
@@ -1367,71 +1387,128 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
         fieldName: "Title",
         value: { kind: "string" as const, value: "Features" },
       },
+      {
+        fieldId: "00000000-0000-0000-0000-5ca15ca15ca1",
+        fieldName: "Scai Handle",
+        value: { kind: "string" as const, value: HANDLE },
+      },
     ],
     idempotencyCheck: true,
     retemplateOnAdopt: true,
   });
 
-  it("pre-check adoption of a template-mismatched twin retemplates it, then seeds fields", async () => {
+  it("adopts a SAME-SHAPE twin as-is when its live template resolves the recipe's authored fields", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(parentResolve())
-      // idempotencyCheck pre-check finds the stranded twin.
-      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
-      // 1) retemplate, 2) seed the create's fields.
-      .mockResolvedValueOnce(updateOk())
-      .mockResolvedValueOnce(updateOk());
+      // Cross-seed twin: different template GUID family, same field names.
+      .mockResolvedValueOnce(
+        childrenWithTwin(STALE_TEMPLATE_ID, [{ name: "Title", value: "Old" }])
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createAuthoringClient({ environment: baseEnv });
     const result = await client.createItem(featuresCreateInput());
 
     expect(result.itemId).toBe(TWIN_ID);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    // Retemplate FIRST — a field write against the stale template would
-    // fail name resolution; ordering is the whole point. The Authoring
-    // schema has no UpdateItemInput.templateId (and no changeTemplate
-    // mutation) — the template change is a `__Template` system-field
-    // write in Sitecore's braced-ID format.
-    const retemplateBody = JSON.parse(fetchMock.mock.calls[2][1].body);
-    expect(retemplateBody.variables.input).toMatchObject({
-      itemId: TWIN_ID,
-      fields: [{ name: "__Template", value: `{${LIVE_TEMPLATE_ID.toUpperCase()}}` }],
-    });
-    expect(retemplateBody.variables.input.templateId).toBeUndefined();
-    const seedBody = JSON.parse(fetchMock.mock.calls[3][1].body);
-    expect(seedBody.variables.input.itemId).toBe(TWIN_ID);
-    expect(seedBody.variables.input.templateId).toBeUndefined();
-    expect(seedBody.variables.input.fields).toEqual([{ name: "Title", value: "Features" }]);
+    // Parent resolve + pre-check only — no delete, no create, no update.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("already-exists fallback adoption retemplates the same way", async () => {
+  it("replaces marker-verified childless residue: delete, then a fresh create with the expected template", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(parentResolve())
-      // createItem mutation → conflict (no pre-check on this input).
+      // Broken twin: Title unresolvable, but it carries OUR marker.
       .mockResolvedValueOnce(
-        okResponse({
-          errors: [{ message: 'The item name "features" is already defined on this level.' }],
-        })
+        childrenWithTwin(STALE_TEMPLATE_ID, [{ name: "Scai Handle", value: HANDLE }])
       )
-      // Fallback children walk finds the twin.
-      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
-      .mockResolvedValueOnce(updateOk())
-      .mockResolvedValueOnce(updateOk());
+      // Children probe on the twin: empty — safe to replace.
+      .mockResolvedValueOnce(noChildren())
+      .mockResolvedValueOnce(deleteOk())
+      .mockResolvedValueOnce(createdFresh());
     vi.stubGlobal("fetch", fetchMock);
 
     const client = createAuthoringClient({ environment: baseEnv });
-    const result = await client.createItem({ ...featuresCreateInput(), idempotencyCheck: false });
+    const result = await client.createItem(featuresCreateInput());
 
-    expect(result.itemId).toBe(TWIN_ID);
+    expect(result.itemId).toBe(FRESH_ID);
     expect(fetchMock).toHaveBeenCalledTimes(5);
-    const retemplateBody = JSON.parse(fetchMock.mock.calls[3][1].body);
-    expect(retemplateBody.variables.input).toMatchObject({
+    const deleteBody = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(deleteBody.variables.input).toMatchObject({
       itemId: TWIN_ID,
-      fields: [{ name: "__Template", value: `{${LIVE_TEMPLATE_ID.toUpperCase()}}` }],
+      permanently: true,
     });
-    expect(retemplateBody.variables.input.templateId).toBeUndefined();
+    const createBody = JSON.parse(fetchMock.mock.calls[4][1].body);
+    expect(createBody.variables.input).toMatchObject({
+      parent: PARENT_ID,
+      templateId: LIVE_TEMPLATE_ID,
+      name: "features",
+    });
+    expect(createBody.variables.input.fields).toEqual(
+      expect.arrayContaining([{ name: "Title", value: "Features" }])
+    );
+  });
+
+  it("refuses to replace a twin without a matching Scai Handle marker", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      // Broken twin, no marker — could be an authored/foreign item.
+      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const error = await client.createItem(featuresCreateInput()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScaiError);
+    const message = (error as ScaiError).message;
+    expect(message).toContain(TWIN_ID);
+    expect(message).toContain(STALE_TEMPLATE_ID);
+    expect(message).toContain(LIVE_TEMPLATE_ID);
+    expect(message).toContain("Title");
+    expect(message).toContain("no matching Scai Handle marker");
+    // Nothing was deleted or created.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses to replace marker-verified residue that has children", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      .mockResolvedValueOnce(
+        childrenWithTwin(STALE_TEMPLATE_ID, [{ name: "Scai Handle", value: HANDLE }])
+      )
+      // Children probe: the twin has a child — never cascade-delete.
+      .mockResolvedValueOnce(
+        okResponse({
+          data: {
+            item: {
+              children: {
+                nodes: [
+                  {
+                    itemId: "child-id-dddddddddddddddddddddd",
+                    name: "child",
+                    path: "/sitecore/content/duke/another-test/Data/features/child",
+                    parent: { itemId: TWIN_ID },
+                    template: { templateId: STALE_TEMPLATE_ID },
+                    fields: { nodes: [] },
+                  },
+                ],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const error = await client.createItem(featuresCreateInput()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScaiError);
+    expect((error as ScaiError).message).toContain("child item(s)");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("adopts untouched when the twin's template already matches (GUID shape ignored)", async () => {
@@ -1446,7 +1523,6 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
     const result = await client.createItem(featuresCreateInput());
 
     expect(result.itemId).toBe(TWIN_ID);
-    // Parent resolve + pre-check only — no updateItem calls.
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -1462,35 +1538,6 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
 
     expect(result.itemId).toBe(TWIN_ID);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("surfaces an actionable error when the retemplate itself is rejected", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(parentResolve())
-      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
-      // The retemplate updateItem is rejected (e.g. a tenant that
-      // guards `__Template` system-field writes).
-      .mockResolvedValueOnce(
-        okResponse({
-          errors: [{ message: "The field __Template cannot be modified." }],
-        })
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const client = createAuthoringClient({ environment: baseEnv });
-    const error = await client.createItem(featuresCreateInput()).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ScaiError);
-    const message = (error as ScaiError).message;
-    // Names the colliding item, both templates, and the original error —
-    // a diagnosable outcome instead of the downstream field-write abort.
-    expect(message).toContain(TWIN_ID);
-    expect(message).toContain("/sitecore/content/duke/another-test/Data/features");
-    expect(message).toContain(STALE_TEMPLATE_ID);
-    expect(message).toContain(LIVE_TEMPLATE_ID);
-    expect(message).toMatch(/retemplating it failed/);
-    expect(message).toContain("The field __Template cannot be modified");
   });
 });
 

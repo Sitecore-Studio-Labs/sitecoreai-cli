@@ -63,10 +63,17 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(setLayout.version).toBeUndefined();
   });
 
-  it("layout XML uses SXA delta form (first push converges in one cycle)", () => {
-    // The SXA Partial Design Layout pipeline normalizes canonical input into
-    // delta form on first write. Emitting delta directly means push #1
-    // round-trips without a server-side rewrite.
+  it("layout XML is the SELF-CONTAINED shared-layout form (renderable standalone in Page Builder)", () => {
+    // Byte-identical to a Pages-authored partial design's `__Renderings`
+    // (operator-verified 2026-07-17):
+    //   <r xmlns:p="p" xmlns:s="s" p:p="1"><d id="{DEVICE}">
+    //     <r uid="…" s:ds="…" s:id="…" s:par="…" s:ph="…" /></d></r>
+    // Explicit `<d id="{DEVICE}">` device element with anchor-less
+    // renderings and NO `<p:da name="l" />` inherit directive. The prior
+    // inherit-delta form (device directive + anchors) 500'd the CM layout
+    // service when a partial was opened DIRECTLY in Page Builder — no base
+    // device layout to merge against — so partials were uneditable
+    // standalone.
     const setLayout = findSetField(ir.operations, "partial-design-layout:standard-header@1");
     if (setLayout.value.kind !== "string") throw new Error("expected string");
     const xml = setLayout.value.value;
@@ -74,22 +81,19 @@ describe("compilePartialDesignRecipe — standard-header@1", () => {
     expect(xml).toContain('xmlns:p="p"');
     expect(xml).toContain('xmlns:s="s"');
     expect(xml).toContain('p:p="1"');
-    // The `<p:da name="l" />` device directive IS present — the form the SXA
-    // Partial Design pipeline round-trips. A partial carries its own layout in
-    // the shared `__Renderings` delta, so the `l=` pointer rides in it (unlike
-    // a page's `__Final Renderings` delta, which inherits the pointer from the
-    // template's standard-values shell).
-    expect(xml).toContain('<p:da name="l" />');
-    // Three placements: first p:before="*", middle p:after="r[@uid='…']",
-    // last p:after="*[1=2]" sentinel.
-    expect(xml).toContain('p:before="*"');
-    expect(xml).toContain('p:after="r[@uid=');
-    expect(xml).toContain('p:after="*[1=2]"');
+    // Explicit device element (self-contained; not an inherit-delta).
+    expect(xml).toContain(`<d id="{${DEFAULT_DEVICE_ID.toUpperCase()}}">`);
+    // NO device-inherit directive — the partial carries its own layout.
+    expect(xml).not.toContain('<p:da name="l" />');
+    // Anchor-less renderings (document order) — matches the authored form.
+    expect(xml).not.toContain("p:before=");
+    expect(xml).not.toContain("p:after=");
+    // Partial designs do NOT carry the page shared-layout's `<p:da
+    // name="xsi" />` root directive (authored partials don't).
+    expect(xml).not.toContain('<p:da name="xsi" />');
     // Namespaced attribute names + always-present s:par. Since the
     // flattening pass, EVERY placement carries an item-unique
-    // DynamicPlaceholderId rendering parameter (the page convention —
-    // Pages assigns one to every rendering it places), so s:par is
-    // never empty here.
+    // DynamicPlaceholderId rendering parameter, so s:par is never empty.
     expect(xml).toContain("s:ph=");
     expect(xml).toContain("s:ds=");
     expect(xml).toContain("s:id=");

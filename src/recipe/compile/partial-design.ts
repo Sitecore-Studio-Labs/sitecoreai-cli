@@ -132,11 +132,27 @@ export function compilePartialDesignRecipe(
     // Encode variants + params in the wire form Pages reads back — SAME as
     // pages, so a partial's renderings don't render with unresolved variants.
     ...layoutEncodingOptions(site, context),
-    // Emit delta directly (keeping the default `<p:da name="l" />` device
-    // directive): the SXA Partial Design Layout pipeline normalizes canonical
-    // input into delta on first write, so emitting delta means push #1
-    // round-trips in one cycle.
+    // SHARED-layout wire form, byte-identical to a Pages-authored partial
+    // design's `__Renderings` (operator-verified 2026-07-17):
+    //
+    //   <r xmlns:p="p" xmlns:s="s" p:p="1"><d id="{DEVICE}">
+    //     <r uid="…" s:ds="local:/Data/…" s:id="…" s:par="…" s:ph="…" />
+    //   </d></r>
+    //
+    // A SELF-CONTAINED device layout: explicit `<d id="{DEVICE}">` with
+    // anchor-less renderings (document order) and NO `<p:da name="l" />`
+    // inherit directive. The prior form (`deltaDeviceDirective` +
+    // `deltaAnchors` both default-true) emitted `<d><p:da name="l" /><r
+    // p:before|p:after …/></d>` — an INHERIT delta that merges over a
+    // base device layout. A partial design opened DIRECTLY in Page
+    // Builder (not composed into a page) has no base to merge against, so
+    // the CM layout service 500s and Pages falls back to `nolayout.aspx`
+    // — the partial is uneditable standalone. Same treatment the page
+    // SHARED layout uses, minus the page's `<p:da name="xsi" />` root
+    // directive (`deltaSharedForm`), which authored partials don't carry.
     mode: "delta",
+    deltaDeviceDirective: false,
+    deltaAnchors: false,
   });
 
   if (layoutXml.length > 0) {

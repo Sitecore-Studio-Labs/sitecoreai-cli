@@ -919,6 +919,17 @@ const isFolderClassCreate = (op: CreateItemOp): boolean =>
  *     lossless adopt-as-is behavior — retemplating them is
  *     unnecessary (no authored data) and could clobber SXA grouping
  *     templates.
+ *   - Seeds AUTHORED fields — at least one field beyond the injected
+ *     `Scai Handle` marker. This is the positive signal for the
+ *     failure class: adoption only breaks when the recipe writes
+ *     field values the twin's live template can't resolve. Ops with
+ *     no authored fields (recipe-created GROUPING folders — e.g.
+ *     `enumerations-grouping-folder`, whose custom folder templates
+ *     the built-in folder-class set can't enumerate, and whose
+ *     cross-seed twins carry a different site-family template GUID by
+ *     construction) adopt as-is untouched, exactly as v0.33.0/0.34.0
+ *     did. Without this, v0.34.1 retemplated the `Enumerations/Card`
+ *     grouping folder on repeat installs and aborted batch-1.
  *   - The expected template must resolve to a live itemId (same
  *     condition as the v0.32.5 rebind guard): without a live id there
  *     is nothing trustworthy to compare against or retemplate to.
@@ -928,6 +939,10 @@ const adoptRetemplateTargetFor = (
   capturedItemIds: ReadonlyMap<string, string>
 ): string | null => {
   if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return null;
+  const seedsAuthoredFields = op.fields.some(
+    (f) => (f.fieldName ?? "").toLowerCase() !== SCAI_HANDLE_FIELD_NAME.toLowerCase()
+  );
+  if (!seedsAuthoredFields) return null;
   return resolveLiveTemplateIdForRebind(op, capturedItemIds);
 };
 

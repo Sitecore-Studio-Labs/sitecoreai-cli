@@ -1,5 +1,19 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.36.0
+
+### Minor Changes
+
+- 9cda1a7: `--provision-languages` now also appends the provisioned scope to the profile's target SITE language list (`supportedLanguages` — the property Pages offers locales from), not just the environment registry. A pages-only push carries no Site recipe, so the executor's CreateSiteFromTemplate language ensure — which handles the site append for site pushes — never ran: an install into an existing site registered the brand's languages org-wide but Pages never offered them on the site. The append is additive-only, gated to codes the environment ensure actually registered, and skipped when the profile has no `site` or the site doesn't exist yet (a fresh-site install's `createSite` declares its languages itself).
+
+### Patch Changes
+
+- fe0daf7: fix(recipe): preserve topological apply order in the `--from-compiled` artifact
+
+  `recipe compile --output-dir` wrote one IR per recipe named `<handle>.ir.json`, and `push --from-compiled` reloaded them with a lexical `.sort()` — collapsing the set to **alphabetical-by-handle** order and discarding the topological apply order `compileRecipeSet` emits. A recipe referencing a handle that sorts after it (e.g. `ai-chat@1` → `ai-context-item@1` via a `source: { kind: "filter", types: [...] }` field) then applied **before** its referent, and its `ref-source-fields` op threw `references handle '…'; not yet in captured map`.
+
+  The `--output-dir` artifact now stamps each filename with a zero-padded apply-order index (`00014-<handle>.ir.json`), so the existing lexical `.sort()` in `resolveCompiledIrInputs` reproduces topological apply order. Referents apply before their referrers again. Only the flat `--output-dir` artifact is affected; single-`--output` and per-source `.scai/` IR paths are unchanged.
+
 ## 0.35.3
 
 ### Patch Changes

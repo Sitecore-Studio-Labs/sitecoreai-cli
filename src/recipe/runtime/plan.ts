@@ -939,9 +939,14 @@ const adoptRetemplateTargetFor = (
   capturedItemIds: ReadonlyMap<string, string>
 ): string | null => {
   if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return null;
-  const seedsAuthoredFields = op.fields.some(
-    (f) => (f.fieldName ?? "").toLowerCase() !== SCAI_HANDLE_FIELD_NAME.toLowerCase()
-  );
+  const markerName = SCAI_HANDLE_FIELD_NAME.toLowerCase();
+  const seedsAuthoredFields = op.fields.some((f) => {
+    const name = (f.fieldName ?? "").toLowerCase();
+    // System fields (`__Masters` insert options on data folders,
+    // `__Renderings`, …) exist on every template — a twin can always
+    // absorb them, so they don't make an op convergence-eligible.
+    return name !== "" && !name.startsWith("__") && name !== markerName;
+  });
   if (!seedsAuthoredFields) return null;
   return resolveLiveTemplateIdForRebind(op, capturedItemIds);
 };
@@ -1143,7 +1148,8 @@ const planCreateItem = ({
     return planFreshCreate(
       `Existing item at '${remote.path}' (${remote.itemId}) carries template ` +
         `${dashifyGuid(remote.templateId)} but the recipe expects ${retemplateTarget} — ` +
-        `adopting and retemplating the stranded name-twin (left by an earlier partial install).`
+        `converging the name-twin at apply time (adopt if its template resolves the recipe's ` +
+        `fields; replace marker-verified childless residue otherwise).`
     );
   }
   if (op.policy === "CreateOnly") {

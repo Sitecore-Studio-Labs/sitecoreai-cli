@@ -23,19 +23,21 @@ import { compileEnumerationRecipe } from "./compile/enumeration";
 import { compileWorkflowRecipe } from "./compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
 import { compileVariantRecipe } from "./compile/variant";
-import { siteOf, type CompileContext } from "./compile/shared";
+import { enumerationTemplatesSentinel, siteOf, type CompileContext } from "./compile/shared";
 import { stableTopologicalSortWithinRanks } from "./compile/ordering";
 import {
   AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
   buildAvailableRenderingsAggregate,
   buildComponentSectionSubtreeOwnershipAggregate,
   buildEnumerationsRootAggregate,
+  buildEnumerationTemplatesAggregate,
   buildPlaceholderSettingsAggregate,
   buildSharedDataFolderInsertOptionsAggregate,
   buildSharedDataFoldersAggregate,
   buildSiteDataRootAggregate,
   COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
   detectSharedSubfolders,
+  ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
   ENUMERATIONS_ROOT_AGGREGATE_HANDLE,
   PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
   SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE,
@@ -290,7 +292,10 @@ const buildTemplatesMappingAggregate = (
  * `compileRecipeSet` / `appendTrailingAggregates` below — the unit test
  * cross-checks membership against the exported aggregate constants.
  */
-export const FRONT_AGGREGATE_HANDLES: readonly string[] = [SHARED_DATA_FOLDERS_AGGREGATE_HANDLE];
+export const FRONT_AGGREGATE_HANDLES: readonly string[] = [
+  SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
+  ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
+];
 export const TAIL_AGGREGATE_HANDLES: readonly string[] = [
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
   AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
@@ -394,9 +399,22 @@ export function compileRecipeSet(
 
   const perRecipeContext = buildPerRecipeContext(recipes, context, sharedSubfolders);
 
+  // Shared enumeration TEMPLATE trio (templates + `__Standard Values` +
+  // Insert Options) — emitted ONCE under the stable
+  // `__enumeration-templates__` handle rather than by whichever enum recipe
+  // compiles first, so the `__Standard Values` items' tenant ownership
+  // marker is deterministic across rebuilds / batched pushes (a drifting
+  // owner triggered the "item '__Standard Values' is owned by recipe X, not
+  // Y" collision). Built here so the per-recipe sentinel can be pre-seeded
+  // BEFORE the per-recipe pass runs.
+  const enumerationTemplates = buildEnumerationTemplatesAggregate(recipes, context, setSite);
+
   // Shared across the whole set so section / Component Folders /
-  // Presentation Parameters group folders only emit once.
+  // Presentation Parameters group folders only emit once. Pre-seed the
+  // enum-templates sentinel so `ensureEnumerationTemplates` in the per-recipe
+  // pass resolves refKeys only — the aggregate above is the sole emitter.
   const emittedFolders = new Set<string>();
+  if (enumerationTemplates) emittedFolders.add(enumerationTemplatesSentinel(setSite));
   const irByHandle = compilePerRecipeIrs(recipes, perRecipeContext, emittedFolders);
 
   // Order per-recipe IRs by cross-recipe apply-rank, then topologically
@@ -417,6 +435,11 @@ export function compileRecipeSet(
     setSite
   );
   if (sharedDataFolderTemplates) irs.unshift(sharedDataFolderTemplates);
+
+  // Enum TEMPLATE trio: same FRONT-ordering requirement as the shared Data
+  // Folder templates — per-recipe enum items reference these via
+  // `templateOf`, so they must exist before any per-recipe IR applies.
+  if (enumerationTemplates) irs.unshift(enumerationTemplates);
 
   appendTrailingAggregates({
     irs,

@@ -7,6 +7,7 @@ import { standardHeaderRecipe } from "../../../example/recipes/standard-header.r
 import { FRONT_AGGREGATE_HANDLES, TAIL_AGGREGATE_HANDLES } from "../../../src/recipe/compile";
 import {
   AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,
+  ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
   SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
 } from "../../../src/recipe/compile/aggregates";
 import {
@@ -147,11 +148,12 @@ describe("recipe list — aggregate handle inventory", () => {
       expect(handle).toMatch(/^__.+__$/);
     }
     expect(FRONT_AGGREGATE_HANDLES).toContain(SHARED_DATA_FOLDERS_AGGREGATE_HANDLE);
+    expect(FRONT_AGGREGATE_HANDLES).toContain(ENUMERATION_TEMPLATES_AGGREGATE_HANDLE);
     expect(TAIL_AGGREGATE_HANDLES).toContain(AVAILABLE_RENDERINGS_AGGREGATE_HANDLE);
     // The orchestrator (demo-orchestrator scai-shared/recipe-batches.ts)
     // mirrors this inventory until it consumes `recipe list --json`'s
-    // `aggregates` field — 1 front + 7 tail as of this writing.
-    expect(FRONT_AGGREGATE_HANDLES).toHaveLength(1);
+    // `aggregates` field — 2 front + 7 tail as of this writing.
+    expect(FRONT_AGGREGATE_HANDLES).toHaveLength(2);
     expect(TAIL_AGGREGATE_HANDLES).toHaveLength(7);
   });
 });

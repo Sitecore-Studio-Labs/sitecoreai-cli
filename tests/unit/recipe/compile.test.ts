@@ -873,6 +873,68 @@ describe("compileRecipeSet — Enumerations Root aggregate", () => {
   });
 });
 
+describe("compileRecipeSet — Enumeration Templates aggregate", () => {
+  const enumRecipe = (handle: string, name: string): Recipe => ({
+    kind: "enumeration",
+    schemaVersion: "1",
+    handle,
+    name,
+    values: [{ name: "alpha" }, { name: "beta" }],
+  });
+
+  it("emits no Enumeration Templates IR when there are no enumeration recipes", () => {
+    const irs = compileRecipeSet([componentInSection("card@1", "Card"), uiSection], CONTEXT);
+    expect(irs.find((ir) => ir.recipeHandle === "__enumeration-templates__")).toBeUndefined();
+  });
+
+  it("owns the shared template trio + __Standard Values under the stable handle, exactly once", () => {
+    const irs = compileRecipeSet(
+      [enumRecipe("tone@1", "Tone"), enumRecipe("size@1", "Size")],
+      CONTEXT
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__enumeration-templates__");
+    expect(aggregate).toBeDefined();
+
+    // The shared template trio + both `__Standard Values` blocks live in
+    // the aggregate — NOT in any per-recipe enum IR.
+    const svLabels = aggregate!.operations.filter((op) =>
+      op.label?.startsWith("enumeration-template-standard-values:")
+    );
+    expect(svLabels).toHaveLength(2); // Enumerations Folder + Enumeration
+    expect(aggregate!.operations.some((op) => op.label?.startsWith("enumeration-template:"))).toBe(
+      true
+    );
+
+    // Every `__Standard Values` op appears exactly once across the WHOLE
+    // set — the regression this fix prevents is two enum recipes each
+    // emitting (and racing to own) the same shared SV.
+    const allSvOps = irs.flatMap((ir) =>
+      ir.operations.filter((op) => op.label?.startsWith("enumeration-template-standard-values:"))
+    );
+    expect(allSvOps).toHaveLength(2);
+
+    // The per-recipe enum IRs carry ONLY their container + value items,
+    // never the shared template scaffolding.
+    for (const handle of ["tone@1", "size@1"]) {
+      const perRecipe = irs.find((ir) => ir.recipeHandle === handle);
+      expect(perRecipe).toBeDefined();
+      expect(
+        perRecipe!.operations.some(
+          (op) =>
+            op.label?.startsWith("enumeration-template:") ||
+            op.label?.startsWith("enumeration-template-standard-values:")
+        )
+      ).toBe(false);
+    }
+
+    // FRONT ordering: the templates aggregate applies before any per-recipe
+    // enum IR that references them via `templateOf`.
+    const aggregateIndex = irs.findIndex((ir) => ir.recipeHandle === "__enumeration-templates__");
+    const firstEnumIndex = irs.findIndex((ir) => ir.recipeHandle === "tone@1");
+    expect(aggregateIndex).toBeLessThan(firstEnumIndex);
+  });
+});
+
 describe("compileRecipeSet — Placeholder Settings aggregate", () => {
   const CTX_WITH_PH: CompileContext = {
     ...CONTEXT,

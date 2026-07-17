@@ -820,6 +820,20 @@ export interface EnumerationTemplateRefs {
   valueFieldRefKey: string;
 }
 
+/**
+ * The `emittedFolders` sentinel key guarding the shared enumeration
+ * template trio's one-time emission. Exported so `compileRecipeSet` can
+ * PRE-SEED it: when the whole set is compiled, the templates + their
+ * `__Standard Values` are emitted once via the stable
+ * `__enumeration-templates__` FRONT aggregate (owned by that synthetic
+ * handle so tenant ownership never drifts between rebuilds), and every
+ * per-recipe `ensureEnumerationTemplates` call short-circuits to
+ * refKeys-only. A single-recipe compile (no set, fresh set) still emits
+ * the templates inline so the IR stays self-contained.
+ */
+export const enumerationTemplatesSentinel = (site: string): string =>
+  `enumeration-templates:${site}`;
+
 export const ensureEnumerationTemplates = (
   operations: Operation[],
   context: CompileContext,
@@ -831,7 +845,7 @@ export const ensureEnumerationTemplates = (
   const containerValueFieldRefKey = enumerationContainerValueFieldId(site);
   const valueTemplateRefKey = enumerationValueTemplateId(site);
   const valueFieldRefKey = enumerationTemplateValueFieldId(site);
-  const sentinel = `enumeration-templates:${site}`;
+  const sentinel = enumerationTemplatesSentinel(site);
   if (emittedFolders.has(sentinel)) {
     return {
       folderTemplateRefKey,

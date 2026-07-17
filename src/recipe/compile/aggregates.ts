@@ -71,6 +71,7 @@ import {
 import { type ComponentSectionRecipe, type Recipe, resolveAllowedHandles } from "../schema/recipe";
 import {
   datasourceTemplateHandles,
+  ensureEnumerationTemplates,
   joinPath,
   sharedField,
   siteOf,
@@ -125,6 +126,28 @@ export const SITE_DATA_ROOT_AGGREGATE_HANDLE = "__site-data-root__";
  * to the generic Folder template plus every per-recipe enumeration folder.
  */
 export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
+
+/**
+ * Stable handle for the shared enumeration TEMPLATE trio — the per-site
+ * `Enumerations Folder`, `Enumeration`, and `Enumeration Value` templates,
+ * their inner Value fields, and their `__Standard Values` + Insert Options.
+ *
+ * A FRONT aggregate: per-recipe enum items are created with
+ * `templateOf = enumerationTemplateId(...)` / `enumerationsFolderTemplateId(...)`,
+ * so the templates must already exist before any per-recipe IR applies.
+ *
+ * The reason it is an aggregate at all (rather than emitted by whichever
+ * enum recipe compiles first, as it used to be): the templates'
+ * `__Standard Values` items carry a tenant OWNERSHIP marker stamped with
+ * the emitting IR's handle. A "first enum recipe" identity is not stable —
+ * it shifts as the recipe set / topo-order changes across rebuilds, or as
+ * batching splits enum recipes across separate `--handles` pushes — so a
+ * later install would try to reconcile a `__Standard Values` owned by a
+ * different recipe and abort with a name/ownership collision. Owning them
+ * under this synthetic handle makes the marker deterministic across every
+ * install.
+ */
+export const ENUMERATION_TEMPLATES_AGGREGATE_HANDLE = "__enumeration-templates__";
 
 /**
  * Stable handle for the Placeholder Settings items — one per unique
@@ -738,6 +761,39 @@ export const buildEnumerationsRootAggregate = (
         },
       } satisfies SetFieldOp,
     ],
+  });
+};
+
+/**
+ * Build the synthetic IR materialising the shared enumeration TEMPLATE
+ * trio (`Enumerations Folder` / `Enumeration` / `Enumeration Value`), their
+ * inner Value fields, and their `__Standard Values` + Insert Options —
+ * emitted ONCE for the whole set under the stable
+ * `__enumeration-templates__` handle instead of by whichever enum recipe
+ * compiled first. Returns null when the set declares no `EnumerationRecipe`.
+ *
+ * Reuses `ensureEnumerationTemplates` with a fresh sentinel set so the op
+ * sequence stays byte-for-byte identical to the legacy per-recipe emission
+ * (only the owning IR handle changes). `compileRecipeSet` PRE-SEEDS the
+ * per-recipe sentinel (see `enumerationTemplatesSentinel`) so the per-recipe
+ * pass resolves refKeys only and does not re-emit these ops.
+ */
+export const buildEnumerationTemplatesAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext,
+  site: string
+): OperationIr | null => {
+  if (!recipes.some((r) => r.kind === "enumeration")) return null;
+
+  const operations: Operation[] = [];
+  // Fresh set → force emission (the aggregate is the single emitter).
+  ensureEnumerationTemplates(operations, context, site, new Set());
+  if (operations.length === 0) return null;
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
+    operations,
   });
 };
 

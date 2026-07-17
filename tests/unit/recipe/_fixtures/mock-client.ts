@@ -115,6 +115,68 @@ export class MockAuthoringClient implements AuthoringApiClient {
     }
     this.creates.push(input);
 
+    // Faithful to the real client's `idempotencyCheck` contract: a
+    // same-name child of the parent is ADOPTED, not duplicated (see
+    // `runCreateItem` → `adoptExistingChild` in authoring-client.ts).
+    // Without this the mock silently created sibling duplicates on every
+    // plan path that routes an existing twin through a create mutation —
+    // masking real-adopt semantics the convergence tests depend on.
+    if (input.idempotencyCheck) {
+      // Twin lookup by PATH, not by parent-children scan: root ref-path
+      // parents (the configured pagesRoot etc.) are never items in the
+      // mock store, but the child path still identifies the same-name
+      // twin the real pre-check would find among the parent's children.
+      const parentForCheck =
+        this.peek({ path: input.parent }) ?? this.peek({ itemId: input.parent });
+      const checkParentPath = (parentForCheck?.path ?? input.parent).replace(/\/$/, "");
+      {
+        const twin = this.itemsByPath.get(lower(`${checkParentPath}/${input.name}`));
+        if (twin) {
+          const normalize = (id: string) => id.replace(/-/g, "").toLowerCase();
+          const templateMatches =
+            twin.templateId === "" || normalize(twin.templateId) === normalize(input.templateId);
+          if (!input.retemplateOnAdopt || templateMatches) {
+            return { itemId: twin.itemId };
+          }
+          // Same-shape probe: adopt when the twin's live fields resolve
+          // every authored (non-system, non-marker) field name.
+          const liveNames = new Set(twin.fields.map((f) => (f.name ?? "").toLowerCase()));
+          const authored = input.fields
+            .map((f) => f.fieldName ?? "")
+            .filter(
+              (name) =>
+                name !== "" && !name.startsWith("__") && name.toLowerCase() !== "scai handle"
+            );
+          if (authored.every((name) => liveNames.has(name.toLowerCase()))) {
+            return { itemId: twin.itemId };
+          }
+          // Marker-verified childless residue: replace (delete + fall
+          // through to a fresh create). Anything else: conflict error.
+          const liveMarker = twin.fields
+            .find((f) => (f.name ?? "").toLowerCase() === "scai handle")
+            ?.value?.trim();
+          const opMarkerField = input.fields.find(
+            (f) => (f.fieldName ?? "").toLowerCase() === "scai handle"
+          );
+          const opMarker =
+            opMarkerField && opMarkerField.value.kind === "string"
+              ? opMarkerField.value.value.trim()
+              : "";
+          const hasChildren = Array.from(this.itemsByPath.values()).some(
+            (item) => item.parentId.toLowerCase() === twin.itemId.toLowerCase()
+          );
+          if (!liveMarker || !opMarker || liveMarker !== opMarker || hasChildren) {
+            throw new Error(
+              `createItem '${input.name}' adopted existing item '${twin.path}' (${twin.itemId}), ` +
+                `but its live template does not match and cannot resolve the recipe's fields.`
+            );
+          }
+          this.itemsByPath.delete(lower(twin.path));
+          this.itemsById.delete(lower(twin.itemId));
+        }
+      }
+    }
+
     // Resolve the parent: `input.parent` is either a path or an itemId.
     const parentItem = this.peek({ path: input.parent }) ?? this.peek({ itemId: input.parent });
     const parentPath = parentItem?.path ?? input.parent;

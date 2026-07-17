@@ -30,6 +30,24 @@ export interface RecipeCompileOptions extends RecipeCommonOptions {
   /** Single recipe file path. Defaults to the config `recipes` glob. */
   input?: string;
   output?: string;
+  /**
+   * Directory to collect the WHOLE compiled set into, one
+   * `<handle>.ir.json` per IR (per-recipe + cross-recipe aggregates),
+   * flat. Unlike `--output` (single file) this is the artifact a batch
+   * driver hands to `push --from-compiled <dir>`. Mutually exclusive with
+   * `--output`.
+   */
+  outputDir?: string;
+  /**
+   * Locale scope (`--languages`) baked into the compiled IR — the same
+   * COMPILE-time input `recipe push` resolves. Localized content (dictionary
+   * translations, `__Standard Values` locale-map defaults) is EMITTED per
+   * this scope, so a precompiled artifact MUST be compiled with the scope
+   * the eventual push would use. Requires an environment (`-n`) to resolve
+   * the installed-language intersection; without one the scope is a no-op
+   * and every authored locale is emitted (the offline default).
+   */
+  languages?: readonly string[];
   /** Override `templatesRoot` from the env profile. */
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
@@ -100,6 +118,23 @@ export interface RecipePlanOptions extends RecipeTenantOptions {
 export interface RecipePushOptions extends RecipeTenantOptions {
   /** Single recipe file path. Defaults to the config `recipes` glob. */
   input?: string;
+  /**
+   * Directory of pre-compiled `.ir.json` files (as emitted by
+   * `scai provision recipe compile`). When set, the push loads the IR set
+   * from this directory and **skips compilation entirely** — no `.recipe.ts`
+   * loading, no `compileRecipeSet`, no tenant-read compile inputs
+   * (media-root alignment, language resolution). Everything downstream —
+   * the cross-recipe ref pre-seed, `--handles` / `--aggregates-only`
+   * scoping, and apply — runs unchanged against the loaded IRs.
+   *
+   * This is the "compile once, apply many" seam: a batch driver compiles
+   * the whole set ONCE (`recipe compile --output-dir <dir>`) and then runs
+   * each chunk as `push --from-compiled <dir> --handles <chunk>`, paying the
+   * full-set compile a single time instead of once per chunk. Mutually
+   * exclusive with `--input` (the CLI enforces it); the config `recipes`
+   * glob is ignored when this is set.
+   */
+  fromCompiled?: string;
   /** Override `templatesRoot` from the env profile. */
   templatesRoot?: string;
   /** Override `renderingsRoot` from the env profile. */
@@ -600,6 +635,40 @@ export const resolveRecipeInputs = async (
     );
   }
   return { files: matched.sort(), source: "config-glob" };
+};
+
+/**
+ * Resolve the pre-compiled `.ir.json` files under a `--from-compiled`
+ * directory. Recurses so a nested `.scai/` layout (compile's default) and
+ * a flat `--output-dir` artifact both resolve. Returns absolute paths as an
+ * `input-flag`-shaped resolution — `partitionInputFiles` routes every match
+ * down the load-not-compile branch. Throws `INPUT_INVALID` when the
+ * directory holds no IR, telling the operator how to produce one.
+ */
+export const resolveCompiledIrInputs = async (dir: string): Promise<RecipeInputResolution> => {
+  const resolvedDir = path.resolve(dir);
+  // followSymbolicLinks: false mirrors resolveRecipeInputs — an IR is loaded
+  // as data (not executed like a .recipe.ts), but keeping the symlink policy
+  // identical avoids surprising divergence between the two input paths.
+  // dot: true so a `.scai/` layout (compile's default per-recipe output dir)
+  // is traversed, not just a flat `--output-dir` artifact — fast-glob skips
+  // dot-directories otherwise, which would silently miss every default IR.
+  const matched = await fastGlob("**/*.ir.json", {
+    cwd: resolvedDir,
+    absolute: true,
+    followSymbolicLinks: false,
+    dot: true,
+  });
+  if (matched.length === 0) {
+    throw createScaiError(
+      `--from-compiled directory '${dir}' contains no .ir.json files.`,
+      "INPUT_INVALID",
+      {
+        hint: "Produce the IR set first with `scai provision recipe compile --output-dir <dir>`, then point --from-compiled at it.",
+      }
+    );
+  }
+  return { files: matched.sort(), source: "input-flag" };
 };
 
 // Re-exported from the shared gate so `recipe push` goes through the

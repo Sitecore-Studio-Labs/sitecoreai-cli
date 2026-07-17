@@ -7860,6 +7860,8 @@ scai provision recipe compile [options]
 
 - `-i, --input <path>` — Path to a recipe file. Defaults to the config `recipes` glob from sitecoreai.cli.json.
 - `-o, --output <path>` — Path to write the output file
+- `--output-dir <dir>` — Collect the WHOLE compiled set flat into <dir> as one <handle>.ir.json per IR (per-recipe + cross-recipe aggregates) — the artifact `recipe push --from-compiled <dir>` consumes. Mutually exclusive with --output.
+- `--languages <list>` — Comma-separated locale scope baked into the IR (compile-time). Localized content (dictionary translations, Standard Values locale maps) is emitted per this scope; compile with the SAME scope the eventual push will use. Requires -n to resolve the installed-locale intersection; without one the scope is a no-op (every authored locale emitted).
 - `--templates-root <path>` — Sitecore parent path for template items. Falls back to envProfiles[<name>].templatesRoot.
 - `--renderings-root <path>` — Sitecore parent path for rendering items. Falls back to envProfiles[<name>].renderingsRoot.
 - `--components-root <path>` — Sitecore parent path for component template items in the per-site folder layout (Phase 2). Falls back to envProfiles[<name>].componentsRoot.
@@ -7997,6 +7999,7 @@ scai provision recipe push [options]
 **Options**
 
 - `-i, --input <path>` — Path to a recipe file (.recipe.ts/.json) or pre-compiled .ir.json. Defaults to the config `recipes` glob from sitecoreai.cli.json.
+- `--from-compiled <dir>` — Directory of pre-compiled .ir.json files (from `recipe compile --output-dir`). Loads the IR set and SKIPS compilation entirely — no recipe loading, no compile, no tenant-read compile inputs. The 'compile once, apply many' seam: compile the full set once, then run each chunk as `push --from-compiled <dir> --handles <chunk>`, paying the full-set compile a single time instead of once per chunk. Locale scope is fixed at compile; --languages is ignored here. Mutually exclusive with --input.
 - `--templates-root <path>` — Sitecore parent path for template items. Falls back to envProfiles[<name>].templatesRoot.
 - `--renderings-root <path>` — Sitecore parent path for rendering items. Falls back to envProfiles[<name>].renderingsRoot.
 - `--components-root <path>` — Sitecore parent path for component template items in the per-site folder layout (Phase 2). Falls back to envProfiles[<name>].componentsRoot.

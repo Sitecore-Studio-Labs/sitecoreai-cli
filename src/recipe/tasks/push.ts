@@ -22,12 +22,7 @@ import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
 import { injectHandleMarker } from "../items/marker";
 import { loadIr, loadRecipe } from "../io";
-import {
-  ensureEnvironmentLanguages,
-  executeIr,
-  type ExecutionEvent,
-  type ExecutionResult,
-} from "../runtime/execute";
+import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import type { MediaFallback } from "../api/ref-encoding";
 import { writeProgressLine } from "./progress-stream";
 import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
@@ -35,6 +30,7 @@ import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
 import { alignMediaLibraryRootWithSite } from "./media-root";
+import { resolveScopedLanguages } from "./scoped-languages";
 import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
@@ -42,6 +38,7 @@ import {
   ensureSiteCollection,
   loadImageDefaults,
   recipeSetNeedsRoots,
+  resolveCompiledIrInputs,
   resolveRecipeInputs,
   resolveRecipeRoots,
   resolveSeedSite,
@@ -303,156 +300,6 @@ const resolveCompileRoots = (
 };
 
 /**
- * Resolve the target environment's languages (Sites API `listLanguages`)
- * so `compileDictionaryRecipe` can align a dictionary's translation
- * locales to the brand's languages — the same language source the
- * brand-kit Glossary reads.
- *
- * Only queried when the set actually carries a `dictionary` recipe (a
- * component/page-only push pays no token mint). Best-effort: an auth or
- * network failure returns `undefined`, so the compiler falls back to
- * emitting every authored translation rather than aborting the push.
- * Returns the union of each language's `iso` and `regionalIsoCode`
- * (e.g. `["en", "fr", "pt", "pt-BR"]`), which the compiler matches
- * case-insensitively against phrase-translation locales.
- */
-/**
- * Case-insensitive `--languages` scope match: a scope entry matches its
- * exact code (`fr-FR`) and, for bare base-language entries, every regional
- * variant (`fr` matches `fr-FR` / `fr-CA`) — mirroring the compiler's own
- * base-language expansion for `__Standard Values` locale maps.
- */
-const languageScopeMatches = (scope: readonly string[], code: string): boolean => {
-  const lower = code.toLowerCase();
-  const base = lower.split(/[-_]/)[0];
-  return scope.some((entry) => {
-    const entryLower = entry.toLowerCase();
-    return entryLower === lower || entryLower === base;
-  });
-};
-
-/**
- * Resolve the languages a push localizes to, under an optional `--languages`
- * scope.
- *
- * Localization scopes to the languages ALREADY INSTALLED on the environment
- * (`resolveEnvironmentLanguages` → `listLanguages`). A recipe that declares
- * more locales than the environment has does NOT auto-provision + write them:
- * a declared-but-unregistered locale's Standard Values / dictionary phrases
- * are dropped rather than the CLI silently creating the language and localizing
- * into it. Provisioning a genuinely-new language is the operator's step (or
- * happens via `createSite` for a fresh site). This keeps a base-language
- * default (`ar`) from fanning out across every regional variant the CLI would
- * otherwise register — the localize targets exactly what the environment
- * supports (e.g. 5 installed locales, not 25 auto-created ones).
- *
- * `--languages` narrows further: the returned availableLanguages is filtered
- * to the scope, and `--languages en` is the "content now, locales later"
- * install shape. Scope unset = every installed language.
- *
- * `--provision-languages` inverts the drop for the scoped set: the scope
- * is ensured onto the environment FIRST (idempotent registration +
- * fallback wiring via `ensureEnvironmentLanguages`), so the resolution
- * below sees the scoped locales as installed instead of dropping them.
- * Install pipelines opt in when the scope comes from a trusted source
- * (the brand's language list); a missing Sites API credential fails loud
- * — silently skipping the provision would reintroduce the silent narrow
- * the flag exists to prevent.
- */
-const resolveScopedLanguages = async (
-  recipes: readonly Recipe[],
-  environment: EnvironmentConfiguration,
-  languagesOption: readonly string[] | undefined,
-  provisionLanguages?: boolean
-): Promise<string[] | undefined> => {
-  const languageScope = languagesOption
-    ?.map((code) => code.trim())
-    .filter((code) => code.length > 0);
-  if (provisionLanguages && (!languageScope || languageScope.length === 0)) {
-    throw createScaiError(
-      "--provision-languages requires a --languages scope — there is nothing to provision without one.",
-      "INPUT_INVALID",
-      { hint: "Pass the locale list to provision, e.g. --languages en,da,ar-AE." }
-    );
-  }
-  if (provisionLanguages && languageScope && languageScope.length > 0) {
-    const accessToken = await getAccessToken(environment);
-    if (!accessToken) {
-      throw createScaiError(
-        "--provision-languages could not mint a Sites API access token for the target environment.",
-        "AUTH_REQUIRED",
-        {
-          hint: "Run `scai auth login` (or configure client credentials) for this environment, or drop --provision-languages to fall back to the environment's already-registered languages.",
-        }
-      );
-    }
-    await ensureEnvironmentLanguages(createSitesApiClient({ accessToken }), [...languageScope]);
-  }
-  const resolved = await resolveEnvironmentLanguages(recipes, environment);
-  if (!languageScope || languageScope.length === 0) return resolved;
-  return (resolved ?? languageScope).filter((code) => languageScopeMatches(languageScope, code));
-};
-
-/** True when a value is a locale map (`{ en, de, … }`), not a plain string. */
-const isLocaleMap = (value: unknown): boolean =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-/**
- * True when a component-/content-template recipe authors any per-locale
- * `__Standard Values` default — a field or param whose `default` (or
- * `sitecore.defaultValue`) is a `{ en, de, … }` locale map rather than a
- * plain string.
- *
- * Such a recipe needs the environment's registered languages resolved for
- * the SAME reason a dictionary does: the compiler fans a bare base-language
- * key (`ar`) out to the tenant's registered regional variants (`ar-AE`,
- * `ar-SA`) only when `availableLanguages` is known. Without it, the
- * standalone-compile branch emits each key verbatim — so `ar` lands on the
- * bare `ar` version, a language the site never renders, instead of the
- * regional `ar-AE` it actually uses. Gating language resolution on
- * dictionaries alone left a component-only push (no dictionary in the set)
- * writing localized SV to the wrong language.
- */
-const recipeHasLocaleMapDefaults = (recipe: Recipe): boolean => {
-  if (recipe.kind !== "component-template" && recipe.kind !== "content-template") {
-    return false;
-  }
-  const entries = [
-    ...((recipe as { fields?: unknown[] }).fields ?? []),
-    ...((recipe as { params?: unknown[] }).params ?? []),
-  ];
-  return entries.some((entry) => {
-    const e = entry as { default?: unknown; sitecore?: { defaultValue?: unknown } };
-    return isLocaleMap(e.default) || isLocaleMap(e.sitecore?.defaultValue);
-  });
-};
-
-const resolveEnvironmentLanguages = async (
-  recipes: readonly Recipe[],
-  environment: EnvironmentConfiguration
-): Promise<string[] | undefined> => {
-  const needsLanguages = recipes.some(
-    (r) => r.kind === "dictionary" || recipeHasLocaleMapDefaults(r)
-  );
-  if (!needsLanguages) return undefined;
-  const accessToken = await getAccessToken(environment);
-  if (!accessToken) return undefined;
-  try {
-    const languages = await createSitesApiClient({ accessToken }).listLanguages();
-    const codes = new Set<string>();
-    for (const lang of languages) {
-      if (lang.iso) codes.add(lang.iso);
-      if (lang.regionalIsoCode) codes.add(lang.regionalIsoCode);
-    }
-    return codes.size > 0 ? [...codes] : undefined;
-  } catch {
-    // Non-fatal: without the list the compiler emits all authored
-    // translations (pre-alignment behaviour). The push proceeds.
-    return undefined;
-  }
-};
-
-/**
  * Surface cache-skips as zero-effect ExecutionResults so downstream callers
  * (orchestrator, JSON consumers) see a uniform shape across skipped +
  * executed recipes. Pushes one result per skipped IR and logs the skip in
@@ -679,6 +526,35 @@ const resolveApplyConcurrency = (): number => {
   return Number.isFinite(raw) && raw > 0 ? raw : 4;
 };
 
+/**
+ * Guard the flags a `--from-compiled` (apply-only) push can't honor.
+ *
+ * The from-compiled path skips language resolution, which is also where
+ * `--provision-languages` registers locales — so reject that combination
+ * rather than silently dropping the provisioning. `--languages` is a
+ * COMPILE-time scope baked into the IR; it can't re-narrow a pre-compiled
+ * set at apply, so warn rather than mislead.
+ */
+const assertFromCompiledFlags = (
+  options: RecipePushOptions,
+  logger: ReturnType<typeof toLogger>
+): void => {
+  if (options.provisionLanguages) {
+    throw createScaiError(
+      "--from-compiled cannot be combined with --provision-languages.",
+      "INPUT_INVALID",
+      {
+        hint: "Register the locales first (a compiling push with --provision-languages, or `scai` language provisioning), then run the apply-only chunks with --from-compiled.",
+      }
+    );
+  }
+  if (options.languages && options.languages.length > 0) {
+    logger.warn(
+      "--languages is ignored with --from-compiled: locale scope is fixed when the IR is compiled. Re-compile with the desired --languages scope to change it."
+    );
+  }
+};
+
 export const runRecipePush = async (options: RecipePushOptions): Promise<ExecutionResult[]> => {
   const logger = toLogger(options);
   // Workspace-wide path → itemId cache. Shared between the AuthoringApiClient
@@ -740,23 +616,38 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     pagesRoot,
   } = resolveCompileRoots(options, environment);
 
+  // `--from-compiled <dir>`: load a pre-compiled IR set and skip compilation
+  // (and its tenant-read inputs — media-root alignment below, language
+  // resolution further down). The media root, languages, templatesRoot, etc.
+  // are all COMPILE inputs; a pre-compiled IR has them baked in, so resolving
+  // them again per invocation is the redundant work this flag exists to
+  // avoid. Everything after the compile boundary (cross-recipe ref seed,
+  // `--handles` scoping, apply) runs identically for loaded IRs.
+  const isFromCompiled = Boolean(options.fromCompiled);
+  if (isFromCompiled) assertFromCompiledFlags(options, logger);
+
   // Align the site-scoped media root with the folder the Sites API
   // actually scaffolded (named after the site's DISPLAY name) so recipe
   // media and Pages-authored media share one tree instead of splitting
   // across `<Site Display Name>/` and `<site-name>/` siblings. An
   // explicit --media-library-root flag is used verbatim; everything
-  // else is best-effort and falls back to the configured root.
-  const mediaLibraryRootAligned = await alignMediaLibraryRootWithSite({
-    configuredRoot: mediaLibraryRoot,
-    explicitFlag: options.mediaLibraryRoot,
-    site: environment.site,
-    discover: () => discoverSites(environment),
-    getItemsByPaths: (paths) =>
-      createAuthoringClient({ environment, pathItemIdCache }).getItemsByPaths(paths),
-    logger,
-  });
+  // else is best-effort and falls back to the configured root. Skipped for
+  // `--from-compiled` — the aligned path is already baked into the IR ops.
+  const mediaLibraryRootAligned = isFromCompiled
+    ? mediaLibraryRoot
+    : await alignMediaLibraryRootWithSite({
+        configuredRoot: mediaLibraryRoot,
+        explicitFlag: options.mediaLibraryRoot,
+        site: environment.site,
+        discover: () => discoverSites(environment),
+        getItemsByPaths: (paths) =>
+          createAuthoringClient({ environment, pathItemIdCache }).getItemsByPaths(paths),
+        logger,
+      });
 
-  const { files, source } = await resolveRecipeInputs(options, tenant.root);
+  const { files, source } = isFromCompiled
+    ? await resolveCompiledIrInputs(options.fromCompiled as string)
+    : await resolveRecipeInputs(options, tenant.root);
   const results: ExecutionResult[] = [];
   const allEvents: Array<{ recipe: string; event: ExecutionEvent }> = [];
 
@@ -786,13 +677,19 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     tenant.envName,
     recipeSetNeedsRoots(recipes)
   );
-  const imageDefaults = await loadImageDefaults(options.imageDefaults);
-  const availableLanguages = await resolveScopedLanguages(
-    recipes,
-    tenant.environment,
-    options.languages,
-    options.provisionLanguages
-  );
+  // Both are COMPILE inputs; a `--from-compiled` push compiles nothing (its
+  // `recipes` set is empty — every input is a loaded `.ir.json`), so skip the
+  // image-defaults file read and the tenant `listLanguages` round-trip that
+  // would otherwise run once per chunk for no effect.
+  const imageDefaults = isFromCompiled ? undefined : await loadImageDefaults(options.imageDefaults);
+  const availableLanguages = isFromCompiled
+    ? []
+    : await resolveScopedLanguages(
+        recipes,
+        tenant.environment,
+        options.languages,
+        options.provisionLanguages
+      );
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,

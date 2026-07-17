@@ -17,6 +17,7 @@ import { DEFAULT_LANGUAGE } from "../ir/sitecore-templates";
 import {
   buildAction,
   buildPlan,
+  buildFieldTargetRefKeys,
   buildSiblingCreateNames,
   type Plan,
   type PlanEvent,
@@ -1591,6 +1592,9 @@ export const executeIr = async (
   // likely to mistake a not-yet-created sibling's item for a rename of this
   // one. Same index the plan path builds; see `findCreateItemSibling`.
   const siblingCreateNames = buildSiblingCreateNames(ir.operations);
+  // RefKeys this IR writes fields to via SetField ops — makes fieldless
+  // content-item creates convergence-eligible (see buildFieldTargetRefKeys).
+  const fieldTargetRefKeys = buildFieldTargetRefKeys(ir.operations);
 
   for (let index = 0; index < ir.operations.length; index += 1) {
     if (options.signal?.aborted) {
@@ -1617,6 +1621,7 @@ export const executeIr = async (
         client,
         capturedItemIds,
         siblingCreateNames,
+        fieldTargetRefKeys,
         sitesClient: options.sitesClient,
         pathSnapshotCache: options.pathSnapshotCache,
         snapshotLanguages: options.snapshotLanguages,

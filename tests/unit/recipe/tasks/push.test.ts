@@ -6,6 +6,7 @@ vi.mock("../../../../src/recipe/tasks/shared", () => ({
   resolveRecipeRoots: vi.fn(),
   recipeSetNeedsRoots: vi.fn(),
   resolveRecipeInputs: vi.fn(),
+  resolveCompiledIrInputs: vi.fn(),
   ensureAllowWrite: vi.fn(),
   // Identity passthrough: these tests use envs without site/siteCollection,
   // so derivation is a no-op and resolveCompileRoots sees the env unchanged.
@@ -846,5 +847,81 @@ describe("runRecipePush — aborted result rendering", () => {
     const lines = logger.info.mock.calls.map((c) => String(c[0]));
     // formatActionTag's "error" arm → "[!]"; the reason is appended.
     expect(lines.some((l) => l.includes("[!]") && l.includes("permission denied"))).toBe(true);
+  });
+});
+
+describe("runRecipePush — --from-compiled (compile once, apply many)", () => {
+  beforeEach(() => {
+    vi.mocked(shared.resolveCompiledIrInputs).mockResolvedValue({
+      files: ["/artifact/hero.ir.json"],
+      source: "input-flag",
+    } as never);
+    vi.mocked(io.loadIr).mockResolvedValue(makeIr("hero", [createItemOp("op-1", "/t/Hero")]));
+    // With an all-IR input set, `recipes` is empty and the real compiler
+    // returns []. The default mock returns a phantom hero IR regardless of
+    // input, so pin it to [] here to reflect the real no-compile path.
+    vi.mocked(compileRecipeSet).mockReturnValue([]);
+  });
+
+  it("loads IRs from the directory and skips compilation entirely", async () => {
+    await runRecipePush({ allowWrite: true, fromCompiled: "/artifact" } as never);
+
+    // The from-compiled input source is used…
+    expect(shared.resolveCompiledIrInputs).toHaveBeenCalledWith("/artifact");
+    // …instead of the recipe-glob resolver.
+    expect(shared.resolveRecipeInputs).not.toHaveBeenCalled();
+    // No recipe SOURCES are loaded (no `.recipe.ts` compile).
+    expect(io.loadRecipe).not.toHaveBeenCalled();
+    // The IR set is loaded and applied.
+    expect(io.loadIr).toHaveBeenCalledWith("/artifact/hero.ir.json");
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    // compileRecipeSet, when reached, sees an empty recipe set — nothing to compile.
+    expect(vi.mocked(compileRecipeSet).mock.calls[0][0]).toEqual([]);
+  });
+
+  it("still honors --handles scoping against the loaded IR set", async () => {
+    vi.mocked(io.loadIr)
+      .mockResolvedValueOnce(makeIr("hero", [createItemOp("op-1", "/t/Hero")]))
+      .mockResolvedValueOnce(makeIr("footer", [createItemOp("op-2", "/t/Footer")]));
+    vi.mocked(shared.resolveCompiledIrInputs).mockResolvedValue({
+      files: ["/artifact/hero.ir.json", "/artifact/footer.ir.json"],
+      source: "input-flag",
+    } as never);
+
+    await runRecipePush({
+      allowWrite: true,
+      fromCompiled: "/artifact",
+      handles: ["footer"],
+    } as never);
+
+    // Only the scoped handle applies, even though both IRs were loaded (the
+    // full set is needed for cross-recipe ref resolution).
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    expect((vi.mocked(executeIr).mock.calls[0][0] as { recipeHandle: string }).recipeHandle).toBe(
+      "footer"
+    );
+  });
+
+  it("warns that --languages is ignored (locale scope is fixed at compile)", async () => {
+    await runRecipePush({
+      allowWrite: true,
+      fromCompiled: "/artifact",
+      languages: ["fr"],
+    } as never);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("--languages is ignored with --from-compiled")
+    );
+  });
+
+  it("rejects --from-compiled combined with --provision-languages", async () => {
+    await expect(
+      runRecipePush({
+        allowWrite: true,
+        fromCompiled: "/artifact",
+        provisionLanguages: true,
+        languages: ["fr"],
+      } as never)
+    ).rejects.toThrow(/cannot be combined with --provision-languages/);
   });
 });

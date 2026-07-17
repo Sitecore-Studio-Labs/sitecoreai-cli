@@ -180,11 +180,16 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   // file) under the config root's `.scai/`.
   const outputDir = options.outputDir ? path.resolve(options.outputDir) : undefined;
   const aggregateDir = path.dirname(root.physicalPath);
-  for (const ir of irs) {
+  // `irs` is in topological apply order (compileRecipeSet ranks + topo-sorts,
+  // then unshifts front / appends tail aggregates). For the flat `--output-dir`
+  // artifact, stamp each filename with its apply-order index so the
+  // `--from-compiled` reload (a lexical `.sort()` in resolveCompiledIrInputs)
+  // reproduces this order instead of collapsing to alphabetical-by-handle.
+  for (const [index, ir] of irs.entries()) {
     const sourceFile = fileByHandle.get(ir.recipeHandle);
     const baseDir = sourceFile ? path.dirname(path.resolve(sourceFile)) : aggregateDir;
     const outputPath = outputDir
-      ? path.join(outputDir, irFileName(ir.recipeHandle))
+      ? path.join(outputDir, irFileName(ir.recipeHandle, index))
       : (options.output ?? defaultIrPath(ir.recipeHandle, baseDir));
     await writeIr(outputPath, ir);
 

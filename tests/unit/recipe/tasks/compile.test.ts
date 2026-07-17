@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runRecipeCompile } from "../../../../src/recipe/tasks/compile";
+import { irFileName } from "../../../../src/recipe/io";
 import { templateId } from "../../../../src/recipe/items/guids";
 import { ctaButtonRecipe } from "../../../../example/recipes/cta-button.recipe";
 import { blogArticleApproval } from "../../../../example/recipes/blog-article-approval.recipe";
@@ -162,12 +163,43 @@ describe("runRecipeCompile", () => {
     });
 
     // Flat in the output dir — no `.scai/` nesting — named by slugified handle
-    // (`cta-button@1` → `cta-button_v1.ir.json`), ready for `--from-compiled`.
-    const written = JSON.parse(
-      await fs.readFile(path.join(outDir, "cta-button_v1.ir.json"), "utf8")
-    );
+    // with a zero-padded apply-order prefix (`cta-button@1` →
+    // `00000-cta-button_v1.ir.json`), so the `--from-compiled` reload's
+    // lexical `.sort()` reproduces topological apply order.
+    const files = await fs.readdir(outDir);
+    const ctaFile = files.find((f) => f.endsWith("cta-button_v1.ir.json"));
+    expect(ctaFile).toBeDefined();
+    // Prefix is `NNNNN-` (five digits) — load-bearing for from-compiled order.
+    expect(ctaFile).toMatch(/^\d{5}-cta-button_v1\.ir\.json$/);
+    const written = JSON.parse(await fs.readFile(path.join(outDir, ctaFile as string), "utf8"));
     expect(written.recipeHandle).toBe("cta-button@1");
     expect(written.operations.length).toBeGreaterThan(0);
+  });
+
+  it("irFileName's apply-order prefix makes a lexical sort follow emission order", () => {
+    // The load-bearing contract for `push --from-compiled`: the artifact is
+    // reloaded with a plain lexical `.sort()`, so the emission order survives
+    // ONLY if the numeric prefix sorts numerically under lexical comparison.
+    // A referent emitted at a lower index (e.g. `ai-context-item@1` at 14)
+    // must sort before a referrer at a higher index (e.g. `ai-chat@1` at 130),
+    // even though the handle alphabetics are inverted. Zero-padding is what
+    // makes "10" sort after "9".
+    const emissionOrder = [
+      { handle: "ai-context-item@1", index: 14 },
+      { handle: "ai-chat@1", index: 130 },
+      { handle: "z-first@1", index: 9 },
+      { handle: "a-tenth@1", index: 10 },
+    ];
+    const files = emissionOrder.map((e) => irFileName(e.handle, e.index));
+    const sortedHandles = [...files]
+      .sort()
+      .map((f) => f.replace(/^\d{5}-/, "").replace(/_v\d+\.ir\.json$/, ""));
+    // Lexical sort of the prefixed filenames === ascending emission index.
+    expect(sortedHandles).toEqual(["z-first", "a-tenth", "ai-context-item", "ai-chat"]);
+    // And the referent precedes the referrer despite inverted alphabetics.
+    expect(sortedHandles.indexOf("ai-context-item")).toBeLessThan(sortedHandles.indexOf("ai-chat"));
+    // No prefix when order is omitted — single-file / per-source `.scai/` paths.
+    expect(irFileName("ai-chat@1")).toBe("ai-chat_v1.ir.json");
   });
 
   it("rejects --output combined with --output-dir", async () => {

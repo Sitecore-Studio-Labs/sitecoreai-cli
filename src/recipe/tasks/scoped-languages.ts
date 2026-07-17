@@ -1,8 +1,8 @@
 import type { EnvironmentConfiguration } from "@/config/types";
 import { createScaiError } from "@/shared/errors";
 import { getAccessToken } from "../api/auth";
-import { createSitesApiClient } from "../api/sites-client";
-import { ensureEnvironmentLanguages } from "../runtime/execute";
+import { createSitesApiClient, type SitesApiClient } from "../api/sites-client";
+import { appendSiteLanguages, ensureEnvironmentLanguages } from "../runtime/execute";
 import type { Recipe } from "../schema/recipe";
 
 /**
@@ -128,11 +128,46 @@ const resolveEnvironmentLanguages = async (
  * is ensured onto the environment FIRST (idempotent registration +
  * fallback wiring via `ensureEnvironmentLanguages`), so the resolution
  * below sees the scoped locales as installed instead of dropping them.
+ * When the profile names a `site` that already exists, the registered
+ * scope is ALSO appended to that site's own language list
+ * (`supportedLanguages`, the property Pages offers locales from):
+ * environment registration alone never surfaces a locale on a site, and
+ * a pages-only push carries no Site recipe, so the executor's
+ * CreateSiteFromTemplate ensure — which handles this for site pushes —
+ * never runs. Without the append here, an install into an existing site
+ * registered brand languages org-wide but Pages never offered them.
  * Install pipelines opt in when the scope comes from a trusted source
  * (the brand's language list); a missing Sites API credential fails loud
  * — silently skipping the provision would reintroduce the silent narrow
  * the flag exists to prevent.
  */
+/**
+ * Append the provisioned `--languages` scope to the profile's target SITE
+ * language list. No-op when the profile has no `site`, or the site doesn't
+ * exist yet (a fresh-site install's `createSite` declares its languages
+ * itself), or every scoped code is already on the site's list. Additive
+ * only, and gated (inside `appendSiteLanguages`) to codes the environment
+ * ensure actually registered — a catalog-rejected bare base code never
+ * lands on a site list either. Exact-name site match, same as the
+ * executor's CreateSiteFromTemplate idempotency lookup.
+ */
+const appendScopeToProfileSite = async (
+  sitesClient: SitesApiClient,
+  siteName: string | undefined,
+  scope: string[],
+  envPresent: Set<string>
+): Promise<void> => {
+  const trimmed = siteName?.trim();
+  if (!trimmed) return;
+  const sites = await sitesClient.listSites();
+  const existing = sites.find((s) => s.name === trimmed);
+  if (!existing?.id) return;
+  const onSite = new Set((existing.supportedLanguages ?? []).map((code) => code.toLowerCase()));
+  const missing = scope.filter((code) => !onSite.has(code.toLowerCase()));
+  if (missing.length === 0) return;
+  await appendSiteLanguages(sitesClient, { siteId: existing.id, missing }, envPresent);
+};
+
 export const resolveScopedLanguages = async (
   recipes: readonly Recipe[],
   environment: EnvironmentConfiguration,
@@ -160,7 +195,9 @@ export const resolveScopedLanguages = async (
         }
       );
     }
-    await ensureEnvironmentLanguages(createSitesApiClient({ accessToken }), [...languageScope]);
+    const sitesClient = createSitesApiClient({ accessToken });
+    const envPresent = await ensureEnvironmentLanguages(sitesClient, [...languageScope]);
+    await appendScopeToProfileSite(sitesClient, environment.site, [...languageScope], envPresent);
   }
   const resolved = await resolveEnvironmentLanguages(recipes, environment);
   if (!languageScope || languageScope.length === 0) return resolved;

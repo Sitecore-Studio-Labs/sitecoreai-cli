@@ -105,9 +105,25 @@ export const writePlan = async (filePath: string, plan: Plan): Promise<void> => 
 export const defaultIrPath = (recipeHandle: string, baseDir: string): string =>
   path.join(baseDir, ".scai", `${slugifyHandle(recipeHandle)}.ir.json`);
 
-/** Bare `<slug(handle)>.ir.json` filename — for a flat `--output-dir` artifact. */
-export const irFileName = (recipeHandle: string): string =>
-  `${slugifyHandle(recipeHandle)}.ir.json`;
+/**
+ * Bare `<slug(handle)>.ir.json` filename — for a flat `--output-dir` artifact.
+ *
+ * When `order` is given, a zero-padded numeric prefix is prepended
+ * (`00014-<slug>.ir.json`). This is LOAD-BEARING for `push --from-compiled`:
+ * `resolveCompiledIrInputs` reloads the artifact with a plain lexical
+ * `.sort()`, and the apply loop runs IRs in that order. Without the prefix
+ * the set reloads ALPHABETICALLY BY HANDLE — discarding the topological
+ * apply order `compileRecipeSet` emitted — so a recipe that references a
+ * handle sorted after it (e.g. `ai-chat@1` → `ai-context-item@1`) applies
+ * before its referent and its `ref-source-fields` throws "not yet in
+ * captured map". The prefix makes the lexical `.sort()` reproduce the
+ * emitted apply order. 5 digits: the largest real sets are well under
+ * 100k IRs, and fixed width keeps `10` sorting after `9`.
+ */
+export const irFileName = (recipeHandle: string, order?: number): string => {
+  const base = `${slugifyHandle(recipeHandle)}.ir.json`;
+  return order === undefined ? base : `${String(order).padStart(5, "0")}-${base}`;
+};
 
 export const defaultPlanPath = (recipeHandle: string, baseDir: string): string =>
   path.join(baseDir, ".scai", `${slugifyHandle(recipeHandle)}.plan.json`);

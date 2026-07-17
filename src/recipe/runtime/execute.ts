@@ -676,7 +676,7 @@ export const ensureEnvironmentLanguages = async (
  * `supportedLanguages`, and re-checking there also makes the PATCH a
  * no-op when the plan-time diff was stale.
  */
-const appendSiteLanguages = async (
+export const appendSiteLanguages = async (
   sitesClient: SitesApiClient,
   site: { siteId: string; missing: string[] } | undefined,
   envPresent: Set<string>

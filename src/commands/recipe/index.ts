@@ -103,6 +103,23 @@ const createCompileCommand = (): Command => {
 
   addOptionalInputOption(command, "Path to a recipe file");
   addOutputOption(command);
+  command.addOption(
+    new Option(
+      "--output-dir <dir>",
+      "Collect the WHOLE compiled set flat into <dir> as one <handle>.ir.json per IR (per-recipe + cross-recipe aggregates) — the artifact `recipe push --from-compiled <dir>` consumes. Mutually exclusive with --output."
+    ).conflicts("output")
+  );
+  command.addOption(
+    new Option(
+      "--languages <list>",
+      "Comma-separated locale scope baked into the IR (compile-time). Localized content (dictionary translations, Standard Values locale maps) is emitted per this scope; compile with the SAME scope the eventual push will use. Requires -n to resolve the installed-locale intersection; without one the scope is a no-op (every authored locale emitted)."
+    ).argParser((value: string) =>
+      value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    )
+  );
   addRecipeRootOptions(command);
   addEnvironmentOption(command);
   addConfigOption(command);
@@ -171,6 +188,12 @@ const createPushCommand = (): Command => {
   addOptionalInputOption(
     command,
     "Path to a recipe file (.recipe.ts/.json) or pre-compiled .ir.json"
+  );
+  command.addOption(
+    new Option(
+      "--from-compiled <dir>",
+      "Directory of pre-compiled .ir.json files (from `recipe compile --output-dir`). Loads the IR set and SKIPS compilation entirely — no recipe loading, no compile, no tenant-read compile inputs. The 'compile once, apply many' seam: compile the full set once, then run each chunk as `push --from-compiled <dir> --handles <chunk>`, paying the full-set compile a single time instead of once per chunk. Locale scope is fixed at compile; --languages is ignored here. Mutually exclusive with --input."
+    ).conflicts("input")
   );
   addRecipeRootOptions(command);
   addEnvironmentOption(command);

@@ -2,8 +2,12 @@ import path from "node:path";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
+import { discoverSites } from "@/authoring";
+import { createAuthoringClient } from "../api/authoring-client";
 import { compileRecipeSet } from "../compile";
-import { defaultIrPath, loadRecipe, writeIr } from "../io";
+import { defaultIrPath, irFileName, loadRecipe, writeIr } from "../io";
+import { alignMediaLibraryRootWithSite } from "./media-root";
+import { resolveScopedLanguages } from "./scoped-languages";
 import {
   loadImageDefaults,
   recipeSetNeedsRoots,
@@ -53,19 +57,33 @@ const resolveOptionalRoots = (
 });
 
 /**
- * `scai provision recipe compile` — pure-logic: recipe (.ts or .json) → Operation IR JSON.
+ * `scai provision recipe compile` — recipe (.ts or .json) → Operation IR JSON.
  *
  * Resolves inputs from `--input` (single file) or the config `recipes`
- * glob (zero-to-many files). Writes one IR per recipe at
- * `--output` (single mode) or `<dir>/<handle>.ir.json` (multi mode).
+ * glob (zero-to-many files). Writes one IR per recipe at `--output`
+ * (single mode), `<dir>/<handle>.ir.json` under each source's `.scai/`
+ * (default multi mode), or a flat `--output-dir` artifact (the input for
+ * `push --from-compiled`).
  *
- * No tenant access — the IR is tenant-shaped (`templatesRoot`,
- * `renderingsRoot` are CLI inputs), so re-compile if the same recipe
- * lands in a different tenant tree.
+ * Tenant access is OPTIONAL and gated on `-n`: with an environment, the
+ * two tenant-derived COMPILE inputs `recipe push` resolves — the
+ * `--languages` installed-locale intersection and media-root alignment —
+ * are resolved here too, so a precompiled artifact carries the SAME
+ * localized surface + media paths a compiling push would produce. Without
+ * `-n` it stays pure-logic (every authored locale emitted, configured
+ * media root). Either way the IR is tenant-tree-shaped (`templatesRoot`
+ * etc. are inputs), so re-compile if the same recipe lands in a different
+ * tenant tree.
  */
 export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<void> => {
   const logger = toLogger(options);
   const root = readRootConfiguration(options.config ?? process.cwd(), options.environmentName);
+
+  if (options.output && options.outputDir) {
+    throw createScaiError("--output and --output-dir are mutually exclusive.", "INPUT_INVALID", {
+      hint: "Use --output <file> for a single-IR compile, or --output-dir <dir> to collect the whole set as the `push --from-compiled` artifact.",
+    });
+  }
 
   const envName = options.environmentName ?? root.defaultEnvironment;
   // Backfill recipeRoots derived from `site` + `siteCollection` before any
@@ -116,11 +134,35 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
   const recipes = loaded.map((entry) => entry.recipe);
   const fileByHandle = new Map(loaded.map((entry) => [entry.recipe.handle, entry.file]));
   const imageDefaults = await loadImageDefaults(options.imageDefaults);
+
+  // Tenant-derived COMPILE inputs — resolved exactly as `recipe push` does
+  // so `push --from-compiled` applies the same surface a compiling push
+  // would. Both are best-effort (fail-open to the offline default) and gated
+  // on an environment being resolvable: `availableLanguages` scopes which
+  // localized ops are emitted (per `--languages`), and the aligned media
+  // root is baked into media ops. Without `-n` neither runs — the offline
+  // compile emits every authored locale against the configured media root.
+  const availableLanguages = environment
+    ? await resolveScopedLanguages(recipes, environment, options.languages)
+    : undefined;
+  const mediaLibraryRootAligned = environment
+    ? await alignMediaLibraryRootWithSite({
+        configuredRoot: optionalRoots.mediaLibraryRoot,
+        explicitFlag: options.mediaLibraryRoot,
+        site: environment.site,
+        discover: () => discoverSites(environment),
+        getItemsByPaths: (paths) => createAuthoringClient({ environment }).getItemsByPaths(paths),
+        logger,
+      })
+    : optionalRoots.mediaLibraryRoot;
+
   const irs = compileRecipeSet(recipes, {
     templatesRoot,
     renderingsRoot,
     ...optionalRoots,
+    mediaLibraryRoot: mediaLibraryRootAligned,
     ...(imageDefaults ? { imageDefaults } : {}),
+    ...(availableLanguages ? { availableLanguages } : {}),
     site: resolveSeedSite(environment),
     sitePathSegment: resolveSitePathSegment(environment),
     marketplacePluginOverrides: root.marketplacePluginOverrides,
@@ -132,13 +174,18 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     });
   }
 
-  // Per-recipe IRs land next to their source file; cross-recipe aggregate IRs
-  // (no source file) land under the config root's `.scai/`.
+  // `--output-dir` collects the WHOLE set flat into one directory — the
+  // artifact `push --from-compiled` consumes. Otherwise per-recipe IRs land
+  // next to their source file and cross-recipe aggregate IRs (no source
+  // file) under the config root's `.scai/`.
+  const outputDir = options.outputDir ? path.resolve(options.outputDir) : undefined;
   const aggregateDir = path.dirname(root.physicalPath);
   for (const ir of irs) {
     const sourceFile = fileByHandle.get(ir.recipeHandle);
     const baseDir = sourceFile ? path.dirname(path.resolve(sourceFile)) : aggregateDir;
-    const outputPath = options.output ?? defaultIrPath(ir.recipeHandle, baseDir);
+    const outputPath = outputDir
+      ? path.join(outputDir, irFileName(ir.recipeHandle))
+      : (options.output ?? defaultIrPath(ir.recipeHandle, baseDir));
     await writeIr(outputPath, ir);
 
     results.push({

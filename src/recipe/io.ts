@@ -105,6 +105,10 @@ export const writePlan = async (filePath: string, plan: Plan): Promise<void> => 
 export const defaultIrPath = (recipeHandle: string, baseDir: string): string =>
   path.join(baseDir, ".scai", `${slugifyHandle(recipeHandle)}.ir.json`);
 
+/** Bare `<slug(handle)>.ir.json` filename — for a flat `--output-dir` artifact. */
+export const irFileName = (recipeHandle: string): string =>
+  `${slugifyHandle(recipeHandle)}.ir.json`;
+
 export const defaultPlanPath = (recipeHandle: string, baseDir: string): string =>
   path.join(baseDir, ".scai", `${slugifyHandle(recipeHandle)}.plan.json`);
 

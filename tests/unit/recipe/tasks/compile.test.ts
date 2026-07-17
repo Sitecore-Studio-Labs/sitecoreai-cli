@@ -143,6 +143,52 @@ describe("runRecipeCompile", () => {
     });
   });
 
+  it("--output-dir collects the whole set flat as <handle>.ir.json (the --from-compiled artifact)", async () => {
+    const tmpDir = await setupTmpWorkspace();
+    const recipePath = path.join(tmpDir, "cta-button.recipe.json");
+    await fs.writeFile(recipePath, JSON.stringify(ctaButtonRecipe), "utf8");
+    const outDir = path.join(tmpDir, "artifact");
+
+    await runRecipeCompile({
+      config: tmpDir,
+      input: recipePath,
+      outputDir: outDir,
+      templatesRoot: CONTEXT.templatesRoot,
+      renderingsRoot: CONTEXT.renderingsRoot,
+      headlessVariantsRoot: CONTEXT.headlessVariantsRoot,
+      enumerationsRoot: CONTEXT.enumerationsRoot,
+      json: true,
+      quiet: true,
+    });
+
+    // Flat in the output dir — no `.scai/` nesting — named by slugified handle
+    // (`cta-button@1` → `cta-button_v1.ir.json`), ready for `--from-compiled`.
+    const written = JSON.parse(
+      await fs.readFile(path.join(outDir, "cta-button_v1.ir.json"), "utf8")
+    );
+    expect(written.recipeHandle).toBe("cta-button@1");
+    expect(written.operations.length).toBeGreaterThan(0);
+  });
+
+  it("rejects --output combined with --output-dir", async () => {
+    const tmpDir = await setupTmpWorkspace();
+    const recipePath = path.join(tmpDir, "cta-button.recipe.json");
+    await fs.writeFile(recipePath, JSON.stringify(ctaButtonRecipe), "utf8");
+
+    await expect(
+      runRecipeCompile({
+        config: tmpDir,
+        input: recipePath,
+        output: path.join(tmpDir, "out.ir.json"),
+        outputDir: path.join(tmpDir, "artifact"),
+        templatesRoot: CONTEXT.templatesRoot,
+        renderingsRoot: CONTEXT.renderingsRoot,
+        json: true,
+        quiet: true,
+      })
+    ).rejects.toThrow(/mutually exclusive/);
+  });
+
   it("rejects an invalid recipe with a CONFIG-style hint", async () => {
     const tmpDir = await setupTmpWorkspace();
     const recipePath = path.join(tmpDir, "bad.recipe.json");

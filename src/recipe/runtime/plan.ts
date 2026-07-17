@@ -930,25 +930,27 @@ const isFolderClassCreate = (op: CreateItemOp): boolean =>
  *     construction) adopt as-is untouched, exactly as v0.33.0/0.34.0
  *     did. Without this, v0.34.1 retemplated the `Enumerations/Card`
  *     grouping folder on repeat installs and aborted batch-1.
- *   - The expected template must resolve to a live itemId (same
- *     condition as the v0.32.5 rebind guard): without a live id there
- *     is nothing trustworthy to compare against or retemplate to.
+ * NOTE deliberately ABSENT from this list: plan-time resolution of the
+ * expected live template. Batch-separated pushes (the orchestrator's
+ * content batches) reference datasource templates whose recipes live in
+ * EARLIER batches, so `resolveLiveTemplateIdForRebind` returns null for
+ * them — and requiring it here silently disabled convergence for every
+ * content batch (0.34.3: batch-9 nav-item/footer-link field ops kept
+ * aborting with "Cannot find a field with the name <X>"). Eligibility
+ * is plan-local; the authoritative template compare happens at APPLY
+ * time in `adoptExistingChild`, against the create mutation's resolved
+ * `templateId` (which the mutation must carry regardless).
  */
-const adoptRetemplateTargetFor = (
-  op: CreateItemOp,
-  capturedItemIds: ReadonlyMap<string, string>
-): string | null => {
-  if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return null;
+const convergenceEligible = (op: CreateItemOp): boolean => {
+  if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return false;
   const markerName = SCAI_HANDLE_FIELD_NAME.toLowerCase();
-  const seedsAuthoredFields = op.fields.some((f) => {
+  return op.fields.some((f) => {
     const name = (f.fieldName ?? "").toLowerCase();
     // System fields (`__Masters` insert options on data folders,
     // `__Renderings`, …) exist on every template — a twin can always
     // absorb them, so they don't make an op convergence-eligible.
     return name !== "" && !name.startsWith("__") && name !== markerName;
   });
-  if (!seedsAuthoredFields) return null;
-  return resolveLiveTemplateIdForRebind(op, capturedItemIds);
 };
 
 /**
@@ -1050,7 +1052,8 @@ const planCreateItem = ({
   conflictPolicy,
   mediaFallbacks,
 }: PlanCreateItemOptions): PlannedAction => {
-  const retemplateTarget = adoptRetemplateTargetFor(op, capturedItemIds);
+  const convergent = convergenceEligible(op);
+  const retemplateTarget = convergent ? resolveLiveTemplateIdForRebind(op, capturedItemIds) : null;
   const planFreshCreate = (reason?: string): PlannedAction => {
     const parent = resolveCreateItemParent(op, capturedItemIds);
     if ("unresolvedRefKey" in parent) {
@@ -1107,19 +1110,16 @@ const planCreateItem = ({
           // duplicate-sibling creation (the root cause of the
           // `audit slug-conflicts` false positives after re-push).
           idempotencyCheck: true,
-          // Recipe-seeded (CreateOnly, non-folder) items with a live
-          // expected template opt in to adopt-and-RETEMPLATE: if the
-          // pre-check / already-exists fallback adopts a name-twin whose
-          // live template differs (an item stranded by an earlier
-          // partial/rolled-back install, possibly under a different site
-          // handle's template GUIDs at the same shared-data-folder
-          // path), the client realigns its template and seeds these
-          // fields instead of adopting it untouched — which aborted the
-          // recipe on the first field write with "Cannot find a field
-          // with the name <X>". See `adoptExistingChild` in
-          // authoring-client.ts for the full precedent analysis
-          // (v0.32.5 rebind guard, v0.33.0 folder adoption).
-          ...(retemplateTarget !== null && { retemplateOnAdopt: true }),
+          // Recipe-seeded (CreateOnly, non-folder, authored-fields)
+          // items opt in to apply-time CONVERGENCE: if the pre-check /
+          // already-exists fallback adopts a name-twin, the client
+          // compares templates against this mutation's resolved
+          // templateId and adopts same-shape twins as-is, replaces
+          // marker-verified childless residue, or errors precisely —
+          // instead of adopting untouched and aborting on the first
+          // field write with "Cannot find a field with the name <X>".
+          // See `adoptExistingChild` in authoring-client.ts.
+          ...(convergent && { retemplateOnAdopt: true }),
         },
       },
     };
@@ -1140,17 +1140,29 @@ const planCreateItem = ({
   // (their subtrees are physically site-scoped and never hit this
   // collision class), and folder-class ops keep the v0.33.0 lossless
   // adopt-as-is behavior.
-  if (
-    retemplateTarget !== null &&
-    remote.templateId !== "" &&
-    dashifyGuid(remote.templateId) !== retemplateTarget
-  ) {
-    return planFreshCreate(
-      `Existing item at '${remote.path}' (${remote.itemId}) carries template ` +
-        `${dashifyGuid(remote.templateId)} but the recipe expects ${retemplateTarget} — ` +
-        `converging the name-twin at apply time (adopt if its template resolves the recipe's ` +
-        `fields; replace marker-verified childless residue otherwise).`
-    );
+  if (convergent) {
+    const verifiedMatch =
+      retemplateTarget !== null &&
+      remote.templateId !== "" &&
+      dashifyGuid(remote.templateId) === retemplateTarget;
+    if (!verifiedMatch) {
+      // Mismatch, OR the compare is unverifiable at plan time (the
+      // template's recipe lives in an earlier batch, so its refKey was
+      // never captured — the 0.34.3 batch-9 hole). Either way, route
+      // through the create mutation: its apply-time pre-check adopts a
+      // matching or same-shape twin untouched, and converges the rest.
+      return planFreshCreate(
+        retemplateTarget !== null
+          ? `Existing item at '${remote.path}' (${remote.itemId}) carries template ` +
+              `${dashifyGuid(remote.templateId)} but the recipe expects ${retemplateTarget} — ` +
+              `converging the name-twin at apply time (adopt if its template resolves the ` +
+              `recipe's fields; replace marker-verified childless residue otherwise).`
+          : `Existing item at '${remote.path}' (${remote.itemId}) cannot be template-verified ` +
+              `at plan time (expected template not captured in this batch) — deferring to ` +
+              `apply-time convergence (adopt when its template resolves the recipe's fields; ` +
+              `replace marker-verified childless residue otherwise).`
+      );
+    }
   }
   if (op.policy === "CreateOnly") {
     return {

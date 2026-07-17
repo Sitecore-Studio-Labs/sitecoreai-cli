@@ -215,12 +215,18 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(action.status).toBe("skip");
   });
 
-  it("stays inactive when the expected template can't be resolved to a live id (0.32.5 condition)", async () => {
+  it("defers to apply-time convergence when the expected template can't be resolved at plan time (batch-separated pushes)", async () => {
     const client = new MockAuthoringClient();
     seedParent(client);
     seedStrandedTwin(client, STALE_TEMPLATE_ID);
-    // No TEMPLATE_REF_KEY entry — ambiguous (built-in constant vs unseeded
-    // refKey), so there is nothing trustworthy to compare/retemplate to.
+    // No TEMPLATE_REF_KEY entry: in a batch-separated push the
+    // datasource template's recipe lives in an EARLIER batch, so its
+    // refKey is never captured here. Pre-0.34.4 this silently disabled
+    // convergence (blind CreateOnly skip → the follow-up field op
+    // aborted with "Cannot find a field with the name <X>"). The op's
+    // templateOf is the deterministic template GUID, so the create
+    // mutation resolves it as-is and the apply-time compare is
+    // authoritative.
     const captured = new Map<string, string>([[DATA_PATH, DATA_ITEM_ID]]);
 
     const action = await buildAction({
@@ -230,8 +236,15 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
       capturedItemIds: captured,
     });
 
-    expect(action.status).toBe("skip");
-    expect(action.reason).toContain("CreateOnly");
+    expect(action.status).toBe("create");
+    const input = createMutationInput(action);
+    expect(input.retemplateOnAdopt).toBe(true);
+    expect(input.idempotencyCheck).toBe(true);
+    expect(action.reason).toMatch(/cannot be template-verified at plan time/i);
+    // The twin's identity stays captured for downstream ops; apply
+    // re-captures the mutation's result (twin id on adopt, fresh id on
+    // replace).
+    expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);
   });
 
   it("leaves CreateAndUpdate structure ops on their drift-update behavior", async () => {
@@ -349,7 +362,7 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(input.retemplateOnAdopt).toBe(true);
   });
 
-  it("does not flag fresh creates for CreateAndUpdate ops or unresolved templates", async () => {
+  it("does not flag fresh creates for CreateAndUpdate ops; flags them regardless of plan-time template resolution", async () => {
     const client = new MockAuthoringClient();
     seedParent(client);
 
@@ -362,6 +375,9 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(structural.status).toBe("create");
     expect(createMutationInput(structural).retemplateOnAdopt).toBeUndefined();
 
+    // Eligibility is plan-local (policy + authored fields) — the
+    // apply-time pre-check must converge twins the planner never saw
+    // even when the template refKey wasn't captured in this batch.
     const unresolved = await buildAction({
       index: 1,
       op: contentItemCreateOp(),
@@ -369,6 +385,6 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
       capturedItemIds: new Map([[DATA_PATH, DATA_ITEM_ID]]),
     });
     expect(unresolved.status).toBe("create");
-    expect(createMutationInput(unresolved).retemplateOnAdopt).toBeUndefined();
+    expect(createMutationInput(unresolved).retemplateOnAdopt).toBe(true);
   });
 });

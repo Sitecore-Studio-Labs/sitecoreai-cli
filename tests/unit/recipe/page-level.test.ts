@@ -1045,10 +1045,39 @@ describe("compilePageRecipe — layoutScope: shared", () => {
     expect(frClear.clearWhenEquivalentTo).toBe(versionedLayout.value.value);
   });
 
-  it("versioned (default) mode emits no transition clears", () => {
+  it("versioned (default) mode emits no final-renderings transition clears", () => {
     const ir = compilePageRecipe(homePage, CONTEXT);
     const clears = ir.operations.filter(
       (op) => op.op === "SetField" && op.label.startsWith("page-layout-clear-final:")
+    );
+    expect(clears).toEqual([]);
+  });
+
+  it("versioned (default) mode emits ONE guarded shared __Renderings clear for the shared → versioned transition", () => {
+    const ir = compilePageRecipe(homePage, CONTEXT);
+    const clear = findSetField(ir.operations, "page-layout-clear-shared:home@1");
+    expect(clear.fieldId).toBe(LAYOUT_FIELDS.RENDERINGS);
+    expect(clear.language).toBeUndefined();
+    expect(clear.version).toBeUndefined();
+    expect(clear.value).toEqual({ kind: "string", value: "" });
+
+    // The ownership guard is the byte-exact XML the SHARED emission of
+    // this same layout writes — what an earlier shared-scope push left
+    // in the item's __Renderings.
+    const sharedIr = compilePageRecipe(
+      { ...homePage, layoutScope: "shared" } satisfies PageRecipe,
+      CONTEXT
+    );
+    const sharedLayout = findSetField(sharedIr.operations, "page-layout:home@1:shared");
+    if (sharedLayout.value.kind !== "string") throw new Error("expected string layout");
+    expect(clear.clearWhenEquivalentTo).toBe(sharedLayout.value.value);
+  });
+
+  it("shared mode emits no shared __Renderings transition clear", () => {
+    const page = { ...homePage, layoutScope: "shared" } satisfies PageRecipe;
+    const ir = compilePageRecipe(page, CONTEXT);
+    const clears = ir.operations.filter(
+      (op) => op.op === "SetField" && op.label.startsWith("page-layout-clear-shared:")
     );
     expect(clears).toEqual([]);
   });

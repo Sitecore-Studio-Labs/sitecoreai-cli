@@ -345,8 +345,11 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
    * standard-values layout, and Pages author edits land in each
    * version's Final Layout on top of it.
    */
-  const emitSharedLayout = (layout: Layout): void => {
-    const layoutXml = emitLayoutXml(layout, {
+  // Extracted so the versioned-path transition clear can compute the
+  // byte-exact XML the shared path writes (its ownership guard) — the
+  // mirror of `versionedLayoutXml` above.
+  const sharedLayoutXml = (layout: Layout): string =>
+    emitLayoutXml(layout, {
       parentItemId: itemRefKey,
       deviceId: DEFAULT_DEVICE_ID,
       renderingIdFor: (handle) => renderingId(site, handle),
@@ -364,6 +367,9 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
       deltaSharedForm: true,
       ...layoutEncodingOptions(site, context),
     });
+
+  const emitSharedLayout = (layout: Layout): void => {
+    const layoutXml = sharedLayoutXml(layout);
     if (layoutXml.length === 0) return;
     fieldOps.push({
       op: "SetField",
@@ -406,6 +412,32 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     }
   };
 
+  /**
+   * Transition op for a page flipping shared → versioned — the mirror of
+   * `emitSharedLayoutTransitionClears`. An earlier push of this recipe
+   * with `layoutScope: "shared"` wrote the item-level layout into the
+   * item's shared `__Renderings`; after the flip the per-language finals
+   * carry the layout, and the stale shared layer would silently duplicate
+   * every rendering underneath them (and resurface whenever a final is
+   * cleared). One guarded clearing SetField removes exactly the
+   * recipe-owned shared layout: the guard carries the byte-exact XML the
+   * shared emission writes, so an author-written shared layout (or a
+   * Pages no-op shell) is preserved (see `planGuardedLayoutClear`).
+   */
+  const emitVersionedLayoutTransitionClear = (layout: Layout): void => {
+    const expected = sharedLayoutXml(layout);
+    if (expected.length === 0) return;
+    fieldOps.push({
+      op: "SetField",
+      policy,
+      label: `page-layout-clear-shared:${recipe.handle}`,
+      itemRefKey,
+      fieldId: LAYOUT_FIELDS.RENDERINGS,
+      value: { kind: "string", value: "" },
+      clearWhenEquivalentTo: expected,
+    } satisfies SetFieldOp);
+  };
+
   const emitters: PageEmitters = {
     recipe,
     policy,
@@ -416,6 +448,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
     emitLayout,
     emitSharedLayout,
     emitSharedLayoutTransitionClears,
+    emitVersionedLayoutTransitionClear,
   };
   if (isStory) emitStoryVersions(emitters);
   else emitSimpleMode(emitters);
@@ -710,6 +743,11 @@ interface PageEmitters {
    * `__Final Renderings` clears (see `emitSharedLayoutTransitionClears`).
    */
   emitSharedLayoutTransitionClears: (layout: Layout) => void;
+  /**
+   * Shared → versioned transition — one guarded shared `__Renderings`
+   * clear (see `emitVersionedLayoutTransitionClear`).
+   */
+  emitVersionedLayoutTransitionClear: (layout: Layout) => void;
 }
 
 /**
@@ -849,6 +887,11 @@ const emitSimpleMode = (e: PageEmitters): void => {
       e.emitSharedLayoutTransitionClears(recipe.layout);
     } else {
       e.emitLayout(recipe.layout, DEFAULT_LANGUAGE, DEFAULT_VERSION, DEFAULT_LANGUAGE);
+      // Shared → versioned transition: an earlier shared push wrote this
+      // layout into the item's shared `__Renderings`; the guarded clear
+      // removes that recipe-owned shared layer so the page's layout
+      // lives only in the (Pages-editable) per-language finals.
+      e.emitVersionedLayoutTransitionClear(recipe.layout);
     }
   }
   for (const [language, translation] of Object.entries(recipe.translations ?? {})) {

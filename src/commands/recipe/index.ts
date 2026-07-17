@@ -308,6 +308,23 @@ const createPushCommand = (): Command => {
           failedAction?.reason ?? "apply error (see events[])"
         }${rollback}`;
       });
+      // Error surface for NON-aborted recipes — plan-time errors (e.g.
+      // the marker-first name-collision guard) mark actions
+      // `status: "error"` without aborting the recipe, so they were
+      // invisible here: the summary said "N op error(s)" with
+      // `details: []`, and the per-op events[] carrying the reasons is
+      // exactly what downstream log captures truncate. One line per
+      // errored op so the failure tail always names the op and why.
+      const errorDetails: string[] = [];
+      for (const r of results) {
+        if (r.aborted || r.summary.error === 0) continue;
+        for (const action of r.plan.actions) {
+          if (action.status !== "error") continue;
+          errorDetails.push(
+            `${r.plan.recipeHandle}: ${action.operation.label} — ${action.reason ?? "error"}`
+          );
+        }
+      }
       // Conflict surface — one line per (recipe, op) that the three-way
       // merge classified as conflict. Includes the conflict reason from
       // the planner ("conflict: tenant and recipe both diverged …" or
@@ -333,7 +350,7 @@ const createPushCommand = (): Command => {
           totalConflicts > 0 && !failed
             ? "Pass --conflict-policy=recipe-wins to clobber the author edits, or =cms-wins to preserve them and drop the recipe-side change for this push."
             : "Inspect per-op `events[]` in the JSON output (or rerun with --verbose) to see which op aborted and why.",
-        details: [...abortDetails, ...conflictDetails],
+        details: [...abortDetails, ...errorDetails, ...conflictDetails],
       });
     }
   });

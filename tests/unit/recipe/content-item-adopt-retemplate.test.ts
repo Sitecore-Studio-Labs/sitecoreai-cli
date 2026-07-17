@@ -461,6 +461,59 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
     expect(action.status).toBe("skip");
     expect(action.reason).toContain("CreateOnly");
   });
+
+  it("adopts a FOREIGN-marked grouping folder as-is (shared folders wear only the first creator's marker)", async () => {
+    // The 0.35.1 field-report class: shared organizational folders
+    // (`Presentation/Enumerations/Layout`, `…/Navigation`) are claimed by
+    // MANY recipes but carry the marker of whichever recipe created them
+    // first. They have no authored fields, so the wrong-template failure
+    // mode the guard exists for cannot occur — guarding them broke every
+    // re-push against an environment with history ("Name collision: item
+    // 'Layout' … is owned by recipe 'alignment@1', not 'alert-layout@1'").
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, FOREIGN_HANDLE, LIVE_TEMPLATE_ID);
+
+    const folderOp: CreateItemOp = {
+      ...contentItemCreateOp(),
+      label: "enumerations-grouping-folder:default:Layout",
+      fields: contentItemFields().filter((f) => f.fieldName === "Scai Handle"),
+    };
+    const action = await buildAction({
+      index: 0,
+      op: folderOp,
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+      fieldTargetRefKeys: new Set<string>(),
+    });
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toContain("CreateOnly");
+  });
+
+  it("still errors for a FOREIGN-marked twin of a fieldless content item whose fields ride SetField ops", async () => {
+    // The guard must keep protecting the real collision class: a
+    // marker-only create whose fields arrive as separate SetField ops in
+    // the same push (the 0.34.5 content-item shape).
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, FOREIGN_HANDLE, LIVE_TEMPLATE_ID);
+
+    const markerOnly: CreateItemOp = {
+      ...contentItemCreateOp(),
+      fields: contentItemFields().filter((f) => f.fieldName === "Scai Handle"),
+    };
+    const action = await buildAction({
+      index: 0,
+      op: markerOnly,
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+      fieldTargetRefKeys: new Set([ITEM_REF_KEY]),
+    });
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/name collision/i);
+  });
 });
 
 describe("CreateItem — fieldless creates with downstream SetField ops converge too", () => {

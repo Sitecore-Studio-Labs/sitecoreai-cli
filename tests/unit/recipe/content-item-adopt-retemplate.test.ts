@@ -388,3 +388,126 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(createMutationInput(unresolved).retemplateOnAdopt).toBe(true);
   });
 });
+
+describe("CreateItem — marker-first identity (cross-recipe name collisions)", () => {
+  const FOREIGN_HANDLE = "utility-link-support@1";
+
+  const seedMarkedTwin = (client: MockAuthoringClient, marker: string, templateId: string): void =>
+    client.preload({
+      itemId: STRANDED_ITEM_ID,
+      templateId,
+      parentId: DATA_ITEM_ID,
+      name: ITEM_NAME,
+      path: ITEM_PATH,
+      fields: [{ name: "Scai Handle", value: marker }],
+    });
+
+  it("errors precisely when the name-twin is owned by a DIFFERENT recipe", async () => {
+    // The blank-environment batch-9 class: two recipes materialise items
+    // with the same name under the shared content folder. The twin is the
+    // OTHER recipe's item — adopting it can never be right (its template
+    // may not resolve this recipe's fields; even when it does, both
+    // recipes would ping-pong one item), and deleting it would destroy
+    // the other recipe's content. Fail at plan time naming both owners.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, FOREIGN_HANDLE, LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: contentItemCreateOp(),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/name collision/i);
+    expect(action.reason).toContain(FOREIGN_HANDLE);
+    expect(action.reason).toContain("footer-link-features@1");
+    expect(action.reason).toContain(STRANDED_ITEM_ID);
+  });
+
+  it("does not flag a re-versioned recipe's own twin (@1 -> @2 handle bump)", async () => {
+    // The marker compares by versionless handle BASE: a re-released
+    // recipe still owns its item and keeps the normal skip/convergence
+    // semantics.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, "footer-link-features@2", LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: contentItemCreateOp(),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toContain("CreateOnly");
+  });
+
+  it("keeps adopting unmarked twins (pre-marker or user-created items)", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: contentItemCreateOp(),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toContain("CreateOnly");
+  });
+});
+
+describe("CreateItem — fieldless creates with downstream SetField ops converge too", () => {
+  const markerOnlyOp = (): CreateItemOp => ({
+    ...contentItemCreateOp(),
+    fields: contentItemFields().filter((f) => f.fieldName === "Scai Handle"),
+  });
+
+  it("diverts an existing twin to apply-time convergence when this push writes its fields", async () => {
+    // Content-item IRs seed fields as SEPARATE SetField ops, so the
+    // create itself is marker-only and eligibility keyed on inline
+    // fields missed it — the blank-environment blind skip. With the
+    // push-wide field-target index the create converges like one with
+    // inline fields.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, STALE_TEMPLATE_ID);
+    const captured = capturedWithLiveTemplate();
+
+    const action = await buildAction({
+      index: 0,
+      op: markerOnlyOp(),
+      client,
+      capturedItemIds: captured,
+      fieldTargetRefKeys: new Set([ITEM_REF_KEY]),
+    });
+
+    expect(action.status).toBe("create");
+    const input = createMutationInput(action);
+    expect(input.retemplateOnAdopt).toBe(true);
+    expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);
+  });
+
+  it("still adopts marker-only grouping folders as-is (no SetField ops target them)", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, STALE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: { ...markerOnlyOp(), label: "enumerations-grouping-folder:default:Card" },
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+      fieldTargetRefKeys: new Set<string>(),
+    });
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toContain("CreateOnly");
+  });
+});

@@ -797,6 +797,27 @@ export const buildSiblingCreateNames = (
 };
 
 /**
+ * RefKeys of items this push writes FIELDS to via separate SetField ops.
+ *
+ * Content-item IRs seed their fields as standalone `SetField` ops rather
+ * than on the CreateItem — so the create itself carries only the `Scai
+ * Handle` marker and looks fieldless. Convergence eligibility keyed
+ * purely on the create's own fields therefore missed the entire
+ * content-item class (the blank-environment batch-9 aborts: the create
+ * skipped as "already exists", and the SetField ops then hit a
+ * wrong-template twin with "Cannot find a field with the name <X>").
+ * A create whose refKey appears here WILL write fields downstream, so it
+ * needs apply-time convergence exactly as much as one with inline fields.
+ */
+export const buildFieldTargetRefKeys = (operations: readonly Operation[]): Set<string> => {
+  const keys = new Set<string>();
+  for (const op of operations) {
+    if (op.op === "SetField") keys.add(op.itemRefKey);
+  }
+  return keys;
+};
+
+/**
  * Sibling fallback for a CreateItem whose path lookup returned null —
  * find the live item the planner would otherwise duplicate. Two cases:
  *
@@ -941,8 +962,17 @@ const isFolderClassCreate = (op: CreateItemOp): boolean =>
  * time in `adoptExistingChild`, against the create mutation's resolved
  * `templateId` (which the mutation must carry regardless).
  */
-const convergenceEligible = (op: CreateItemOp): boolean => {
+const convergenceEligible = (
+  op: CreateItemOp,
+  fieldTargetRefKeys?: ReadonlySet<string>
+): boolean => {
   if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return false;
+  // Content-item IRs seed fields as separate SetField ops — the create
+  // itself carries only the marker. Those downstream writes abort against
+  // a wrong-template twin just like inline fields would, so they make the
+  // op convergence-eligible too. Grouping folders have no SetField ops
+  // and keep their lossless adopt-as-is behavior.
+  if (fieldTargetRefKeys?.has(op.id)) return true;
   const markerName = SCAI_HANDLE_FIELD_NAME.toLowerCase();
   return op.fields.some((f) => {
     const name = (f.fieldName ?? "").toLowerCase();
@@ -952,6 +982,13 @@ const convergenceEligible = (op: CreateItemOp): boolean => {
     return name !== "" && !name.startsWith("__") && name !== markerName;
   });
 };
+
+/**
+ * The versionless base of a `Scai Handle` marker (`nav-item-about@1` →
+ * `nav-item-about`). Re-versioned recipes (`@1` → `@2`) still own their
+ * item — only a DIFFERENT recipe family is foreign.
+ */
+const markerHandleBase = (handle: string): string => handle.split("@")[0] ?? handle;
 
 /**
  * The live templateId a rebind candidate must carry, or `null` when it
@@ -1041,6 +1078,8 @@ interface PlanCreateItemOptions {
   baselineIndex?: BaselineIndex;
   conflictPolicy?: PlanOptions["conflictPolicy"];
   mediaFallbacks?: ReadonlyMap<string, MediaFallback>;
+  /** RefKeys this push writes fields to via SetField ops — see {@link buildFieldTargetRefKeys}. */
+  fieldTargetRefKeys?: ReadonlySet<string>;
 }
 
 const planCreateItem = ({
@@ -1051,8 +1090,9 @@ const planCreateItem = ({
   baselineIndex,
   conflictPolicy,
   mediaFallbacks,
+  fieldTargetRefKeys,
 }: PlanCreateItemOptions): PlannedAction => {
-  const convergent = convergenceEligible(op);
+  const convergent = convergenceEligible(op, fieldTargetRefKeys);
   const retemplateTarget = convergent ? resolveLiveTemplateIdForRebind(op, capturedItemIds) : null;
   const planFreshCreate = (reason?: string): PlannedAction => {
     const parent = resolveCreateItemParent(op, capturedItemIds);
@@ -1127,6 +1167,39 @@ const planCreateItem = ({
   if (!remote) {
     return planFreshCreate();
   }
+  // MARKER-FIRST IDENTITY: a name-twin whose `Scai Handle` marker belongs
+  // to a DIFFERENT recipe family is not this op's item at all — it is a
+  // cross-recipe NAME COLLISION (two recipes materialising items with the
+  // same name under the same parent). Adopting it can never be right: the
+  // foreign template may not resolve this recipe's fields (the
+  // blank-environment "Cannot find a field with the name Title/HasPanel"
+  // aborts), and even when it does, both recipes would silently
+  // ping-pong one item. Deleting it would destroy the OTHER recipe's
+  // content. Fail the op at plan time with both owners named so the
+  // recipe author de-collides the names — the only correct fix.
+  // Scoped to CreateOnly (recipe-seeded content); versionless handle-base
+  // compare so a re-versioned recipe (`@1`→`@2`) still owns its item.
+  if (op.policy === "CreateOnly") {
+    const opMarker = opHandleMarker(op);
+    const twinMarker = remoteHandleMarker(remote)?.trim();
+    if (
+      opMarker !== undefined &&
+      twinMarker !== undefined &&
+      twinMarker !== "" &&
+      markerHandleBase(twinMarker) !== markerHandleBase(opMarker)
+    ) {
+      return {
+        index,
+        operation: op,
+        status: "error",
+        reason:
+          `Name collision: item '${op.name}' at '${remote.path}' (${remote.itemId}) is owned by ` +
+          `recipe '${twinMarker}', not '${opMarker}'. Two recipes materialise items with the same ` +
+          `name under the same parent — rename one recipe's item \`name\` (convention: use the ` +
+          `handle slug, keeping the human label in \`displayName\`) and re-run the push.`,
+      };
+    }
+  }
   // Plan-time adoption (path-prefetch hit or sibling byName fallback) of a
   // name-twin whose live template differs from the op's expected LIVE
   // template: don't adopt-and-write — the item is a stranded twin, and
@@ -1140,7 +1213,12 @@ const planCreateItem = ({
   // (their subtrees are physically site-scoped and never hit this
   // collision class), and folder-class ops keep the v0.33.0 lossless
   // adopt-as-is behavior.
-  if (convergent) {
+  if (convergent && sameLevelItemName(remote.name, op.name)) {
+    // The divert relies on the apply-time pre-check re-finding the twin
+    // BY NAME among the parent's children — valid for name-twins only. A
+    // twin matched via the MARKER fallback under a different name (a CMS
+    // rename) would not be re-found, so the create would duplicate it;
+    // renamed twins keep the plan-time adoption below.
     const verifiedMatch =
       retemplateTarget !== null &&
       remote.templateId !== "" &&
@@ -1610,6 +1688,8 @@ export interface BuildActionOptions {
    * multiple IRs pass ONE map so cross-IR refs see earlier failures.
    */
   mediaFallbacks?: Map<string, MediaFallback>;
+  /** RefKeys this push writes fields to via SetField ops — see {@link buildFieldTargetRefKeys}. */
+  fieldTargetRefKeys?: ReadonlySet<string>;
 }
 
 export const buildAction = async ({
@@ -1628,6 +1708,7 @@ export const buildAction = async ({
   addVersionLanguagesHint,
   mediaFallbacks,
   siblingCreateNames,
+  fieldTargetRefKeys,
 }: BuildActionOptions): Promise<PlannedAction> => {
   // Baseline classification only applies to PRE-EXISTING items — an
   // item created earlier in this run has no CMS history to preserve
@@ -1762,6 +1843,7 @@ export const buildAction = async ({
           baselineIndex,
           conflictPolicy,
           mediaFallbacks,
+          fieldTargetRefKeys,
         });
       case "SetField":
         // Shared-layout transition clears own their whole plan path —
@@ -2721,6 +2803,9 @@ export const buildPlan = async (
   // Which names this IR's creates claim under each parent — lets the
   // sibling-rename fallback avoid rebinding one create onto another's item.
   const siblingCreateNames = buildSiblingCreateNames(ir.operations);
+  // Which refKeys this IR writes fields to via SetField ops — makes
+  // fieldless content-item creates convergence-eligible.
+  const fieldTargetRefKeys = buildFieldTargetRefKeys(ir.operations);
 
   for (let index = 0; index < ir.operations.length; index += 1) {
     const op = ir.operations[index];
@@ -2733,6 +2818,7 @@ export const buildPlan = async (
         client,
         capturedItemIds,
         siblingCreateNames,
+        fieldTargetRefKeys,
         sitesClient: options.sitesClient,
         pathSnapshotCache: options.pathSnapshotCache,
         snapshotLanguages: options.snapshotLanguages,

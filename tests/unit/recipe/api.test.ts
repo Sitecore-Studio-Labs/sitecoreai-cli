@@ -1302,6 +1302,194 @@ describe("createAuthoringClient — idempotent createItem fallback", () => {
   });
 });
 
+/**
+ * Adopt-and-retemplate (`CreateItemInput.retemplateOnAdopt`) — the
+ * client-side half of the stranded content-item name-twin fix. When an
+ * adoption (pre-check or already-exists fallback) matches an existing
+ * child whose live template differs from the create's `templateId`, the
+ * client retemplates the twin and seeds the create's fields instead of
+ * adopting it untouched (which aborted the recipe on the first field
+ * write with "Cannot find a field with the name <X>"). Off by default —
+ * the planner opts in only for CreateOnly, non-folder-class ops whose
+ * expected template resolved live. Planner-side coverage lives in
+ * content-item-adopt-retemplate.test.ts.
+ */
+describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", () => {
+  const PARENT_ID = "parent-id-aaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const TWIN_ID = "stranded-twin-id-bbbbbbbbbbbbbb";
+  const LIVE_TEMPLATE_ID = "77777777-7777-4777-8777-777777777777";
+  const STALE_TEMPLATE_ID = "88888888-8888-4888-8888-888888888888";
+
+  const parentResolve = () =>
+    okResponse({
+      data: {
+        item: {
+          itemId: PARENT_ID,
+          name: "Data",
+          path: "/sitecore/content/duke/another-test/Data",
+          parent: { itemId: "00000000-0000-0000-0000-000000000aaa" },
+          template: { templateId: "11111111-1111-1111-1111-111111111111" },
+          fields: { nodes: [] },
+        },
+      },
+    });
+
+  const childrenWithTwin = (templateId: string) =>
+    okResponse({
+      data: {
+        item: {
+          children: {
+            nodes: [
+              {
+                itemId: TWIN_ID,
+                name: "features",
+                path: "/sitecore/content/duke/another-test/Data/features",
+                parent: { itemId: PARENT_ID },
+                template: { templateId },
+                fields: { nodes: [] },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    });
+
+  const updateOk = () => okResponse({ data: { updateItem: { item: { itemId: TWIN_ID } } } });
+
+  const featuresCreateInput = () => ({
+    parent: "/sitecore/content/duke/another-test/Data",
+    templateId: LIVE_TEMPLATE_ID,
+    name: "features",
+    fields: [
+      {
+        fieldId: "12121212-1212-4212-8212-121212121212",
+        fieldName: "Title",
+        value: { kind: "string" as const, value: "Features" },
+      },
+    ],
+    idempotencyCheck: true,
+    retemplateOnAdopt: true,
+  });
+
+  it("pre-check adoption of a template-mismatched twin retemplates it, then seeds fields", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      // idempotencyCheck pre-check finds the stranded twin.
+      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
+      // 1) retemplate, 2) seed the create's fields.
+      .mockResolvedValueOnce(updateOk())
+      .mockResolvedValueOnce(updateOk());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem(featuresCreateInput());
+
+    expect(result.itemId).toBe(TWIN_ID);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    // Retemplate FIRST — a field write against the stale template would
+    // fail name resolution; ordering is the whole point.
+    const retemplateBody = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(retemplateBody.variables.input).toMatchObject({
+      itemId: TWIN_ID,
+      templateId: LIVE_TEMPLATE_ID,
+      fields: [],
+    });
+    const seedBody = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(seedBody.variables.input.itemId).toBe(TWIN_ID);
+    expect(seedBody.variables.input.templateId).toBeUndefined();
+    expect(seedBody.variables.input.fields).toEqual([{ name: "Title", value: "Features" }]);
+  });
+
+  it("already-exists fallback adoption retemplates the same way", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      // createItem mutation → conflict (no pre-check on this input).
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: 'The item name "features" is already defined on this level.' }],
+        })
+      )
+      // Fallback children walk finds the twin.
+      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
+      .mockResolvedValueOnce(updateOk())
+      .mockResolvedValueOnce(updateOk());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({ ...featuresCreateInput(), idempotencyCheck: false });
+
+    expect(result.itemId).toBe(TWIN_ID);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const retemplateBody = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(retemplateBody.variables.input).toMatchObject({
+      itemId: TWIN_ID,
+      templateId: LIVE_TEMPLATE_ID,
+    });
+  });
+
+  it("adopts untouched when the twin's template already matches (GUID shape ignored)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      // Same template, but undashed + uppercase — must count as a match.
+      .mockResolvedValueOnce(childrenWithTwin(LIVE_TEMPLATE_ID.replace(/-/g, "").toUpperCase()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem(featuresCreateInput());
+
+    expect(result.itemId).toBe(TWIN_ID);
+    // Parent resolve + pre-check only — no updateItem calls.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("without retemplateOnAdopt a mismatched twin is adopted as-is (historical contract)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const result = await client.createItem({ ...featuresCreateInput(), retemplateOnAdopt: false });
+
+    expect(result.itemId).toBe(TWIN_ID);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces an actionable error when the retemplate itself is rejected", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(parentResolve())
+      .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
+      // The retemplate updateItem is rejected (e.g. a schema without
+      // UpdateItemInput.templateId).
+      .mockResolvedValueOnce(
+        okResponse({
+          errors: [{ message: "Unknown field 'templateId' on input 'UpdateItemInput'." }],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createAuthoringClient({ environment: baseEnv });
+    const error = await client.createItem(featuresCreateInput()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScaiError);
+    const message = (error as ScaiError).message;
+    // Names the colliding item, both templates, and the original error —
+    // a diagnosable outcome instead of the downstream field-write abort.
+    expect(message).toContain(TWIN_ID);
+    expect(message).toContain("/sitecore/content/duke/another-test/Data/features");
+    expect(message).toContain(STALE_TEMPLATE_ID);
+    expect(message).toContain(LIVE_TEMPLATE_ID);
+    expect(message).toMatch(/retemplating it failed/);
+    expect(message).toContain("Unknown field 'templateId'");
+  });
+});
+
 describe("runAuthoringGraphQL — retry / backoff", () => {
   it("retries on 503 with Retry-After and surfaces the eventual success", async () => {
     const success = okResponse({ data: { ok: true } });

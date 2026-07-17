@@ -72,6 +72,26 @@ export interface CreateItemInput {
    * createItem calls.
    */
   idempotencyCheck?: boolean;
+  /**
+   * When true, an adoption taken by the `idempotencyCheck` pre-check or
+   * the already-exists fallback ALIGNS the adopted item's template:
+   * if the existing same-named child's live template differs from
+   * `templateId`, the implementation retemplates it (updateItem with a
+   * `templateId`) and then seeds `fields`, instead of returning the
+   * item untouched.
+   *
+   * The recipe planner sets this only for CreateOnly, non-folder-class
+   * CreateItem ops whose expected template resolved to a LIVE itemId —
+   * i.e. recipe-seeded content/page items with deterministic identity.
+   * Without it, adopting a name-twin stranded by an earlier
+   * partial/rolled-back install (whose template belongs to a different
+   * site's GUID family, or dangles after its template was rolled back)
+   * aborts the recipe on the first field write with the baffling
+   * "Cannot find a field with the name <X>". Off by default so generic
+   * one-shot createItem callers keep the historical adopt-as-is
+   * behavior.
+   */
+  retemplateOnAdopt?: boolean;
 }
 
 export interface CreateItemResult {
@@ -81,6 +101,18 @@ export interface CreateItemResult {
 
 export interface UpdateItemInput {
   itemId: string;
+  /**
+   * Change the item's template to this template itemId (Authoring
+   * `UpdateItemInput.templateId`). Used by the adopt-and-retemplate
+   * path (see `CreateItemInput.retemplateOnAdopt`): a recipe-owned
+   * content item stranded under a stale/foreign template is realigned
+   * to the recipe's live template so subsequent field-by-name writes
+   * resolve. Field values stored under the OLD template's field ids
+   * remain in the database but become unreachable through the new
+   * template — acceptable for recipe-seeded items, whose fields the
+   * push re-seeds immediately after.
+   */
+  templateId?: string;
   /**
    * Language to write the fields in. The Authoring API applies every
    * `FieldValueInput` at this input-level language — per-field language is

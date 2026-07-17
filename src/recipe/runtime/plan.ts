@@ -904,6 +904,34 @@ const isFolderClassCreate = (op: CreateItemOp): boolean =>
   typeof op.templateOf === "string" && FOLDER_CLASS_TEMPLATE_IDS.has(op.templateOf.toLowerCase());
 
 /**
+ * The expected LIVE template a CreateItem op's adopted name-twin must be
+ * retemplated to, or `null` when adopt-and-retemplate doesn't apply.
+ *
+ * Eligibility mirrors the failure class it heals — recipe-SEEDED items
+ * (content items, page items) whose deterministic path can collide with
+ * a twin stranded by an earlier partial/rolled-back install:
+ *
+ *   - `CreateOnly` policy only. CreateAndUpdate structure ops
+ *     (templates, sections, renderings, enumerations, dictionaries)
+ *     live under physically site-scoped subtrees and keep their
+ *     existing drift-update behavior.
+ *   - Not folder-class: organisational folders keep the v0.33.0
+ *     lossless adopt-as-is behavior — retemplating them is
+ *     unnecessary (no authored data) and could clobber SXA grouping
+ *     templates.
+ *   - The expected template must resolve to a live itemId (same
+ *     condition as the v0.32.5 rebind guard): without a live id there
+ *     is nothing trustworthy to compare against or retemplate to.
+ */
+const adoptRetemplateTargetFor = (
+  op: CreateItemOp,
+  capturedItemIds: ReadonlyMap<string, string>
+): string | null => {
+  if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return null;
+  return resolveLiveTemplateIdForRebind(op, capturedItemIds);
+};
+
+/**
  * The live templateId a rebind candidate must carry, or `null` when it
  * can't be known — in which case the template check is skipped (the
  * pre-check-era behavior).
@@ -1002,7 +1030,8 @@ const planCreateItem = ({
   conflictPolicy,
   mediaFallbacks,
 }: PlanCreateItemOptions): PlannedAction => {
-  if (!remote) {
+  const retemplateTarget = adoptRetemplateTargetFor(op, capturedItemIds);
+  const planFreshCreate = (reason?: string): PlannedAction => {
     const parent = resolveCreateItemParent(op, capturedItemIds);
     if ("unresolvedRefKey" in parent) {
       return {
@@ -1042,6 +1071,7 @@ const planCreateItem = ({
       index,
       operation: op,
       status: "create",
+      ...(reason !== undefined && { reason }),
       mutation: {
         kind: "createItem",
         input: {
@@ -1057,9 +1087,49 @@ const planCreateItem = ({
           // duplicate-sibling creation (the root cause of the
           // `audit slug-conflicts` false positives after re-push).
           idempotencyCheck: true,
+          // Recipe-seeded (CreateOnly, non-folder) items with a live
+          // expected template opt in to adopt-and-RETEMPLATE: if the
+          // pre-check / already-exists fallback adopts a name-twin whose
+          // live template differs (an item stranded by an earlier
+          // partial/rolled-back install, possibly under a different site
+          // handle's template GUIDs at the same shared-data-folder
+          // path), the client realigns its template and seeds these
+          // fields instead of adopting it untouched — which aborted the
+          // recipe on the first field write with "Cannot find a field
+          // with the name <X>". See `adoptExistingChild` in
+          // authoring-client.ts for the full precedent analysis
+          // (v0.32.5 rebind guard, v0.33.0 folder adoption).
+          ...(retemplateTarget !== null && { retemplateOnAdopt: true }),
         },
       },
     };
+  };
+  if (!remote) {
+    return planFreshCreate();
+  }
+  // Plan-time adoption (path-prefetch hit or sibling byName fallback) of a
+  // name-twin whose live template differs from the op's expected LIVE
+  // template: don't adopt-and-write — the item is a stranded twin, and
+  // every field-by-name write against its stale/dangling template aborts
+  // the recipe. Route through a normal create mutation instead: the
+  // apply-time pre-check re-finds the twin and `adoptExistingChild`
+  // retemplates + seeds it (creates are pool barriers, so the heal
+  // completes before any dependent SetField dispatches). Scoped to
+  // CreateOnly non-folder ops with a live-resolved expected template —
+  // CreateAndUpdate structure ops keep their drift-update behavior
+  // (their subtrees are physically site-scoped and never hit this
+  // collision class), and folder-class ops keep the v0.33.0 lossless
+  // adopt-as-is behavior.
+  if (
+    retemplateTarget !== null &&
+    remote.templateId !== "" &&
+    dashifyGuid(remote.templateId) !== retemplateTarget
+  ) {
+    return planFreshCreate(
+      `Existing item at '${remote.path}' (${remote.itemId}) carries template ` +
+        `${dashifyGuid(remote.templateId)} but the recipe expects ${retemplateTarget} — ` +
+        `adopting and retemplating the stranded name-twin (left by an earlier partial install).`
+    );
   }
   if (op.policy === "CreateOnly") {
     return {

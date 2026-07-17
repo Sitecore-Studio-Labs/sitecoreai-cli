@@ -29,6 +29,7 @@ vi.mock("../../../../src/recipe/compile", () => ({
 vi.mock("../../../../src/recipe/runtime/execute", () => ({
   executeIr: vi.fn(),
   ensureEnvironmentLanguages: vi.fn(),
+  appendSiteLanguages: vi.fn(),
 }));
 vi.mock("../../../../src/recipe/runtime/cache", () => ({
   loadRecipeCache: vi.fn(),
@@ -58,7 +59,11 @@ import { runRecipePush } from "../../../../src/recipe/tasks/push";
 import * as shared from "../../../../src/recipe/tasks/shared";
 import * as io from "../../../../src/recipe/io";
 import { compileRecipeSet } from "../../../../src/recipe/compile";
-import { ensureEnvironmentLanguages, executeIr } from "../../../../src/recipe/runtime/execute";
+import {
+  appendSiteLanguages,
+  ensureEnvironmentLanguages,
+  executeIr,
+} from "../../../../src/recipe/runtime/execute";
 import * as cache from "../../../../src/recipe/runtime/cache";
 import { createRollbackLogger } from "../../../../src/recipe/rollback/rollback-log";
 import { getAccessToken } from "../../../../src/recipe/api/auth";
@@ -424,6 +429,94 @@ describe("runRecipePush — --provision-languages", () => {
       "da",
       "ar-AE",
     ]);
+  });
+
+  const withProfileSite = (site: string) => {
+    vi.mocked(shared.resolveTenant).mockReturnValue({
+      root: { physicalPath: "/tmp/proj/sitecoreai.cli.json" },
+      envName: "test",
+      environment: { placeholderSettingsRoots: [], site },
+      client: { getItemsByPaths: vi.fn().mockResolvedValue(new Map()) },
+    } as never);
+  };
+
+  it("appends the provisioned scope to the profile's existing SITE language list", async () => {
+    // A pages-only push carries no Site recipe, so the executor's
+    // CreateSiteFromTemplate ensure never runs — the provision flag itself
+    // must put the scope on the site's supportedLanguages, or Pages never
+    // offers the brand's locales on an existing-site install.
+    withProfileSite("duke-energy");
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+    const listSites = vi
+      .fn()
+      .mockResolvedValue([{ id: "site-1", name: "duke-energy", supportedLanguages: ["en"] }]);
+    vi.mocked(createSitesApiClient).mockReturnValue({ kind: "sites-client", listSites } as never);
+    vi.mocked(ensureEnvironmentLanguages).mockResolvedValue(new Set(["en", "da", "ar-ae"]));
+
+    await runRecipePush({
+      allowWrite: true,
+      languages: ["en", "da", "ar-AE"],
+      provisionLanguages: true,
+    } as never);
+
+    expect(appendSiteLanguages).toHaveBeenCalledWith(
+      expect.objectContaining({ listSites }),
+      { siteId: "site-1", missing: ["da", "ar-AE"] },
+      new Set(["en", "da", "ar-ae"])
+    );
+  });
+
+  it("skips the site append when the profile's site does not exist yet (fresh-site install)", async () => {
+    withProfileSite("brand-new-site");
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+    const listSites = vi.fn().mockResolvedValue([]);
+    vi.mocked(createSitesApiClient).mockReturnValue({ kind: "sites-client", listSites } as never);
+    vi.mocked(ensureEnvironmentLanguages).mockResolvedValue(new Set(["en", "da"]));
+
+    await runRecipePush({
+      allowWrite: true,
+      languages: ["en", "da"],
+      provisionLanguages: true,
+    } as never);
+
+    // createSite declares the languages itself on the fresh-site path.
+    expect(appendSiteLanguages).not.toHaveBeenCalled();
+  });
+
+  it("skips the site append when every scoped code is already on the site's list", async () => {
+    withProfileSite("duke-energy");
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+    const listSites = vi.fn().mockResolvedValue([
+      {
+        id: "site-1",
+        name: "duke-energy",
+        supportedLanguages: ["en", "da", "ar-AE"],
+      },
+    ]);
+    vi.mocked(createSitesApiClient).mockReturnValue({ kind: "sites-client", listSites } as never);
+    vi.mocked(ensureEnvironmentLanguages).mockResolvedValue(new Set(["en", "da", "ar-ae"]));
+
+    await runRecipePush({
+      allowWrite: true,
+      languages: ["en", "DA", "ar-AE"],
+      provisionLanguages: true,
+    } as never);
+
+    expect(listSites).toHaveBeenCalled();
+    expect(appendSiteLanguages).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the Sites list when the profile has no site configured", async () => {
+    vi.mocked(getAccessToken).mockResolvedValue("sites-token" as never);
+    vi.mocked(ensureEnvironmentLanguages).mockResolvedValue(new Set(["en", "da"]));
+
+    await runRecipePush({
+      allowWrite: true,
+      languages: ["en", "da"],
+      provisionLanguages: true,
+    } as never);
+
+    expect(appendSiteLanguages).not.toHaveBeenCalled();
   });
 
   it("fails loud (AUTH_REQUIRED) when no Sites API token can be minted for provisioning", async () => {

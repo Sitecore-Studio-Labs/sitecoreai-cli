@@ -101,21 +101,14 @@ export interface CreateItemResult {
 
 export interface UpdateItemInput {
   itemId: string;
-  /**
-   * Change the item's template to this template itemId. The Authoring
-   * GraphQL schema has no template-change surface, so the client
-   * implements this as a `__Template` system-field write (the same
-   * fields-channel path `__Renderings`/`__Masters` writes use). Used by
-   * the adopt-and-retemplate path (see
-   * `CreateItemInput.retemplateOnAdopt`): a recipe-owned content item
-   * stranded under a stale/foreign template is realigned to the
-   * recipe's live template so subsequent field-by-name writes resolve.
-   * Field values stored under the OLD template's field ids remain in
-   * the database but become unreachable through the new template —
-   * acceptable for recipe-seeded items, whose fields the push re-seeds
-   * immediately after.
-   */
-  templateId?: string;
+  // NOTE: there is deliberately NO `templateId` here. The Authoring
+  // GraphQL schema has no template-change surface at all — no
+  // `UpdateItemInput.templateId` (fails variable coercion), no
+  // changeTemplate mutation, and `__Template` is not a writable field
+  // (both confirmed against live tenants, v0.34.1/v0.34.2). Template
+  // convergence for adopted name-twins happens in `adoptExistingChild`
+  // (adopt same-shape twins as-is; delete + recreate marker-verified
+  // childless residue).
   /**
    * Language to write the fields in. The Authoring API applies every
    * `FieldValueInput` at this input-level language — per-field language is

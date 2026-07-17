@@ -22,12 +22,16 @@ import { MockAuthoringClient } from "./_fixtures/mock-client";
  * adopted the twin untouched, and the first SetField (resolving field
  * NAMES against the twin's stale template) aborted the recipe.
  *
- * The fix: a CreateOnly, non-folder-class CreateItem whose expected
- * template resolves to a LIVE itemId routes a template-mismatched twin
- * through a fresh create mutation carrying `retemplateOnAdopt` — the
- * client's adoption then realigns the twin's template and seeds the
- * create's fields (see `adoptExistingChild` in authoring-client.ts,
- * covered by api.test.ts). Everything else keeps its prior behavior:
+ * The fix: a CreateOnly CreateItem that seeds authored fields and whose
+ * expected template resolves to a LIVE itemId routes a
+ * template-mismatched twin through a fresh create mutation carrying
+ * `retemplateOnAdopt` — the client's adoption then CONVERGES the twin:
+ * adopt as-is when its live template resolves the recipe's authored
+ * field names (cross-seed same-shape twin), or delete + recreate
+ * marker-verified childless residue (see `adoptExistingChild` in
+ * authoring-client.ts, covered by api.test.ts — the Authoring API has
+ * no template-change surface, so in-place retemplating is impossible).
+ * Everything else keeps its prior behavior:
  * matching templates still skip, folder-class ops keep the v0.33.0
  * lossless adoption, the v0.32.5 rebind guard is untouched, and
  * CreateAndUpdate structure ops keep drift updates.
@@ -150,7 +154,7 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(input.retemplateOnAdopt).toBe(true);
     expect(input.idempotencyCheck).toBe(true);
     expect(input.templateId).toBe(LIVE_TEMPLATE_ID);
-    expect(action.reason).toMatch(/retemplating/i);
+    expect(action.reason).toMatch(/converging/i);
     expect(action.reason).toContain(STRANDED_ITEM_ID);
     // The adopted identity is still the twin's — downstream ops resolve it.
     expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);

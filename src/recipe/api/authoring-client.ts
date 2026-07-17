@@ -5,6 +5,7 @@ import { mapWithConcurrency } from "@/shared/cli-tasks";
 import { READ_RETRYABLE_STATUSES } from "@/shared/graphql";
 import type { FieldValue } from "../ir/operations";
 import { SITECORE_TEMPLATES } from "../ir/sitecore-templates";
+import { SCAI_HANDLE_FIELD_NAME } from "../items/marker";
 import { resolveMediaUpload } from "./media-filename";
 import { dashifyGuid, renderRefValue, sameLevelItemName } from "./ref-encoding";
 import {
@@ -745,24 +746,8 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     );
   };
 
-  /** Shared `updateItem` implementation — also used by the adopt-and-retemplate path below. */
+  /** Shared `updateItem` implementation. */
   const updateItemImpl = async (input: UpdateItemInput): Promise<void> => {
-    // Template change (adopt-and-retemplate): the Authoring GraphQL
-    // schema has NO `UpdateItemInput.templateId` (sending one fails
-    // variable coercion — "The value of $input has a wrong structure")
-    // and no changeTemplate mutation. The template assignment is stored
-    // in the `__Template` system field, so the change rides the normal
-    // fields channel — the same system-field write path `__Renderings`
-    // and `__Masters` already use — as a Sitecore-formatted braced ID.
-    const templateField =
-      input.templateId !== undefined
-        ? [
-            {
-              name: "__Template",
-              value: `{${dashifyGuid(input.templateId).toUpperCase()}}`,
-            },
-          ]
-        : [];
     await runAuthoringGraphQL(
       environment,
       UPDATE_ITEM_MUTATION,
@@ -774,11 +759,51 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
           // SetField targeting a story-seed version lands here.
           ...(input.language !== undefined && { language: input.language }),
           ...(input.version !== undefined && { version: input.version }),
-          fields: [...templateField, ...toAuthoringFieldsInput(input.fields)],
+          fields: toAuthoringFieldsInput(input.fields),
         },
       },
       writeRequest
     );
+  };
+
+  /** Permanent delete by itemId — the twin-recreate path below. */
+  const deleteItemPermanently = async (itemId: string): Promise<void> => {
+    const data = await runAuthoringGraphQL<{
+      deleteItem: { successful: boolean } | null;
+    }>(environment, DELETE_ITEM_MUTATION, { input: { itemId, permanently: true } }, writeRequest);
+    if (!data.deleteItem?.successful) {
+      throw createScaiError(`deleteItem returned successful: false for ${itemId}`, "UNKNOWN");
+    }
+  };
+
+  /** The bare create mutation — no idempotency probing, no adoption fallbacks. */
+  const runCreateItemMutation = async (
+    input: CreateItemInput,
+    parentItemId: string
+  ): Promise<CreateItemResult> => {
+    const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
+      environment,
+      CREATE_ITEM_MUTATION,
+      {
+        input: {
+          parent: parentItemId,
+          templateId: input.templateId,
+          name: input.name,
+          database: input.database ?? "master",
+          language: input.language ?? "en",
+          fields: toAuthoringFieldsInput(input.fields),
+        },
+      },
+      writeRequest
+    );
+    const itemId = data.createItem?.item?.itemId;
+    if (!itemId) {
+      throw createScaiError(
+        "createItem returned no itemId — Authoring API response was malformed.",
+        "UNKNOWN"
+      );
+    }
+    return { itemId };
   };
 
   /**
@@ -790,52 +815,36 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
    * matching): return the existing itemId untouched — the historical
    * adopt-as-is contract.
    *
-   * With `retemplateOnAdopt` and a live-template mismatch, the adopted
-   * item is a NAME-TWIN whose shape doesn't match the recipe — the
-   * signature of an item stranded by an earlier partial/rolled-back
-   * install (rollback is best-effort; a failed `deleteItem` strands the
-   * created item), possibly under a different site handle's template
-   * GUID family at the same shared-data-folder path. Adopting it
-   * untouched aborts the recipe on the first field write ("Cannot find
-   * a field with the name <X>" — the write resolves field names against
-   * the item's live template, which lacks the recipe's fields or
-   * dangles entirely). Instead:
+   * With `retemplateOnAdopt` and a live-template mismatch the adopted
+   * item is a NAME-TWIN. The Authoring GraphQL schema has NO
+   * template-change surface — no `UpdateItemInput.templateId` (fails
+   * variable coercion), no changeTemplate mutation, and `__Template` is
+   * not a writable field ("Cannot find a field with the name
+   * __Template", observed live) — so the twin CANNOT be conformed in
+   * place. Convergence is decided by what the twin actually is:
    *
-   *   1. Retemplate the item to the op's expected (live) template.
-   *   2. Seed the create's fields, exactly as the mutation would have.
-   *
-   * Behavior choice, against the two precedents:
-   *   - v0.32.5's rebind guard REFUSES a template-mismatched marked
-   *     sibling and creates fresh — right for a RENAME candidate, whose
-   *     recipe name is free. Here the twin holds the recipe's own name
-   *     at the recipe's own path, so "create fresh" is impossible (it
-   *     collides right back); the only convergent outcome is making the
-   *     name-matched item conform.
-   *   - v0.33.0 adopts FOLDER-class items across template mismatches
-   *     because folders carry no authored data (lossless). A
-   *     recipe-seeded content item is the data-bearing analogue:
-   *     identity is deterministic (`contentItemId(site, handle)`),
-   *     Sitecore stores field values keyed by field ID, so values under
-   *     a foreign template's field ids are unreachable/orphaned no
-   *     matter what we do — retemplating loses nothing the recipe
-   *     doesn't immediately re-seed, and it PRESERVES the item's GUID
-   *     (unlike delete + recreate), so any cross-site layout references
-   *     keep resolving to an item that at least renders this recipe's
-   *     content.
-   *
-   * Mechanism: the Authoring GraphQL schema has no template-change
-   * surface (no `UpdateItemInput.templateId`, no changeTemplate
-   * mutation), so the retemplate is a `__Template` system-field write
-   * through `updateItemImpl`'s fields channel. If the tenant rejects
-   * or ignores that write, the follow-up field seed resolves names
-   * against the OLD template and throws — either way the raw error is
-   * wrapped into an actionable one naming the colliding item, its live
-   * template, and the expected template — an explicit, diagnosable
-   * outcome instead of the downstream field-write abort.
+   *   1. SAME-SHAPE twin — its live template resolves every authored
+   *      field name the recipe seeds (the cross-seed case: the same
+   *      recipe's template from a different site-GUID family at a
+   *      shared Data path). Adopt as-is: field-by-NAME writes succeed
+   *      against it, so nothing needs to change. This also covers
+   *      folder-ish items whose ops carry only system fields.
+   *   2. BROKEN twin — the live template can't resolve the recipe's
+   *      authored fields (stranded by a partial/rolled-back install;
+   *      rollback is best-effort and a failed delete strands items).
+   *      If it carries OUR `Scai Handle` marker for the SAME recipe
+   *      handle and has no children, it is recipe-managed residue:
+   *      delete it and create fresh with the expected template (the
+   *      only convergence the API supports; the GUID changes, which is
+   *      acceptable for residue that never worked).
+   *   3. Anything else — a foreign/authored item or one with children:
+   *      never destructive; throw the actionable error naming the item,
+   *      both templates, and the unresolvable fields.
    */
   const adoptExistingChild = async (
     input: CreateItemInput,
-    existing: RemoteItemNode
+    existing: RemoteItemNode,
+    parentItemId: string
   ): Promise<CreateItemResult> => {
     const liveTemplateId = existing.template?.templateId ?? "";
     const templateMatches =
@@ -843,31 +852,64 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     if (!input.retemplateOnAdopt || templateMatches) {
       return { itemId: existing.itemId };
     }
-    try {
-      // Two calls on purpose: retemplate FIRST so the field write that
-      // follows resolves names against the recipe's template — a single
-      // combined call would leave the server's template-change/field-write
-      // ordering unspecified.
-      await updateItemImpl({ itemId: existing.itemId, templateId: input.templateId, fields: [] });
-      if (input.fields.length > 0) {
-        await updateItemImpl({ itemId: existing.itemId, fields: input.fields });
-      }
-    } catch (error) {
-      const original = error instanceof Error ? error.message : String(error);
+
+    const markerName = SCAI_HANDLE_FIELD_NAME.toLowerCase();
+    const liveFieldNames = new Set(existing.fields.nodes.map((f) => f.name.toLowerCase()));
+    const authoredFieldNames = input.fields
+      .map((f) => f.fieldName ?? "")
+      .filter((name) => name !== "" && !name.startsWith("__") && name.toLowerCase() !== markerName);
+    const unresolvable = authoredFieldNames.filter(
+      (name) => !liveFieldNames.has(name.toLowerCase())
+    );
+    if (unresolvable.length === 0) {
+      return { itemId: existing.itemId };
+    }
+
+    const conflict =
+      `createItem '${input.name}' adopted existing item '${existing.path}' (${existing.itemId}), ` +
+      `but its live template ${liveTemplateId || "<none>"} does not match the expected template ` +
+      `${input.templateId} and cannot resolve the recipe's field(s): ${unresolvable.join(", ")}.`;
+
+    const liveMarker = existing.fields.nodes
+      .find((f) => f.name.toLowerCase() === markerName)
+      ?.value?.trim();
+    const opMarkerField = input.fields.find(
+      (f) => (f.fieldName ?? "").toLowerCase() === markerName
+    );
+    const opMarker =
+      opMarkerField && opMarkerField.value.kind === "string"
+        ? opMarkerField.value.value.trim()
+        : "";
+    if (!liveMarker || !opMarker || liveMarker !== opMarker) {
       throw createScaiError(
-        `createItem '${input.name}' adopted existing item '${existing.path}' (${existing.itemId}), ` +
-          `but its live template ${liveTemplateId || "<none>"} does not match the expected template ` +
-          `${input.templateId} and retemplating it failed: ${original}`,
+        `${conflict} The item carries no matching Scai Handle marker.`,
         "NETWORK",
         {
           hint:
-            "The item is a stranded name-twin from an earlier partial install. Inspect it in the " +
-            "Content Editor; either change its template to the expected one (or delete it), then " +
+            "The colliding item is not (verifiably) recipe-managed, so it will not be replaced " +
+            "automatically. Inspect it in the Content Editor; move, retemplate, or delete it, then " +
             "re-run the push.",
         }
       );
     }
-    return { itemId: existing.itemId };
+
+    const children = await fetchChildren({ itemId: existing.itemId });
+    if (children.length > 0) {
+      throw createScaiError(
+        `${conflict} It is recipe-managed but has ${children.length} child item(s), so it will ` +
+          `not be replaced automatically.`,
+        "NETWORK",
+        {
+          hint:
+            "Move or delete the item's children (or the item) in the Content Editor, then re-run " +
+            "the push.",
+        }
+      );
+    }
+
+    // Marker-verified, childless, recipe-managed residue: replace it.
+    await deleteItemPermanently(existing.itemId);
+    return runCreateItemMutation(input, parentItemId);
   };
 
   /**
@@ -978,33 +1020,11 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       if (input.idempotencyCheck) {
         const preExisting = await findChildByName(parentItemId, input.name);
         if (preExisting) {
-          return adoptExistingChild(input, preExisting);
+          return adoptExistingChild(input, preExisting, parentItemId);
         }
       }
       try {
-        const data = await runAuthoringGraphQL<GraphQLCreateItemResponse>(
-          environment,
-          CREATE_ITEM_MUTATION,
-          {
-            input: {
-              parent: parentItemId,
-              templateId: input.templateId,
-              name: input.name,
-              database: input.database ?? "master",
-              language: input.language ?? "en",
-              fields: toAuthoringFieldsInput(input.fields),
-            },
-          },
-          writeRequest
-        );
-        const itemId = data.createItem?.item?.itemId;
-        if (!itemId) {
-          throw createScaiError(
-            "createItem returned no itemId — Authoring API response was malformed.",
-            "UNKNOWN"
-          );
-        }
-        return { itemId };
+        return await runCreateItemMutation(input, parentItemId);
       } catch (error) {
         // Idempotent-create fallback for the recurring "name already defined
         // on this level" failure mode. Sitecore's path index (used by
@@ -1024,7 +1044,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
         if (isAlreadyExistsError(error)) {
           const existing = await findChildByName(parentItemId, input.name);
           if (existing) {
-            return adoptExistingChild(input, existing);
+            return adoptExistingChild(input, existing, parentItemId);
           }
           // The server insists a same-named sibling exists but the
           // (paginated, case-insensitive) children walk can't see it —

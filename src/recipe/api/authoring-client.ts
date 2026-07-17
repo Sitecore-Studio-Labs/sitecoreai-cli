@@ -747,21 +747,34 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
 
   /** Shared `updateItem` implementation — also used by the adopt-and-retemplate path below. */
   const updateItemImpl = async (input: UpdateItemInput): Promise<void> => {
+    // Template change (adopt-and-retemplate): the Authoring GraphQL
+    // schema has NO `UpdateItemInput.templateId` (sending one fails
+    // variable coercion — "The value of $input has a wrong structure")
+    // and no changeTemplate mutation. The template assignment is stored
+    // in the `__Template` system field, so the change rides the normal
+    // fields channel — the same system-field write path `__Renderings`
+    // and `__Masters` already use — as a Sitecore-formatted braced ID.
+    const templateField =
+      input.templateId !== undefined
+        ? [
+            {
+              name: "__Template",
+              value: `{${dashifyGuid(input.templateId).toUpperCase()}}`,
+            },
+          ]
+        : [];
     await runAuthoringGraphQL(
       environment,
       UPDATE_ITEM_MUTATION,
       {
         input: {
           itemId: input.itemId,
-          // Template change (adopt-and-retemplate) rides the same
-          // mutation — Authoring's `UpdateItemInput.templateId`.
-          ...(input.templateId !== undefined && { templateId: input.templateId }),
           // `UpdateItemInput` carries language/version at the input level;
           // the Authoring API has no per-field language/version. A
           // SetField targeting a story-seed version lands here.
           ...(input.language !== undefined && { language: input.language }),
           ...(input.version !== undefined && { version: input.version }),
-          fields: toAuthoringFieldsInput(input.fields),
+          fields: [...templateField, ...toAuthoringFieldsInput(input.fields)],
         },
       },
       writeRequest
@@ -810,9 +823,13 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
    *     keep resolving to an item that at least renders this recipe's
    *     content.
    *
-   * If the retemplate itself is rejected (e.g. an Authoring schema
-   * without `UpdateItemInput.templateId`), the raw error is wrapped
-   * into an actionable one naming the colliding item, its live
+   * Mechanism: the Authoring GraphQL schema has no template-change
+   * surface (no `UpdateItemInput.templateId`, no changeTemplate
+   * mutation), so the retemplate is a `__Template` system-field write
+   * through `updateItemImpl`'s fields channel. If the tenant rejects
+   * or ignores that write, the follow-up field seed resolves names
+   * against the OLD template and throws — either way the raw error is
+   * wrapped into an actionable one naming the colliding item, its live
    * template, and the expected template — an explicit, diagnosable
    * outcome instead of the downstream field-write abort.
    */

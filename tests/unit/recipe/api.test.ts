@@ -1389,13 +1389,16 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
     expect(result.itemId).toBe(TWIN_ID);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     // Retemplate FIRST — a field write against the stale template would
-    // fail name resolution; ordering is the whole point.
+    // fail name resolution; ordering is the whole point. The Authoring
+    // schema has no UpdateItemInput.templateId (and no changeTemplate
+    // mutation) — the template change is a `__Template` system-field
+    // write in Sitecore's braced-ID format.
     const retemplateBody = JSON.parse(fetchMock.mock.calls[2][1].body);
     expect(retemplateBody.variables.input).toMatchObject({
       itemId: TWIN_ID,
-      templateId: LIVE_TEMPLATE_ID,
-      fields: [],
+      fields: [{ name: "__Template", value: `{${LIVE_TEMPLATE_ID.toUpperCase()}}` }],
     });
+    expect(retemplateBody.variables.input.templateId).toBeUndefined();
     const seedBody = JSON.parse(fetchMock.mock.calls[3][1].body);
     expect(seedBody.variables.input.itemId).toBe(TWIN_ID);
     expect(seedBody.variables.input.templateId).toBeUndefined();
@@ -1426,8 +1429,9 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
     const retemplateBody = JSON.parse(fetchMock.mock.calls[3][1].body);
     expect(retemplateBody.variables.input).toMatchObject({
       itemId: TWIN_ID,
-      templateId: LIVE_TEMPLATE_ID,
+      fields: [{ name: "__Template", value: `{${LIVE_TEMPLATE_ID.toUpperCase()}}` }],
     });
+    expect(retemplateBody.variables.input.templateId).toBeUndefined();
   });
 
   it("adopts untouched when the twin's template already matches (GUID shape ignored)", async () => {
@@ -1465,11 +1469,11 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
       .fn()
       .mockResolvedValueOnce(parentResolve())
       .mockResolvedValueOnce(childrenWithTwin(STALE_TEMPLATE_ID))
-      // The retemplate updateItem is rejected (e.g. a schema without
-      // UpdateItemInput.templateId).
+      // The retemplate updateItem is rejected (e.g. a tenant that
+      // guards `__Template` system-field writes).
       .mockResolvedValueOnce(
         okResponse({
-          errors: [{ message: "Unknown field 'templateId' on input 'UpdateItemInput'." }],
+          errors: [{ message: "The field __Template cannot be modified." }],
         })
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -1486,7 +1490,7 @@ describe("createAuthoringClient — adopt-and-retemplate (retemplateOnAdopt)", (
     expect(message).toContain(STALE_TEMPLATE_ID);
     expect(message).toContain(LIVE_TEMPLATE_ID);
     expect(message).toMatch(/retemplating it failed/);
-    expect(message).toContain("Unknown field 'templateId'");
+    expect(message).toContain("The field __Template cannot be modified");
   });
 });
 

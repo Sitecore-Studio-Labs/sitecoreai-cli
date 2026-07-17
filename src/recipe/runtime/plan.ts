@@ -1177,9 +1177,18 @@ const planCreateItem = ({
   // ping-pong one item. Deleting it would destroy the OTHER recipe's
   // content. Fail the op at plan time with both owners named so the
   // recipe author de-collides the names — the only correct fix.
-  // Scoped to CreateOnly (recipe-seeded content); versionless handle-base
-  // compare so a re-versioned recipe (`@1`→`@2`) still owns its item.
-  if (op.policy === "CreateOnly") {
+  // Scoped to FIELD-BEARING creates (`convergent` — CreateOnly, non-folder,
+  // with authored fields inline or via SetField ops): the failure mode the
+  // guard prevents is field writes against a wrong-template twin, which a
+  // field-less item cannot suffer. Organizational/grouping folders
+  // (`Presentation/Enumerations/Layout`, shared data folders, …) are
+  // legitimately claimed by MANY recipes but wear only the FIRST creator's
+  // marker — guarding them broke every re-push against an environment with
+  // history ("Name collision: item 'Layout' … is owned by recipe
+  // 'alignment@1', not 'alert-layout@1'"). They keep the v0.33.0 lossless
+  // adopt-as-is behavior. Versionless handle-base compare so a
+  // re-versioned recipe (`@1`→`@2`) still owns its item.
+  if (convergent) {
     const opMarker = opHandleMarker(op);
     const twinMarker = remoteHandleMarker(remote)?.trim();
     if (

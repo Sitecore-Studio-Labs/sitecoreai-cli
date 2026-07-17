@@ -43,6 +43,23 @@ const TEMPLATE_REF_KEY = "44444444-4444-4444-4444-444444444444";
 const LIVE_TEMPLATE_ID = "77777777-7777-4777-8777-777777777777";
 const STALE_TEMPLATE_ID = "88888888-8888-4888-8888-888888888888";
 
+// Authored seed field + the `Scai Handle` marker `injectHandleMarker`
+// stamps — the realistic content-item op shape. Eligibility requires at
+// least one AUTHORED (non-marker) field: adoption only breaks when the
+// recipe writes field values the twin's live template can't resolve.
+const contentItemFields = (): CreateItemOp["fields"] => [
+  {
+    fieldId: "55555555-5555-4555-8555-555555555555",
+    fieldName: "Title",
+    value: { kind: "string", value: "Features" },
+  },
+  {
+    fieldId: "00000000-0000-0000-0000-5ca15ca15ca1",
+    fieldName: "Scai Handle",
+    value: { kind: "string", value: "footer-link-features@1" },
+  },
+];
+
 const contentItemCreateOp = (policy: CreateItemOp["policy"] = "CreateOnly"): CreateItemOp => ({
   op: "CreateItem",
   policy,
@@ -52,7 +69,7 @@ const contentItemCreateOp = (policy: CreateItemOp["policy"] = "CreateOnly"): Cre
   parent: { kind: "ref-path", value: DATA_PATH },
   templateOf: TEMPLATE_REF_KEY,
   name: ITEM_NAME,
-  fields: [],
+  fields: contentItemFields(),
 });
 
 /** Captured map as the workspace seed leaves it: parent path + live template. */
@@ -226,9 +243,10 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
       capturedItemIds: captured,
     });
 
-    // Zero tracked-field drift → skip; never the retemplate route.
-    expect(action.status).toBe("skip");
-    expect(action.mutation).toBeUndefined();
+    // Tracked-field drift (the twin lacks Title) → the normal
+    // drift-update route; never the retemplate route.
+    expect(action.status).toBe("update");
+    expect(action.mutation?.kind).toBe("updateItem");
   });
 
   it("keeps the v0.33.0 lossless adopt-as-is for folder-class CreateOnly ops", async () => {
@@ -255,6 +273,55 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
     expect(action.status).toBe("skip");
     expect(action.reason).toContain("CreateOnly");
     expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);
+  });
+
+  it("keeps adopt-as-is for marker-only ops (recipe-created grouping folders)", async () => {
+    // The v0.34.1 regression: `enumerations-grouping-folder:default:Card`
+    // uses a RECIPE-CREATED folder template (per-site GUID family), so the
+    // built-in folder-class set can't exclude it, its cross-seed twin's
+    // template never matches by construction, and the retemplate attempt
+    // aborted batch-1. A marker-only op seeds no authored data — adoption
+    // is lossless and must stay untouched.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, STALE_TEMPLATE_ID);
+    const captured = capturedWithLiveTemplate();
+
+    const groupingFolderOp: CreateItemOp = {
+      ...contentItemCreateOp(),
+      label: "enumerations-grouping-folder:default:Card",
+      fields: contentItemFields().filter((f) => f.fieldName === "Scai Handle"),
+    };
+    const action = await buildAction({
+      index: 0,
+      op: groupingFolderOp,
+      client,
+      capturedItemIds: captured,
+    });
+
+    expect(action.status).toBe("skip");
+    expect(action.reason).toContain("CreateOnly");
+    expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);
+  });
+
+  it("does not flag marker-only fresh creates for apply-time retemplating either", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+
+    const groupingFolderOp: CreateItemOp = {
+      ...contentItemCreateOp(),
+      label: "enumerations-grouping-folder:default:Card",
+      fields: [],
+    };
+    const action = await buildAction({
+      index: 0,
+      op: groupingFolderOp,
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).toBe("create");
+    expect(createMutationInput(action).retemplateOnAdopt).toBeUndefined();
   });
 
   it("flags eligible fresh creates so APPLY-time adoption also retemplates", async () => {

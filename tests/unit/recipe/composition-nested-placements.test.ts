@@ -136,27 +136,35 @@ describe("compilePartialDesignRecipe — nested placements (footer shell composi
     }
   });
 
-  it("emits the exact SXA __Renderings delta wire form (byte-for-byte)", () => {
+  it("emits the exact self-contained SHARED __Renderings wire form (byte-for-byte)", () => {
+    // Self-contained device layout — explicit `<d id="{DEVICE}">`,
+    // anchor-less renderings (document order), NO `<p:da name="l" />`
+    // inherit directive. Byte-identical in shape to a Pages-authored
+    // partial design's `__Renderings` (attribute order uid, s:ds, s:id,
+    // s:par, s:ph), so the partial is renderable — and editable —
+    // standalone in Page Builder. The prior inherit-delta form 500'd the
+    // CM layout service when opened directly.
     const parent = partialDesignId(SITE, "footer-legal-strip@1");
     const expected =
       `<r xmlns:p="p" xmlns:s="s" p:p="1"><d id="${curly(DEFAULT_DEVICE_ID)}">` +
-      `<p:da name="l" />` +
-      `<r uid="${uid(parent, "headless-footer", 0, "footer@1")}" p:before="*"` +
-      ` s:ph="headless-footer" s:id="${curly(renderingId(SITE, "footer@1"))}"` +
-      ` s:par="PaddingY=sm&amp;DynamicPlaceholderId=1&amp;FieldNames=Default" />` +
-      `<r uid="${uid(parent, "/headless-footer/footer-main-1", 0, "column-splitter@1")}" p:before="*"` +
-      ` s:ph="/headless-footer/footer-main-1" s:id="${curly(renderingId(SITE, "column-splitter@1"))}"` +
-      ` s:par="ColumnCount=2&amp;MobileColumns=1&amp;DynamicPlaceholderId=2&amp;FieldNames=Default" />` +
-      `<r uid="${uid(parent, "/headless-footer/footer-main-1/column-1-2", 0, "content-block@1")}" p:before="*"` +
-      ` s:ph="/headless-footer/footer-main-1/column-1-2"` +
+      `<r uid="${uid(parent, "headless-footer", 0, "footer@1")}"` +
+      ` s:id="${curly(renderingId(SITE, "footer@1"))}"` +
+      ` s:par="PaddingY=sm&amp;DynamicPlaceholderId=1&amp;FieldNames=Default"` +
+      ` s:ph="headless-footer" />` +
+      `<r uid="${uid(parent, "/headless-footer/footer-main-1", 0, "column-splitter@1")}"` +
+      ` s:id="${curly(renderingId(SITE, "column-splitter@1"))}"` +
+      ` s:par="ColumnCount=2&amp;MobileColumns=1&amp;DynamicPlaceholderId=2&amp;FieldNames=Default"` +
+      ` s:ph="/headless-footer/footer-main-1" />` +
+      `<r uid="${uid(parent, "/headless-footer/footer-main-1/column-1-2", 0, "content-block@1")}"` +
       ` s:ds="${curly(contentItemId(SITE, "footer-copyright-content@1"))}"` +
       ` s:id="${curly(renderingId(SITE, "content-block@1"))}"` +
-      ` s:par="DynamicPlaceholderId=3&amp;FieldNames=Default" />` +
-      `<r uid="${uid(parent, "/headless-footer/footer-main-1/column-2-2", 0, "link-list@1")}" p:before="*"` +
-      ` s:ph="/headless-footer/footer-main-1/column-2-2"` +
+      ` s:par="DynamicPlaceholderId=3&amp;FieldNames=Default"` +
+      ` s:ph="/headless-footer/footer-main-1/column-1-2" />` +
+      `<r uid="${uid(parent, "/headless-footer/footer-main-1/column-2-2", 0, "link-list@1")}"` +
       ` s:ds="${curly(contentItemId(SITE, "footer-legal-content@1"))}"` +
       ` s:id="${curly(renderingId(SITE, "link-list@1"))}"` +
-      ` s:par="DynamicPlaceholderId=4&amp;FieldNames=InlineSeparated" />` +
+      ` s:par="DynamicPlaceholderId=4&amp;FieldNames=InlineSeparated"` +
+      ` s:ph="/headless-footer/footer-main-1/column-2-2" />` +
       `</d></r>`;
     expect(xml).toBe(expected);
   });

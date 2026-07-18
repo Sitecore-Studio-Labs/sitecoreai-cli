@@ -36,6 +36,8 @@ describe("sitecore api auth", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    delete process.env.SITECOREAI_AUTH_DISCOVERY_ATTEMPTS;
+    delete process.env.SITECOREAI_AUTH_DISCOVERY_RETRY_MS;
   });
 
   it("throws when device login is missing authority or clientId", async () => {
@@ -80,10 +82,13 @@ describe("sitecore api auth", () => {
     );
   });
 
-  it("fails when discovery times out", async () => {
+  it("fails when discovery times out after exhausting retries", async () => {
+    process.env.SITECOREAI_AUTH_DISCOVERY_ATTEMPTS = "2";
+    process.env.SITECOREAI_AUTH_DISCOVERY_RETRY_MS = "0";
     const abortError = new Error("aborted");
     abortError.name = "AbortError";
-    const fetchMock = vi.fn().mockRejectedValueOnce(abortError);
+    // Every attempt times out.
+    const fetchMock = vi.fn().mockRejectedValue(abortError);
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestClientCredentialsToken } = await import("../../../src/serialization/api/auth");
@@ -91,6 +96,27 @@ describe("sitecore api auth", () => {
       code: "NETWORK",
       message: "Identity discovery timed out.",
     });
+    // Retried up to the configured attempt count before giving up.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries identity discovery and recovers from a transient timeout", async () => {
+    process.env.SITECOREAI_AUTH_DISCOVERY_RETRY_MS = "0";
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    const fetchMock = vi
+      .fn()
+      // Attempt 1: discovery times out.
+      .mockRejectedValueOnce(abortError)
+      // Attempt 2: discovery succeeds.
+      .mockResolvedValueOnce(jsonResponse({ token_endpoint: "https://auth.example/token" }))
+      // Token exchange succeeds.
+      .mockResolvedValueOnce(jsonResponse({ access_token: "tok", expires_in: 3600 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { requestClientCredentialsToken } = await import("../../../src/serialization/api/auth");
+    const result = await requestClientCredentialsToken(makeEnv());
+    expect(result.accessToken).toBe("tok");
   });
 
   it("handles token endpoint failures with parsed errors", async () => {
@@ -577,8 +603,11 @@ describe("discovery document hardening", () => {
     );
   });
 
-  it("throws NETWORK when the discovery endpoint responds non-ok", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("nope", { status: 500 }));
+  it("throws NETWORK when the discovery endpoint persistently responds non-ok", async () => {
+    process.env.SITECOREAI_AUTH_DISCOVERY_ATTEMPTS = "2";
+    process.env.SITECOREAI_AUTH_DISCOVERY_RETRY_MS = "0";
+    // A 5xx is retried; a persistent one surfaces after the attempts run out.
+    const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const { requestClientCredentialsToken } = await import("../../../src/serialization/api/auth");

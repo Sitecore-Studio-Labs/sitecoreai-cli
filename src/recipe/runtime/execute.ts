@@ -10,6 +10,7 @@ import {
   fallbackLanguageIsoFor,
   parseLanguageCode,
   presentLanguageCodes,
+  presentSiteLanguageCodes,
   type SitesApiClient,
 } from "../api/sites-client";
 import type { FieldValue, Operation, OperationIr } from "../ir/operations";
@@ -655,11 +656,22 @@ export const ensureEnvironmentLanguages = async (
     const code = (language.regionalIsoCode || language.iso || "").trim();
     if (code) await wire(code);
   }
-  // The environment's language codes after the ensure (lowercased) —
-  // callers use this to gate SITE-level language writes to codes the
-  // environment actually registered (e.g. bare base admission codes the
-  // catalog gate skipped must not land on a site's language list either).
-  return present;
+  // Return the environment's SITE-WRITABLE code set (lowercased): the
+  // regional identities of every registered language (`de-DE`, `en`),
+  // NOT the iso-inclusive `present` set. Every consumer uses this return
+  // solely to gate SITE-level language writes (an existing site's
+  // `supportedLanguages` PATCH, and a fresh site's declared `languages`),
+  // and the Sites API rejects a bare base there ("language 'de' with
+  // region code '' is not supported"). `present` conflates a registered
+  // `de-DE` with a bare `de` (presentLanguageCodes adds both its iso and
+  // its regional), so returning it leaked base codes into site writes and
+  // 400'd the push. Built from the pre-ensure regionals (`current`) plus
+  // the codes just added (which passed the catalog gate, so they are
+  // regional/standalone, never bare bases) — no post-ensure re-list, so
+  // no propagation-lag flake.
+  const siteWritable = presentSiteLanguageCodes(current);
+  for (const code of added) siteWritable.add(code.toLowerCase());
+  return siteWritable;
 };
 
 /**
@@ -667,9 +679,16 @@ export const ensureEnvironmentLanguages = async (
  * list (`supportedLanguages` — the property Pages offers locales from).
  * Environment registration alone doesn't put a locale on a site, so the
  * existing-site branch of CreateSiteFromTemplate PATCHes the list with
- * the union. Gated to codes the environment actually registered after
- * the ensure (bare base admission codes the catalog gate skipped stay
- * off the site list too), and additive only — the list is never shrunk.
+ * the union. Additive only — the list is never shrunk.
+ *
+ * `siteWritable` is the environment's SITE-WRITABLE code set returned by
+ * {@link ensureEnvironmentLanguages} — regional identities only (`de-DE`,
+ * `en`), NOT bare bases. A base like `de` is a valid localize FALLBACK
+ * target but the Sites API rejects it on a `supportedLanguages` PATCH
+ * ("The provided language 'de' with region code '' is not supported"), so
+ * gating additions on this set keeps bases off the site list. (The set is
+ * also already narrowed to codes the environment actually registered —
+ * catalog-skipped admission codes never reach here.)
  *
  * The merge base is a FRESH `retrieveSite` detail read, not the plan-time
  * `listSites` row: the detail view is authoritative for
@@ -679,10 +698,10 @@ export const ensureEnvironmentLanguages = async (
 export const appendSiteLanguages = async (
   sitesClient: SitesApiClient,
   site: { siteId: string; missing: string[] } | undefined,
-  envPresent: Set<string>
+  siteWritable: Set<string>
 ): Promise<void> => {
   if (!site) return;
-  const addable = site.missing.filter((code) => envPresent.has(code.toLowerCase()));
+  const addable = site.missing.filter((code) => siteWritable.has(code.toLowerCase()));
   if (addable.length === 0) return;
   const current = (await sitesClient.retrieveSite(site.siteId)).supportedLanguages ?? [];
   const merged = [...current];

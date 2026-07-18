@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SitesApiClient } from "../../../../src/recipe/api/sites-client";
-import { ensureEnvironmentLanguages } from "../../../../src/recipe/runtime/execute";
+import type { Site, SitesApiClient } from "../../../../src/recipe/api/sites-client";
+import {
+  appendSiteLanguages,
+  ensureEnvironmentLanguages,
+} from "../../../../src/recipe/runtime/execute";
 import { fallbackLanguageIsoFor } from "../../../../src/sites/api/languages";
 
 /**
@@ -148,5 +151,66 @@ describe("ensureEnvironmentLanguages — supported-catalog gate", () => {
     await ensureEnvironmentLanguages(client, ["en", "de-DE"]);
     expect(client.listSupportedLanguages).not.toHaveBeenCalled();
     expect(client.addLanguage).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureEnvironmentLanguages — returns the SITE-WRITABLE set (no bare bases)", () => {
+  it("a registered de-DE yields de-DE in the return but NOT the bare de its iso would add", async () => {
+    // presentLanguageCodes (env-internal) adds both `de` and `de-DE`, but
+    // the RETURN gates site writes — and the Sites API rejects a bare `de`
+    // on a supportedLanguages PATCH. So the return must carry only the
+    // regional identity.
+    const client = makeClient([
+      { iso: "en", regionalIsoCode: "en" },
+      { iso: "de", regionalIsoCode: "de-DE" },
+    ]);
+    const writable = await ensureEnvironmentLanguages(client, ["en", "de-DE"]);
+    expect(writable.has("de-de")).toBe(true);
+    expect(writable.has("de")).toBe(false);
+    expect(writable.has("en")).toBe(true);
+  });
+
+  it("a freshly-added regional (de-CH) is in the return; the base admission code (de) is not", async () => {
+    const CATALOG = [
+      { name: "en", languageCode: "en", regionCode: "" },
+      { name: "de-CH", languageCode: "de", regionCode: "CH" },
+    ];
+    const client = makeClient([{ iso: "en", regionalIsoCode: "en" }], CATALOG);
+    // Scope rides bare `de` (fallback base) + de-CH; only de-CH is
+    // registrable, and only de-CH is site-writable.
+    const writable = await ensureEnvironmentLanguages(client, ["de", "de-CH"]);
+    expect(writable.has("de-ch")).toBe(true);
+    expect(writable.has("de")).toBe(false);
+  });
+});
+
+describe("appendSiteLanguages — writes only the passed site-writable codes", () => {
+  const makeSiteClient = (supportedLanguages: string[]) => {
+    const updateSite = vi.fn(async () => ({}) as Site);
+    const client = {
+      retrieveSite: vi.fn(async () => ({ supportedLanguages }) as Site),
+      updateSite,
+    } as unknown as SitesApiClient;
+    return { client, updateSite };
+  };
+
+  it("appends the missing site-writable codes to supportedLanguages (additive)", async () => {
+    const { client, updateSite } = makeSiteClient(["en"]);
+    await appendSiteLanguages(
+      client,
+      { siteId: "s1", missing: ["de-DE", "de-CH"] },
+      new Set(["en", "de-de", "de-ch"])
+    );
+    expect(updateSite).toHaveBeenCalledWith("s1", {
+      supportedLanguages: ["en", "de-DE", "de-CH"],
+    });
+  });
+
+  it("no-ops when a missing code is not in the site-writable set (a bare base can never slip through)", async () => {
+    const { client, updateSite } = makeSiteClient(["en", "de-DE"]);
+    // `de` is absent from the site-writable set (ensure excluded it), so
+    // nothing to add — and it never reaches a PATCH.
+    await appendSiteLanguages(client, { siteId: "s1", missing: ["de"] }, new Set(["en", "de-de"]));
+    expect(updateSite).not.toHaveBeenCalled();
   });
 });

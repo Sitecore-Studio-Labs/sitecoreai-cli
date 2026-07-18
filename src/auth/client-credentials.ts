@@ -3,30 +3,70 @@ import { getCmTokens, setCmTokens } from "@/shared/keychain";
 import { resolveClientCredential } from "@/shared/client-credential";
 import { createScaiError } from "@/shared/errors";
 
-const DISCOVERY_TIMEOUT_MS = Math.max(
-  0,
-  Number(process.env.SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS ?? 5000)
-);
+const readNonNegativeEnv = (name: string, fallback: number): number => {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+};
 
+/**
+ * Fetch the OpenID discovery document (`/.well-known/openid-configuration`)
+ * with a per-attempt timeout AND a bounded retry.
+ *
+ * The identity provider is a cold external dependency reached at the START
+ * of every push, so a transient blip — a DNS / TLS-handshake hiccup, a
+ * dropped connection, a brief 5xx / 429 — intermittently aborted the
+ * single-shot fetch and failed the whole batch with
+ * `[NETWORK] Identity discovery timed out`. Retrying a few times with
+ * exponential backoff lets a momentary hiccup self-heal instead of killing
+ * the install; a deterministic failure (a real 404, a permanent DNS error)
+ * still surfaces once the attempts are exhausted.
+ *
+ * Tunables (env, read per call so operators and tests can override):
+ *   - SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS  per-attempt abort (default 5000)
+ *   - SITECOREAI_AUTH_DISCOVERY_ATTEMPTS    max attempts       (default 3)
+ *   - SITECOREAI_AUTH_DISCOVERY_RETRY_MS    backoff base ms    (default 300)
+ */
 const fetchDiscovery = async (authority: string): Promise<Response> => {
   const url = `${authority.replace(/\/$/, "")}/.well-known/openid-configuration`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw createScaiError("Identity discovery timed out.", "NETWORK", {
-        hint: "Check network connectivity or set SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS.",
+  const timeoutMs = readNonNegativeEnv("SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS", 5000);
+  const maxAttempts = Math.max(1, readNonNegativeEnv("SITECOREAI_AUTH_DISCOVERY_ATTEMPTS", 3));
+  const retryBaseMs = readNonNegativeEnv("SITECOREAI_AUTH_DISCOVERY_RETRY_MS", 300);
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      // A transient 5xx / 429 from the IdP is worth another attempt; every
+      // other status (2xx, or a deterministic 4xx) is returned for the
+      // caller to interpret.
+      if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
+        lastError = createScaiError(`Identity discovery returned ${response.status}.`, "NETWORK");
+      } else {
+        return response;
+      }
+    } catch (error) {
+      lastError =
+        error instanceof Error && error.name === "AbortError"
+          ? createScaiError("Identity discovery timed out.", "NETWORK", {
+              hint: "Check network connectivity or set SITECOREAI_AUTH_DISCOVERY_TIMEOUT_MS.",
+            })
+          : createScaiError(
+              `Identity discovery failed: ${error instanceof Error ? error.message : String(error)}`,
+              "NETWORK"
+            );
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (attempt < maxAttempts) {
+      const backoff = retryBaseMs * 2 ** (attempt - 1);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, backoff);
       });
     }
-    throw createScaiError(
-      `Identity discovery failed: ${error instanceof Error ? error.message : String(error)}`,
-      "NETWORK"
-    );
-  } finally {
-    clearTimeout(timeout);
   }
+  throw lastError;
 };
 
 /**

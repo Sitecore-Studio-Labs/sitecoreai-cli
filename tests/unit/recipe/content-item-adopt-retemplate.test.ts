@@ -514,6 +514,59 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
     expect(action.status).toBe("error");
     expect(action.reason).toMatch(/name collision/i);
   });
+
+  const withAggregateMarker = (marker: string): CreateItemOp => ({
+    ...contentItemCreateOp(),
+    label: "enumeration-template-standard-values:default:Enumeration",
+    fields: contentItemFields().map((f) =>
+      f.fieldName === "Scai Handle" ? { ...f, value: { kind: "string", value: marker } } : f
+    ),
+  });
+
+  it("adopts + re-stamps a legacy-owned twin when the op is a synthetic aggregate (pre-aggregate → aggregate migration)", async () => {
+    // The 0.36.1 field-report class: `__enumeration-templates__`
+    // centralised ownership of the shared enum-template `__Standard
+    // Values`. On an environment installed BEFORE the aggregate existed,
+    // those items still carry the marker of whichever enum recipe
+    // compiled first (`action-placement@1`). The aggregate is the stable
+    // canonical owner by construction, so it ADOPTS + re-stamps ownership
+    // at apply time rather than aborting with a name collision (exit 6).
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, "action-placement@1", LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: withAggregateMarker("__enumeration-templates__"),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    // Routed through the create/adopt path (re-stamps ownership at apply
+    // time), NOT the name-collision error.
+    expect(action.status).toBe("create");
+    expect(action.reason).toMatch(/pre-aggregate owner marker/i);
+    expect(action.reason).toContain("action-placement@1");
+    expect(action.reason).toContain("__enumeration-templates__");
+  });
+
+  it("still errors when a DIFFERENT synthetic aggregate owns the twin (real conflict, not a migration)", async () => {
+    // Two distinct aggregates claiming the same item is a genuine bug —
+    // the migration adoption is scoped to a CONCRETE legacy owner only.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedMarkedTwin(client, "__shared-data-folders__", LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: withAggregateMarker("__enumeration-templates__"),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).toBe("error");
+    expect(action.reason).toMatch(/name collision/i);
+  });
 });
 
 describe("CreateItem — fieldless creates with downstream SetField ops converge too", () => {

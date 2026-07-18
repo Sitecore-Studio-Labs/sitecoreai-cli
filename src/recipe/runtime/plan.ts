@@ -991,6 +991,16 @@ const convergenceEligible = (
 const markerHandleBase = (handle: string): string => handle.split("@")[0] ?? handle;
 
 /**
+ * Whether a `Scai Handle` marker is a synthetic cross-recipe AGGREGATE
+ * handle (`__enumeration-templates__`, `__shared-data-folders__`, …) —
+ * the `__…__` convention `compile/aggregates.ts` mints for shared items
+ * a whole recipe SET co-owns. Concrete recipe handles never take this
+ * form (`action-placement@1`, `hero@1`). Used by the ownership-collision
+ * guard to recognise the pre-aggregate → aggregate ownership migration.
+ */
+const isSyntheticAggregateHandle = (handle: string): boolean => /^__.+__$/.test(handle);
+
+/**
  * The live templateId a rebind candidate must carry, or `null` when it
  * can't be known — in which case the template check is skipped (the
  * pre-check-era behavior).
@@ -1197,6 +1207,27 @@ const planCreateItem = ({
       twinMarker !== "" &&
       markerHandleBase(twinMarker) !== markerHandleBase(opMarker)
     ) {
+      // Pre-aggregate → aggregate ownership MIGRATION. A synthetic
+      // cross-recipe aggregate (`__enumeration-templates__`,
+      // `__shared-data-folders__`, …) claims shared items that a whole
+      // recipe SET co-owns. Before those items were centralised under the
+      // aggregate, they were materialised by whichever member recipe
+      // compiled FIRST, which stamped ITS handle as the owner marker
+      // (`action-placement@1`). On an environment installed before the
+      // aggregate existed, that legacy per-recipe marker is still on the
+      // live item, so the aggregate op sees a marker mismatch. This is NOT
+      // a genuine two-recipes-collide bug — the aggregate is the stable
+      // canonical owner by construction, so ADOPT + re-stamp the marker
+      // (via the apply-time create pre-check) instead of aborting. Only
+      // when the legacy owner is a CONCRETE recipe; an item owned by a
+      // DIFFERENT aggregate is a real conflict and still errors.
+      if (isSyntheticAggregateHandle(opMarker) && !isSyntheticAggregateHandle(twinMarker)) {
+        return planFreshCreate(
+          `Item '${op.name}' at '${remote.path}' (${remote.itemId}) carries the pre-aggregate ` +
+            `owner marker '${twinMarker}'; aggregate '${opMarker}' is the stable canonical owner — ` +
+            `adopting + re-stamping ownership at apply time.`
+        );
+      }
       return {
         index,
         operation: op,

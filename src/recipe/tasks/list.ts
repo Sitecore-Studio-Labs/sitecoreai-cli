@@ -2,7 +2,7 @@ import { readRootConfiguration } from "@/config/root-config";
 import { FRONT_AGGREGATE_HANDLES, TAIL_AGGREGATE_HANDLES } from "../compile";
 import { collectRecipeLanguages } from "../compile/languages";
 import {
-  extractRecipeDependencies,
+  applyOrderDependencies,
   RECIPE_APPLY_RANK,
   stableTopologicalSortWithinRanks,
 } from "../compile/ordering";
@@ -48,16 +48,15 @@ export const runRecipeList = async (options: RecipeCompileOptions): Promise<void
   const { files, source } = await resolveRecipeInputs(options, root);
   const recipes = await Promise.all(files.map((file) => loadRecipe(file)));
   const ordered = stableTopologicalSortWithinRanks(recipes);
-  const inSet = new Set(ordered.map((recipe) => recipe.handle));
+
+  // `dependsOn` is the true APPLY-ORDER graph (backward/same-rank edges +
+  // the implicit dictionary→site edge, forward refs dropped) — a driver can
+  // schedule on it directly, across ranks. See `applyOrderDependencies`.
   const entries = ordered.map((recipe) => ({
     handle: recipe.handle,
     kind: recipe.kind,
     rank: RECIPE_APPLY_RANK[recipe.kind],
-    // In-set edges only — a reference to a handle outside the loaded set
-    // can't be scheduled and already resolves against the tenant. The
-    // set is passed so page-tree nesting edges (itemPath ancestry) ride
-    // along — the same edges the apply-order topo-sort schedules by.
-    dependsOn: extractRecipeDependencies(recipe, ordered).filter((handle) => inSet.has(handle)),
+    dependsOn: applyOrderDependencies(recipe, ordered),
     languages: collectRecipeLanguages(recipe),
   }));
 
@@ -69,6 +68,11 @@ export const runRecipeList = async (options: RecipeCompileOptions): Promise<void
       command: "recipe.list",
       source,
       count: entries.length,
+      // Signals that `dependsOn` is the apply-order graph (backward/same-rank
+      // edges + the implicit dictionary→site edge, forward refs dropped), so a
+      // driver may schedule on it ACROSS ranks. Absent on older CLIs ⇒ treat
+      // `dependsOn` as reference edges usable only WITHIN a rank.
+      dependencyModel: "apply-order",
       languages,
       // The synthetic aggregate handles a `--handles`-scoped push drops:
       // `pre` must ride with the driver's first chunk, `post` runs once

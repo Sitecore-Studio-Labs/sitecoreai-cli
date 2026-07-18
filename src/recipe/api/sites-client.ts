@@ -117,6 +117,30 @@ export const presentLanguageCodes = (languages: Language[]): Set<string> => {
 };
 
 /**
+ * The environment's SITE-WRITABLE language codes — the full regional
+ * identities a site's `supportedLanguages` may carry, lowercased.
+ *
+ * Distinct from {@link presentLanguageCodes} on purpose: that set is
+ * iso-inclusive (it adds a language's bare `iso` AND its `regionalIsoCode`),
+ * so a registered `de-DE` pollutes it with a bare `de`. A bare base like
+ * `de` is a valid localize FALLBACK target but is NOT a registrable site
+ * language — the Sites API rejects it on a `supportedLanguages` PATCH
+ * ("The provided language 'de' with region code '' is not supported").
+ * This set carries each language's `regionalIsoCode` (its real, region-
+ * qualified identity — `de-DE`, and `en`/`da` for standalones), falling
+ * back to `iso` only when no regional code exists, so a bare base derived
+ * purely from a regional's iso never appears.
+ */
+export const presentSiteLanguageCodes = (languages: Language[]): Set<string> => {
+  const set = new Set<string>();
+  for (const lang of languages) {
+    if (lang.regionalIsoCode) set.add(lang.regionalIsoCode.toLowerCase());
+    else if (lang.iso) set.add(lang.iso.toLowerCase());
+  }
+  return set;
+};
+
+/**
  * Adapter: build a `SitesApiClient` over the function-style Sites API
  * surface. The `options` arg carries the OAuth-resolved auth header and
  * base URL; the underlying `sitesRequest` re-uses these per call.

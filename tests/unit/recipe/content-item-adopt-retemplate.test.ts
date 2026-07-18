@@ -402,13 +402,13 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
       fields: [{ name: "Scai Handle", value: marker }],
     });
 
-  it("errors precisely when the name-twin is owned by a DIFFERENT recipe", async () => {
-    // The blank-environment batch-9 class: two recipes materialise items
-    // with the same name under the shared content folder. The twin is the
-    // OTHER recipe's item — adopting it can never be right (its template
-    // may not resolve this recipe's fields; even when it does, both
-    // recipes would ping-pong one item), and deleting it would destroy
-    // the other recipe's content. Fail at plan time naming both owners.
+  it("adopts + re-stamps a twin owned by a DIFFERENT recipe (idempotent re-install)", async () => {
+    // Idempotent-by-default: a live item whose owner marker differs from the
+    // op's is almost always the same content re-installed after the compile
+    // order / recipe set shifted — NOT a genuine two-recipes-collide bug.
+    // Aborting broke every re-push against an environment with history, so we
+    // adopt + re-stamp to the current op's marker (converge, last-writer-wins)
+    // instead of erroring.
     const client = new MockAuthoringClient();
     seedParent(client);
     seedMarkedTwin(client, FOREIGN_HANDLE, LIVE_TEMPLATE_ID);
@@ -420,11 +420,36 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
       capturedItemIds: capturedWithLiveTemplate(),
     });
 
-    expect(action.status).toBe("error");
-    expect(action.reason).toMatch(/name collision/i);
-    expect(action.reason).toContain(FOREIGN_HANDLE);
-    expect(action.reason).toContain("footer-link-features@1");
-    expect(action.reason).toContain(STRANDED_ITEM_ID);
+    expect(action.status).not.toBe("error");
+    expect(action.reason).toMatch(/idempotent re-install|adopting \+ re-stamping/i);
+  });
+
+  it("treats an INHERITED marker as unmarked (does not collide with the template owner)", async () => {
+    // The `Scai Handle` field is SHARED, so an item built on a component's
+    // template inherits the component's handle from that template's
+    // `__Standard Values`. A page's scoped-datasource item therefore reads
+    // as "owned by <component>@1" even though the page created it. The guard
+    // must read OWN markers only — an inherited value (containsStandardValue)
+    // is not ownership, so the op adopts instead of erroring.
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    client.preload({
+      itemId: STRANDED_ITEM_ID,
+      templateId: LIVE_TEMPLATE_ID,
+      parentId: DATA_ITEM_ID,
+      name: ITEM_NAME,
+      path: ITEM_PATH,
+      fields: [{ name: "Scai Handle", value: FOREIGN_HANDLE, containsStandardValue: true }],
+    });
+
+    const action = await buildAction({
+      index: 0,
+      op: contentItemCreateOp(),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    expect(action.status).not.toBe("error");
   });
 
   it("does not flag a re-versioned recipe's own twin (@1 -> @2 handle bump)", async () => {
@@ -491,10 +516,10 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
     expect(action.reason).toContain("CreateOnly");
   });
 
-  it("still errors for a FOREIGN-marked twin of a fieldless content item whose fields ride SetField ops", async () => {
-    // The guard must keep protecting the real collision class: a
-    // marker-only create whose fields arrive as separate SetField ops in
-    // the same push (the 0.34.5 content-item shape).
+  it("adopts a FOREIGN-marked twin of a fieldless content item whose fields ride SetField ops", async () => {
+    // Idempotent-by-default extends to the marker-only content-item shape
+    // (fields arrive as separate SetField ops): a foreign-marked twin is
+    // adopted + re-stamped, not aborted.
     const client = new MockAuthoringClient();
     seedParent(client);
     seedMarkedTwin(client, FOREIGN_HANDLE, LIVE_TEMPLATE_ID);
@@ -511,8 +536,8 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
       fieldTargetRefKeys: new Set([ITEM_REF_KEY]),
     });
 
-    expect(action.status).toBe("error");
-    expect(action.reason).toMatch(/name collision/i);
+    expect(action.status).not.toBe("error");
+    expect(action.reason).toMatch(/idempotent re-install|adopting \+ re-stamping/i);
   });
 
   const withAggregateMarker = (marker: string): CreateItemOp => ({
@@ -543,9 +568,9 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
     });
 
     // Routed through the create/adopt path (re-stamps ownership at apply
-    // time), NOT the name-collision error.
+    // time), NOT an error.
     expect(action.status).toBe("create");
-    expect(action.reason).toMatch(/pre-aggregate owner marker/i);
+    expect(action.reason).toMatch(/idempotent re-install|adopting \+ re-stamping/i);
     expect(action.reason).toContain("action-placement@1");
     expect(action.reason).toContain("__enumeration-templates__");
   });
@@ -565,7 +590,7 @@ describe("CreateItem — marker-first identity (cross-recipe name collisions)", 
     });
 
     expect(action.status).toBe("error");
-    expect(action.reason).toMatch(/name collision/i);
+    expect(action.reason).toMatch(/aggregate ownership conflict/i);
   });
 });
 

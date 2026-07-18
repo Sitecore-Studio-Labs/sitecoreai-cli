@@ -785,6 +785,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
         options.provisionLanguages
       );
   const compiled: OperationIr[] = compileRecipeSet(recipes, {
+    onWarn: (message) => logger.warn(message),
     templatesRoot,
     renderingsRoot,
     componentsRoot,

@@ -29,6 +29,18 @@ export interface RemoteFieldValue {
   name?: string;
   /** Sitecore returns the raw stored value (string), regardless of field type. */
   value: string;
+  /**
+   * True when `value` is INHERITED from the template's `__Standard Values`
+   * rather than set on the item itself (Authoring GraphQL
+   * `ItemField.containsStandardValue`). Load-bearing for the `Scai Handle`
+   * ownership marker: the marker is a SHARED field, so a recipe that stamps
+   * it on a component template's `__Standard Values` makes every datasource
+   * item built on that template inherit the component's handle. Ownership
+   * must be read from an item's OWN marker, never an inherited one — an
+   * inherited marker means "unmarked" for ownership purposes. Optional so
+   * test mocks needn't populate it (absent ⇒ treated as own/not-inherited).
+   */
+  containsStandardValue?: boolean;
   /** Versioned fields carry these; shared fields do not. */
   language?: string;
   version?: number;

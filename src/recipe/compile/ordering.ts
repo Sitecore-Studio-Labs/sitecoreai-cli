@@ -136,6 +136,51 @@ export const extractRecipeDependencies = (
   return [...deps];
 };
 
+/**
+ * A recipe's in-set dependencies as a true APPLY-ORDER graph — what a batch
+ * driver schedules on directly, across ranks, without re-deriving anything.
+ * Distinct from {@link extractRecipeDependencies} (raw references) in two ways:
+ *
+ *   - **Forward refs dropped.** `recipeReferences()` emits every handle a
+ *     recipe names, including ones that apply LATER (a `site-template` at
+ *     rank 4 lists its `dictionaries` at rank 6). Those are references, not
+ *     "apply-after" edges — treating them as dependencies would invert the
+ *     apply order — so only backward / same-rank edges (`depRank <= selfRank`)
+ *     survive. Rank order encodes the forward direction.
+ *   - **Implicit `dictionary → site` injected.** A dictionary's items land
+ *     under `<site>/Dictionary`, whose bucket SXA scaffolds during
+ *     `CreateSiteFromTemplate`; but the dictionary's `site` field is usually
+ *     omitted (it targets the deploy-target site), so `recipeReferences()`
+ *     emits no edge. Injected here to every in-set site, mirroring the coarse
+ *     rank barrier ("sites before dictionaries"). This is the ONLY implicit
+ *     cross-rank apply-order dependency — pages / content-items / enumerations
+ *     target the pre-existing deploy-target site, not an in-set `SiteRecipe`.
+ *
+ * The emitted graph is a superset-safe over-approximation at worst (a
+ * dictionary depends on every in-set site, not only its host), never an
+ * under-approximation — so a driver may drop the coarse rank barrier and
+ * schedule purely on these edges without reordering risk.
+ */
+export const applyOrderDependencies = (recipe: Recipe, set: readonly Recipe[]): string[] => {
+  const inSet = new Set(set.map((r) => r.handle));
+  const rankByHandle = new Map(set.map((r) => [r.handle, RECIPE_APPLY_RANK[r.kind]]));
+  const selfRank = RECIPE_APPLY_RANK[recipe.kind];
+  const deps = new Set<string>();
+  for (const handle of extractRecipeDependencies(recipe, set)) {
+    if (!inSet.has(handle)) continue;
+    const depRank = rankByHandle.get(handle);
+    if (depRank !== undefined && depRank <= selfRank) deps.add(handle);
+  }
+  if (recipe.kind === "dictionary") {
+    for (const other of set) {
+      if (other.kind === "site" && other.handle !== recipe.handle) {
+        deps.add(other.handle);
+      }
+    }
+  }
+  return [...deps];
+};
+
 /** Bucket recipes by apply-rank, preserving input order within each bucket. */
 const groupByRank = (recipes: readonly Recipe[]): Map<number, Recipe[]> => {
   const groups = new Map<number, Recipe[]>();

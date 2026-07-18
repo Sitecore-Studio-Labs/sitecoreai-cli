@@ -12,6 +12,7 @@ import {
   SHARED_FOLDERS_AGGREGATE_HANDLE,
 } from "../../../src/recipe/compile/aggregates";
 import {
+  applyOrderDependencies,
   extractRecipeDependencies,
   RECIPE_APPLY_RANK,
   stableTopologicalSortWithinRanks,
@@ -80,6 +81,78 @@ describe("recipe list — apply-order manifest", () => {
     for (const recipe of set) {
       expect(RECIPE_APPLY_RANK[recipe.kind]).toBeTypeOf("number");
     }
+  });
+});
+
+/**
+ * `applyOrderDependencies` is the APPLY-ORDER graph `recipe list --json`
+ * emits as `dependsOn` — backward/same-rank edges only, with the implicit
+ * `dictionary → site` edge injected. A driver may schedule on it across
+ * ranks without reordering risk.
+ */
+describe("applyOrderDependencies — apply-order graph", () => {
+  const siteTemplate: Recipe = {
+    kind: "site-template",
+    schemaVersion: "1",
+    handle: "st@1",
+    name: "St",
+    displayName: "St",
+    pageTemplates: [],
+    pageDesigns: [],
+    dictionaries: ["dict@1"],
+  };
+  const site: Recipe = {
+    kind: "site",
+    schemaVersion: "1",
+    handle: "site@1",
+    name: "Site",
+    displayName: "Site",
+    siteTemplate: "st@1",
+  };
+  const dict: Recipe = {
+    kind: "dictionary",
+    schemaVersion: "1",
+    handle: "dict@1",
+    name: "Dict",
+    displayName: "Dict",
+    // `site` OMITTED — the common case, so no captured handle edge.
+    phrases: { hi: { defaultValue: "Hi" } },
+  };
+  const set = [siteTemplate, site, dict];
+
+  it("drops a FORWARD cross-rank reference (site-template → dictionary)", () => {
+    // st (rank 4) lists dict@1 (rank 6). extractRecipeDependencies keeps it;
+    // applyOrderDependencies drops it (would invert apply order).
+    expect(extractRecipeDependencies(siteTemplate, set)).toContain("dict@1");
+    expect(applyOrderDependencies(siteTemplate, set)).not.toContain("dict@1");
+    expect(applyOrderDependencies(siteTemplate, set)).toEqual([]);
+  });
+
+  it("injects the implicit dictionary → site edge when `site` is omitted", () => {
+    // No captured edge (site omitted), so recipeReferences has nothing…
+    expect(extractRecipeDependencies(dict, set)).not.toContain("site@1");
+    // …but the apply-order graph adds it (dictionary items nest under the site).
+    expect(applyOrderDependencies(dict, set)).toEqual(["site@1"]);
+  });
+
+  it("keeps a BACKWARD cross-rank reference (site → its site-template)", () => {
+    // site (rank 5) → site-template (rank 4): a real apply-after dependency.
+    expect(applyOrderDependencies(site, set)).toEqual(["st@1"]);
+  });
+
+  it("does not double the dictionary→site edge when `site` is set explicitly", () => {
+    const explicitDict: Recipe = { ...dict, site: "site@1" };
+    // Captured (site rank 5 < dict rank 6, backward) AND injected — deduped.
+    expect(applyOrderDependencies(explicitDict, [siteTemplate, site, explicitDict])).toEqual([
+      "site@1",
+    ]);
+  });
+
+  it("keeps backward same-direction refs a page-design composes (parity with the reference graph)", () => {
+    const exampleSet = [defaultPageDesignRecipe, standardHeaderRecipe, standardFooterRecipe];
+    const deps = applyOrderDependencies(defaultPageDesignRecipe, exampleSet);
+    expect(deps).toContain("standard-header@1");
+    expect(deps).toContain("standard-footer@1");
   });
 });
 

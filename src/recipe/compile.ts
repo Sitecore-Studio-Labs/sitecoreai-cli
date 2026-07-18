@@ -34,11 +34,13 @@ import {
   buildPlaceholderSettingsAggregate,
   buildSharedDataFolderInsertOptionsAggregate,
   buildSharedDataFoldersAggregate,
+  buildSharedFoldersAggregate,
   buildSiteDataRootAggregate,
   COMPONENT_SECTION_OWNERSHIP_AGGREGATE_HANDLE,
   detectSharedSubfolders,
   ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
   ENUMERATIONS_ROOT_AGGREGATE_HANDLE,
+  SHARED_FOLDERS_AGGREGATE_HANDLE,
   PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,
   SHARED_DATA_FOLDER_INSERT_OPTIONS_AGGREGATE_HANDLE,
   SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
@@ -295,6 +297,7 @@ const buildTemplatesMappingAggregate = (
 export const FRONT_AGGREGATE_HANDLES: readonly string[] = [
   SHARED_DATA_FOLDERS_AGGREGATE_HANDLE,
   ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
+  SHARED_FOLDERS_AGGREGATE_HANDLE,
 ];
 export const TAIL_AGGREGATE_HANDLES: readonly string[] = [
   TEMPLATES_MAPPING_AGGREGATE_HANDLE,
@@ -409,12 +412,26 @@ export function compileRecipeSet(
   // BEFORE the per-recipe pass runs.
   const enumerationTemplates = buildEnumerationTemplatesAggregate(recipes, context, setSite);
 
+  // Section-INDEPENDENT shared folders (enum grouping folders + Content
+  // Models / Page Templates group folders) — emitted ONCE under the stable
+  // `__shared-folders__` handle so a `--handles` chunk missing the arbitrary
+  // first-emitter can't leave the executor path-walker to auto-create them
+  // (which breaks the enum grouping folder's Insert Options chain). Built
+  // here so its refKeys can be pre-seeded before the per-recipe pass.
+  const sharedFolders = buildSharedFoldersAggregate(recipes, context, setSite);
+
   // Shared across the whole set so section / Component Folders /
   // Presentation Parameters group folders only emit once. Pre-seed the
-  // enum-templates sentinel so `ensureEnumerationTemplates` in the per-recipe
-  // pass resolves refKeys only — the aggregate above is the sole emitter.
+  // enum-templates sentinel + the `__shared-folders__` refKeys so the
+  // per-recipe `ensure*` calls resolve refKeys only — the FRONT aggregates
+  // above are the sole emitters.
   const emittedFolders = new Set<string>();
   if (enumerationTemplates) emittedFolders.add(enumerationTemplatesSentinel(setSite));
+  if (sharedFolders) {
+    for (const op of sharedFolders.operations) {
+      if (op.op === "CreateItem") emittedFolders.add(op.id);
+    }
+  }
   const irByHandle = compilePerRecipeIrs(recipes, perRecipeContext, emittedFolders);
 
   // Order per-recipe IRs by cross-recipe apply-rank, then topologically
@@ -435,6 +452,13 @@ export function compileRecipeSet(
     setSite
   );
   if (sharedDataFolderTemplates) irs.unshift(sharedDataFolderTemplates);
+
+  // Shared organisational folders: FRONT (per-recipe items nest under them
+  // via `parent`). Unshifted BEFORE the enum-templates trio so the final
+  // order is [enum-templates, shared-folders, …] — the enum grouping folders
+  // conform to the `Enumerations Folder` template the trio creates, so the
+  // trio must apply first.
+  if (sharedFolders) irs.unshift(sharedFolders);
 
   // Enum TEMPLATE trio: same FRONT-ordering requirement as the shared Data
   // Folder templates — per-recipe enum items reference these via

@@ -31,6 +31,7 @@ import { createScaiError } from "@/shared/errors";
 import {
   availableRenderingsSectionId,
   enumerationFolderId,
+  enumerationsFolderTemplateId,
   enumerationsRootId,
   enumerationsRootStandardValuesId,
   placeholderSettingsFolderId,
@@ -71,7 +72,10 @@ import {
 import { type ComponentSectionRecipe, type Recipe, resolveAllowedHandles } from "../schema/recipe";
 import {
   datasourceTemplateHandles,
+  ensureContentModelsGroupFolder,
+  ensureEnumerationGroupingFolders,
   ensureEnumerationTemplates,
+  ensurePageTemplatesGroupFolder,
   joinPath,
   sharedField,
   siteOf,
@@ -148,6 +152,30 @@ export const ENUMERATIONS_ROOT_AGGREGATE_HANDLE = "__enumerations-root__";
  * install.
  */
 export const ENUMERATION_TEMPLATES_AGGREGATE_HANDLE = "__enumeration-templates__";
+
+/**
+ * Stable handle for the SECTION-INDEPENDENT shared organisational folders —
+ * enumeration grouping folders (`location.folder`), Content Models group
+ * folders, and Page Templates group folders (both `meta.tax.group`).
+ *
+ * A FRONT aggregate, for the same reason as the shared Data Folder / enum
+ * templates: these folders are referenced by per-recipe items via
+ * `templateOf` / `parent`, and are deterministic + shared across recipes.
+ * Emitted inline today by the `ensure*` helpers into whichever recipe
+ * compiled first, they get DROPPED from a `--handles` chunk that excludes
+ * that owner — the executor's path-walker then auto-creates them as the
+ * generic `Folder` template. For enumeration grouping folders that is an
+ * author-visible bug (a generic Folder lacks the `Enumerations Folder`
+ * Standard Values, so right-click → Insert offers no `Enumeration`).
+ * Owning them here makes the emission batch-order-independent.
+ *
+ * NOTE: the section-scoped Component Folders / Presentation Parameters
+ * BUCKETS are deliberately NOT hoisted here — they nest under section
+ * folders that `ComponentSectionRecipe`s richly own (icon/displayName/
+ * sortOrder) as per-recipe IRs, and a FRONT aggregate would invert that
+ * ordering. They stay on the per-recipe `ensure*` path.
+ */
+export const SHARED_FOLDERS_AGGREGATE_HANDLE = "__shared-folders__";
 
 /**
  * Stable handle for the Placeholder Settings items — one per unique
@@ -793,6 +821,95 @@ export const buildEnumerationTemplatesAggregate = (
   return OperationIrSchema.parse({
     schemaVersion: "1",
     recipeHandle: ENUMERATION_TEMPLATES_AGGREGATE_HANDLE,
+    operations,
+  });
+};
+
+/**
+ * Build the synthetic IR materialising the SECTION-INDEPENDENT shared
+ * organisational folders once for the whole set, under the stable
+ * `__shared-folders__` handle: enumeration grouping folders
+ * (`location.folder`), Content Models group folders, and Page Templates
+ * group folders (`meta.tax.group`). Returns null when the set declares none.
+ *
+ * Reuses the same `ensure*` helpers the per-recipe pass calls, with a fresh
+ * dedup set so emission is byte-for-byte identical (only the owning IR
+ * handle changes) and shared prefixes/groups coalesce within the aggregate.
+ * `compileRecipeSet` pre-seeds the emitted refKeys into the per-recipe
+ * `emittedFolders` so the per-recipe `ensure*` calls short-circuit to
+ * refKey-only. Keys are collected sorted so emission order is deterministic.
+ *
+ * Enumeration grouping folders conform to the shared `Enumerations Folder`
+ * template (created by the `__enumeration-templates__` aggregate), so this
+ * aggregate must apply AFTER it — `compileRecipeSet` orders the FRONT
+ * unshifts accordingly.
+ */
+export const buildSharedFoldersAggregate = (
+  recipes: readonly Recipe[],
+  context: CompileContext,
+  site: string
+): OperationIr | null => {
+  const operations: Operation[] = [];
+  // Fresh set → force emission (this aggregate is the sole emitter); it also
+  // dedups shared prefixes/groups across recipes within the aggregate.
+  const emitted = new Set<string>();
+
+  // Enumeration grouping folders (`location.folder`).
+  if (context.enumerationsRoot) {
+    const folderTemplateRefKey = enumerationsFolderTemplateId(site);
+    const enumFolderPaths = [
+      ...new Set(
+        recipes
+          .filter((r): r is Extract<Recipe, { kind: "enumeration" }> => r.kind === "enumeration")
+          .map((r) => r.location?.folder)
+          .filter((f): f is string[] => Array.isArray(f) && f.length > 0)
+          .map((f) => f.join("/"))
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+    for (const joined of enumFolderPaths) {
+      ensureEnumerationGroupingFolders(
+        operations,
+        context,
+        joined.split("/"),
+        folderTemplateRefKey,
+        emitted
+      );
+    }
+  }
+
+  // Content Models group folders (`meta.tax.group`).
+  const contentGroups = [
+    ...new Set(
+      recipes
+        .filter(
+          (r): r is Extract<Recipe, { kind: "content-template" }> => r.kind === "content-template"
+        )
+        .map((r) => r.meta?.tax?.group)
+        .filter((g): g is string => typeof g === "string" && g.length > 0)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  for (const group of contentGroups) {
+    ensureContentModelsGroupFolder(operations, context, group, emitted);
+  }
+
+  // Page Templates group folders (`meta.tax.group`).
+  const pageGroups = [
+    ...new Set(
+      recipes
+        .filter((r): r is Extract<Recipe, { kind: "page-template" }> => r.kind === "page-template")
+        .map((r) => r.meta?.tax?.group)
+        .filter((g): g is string => typeof g === "string" && g.length > 0)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  for (const group of pageGroups) {
+    ensurePageTemplatesGroupFolder(operations, context, group, emitted);
+  }
+
+  if (operations.length === 0) return null;
+
+  return OperationIrSchema.parse({
+    schemaVersion: "1",
+    recipeHandle: SHARED_FOLDERS_AGGREGATE_HANDLE,
     operations,
   });
 };

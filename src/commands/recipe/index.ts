@@ -192,7 +192,7 @@ const createPushCommand = (): Command => {
   command.addOption(
     new Option(
       "--from-compiled <dir>",
-      "Directory of pre-compiled .ir.json files (from `recipe compile --output-dir`). Loads the IR set and SKIPS compilation entirely — no recipe loading, no compile, no tenant-read compile inputs. The 'compile once, apply many' seam: compile the full set once, then run each chunk as `push --from-compiled <dir> --handles <chunk>`, paying the full-set compile a single time instead of once per chunk. Locale scope is fixed at compile; --languages is ignored here. Mutually exclusive with --input."
+      "Directory of pre-compiled .ir.json files (from `recipe compile --output-dir`). Loads the IR set and SKIPS compilation entirely — no recipe loading, no compile, no tenant-read compile inputs. The 'compile once, apply many' seam: compile the full set once, then run each chunk as `push --from-compiled <dir> --handles <chunk>`, paying the full-set compile a single time instead of once per chunk. `--languages` is honored as an apply-time locale filter over the loaded IR (drops out-of-scope version-stack ops), so one all-language artifact can drive both the en-first content push (`--languages en`) and every localize bin without recompiling. Mutually exclusive with --input."
     ).conflicts("input")
   );
   addRecipeRootOptions(command);

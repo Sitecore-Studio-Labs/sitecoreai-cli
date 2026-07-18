@@ -7,6 +7,7 @@ import {
   enumerationFolderId,
   enumerationsFolderTemplateId,
   enumerationsFolderTemplateStandardValuesId,
+  enumerationsGroupingFolderId,
   enumerationTemplateId,
   enumerationTemplateSectionId,
   enumerationTemplateStandardValuesId,
@@ -754,6 +755,71 @@ export const ensurePageTemplatesGroupFolder = (
     fields: [sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: FOLDER_ICON })],
   } satisfies CreateItemOp);
   return refKey;
+};
+
+/**
+ * Ensure the grouping-folder chain for an enumeration's `location.folder`
+ * exists under `<enumerationsRoot>`, and return the leaf's
+ * `{ parentPath, parentRef }` so the per-enum container nests under it.
+ *
+ * Multi-segment paths (`"Theme/Color"` → `["Theme", "Color"]`) emit ONE
+ * `CreateItem` per cumulative segment, each conforming to the per-site
+ * `Enumerations Folder` template (`folderTemplateRefKey`) — an explicit
+ * emit per segment is required so the executor's path-walker doesn't
+ * auto-create intermediates as the generic `Folder` template (which lacks
+ * the Enumerations Folder Standard Values, breaking the author Insert
+ * Options chain). Each segment is keyed on its CUMULATIVE path via
+ * `enumerationsGroupingFolderId`, so recipes sharing a prefix reuse the
+ * same items; `emittedFolders` dedups within one compile.
+ *
+ * When a segment's refKey is already in `emittedFolders` (e.g. pre-seeded
+ * by the `__shared-folders__` aggregate, or emitted by an earlier recipe)
+ * the `CreateItem` is skipped but the parent chain is still walked, so the
+ * returned leaf ref is correct regardless.
+ */
+export const ensureEnumerationGroupingFolders = (
+  operations: Operation[],
+  context: CompileContext,
+  folderSegments: readonly string[] | undefined,
+  folderTemplateRefKey: string,
+  emittedFolders: Set<string>
+): { parentPath: string; parentRef: CreateItemOp["parent"] } => {
+  const site = siteOf(context);
+  const root = context.enumerationsRoot;
+  if (!root) {
+    throw createScaiError(
+      "ensureEnumerationGroupingFolders requires enumerationsRoot on the compile context.",
+      "INPUT_INVALID"
+    );
+  }
+  let parentPath = root;
+  let parentRef: CreateItemOp["parent"] = { kind: "ref-path", value: root };
+  if (!folderSegments || folderSegments.length === 0) return { parentPath, parentRef };
+
+  const cumulativeSegments: string[] = [];
+  for (const segment of folderSegments) {
+    cumulativeSegments.push(segment);
+    const cumulativePath = cumulativeSegments.join("/");
+    const segmentRefKey = enumerationsGroupingFolderId(site, cumulativePath);
+    const segmentPath = joinPath(root, cumulativePath);
+    if (!emittedFolders.has(segmentRefKey)) {
+      emittedFolders.add(segmentRefKey);
+      operations.push({
+        op: "CreateItem",
+        policy: "CreateOnly",
+        label: `enumerations-grouping-folder:${site}:${cumulativePath}`,
+        id: segmentRefKey,
+        path: segmentPath,
+        parent: parentRef,
+        templateOf: folderTemplateRefKey,
+        name: segment,
+        fields: [],
+      } satisfies CreateItemOp);
+    }
+    parentPath = segmentPath;
+    parentRef = { kind: "ref-recipe", refKey: segmentRefKey };
+  }
+  return { parentPath, parentRef };
 };
 
 /**

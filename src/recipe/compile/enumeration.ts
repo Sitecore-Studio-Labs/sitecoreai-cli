@@ -1,4 +1,4 @@
-import { enumerationFolderId, enumerationsGroupingFolderId, enumValueId } from "../items/guids";
+import { enumerationFolderId, enumValueId } from "../items/guids";
 import {
   type CreateItemOp,
   type Operation,
@@ -10,6 +10,7 @@ import { createScaiError } from "../../shared/errors";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";
 import {
+  ensureEnumerationGroupingFolders,
   ensureEnumerationTemplates,
   joinPath,
   sharedField,
@@ -131,59 +132,22 @@ export function compileEnumerationRecipe(
     );
   }
 
-  // Optional grouping folder(s) driven by `location.folder`. CreateOnly +
-  // dedup via emittedFolders so multiple recipes naming the same folder
-  // share one item. Multi-segment paths (e.g. "Components/Card") split
-  // on `/` — EVERY segment gets an explicit CreateItem conforming to
-  // the per-site Enumerations Folder template (intermediates included).
-  // Without an explicit emit per segment, Sitecore's executor path-walker
-  // auto-creates intermediates as the generic `Folder` template, which
-  // breaks the Insert Options chain (a generic Folder doesn't carry
-  // the Enumerations Folder Standard Values, so authors right-clicking
-  // `Components/` see no Insert Options for `Enumeration` /
-  // `Enumerations Folder`).
-  //
-  // Each segment is keyed on its CUMULATIVE path (`enumerationsGroupingFolderId(site,
-  // cumulativePath)`) so two recipes sharing a prefix (`Components/Card`
-  // + `Components/Tabs`) reuse the same `Components` item rather than
-  // colliding. Parent chain: first segment ref-paths the enumerations
-  // root; subsequent segments ref-recipe the prior segment so the
-  // executor resolves the captured itemId.
-  let parentPath = context.enumerationsRoot;
-  let parentRef: CreateItemOp["parent"] = {
-    kind: "ref-path",
-    value: context.enumerationsRoot,
-  };
-  // `recipe.location.folder` is normalized to `string[]` by the schema
-  // (`FolderPath` in schema/recipe.ts) — both `"Theme/Color"` and
-  // `["Theme", "Color"]` input shapes land here as `["Theme", "Color"]`,
-  // already trimmed and non-empty.
-  const folderSegments = recipe.location?.folder;
-  if (folderSegments && folderSegments.length > 0) {
-    const cumulativeSegments: string[] = [];
-    for (const segment of folderSegments) {
-      cumulativeSegments.push(segment);
-      const cumulativePath = cumulativeSegments.join("/");
-      const segmentRefKey = enumerationsGroupingFolderId(site, cumulativePath);
-      const segmentPath = joinPath(context.enumerationsRoot, cumulativePath);
-      if (!emittedFolders.has(segmentRefKey)) {
-        emittedFolders.add(segmentRefKey);
-        operations.push({
-          op: "CreateItem",
-          policy: "CreateOnly",
-          label: `enumerations-grouping-folder:${site}:${cumulativePath}`,
-          id: segmentRefKey,
-          path: segmentPath,
-          parent: parentRef,
-          templateOf: folderTemplateRefKey,
-          name: segment,
-          fields: [],
-        } satisfies CreateItemOp);
-      }
-      parentPath = segmentPath;
-      parentRef = { kind: "ref-recipe", refKey: segmentRefKey };
-    }
-  }
+  // Optional grouping folder(s) driven by `location.folder`. Extracted to
+  // `ensureEnumerationGroupingFolders` so the `__shared-folders__` FRONT
+  // aggregate can materialise the SAME chain once for the whole set — a
+  // grouping folder shared by two enum recipes that land in separate
+  // `--handles` chunks would otherwise be owned by whichever compiled
+  // first, and a chunk missing that owner leaves the executor's path-walker
+  // to auto-create the folder as a generic `Folder` (breaking the Insert
+  // Options chain). `recipe.location.folder` is normalized to a trimmed,
+  // non-empty `string[]` by the schema (`FolderPath`).
+  const { parentPath, parentRef } = ensureEnumerationGroupingFolders(
+    operations,
+    context,
+    recipe.location?.folder,
+    folderTemplateRefKey,
+    emittedFolders
+  );
 
   // Per-enum container item (e.g. `Color Scheme`, `Heading Size`).
   // Conforms to the `Enumeration` template — NOT `Enumerations Folder`,

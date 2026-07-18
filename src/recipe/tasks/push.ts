@@ -30,7 +30,7 @@ import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
 import { alignMediaLibraryRootWithSite } from "./media-root";
-import { resolveScopedLanguages } from "./scoped-languages";
+import { languageScopeMatches, resolveScopedLanguages } from "./scoped-languages";
 import { createRollbackLogger } from "../rollback/rollback-log";
 import type { Recipe } from "../schema/recipe";
 import {
@@ -202,6 +202,101 @@ const applyIrScopeFilters = (
     );
   }
   return irs;
+};
+
+/**
+ * The op's CONTENT-LOCALE language, or `undefined` for language-agnostic
+ * ops. Only `SetField` (versioned field write) and `AddItemVersion`
+ * (version-stack creation) carry a per-locale language.
+ *
+ * Deliberately NOT `CreateSiteFromTemplate.language` — that is the site's
+ * PRIMARY language configuration (Sites API `NewSiteInput.language`), not a
+ * per-locale content write, and must never be locale-filtered. `CreateItem`
+ * is language-agnostic structure (it makes default version 1); its per-field
+ * `language` entries are handled separately in `filterOpsToLanguageScope`.
+ */
+const opContentLanguage = (op: Operation): string | undefined =>
+  op.op === "SetField" || op.op === "AddItemVersion" ? op.language : undefined;
+
+/**
+ * Slice one IR's ops to a `--languages` scope: drop version-stack ops
+ * (`AddItemVersion` / versioned `SetField`, incl. the per-language
+ * `__Final Renderings` `clearWhenEquivalentTo` guard) whose explicit
+ * `language` is out of scope, and drop out-of-scope per-language entries
+ * from each `CreateItem.fields`. Language-agnostic ops and shared /
+ * default-version writes (`language` undefined) are always kept.
+ *
+ * An `AddItemVersion` and its dependent versioned `SetField`s share the
+ * same language, so they keep or drop as a unit — a surviving versioned
+ * write never loses the version-creation op it depends on. Relative order
+ * is preserved (filter is order-stable).
+ */
+const filterOpsToLanguageScope = (
+  operations: readonly Operation[],
+  scope: readonly string[]
+): Operation[] =>
+  operations
+    .filter((op) => {
+      const lang = opContentLanguage(op);
+      return lang === undefined || languageScopeMatches(scope, lang);
+    })
+    .map((op) =>
+      op.op === "CreateItem"
+        ? {
+            ...op,
+            fields: op.fields.filter(
+              (f) => f.language === undefined || languageScopeMatches(scope, f.language)
+            ),
+          }
+        : op
+    );
+
+/**
+ * Post-compile LANGUAGE scoping for `--from-compiled` pushes.
+ *
+ * A compiling push bakes locale scope at compile (`availableLanguages`); a
+ * `--from-compiled` push loads a pre-baked artifact, so `--languages` would
+ * otherwise be inert. This applies the scope at APPLY time as an op filter
+ * (`filterOpsToLanguageScope`), so a single ALL-LANGUAGE artifact serves
+ * both the en-first content phase (`--languages en`) and every localize bin
+ * (`--languages <bin>`) with no per-phase recompile. IRs left empty by the
+ * slice are dropped (nothing to apply for this scope).
+ *
+ * No-op unless `--from-compiled` is set with a non-empty `--languages`
+ * (a compiling push already scoped at compile; an unscoped from-compiled
+ * push applies every baked locale).
+ */
+const applyLanguageScopeFilter = (
+  input: { ir: OperationIr }[],
+  options: RecipePushOptions,
+  logger: ReturnType<typeof toLogger>
+): { ir: OperationIr }[] => {
+  if (!options.fromCompiled) return input;
+  const scope = options.languages?.map((c) => c.trim()).filter((c) => c.length > 0);
+  if (!scope || scope.length === 0) return input;
+
+  let droppedOps = 0;
+  let droppedIrs = 0;
+  const scoped = input
+    .map(({ ir }) => {
+      const operations = filterOpsToLanguageScope(ir.operations, scope);
+      droppedOps += ir.operations.length - operations.length;
+      return { ir: { ...ir, operations } };
+    })
+    .filter(({ ir }) => {
+      if (ir.operations.length > 0) return true;
+      droppedIrs += 1;
+      return false;
+    });
+
+  if (droppedOps > 0 || droppedIrs > 0) {
+    logger.info(
+      `--languages ${scope.join(",")} (--from-compiled): dropped ${droppedOps} out-of-scope locale op(s)${
+        droppedIrs > 0 ? ` and ${droppedIrs} now-empty IR(s)` : ""
+      }.`
+    );
+  }
+  return scoped;
 };
 
 /**
@@ -531,13 +626,17 @@ const resolveApplyConcurrency = (): number => {
  *
  * The from-compiled path skips language resolution, which is also where
  * `--provision-languages` registers locales — so reject that combination
- * rather than silently dropping the provisioning. `--languages` is a
- * COMPILE-time scope baked into the IR; it can't re-narrow a pre-compiled
- * set at apply, so warn rather than mislead.
+ * rather than silently dropping the provisioning.
+ *
+ * `--languages` IS honored on `--from-compiled`: it's applied at apply time
+ * as a per-locale OP filter over the loaded IR (see
+ * `applyLanguageScopeFilter`), not a re-compile. A single all-language
+ * artifact can therefore serve the en-first content phase (`--languages en`)
+ * and every localize bin (`--languages <bin>`) without a per-phase recompile.
  */
 const assertFromCompiledFlags = (
   options: RecipePushOptions,
-  logger: ReturnType<typeof toLogger>
+  _logger: ReturnType<typeof toLogger>
 ): void => {
   if (options.provisionLanguages) {
     throw createScaiError(
@@ -546,11 +645,6 @@ const assertFromCompiledFlags = (
       {
         hint: "Register the locales first (a compiling push with --provision-languages, or `scai` language provisioning), then run the apply-only chunks with --from-compiled.",
       }
-    );
-  }
-  if (options.languages && options.languages.length > 0) {
-    logger.warn(
-      "--languages is ignored with --from-compiled: locale scope is fixed when the IR is compiled. Re-compile with the desired --languages scope to change it."
     );
   }
 };
@@ -737,7 +831,17 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // against the full set, so dropping unmatched IRs here is safe."
   const crossRecipeRefs = buildCrossRecipeRefs(allIrs, pageDesignsRoot);
 
-  const irs = applyIrScopeFilters(allIrs, options, logger);
+  // Handle/aggregate scoping first (drops whole IRs), then LANGUAGE scoping
+  // (drops out-of-scope locale ops within the surviving IRs — only active on
+  // `--from-compiled --languages`, letting one all-language artifact serve
+  // the en phase and every localize bin without recompiling). Both run AFTER
+  // `crossRecipeRefs` is seeded from the full pre-filter set, so neither
+  // breaks cross-batch reference resolution.
+  const irs = applyLanguageScopeFilter(
+    applyIrScopeFilters(allIrs, options, logger),
+    options,
+    logger
+  );
 
   // Lazy-build a SitesApiClient only when an IR in the set needs one
   // (i.e. carries a CreateSiteFromTemplate op). Component / partial /

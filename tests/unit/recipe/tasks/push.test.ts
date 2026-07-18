@@ -995,16 +995,131 @@ describe("runRecipePush — --from-compiled (compile once, apply many)", () => {
     );
   });
 
-  it("warns that --languages is ignored (locale scope is fixed at compile)", async () => {
+  const mixedLocaleIr = () =>
+    makeIr("page", [
+      {
+        op: "CreateItem",
+        id: "c1",
+        path: "/t/Page",
+        parent: { kind: "ref-path", value: "/t" },
+        templateOf: "tpl",
+        name: "Page",
+        fields: [
+          { fieldId: "f-shared", value: { kind: "string", value: "s" } },
+          {
+            fieldId: "f-fr",
+            language: "fr-CA",
+            version: 1,
+            value: { kind: "string", value: "fr" },
+          },
+          { fieldId: "f-de", language: "de", version: 1, value: { kind: "string", value: "de" } },
+        ],
+      },
+      { op: "AddItemVersion", label: "v-fr", itemRefKey: "c1", language: "fr-CA", version: 1 },
+      {
+        op: "SetField",
+        label: "sf-fr",
+        itemRefKey: "c1",
+        fieldId: "f",
+        language: "fr-CA",
+        version: 1,
+        value: { kind: "string", value: "x" },
+      },
+      { op: "AddItemVersion", label: "v-de", itemRefKey: "c1", language: "de", version: 1 },
+      {
+        op: "SetField",
+        label: "sf-de",
+        itemRefKey: "c1",
+        fieldId: "f",
+        language: "de",
+        version: 1,
+        value: { kind: "string", value: "y" },
+      },
+      {
+        op: "SetField",
+        label: "sf-shared",
+        itemRefKey: "c1",
+        fieldId: "f2",
+        value: { kind: "string", value: "z" },
+      },
+    ]);
+
+  it("applies --languages as an apply-time locale filter over the loaded IR", async () => {
+    vi.mocked(io.loadIr).mockResolvedValue(mixedLocaleIr());
+
+    // Bare `fr` covers the regional `fr-CA` variant (languageScopeMatches).
     await runRecipePush({
       allowWrite: true,
       fromCompiled: "/artifact",
       languages: ["fr"],
     } as never);
 
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("--languages is ignored with --from-compiled")
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    const executed = vi.mocked(executeIr).mock.calls[0][0] as {
+      operations: { op: string; label?: string; fields?: { fieldId: string }[] }[];
+    };
+    // Kept: CreateItem (structural), the fr version stack, and the shared
+    // (language-undefined) SetField. Dropped: the de version stack.
+    expect(executed.operations.map((o) => o.label ?? o.op)).toEqual([
+      "CreateItem",
+      "v-fr",
+      "sf-fr",
+      "sf-shared",
+    ]);
+    // CreateItem keeps its shared + in-scope field entries, drops the de one.
+    // (The injected `Scai Handle` marker field is language-agnostic → kept.)
+    const createItem = executed.operations.find((o) => o.op === "CreateItem")!;
+    const fieldIds = createItem.fields!.map((f) => f.fieldId);
+    expect(fieldIds).toContain("f-shared");
+    expect(fieldIds).toContain("f-fr");
+    expect(fieldIds).not.toContain("f-de");
+    // No warning — the flag is honored now.
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.stringContaining("--languages is ignored"));
+  });
+
+  it("drops IRs left empty by the language slice", async () => {
+    vi.mocked(io.loadIr)
+      .mockResolvedValueOnce(mixedLocaleIr())
+      .mockResolvedValueOnce(
+        makeIr("de-only", [
+          { op: "AddItemVersion", label: "v-de", itemRefKey: "d1", language: "de", version: 1 },
+          {
+            op: "SetField",
+            label: "sf-de",
+            itemRefKey: "d1",
+            fieldId: "f",
+            language: "de",
+            version: 1,
+            value: { kind: "string", value: "y" },
+          },
+        ])
+      );
+    vi.mocked(shared.resolveCompiledIrInputs).mockResolvedValue({
+      files: ["/artifact/page.ir.json", "/artifact/de-only.ir.json"],
+      source: "input-flag",
+    } as never);
+
+    await runRecipePush({
+      allowWrite: true,
+      fromCompiled: "/artifact",
+      languages: ["fr"],
+    } as never);
+
+    // The de-only IR has nothing left after the fr slice → not executed.
+    expect(executeIr).toHaveBeenCalledTimes(1);
+    expect((vi.mocked(executeIr).mock.calls[0][0] as { recipeHandle: string }).recipeHandle).toBe(
+      "page"
     );
+  });
+
+  it("applies every baked locale when --from-compiled has no --languages scope", async () => {
+    vi.mocked(io.loadIr).mockResolvedValue(mixedLocaleIr());
+
+    await runRecipePush({ allowWrite: true, fromCompiled: "/artifact" } as never);
+
+    const executed = vi.mocked(executeIr).mock.calls[0][0] as { operations: unknown[] };
+    // Unscoped → nothing dropped (all 6 ops, both fr and de version stacks).
+    expect(executed.operations).toHaveLength(6);
   });
 
   it("rejects --from-compiled combined with --provision-languages", async () => {

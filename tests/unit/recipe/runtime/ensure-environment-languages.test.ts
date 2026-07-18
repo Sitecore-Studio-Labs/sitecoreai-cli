@@ -170,6 +170,25 @@ describe("ensureEnvironmentLanguages — returns the SITE-WRITABLE set (no bare 
     expect(writable.has("en")).toBe(true);
   });
 
+  it("keeps the Sitecore standalone bases en + da — their OWN code is the site identity, not a regional's iso", async () => {
+    // The quirk: en/da are registrable with an EMPTY region code (the
+    // catalog ships them as bare `en`/`da`). They must NOT be filtered
+    // out as "bare bases" — the filter drops a base only when it's the
+    // iso-half of a regional (de of de-DE), never a genuine standalone.
+    // Covered both ways the Sites API can shape them: regionalIsoCode ==
+    // iso, and iso-only (no regional code at all).
+    const client = makeClient([
+      { iso: "en", regionalIsoCode: "en" },
+      { iso: "da" }, // standalone, no regionalIsoCode — must still land
+      { iso: "de", regionalIsoCode: "de-DE" },
+    ]);
+    const writable = await ensureEnvironmentLanguages(client, ["en", "da", "de-DE"]);
+    expect(writable.has("en")).toBe(true);
+    expect(writable.has("da")).toBe(true);
+    expect(writable.has("de-de")).toBe(true);
+    expect(writable.has("de")).toBe(false);
+  });
+
   it("a freshly-added regional (de-CH) is in the return; the base admission code (de) is not", async () => {
     const CATALOG = [
       { name: "en", languageCode: "en", regionCode: "" },

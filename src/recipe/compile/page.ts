@@ -93,6 +93,42 @@ import {
  * the page, authors own it thereafter, and a re-push never overwrites
  * their edits.
  */
+/**
+ * RESILIENCE: drop scoped datasources placed on DATASOURCE-LESS renderings
+ * (no `datasource.template`/`templates` and no inline `fields:` — e.g. a
+ * layout `column-splitter` whose content lives in its placeholders). Such a
+ * component has no template the slot item could conform to; the per-slot
+ * fallback would set `templateOf = templateId(handle)`, a template nothing in
+ * the set creates, and apply would abort the WHOLE install with a raw "Cannot
+ * find a template" GraphQL error. Generated pages (page-compose) occasionally
+ * emit this. Filtered BEFORE the layout XML is built so the rendering renders
+ * WITHOUT a datasource (kind:none) and no orphan slot item is created. Mutates
+ * `scopedSlots`. Only acts when the component is IN the set — an external
+ * component we can't introspect is emitted as-is (unchanged behavior).
+ */
+const dropDatasourcelessScopedSlots = (
+  scopedSlots: ReturnType<typeof collectScopedSlots>,
+  recipeHandle: string,
+  context: CompileContext
+): void => {
+  for (const [slot, info] of [...scopedSlots]) {
+    const component = context.componentsByHandle?.get(info.componentHandle);
+    if (
+      component &&
+      !component.datasource?.template?.handle &&
+      !(component.datasource?.templates?.length ?? 0) &&
+      !(component.fields?.length ?? 0)
+    ) {
+      context.onWarn?.(
+        `page-datasource:${recipeHandle}:${slot} — component '${info.componentHandle}' is a ` +
+          `datasource-less rendering (no datasource template or inline fields); dropping the scoped ` +
+          `datasource. Author its content under the component's placeholders instead.`
+      );
+      scopedSlots.delete(slot);
+    }
+  }
+};
+
 export function compilePageRecipe(input: PageRecipe, context: CompileContext): OperationIr {
   const recipe = PageRecipeSchema.parse(input);
 
@@ -335,6 +371,7 @@ export function compilePageRecipe(input: PageRecipe, context: CompileContext): O
   // are materialised once — they're shared structure across (lang, version)
   // cells, not per-cell.
   const scopedSlots = collectScopedSlots(recipe);
+  dropDatasourcelessScopedSlots(scopedSlots, recipe.handle, context);
   const dataFolderRefKey = datasourceId(itemRefKey, "Data");
 
   /**

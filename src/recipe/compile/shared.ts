@@ -69,6 +69,14 @@ import {
  */
 export interface CompileContext {
   /**
+   * Optional diagnostics sink. The compiler is otherwise pure, but a few
+   * resilience paths DROP an op that would abort apply against invalid
+   * generated content (e.g. a scoped datasource on a datasource-less
+   * rendering) — surfacing the drop keeps it visible instead of silent.
+   * Wired to the task logger's `warn` by `runRecipePush` / `runRecipeCompile`.
+   */
+  onWarn?: (message: string) => void;
+  /**
    * Legacy flat templates root, e.g. `/sitecore/templates/Project/<site>`.
    * The component template, parameters template, and (when present)
    * Component Folder template land directly under this when `section`

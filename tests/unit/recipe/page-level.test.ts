@@ -500,6 +500,43 @@ describe("compilePageRecipe", () => {
     expect(ds.templateOf).toBe(templateId("default", "widget-data@1"));
   });
 
+  it("drops a scoped datasource on a datasource-less rendering (resilience) and warns", () => {
+    // A generated page occasionally places a `scoped` datasource on a
+    // layout rendering that ships NO datasource template or inline fields
+    // (e.g. `column-splitter`, whose content lives in placeholders). The
+    // slot item would conform to a template nothing creates → apply aborts
+    // the whole install with "Cannot find a template". The compiler drops
+    // the slot (warns) and installs the rest of the page instead.
+    const splitter = component("splitter@1"); // fields: [], no datasource → datasource-less
+    const splitPage = {
+      ...homePage,
+      handle: "split-page@1",
+      name: "SplitPage",
+      layout: {
+        placeholders: {
+          "headless-main": [
+            { componentHandle: "splitter@1", datasourceRef: { kind: "scoped", slot: "Columns" } },
+          ],
+        },
+      },
+    } satisfies PageRecipe;
+
+    const warnings: string[] = [];
+    const irs = compileRecipeSet([articlePage, splitter, splitPage], {
+      ...CONTEXT,
+      onWarn: (m) => warnings.push(m),
+    });
+    const pageIr = irs.find((ir) => ir.recipeHandle === "split-page@1")!;
+
+    // No orphan slot item is created for the dropped datasource (filtered
+    // before the layout is built, so the layout can't reference it either).
+    expect(
+      pageIr.operations.some((op) => op.label === "page-datasource:split-page@1:Columns")
+    ).toBe(false);
+    // The drop is surfaced.
+    expect(warnings.some((w) => w.includes("Columns") && w.includes("datasource-less"))).toBe(true);
+  });
+
   it("resolves a compatible-datasources (templates[]) component to its FIRST template", () => {
     // The link-list pattern: the component declares `datasource.templates[]`
     // and ships NO component-template item of its own — fields live on the

@@ -117,6 +117,7 @@ const ITEM_FRAGMENT = `
     nodes {
       name
       value
+      containsStandardValue
       templateField {
         templateFieldId
       }
@@ -305,6 +306,7 @@ type RemoteItemNode = {
     nodes: Array<{
       name: string;
       value: string;
+      containsStandardValue?: boolean;
       templateField: { templateFieldId: string } | null;
     }>;
   };
@@ -351,6 +353,9 @@ const toRemoteItem = (node: RemoteItemNode): RemoteItem => ({
       fieldId: dashifyGuid(field.templateField!.templateFieldId),
       name: field.name,
       value: field.value,
+      ...(field.containsStandardValue !== undefined
+        ? { containsStandardValue: field.containsStandardValue }
+        : {}),
     })),
 });
 

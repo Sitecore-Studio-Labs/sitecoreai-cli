@@ -157,6 +157,7 @@ export const runRecipeCompile = async (options: RecipeCompileOptions): Promise<v
     : optionalRoots.mediaLibraryRoot;
 
   const irs = compileRecipeSet(recipes, {
+    onWarn: (message) => logger.warn(message),
     templatesRoot,
     renderingsRoot,
     ...optionalRoots,

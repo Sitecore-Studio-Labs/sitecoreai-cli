@@ -1038,10 +1038,26 @@ const opHandleMarker = (op: CreateItemOp): string | undefined => {
   return field && field.value.kind === "string" ? field.value.value : undefined;
 };
 
-/** The `Scai Handle` marker value on a live item, or `undefined` when unmarked. */
-const remoteHandleMarker = (item: RemoteItem): string | undefined =>
-  item.fields.find((f) => (f.name ?? "").toLowerCase() === SCAI_HANDLE_FIELD_NAME.toLowerCase())
-    ?.value;
+/**
+ * The `Scai Handle` marker value that the item OWNS, or `undefined` when
+ * unmarked.
+ *
+ * The marker is a SHARED field, so a component template that carries the
+ * marker on its `__Standard Values` makes every datasource item built on
+ * that template INHERIT the component's handle. An inherited marker is NOT
+ * ownership — reading it as such makes a page's scoped-datasource op collide
+ * with the component whose template it conforms to ("owned by 'hero@1', not
+ * 'sync-home@1'"). So an inherited value (`containsStandardValue`) counts as
+ * unmarked. Fields predating the flag (mocks, older reads) omit it and are
+ * treated as own values, preserving prior behavior.
+ */
+const remoteHandleMarker = (item: RemoteItem): string | undefined => {
+  const field = item.fields.find(
+    (f) => (f.name ?? "").toLowerCase() === SCAI_HANDLE_FIELD_NAME.toLowerCase()
+  );
+  if (!field || field.containsStandardValue === true) return undefined;
+  return field.value;
+};
 
 /**
  * Resolve a CreateItem op's templateOf to a Sitecore item ID.
@@ -1207,37 +1223,41 @@ const planCreateItem = ({
       twinMarker !== "" &&
       markerHandleBase(twinMarker) !== markerHandleBase(opMarker)
     ) {
-      // Pre-aggregate → aggregate ownership MIGRATION. A synthetic
-      // cross-recipe aggregate (`__enumeration-templates__`,
-      // `__shared-data-folders__`, …) claims shared items that a whole
-      // recipe SET co-owns. Before those items were centralised under the
-      // aggregate, they were materialised by whichever member recipe
-      // compiled FIRST, which stamped ITS handle as the owner marker
-      // (`action-placement@1`). On an environment installed before the
-      // aggregate existed, that legacy per-recipe marker is still on the
-      // live item, so the aggregate op sees a marker mismatch. This is NOT
-      // a genuine two-recipes-collide bug — the aggregate is the stable
-      // canonical owner by construction, so ADOPT + re-stamp the marker
-      // (via the apply-time create pre-check) instead of aborting. Only
-      // when the legacy owner is a CONCRETE recipe; an item owned by a
-      // DIFFERENT aggregate is a real conflict and still errors.
-      if (isSyntheticAggregateHandle(opMarker) && !isSyntheticAggregateHandle(twinMarker)) {
-        return planFreshCreate(
-          `Item '${op.name}' at '${remote.path}' (${remote.itemId}) carries the pre-aggregate ` +
-            `owner marker '${twinMarker}'; aggregate '${opMarker}' is the stable canonical owner — ` +
-            `adopting + re-stamping ownership at apply time.`
-        );
+      // IDEMPOTENT-BY-DEFAULT. A live item's owner marker can legitimately
+      // differ from the op's on a re-install for reasons that are NOT a
+      // genuine two-recipes-collide bug:
+      //   - shared infra materialised by whichever recipe compiled FIRST
+      //     before it was centralised under an aggregate (pre-aggregate
+      //     `__enumeration-templates__` / `__shared-data-folders__` migration);
+      //   - an item that moved between recipes across versions of the set;
+      //   - the same content re-installed after the compile order shifted.
+      // Aborting here broke every re-push against an environment with history
+      // — and the "conflict" is almost always the *same* content being
+      // installed again. So ADOPT the live item + re-stamp it to the op's
+      // marker at apply time (the create pre-check re-finds the twin and, for
+      // convergent ops, retemplates it), converging on the current set as the
+      // authority (last-writer-wins) instead of failing the install.
+      //
+      // The ONE case still treated as a hard conflict: BOTH markers are
+      // synthetic aggregates. Two different `__…__` aggregates claiming the
+      // same item is a compiler wiring bug, not tenant history — surface it.
+      if (isSyntheticAggregateHandle(opMarker) && isSyntheticAggregateHandle(twinMarker)) {
+        return {
+          index,
+          operation: op,
+          status: "error",
+          reason:
+            `Aggregate ownership conflict: item '${op.name}' at '${remote.path}' ` +
+            `(${remote.itemId}) is claimed by both '${twinMarker}' and '${opMarker}'. Two ` +
+            `cross-recipe aggregates materialise the same item — this is a compiler bug, not ` +
+            `tenant history.`,
+        };
       }
-      return {
-        index,
-        operation: op,
-        status: "error",
-        reason:
-          `Name collision: item '${op.name}' at '${remote.path}' (${remote.itemId}) is owned by ` +
-          `recipe '${twinMarker}', not '${opMarker}'. Two recipes materialise items with the same ` +
-          `name under the same parent — rename one recipe's item \`name\` (convention: use the ` +
-          `handle slug, keeping the human label in \`displayName\`) and re-run the push.`,
-      };
+      return planFreshCreate(
+        `Item '${op.name}' at '${remote.path}' (${remote.itemId}) carries owner marker ` +
+          `'${twinMarker}'; adopting + re-stamping ownership to '${opMarker}' (idempotent ` +
+          `re-install — converging on the current recipe set as the authority).`
+      );
     }
   }
   // Plan-time adoption (path-prefetch hit or sibling byName fallback) of a

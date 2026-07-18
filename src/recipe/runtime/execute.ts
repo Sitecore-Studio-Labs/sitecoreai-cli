@@ -217,6 +217,24 @@ export interface ExecuteOptions {
   baselineIndex?: BaselineIndex;
   conflictPolicy?: "error" | "recipe-wins" | "cms-wins";
   /**
+   * Apply-time op-error policy (strict vs tolerant recipe push).
+   *
+   * - `"abort"` (default): the first apply-time op error stops forward
+   *   execution, rolls back everything this recipe applied, and returns
+   *   `aborted: true`. A missing field or a dead media URL fails the whole
+   *   recipe loudly — the strict default that forces content excellence.
+   * - `"continue"`: an op error is recorded on the action (`status:
+   *   "error"`) and surfaced via `apply-error`, but is NON-fatal — the
+   *   executor skips just that op and keeps going, nothing rolls back, and
+   *   the recipe finishes with `aborted: false`. Lets a push complete past
+   *   external flakiness (media 5xx) or a known generated-content defect.
+   *
+   * Independent of cancellation and three-way-merge conflicts, which still
+   * abort in both modes. Set by the push task from
+   * `SITECOREAI_RECIPE_PUSH_MODE` (see `resolveRecipePushMode`).
+   */
+  onError?: "abort" | "continue";
+  /**
    * Shared accumulator of item refKeys CREATED during this push run.
    * The executor adds every applied CreateItem's `op.id`; the planner
    * bypasses baseline classification for update-ops targeting these
@@ -1037,6 +1055,7 @@ class WritePool {
       summary: PlanSummary;
       applied: PlannedAction[];
       emit: ExecuteOptions["emit"];
+      onError: ExecuteOptions["onError"];
     }
   ) {
     this.limit = Math.max(1, limit);
@@ -1178,6 +1197,15 @@ class WritePool {
     entry.action.status = "error";
     entry.action.reason = message;
     this.deps.emit?.({ kind: "apply-error", action: entry.action, error: message });
+    // Tolerant push (`onError: "continue"`): record + surface the error but
+    // don't mark it fatal, so `drainPool` never aborts and the recipe keeps
+    // flushing the rest of its writes. Count it into `summary.error` so the
+    // per-recipe summary reflects the tolerated failure. Strict (default)
+    // sets the first fatal, which triggers rollback + abort.
+    if (this.deps.onError === "continue") {
+      this.deps.summary.error += 1;
+      return;
+    }
     if (!this.fatal) this.fatal = { entry, message };
   }
 
@@ -1479,7 +1507,13 @@ export const executeIr = async (
   }
 
   // Optional updateItem flush pool — see ExecuteOptions.applyConcurrency.
-  const pool = maybeCreateWritePool(options, { client, summary, applied, emit: options.emit });
+  const pool = maybeCreateWritePool(options, {
+    client,
+    summary,
+    applied,
+    emit: options.emit,
+    onError: options.onError,
+  });
 
   // Per-IR index of which languages get version adds on each target
   // refKey — planAddItemVersion's first read of an item batches ALL of
@@ -1592,6 +1626,16 @@ export const executeIr = async (
       action.status = "error";
       action.reason = message;
       options.emit?.({ kind: "apply-error", action, error: message });
+      // Tolerant push (`onError: "continue"`): the op failed, but skip it
+      // and keep going — no rollback, no abort. `dispatchMutation` threw
+      // before pushing to `applied`, so there's nothing applied to undo for
+      // this op; count it into `summary.error` so the per-recipe summary
+      // reflects the tolerated failure, and continue the loop with
+      // `aborted: false`.
+      if (options.onError === "continue") {
+        summary.error += 1;
+        return undefined;
+      }
       const rollbackResult = await runRollback({
         applied,
         client,

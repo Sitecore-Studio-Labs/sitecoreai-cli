@@ -22,6 +22,7 @@ import { PAGE_DESIGNS_ROOT_REF_KEY, templatePathRefKey } from "../items/guids";
 import { ensureMarkerField } from "../items/ensure-marker-field";
 import { injectHandleMarker } from "../items/marker";
 import { loadIr, loadRecipe } from "../io";
+import { resolveRecipePushOnError } from "../push-mode";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import type { MediaFallback } from "../api/ref-encoding";
 import { writeProgressLine } from "./progress-stream";
@@ -1007,6 +1008,12 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
       baselineIndex: baselineIndexByHandle.get(ir.recipeHandle),
       conflictPolicy: options.conflictPolicy,
       createdItemRefKeys,
+      // Strict (default) aborts + rolls back on the first op error;
+      // `SITECOREAI_RECIPE_PUSH_MODE=tolerant` makes op errors non-fatal
+      // (skip + continue) so an install completes past external flakiness
+      // or a known content defect. The command reads the same mode to keep
+      // the exit code in step. See `resolveRecipePushMode`.
+      onError: resolveRecipePushOnError(),
       applyConcurrency: resolveApplyConcurrency(),
       idSnapshotCache,
       versionStackCache,

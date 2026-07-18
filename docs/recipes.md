@@ -334,6 +334,23 @@ back the operations it already applied via a LIFO unwind of
 snapshot-driven inverse mutations. Use `SITECOREAI_TRACE_HTTP=1` to log
 every Authoring GraphQL call for diagnosing path / GUID issues.
 
+### Strict vs tolerant push (`SITECOREAI_RECIPE_PUSH_MODE`)
+
+By default a push is **strict**: the first apply-time op error aborts the
+recipe, rolls back everything it applied, and exits non-zero
+(`DEPLOY_FAILED`). A missing field or a dead media URL fails the whole
+install loudly so the underlying content defect gets fixed — the mode to
+develop against.
+
+Set `SITECOREAI_RECIPE_PUSH_MODE=tolerant` to make apply-time op errors
+**non-fatal**: the executor skips just the failing op (recording it as an
+`apply-error` event and in the per-recipe `error` count), keeps applying
+the rest, does **not** roll back, and the push exits 0. Use it to let an
+install complete past transient external failures (e.g. a media host 5xx)
+or a known generated-content defect instead of aborting the whole batch.
+Cancellation and three-way-merge conflicts still abort in either mode —
+tolerant only downgrades apply-time op errors.
+
 ## Cross-recipe references
 
 Recipes can reference each other by `handle`. The compiler resolves

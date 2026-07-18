@@ -16,6 +16,7 @@ import { runRecipePruneDefaults } from "../../recipe/tasks/prune-defaults";
 import { runRecipePull } from "../../recipe/tasks/pull";
 import { runRecipePush } from "../../recipe/tasks/push";
 import { runRecipeRoots } from "../../recipe/tasks/roots";
+import { resolveRecipePushMode } from "../../recipe/push-mode";
 import { createScaiError } from "../../shared/errors";
 
 const addOptionalInputOption = (command: Command, label: string): Command =>
@@ -276,7 +277,17 @@ const createPushCommand = (): Command => {
     // a non-empty array even when every recipe aborted with errors —
     // without this guard, the CLI exits 0 and orchestrators (or CI)
     // can't tell a successful push from a 100%-failed one.
-    const failed = results.some((result) => result.aborted || result.summary.error > 0);
+    //
+    // Tolerant push (`SITECOREAI_RECIPE_PUSH_MODE=tolerant`): apply-time op
+    // errors are already recorded + surfaced (per-op `apply-error` events +
+    // the per-recipe summary `runRecipePush` prints) but they DON'T escalate
+    // to a non-zero exit — the install completes past external flakiness or a
+    // known content defect. Aborts (cancellation / plan-phase) and three-way
+    // merge conflicts still fail the push in both modes.
+    const tolerant = resolveRecipePushMode() === "tolerant";
+    const failed = results.some(
+      (result) => result.aborted || (!tolerant && result.summary.error > 0)
+    );
     // Three-way merge: conflict actions block the apply at the planner
     // layer (the action's status is "conflict" so no mutation runs), but
     // the recipe-level result doesn't auto-abort — surface it here so the

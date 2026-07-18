@@ -64,6 +64,32 @@ describe("executeIr — apply mode", () => {
     expect(events.some((e) => e.kind === "apply-error" && e.error === "boom")).toBe(true);
     expect(events.some((e) => e.kind === "apply-success")).toBe(false);
   });
+
+  it("continues past a failed mutation when onError is 'continue' (tolerant push)", async () => {
+    const ir = compileCta();
+    const client = new MockAuthoringClient();
+    client.throwOn = {
+      method: "createItem",
+      match: "CtaButton",
+      message: "boom",
+    };
+    const events: ExecutionEvent[] = [];
+    const result = await executeIr(ir, client, {
+      mode: "apply",
+      onError: "continue",
+      emit: (e) => events.push(e),
+    });
+    // The op errored and is surfaced, but the recipe neither aborts nor rolls
+    // back — a tolerant push records the failure and keeps going.
+    expect(result.aborted).toBe(false);
+    expect(result.rollback).toBeUndefined();
+    expect(result.summary.error).toBeGreaterThan(0);
+    expect(events.some((e) => e.kind === "apply-error" && e.error === "boom")).toBe(true);
+    // Strict stops at the first error (one op-start); tolerant walks the
+    // whole IR, so the loop dispatches every subsequent op.
+    const opStarts = events.filter((e) => e.kind === "op-start").length;
+    expect(opStarts).toBeGreaterThan(1);
+  });
 });
 
 describe("executeIr — idempotency", () => {

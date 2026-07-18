@@ -935,6 +935,104 @@ describe("compileRecipeSet — Enumeration Templates aggregate", () => {
   });
 });
 
+describe("compileRecipeSet — Shared Folders aggregate", () => {
+  const enumWithFolder = (handle: string, name: string, folder: string[]): Recipe =>
+    ({
+      kind: "enumeration",
+      schemaVersion: "1",
+      handle,
+      name,
+      location: { scope: "site", folder },
+      values: [{ name: "alpha" }],
+    }) as Recipe;
+
+  it("emits no Shared Folders IR when nothing uses grouping/group folders", () => {
+    const irs = compileRecipeSet(
+      [
+        {
+          kind: "enumeration",
+          schemaVersion: "1",
+          handle: "flat@1",
+          name: "Flat",
+          values: [{ name: "a" }],
+        } as Recipe,
+      ],
+      CONTEXT
+    );
+    expect(irs.find((ir) => ir.recipeHandle === "__shared-folders__")).toBeUndefined();
+  });
+
+  it("owns enum grouping folders once, deduping shared prefixes, and drops them from per-recipe IRs", () => {
+    const irs = compileRecipeSet(
+      [
+        enumWithFolder("tone@1", "Tone", ["Theme", "Color"]),
+        enumWithFolder("size@1", "Size", ["Theme", "Size"]),
+      ],
+      CONTEXT
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__shared-folders__");
+    expect(aggregate).toBeDefined();
+
+    // Grouping folders: Theme (shared prefix, once), Theme/Color, Theme/Size.
+    const groupingLabels = aggregate!.operations
+      .filter((op) => op.label?.startsWith("enumerations-grouping-folder:"))
+      .map((op) => op.label);
+    expect(groupingLabels).toEqual([
+      "enumerations-grouping-folder:default:Theme",
+      "enumerations-grouping-folder:default:Theme/Color",
+      "enumerations-grouping-folder:default:Theme/Size",
+    ]);
+
+    // No per-recipe enum IR carries the grouping-folder ops anymore.
+    for (const handle of ["tone@1", "size@1"]) {
+      const perRecipe = irs.find((ir) => ir.recipeHandle === handle);
+      expect(
+        perRecipe!.operations.some((op) => op.label?.startsWith("enumerations-grouping-folder:"))
+      ).toBe(false);
+    }
+  });
+
+  it("orders __enumeration-templates__ before __shared-folders__ (grouping folders need the template)", () => {
+    const irs = compileRecipeSet([enumWithFolder("tone@1", "Tone", ["Theme"])], CONTEXT);
+    const templatesIndex = irs.findIndex((ir) => ir.recipeHandle === "__enumeration-templates__");
+    const foldersIndex = irs.findIndex((ir) => ir.recipeHandle === "__shared-folders__");
+    expect(templatesIndex).toBeGreaterThanOrEqual(0);
+    expect(foldersIndex).toBeGreaterThanOrEqual(0);
+    expect(templatesIndex).toBeLessThan(foldersIndex);
+  });
+
+  it("owns Content Models group folders (meta.tax.group) when contentModelsRoot is set", () => {
+    const ctx: CompileContext = {
+      ...CONTEXT,
+      contentModelsRoot: "/sitecore/content/test-tenant/test-site/Data/Content Models",
+    };
+    const irs = compileRecipeSet(
+      [
+        {
+          kind: "content-template",
+          schemaVersion: "1",
+          handle: "author@1",
+          name: "Author",
+          displayName: "Author",
+          meta: { tax: { group: "People" } },
+          fields: [{ name: "Name", shape: "text" }],
+        } as Recipe,
+      ],
+      ctx
+    );
+    const aggregate = irs.find((ir) => ir.recipeHandle === "__shared-folders__");
+    expect(aggregate).toBeDefined();
+    expect(
+      aggregate!.operations.some((op) => op.label === "content-models-group-folder:default:People")
+    ).toBe(true);
+    // Dropped from the per-recipe content-template IR.
+    const perRecipe = irs.find((ir) => ir.recipeHandle === "author@1");
+    expect(
+      perRecipe!.operations.some((op) => op.label?.startsWith("content-models-group-folder:"))
+    ).toBe(false);
+  });
+});
+
 describe("compileRecipeSet — Placeholder Settings aggregate", () => {
   const CTX_WITH_PH: CompileContext = {
     ...CONTEXT,

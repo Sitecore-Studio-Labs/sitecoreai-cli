@@ -181,6 +181,20 @@ export const CreateItemOpSchema = z.object({
   templateOf: z.union([GUID, z.object({ kind: z.literal("ref-path"), value: NON_EMPTY })]),
   name: NON_EMPTY,
   fields: z.array(FieldValueSchema),
+  /**
+   * Route this create through the adopt-and-retemplate convergence path even
+   * though it is NOT `CreateOnly`. Set ONLY for recipe-owned, PATH-referenced
+   * scoped datasource slots (partial-design `<design>/Data/<slot>`), which are
+   * `CreateAndUpdate` (recipe is the authority) yet DO get re-templated when
+   * their slot's component changes between pushes (a header-start that was a
+   * text brand `utility-trigger` and is now an image `image@1`). Without this,
+   * the existing wrong-template item is field-updated in place and the new
+   * component's field write aborts ("Cannot find a field with the name X").
+   * The convergence path retemplates it in place (the `__Template` write),
+   * preserving the item GUID so the `local:/Data/<slot>` reference is stable.
+   * Never set for GUID-referenced page-design slots or user content.
+   */
+  convergeOnTemplateDrift: z.boolean().optional(),
 });
 
 export const SetFieldOpSchema = z.object({

@@ -966,7 +966,20 @@ const convergenceEligible = (
   op: CreateItemOp,
   fieldTargetRefKeys?: ReadonlySet<string>
 ): boolean => {
-  if (op.policy !== "CreateOnly" || isFolderClassCreate(op)) return false;
+  if (isFolderClassCreate(op)) return false;
+  // A partial-design scoped datasource slot flagged `convergeOnTemplateDrift`
+  // is CreateAndUpdate (the recipe owns it) but MUST adopt-and-retemplate when
+  // its slot's component changes between pushes — otherwise the stale template
+  // is field-updated in place and the new component's field write aborts
+  // ("Cannot find a field with the name X"). Force it eligible so it routes
+  // through the same convergence path CreateOnly ops get; the downstream
+  // template compare only retemplates on a genuine drift, so a matching
+  // template stays a no-op. The flag is set ONLY for these path-referenced,
+  // recipe-owned slots (never GUID-referenced page-design slots or user
+  // content), so the CreateAndUpdate exclusion below still holds for
+  // everything else.
+  if (op.convergeOnTemplateDrift) return true;
+  if (op.policy !== "CreateOnly") return false;
   // Content-item IRs seed fields as separate SetField ops — the create
   // itself carries only the marker. Those downstream writes abort against
   // a wrong-template twin just like inline fields would, so they make the

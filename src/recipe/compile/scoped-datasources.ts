@@ -193,6 +193,17 @@ export function materializeScopedDatasources(params: {
     } satisfies SetFieldOp);
   }
 
+  // Partial-design slots are referenced by the layout as `local:/Data/<slot>`
+  // (a path, not a GUID), so when a re-push finds the slot under a DIFFERENT
+  // template (its component changed — e.g. a header-start that was a text
+  // brand and is now an image logo) it can be adopt-and-retemplated in place
+  // without breaking the reference. These slots are CreateAndUpdate (the
+  // recipe owns them), so they need `convergeOnTemplateDrift` to opt into the
+  // convergence path that CreateOnly ops get for free. Page designs reference
+  // their scoped items by absolute GUID and must NOT retemplate this way, so
+  // the flag is partial-design only.
+  const convergeOnTemplateDrift = labelPrefix === "partial-design";
+
   for (const [slot, info] of scopedSlots) {
     const datasourceTemplateHandle = datasourceTemplateHandleFor(info.componentHandle, context);
     const slotItemRefKey = datasourceId(hostItemRefKey, slot);
@@ -209,6 +220,7 @@ export function materializeScopedDatasources(params: {
         sharedField(SYSTEM_FIELDS.ICON, { kind: "string", value: DEFAULT_ICON }),
         versionedField(SYSTEM_FIELDS.DISPLAY_NAME, { kind: "string", value: slot }),
       ],
+      ...(convergeOnTemplateDrift ? { convergeOnTemplateDrift: true } : {}),
     } satisfies CreateItemOp);
 
     for (const [fieldName, rawValue] of Object.entries(info.fields)) {

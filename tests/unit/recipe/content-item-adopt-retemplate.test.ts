@@ -389,6 +389,80 @@ describe("CreateItem — adopt-and-retemplate for stranded content-item name-twi
   });
 });
 
+describe("CreateItem — convergeOnTemplateDrift scoped datasource slots (CreateAndUpdate)", () => {
+  // A partial-design scoped slot (`<design>/Data/header-start-0`) is
+  // CreateAndUpdate (the recipe owns it) but flagged `convergeOnTemplateDrift`
+  // so a component-swap re-push (its live template drifted — a header-start
+  // that was a text `utility-trigger` and is now an image `image@1`) routes
+  // through the SAME adopt-and-retemplate convergence CreateOnly ops get,
+  // instead of field-updating the stale template in place (which aborts the
+  // new component's field write). The flag is the ONLY thing that lifts the
+  // CreateAndUpdate exclusion.
+  const scopedSlotOp = (over: Partial<CreateItemOp> = {}): CreateItemOp => ({
+    ...contentItemCreateOp("CreateAndUpdate"),
+    label: "partial-design-datasource:diageo-com-header@1:header-start-0",
+    convergeOnTemplateDrift: true,
+    ...over,
+  });
+
+  it("routes a template-drifted slot through a retemplating create (not a stale in-place update)", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, STALE_TEMPLATE_ID);
+    const captured = capturedWithLiveTemplate();
+
+    const action = await buildAction({
+      index: 0,
+      op: scopedSlotOp(),
+      client,
+      capturedItemIds: captured,
+    });
+
+    expect(action.status).toBe("create");
+    const input = createMutationInput(action);
+    expect(input.retemplateOnAdopt).toBe(true);
+    expect(input.templateId).toBe(LIVE_TEMPLATE_ID);
+    expect(action.reason).toMatch(/converging/i);
+    expect(captured.get(ITEM_REF_KEY)).toBe(STRANDED_ITEM_ID);
+  });
+
+  it("WITHOUT the flag the same CreateAndUpdate slot keeps the drift-update (the flag is the discriminator)", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, STALE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: scopedSlotOp({ convergeOnTemplateDrift: undefined }),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    // The stale-template twin is field-updated in place — the pre-fix
+    // behavior that aborts the new component's field write downstream.
+    expect(action.status).toBe("update");
+    expect(action.mutation?.kind).toBe("updateItem");
+  });
+
+  it("does NOT retemplate when the slot's template already matches (no spurious recreate)", async () => {
+    const client = new MockAuthoringClient();
+    seedParent(client);
+    seedStrandedTwin(client, LIVE_TEMPLATE_ID);
+
+    const action = await buildAction({
+      index: 0,
+      op: scopedSlotOp(),
+      client,
+      capturedItemIds: capturedWithLiveTemplate(),
+    });
+
+    // Matching template → the twin is adopted and only its tracked-field
+    // drift is reconciled (a normal update), never a retemplating create.
+    expect(action.status).toBe("update");
+    expect(action.mutation?.kind).toBe("updateItem");
+  });
+});
+
 describe("CreateItem — marker-first identity (cross-recipe name collisions)", () => {
   const FOREIGN_HANDLE = "utility-link-support@1";
 

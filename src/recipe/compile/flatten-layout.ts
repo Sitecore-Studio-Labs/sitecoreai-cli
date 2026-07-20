@@ -36,6 +36,32 @@ import type { Layout } from "../schema/recipe";
 type Placement = Layout["placeholders"][string][number];
 
 /**
+ * Resolve a nested placeholder key to the concrete form for one rendering
+ * instance, given its parent's `DynamicPlaceholderId`.
+ *
+ * Two authoring shapes converge on the SAME `<slot>-<id>` result:
+ *
+ *  - A **bare** logical key (`column-1`, `header-start`) APPENDS the id →
+ *    `column-1-1`. This is the canonical recipe shape (see the header note).
+ *  - A key carrying the SXA dynamic-placeholder token `{*}`
+ *    (`column-1-{*}`, `header-start-{*}` — emitted by generators that mirror
+ *    a shell's `<slot>-{*}` placeholder template verbatim) has the token
+ *    REPLACED by the id → `column-1-1`.
+ *
+ * The token form previously fell through the bare path and APPENDED the id,
+ * producing the doubled key `<slot>-{*}-<id>` (`header-start-{*}-1`). No
+ * shell surfaces that — a `<slot>-{*}` component template resolves to
+ * `<slot>-<id>` (`header-start-1`) — so every child nested under a `{*}` key
+ * was orphaned: the container rendered but its sub-components and their
+ * datasource content were invisible. Resolving the token here makes both
+ * shapes land in the key the shell actually exposes.
+ */
+const resolveNestedPlaceholderKey = (childName: string, dynamicPlaceholderId: string): string =>
+  childName.includes("{*}")
+    ? childName.replace(/\{\*\}/g, dynamicPlaceholderId)
+    : `${childName}-${dynamicPlaceholderId}`;
+
+/**
  * Create a flattener whose `DynamicPlaceholderId` counter spans every
  * layout in `layouts` — ids are unique per ITEM, mirroring SXA's
  * per-page assignment, so a recipe declaring several layouts (a page's
@@ -94,7 +120,7 @@ export const createLayoutFlattener = (layouts: readonly Layout[]): ((layout: Lay
           const parentPath = key.startsWith("/") ? key : `/${key}`;
           for (const [childName, childPlacements] of Object.entries(children)) {
             childGroups.push({
-              key: `${parentPath}/${childName}-${dynamicPlaceholderId}`,
+              key: `${parentPath}/${resolveNestedPlaceholderKey(childName, dynamicPlaceholderId)}`,
               placements: childPlacements,
             });
           }

@@ -92,6 +92,41 @@ describe("createSiteBinding", () => {
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
   });
 
+  it("preserves an existing StartItem and only re-points RenderingHost — even when <siteRoot>/Home is absent", async () => {
+    // An EXISTING site: its Site Grouping already carries a StartItem (its own
+    // home, wherever it lives). There is deliberately NO `<siteRoot>/Home` item
+    // — the home is named/located differently. Re-binding to a new editing host
+    // must NOT fail on the missing "Home" (the production bind-site failure).
+    const client = makeClient({
+      [SG]: {
+        itemId: "sg-1",
+        path: SG,
+        fields: [
+          { name: "RenderingHost", value: "old-host" },
+          { name: "HostName", value: "*" },
+          { name: "StartItem", value: "{EXISTING-HOME}" },
+        ],
+      },
+      // no [HOME] entry on purpose
+    });
+    const result = await createSiteBinding(
+      client as never,
+      { ...base, renderingHostName: "new-editing-host" },
+      { apply: true }
+    );
+    expect(result).toMatchObject({ status: "applied", applied: true });
+    const fields = updateFields(client);
+    // StartItem preserved verbatim; RenderingHost re-pointed at the new host.
+    expect(fields.StartItem).toEqual({ kind: "ref-guid", value: "EXISTING-HOME" });
+    expect(fields.RenderingHost).toEqual({
+      kind: "string",
+      value: "new-editing-host",
+    });
+    expect(result.fields.StartItem).toBe("{EXISTING-HOME}");
+    // We never looked up `<siteRoot>/Home` — only the Site Grouping item.
+    expect(client.getItem).toHaveBeenCalledTimes(1);
+  });
+
   it("honors renderingHostName / startItemName / hostNamePattern overrides", async () => {
     const LANDING = "/sitecore/content/Collection/e2e/Landing";
     const client = makeClient({

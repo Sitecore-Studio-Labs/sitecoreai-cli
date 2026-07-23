@@ -98,15 +98,16 @@ export const createSiteBinding = async (
     );
   }
 
+  const fieldByName = (name: string): string =>
+    siteGrouping.fields.find((f) => f.name === name)?.value?.trim() ?? "";
+  const existingStartItem = fieldByName("StartItem");
+
   // Idempotency short-circuit (apply mode only): if the Site Grouping already
   // carries the three fields we'd write, skip the write so re-runs are cheap
   // and don't bump field version history.
   if (apply) {
-    const fieldByName = (name: string): string =>
-      siteGrouping.fields.find((f) => f.name === name)?.value?.trim() ?? "";
     const existingRenderingHost = fieldByName("RenderingHost");
     const existingHostName = fieldByName("HostName");
-    const existingStartItem = fieldByName("StartItem");
     if (
       existingRenderingHost === renderingHostName &&
       existingHostName === hostNamePattern &&
@@ -128,16 +129,33 @@ export const createSiteBinding = async (
     }
   }
 
-  const startItem = await client.getItem({ path: startItemPath });
-  if (!startItem) {
-    throw createScaiError(`Start item '${startItemPath}' was not found.`, "INPUT_INVALID", {
-      hint: `Create a '${startItemName}' page under ${siteRoot} (or pass a different startItemName). Without a Start Item the site won't render.`,
-    });
+  // Resolve the Start Item to write. An EXISTING site already carries a
+  // StartItem (its own home) — PRESERVE it and only (re)point RenderingHost /
+  // HostName. We deliberately do NOT require a `<siteRoot>/<startItemName>`
+  // item to exist in that case: the site's home may be named differently or
+  // live elsewhere, so requiring a literal "Home" here fails a perfectly valid
+  // existing site (the `/sitecore/content/<collection>/<site>/Home not found`
+  // bind failure). Only when the Site Grouping has NO StartItem yet do we fall
+  // back to the conventional `<siteRoot>/<startItemName>` and require it.
+  let startItemId: string;
+  let startItemFieldValue: SiteBindingResult["fields"]["StartItem"];
+  if (existingStartItem.length > 0) {
+    startItemId = existingStartItem.replace(/[{}]/g, "");
+    startItemFieldValue = existingStartItem;
+  } else {
+    const startItem = await client.getItem({ path: startItemPath });
+    if (!startItem) {
+      throw createScaiError(`Start item '${startItemPath}' was not found.`, "INPUT_INVALID", {
+        hint: `Create a '${startItemName}' page under ${siteRoot} (or pass a different startItemName). Without a Start Item the site won't render.`,
+      });
+    }
+    startItemId = startItem.itemId;
+    startItemFieldValue = `{${startItem.itemId.toUpperCase()}}`;
   }
 
   const plannedFields = {
     HostName: hostNamePattern,
-    StartItem: `{${startItem.itemId.toUpperCase()}}`,
+    StartItem: startItemFieldValue,
     RenderingHost: renderingHostName,
   };
 
@@ -146,7 +164,7 @@ export const createSiteBinding = async (
       siteGroupingPath,
       siteGroupingItemId: siteGrouping.itemId,
       startItemPath,
-      startItemId: startItem.itemId,
+      startItemId,
       applied: false,
       status: "plan",
       fields: plannedFields,
@@ -164,7 +182,7 @@ export const createSiteBinding = async (
       {
         fieldId: "",
         fieldName: "StartItem",
-        value: { kind: "ref-guid", value: startItem.itemId },
+        value: { kind: "ref-guid", value: startItemId },
       },
       {
         // SXA's RenderingHost field is a string-keyed lookup, not a GUID
@@ -183,7 +201,7 @@ export const createSiteBinding = async (
     siteGroupingPath,
     siteGroupingItemId: siteGrouping.itemId,
     startItemPath,
-    startItemId: startItem.itemId,
+    startItemId,
     applied: true,
     status: "applied",
     fields: plannedFields,

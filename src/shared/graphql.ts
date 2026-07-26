@@ -177,6 +177,52 @@ export interface GraphQLTransportConfig {
   getAccessToken: GetAccessToken;
 }
 
+/**
+ * Cloudflare serves an HTML error page (never JSON) when a request dies at its
+ * edge. Sitecore's Authoring/Management APIs only ever return JSON, so a
+ * Cloudflare HTML body is an unambiguous infra-transient failure — the CM host
+ * was momentarily unroutable (commonly a cold-scaled or newly-provisioned
+ * environment), not the API's own error. The status Cloudflare serves it under
+ * is unrelated to the API (a 1018 "could not find host" page can arrive as a
+ * 4xx/5xx that has nothing to do with a real conflict), so we detect the page
+ * itself rather than trust the status — to (a) retry it and (b) surface a
+ * concise message instead of dumping the raw HTML under a misleading code.
+ *
+ * Two retry classes:
+ * - "safe": the request never reached the Sitecore origin (host / DNS /
+ *   origin-down — Cloudflare 1016, 1018, 521, 523), so it did NOT apply —
+ *   safe to retry even for a write (like a server-side cancellation).
+ * - "ambiguous": the origin may have received it (524 edge timeout, 520), so
+ *   retry only when the caller allows ambiguous-network retries — matching the
+ *   abort / `fetch failed` posture, so mutation callers don't risk a duplicate.
+ */
+const CLOUDFLARE_EDGE_MARKER_RE = /cloudflare|cf-error-|cdn-cgi|\bcf-ray\b|\bray id\b/i;
+const CLOUDFLARE_UNREACHED_ORIGIN_RE =
+  /could not find host|origin dns error|web server is down|origin is unreachable|error\s*(?:10(?:16|18)|52[13])\b/i;
+
+const cloudflareEdgeTitle = (body: string): string | undefined => {
+  const title = /<title>\s*([^<|]+?)\s*(?:\||<\/title>)/i.exec(body)?.[1]?.trim();
+  return title && !/^cloudflare$/i.test(title) ? title : undefined;
+};
+
+export const classifyCloudflareEdgeError = (
+  body: unknown
+): { retry: "safe" | "ambiguous"; summary: string } | undefined => {
+  // Only a non-JSON (string) body can be a Cloudflare page; a genuine Sitecore
+  // JSON error parses to an object and never reaches this classifier.
+  if (typeof body !== "string" || !CLOUDFLARE_EDGE_MARKER_RE.test(body)) {
+    return undefined;
+  }
+  const retry: "safe" | "ambiguous" = CLOUDFLARE_UNREACHED_ORIGIN_RE.test(body)
+    ? "safe"
+    : "ambiguous";
+  const title = cloudflareEdgeTitle(body);
+  return {
+    retry,
+    summary: `host temporarily unreachable at the Cloudflare edge${title ? ` (${title})` : ""}`,
+  };
+};
+
 const parseJsonIfPossible = async (response: Response): Promise<unknown> => {
   const text = await response.text();
   if (!text) {
@@ -199,6 +245,82 @@ const normalizeHostUrl = (host: string): string => {
   // SITECOREAI_ALLOW_HTTP=1 dev-only escape hatch.
   assertValidUrl(withScheme, "Environment host");
   return withScheme.endsWith("/") ? withScheme.slice(0, -1) : withScheme;
+};
+
+/**
+ * Build the `HttpError` for a non-2xx response. A Cloudflare edge page (HTML,
+ * never JSON) means the request died at the CDN, not inside the API — surface
+ * it as a concise, classified, retryable edge failure rather than the raw page
+ * under a misleading status. A genuine JSON API error parses to an object and
+ * is reported verbatim (with its real status).
+ */
+const buildHttpErrorFromResponse = async (
+  response: Response,
+  transport: GraphQLTransportConfig
+): Promise<HttpError> => {
+  const body = await parseJsonIfPossible(response);
+  const edge = classifyCloudflareEdgeError(body);
+  const rawMessage =
+    typeof body === "string"
+      ? body
+      : body && typeof body === "object"
+        ? JSON.stringify(body)
+        : undefined;
+  return new HttpError(
+    response.status,
+    // Test mocks of `Response` may omit `headers`; defensive access avoids
+    // `Cannot read properties of undefined`. Production `fetch` always
+    // populates a `Headers` object.
+    parseRetryAfter(response.headers?.get?.("retry-after") ?? null),
+    redactSecrets(
+      edge
+        ? `Sitecore ${transport.label} API ${edge.summary}.`
+        : `Sitecore ${transport.label} API request failed (${response.status}).${
+            rawMessage ? ` ${rawMessage}` : ""
+          }`
+    ),
+    edge?.retry
+  );
+};
+
+/**
+ * Whether a failed attempt should be retried. Extracted from the retry loop so
+ * the transport's control flow stays flat; the loop guards the attempt count
+ * and picks the backoff delay.
+ *
+ * - HttpError: a retryable status, OR a Cloudflare edge failure — "safe" (never
+ *   reached origin) always retries; "ambiguous" (524/520) only when the caller
+ *   allows ambiguous-network retries.
+ * - A server-side cancellation (rolled back, never applied) always retries,
+ *   even for writes.
+ * - An AbortError (our own timeout) retries only for ambiguous-network callers
+ *   AND when no explicit per-call timeout was set — an explicit budget is a
+ *   hard cap we must honor rather than silently retry behind.
+ * - A `TypeError: fetch failed` (DNS/ECONNRESET/EAI_AGAIN blip) retries for
+ *   ambiguous-network callers.
+ */
+const shouldRetryTransportError = (
+  error: unknown,
+  retryCfg: Required<RetryOptions>,
+  options: GraphQLRequestOptions | undefined
+): boolean => {
+  if (error instanceof HttpError) {
+    return (
+      retryCfg.retryableStatuses.has(error.status) ||
+      error.edgeRetry === "safe" ||
+      (error.edgeRetry === "ambiguous" && retryCfg.retryAmbiguousNetwork)
+    );
+  }
+  if ((error as { retryableCancellation?: boolean })?.retryableCancellation === true) {
+    return true;
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return retryCfg.retryAmbiguousNetwork && options?.timeoutMs === undefined;
+  }
+  if (error instanceof TypeError) {
+    return retryCfg.retryAmbiguousNetwork;
+  }
+  return false;
 };
 
 export const runSitecoreGraphQL = async <T>(
@@ -258,26 +380,7 @@ export const runSitecoreGraphQL = async <T>(
       });
 
       if (!response.ok) {
-        const body = await parseJsonIfPossible(response);
-        const message =
-          typeof body === "string"
-            ? body
-            : body && typeof body === "object"
-              ? JSON.stringify(body)
-              : undefined;
-        const httpError = new HttpError(
-          response.status,
-          // Test mocks of `Response` may omit `headers`; defensive access
-          // avoids `Cannot read properties of undefined`. Production
-          // `fetch` always populates a `Headers` object.
-          parseRetryAfter(response.headers?.get?.("retry-after") ?? null),
-          redactSecrets(
-            `Sitecore ${transport.label} API request failed (${response.status}).${
-              message ? ` ${message}` : ""
-            }`
-          )
-        );
-        throw httpError;
+        throw await buildHttpErrorFromResponse(response, transport);
       }
 
       const parsed = await parseJsonIfPossible(response);
@@ -329,46 +432,14 @@ export const runSitecoreGraphQL = async <T>(
     } catch (error) {
       lastError = error;
 
-      if (error instanceof HttpError && retryCfg.retryableStatuses.has(error.status)) {
-        if (attempt < retryCfg.maxAttempts - 1) {
-          await sleep(computeBackoff(attempt, retryCfg, error.retryAfterSeconds));
-          continue;
-        }
-      } else if (
-        // Server-side "operation was canceled" — rolled back, never applied,
-        // so safe to retry even for writes. NOT gated by
-        // `retryAmbiguousNetwork` (unlike aborts/blips, a cancellation is an
-        // unambiguous did-not-apply signal).
-        (error as { retryableCancellation?: boolean })?.retryableCancellation === true &&
-        attempt < retryCfg.maxAttempts - 1
-      ) {
-        await sleep(computeBackoff(attempt, retryCfg));
-        continue;
-      } else if (
-        error instanceof Error &&
-        error.name === "AbortError" &&
+      if (
         attempt < retryCfg.maxAttempts - 1 &&
-        // Ambiguous: the request may have applied before we aborted, so
-        // mutation callers opt out via `retryAmbiguousNetwork: false`.
-        retryCfg.retryAmbiguousNetwork &&
-        // Honor explicit per-call timeoutMs as a hard cap — if the caller
-        // set one, an abort means "took longer than the budget", and
-        // silently retrying behind their back violates their intent.
-        // Without timeoutMs, an abort is most likely a transient
-        // upstream cancellation (proxy hiccup) — safe to retry.
-        options?.timeoutMs === undefined
+        shouldRetryTransportError(error, retryCfg, options)
       ) {
-        await sleep(computeBackoff(attempt, retryCfg));
-        continue;
-      } else if (
-        // `fetch` failures from network blips (DNS, ECONNRESET, EAI_AGAIN, etc.)
-        // surface as `TypeError: fetch failed` in Node's undici. Ambiguous for
-        // writes (the request may have reached the server), so gated too.
-        error instanceof TypeError &&
-        attempt < retryCfg.maxAttempts - 1 &&
-        retryCfg.retryAmbiguousNetwork
-      ) {
-        await sleep(computeBackoff(attempt, retryCfg));
+        // Only an HttpError carries a `Retry-After`; other retryable failures
+        // fall back to exponential backoff.
+        const retryAfter = error instanceof HttpError ? error.retryAfterSeconds : undefined;
+        await sleep(computeBackoff(attempt, retryCfg, retryAfter));
         continue;
       }
 
@@ -379,7 +450,15 @@ export const runSitecoreGraphQL = async <T>(
   // Final mapping to ScaiError. HttpError → NETWORK; AbortError → timeout hint;
   // everything else → generic NETWORK with the original message.
   if (lastError instanceof HttpError) {
-    throw createScaiError(lastError.message, "NETWORK");
+    throw createScaiError(
+      lastError.message,
+      "NETWORK",
+      lastError.edgeRetry
+        ? {
+            hint: "The CM host was momentarily unreachable at the CDN edge — often a cold-scaled or newly-provisioned environment. Retrying shortly usually succeeds.",
+          }
+        : undefined
+    );
   }
   if (lastError instanceof Error && lastError.name === "AbortError") {
     throw createScaiError(`Sitecore ${transport.label} API request timed out.`, "NETWORK", {
@@ -406,7 +485,14 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly retryAfterSeconds: number | undefined,
-    message: string
+    message: string,
+    /**
+     * Set when the failure is a Cloudflare edge page rather than a real API
+     * error. "safe" = the request never reached the origin (retryable even for
+     * writes); "ambiguous" = the origin may have received it (retry only when
+     * the caller allows ambiguous-network retries).
+     */
+    readonly edgeRetry?: "safe" | "ambiguous"
   ) {
     super(message);
     this.name = "HttpError";

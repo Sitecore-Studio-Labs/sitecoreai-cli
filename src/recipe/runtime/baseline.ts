@@ -169,6 +169,36 @@ export const canonicaliseLayoutXml = (xml: string, preParsed?: ParsedLayout): st
  * Shared between baseline-capture (write side) and the planner (read
  * side) so both ends compute the same hash for the same logical value.
  */
+const GUID_SEGMENT =
+  /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/;
+
+/**
+ * True when the rendered value is a pipe-separated list of GUIDs (one or
+ * more) — the wire shape of `__Masters` (insert options), `__Base
+ * template`, droplinks/multilists, etc.
+ */
+export const isGuidListValue = (value: string): boolean => {
+  if (value === "") return false;
+  return value.split("|").every((segment) => GUID_SEGMENT.test(segment.trim()));
+};
+
+/**
+ * Canonicalise a GUID-list value for comparison/hashing: each segment
+ * to braced-uppercase-dashed form. ORDER IS PRESERVED — multilist order
+ * is author-meaningful in Sitecore (insert-option display order,
+ * treelist ordering), so only the byte representation is normalised
+ * (brace form, case, stray whitespace), not the semantics. This is the
+ * GUID-list analogue of `canonicaliseLayoutXml`: scai writes via
+ * `toCurly` ({UPPER}), but values that round-trip through the tenant or
+ * arrive from author edits can differ in case/braces for the same
+ * logical list — a raw string compare then reports phantom drift.
+ */
+export const canonicaliseGuidList = (value: string): string =>
+  value
+    .split("|")
+    .map((segment) => `{${segment.trim().replace(/[{}]/g, "").toUpperCase()}}`)
+    .join("|");
+
 export const hashFieldValueForBaseline = (
   fieldId: string,
   renderedValue: string,
@@ -179,10 +209,15 @@ export const hashFieldValueForBaseline = (
    * Halves layout parse cost on the planner's hot path.
    */
   preParsedLayout?: ParsedLayout
-): string =>
-  hashFieldValue(
-    isLayoutFieldId(fieldId) ? canonicaliseLayoutXml(renderedValue, preParsedLayout) : renderedValue
-  );
+): string => {
+  if (isLayoutFieldId(fieldId)) {
+    return hashFieldValue(canonicaliseLayoutXml(renderedValue, preParsedLayout));
+  }
+  if (isGuidListValue(renderedValue)) {
+    return hashFieldValue(canonicaliseGuidList(renderedValue));
+  }
+  return hashFieldValue(renderedValue);
+};
 
 /**
  * Compose a stable lookup key for a baseline entry. Matches the per-field

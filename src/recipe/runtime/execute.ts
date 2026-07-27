@@ -117,6 +117,15 @@ export interface ExecutionResult {
    * the three-way merge baseline post-apply.
    */
   capturedItemIds: ReadonlyMap<string, string>;
+  /**
+   * RefKeys of CreateItem ops whose apply ADOPTED an existing item
+   * instead of creating one. Adopt-as-is does not write the create's
+   * `fields`, so the push task must NOT baseline those field values —
+   * the tenant never received them, and a baseline that claims it did
+   * turns every later push into a phantom cms-edit conflict. Empty in
+   * plan mode.
+   */
+  adoptedItemRefKeys: ReadonlySet<string>;
 }
 
 export interface ExecuteOptions {
@@ -741,6 +750,9 @@ interface DispatchMutationOptions {
   pathItemIdCache: Map<string, string> | undefined;
   pathSnapshotCache: Map<string, RemoteItem | null> | undefined;
   idSnapshotCache: Map<string, RemoteItem> | undefined;
+  /** Records CreateItem refKeys whose apply adopted an existing item —
+   *  see `ExecutionResult.adoptedItemRefKeys`. */
+  adoptedItemRefKeys: Set<string> | undefined;
   allowPrune: boolean;
   emit?: (event: ExecutionEvent) => void;
 }
@@ -763,14 +775,22 @@ const dispatchCreateItem = async (
     pathItemIdCache,
     pathSnapshotCache,
     idSnapshotCache,
+    adoptedItemRefKeys,
   }: Pick<
     DispatchMutationOptions,
-    "capturedItemIds" | "pathItemIdCache" | "pathSnapshotCache" | "idSnapshotCache"
+    | "capturedItemIds"
+    | "pathItemIdCache"
+    | "pathSnapshotCache"
+    | "idSnapshotCache"
+    | "adoptedItemRefKeys"
   >
 ): Promise<void> => {
   const result = await client.createItem(mutation.input);
   if (action.operation.op !== "CreateItem") return;
   capturedItemIds.set(action.operation.id, result.itemId);
+  // Adopt-as-is returns the existing item WITHOUT writing the create's
+  // fields — record it so the baseline writer skips those field values.
+  if (result.adopted) adoptedItemRefKeys?.add(action.operation.id);
   pathItemIdCache?.set(action.operation.path, result.itemId);
   const synthetic = synthesizeCreateSnapshot({
     itemId: result.itemId,
@@ -792,6 +812,7 @@ const dispatchMutation = async ({
   pathItemIdCache,
   pathSnapshotCache,
   idSnapshotCache,
+  adoptedItemRefKeys,
   allowPrune,
   emit,
 }: DispatchMutationOptions): Promise<void> => {
@@ -802,6 +823,7 @@ const dispatchMutation = async ({
       pathItemIdCache,
       pathSnapshotCache,
       idSnapshotCache,
+      adoptedItemRefKeys,
     });
     return;
   }
@@ -1307,6 +1329,7 @@ interface BuildResultInput {
   summary: PlanSummary;
   aborted: boolean;
   capturedItemIds: ReadonlyMap<string, string>;
+  adoptedItemRefKeys?: ReadonlySet<string>;
   rollbackResult?: RollbackResult;
 }
 
@@ -1316,6 +1339,7 @@ const buildResult = ({
   summary,
   aborted,
   capturedItemIds,
+  adoptedItemRefKeys,
   rollbackResult,
 }: BuildResultInput): ExecutionResult => ({
   plan: { schemaVersion: "1", recipeHandle: ir.recipeHandle, actions, summary },
@@ -1323,6 +1347,7 @@ const buildResult = ({
   aborted,
   rollback: rollbackResult,
   capturedItemIds,
+  adoptedItemRefKeys: adoptedItemRefKeys ?? new Set<string>(),
 });
 
 interface RunRollbackInput {
@@ -1484,13 +1509,22 @@ export const executeIr = async (
       conflictPolicy: options.conflictPolicy,
       mediaFallbacks,
     });
-    return { plan, summary: plan.summary, aborted: false, capturedItemIds };
+    return {
+      plan,
+      summary: plan.summary,
+      aborted: false,
+      capturedItemIds,
+      adoptedItemRefKeys: new Set<string>(),
+    };
   }
 
   const actions: PlannedAction[] = [];
   const applied: PlannedAction[] = [];
   const summary: PlanSummary = { create: 0, update: 0, skip: 0, error: 0, prune: 0, conflict: 0 };
   const capturedItemIds = new Map<string, string>();
+  // CreateItem refKeys whose apply adopted an existing item (no field
+  // write) — see ExecutionResult.adoptedItemRefKeys.
+  const adoptedItemRefKeys = new Set<string>();
   if (options.pathItemIdCache) {
     for (const [path, itemId] of options.pathItemIdCache) {
       if (!capturedItemIds.has(path)) capturedItemIds.set(path, itemId);
@@ -1542,7 +1576,15 @@ export const executeIr = async (
       summary: { trigger: "apply-error", forwardError: fatal.message },
     });
     emitFailed(options, fatal.entry.index, applied, rollbackResult, fatal.message);
-    return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+    return buildResult({
+      ir,
+      actions,
+      summary,
+      aborted: true,
+      capturedItemIds,
+      adoptedItemRefKeys,
+      rollbackResult,
+    });
   };
 
   /**
@@ -1563,7 +1605,15 @@ export const executeIr = async (
       summary: { trigger: "cancelled", forwardError: cancelMessage },
     });
     emitFailed(options, index, applied, rollbackResult, cancelMessage);
-    return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+    return buildResult({
+      ir,
+      actions,
+      summary,
+      aborted: true,
+      capturedItemIds,
+      adoptedItemRefKeys,
+      rollbackResult,
+    });
   };
 
   /**
@@ -1590,6 +1640,7 @@ export const executeIr = async (
         pathItemIdCache: options.pathItemIdCache,
         pathSnapshotCache: options.pathSnapshotCache,
         idSnapshotCache: options.idSnapshotCache,
+        adoptedItemRefKeys,
         allowPrune: options.allowPrune ?? false,
         emit: options.emit,
       });
@@ -1645,7 +1696,15 @@ export const executeIr = async (
         summary: { trigger: "apply-error", forwardError: message },
       });
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+      return buildResult({
+        ir,
+        actions,
+        summary,
+        aborted: true,
+        capturedItemIds,
+        adoptedItemRefKeys,
+        rollbackResult,
+      });
     }
   };
 
@@ -1712,7 +1771,15 @@ export const executeIr = async (
         summary: { trigger: "plan-error", forwardError: message },
       });
       emitFailed(options, index, applied, rollbackResult, message);
-      return buildResult({ ir, actions, summary, aborted: true, capturedItemIds, rollbackResult });
+      return buildResult({
+        ir,
+        actions,
+        summary,
+        aborted: true,
+        capturedItemIds,
+        adoptedItemRefKeys,
+        rollbackResult,
+      });
     }
 
     summary[action.status] += 1;
@@ -1748,5 +1815,5 @@ export const executeIr = async (
     if (poolAbort) return poolAbort;
   }
 
-  return buildResult({ ir, actions, summary, aborted: false, capturedItemIds });
+  return buildResult({ ir, actions, summary, aborted: false, capturedItemIds, adoptedItemRefKeys });
 };

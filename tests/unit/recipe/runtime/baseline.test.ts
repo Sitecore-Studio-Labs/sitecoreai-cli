@@ -508,3 +508,43 @@ describe("adaptSyncBaselineStorage", () => {
     );
   });
 });
+
+import { canonicaliseGuidList, isGuidListValue } from "../../../../src/recipe/runtime/baseline";
+
+describe("GUID-list canonicalisation", () => {
+  it("recognises single GUIDs and pipe-separated lists in any brace/case form", () => {
+    expect(isGuidListValue("{F7332C33-2305-40B1-904D-9823350A774F}")).toBe(true);
+    expect(
+      isGuidListValue("f7332c33-2305-40b1-904d-9823350a774f|{BB07F87B-7D77-416E-B71D-B5A91F49AC4B}")
+    ).toBe(true);
+    expect(isGuidListValue("")).toBe(false);
+    expect(isGuidListValue("not-a-guid")).toBe(false);
+    expect(isGuidListValue("{F7332C33-2305-40B1-904D-9823350A774F}|junk")).toBe(false);
+  });
+
+  it("canonicalises to braced-uppercase, preserving ORDER (multilist order is author-meaningful)", () => {
+    expect(
+      canonicaliseGuidList(
+        "bb07f87b-7d77-416e-b71d-b5a91f49ac4b|{f7332c33-2305-40b1-904d-9823350a774f}"
+      )
+    ).toBe("{BB07F87B-7D77-416E-B71D-B5A91F49AC4B}|{F7332C33-2305-40B1-904D-9823350A774F}");
+  });
+
+  it("hashFieldValueForBaseline hashes representation-insensitively for GUID lists", () => {
+    const a = hashFieldValueForBaseline(
+      "1172f251-dad4-4efb-a329-0c63500e4f1e",
+      "{F7332C33-2305-40B1-904D-9823350A774F}|{BB07F87B-7D77-416E-B71D-B5A91F49AC4B}"
+    );
+    const b = hashFieldValueForBaseline(
+      "1172f251-dad4-4efb-a329-0c63500e4f1e",
+      "f7332c33-2305-40b1-904d-9823350a774f|bb07f87b-7d77-416e-b71d-b5a91f49ac4b"
+    );
+    expect(a).toBe(b);
+    // Order still matters — a reorder is a REAL drift, not wire noise.
+    const c = hashFieldValueForBaseline(
+      "1172f251-dad4-4efb-a329-0c63500e4f1e",
+      "{BB07F87B-7D77-416E-B71D-B5A91F49AC4B}|{F7332C33-2305-40B1-904D-9823350A774F}"
+    );
+    expect(c).not.toBe(a);
+  });
+});

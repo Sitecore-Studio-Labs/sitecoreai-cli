@@ -190,3 +190,62 @@ describe("collectBaselineEntries — structural ops emit nothing", () => {
     expect(entries).toEqual([]);
   });
 });
+
+describe("collectBaselineEntries — applied evidence (post-apply capture)", () => {
+  const setField = (label: string): OperationIr["operations"][number] => ({
+    op: "SetField",
+    policy: "CreateAndUpdate",
+    label,
+    itemRefKey: "item-1",
+    fieldId: `f-${label}`,
+    value: { kind: "string", value: `v-${label}` },
+  });
+  const createItem: OperationIr["operations"][number] = {
+    op: "CreateItem",
+    policy: "CreateAndUpdate",
+    label: "create:thing",
+    id: "thing-ref",
+    parentRefKey: "parent-ref",
+    path: "/sitecore/content/thing",
+    name: "thing",
+    templateId: "22222222-2222-2222-2222-222222222222",
+    fields: [{ fieldId: "f-embedded", value: { kind: "string", value: "embedded" } }],
+  } as OperationIr["operations"][number];
+
+  it("captures executed updates and proven-in-sync skips; drops cms-wins / create-only / unresolved skips", () => {
+    const updated = setField("updated");
+    const inSync = setField("in-sync");
+    const cmsWins = setField("cms-wins");
+    const createOnly = setField("create-only");
+    const unresolved = setField("unresolved");
+    const ops = [updated, inSync, cmsWins, createOnly, unresolved];
+    const entries = collectBaselineEntries(ir(ops), new Map(), {
+      actions: [
+        { index: 0, operation: updated, status: "update" },
+        { index: 1, operation: inSync, status: "skip", skipKind: "in-sync" },
+        { index: 2, operation: cmsWins, status: "skip", skipKind: "cms-wins" },
+        { index: 3, operation: createOnly, status: "skip", skipKind: "create-only" },
+        { index: 4, operation: unresolved, status: "skip", skipKind: "unresolved" },
+      ],
+    });
+    expect(entries.map((e) => e.fieldId)).toEqual(["f-updated", "f-in-sync"]);
+  });
+
+  it("captures a fresh create's embedded fields but drops an ADOPTED create's", () => {
+    const fresh = collectBaselineEntries(ir([createItem]), new Map(), {
+      actions: [{ index: 0, operation: createItem, status: "create" }],
+    });
+    expect(fresh.map((e) => e.fieldId)).toEqual(["f-embedded"]);
+
+    const adopted = collectBaselineEntries(ir([createItem]), new Map(), {
+      actions: [{ index: 0, operation: createItem, status: "create" }],
+      adoptedItemRefKeys: new Set(["thing-ref"]),
+    });
+    expect(adopted).toEqual([]);
+  });
+
+  it("legacy call without applied evidence keeps the desired-state walk", () => {
+    const op = setField("legacy");
+    expect(collectBaselineEntries(ir([op]), new Map())).toHaveLength(1);
+  });
+});

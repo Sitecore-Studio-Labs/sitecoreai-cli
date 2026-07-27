@@ -39,6 +39,7 @@ import type {
   SetFieldOp,
   SetStandardValuesOp,
 } from "../ir/operations";
+import type { PlannedAction } from "./plan";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { renderRefValue, resolveRecipeRefs } from "../api/ref-encoding";
 import type { BaselineFieldEntry } from "./baseline";
@@ -123,18 +124,80 @@ const fieldEntryFromSetStandardValues = (
   );
 
 /**
+ * Applied-state evidence for one push — the executed plan's actions plus
+ * the CreateItem refKeys the apply ADOPTED (existing item, fields NOT
+ * written). When present, `collectBaselineEntries` records only field
+ * values the tenant verifiably holds after this push:
+ *
+ *  - CreateItem `create` actions whose refKey was NOT adopted — the item
+ *    was freshly created with the recipe's fields.
+ *  - SetField/SetBaseTemplates/SetStandardValues `update` actions — the
+ *    desired value was written.
+ *  - `skip` actions with `skipKind: "in-sync"` — the planner proved the
+ *    tenant already held the desired value.
+ *
+ * Everything else (adopted creates, `unresolved` / `create-only` /
+ * `cms-wins` skips) is deliberately NOT baselined: the tenant does not
+ * hold the desired value there, and recording it anyway is exactly the
+ * over-capture that manufactured permanent phantom `cms-edit` conflicts
+ * — the recipe kept matching the (fictional) baseline while the tenant
+ * kept "diverging" from it. An uncaptured cell simply classifies as
+ * `first-push` next time, which applies cleanly.
+ */
+export interface AppliedEvidence {
+  actions: readonly PlannedAction[];
+  adoptedItemRefKeys?: ReadonlySet<string>;
+}
+
+const capturableOps = (
+  ir: OperationIr,
+  applied: AppliedEvidence | undefined
+): readonly Operation[] => {
+  if (!applied) return ir.operations as Operation[];
+  const adopted = applied.adoptedItemRefKeys;
+  const ops: Operation[] = [];
+  for (const action of applied.actions) {
+    const op = action.operation;
+    switch (op.op) {
+      case "CreateItem":
+        if (action.status === "create" && !adopted?.has(op.id)) ops.push(op);
+        break;
+      case "SetField":
+      case "SetBaseTemplates":
+      case "SetStandardValues":
+        if (
+          action.status === "update" ||
+          (action.status === "skip" && action.skipKind === "in-sync")
+        ) {
+          ops.push(op);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return ops;
+};
+
+/**
  * Walk every value-bearing op in `ir.operations` and collect one
  * `BaselineFieldEntry` per write. Returns `[]` for an IR with no
  * value-bearing ops (structural-only recipes — pure CreateItem +
  * PruneChildren shouldn't have a baseline either, the "no entries" case
  * just round-trips as recipe-change next plan).
+ *
+ * Pass `applied` (the executed plan's actions + adopted refKeys) to
+ * capture APPLIED state instead of desired state — see
+ * {@link AppliedEvidence}. Without it (legacy callers/tests) every
+ * value-bearing op is captured, desired-state style.
  */
 export const collectBaselineEntries = (
   ir: OperationIr,
-  capturedItemIds: ReadonlyMap<string, string>
+  capturedItemIds: ReadonlyMap<string, string>,
+  applied?: AppliedEvidence
 ): BaselineFieldEntry[] => {
   const entries: BaselineFieldEntry[] = [];
-  for (const op of ir.operations as Operation[]) {
+  for (const op of capturableOps(ir, applied)) {
     switch (op.op) {
       case "CreateItem":
         // op.fields is typed required but mock IRs in unit tests can omit

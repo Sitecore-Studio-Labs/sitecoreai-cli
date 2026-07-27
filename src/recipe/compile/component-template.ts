@@ -490,7 +490,12 @@ function emitSiteDataFolderTemplate(
       fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
       value: {
         kind: "ref-recipe-list",
-        refKeys: location.allowedTemplates!.map((t) => templateId(site, t.handle)),
+        // Deduped + sorted by handle — same treatment as the shared
+        // aggregate — so a regenerated recipe that reorders its
+        // declarations can't drift the rendered field value.
+        refKeys: [...new Set(location.allowedTemplates!.map((t) => t.handle))]
+          .sort((a, b) => a.localeCompare(b))
+          .map((handle) => templateId(site, handle)),
       },
     } satisfies SetFieldOp);
   }
@@ -563,7 +568,14 @@ function emitSiteDataFolderTemplate(
     fieldId: SYSTEM_FIELDS.INSERT_OPTIONS,
     value: {
       kind: "ref-recipe-list",
-      refKeys: datasourceTemplateHandles(recipe).map((handle) => templateId(site, handle)),
+      // Deduped + sorted by handle — same treatment as the shared
+      // aggregate ("so re-pushes don't drift the field value"). This
+      // per-recipe path previously preserved declaration order, so a
+      // regenerated recipe with reordered `datasource.templates[]`
+      // changed the rendered `__Masters` string for the same GUID set.
+      refKeys: [...new Set(datasourceTemplateHandles(recipe))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((handle) => templateId(site, handle)),
     },
   } satisfies SetFieldOp);
 }

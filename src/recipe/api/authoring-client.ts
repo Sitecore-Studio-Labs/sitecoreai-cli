@@ -855,7 +855,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
     const templateMatches =
       liveTemplateId === "" || dashifyGuid(liveTemplateId) === dashifyGuid(input.templateId);
     if (!input.retemplateOnAdopt || templateMatches) {
-      return { itemId: existing.itemId };
+      return { itemId: existing.itemId, adopted: true };
     }
 
     const markerName = SCAI_HANDLE_FIELD_NAME.toLowerCase();
@@ -867,7 +867,7 @@ export const createAuthoringClient = (options: AuthoringClientOptions): Authorin
       (name) => !liveFieldNames.has(name.toLowerCase())
     );
     if (unresolvable.length === 0) {
-      return { itemId: existing.itemId };
+      return { itemId: existing.itemId, adopted: true };
     }
 
     const conflict =

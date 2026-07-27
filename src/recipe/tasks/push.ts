@@ -26,7 +26,13 @@ import { resolveRecipePushOnError } from "../push-mode";
 import { executeIr, type ExecutionEvent, type ExecutionResult } from "../runtime/execute";
 import type { MediaFallback } from "../api/ref-encoding";
 import { writeProgressLine } from "./progress-stream";
-import { type BaselineIndex, FileBaselineStorage, indexBaseline } from "../runtime/baseline";
+import {
+  adaptSyncBaselineStorage,
+  type BaselineIndex,
+  FileBaselineStorage,
+  indexBaseline,
+} from "../runtime/baseline";
+import { resolveHttpBaselineStorageFromEnv } from "@/sync";
 import { collectBaselineEntries } from "../runtime/baseline-capture";
 import type { Operation, OperationIr } from "../ir/operations";
 import { applyPlaceholderAllowControls, type PlaceholderAllowResult } from "./placeholder-allow";
@@ -427,6 +433,7 @@ const emitCachedSkipResults = (
       aborted: false,
       // Cached-skip path didn't run the executor — no refKeys to capture.
       capturedItemIds: new Map(),
+      adoptedItemRefKeys: new Set(),
     });
     if (!logger.isJson()) {
       logger.info(
@@ -472,6 +479,22 @@ const persistRecipeCache = async (args: {
 };
 
 /**
+ * Ambient baseline storage when the caller injected none. Precedence:
+ * orchestrator HTTP storage (`SYNC_BASELINE_ENDPOINT_URL` / `_AUTH_TOKEN`
+ * in the env — the same bridge brand/brief/campaign sync use) > local
+ * file. The HTTP path matters for sandboxed installs: a file baseline
+ * dies with the ephemeral sandbox, so every re-install arrives amnesiac
+ * and misclassifies its own prior writes as tenant author edits
+ * (phantom cms-edit conflicts).
+ */
+const resolveDefaultBaselineStorage = (
+  configDir: string
+): FileBaselineStorage | ReturnType<typeof adaptSyncBaselineStorage> => {
+  const httpBaseline = resolveHttpBaselineStorageFromEnv();
+  return httpBaseline ? adaptSyncBaselineStorage(httpBaseline) : new FileBaselineStorage(configDir);
+};
+
+/**
  * Persist the three-way-merge baseline after a successful apply. Writes one
  * per-field hash snapshot per recipe that applied cleanly (non-aborted,
  * no errors, no conflicts). No-op in dry-run or with `--no-baseline`.
@@ -492,7 +515,15 @@ const persistBaselines = async (args: {
     if (!result || result.aborted || result.summary.error > 0 || result.summary.conflict > 0) {
       continue;
     }
-    const entries = collectBaselineEntries(ir, result.capturedItemIds);
+    // Applied-state capture: only field values the tenant verifiably holds
+    // (fresh creates, executed updates, proven-in-sync skips). Adopted
+    // creates and cms-wins/create-only/unresolved skips are NOT baselined —
+    // over-capturing them is what manufactured permanent phantom cms-edit
+    // conflicts on repeatedly-installed sites.
+    const entries = collectBaselineEntries(ir, result.capturedItemIds, {
+      actions: result.plan.actions,
+      adoptedItemRefKeys: result.adoptedItemRefKeys,
+    });
     if (entries.length === 0) continue;
     await baselineStorage.write(envName, ir.recipeHandle, {
       schemaVersion: "1",
@@ -942,7 +973,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
   // cms-edit / conflict vs plain recipe-change. Absent file → null index
   // (legacy two-way diff behaviour). The `--no-baseline` flag skips both
   // the load and the post-apply write.
-  const baselineStorage = options.baselineStorage ?? new FileBaselineStorage(configDir);
+  const baselineStorage = options.baselineStorage ?? resolveDefaultBaselineStorage(configDir);
   const baselineIndexByHandle = new Map<string, BaselineIndex>();
   if (!options.noBaseline) {
     // Parallel baseline reads: file storage is mostly disk-bound and

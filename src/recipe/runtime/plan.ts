@@ -41,7 +41,12 @@ import type {
   UpdateItemInput,
 } from "../api/client";
 import { presentLanguageCodes, type NewSiteInput, type SitesApiClient } from "../api/sites-client";
-import { hashFieldValueForBaseline, type BaselineIndex } from "./baseline";
+import {
+  type BaselineIndex,
+  canonicaliseGuidList,
+  hashFieldValueForBaseline,
+  isGuidListValue,
+} from "./baseline";
 import { classifyPushDrift } from "./merge";
 
 /**
@@ -161,6 +166,19 @@ export interface PlannedAction {
   operation: Operation;
   status: ActionStatus;
   reason?: string;
+  /**
+   * Machine-readable discriminator for `status: "skip"` on value-bearing
+   * ops (SetField / SetBaseTemplates / SetStandardValues via
+   * `planUpdateOp`). The baseline writer keys off this: only an
+   * `"in-sync"` skip proves the tenant holds the desired value, so only
+   * that skip may be baselined. `"unresolved"` (target item missing),
+   * `"create-only"` (policy preserved a CMS edit), and `"cms-wins"`
+   * (conflict resolved in the tenant's favor) all mean the tenant does
+   * NOT hold the desired value — baselining those plants a snapshot the
+   * tenant never had, which every later push misreads as an author edit.
+   * Absent on non-skip actions and on skips from other op kinds.
+   */
+  skipKind?: "unresolved" | "in-sync" | "create-only" | "cms-wins";
   diff?: FieldDiffEntry[];
   /** Snapshot of the mutation the executor will/would dispatch. */
   mutation?:
@@ -615,11 +633,19 @@ const computeFieldDrift = (
         // which itself catches + degrades to string equality.
       }
     }
+    // GUID-list values (`__Masters`, `__Base template`, droplinks) get a
+    // representation-insensitive compare (brace form / case; order still
+    // meaningful) — the GUID-list analogue of the layout-XML structural
+    // diff above. Raw byte compare reported phantom drift whenever the
+    // tenant's stored form differed from scai's `toCurly` emission.
     const equal = isLayoutField
       ? wantParsed && foundParsed
         ? layoutXmlEquivalentFromParsed(wantParsed, foundParsed)
         : layoutXmlEquivalent(found.value, want)
-      : found.value === want;
+      : found.value === want ||
+        (isGuidListValue(want) &&
+          isGuidListValue(found.value) &&
+          canonicaliseGuidList(want) === canonicaliseGuidList(found.value));
     if (!equal) {
       const classification = classifyAgainstBaseline({
         itemRefKey,
@@ -1406,6 +1432,7 @@ const planUpdateOp = ({
       index,
       operation: op,
       status: "skip",
+      skipKind: "unresolved",
       reason: `Target item (refKey ${itemRefKey}) not yet captured/created.`,
     };
   }
@@ -1419,6 +1446,7 @@ const planUpdateOp = ({
       index,
       operation: op,
       status: "skip",
+      skipKind: "in-sync",
       reason: "Field already at desired value.",
     };
   }
@@ -1429,6 +1457,7 @@ const planUpdateOp = ({
         index,
         operation: op,
         status: "skip",
+        skipKind: "create-only",
         reason: "Field already set; CreateOnly policy preserves CMS edits.",
       };
     }
@@ -1439,6 +1468,7 @@ const planUpdateOp = ({
       index,
       operation: op,
       status: "skip",
+      skipKind: "cms-wins",
       reason: resolved.reason ?? "Conflict resolved as cms-wins.",
       diff: drift,
     };

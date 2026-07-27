@@ -109,6 +109,15 @@ export interface CreateItemInput {
 export interface CreateItemResult {
   /** Sitecore-assigned itemId (UUID without curly braces). */
   itemId: string;
+  /**
+   * True when the create ADOPTED a same-named existing item instead of
+   * creating one. Adopt-as-is does NOT write the create's `fields` —
+   * the executor uses this to keep the three-way-merge baseline honest
+   * (recording the desired field values for an adopted item plants a
+   * baseline the tenant never held, which every later push then
+   * misreads as a tenant author edit).
+   */
+  adopted?: boolean;
 }
 
 export interface UpdateItemInput {

@@ -506,8 +506,9 @@ const persistBaselines = async (args: {
   results: readonly ExecutionResult[];
   envName: string;
   baselineStorage: FileBaselineStorage | NonNullable<RecipePushOptions["baselineStorage"]>;
+  logger: ReturnType<typeof toLogger>;
 }): Promise<void> => {
-  const { isDryRun, noBaseline, irsToExecute, results, envName, baselineStorage } = args;
+  const { isDryRun, noBaseline, irsToExecute, results, envName, baselineStorage, logger } = args;
   if (isDryRun || noBaseline) return;
   const capturedAt = new Date().toISOString();
   for (const { ir } of irsToExecute) {
@@ -525,13 +526,25 @@ const persistBaselines = async (args: {
       adoptedItemRefKeys: result.adoptedItemRefKeys,
     });
     if (entries.length === 0) continue;
-    await baselineStorage.write(envName, ir.recipeHandle, {
-      schemaVersion: "1",
-      recipeHandle: ir.recipeHandle,
-      envName,
-      capturedAt,
-      fields: entries,
-    });
+    // FAIL-OPEN: the push already applied — a baseline persist failure
+    // must not convert a successful install into an exit-6. The cost of
+    // a dropped write is the same as no baseline: next push classifies
+    // these cells as first-push and applies cleanly.
+    try {
+      await baselineStorage.write(envName, ir.recipeHandle, {
+        schemaVersion: "1",
+        recipeHandle: ir.recipeHandle,
+        envName,
+        capturedAt,
+        fields: entries,
+      });
+    } catch (error) {
+      logger.warn(
+        `Baseline write failed for ${ir.recipeHandle} on ${envName} (${
+          error instanceof Error ? error.message : String(error)
+        }); the push succeeded — next push treats these fields as first-push.`
+      );
+    }
   }
 };
 
@@ -980,8 +993,23 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     // the loads are independent per-recipe. A 50-recipe push that was
     // sequential `await loadBaseline` now hits the disk concurrently.
     const entries = await mapWithConcurrency(irsToExecute, async ({ ir }) => {
-      const baseline = await baselineStorage.load(tenant.envName, ir.recipeHandle);
-      return [ir.recipeHandle, indexBaseline(baseline)] as const;
+      // FAIL-OPEN: a baseline-store hiccup (HTTP 4xx/5xx, network, disk)
+      // must never kill a push — a missing baseline just degrades this
+      // recipe to first-push/two-way semantics, exactly as if no baseline
+      // had ever been written. Concretely: the orchestrator's baseline
+      // route once 400'd scai's dunder aggregate handles, and the load
+      // error aborted every brand install at this step.
+      try {
+        const baseline = await baselineStorage.load(tenant.envName, ir.recipeHandle);
+        return [ir.recipeHandle, indexBaseline(baseline)] as const;
+      } catch (error) {
+        logger.warn(
+          `Baseline load failed for ${ir.recipeHandle} on ${tenant.envName} (${
+            error instanceof Error ? error.message : String(error)
+          }); continuing without a baseline for this recipe.`
+        );
+        return [ir.recipeHandle, indexBaseline(null)] as const;
+      }
     });
     for (const [handle, index] of entries) baselineIndexByHandle.set(handle, index);
   }
@@ -1166,6 +1194,7 @@ export const runRecipePush = async (options: RecipePushOptions): Promise<Executi
     results,
     envName: tenant.envName,
     baselineStorage,
+    logger,
   });
 
   const placeholderRoots = tenant.environment.placeholderSettingsRoots ?? [];

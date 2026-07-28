@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 
+// Every test here dynamic-imports the whole CLI entrypoint (src/cli.ts), which
+// pulls the entire Commander program tree — and transitively every domain area —
+// into the worker. esbuild's one-time transform of that graph (~5s) is charged
+// to whichever test imports first, and alone exceeds vitest's 5s default on
+// slower machines (CI runners clear it, but a loaded sandbox does not). The
+// command itself resolves in well under a second once transformed, so this is a
+// cold-compile margin, not a hang — give the file headroom so it isn't a flake.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 const actionMock = vi.fn(async () => undefined);
 const makeCommand = (name: string): Command =>
   new Command(name)

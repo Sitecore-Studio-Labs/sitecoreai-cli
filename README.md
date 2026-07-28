@@ -335,8 +335,9 @@ subpaths (those operations remain available through the `scai` CLI).
 
 **Unstable** — carries **no stability promise**. The shape may change in
 any release without a major bump or a changeset. The `brand`, `brief`,
-`sites`, `campaigns`, and `agents` APIs are reverse-engineered from
-observed traffic. Pin an exact scai version if you depend on them:
+`sites`, `campaigns`, and `agents` APIs target product surfaces that are
+not yet part of the public, versioned SitecoreAI API. Pin an exact scai
+version if you depend on them:
 
 ```
 ./unstable          — one barrel, namespaced: `agents`, `brand`, `brandSchema`,

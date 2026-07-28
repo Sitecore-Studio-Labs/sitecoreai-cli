@@ -5,8 +5,8 @@
  * triggers runs, and reads the catalogs they draw on. Its BFF is gated by
  * a browser session cookie, so auth runs through the `session/` seam
  * rather than scai's usual client-credentials OAuth — a deliberate
- * stopgap. Every fragile / reverse-engineered point in this area is
- * inventoried in `docs/agents-followups.md`.
+ * stopgap. Every unverified write in this area is gated behind
+ * `--unverified`.
  *
  * A session comes from one of three sources, all converging on the same
  * `AgentsSession`:

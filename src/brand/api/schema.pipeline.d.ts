@@ -130,7 +130,7 @@ export interface components {
        * @description The parameters used for brand ingestion, such as brand kit and organization IDs and base URLs.
        * @example {
        *       "brand_kit_id": "98689dd5-1684-48cb-a339-d9610dbd7986",
-       *       "org_id": "org_ZiiCnzhCeHDpWJAU",
+       *       "org_id": "org_EXAMPLExxxxxxxx",
        *       "baseUrlDocAPI": "https://ai-documents-api-euw.sitecorecloud.io"
        *     }
        */

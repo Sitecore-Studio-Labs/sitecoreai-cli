@@ -54,7 +54,7 @@ const { describe, it } = describeIfDeployAuth();
  */
 
 const DEFAULTS = {
-  cmHost: "xmc-lizsitecore088b-starterkitsa33f-contentatte7784.sitecorecloud.io",
+  cmHost: "xmc-example-env.sitecorecloud.io",
   templatesRoot: "/sitecore/templates/Project/demo-registry",
   renderingsRoot: "/sitecore/layout/Renderings/Project/demo-registry",
   siteTemplatesRoot: "/sitecore/templates/Project/demo-registry",

@@ -1,0 +1,29 @@
+# Gitleaks configuration for scai.
+#
+# Extends the upstream default ruleset (high-entropy + known-provider secret
+# detection) and adds an allowlist for values that are intentionally public or
+# are synthetic fixtures — so the secret scan stays signal-heavy.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentionally-public values and test fixtures"
+
+regexes = [
+  # Public OAuth device-flow client ID for the scai CLI. Public clients carry
+  # no secret by design (it ships in the published binary), like the gh/gcloud
+  # CLIs — not a credential.
+  '''Chi8EwfFnEejksk3Sed9hlalGiM9B2v7''',
+  # Non-secret JWT *header* fragment ({"alg":"HS256","typ":"JWT"}) used as an
+  # OpenAPI example. Has no payload/signature.
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9''',
+]
+
+paths = [
+  # Committed sample/placeholder config — values are EXAMPLE* placeholders.
+  '''\.env\.example$''',
+  '''sitecoreai\.cli\.example\.json$''',
+  # Synthesized (fake) JWTs live only in the unit suite.
+  '''tests/.*''',
+]

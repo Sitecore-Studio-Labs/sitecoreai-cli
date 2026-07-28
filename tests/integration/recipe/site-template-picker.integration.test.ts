@@ -58,7 +58,7 @@ const it = integrationEnabled ? itRaw : itRaw.skip;
  */
 
 const DEFAULTS = {
-  cmHost: "xmc-lizsitecoree793-agenticdemo67ba-testdemofor7ec7.sitecorecloud.io",
+  cmHost: "xmc-example-env.sitecorecloud.io",
   templatesRoot: "/sitecore/templates/Project/scai-e2e",
   renderingsRoot: "/sitecore/layout/Renderings/Project/scai-e2e",
   // SXA Site Templates ("Solution templates") live under the tenant's

@@ -1,0 +1,49 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  # Repo-specific gate: live customer/tenant identifiers, JWTs, staging hosts,
+  # and committed recon/secret artifacts. Mirrors the 2026-07 security audit.
+  identifiers:
+    name: identifier & artifact scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan for live identifiers and forbidden artifacts
+        run: node scripts/security-scan.cjs
+
+  # Secret detection via the MIT-licensed gitleaks CLI (not the licensed
+  # gitleaks-action, which requires a paid org license — that is why the
+  # previous Secret Scan workflow was removed).
+  gitleaks:
+    name: gitleaks (secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks CLI
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan working tree
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner --verbose
+
+      - name: Scan git history
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner

@@ -1,7 +1,7 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
   "version": "0.38.8",
-  "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
+  "description": "SitecoreAI developer toolkit \u2014 a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
   "author": "Liz Nelson <liz.nelson@sitecore.com>",
@@ -104,8 +104,6 @@
     "docs:commands": "tsx scripts/generate-commands-doc.ts",
     "docs:commands:check": "tsx scripts/generate-commands-doc.ts && git diff --exit-code -- docs/commands.md",
     "depcruise:check": "depcruise --config .dependency-cruiser.cjs src",
-    "scan:agentic-actions": "tsx -r tsconfig-paths/register scripts/scan-agentic-actions.ts",
-    "record:agentic-actions": "tsx -r tsconfig-paths/register scripts/record-agentic-actions.ts",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",
@@ -125,7 +123,8 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise:check && pnpm test",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise:check && pnpm security:scan && pnpm test",
+    "security:scan": "node scripts/security-scan.cjs",
     "version": "changeset version && npm install --package-lock-only --ignore-scripts",
     "coverage:ratchet": "node scripts/check-coverage-ratchet.cjs",
     "coverage:ratchet:raise": "RAISE_RATCHET=1 node scripts/check-coverage-ratchet.cjs"
@@ -163,7 +162,8 @@
     "esbuild": "^0.28.1",
     "vite": "^7.3.5",
     "js-yaml": "^4.2.0",
-    "read-yaml-file": "^2.1.0"
+    "read-yaml-file": "^2.1.0",
+    "brace-expansion": ">=5.0.8"
   },
   "pnpm": {
     "overrides": {
@@ -173,7 +173,8 @@
       "esbuild": "^0.28.1",
       "vite": "^7.3.5",
       "js-yaml": "^4.2.0",
-      "read-yaml-file": "^2.1.0"
+      "read-yaml-file": "^2.1.0",
+      "brace-expansion": ">=5.0.8"
     }
   },
   "devDependencies": {

@@ -8,7 +8,7 @@
  * `PUT /api/custom-mcps/{id}` returns 405, and re-POSTing `/api/custom-mcps`
  * with the same name creates a *duplicate* rather than upserting (both
  * verified 2026-05-17). `updateCustomMcp` stays gated behind `--unverified`;
- * the supported path is delete + recreate. See docs/agentic-studio-har-capture.md.
+ * the supported path is delete + recreate.
  */
 import { agentsRequest } from "./request";
 import type { AgentsSession } from "../session/types";

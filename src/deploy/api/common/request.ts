@@ -1,11 +1,11 @@
-import { redactSecrets } from "../../../shared/redact";
-import { createScaiError } from "../../../shared/errors";
+import { redactSecrets } from "@/shared/redact";
+import { createScaiError } from "@/shared/errors";
 // `extractErrorMessage` + `parseJsonIfPossible` are the canonical REST
 // error/parse helpers — they now live in `shared/rest.ts` (the single
 // source shared with the sites/brand/publishing transports). Re-exported
 // here so the many deploy modules (and campaigns/brief) that import them
 // from this path keep working unchanged.
-import { extractErrorMessage, parseJsonIfPossible } from "../../../shared/rest";
+import { extractErrorMessage, parseJsonIfPossible } from "@/shared/rest";
 export { extractErrorMessage, parseJsonIfPossible };
 import { getDeployTransportListener, type DeployRequestSpan } from "./transport-events";
 import {

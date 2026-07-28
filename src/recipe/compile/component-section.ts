@@ -10,7 +10,7 @@ import {
   type OperationIr,
   OperationIrSchema,
 } from "../ir/operations";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { FOLDER_ICON, SITECORE_TEMPLATES, SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type ComponentSectionRecipe, ComponentSectionRecipeSchema } from "../schema/recipe";
 import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";

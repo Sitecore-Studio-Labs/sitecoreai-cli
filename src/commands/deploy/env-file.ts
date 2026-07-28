@@ -5,7 +5,7 @@ import {
   addVerbosityOptions,
   addWhatIfOption,
 } from "../shared";
-import { runDeployEnvFile } from "../../deploy/tasks/env-file";
+import { runDeployEnvFile } from "@/deploy/tasks/env-file";
 
 /**
  * `scai provision deploy env-file` — generate/update `.env.local` for a Content

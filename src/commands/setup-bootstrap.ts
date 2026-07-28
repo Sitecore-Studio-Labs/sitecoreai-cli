@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runBootstrap } from "../serialization/tasks/env/bootstrap";
+import { runBootstrap } from "@/serialization/tasks/env/bootstrap";
 
 /**
  * `scai setup bootstrap [env]` — the one-command path from (optionally) nothing

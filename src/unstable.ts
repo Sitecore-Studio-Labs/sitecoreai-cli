@@ -21,12 +21,12 @@
  */
 
 export * as agents from "./agents";
-export * as agentsSchema from "./agents/recipe/schema-only";
+export * as agentsSchema from "@/agents/recipe/schema-only";
 export * as brand from "./brand";
-export * as brandSchema from "./brand/recipe/schema-only";
+export * as brandSchema from "@/brand/recipe/schema-only";
 export * as brief from "./brief";
-export * as briefSchema from "./brief/recipe/schema-only";
+export * as briefSchema from "@/brief/recipe/schema-only";
 export * as campaigns from "./campaigns";
-export * as campaignsSchema from "./campaigns/recipe/schema-only";
+export * as campaignsSchema from "@/campaigns/recipe/schema-only";
 export * as scripting from "./scripting";
 export * as sites from "./sites";

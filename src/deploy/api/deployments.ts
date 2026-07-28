@@ -1,4 +1,4 @@
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { withOrganizationHeaders } from "./common/headers";
 import { deployRequest, extractErrorMessage, parseJsonIfPossible } from "./common/request";
 import {

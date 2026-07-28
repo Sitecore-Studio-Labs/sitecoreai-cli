@@ -1,9 +1,9 @@
 import { consola } from "consola";
 import { randomUUID } from "node:crypto";
 import AjvDraft4 from "ajv-draft-04";
-import { readRootConfigurationFile, writeRootConfigurationFile } from "../config/root-config";
+import { readRootConfigurationFile, writeRootConfigurationFile } from "@/config/root-config";
 import telemetrySchema from "./telemetry.schema.json";
-import { redactArgs } from "../shared/redact";
+import { redactArgs } from "@/shared/redact";
 
 type TelemetryEventType = "command_start" | "command_success" | "command_error";
 

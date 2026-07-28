@@ -14,7 +14,7 @@
  * returns 405 and no delete server action is confirmed.
  */
 import { agentsRequest, agentsServerAction, RSC_UNDEFINED } from "./request";
-import { trimEdgeChar } from "../../shared/strings";
+import { trimEdgeChar } from "@/shared/strings";
 import type { AgentsSession } from "../session/types";
 import type { StructuredSchema } from "./schema";
 

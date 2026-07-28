@@ -4,7 +4,7 @@ import {
   DEFAULT_NODE_VERSION,
   DEFAULT_RENDERING_HOST_NAME,
   runDeployBuildConfig,
-} from "../../deploy/tasks/build-config";
+} from "@/deploy/tasks/build-config";
 
 /**
  * `scai provision deploy build-config` — write/update `xmcloud.build.json`, the

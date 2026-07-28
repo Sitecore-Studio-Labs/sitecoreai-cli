@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
-import { Logger } from "../shared/logger";
-import { getHistoryPath, readHistory } from "../shared/history";
+import { Logger } from "@/shared/logger";
+import { getHistoryPath, readHistory } from "@/shared/history";
 import { addVerbosityOptions } from "./shared";
 
 type HistoryOptions = {

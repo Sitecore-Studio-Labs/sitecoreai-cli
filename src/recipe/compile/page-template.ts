@@ -16,13 +16,9 @@ import {
 } from "../ir/sitecore-templates";
 import { type PageTemplateRecipe, PageTemplateRecipeSchema } from "../schema/recipe";
 import { emitLayoutXml } from "../layout/emit";
-import {
-  emitDatasourceTemplate,
-  ensurePageTemplatesGroupFolder,
-  joinPath,
-  siteOf,
-  type CompileContext,
-} from "./shared";
+import { joinPath, siteOf, type CompileContext } from "./shared";
+import { ensurePageTemplatesGroupFolder } from "./folders";
+import { emitDatasourceTemplate } from "./datasource-template";
 
 /**
  * Compile a `PageTemplateRecipe` to an Operation IR.

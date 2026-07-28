@@ -8,13 +8,8 @@ import {
 } from "../ir/sitecore-templates";
 import type { ContentFieldValue, FieldDefinition } from "../schema/recipe";
 import { encodeContentFieldValue } from "./content-item";
-import {
-  type CompileContext,
-  type ImageMediaSink,
-  joinPath,
-  sharedField,
-  versionedField,
-} from "./shared";
+import { type CompileContext, joinPath, sharedField, versionedField } from "./shared";
+import { type ImageMediaSink } from "./media";
 
 /**
  * Inline treelist child materialisation.

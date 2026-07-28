@@ -9,13 +9,9 @@ import {
 import { defaultPolicyForRecipe } from "../runtime/policy";
 import { DEFAULT_ICON } from "../ir/sitecore-templates";
 import { type ContentTemplateRecipe, ContentTemplateRecipeSchema } from "../schema/recipe";
-import {
-  emitDatasourceTemplate,
-  ensureContentModelsGroupFolder,
-  joinPath,
-  siteOf,
-  type CompileContext,
-} from "./shared";
+import { joinPath, siteOf, type CompileContext } from "./shared";
+import { ensureContentModelsGroupFolder } from "./folders";
+import { emitDatasourceTemplate } from "./datasource-template";
 
 /**
  * Compile a `ContentTemplateRecipe` to an Operation IR.

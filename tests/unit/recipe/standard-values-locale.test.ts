@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildStandardValuesFieldEntries,
   emitStandardValuesLocaleVersions,
-} from "../../../src/recipe/compile/shared";
+} from "../../../src/recipe/compile/standard-values";
 import type { AddItemVersionOp, Operation, SetFieldOp } from "../../../src/recipe/ir/operations";
 import type { FieldDefinition } from "../../../src/recipe/schema/recipe";
 

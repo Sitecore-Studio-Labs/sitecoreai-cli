@@ -67,7 +67,7 @@ vi.mock("../../../src/shared/history", () => ({
   ensureHistoryFile: vi.fn(),
   recordHistory: vi.fn(),
 }));
-vi.mock("../../../src/shared/telemetry", () => ({
+vi.mock("../../../src/telemetry", () => ({
   ensureTelemetryNotice: vi.fn(),
   formatTelemetryCommand: vi.fn().mockReturnValue("scai setup status"),
   recordTelemetry: vi.fn(),
@@ -232,7 +232,7 @@ describe("cli entrypoint", () => {
     process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     const history = await import("../../../src/shared/history");
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
 
     (
       history.ensureHistoryFile as unknown as {

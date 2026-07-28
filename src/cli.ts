@@ -12,7 +12,7 @@ import {
   recordTelemetry,
   resolveConfigPathFromArgs,
   setTelemetryVersion,
-} from "./shared/telemetry";
+} from "./telemetry";
 import { resolveOutputOptionsFromArgs } from "./shared/output";
 import { redactSecrets } from "./shared/redact";
 import { toScaiError } from "./shared/errors";

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { addConfigOption, addVerbosityOptions } from "./shared";
-import { getTelemetryStatus, setTelemetryEnabled } from "../shared/telemetry";
+import { getTelemetryStatus, setTelemetryEnabled } from "../telemetry";
 import { Logger } from "../shared/logger";
 
 type TelemetryOptions = {

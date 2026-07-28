@@ -47,6 +47,7 @@ const DOMAIN_AREAS = [
   "serialization",
   "sites",
   "sync",
+  "telemetry",
   "webhooks",
   "workflow",
 ];
@@ -90,6 +91,21 @@ describe("module boundaries", () => {
       }
     }
     expect(offenders, `content/ must not import publishing/:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("src/sync/index.ts does not re-export aggregate-kinds (guards the sync↔domains cycle)", () => {
+    // `sync/aggregate-kinds.ts` imports @/brand/recipe + @/brief/recipe +
+    // @/recipe/sandbox, while 20+ files in those areas import @/sync. The
+    // runtime cycle is avoided ONLY because the sync barrel deliberately does
+    // not surface aggregate-kinds — its two consumers (commands/sync.ts,
+    // mcp/tools/recipe-sync.ts) deep-import it. A careless barrel re-export
+    // would create a real cycle instantly; this pins the omission.
+    const barrel = readFileSync(path.join(SRC, "sync/index.ts"), "utf8");
+    expect(
+      /aggregate-kinds/.test(barrel),
+      "sync/index.ts must not reference ./aggregate-kinds — deep-import it from " +
+        "commands/ or mcp/ instead, or the sync↔brand/brief/recipe cycle returns."
+    ).toBe(false);
   });
 
   it("DOMAIN_AREAS stays in sync with src/", () => {

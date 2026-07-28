@@ -1,4 +1,5 @@
 import type { BrandApiClientOptions } from "./api/client";
+import { sleep } from "@/shared/concurrency";
 import { createBrandKit, publishBrandKit, type CreateBrandKitOptions } from "./kits/create";
 import { listBrandKitSections, type BrandKitSectionSummary } from "./kits/sections";
 import {
@@ -77,8 +78,6 @@ export interface SeedBrandKitResult {
   /** Total wall-clock seconds spent. */
   elapsedSec: number;
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface EnrichExistingKitOptions {
   client: BrandApiClientOptions;

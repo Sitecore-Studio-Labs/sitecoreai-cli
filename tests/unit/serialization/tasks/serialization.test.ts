@@ -53,7 +53,7 @@ vi.mock("../../../../src/serialization/api/history", () => apiMocks);
 vi.mock("../../../../src/serialization/api/roles", () => apiMocks);
 vi.mock("../../../../src/serialization/api/users", () => apiMocks);
 vi.mock("../../../../src/serialization/api/publish", () => apiMocks);
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth", () => ({
   ...apiMocks,
   DEFAULT_SITECORE_API_AUDIENCE: "https://api.sitecorecloud.io",
   acquireAccessToken: vi.fn().mockResolvedValue("token"),
@@ -70,10 +70,10 @@ const loadSerializationTasks = async (): Promise<
     typeof import("../../../../src/serialization/tasks/diff") &
     typeof import("../../../../src/serialization/tasks/validate") &
     typeof import("../../../../src/serialization/tasks/package") &
-    typeof import("../../../../src/serialization/tasks/env/status") &
-    typeof import("../../../../src/serialization/tasks/env/logout") &
-    typeof import("../../../../src/serialization/tasks/env/deploy-token") &
-    typeof import("../../../../src/serialization/tasks/env/init")
+    typeof import("../../../../src/setup/status") &
+    typeof import("../../../../src/setup/logout") &
+    typeof import("../../../../src/setup/deploy-token") &
+    typeof import("../../../../src/setup/init")
 > => {
   const [info, pull, push, diff, validate, pkg, status, logout, deployToken, init] =
     await Promise.all([
@@ -83,10 +83,10 @@ const loadSerializationTasks = async (): Promise<
       import("../../../../src/serialization/tasks/diff"),
       import("../../../../src/serialization/tasks/validate"),
       import("../../../../src/serialization/tasks/package"),
-      import("../../../../src/serialization/tasks/env/status"),
-      import("../../../../src/serialization/tasks/env/logout"),
-      import("../../../../src/serialization/tasks/env/deploy-token"),
-      import("../../../../src/serialization/tasks/env/init"),
+      import("../../../../src/setup/status"),
+      import("../../../../src/setup/logout"),
+      import("../../../../src/setup/deploy-token"),
+      import("../../../../src/setup/init"),
     ]);
   return {
     ...info,

@@ -1,8 +1,8 @@
 import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
 import { getCmTokens, getDeployToken } from "@/shared/keychain";
 import { resolveCredentialMatrix, type CredentialMatrix } from "@/shared/credential-matrix";
-import { toLogger } from "../shared";
-import type { CommonOptions } from "../types";
+import { toLogger } from "@/serialization/tasks/shared";
+import type { CommonOptions } from "@/serialization/tasks/types";
 import type { EnvironmentConfiguration } from "@/config/types";
 
 /**

@@ -47,15 +47,8 @@ import {
   normalizeFieldValue,
 } from "./inline-children";
 import { layoutEncodingOptions } from "./layout-encoding";
-import {
-  type CompileContext,
-  type ImageMediaSink,
-  joinPath,
-  resolveMediaLocationFolder,
-  sharedField,
-  siteOf,
-  versionedField,
-} from "./shared";
+import { type CompileContext, joinPath, sharedField, siteOf, versionedField } from "./shared";
+import { type ImageMediaSink, resolveMediaLocationFolder } from "./media";
 
 /**
  * Compile a `PageRecipe` to an Operation IR.

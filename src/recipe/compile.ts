@@ -23,7 +23,8 @@ import { compileEnumerationRecipe } from "./compile/enumeration";
 import { compileWorkflowRecipe } from "./compile/workflow";
 import { compileWebhookAuthorizationRecipe } from "./compile/webhook-authorization";
 import { compileVariantRecipe } from "./compile/variant";
-import { enumerationTemplatesSentinel, siteOf, type CompileContext } from "./compile/shared";
+import { siteOf, type CompileContext } from "./compile/shared";
+import { enumerationTemplatesSentinel } from "./compile/enumerations";
 import { stableTopologicalSortWithinRanks } from "./compile/ordering";
 import {
   AVAILABLE_RENDERINGS_AGGREGATE_HANDLE,

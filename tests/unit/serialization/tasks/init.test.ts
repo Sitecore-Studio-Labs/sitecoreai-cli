@@ -25,7 +25,7 @@ vi.mock("../../../../src/shared/browser", () => ({
   openBrowser: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../../src/auth", () => ({
   requestClientCredentialsToken: vi.fn().mockResolvedValue({
     accessToken: "token",
     expiresIn: 3600,
@@ -71,14 +71,14 @@ describe("init task runner", () => {
   it("requires a TTY for wizard mode", async () => {
     Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await expect(tasks.runInit({ wizard: true })).rejects.toThrow("Wizard mode requires a TTY");
   });
 
   it("requires an environment name when not running the wizard", async () => {
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await expect(tasks.runInit({ host: "https://cm.example" })).rejects.toThrow(
       "Environment name is required"
     );
@@ -105,7 +105,7 @@ describe("init task runner", () => {
       "utf8"
     );
     await fs.writeFile(path.join(rootDir, "module.module.json"), "{}", "utf8");
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await tasks.runInit({ config: rootDir, environmentName: "demo", setDefault: true });
     const config = JSON.parse(await fs.readFile(path.join(rootDir, "sitecoreai.cli.json"), "utf8"));
     expect(config.defaultEnvProfile).toBe("demo");
@@ -115,7 +115,7 @@ describe("init task runner", () => {
   it("obtains a deploy token with client credentials", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-init-"));
     await fs.writeFile(path.join(rootDir, "module.module.json"), "{}", "utf8");
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await tasks.runInit({
       config: rootDir,
       environmentName: "demo",
@@ -138,7 +138,7 @@ describe("init task runner", () => {
       path.join(rootDir, "sitecoreai.cli.json"),
       JSON.stringify({ modules: ["./module.module.json"] })
     );
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await expect(
       tasks.runInit({ config: rootDir, environmentName: "missing", setDefault: true })
     ).rejects.toThrow("does not exist");
@@ -152,7 +152,7 @@ describe("init task runner", () => {
     const originalOut = process.stdout.isTTY;
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await tasks.runInit({
       config: rootDir,
       environmentName: "demo",
@@ -167,7 +167,7 @@ describe("init task runner", () => {
   it("does not persist the default device client id", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-init-"));
     await fs.writeFile(path.join(rootDir, "module.module.json"), "{}", "utf8");
-    const tasks = await import("../../../../src/serialization/tasks/env/init");
+    const tasks = await import("../../../../src/setup/init");
     await tasks.runInit({
       config: rootDir,
       environmentName: "demo",

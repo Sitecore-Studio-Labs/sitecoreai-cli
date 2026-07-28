@@ -45,6 +45,7 @@ const DOMAIN_AREAS = [
   "recipe",
   "scripting",
   "serialization",
+  "setup",
   "sites",
   "sync",
   "telemetry",

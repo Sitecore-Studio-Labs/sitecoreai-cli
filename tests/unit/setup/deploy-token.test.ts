@@ -1,26 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RootConfigurationFile } from "../../../../../src/config/types";
+import type { RootConfigurationFile } from "../../../src/config/types";
 
 const readRootConfigurationFile = vi.fn();
 const readRootConfiguration = vi.fn();
 const writeRootConfigurationFile = vi.fn();
 
-vi.mock("../../../../../src/config/root-config", () => ({
+vi.mock("../../../src/config/root-config", () => ({
   readRootConfigurationFile,
   readRootConfiguration,
   writeRootConfigurationFile,
 }));
 
 const openBrowser = vi.fn();
-vi.mock("../../../../../src/shared/browser", () => ({ openBrowser }));
+vi.mock("../../../src/shared/browser", () => ({ openBrowser }));
 
 const assertValidUrl = vi.fn();
-vi.mock("../../../../../src/shared/validate", () => ({ assertValidUrl }));
+vi.mock("../../../src/shared/validate", () => ({ assertValidUrl }));
 
 const setDeployToken = vi.fn();
 const setCmTokens = vi.fn();
 const setDeployTokenMeta = vi.fn().mockResolvedValue(true);
-vi.mock("../../../../../src/shared/keychain", () => ({
+vi.mock("../../../src/shared/keychain", () => ({
   setDeployToken,
   setCmTokens,
   setDeployTokenMeta,
@@ -30,7 +30,7 @@ const assertInteractive = vi.fn();
 const promptConfirm = vi.fn();
 const promptSecret = vi.fn();
 const promptText = vi.fn();
-vi.mock("../../../../../src/shared/prompt", () => ({
+vi.mock("../../../src/shared/prompt", () => ({
   assertInteractive,
   promptConfirm,
   promptSecret,
@@ -40,7 +40,7 @@ vi.mock("../../../../../src/shared/prompt", () => ({
 const requestClientCredentialsToken = vi.fn();
 const requestDeviceAuthorization = vi.fn();
 const pollDeviceToken = vi.fn();
-vi.mock("../../../../../src/serialization/api/auth", () => ({
+vi.mock("../../../src/auth", () => ({
   requestClientCredentialsToken,
   requestDeviceAuthorization,
   pollDeviceToken,
@@ -52,7 +52,7 @@ const logger = {
   warn: vi.fn(),
 };
 
-vi.mock("../../../../../src/shared/cli-tasks", () => ({
+vi.mock("../../../src/shared/cli-tasks", () => ({
   inputError: (message: string) => new Error(message),
   toLogger: () => logger,
 }));
@@ -87,8 +87,7 @@ describe("runDeployToken", () => {
   });
 
   it("requires an environment name", async () => {
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await expect(runDeployToken({})).rejects.toThrow(
       "Environment name is required. Use --environment-name."
     );
@@ -97,8 +96,7 @@ describe("runDeployToken", () => {
   it("fails non-interactive client credentials without a secret", async () => {
     Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await expect(
       runDeployToken({ environmentName: "demo", useClientCredentials: true })
     ).rejects.toMatchObject({ code: "INPUT_INVALID" });
@@ -112,8 +110,7 @@ describe("runDeployToken", () => {
     // so an MCP transport guard at the call site can short-circuit it.
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await runDeployToken({
       environmentName: "demo",
       useClientCredentials: true,
@@ -134,8 +131,7 @@ describe("runDeployToken", () => {
     const prior = process.env.SITECOREAI_MCP_SERVE;
     process.env.SITECOREAI_MCP_SERVE = "1";
     try {
-      const { runDeployToken } =
-        await import("../../../../../src/serialization/tasks/env/deploy-token");
+      const { runDeployToken } = await import("../../../src/setup/deploy-token");
       await expect(
         runDeployToken({
           environmentName: "demo",
@@ -164,8 +160,7 @@ describe("runDeployToken", () => {
     process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET = "secret";
     requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
 
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await runDeployToken({ environmentName: "demo", useClientCredentials: true });
 
     expect(requestClientCredentialsToken).toHaveBeenCalledWith(
@@ -189,8 +184,7 @@ describe("runDeployToken", () => {
     process.env.SITECOREAI_ENV_DEMO_CLIENT_SECRET = "secret";
     requestClientCredentialsToken.mockResolvedValue({ accessToken: "token", expiresIn: 60 });
 
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await runDeployToken({ environmentName: "demo", useClientCredentials: true });
 
     expect(writeRootConfigurationFile).toHaveBeenCalledWith(
@@ -216,8 +210,7 @@ describe("runDeployToken", () => {
     pollDeviceToken.mockResolvedValue({ accessToken: "token" });
     setDeployToken.mockResolvedValue(false);
 
-    const { runDeployToken } =
-      await import("../../../../../src/serialization/tasks/env/deploy-token");
+    const { runDeployToken } = await import("../../../src/setup/deploy-token");
     await runDeployToken({ environmentName: "demo", useClientCredentials: false });
 
     expect(requestDeviceAuthorization).toHaveBeenCalled();

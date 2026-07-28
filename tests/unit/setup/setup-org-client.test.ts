@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RootConfiguration, RootConfigurationFile } from "../../../../../src/config/types";
-import { ScaiError } from "../../../../../src/shared/errors";
+import type { RootConfiguration, RootConfigurationFile } from "../../../src/config/types";
+import { ScaiError } from "../../../src/shared/errors";
 
 /**
  * Unit tests for `runSetupOrgClient` — `scai setup client create --org`.
@@ -46,19 +46,19 @@ const {
   authorizeOperation,
 } = h;
 
-vi.mock("../../../../../src/config/root-config", () => ({
+vi.mock("../../../src/config/root-config", () => ({
   resolveActiveEnvironment: h.resolveActiveEnvironment,
   readRootConfigurationFile: h.readRootConfigurationFile,
   writeRootConfigurationFile: h.writeRootConfigurationFile,
 }));
 
-vi.mock("../../../../../src/shared/keychain", () => ({
+vi.mock("../../../src/shared/keychain", () => ({
   getDeployToken: h.getDeployToken,
   getOrgClientSecret: h.getOrgClientSecret,
   setOrgClientSecret: h.setOrgClientSecret,
 }));
 
-vi.mock("../../../../../src/deploy/api", () => ({
+vi.mock("../../../src/deploy/api", () => ({
   listOrganizationClients: h.listOrganizationClients,
   mintDeployClient: h.mintDeployClient,
   deleteClient: h.deleteClient,
@@ -66,9 +66,9 @@ vi.mock("../../../../../src/deploy/api", () => ({
   buildScaiClientDescription: () => "Managed by scai CLI.",
 }));
 
-vi.mock("../../../../../src/policy", () => ({ authorizeOperation: h.authorizeOperation }));
+vi.mock("../../../src/policy", () => ({ authorizeOperation: h.authorizeOperation }));
 
-import { runSetupOrgClient } from "../../../../../src/serialization/tasks/env/setup-org-client";
+import { runSetupOrgClient } from "../../../src/setup/setup-org-client";
 
 /**
  * A resolved-environment result as `resolveActiveEnvironment` returns it.

@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runInit } from "@/serialization/tasks/env/init";
+import { runInit } from "@/setup/init";
 
 export const createInitCommand = (): Command => {
   const command = new Command("init").description(

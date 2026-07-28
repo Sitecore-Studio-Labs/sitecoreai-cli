@@ -16,8 +16,8 @@ import { resolveTargetPath, writeConfigTemplate } from "@/shared/config-template
 import { setDeployToken } from "@/shared/keychain";
 import { assertInteractive, promptConfirm, promptText } from "@/shared/prompt";
 import { createScaiError, toScaiError } from "@/shared/errors";
-import { applyIfDefined, inputError, toLogger } from "../shared";
-import type { ConnectOptions } from "../types";
+import { applyIfDefined, inputError, toLogger } from "@/serialization/tasks/shared";
+import type { ConnectOptions } from "@/serialization/tasks/types";
 import type { EnvironmentConfiguration } from "@/config/types";
 import { resolveDeployAuth } from "./init/auth";
 import { resolveDeployLookup } from "./init/deploy-lookup";

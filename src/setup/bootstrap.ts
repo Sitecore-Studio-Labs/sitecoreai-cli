@@ -40,7 +40,7 @@ import { runRecipePruneDefaults } from "@/recipe/tasks/prune-defaults";
 import { runDeployEnvFile } from "@/deploy/tasks/env-file";
 import { runDeployBuildConfig } from "@/deploy/tasks/build-config";
 import { assertInteractive, promptConfirm } from "@/shared/prompt";
-import { toLogger } from "../shared";
+import { toLogger } from "@/serialization/tasks/shared";
 import { runDeployToken } from "./deploy-token";
 import { resolveSiteIdentity, runInit } from "./init";
 import { runSetupEnv } from "./setup-env";

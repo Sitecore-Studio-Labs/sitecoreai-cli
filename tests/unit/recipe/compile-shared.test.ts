@@ -10,13 +10,6 @@
 import { describe, expect, it } from "vitest";
 import {
   type CompileContext,
-  buildFieldOp,
-  buildStandardValuesFieldEntries,
-  ensureComponentFoldersBucket,
-  ensureContentModelsGroupFolder,
-  ensurePageTemplatesGroupFolder,
-  ensurePresentationDesignParametersBucket,
-  ensureSectionFolder,
   joinPath,
   resolveComponentTemplateParent,
   resolveEnumFolderPath,
@@ -24,6 +17,15 @@ import {
   resolveRenderingParent,
   siteOf,
 } from "../../../src/recipe/compile/shared";
+import { buildFieldOp } from "../../../src/recipe/compile/field-ops";
+import { buildStandardValuesFieldEntries } from "../../../src/recipe/compile/standard-values";
+import {
+  ensureComponentFoldersBucket,
+  ensureContentModelsGroupFolder,
+  ensurePageTemplatesGroupFolder,
+  ensurePresentationDesignParametersBucket,
+  ensureSectionFolder,
+} from "../../../src/recipe/compile/folders";
 import type { CreateItemOp, MediaUploadOp, Operation } from "../../../src/recipe/ir/operations";
 import type { EnumerationRecipe, FieldDefinition } from "../../../src/recipe/schema/recipe";
 

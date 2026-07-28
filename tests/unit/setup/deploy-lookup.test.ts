@@ -8,7 +8,7 @@ const fetchEnvironment = vi.fn();
 const createProjectEnvironment = vi.fn();
 const resolveHostFromEnvironment = vi.fn();
 
-vi.mock("../../../../../src/deploy/api", () => ({
+vi.mock("../../../src/deploy/api", () => ({
   fetchOrganization: (...args: unknown[]) => fetchOrganization(...args),
   fetchProjects: (...args: unknown[]) => fetchProjects(...args),
   fetchProject: (...args: unknown[]) => fetchProject(...args),
@@ -20,17 +20,16 @@ vi.mock("../../../../../src/deploy/api", () => ({
 
 const promptText = vi.fn();
 const promptConfirm = vi.fn();
-vi.mock("../../../../../src/shared/prompt", () => ({
+vi.mock("../../../src/shared/prompt", () => ({
   promptText: (...args: unknown[]) => promptText(...args),
   promptConfirm: (...args: unknown[]) => promptConfirm(...args),
 }));
 
 describe("resolveDeployLookup", () => {
-  let resolveDeployLookup: (typeof import("../../../../../src/serialization/tasks/env/init/deploy-lookup"))["resolveDeployLookup"];
+  let resolveDeployLookup: (typeof import("../../../src/setup/init/deploy-lookup"))["resolveDeployLookup"];
 
   beforeAll(async () => {
-    ({ resolveDeployLookup } =
-      await import("../../../../../src/serialization/tasks/env/init/deploy-lookup"));
+    ({ resolveDeployLookup } = await import("../../../src/setup/init/deploy-lookup"));
   });
 
   beforeEach(() => {

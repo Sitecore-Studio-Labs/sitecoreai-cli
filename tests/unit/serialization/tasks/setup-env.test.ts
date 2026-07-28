@@ -51,16 +51,15 @@ vi.mock("../../../../src/deploy/api", async (importActual) => {
   };
 });
 
-vi.mock("../../../../src/serialization/api/auth", async (importActual) => {
-  const actual = await importActual<typeof import("../../../../src/serialization/api/auth")>();
+vi.mock("../../../../src/auth", async (importActual) => {
+  const actual = await importActual<typeof import("../../../../src/auth")>();
   return {
     ...actual,
     requestClientCredentialsToken: mocks.requestClientCredentialsToken,
   };
 });
 
-const { runSetupEnv, waitForClientActivation } =
-  await import("../../../../src/serialization/tasks/env/setup-env");
+const { runSetupEnv, waitForClientActivation } = await import("../../../../src/setup/setup-env");
 
 const CONFIGURED_ENV = {
   organizationId: "org-1",

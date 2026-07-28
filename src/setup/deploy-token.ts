@@ -10,11 +10,7 @@ import { enrollEnvironment } from "@/policy";
 import { setCmTokens, setDeployToken } from "@/shared/keychain";
 import { resolveEnvClientSecret } from "@/shared/client-credential";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
-import {
-  requestClientCredentialsToken,
-  requestDeviceAuthorization,
-  pollDeviceToken,
-} from "@/serialization/api/auth";
+import { requestClientCredentialsToken, requestDeviceAuthorization, pollDeviceToken } from "@/auth";
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import type { DeployTokenOptions } from "@/deploy/tasks/types";
 import type { EnvironmentConfiguration } from "@/config/types";

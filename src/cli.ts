@@ -17,8 +17,8 @@ import { resolveOutputOptionsFromArgs } from "@/shared/output";
 import { redactSecrets } from "@/shared/redact";
 import { toScaiError } from "@/shared/errors";
 import { readRootConfiguration, readRootConfigurationFile } from "@/config/root-config";
-import { runDeployToken } from "@/serialization/tasks/env/deploy-token";
-import { runInit } from "@/serialization/tasks/env/init";
+import { runDeployToken } from "@/setup/deploy-token";
+import { runInit } from "@/setup/init";
 import { getDeployToken } from "@/shared/keychain";
 import { installDeployTransportSpinner } from "@/deploy/tasks/transport-spinner";
 

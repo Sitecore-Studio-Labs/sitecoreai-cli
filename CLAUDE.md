@@ -22,15 +22,23 @@ CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers and module boundaries
 
-`src/` is organized into 20 **domain areas** plus three cross-cutting
+`src/` is organized into 21 **domain areas** plus three cross-cutting
 layers. The domain areas:
 
 ```
-deploy   serialization  recipe   brand    brief    campaigns
+deploy   serialization  setup    recipe   brand    brief    campaigns
 sites    publishing     content  hygiene  webhooks workflow
 agents   policy         mcp      scripting sync     auth      authoring
 doctor   telemetry
 ```
+
+`setup/` is the environment-setup orchestration area: it owns the env
+lifecycle (init/onboard, credential minting, org/CM client provisioning,
+tenant bootstrap) and is the one area that _composes_ `deploy`, `recipe`,
+and `brand` for that flow. It was extracted from `serialization/tasks/env/`
+so that `serialization/` no longer imports `@/deploy`, `@/recipe`, or
+`@/brand` — those downward-odd edges now live in `setup/` as ordinary
+peer-area imports (`setup → deploy/recipe/brand` is allowed).
 
 Each domain area is a directory under `src/` that owns one product
 surface (its API client, task runners, and — where it has one — an

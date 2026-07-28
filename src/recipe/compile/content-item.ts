@@ -36,17 +36,13 @@ import {
   type ContentItemRecipeParsed,
   ContentItemRecipeSchema,
 } from "../schema/recipe";
+import { type CompileContext, joinPath, sharedField, siteOf, versionedField } from "./shared";
 import {
-  type CompileContext,
   externalImageMediaRef,
   type ImageMediaSink,
   isExternalMediaUrl,
-  joinPath,
   resolveMediaLocationFolder,
-  sharedField,
-  siteOf,
-  versionedField,
-} from "./shared";
+} from "./media";
 
 /**
  * Compile a `ContentItemRecipe` to an Operation IR.

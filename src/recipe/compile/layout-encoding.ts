@@ -1,6 +1,7 @@
 import { variantId } from "../items/guids";
 import type { LayoutEmitContext } from "../layout/emit";
-import { type CompileContext, paramWireValue } from "./shared";
+import { type CompileContext } from "./shared";
+import { paramWireValue } from "./field-ops";
 
 /**
  * The `variantRefFor` + `paramValueFor` encoders every layout-holding item —

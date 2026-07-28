@@ -25,9 +25,6 @@ import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
   PARAMS_SORT_ORDER_BASE,
-  buildFieldOp,
-  ensurePresentationDesignParametersBucket,
-  ensureSectionFolder,
   joinPath,
   resolvePresentationDesignParametersBucketPath,
   sharedField,
@@ -35,6 +32,8 @@ import {
   versionedField,
   type CompileContext,
 } from "./shared";
+import { buildFieldOp } from "./field-ops";
+import { ensurePresentationDesignParametersBucket, ensureSectionFolder } from "./folders";
 
 /**
  * Compile a standalone `DesignParametersTemplateRecipe` to an Operation IR.

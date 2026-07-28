@@ -26,11 +26,10 @@ import {
   getBriefType,
   listBriefTypes,
   updateBriefType,
-  type BriefApiClientOptions,
-  type BriefField,
-  type BriefType,
   type CreateBriefTypeInput,
-} from "@/brief";
+} from "../api/brief-types";
+import type { BriefApiClientOptions } from "../api/types";
+import type { BriefField, BriefType } from "../api/schema";
 import { createScaiError } from "@/shared/errors";
 import { resolveMissingCurrentPlan } from "@/sync";
 import type {

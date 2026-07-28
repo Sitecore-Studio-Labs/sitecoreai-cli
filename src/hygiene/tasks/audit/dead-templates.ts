@@ -1,4 +1,5 @@
 import { mapWithConcurrency } from "@/shared/cli-tasks";
+import { sleep } from "@/shared/concurrency";
 import { createScaiError } from "@/shared/errors";
 import {
   type HygieneCommonOptions,
@@ -45,8 +46,6 @@ const isTransientError = (error: unknown): boolean => {
  */
 const isSearchUnavailableError = (error: unknown): boolean =>
   error instanceof Error && /search service is not available/i.test(error.message);
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Wrap a read operation in transient-aware retry. The shared HTTP

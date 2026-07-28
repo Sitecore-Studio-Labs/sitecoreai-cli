@@ -15,6 +15,7 @@
  */
 
 import type { EnvironmentConfiguration } from "@/config/types";
+import { sleep } from "./concurrency";
 import { createScaiError } from "./errors";
 import { redactSecrets } from "./redact";
 import { assertValidUrl } from "./validate";
@@ -112,24 +113,6 @@ const isCancellationErrors = (errors: ReadonlyArray<{ message?: string }>): bool
  * and retrying would create a duplicate.
  */
 export const READ_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
-
-/** Sleep with abort-on-signal so a Ctrl-C during backoff still exits promptly. */
-const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("aborted"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      reject(new Error("aborted"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 
 const jitter = (n: number): number => n * (0.5 + Math.random());
 

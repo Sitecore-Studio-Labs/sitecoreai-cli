@@ -6,7 +6,7 @@ import {
   OperationIrSchema,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";
 import {

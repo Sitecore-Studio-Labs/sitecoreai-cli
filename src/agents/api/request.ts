@@ -34,8 +34,8 @@ const buildHeaders = (
 ): Record<string, string> => {
   const headers: Record<string, string> = {
     ...session.authHeaders(),
-    // `*/*` (not `application/json`) — the browser sends it and the edge
-    // WAF is picky. Same-origin Origin/Referer cover CSRF checks on writes.
+    // Match the browser client's request headers; same-origin
+    // Origin/Referer cover CSRF checks on writes.
     Accept: "*/*",
     Origin: session.baseUrl,
     Referer: `${session.baseUrl}/`,
@@ -236,7 +236,7 @@ export const agentsServerAction = async (
       {
         hint:
           `${path} is a Next.js server action whose hash rotates on every Agentic ` +
-          "Studio deploy. Re-capture it from a HAR and update the action hash, or wait " +
+          "Studio deploy. Update the action hash for the current deploy, or wait " +
           "for a real /api/ write endpoint.",
       }
     );

@@ -489,7 +489,7 @@ components:
         organizationId:
           type: string
           description: The unique identifier of your organization.
-          example: org_ZiiCnzhCeHDpWJAU
+          example: org_EXAMPLExxxxxxxx
         id:
           type: string
           description: The unique identifier of the document.
@@ -660,7 +660,7 @@ components:
       properties:
         organizationId:
           description: The unique identifier of your organization.
-          example: org_ZiiCnzhCeHDpWJAU
+          example: org_EXAMPLExxxxxxxx
           type:
             - string
             - "null"

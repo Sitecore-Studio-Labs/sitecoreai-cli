@@ -1,7 +1,7 @@
 import fg from "fast-glob";
 import path from "node:path";
-import { createScaiError } from "../shared/errors";
-import { ItemPath } from "../serialization/item-path";
+import { createScaiError } from "@/shared/errors";
+import { ItemPath } from "@/serialization/item-path";
 import {
   AllowedPushOperations,
   FilesystemTreeSpec,
@@ -9,8 +9,8 @@ import {
   TreeRuleScope,
   TreeScope,
   parseItemPathMatch,
-} from "../serialization/tree-spec";
-import { FieldFilter, RolePredicateItem, UserPredicateItem } from "../serialization/types";
+} from "@/serialization/tree-spec";
+import { FieldFilter, RolePredicateItem, UserPredicateItem } from "@/serialization/types";
 import type { RootConfiguration, SerializationModuleConfiguration } from "./types";
 import { formatValidationErrors, readJsonFile, validateModuleConfig } from "./validation";
 

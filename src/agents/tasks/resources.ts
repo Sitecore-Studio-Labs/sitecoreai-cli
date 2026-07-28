@@ -3,8 +3,8 @@
  * non-agent Agentic Studio resources.
  *
  * These five resources share one shape — `list` / `get` / `create` are
- * API-backed; `update` / `delete` are **UNVERIFIED** (no such request has
- * been observed in a HAR) and gated behind `--unverified`. `makeResourceTasks`
+ * API-backed; `update` / `delete` are **UNVERIFIED** (no such request is
+ * confirmed) and gated behind `--unverified`. `makeResourceTasks`
  * builds the runner set once; each resource just supplies its API calls,
  * recipe schema, and rendering. `tool` is catalog-only — list, no writes.
  */

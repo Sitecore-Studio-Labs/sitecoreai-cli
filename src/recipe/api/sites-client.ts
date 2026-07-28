@@ -1,5 +1,5 @@
-import { listCollections, type SiteCollection } from "../../sites/api/collections";
-import { getJobStatus, type Job } from "../../sites/api/jobs";
+import { listCollections, type SiteCollection } from "@/sites/api/collections";
+import { getJobStatus, type Job } from "@/sites/api/jobs";
 import {
   addLanguage,
   listLanguages,
@@ -9,7 +9,7 @@ import {
   type EditLanguageInput,
   type Language,
   type SupportedLanguage,
-} from "../../sites/api/languages";
+} from "@/sites/api/languages";
 import {
   createSite,
   deleteSite,
@@ -22,8 +22,8 @@ import {
   type Site,
   type SiteTemplate,
   type UpdateSiteInput,
-} from "../../sites/api/sites";
-import type { SitesApiClientOptions as RawSitesApiClientOptions } from "../../sites/api/types";
+} from "@/sites/api/sites";
+import type { SitesApiClientOptions as RawSitesApiClientOptions } from "@/sites/api/types";
 
 /**
  * Sites API client surface for recipe execution.
@@ -166,7 +166,7 @@ export const createSitesApiClient = (options: RawSitesApiClientOptions): SitesAp
 
 // Language-code helpers re-exported for the executor's fallback wiring —
 // recipe runtime code consumes the Sites API through this seam only.
-export { fallbackLanguageIsoFor, parseLanguageCode } from "../../sites/api/languages";
+export { fallbackLanguageIsoFor, parseLanguageCode } from "@/sites/api/languages";
 export type {
   EditLanguageInput,
   Job,

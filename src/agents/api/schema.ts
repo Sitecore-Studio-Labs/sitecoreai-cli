@@ -1,8 +1,7 @@
 /**
  * Agentic Studio resource shapes.
  *
- * Reverse-engineered from HAR captures + the live BFF (see the project
- * memory `project_scai_agentic_studio_api`). The API is unversioned, so
+ * Modeled against the live BFF. The API is unversioned, so
  * shapes carry `[key: string]: unknown` index signatures and optional
  * fields — callers parse defensively and never assume a field is present.
  */

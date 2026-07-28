@@ -36,8 +36,8 @@ import {
   type SetFieldOp,
   type SetStandardValuesOp,
 } from "../ir/operations";
-import { createScaiError } from "../../shared/errors";
-import { trimEndChar } from "../../shared/strings";
+import { createScaiError } from "@/shared/errors";
+import { trimEndChar } from "@/shared/strings";
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VERSION,

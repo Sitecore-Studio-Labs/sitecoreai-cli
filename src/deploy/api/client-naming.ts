@@ -17,8 +17,8 @@
  * The `<env>` segment is the slugified scai environment-profile name.
  */
 
-import { createScaiError } from "../../shared/errors";
-import { trimEdgeChar } from "../../shared/strings";
+import { createScaiError } from "@/shared/errors";
+import { trimEdgeChar } from "@/shared/strings";
 
 /** The `name`-field prefix that marks a client as scai-managed. */
 export const SCAI_CLIENT_PREFIX = "scai-";

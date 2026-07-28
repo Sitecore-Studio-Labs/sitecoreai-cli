@@ -10,8 +10,8 @@
  * generic `SyncContext` instead of CLI options: same shared region
  * resolver, same `briefBaseUrl` override.
  */
-import { acquireBriefToken, BRIEF_API_HOST_TEMPLATE } from "@/brief";
-import type { BriefApiClientOptions } from "@/brief";
+import { acquireBriefToken } from "../auth";
+import { BRIEF_API_HOST_TEMPLATE, type BriefApiClientOptions } from "../api/types";
 import { resolveEnvironment } from "@/policy/environment";
 import { resolveRegionalBaseUrl } from "@/shared/region";
 import { requestClientCredentialsToken } from "@/auth";

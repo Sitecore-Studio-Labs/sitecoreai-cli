@@ -5383,7 +5383,7 @@ scai agents schema [options] [command]
 - [`scai agents schema get`](#scai-agents-schema-get) — Show one schema.
 - [`scai agents schema create`](#scai-agents-schema-create) — Create a schema from a recipe file.
 - [`scai agents schema update`](#scai-agents-schema-update) — Update a schema from a recipe file.
-- [`scai agents schema delete`](#scai-agents-schema-delete) — Delete a schema. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+- [`scai agents schema delete`](#scai-agents-schema-delete) — Delete a schema. UNVERIFIED — requires --unverified. Requires --apply; --force for non-TTY.
 
 #### scai agents schema list
 
@@ -5469,7 +5469,7 @@ scai agents schema update [options] <idOrName>
 
 #### scai agents schema delete
 
-Delete a schema. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+Delete a schema. UNVERIFIED — requires --unverified. Requires --apply; --force for non-TTY.
 
 ```
 scai agents schema delete [options] <idOrName>
@@ -5486,7 +5486,7 @@ scai agents schema delete [options] <idOrName>
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed.
 - `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 
@@ -5503,7 +5503,7 @@ scai agents mcp [options] [command]
 - [`scai agents mcp list`](#scai-agents-mcp-list) — List mcps.
 - [`scai agents mcp get`](#scai-agents-mcp-get) — Show one mcp.
 - [`scai agents mcp create`](#scai-agents-mcp-create) — Create a mcp from a recipe file.
-- [`scai agents mcp update`](#scai-agents-mcp-update) — Update a mcp from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+- [`scai agents mcp update`](#scai-agents-mcp-update) — Update a mcp from a recipe file. UNVERIFIED — requires --unverified.
 - [`scai agents mcp delete`](#scai-agents-mcp-delete) — Delete a mcp. Requires --apply; --force for non-TTY.
 
 #### scai agents mcp list
@@ -5568,7 +5568,7 @@ scai agents mcp create [options]
 
 #### scai agents mcp update
 
-Update a mcp from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+Update a mcp from a recipe file. UNVERIFIED — requires --unverified.
 
 ```
 scai agents mcp update [options] <idOrName>
@@ -5585,7 +5585,7 @@ scai agents mcp update [options] <idOrName>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 - `-f, --file <path>` — Path to a mcp recipe file (YAML or JSON) — same format as `scai agents sync`.
-- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed.
 - `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 
@@ -5624,8 +5624,8 @@ scai agents html-template [options] [command]
 - [`scai agents html-template list`](#scai-agents-html-template-list) — List html-templates.
 - [`scai agents html-template get`](#scai-agents-html-template-get) — Show one html-template.
 - [`scai agents html-template create`](#scai-agents-html-template-create) — Create a html-template from a recipe file.
-- [`scai agents html-template update`](#scai-agents-html-template-update) — Update a html-template from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
-- [`scai agents html-template delete`](#scai-agents-html-template-delete) — Delete a html-template. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+- [`scai agents html-template update`](#scai-agents-html-template-update) — Update a html-template from a recipe file. UNVERIFIED — requires --unverified.
+- [`scai agents html-template delete`](#scai-agents-html-template-delete) — Delete a html-template. UNVERIFIED — requires --unverified. Requires --apply; --force for non-TTY.
 
 #### scai agents html-template list
 
@@ -5689,7 +5689,7 @@ scai agents html-template create [options]
 
 #### scai agents html-template update
 
-Update a html-template from a recipe file. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md).
+Update a html-template from a recipe file. UNVERIFIED — requires --unverified.
 
 ```
 scai agents html-template update [options] <idOrName>
@@ -5706,13 +5706,13 @@ scai agents html-template update [options] <idOrName>
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
 - `-f, --file <path>` — Path to a html-template recipe file (YAML or JSON) — same format as `scai agents sync`.
-- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed.
 - `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 
 #### scai agents html-template delete
 
-Delete a html-template. UNVERIFIED — requires --unverified (see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.
+Delete a html-template. UNVERIFIED — requires --unverified. Requires --apply; --force for non-TTY.
 
 ```
 scai agents html-template delete [options] <idOrName>
@@ -5729,7 +5729,7 @@ scai agents html-template delete [options] <idOrName>
 - `--json` — Output machine-readable JSON
 - `--log-file <path>` — Write logs to a file
 - `--non-interactive` — Disable prompts and require explicit input
-- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md).
+- `--unverified` — Attempt this UNVERIFIED write — its endpoint is not confirmed.
 - `--apply` — Required to execute mutations. Without --apply, destructive commands dry-run as if --what-if were set.
 - `-w, --what-if` — Lists commands that would be executed, without executing them
 

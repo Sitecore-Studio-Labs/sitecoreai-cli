@@ -21,8 +21,7 @@
  * Write support was verified live 2026-05-17 (agentic-studio-euw). `agent`,
  * `skill`, and `widget` have full CRUD; `schema` adds `update` (a re-POST
  * upsert); `mcp` adds `delete`. The starred ops (*) are UNVERIFIED — they
- * return 405/404 and stay gated behind `--unverified` — see
- * docs/agentic-studio-har-capture.md.
+ * return 405/404 and stay gated behind `--unverified`.
  */
 import { Command, Option } from "commander";
 import {
@@ -73,10 +72,7 @@ const addBaseOptions = (command: Command): Command => {
 /** The opt-in flag for an UNVERIFIED write (update / delete on a Part-B kind). */
 const addUnverifiedOption = (command: Command): Command =>
   command.addOption(
-    new Option(
-      "--unverified",
-      "Attempt this UNVERIFIED write — its endpoint is not confirmed (see docs/agentic-studio-har-capture.md)."
-    )
+    new Option("--unverified", "Attempt this UNVERIFIED write — its endpoint is not confirmed.")
   );
 
 /** A `-f, --file` recipe-file option, mandatory. */
@@ -326,8 +322,7 @@ const createResourceGroup = (
       .description(
         tasks.updateVerified
           ? `Update a ${name} from a recipe file.`
-          : `Update a ${name} from a recipe file. UNVERIFIED — requires ` +
-              `--unverified (see docs/agentic-studio-har-capture.md).`
+          : `Update a ${name} from a recipe file. UNVERIFIED — requires ` + `--unverified.`
       )
       .argument("<idOrName>", idLabel)
   );
@@ -350,8 +345,8 @@ const createResourceGroup = (
       .description(
         tasks.deleteVerified
           ? `Delete a ${name}. Requires --apply; --force for non-TTY.`
-          : `Delete a ${name}. UNVERIFIED — requires --unverified ` +
-              `(see docs/agentic-studio-har-capture.md). Requires --apply; --force for non-TTY.`
+          : `Delete a ${name}. UNVERIFIED — requires --unverified. ` +
+              `Requires --apply; --force for non-TTY.`
       )
       .argument("<idOrName>", idLabel)
       .addOption(
@@ -479,7 +474,7 @@ export const createAgentsCommand = (): Command => {
       "\nVerified writes (2026-05-17): `agent`, `skill`, `widget` — full CRUD;\n" +
       "`schema` — list/get/create/update; `mcp` — list/get/create/delete.\n" +
       "`schema delete`, `mcp update`, and `html-template` writes are UNVERIFIED\n" +
-      "(405/404) and require `--unverified` — see docs/agentic-studio-har-capture.md.\n" +
+      "(405/404) and require `--unverified`.\n" +
       "Declarative create/update across all kinds is also via `scai agents sync`.\n"
   );
 

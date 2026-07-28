@@ -29,7 +29,7 @@ import {
   type SetStandardValuesOp,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   DEFAULT_ICON,
   IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,

@@ -1,4 +1,4 @@
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   standardValuesId,
   standardValuesPathRefKey,

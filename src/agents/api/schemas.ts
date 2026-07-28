@@ -11,11 +11,10 @@
  * 2026-05-17 (agentic-studio-euw): that action upserts by name, so a
  * re-create *is* an update (REST `PUT /api/schemas/{id}` returns 405).
  * `deleteSchema` is still **UNVERIFIED** — `DELETE /api/schemas/{id}`
- * returns 405 and no delete server action has been captured. See
- * docs/agentic-studio-har-capture.md.
+ * returns 405 and no delete server action is confirmed.
  */
 import { agentsRequest, agentsServerAction, RSC_UNDEFINED } from "./request";
-import { trimEdgeChar } from "../../shared/strings";
+import { trimEdgeChar } from "@/shared/strings";
 import type { AgentsSession } from "../session/types";
 import type { StructuredSchema } from "./schema";
 

@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runDeployHealth } from "../deploy/tasks/health";
+import { runDeployHealth } from "@/deploy/tasks/health";
 
 const parsePositiveInt =
   (label: string) =>

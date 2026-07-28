@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createScaiError } from "../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   DEFAULT_ENVIRONMENT,
   DEFAULT_RECIPES_GLOBS,

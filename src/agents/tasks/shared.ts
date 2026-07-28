@@ -114,8 +114,8 @@ export const renderItem = (
 
 /**
  * Gate an UNVERIFIED write (update / delete on a resource whose endpoint
- * has not been observed in a HAR). Throws unless the operator opted in
- * with `--unverified`. See docs/agentic-studio-har-capture.md.
+ * is not confirmed). Throws unless the operator opted in
+ * with `--unverified`.
  */
 export const requireUnverified = (
   unverified: boolean | undefined,
@@ -130,8 +130,7 @@ export const requireUnverified = (
       hint:
         `scai wires ${verb} as a best-guess REST call, but it is UNVERIFIED and ` +
         `may fail or hit the wrong endpoint. Re-run with --unverified to attempt ` +
-        `it against a live tenant. See docs/agentic-studio-har-capture.md to ` +
-        `capture the real request and stabilize it.`,
+        `it against a live tenant.`,
     }
   );
 };

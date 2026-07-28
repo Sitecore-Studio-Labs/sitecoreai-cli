@@ -87,8 +87,8 @@ Loaded from `.env.local` (override) then `.env` (fallback). See
 
 For Phase 1 of the recipes initiative, target this tenant:
 
-- `tenantName=lizsitecore088b-starterkitsa33f-contentatte7784`
-- `organization=org_Sqg9NOB4DhDdpb1x`
+- `tenantName=<your-sandbox-tenant>`
+- `organization=<your-org-id>`
 
 (See [orchestrator memory](../../../../showcase-orchestrater/) for the
 full recipes plan: `plans/registry-sitecore-recipes.md` and

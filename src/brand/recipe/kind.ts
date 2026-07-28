@@ -10,24 +10,20 @@
  *
  * See docs/recipe-sync-architecture.md.
  */
+import { createBrandKit, publishBrandKit, updateBrandKitLogo } from "../kits/create";
+import { getBrandKit, listBrandKits, type BrandKitSummary } from "../kits/list";
 import {
-  createBrandKit,
-  publishBrandKit,
-  updateBrandKitLogo,
-  getBrandKit,
   listBrandKitFields,
   listBrandKitSections,
-  listBrandKits,
-  seedBrandKit,
   updateBrandKitField,
   updateBrandKitSection,
   createBrandKitSectionField,
-  type BrandApiClientOptions,
   type BrandKitFieldSummary,
   type BrandKitFieldType,
   type BrandKitFieldValue,
-  type BrandKitSummary,
-} from "@/brand";
+} from "../kits/sections";
+import { seedBrandKit } from "../seed";
+import type { BrandApiClientOptions } from "../api/client";
 import { createScaiError, toMergeConflicts } from "@/shared/errors";
 import { resolveMissingCurrentPlan } from "@/sync";
 import type {

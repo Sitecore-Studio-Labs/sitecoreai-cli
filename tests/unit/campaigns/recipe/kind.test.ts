@@ -16,7 +16,12 @@ const campaignApi = vi.hoisted(() => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
 }));
-vi.mock("../../../../src/campaigns", () => campaignApi);
+// The kind imports these primitives from their defining sibling modules
+// (not the `@/campaigns` barrel) to avoid the intra-domain barrel cycle,
+// so the mock targets those modules directly.
+vi.mock("../../../../src/campaigns/api/projects", () => campaignApi);
+vi.mock("../../../../src/campaigns/api/deliverables", () => campaignApi);
+vi.mock("../../../../src/campaigns/api/tasks", () => campaignApi);
 
 import { campaignKind } from "../../../../src/campaigns/recipe/kind";
 

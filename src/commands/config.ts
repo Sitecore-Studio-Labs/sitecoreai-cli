@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { readRootConfigurationFile } from "../config/root-config";
-import { Logger } from "../shared/logger";
+import { readRootConfigurationFile } from "@/config/root-config";
+import { Logger } from "@/shared/logger";
 import { addConfigOption, addVerbosityOptions } from "./shared";
 
 type ConfigValidateOptions = {

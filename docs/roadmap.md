@@ -144,9 +144,8 @@ The expansion beyond DevEx parity. Each is a full four-surface area
 
 The goal: **create and configure SitecoreAI agents as code.** Agentic
 Studio is SitecoreAI's workspace for building agents, spaces, workflow
-agents, and signals. The APIs that _create_ agents aren't in the public
-api-docs catalog — they're the undocumented endpoints the Agentic Studio
-UI calls.
+agents, and signals. The APIs that _create_ agents aren't yet part of
+the public api-docs catalog.
 
 scai's interest is strictly the **authoring** side: provisioning agents,
 spaces, and workflow-agent definitions. It is **not** the runtime Agent
@@ -154,10 +153,8 @@ API (`/sai/agent-api` — triggering and chatting with already-built
 agents); scai deliberately bypasses that and ships its own MCP server as
 the developer-side agent surface (see Non-goals).
 
-First step is a reconnaissance probe — capture a HAR of agent creation
-in the Agentic Studio UI to discover the endpoints + auth shape, the
-same way the Brief and Campaign areas were reverse-engineered. The
-headline deliverable is an **agent recipe kind**: declarative agent
+First step is to confirm the authoring endpoints + auth shape against a
+sandbox tenant. The headline deliverable is an **agent recipe kind**: declarative agent
 definitions authored in `.recipe.ts` and pushed through the same
 compile / plan / diff / push lifecycle as templates.
 
@@ -247,8 +244,8 @@ path is the envelope-compliant alternative.
   explicit per-env overrides.
 - Project update / delete — `OPTIONS`-probe `/projects/{id}` before
   adding `updateProject` / `deleteProject`.
-- Brief↔campaign linking — mechanism undiscovered; capture a HAR of
-  attaching a brief in the Content Operations UI before building it.
+- Brief↔campaign linking — mechanism not yet confirmed against a sandbox
+  tenant before building it.
 - Attachments, `members` / `labels` on create, enum tightening —
   surface gaps in the campaign CLI/MCP input shape.
 

@@ -29,6 +29,7 @@ import {
   writeRootConfigurationFile,
 } from "@/config/root-config";
 import { getCmClientSecret, getDeployToken, setCmClientSecret } from "@/shared/keychain";
+import { sleep } from "@/shared/concurrency";
 import {
   buildScaiClientDescription,
   buildScaiClientName,
@@ -44,8 +45,6 @@ import type { SitecoreApiClientOptions } from "@/serialization/api/types";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
 import packageJson from "../../../../package.json";
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Timing knobs for {@link waitForClientActivation} — overridable for tests. */
 export interface ClientActivationOptions {

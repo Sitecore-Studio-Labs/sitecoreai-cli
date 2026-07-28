@@ -5,7 +5,7 @@
  */
 import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
-import type { BrandApiClientOptions } from "@/brand";
+import type { BrandApiClientOptions } from "../api/client";
 import type { SyncContext } from "@/sync";
 
 /** Build the Brand Management API client for the context's environment. */

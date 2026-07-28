@@ -57,7 +57,7 @@ describe("telemetry and shared helpers", () => {
     });
   });
   it("formats telemetry commands and resolves config args", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     expect(telemetry.formatTelemetryCommand(["deploy", "logs", "list", "--config", "x"])).toBe(
       "deploy logs list"
     );
@@ -70,12 +70,12 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("returns a placeholder when no command tokens exist", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     expect(telemetry.formatTelemetryCommand(["--config", "x"])).toBe("(no command)");
   });
 
   it("recipe commands telemetry-flatten to bare positional tokens (no recipe paths/env names leak)", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     expect(
       telemetry.formatTelemetryCommand([
         "recipe",
@@ -98,12 +98,12 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("returns undefined when no config flag is provided", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     expect(telemetry.resolveConfigPathFromArgs(["--json"])).toBeUndefined();
   });
 
   it("records telemetry when enabled", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
     process.env.SITECOREAI_TELEMETRY = "1";
@@ -123,7 +123,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips the telemetry notice when SITECOREAI_TELEMETRY is set", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     process.env.SITECOREAI_TELEMETRY = "1";
@@ -134,7 +134,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips the telemetry notice when DO_NOT_TRACK is set", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     process.env.DO_NOT_TRACK = "1";
@@ -145,7 +145,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("shows the telemetry notice once and persists the opt-out default", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-notice-"));
@@ -190,7 +190,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("reads telemetry status from env", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     process.env.SITECOREAI_TELEMETRY = "0";
     const status = telemetry.getTelemetryStatus(process.cwd());
     expect(status.enabled).toBe(false);
@@ -198,7 +198,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("defaults telemetry status to enabled when config is missing", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-missing-"));
     const status = telemetry.getTelemetryStatus(dir);
     expect(status.enabled).toBe(true);
@@ -207,7 +207,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips the telemetry notice when config is missing", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-missing-"));
@@ -218,7 +218,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips the telemetry notice when telemetryEnabled is already set", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-existing-"));
@@ -250,7 +250,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips the telemetry notice in CI", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => undefined);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scai-telemetry-ci-"));
@@ -298,7 +298,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("skips telemetry when URL is empty or disabled", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -326,7 +326,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("reports telemetry status from DO_NOT_TRACK", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     process.env.DO_NOT_TRACK = "1";
     const status = telemetry.getTelemetryStatus(process.cwd());
     expect(status.enabled).toBe(false);
@@ -335,7 +335,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("logs validation failures for invalid telemetry payloads", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -360,7 +360,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("retries telemetry with backoff when request fails", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("nope", { status: 500 }))
@@ -392,7 +392,7 @@ describe("telemetry and shared helpers", () => {
   });
 
   it("emits trace logs on failed telemetry requests", async () => {
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
     const { consola } = await import("consola");
     const debugSpy = vi.spyOn(consola, "debug").mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));

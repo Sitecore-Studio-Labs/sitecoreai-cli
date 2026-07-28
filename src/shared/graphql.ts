@@ -75,6 +75,18 @@ export interface RetryOptions {
    * so it is always safe to retry.
    */
   retryAmbiguousNetwork?: boolean;
+  /**
+   * Backoff schedule (ms per retry) for an authorization refusal —
+   * `AUTH_NOT_AUTHORIZED` inside a 200-OK GraphQL `errors[]` payload. A
+   * freshly minted CM automation client authenticates instantly (Auth0), but
+   * the CM's own user/role mapping settles asynchronously and individual
+   * requests can be refused for a while after provisioning. A refusal is
+   * definitively NOT applied, so it is safe to retry even for writes. This
+   * track is independent of `maxAttempts` (which most mutation callers pin
+   * to 1–3 with sub-second backoff — far too short for role propagation).
+   * Pass `[]` to disable.
+   */
+  authzSettleDelaysMs?: readonly number[];
 }
 
 /**
@@ -85,12 +97,15 @@ export interface RetryOptions {
  * shared transport's error-mapping tests stable while letting the recipe
  * path get throttle-aware behavior for free.
  */
+const DEFAULT_AUTHZ_SETTLE_DELAYS_MS: readonly number[] = [3_000, 8_000, 15_000, 30_000];
+
 const DEFAULT_RETRY: Required<RetryOptions> = {
   maxAttempts: 1,
   baseDelayMs: 500,
   maxDelayMs: 15_000,
   retryableStatuses: new Set([408, 425, 429, 503]),
   retryAmbiguousNetwork: true,
+  authzSettleDelaysMs: DEFAULT_AUTHZ_SETTLE_DELAYS_MS,
 };
 
 /**
@@ -104,6 +119,24 @@ const DEFAULT_RETRY: Required<RetryOptions> = {
 const CANCELLATION_MESSAGE_RE = /operation was cancel?led|operationcancell?ed/i;
 const isCancellationErrors = (errors: ReadonlyArray<{ message?: string }>): boolean =>
   errors.some((e) => CANCELLATION_MESSAGE_RE.test(e.message ?? ""));
+
+/**
+ * An authorization refusal from the Authoring API: HTTP 200 with a GraphQL
+ * error carrying `extensions.code: "AUTH_NOT_AUTHORIZED"` ("The current user
+ * is not authorized to access this resource."). The bearer token itself was
+ * accepted — an expired/invalid token 401s at the HTTP layer instead — so
+ * this is an identity/permission verdict, not a transport failure. Matched
+ * on the structured extensions code first, message text as fallback.
+ */
+const AUTHZ_REFUSED_CODE = "AUTH_NOT_AUTHORIZED";
+const AUTHZ_REFUSED_MESSAGE_RE = /not authorized to access/i;
+const isAuthzRefusedErrors = (
+  errors: ReadonlyArray<{ message?: string; extensions?: Record<string, unknown> }>
+): boolean =>
+  errors.some(
+    (e) =>
+      e.extensions?.code === AUTHZ_REFUSED_CODE || AUTHZ_REFUSED_MESSAGE_RE.test(e.message ?? "")
+  );
 
 /**
  * Read-only callers can opt in to a broader retry set that includes
@@ -384,15 +417,31 @@ export const runSitecoreGraphQL = async <T>(
         const details = result.errors
           .map((error) => (error.extensions ? JSON.stringify(error.extensions) : undefined))
           .filter((line): line is string => typeof line === "string");
+        // An authorization refusal is a permission verdict, not a transport
+        // failure — classify it AUTH_DENIED (exit 3) instead of NETWORK so
+        // callers and orchestrators can tell "not allowed" from "flaky wire".
+        const authzRefused = isAuthzRefusedErrors(result.errors);
         const gqlError = createScaiError(
           redactSecrets(`${transport.label} GraphQL errors: ${message}`),
-          "NETWORK",
-          details.length > 0 ? { details } : undefined
+          authzRefused ? "AUTH_DENIED" : "NETWORK",
+          {
+            ...(details.length > 0 ? { details } : {}),
+            ...(authzRefused
+              ? {
+                  hint: "The token was accepted but this client is not authorized for the operation. A freshly provisioned CM automation client can be refused while the CM's role assignment settles — scai retries this briefly; if it persists, verify the client's roles on the target environment.",
+                }
+              : {}),
+          }
         );
         // A server-side cancellation is rolled back (never applied), so flag
-        // it retryable even for writes — the retry loop honors this.
+        // it retryable even for writes — the retry loop honors this. An
+        // authz refusal is likewise definitively not applied; its dedicated
+        // settle-retry track also lives in the retry loop.
         if (isCancellationErrors(result.errors)) {
           (gqlError as { retryableCancellation?: boolean }).retryableCancellation = true;
+        }
+        if (authzRefused) {
+          (gqlError as { retryableAuthzSettle?: boolean }).retryableAuthzSettle = true;
         }
         throw gqlError;
       }
@@ -409,11 +458,27 @@ export const runSitecoreGraphQL = async <T>(
   };
 
   let lastError: unknown;
+  let authzSettleAttempt = 0;
   for (let attempt = 0; attempt < retryCfg.maxAttempts; attempt += 1) {
     try {
       return await sendOnce();
     } catch (error) {
       lastError = error;
+
+      // Authorization-settle track: independent of maxAttempts (mutation
+      // callers pin that to 1–3 with sub-second backoff, far too short for
+      // CM role propagation on a freshly minted client). A refusal was
+      // definitively not applied, so this is write-safe. The `attempt -= 1`
+      // hands the regular budget back — a settle retry doesn't consume it.
+      if (
+        (error as { retryableAuthzSettle?: boolean })?.retryableAuthzSettle === true &&
+        authzSettleAttempt < retryCfg.authzSettleDelaysMs.length
+      ) {
+        await sleep(retryCfg.authzSettleDelaysMs[authzSettleAttempt]);
+        authzSettleAttempt += 1;
+        attempt -= 1;
+        continue;
+      }
 
       if (
         attempt < retryCfg.maxAttempts - 1 &&

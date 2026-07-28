@@ -23,7 +23,7 @@ import { readRootConfiguration } from "@/config/root-config";
 import { createScaiError } from "@/shared/errors";
 import { inputError } from "@/shared/cli-tasks";
 import { getBrandClientSecret } from "@/shared/keychain";
-import type { BrandApiClientOptions } from "./api/client";
+import type { BrandApiClientOptions } from "./api/types";
 import type { BrandCredential } from "@/config/types";
 
 /**

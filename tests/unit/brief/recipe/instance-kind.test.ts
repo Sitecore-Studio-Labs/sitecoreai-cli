@@ -21,7 +21,12 @@ const briefApi = vi.hoisted(() => ({
   deleteBriefTask: vi.fn(),
   createBriefComment: vi.fn(),
 }));
-vi.mock("../../../../src/brief", () => briefApi);
+// The kind imports these primitives from their defining sibling modules
+// (not the `@/brief` barrel) to avoid the intra-domain barrel cycle.
+vi.mock("../../../../src/brief/api/briefs", () => briefApi);
+vi.mock("../../../../src/brief/api/comments", () => briefApi);
+vi.mock("../../../../src/brief/api/tasks", () => briefApi);
+vi.mock("../../../../src/brief/api/brief-types", () => briefApi);
 
 // Mock the campaign surface used by campaignHandle → projectId resolution
 // and brief→campaign link verification (the reverse-view re-read).

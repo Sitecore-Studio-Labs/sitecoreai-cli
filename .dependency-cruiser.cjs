@@ -94,17 +94,19 @@ module.exports = {
       // cross-import, but a *circular* edge among them is a smell the targeted
       // test could never see. Type-only edges are erased at compile time and
       // don't form a real runtime cycle, so they're exempt.
-      // Surfaced as a non-blocking WARN: ~40 pre-existing barrel cycles
-      // (index.ts ↔ submodule re-exports) predate this gate, and the targeted
-      // test was explicitly never a cycle detector. Warn keeps them visible as
-      // a ratchet target without blocking CI on a refactor. Raise to "error"
-      // once the existing cycles are cleared.
+      // The old barrel cycles (a domain's index.ts re-exporting a recipe
+      // module that imported symbols back through the same barrel, plus the
+      // brand api/auth → credential → api/client triangle) have all been
+      // cleared by pointing intra-domain imports at the defining sibling
+      // module instead of the top barrel. Cycles are now forbidden.
       name: "no-circular",
       comment:
         "No circular dependencies. Break the cycle by relocating the shared " +
         "module into shared/ (or a lower peer), as was done for shared↔policy " +
-        "and content↔publishing.",
-      severity: "warn",
+        "and content↔publishing, or — for an intra-domain barrel cycle — by " +
+        "importing the defining sibling module directly instead of the " +
+        "domain's index.ts barrel.",
+      severity: "error",
       from: {},
       to: { circular: true, dependencyTypesNot: ["type-only"] },
     },

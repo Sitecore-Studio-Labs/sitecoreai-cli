@@ -27,19 +27,15 @@
  */
 import {
   addProjectMember,
-  createDeliverable,
   createProject,
-  createTask,
   getProject,
   listProjects,
-  updateDeliverable,
   updateProject,
-  updateTask,
-  type CampaignApiClientOptions,
-  type Deliverable,
-  type Project,
-  type Task,
-} from "@/campaigns";
+} from "../api/projects";
+import { createDeliverable, updateDeliverable } from "../api/deliverables";
+import { createTask, updateTask } from "../api/tasks";
+import type { CampaignApiClientOptions } from "../api/types";
+import type { Deliverable, Project, Task } from "../api/schema";
 import { createScaiError, toMergeConflicts } from "@/shared/errors";
 import { drainPages } from "@/shared/paginate";
 import { resolveMissingCurrentPlan } from "@/sync";

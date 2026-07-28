@@ -1,5 +1,5 @@
-import type { FilesystemTreeSpec } from "../serialization/tree-spec";
-import type { FieldFilter, RolePredicateItem, UserPredicateItem } from "../serialization/types";
+import type { FilesystemTreeSpec } from "@/serialization/tree-spec";
+import type { FieldFilter, RolePredicateItem, UserPredicateItem } from "@/serialization/types";
 
 export type SerializationRootConfiguration = {
   defaultMaxRelativeItemPathLength: number;

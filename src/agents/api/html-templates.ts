@@ -16,8 +16,7 @@
  * **Still UNVERIFIED:** `GET /api/html-templates` returns 404 on that
  * tenant — no list/read path has been observed — so `listHtmlTemplates` /
  * `getHtmlTemplate` fail and the CLI can only address a template by its
- * id; and `deleteHtmlTemplate` has no captured endpoint. See
- * docs/agentic-studio-har-capture.md.
+ * id; and `deleteHtmlTemplate` has no confirmed endpoint.
  */
 import { agentsRequest, agentsServerAction, RSC_UNDEFINED } from "./request";
 import type { AgentsSession } from "../session/types";

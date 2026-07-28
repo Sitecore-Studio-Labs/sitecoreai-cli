@@ -51,7 +51,7 @@ vi.mock("../../../../src/shared/cli-tasks", async (importActual) => {
   return { ...actual, confirmDestructive: mocks.confirmDestructive };
 });
 
-const { runSetupClients } = await import("../../../../src/serialization/tasks/env/setup-clients");
+const { runSetupClients } = await import("../../../../src/setup/setup-clients");
 
 const baseOptions = { environmentName: "test", quiet: true };
 

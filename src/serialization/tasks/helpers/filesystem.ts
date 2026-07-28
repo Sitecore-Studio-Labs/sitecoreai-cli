@@ -1,7 +1,7 @@
 import { FilesystemPathProvider } from "../../path-provider";
 import { ItemData } from "../../types";
 import { removeItemFromFilesystem, writeItemToFilesystem } from "../../filesystem-store/items";
-import { Logger } from "../../../shared/logger";
+import { Logger } from "@/shared/logger";
 import { ItemCommand } from "../../commands";
 
 export const applyFilesystemCommands = async (

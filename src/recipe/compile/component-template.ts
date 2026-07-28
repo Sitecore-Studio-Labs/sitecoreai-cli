@@ -29,7 +29,7 @@ import {
   type SetStandardValuesOp,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import {
   DEFAULT_ICON,
   IDYNAMIC_PLACEHOLDER_TEMPLATE_ID,
@@ -49,15 +49,7 @@ import { resolveSectionRecipe } from "./component-section";
 import {
   PARAMS_SECTION_NAME,
   PARAMS_SORT_ORDER_BASE,
-  buildFieldOp,
-  buildStandardValuesFieldEntries,
   datasourceTemplateHandles,
-  emitDatasourceTemplate,
-  emitStandardValuesLocaleVersions,
-  ensureComponentFoldersBucket,
-  ensurePresentationDesignParametersBucket,
-  ensureRenderingsSectionFolder,
-  ensureSectionFolder,
   joinPath,
   resolveComponentFoldersBucketPath,
   resolveComponentTemplateParent,
@@ -68,6 +60,18 @@ import {
   versionedField,
   type CompileContext,
 } from "./shared";
+import { buildFieldOp } from "./field-ops";
+import {
+  ensureComponentFoldersBucket,
+  ensurePresentationDesignParametersBucket,
+  ensureRenderingsSectionFolder,
+  ensureSectionFolder,
+} from "./folders";
+import { emitDatasourceTemplate } from "./datasource-template";
+import {
+  buildStandardValuesFieldEntries,
+  emitStandardValuesLocaleVersions,
+} from "./standard-values";
 
 /**
  * Resolve `recipe.section?.handle` to the section's `name` via the

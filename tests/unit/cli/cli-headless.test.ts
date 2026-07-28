@@ -37,10 +37,9 @@ vi.mock("../../../src/shared/history", () => ({
   ensureHistoryFile: vi.fn(),
   recordHistory: vi.fn(),
 }));
-vi.mock("../../../src/shared/telemetry", async () => {
-  const actual = await vi.importActual<typeof import("../../../src/shared/telemetry")>(
-    "../../../src/shared/telemetry"
-  );
+vi.mock("../../../src/telemetry", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../../src/telemetry")>("../../../src/telemetry");
   return {
     ...actual,
     recordTelemetry: vi.fn(),
@@ -85,7 +84,7 @@ describe("cli entrypoint (non-TTY)", () => {
       delete process.env.CI;
       delete process.env.GITHUB_ACTIONS;
 
-      const telemetry = await import("../../../src/shared/telemetry");
+      const telemetry = await import("../../../src/telemetry");
       (
         telemetry.resolveConfigPathFromArgs as unknown as { mockReturnValue: (v: string) => void }
       ).mockReturnValue(tempDir);

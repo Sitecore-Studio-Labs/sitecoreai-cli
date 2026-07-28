@@ -1,6 +1,6 @@
 import readline from "node:readline";
 import { Command } from "commander";
-import { assertInteractive } from "../shared/prompt";
+import { assertInteractive } from "@/shared/prompt";
 import { normalizeArgs } from "./shared";
 
 type ShellEnvSnapshot = Record<string, string | undefined>;

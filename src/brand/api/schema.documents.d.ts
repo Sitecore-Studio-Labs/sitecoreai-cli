@@ -131,7 +131,7 @@ export interface components {
     CreateDocumentModelResponse_v2: {
       /**
        * @description The unique identifier of your organization.
-       * @example org_ZiiCnzhCeHDpWJAU
+       * @example org_EXAMPLExxxxxxxx
        */
       organizationId: string;
       /**
@@ -257,7 +257,7 @@ export interface components {
     DocumentModel_v2: {
       /**
        * @description The unique identifier of your organization.
-       * @example org_ZiiCnzhCeHDpWJAU
+       * @example org_EXAMPLExxxxxxxx
        */
       organizationId: string | null;
       /**

@@ -1,4 +1,5 @@
 import type { Logger } from "@/shared/logger";
+import { sleep } from "@/shared/concurrency";
 import { createScaiError } from "@/shared/errors";
 import { getPublishJob } from "./api/client";
 import { extractFailureDiagnostics, formatFailureDiagnostics } from "./job-diagnostics";
@@ -20,11 +21,6 @@ export const clampPollInterval = (raw: number | undefined): number => {
   const v = typeof raw === "number" && Number.isFinite(raw) ? raw : DEFAULT_POLL_INTERVAL_S;
   return Math.min(60, Math.max(2, v));
 };
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 /**
  * Watch a job until it reaches a terminal state. Emits one log line

@@ -18,7 +18,9 @@ const briefApi = vi.hoisted(() => ({
   createBriefType: vi.fn(),
   updateBriefType: vi.fn(),
 }));
-vi.mock("../../../../src/brief", () => briefApi);
+// The kind imports these primitives from their defining sibling module
+// (not the `@/brief` barrel) to avoid the intra-domain barrel cycle.
+vi.mock("../../../../src/brief/api/brief-types", () => briefApi);
 
 import { briefTypeKind } from "../../../../src/brief/recipe/kind";
 

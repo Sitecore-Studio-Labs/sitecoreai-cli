@@ -11,7 +11,8 @@
  *
  * This barrel is the canonical cross-domain seam AND the home of the
  * implementation: every domain area outside `serialization` imports
- * these primitives from `@/auth`, and a boundary test keeps it that way.
+ * these primitives from `@/auth`, and a dependency-cruiser rule
+ * (`auth-authoring-seam`) keeps it that way.
  *
  *     import { requestClientCredentialsToken } from "@/auth";
  *

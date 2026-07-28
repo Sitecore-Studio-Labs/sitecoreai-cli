@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runDeployToken } from "../serialization/tasks/env/deploy-token";
+import { runDeployToken } from "@/setup/deploy-token";
 import { createLoginBrandCommand } from "./setup-client";
 
 /**

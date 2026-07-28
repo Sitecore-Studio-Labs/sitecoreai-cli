@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 
+// Every test here dynamic-imports the whole CLI entrypoint (src/cli.ts), which
+// pulls the entire Commander program tree — and transitively every domain area —
+// into the worker. esbuild's one-time transform of that graph (~5s) is charged
+// to whichever test imports first, and alone exceeds vitest's 5s default on
+// slower machines (CI runners clear it, but a loaded sandbox does not). The
+// command itself resolves in well under a second once transformed, so this is a
+// cold-compile margin, not a hang — give the file headroom so it isn't a flake.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 const actionMock = vi.fn(async () => undefined);
 const makeCommand = (name: string): Command =>
   new Command(name)
@@ -67,7 +76,7 @@ vi.mock("../../../src/shared/history", () => ({
   ensureHistoryFile: vi.fn(),
   recordHistory: vi.fn(),
 }));
-vi.mock("../../../src/shared/telemetry", () => ({
+vi.mock("../../../src/telemetry", () => ({
   ensureTelemetryNotice: vi.fn(),
   formatTelemetryCommand: vi.fn().mockReturnValue("scai setup status"),
   recordTelemetry: vi.fn(),
@@ -90,8 +99,8 @@ const taskMocks = vi.hoisted(() => ({
   runInit: vi.fn(),
   runDeployToken: vi.fn(),
 }));
-vi.mock("../../../src/serialization/tasks/env/init", () => ({ runInit: taskMocks.runInit }));
-vi.mock("../../../src/serialization/tasks/env/deploy-token", () => ({
+vi.mock("../../../src/setup/init", () => ({ runInit: taskMocks.runInit }));
+vi.mock("../../../src/setup/deploy-token", () => ({
   runDeployToken: taskMocks.runDeployToken,
 }));
 
@@ -232,7 +241,7 @@ describe("cli entrypoint", () => {
     process.argv = ["node", "scai", "setup", "status"];
     vi.resetModules();
     const history = await import("../../../src/shared/history");
-    const telemetry = await import("../../../src/shared/telemetry");
+    const telemetry = await import("../../../src/telemetry");
 
     (
       history.ensureHistoryFile as unknown as {

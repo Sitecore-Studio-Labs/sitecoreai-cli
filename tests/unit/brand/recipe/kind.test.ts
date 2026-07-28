@@ -21,7 +21,12 @@ const brandApi = vi.hoisted(() => ({
   updateBrandKitLogo: vi.fn(),
   enrichBrandKitWithDocuments: vi.fn(),
 }));
-vi.mock("../../../../src/brand", () => brandApi);
+// The kind imports these primitives from their defining sibling modules
+// (not the `@/brand` barrel) to avoid the intra-domain barrel cycle.
+vi.mock("../../../../src/brand/kits/create", () => brandApi);
+vi.mock("../../../../src/brand/kits/list", () => brandApi);
+vi.mock("../../../../src/brand/kits/sections", () => brandApi);
+vi.mock("../../../../src/brand/seed", () => brandApi);
 
 import { brandKitKind } from "../../../../src/brand/recipe/kind";
 

@@ -1,5 +1,5 @@
 import type { EnvironmentConfiguration, RootConfigurationFile } from "./types";
-import { trimEdgeChar } from "../shared/strings";
+import { trimEdgeChar } from "@/shared/strings";
 
 const toBoolean = (value?: string): boolean | undefined => {
   if (!value) {

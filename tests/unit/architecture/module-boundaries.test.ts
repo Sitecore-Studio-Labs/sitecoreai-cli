@@ -45,8 +45,10 @@ const DOMAIN_AREAS = [
   "recipe",
   "scripting",
   "serialization",
+  "setup",
   "sites",
   "sync",
+  "telemetry",
   "webhooks",
   "workflow",
 ];
@@ -57,16 +59,41 @@ const tsFilesUnder = (dir: string): string[] =>
     return statSync(full).isDirectory() ? tsFilesUnder(full) : full.endsWith(".ts") ? [full] : [];
   });
 
-/** Every `@/<area>` specifier imported by `file`. */
+/**
+ * Every top-level `src/` area imported by `file`, whether the specifier is an
+ * `@/<area>` alias OR a *relative* path (`./x`, `../x`) that resolves across a
+ * top-level boundary. A relative cross-boundary import (e.g. the old
+ * `shared/telemetry.ts` reaching `../config` as `../telemetry`) would evade an
+ * alias-only matcher, so it must be resolved and counted here too.
+ */
 const aliasImportsOf = (file: string): string[] => {
   const text = readFileSync(file, "utf8");
-  const specifiers: string[] = [];
-  const re = /from\s+"@\/([a-z-]+)/g;
+  const areas: string[] = [];
+
+  // The area of `file` itself — relative specifiers resolve against its dir,
+  // and an import that stays inside this area is not a boundary crossing.
+  const selfRel = path.relative(SRC, file);
+  const selfArea = selfRel.split(path.sep)[0];
+  const fileDir = path.dirname(file);
+
+  // 1. `@/<area>` alias specifiers.
+  const aliasRe = /from\s+"@\/([a-z-]+)/g;
   let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    specifiers.push(match[1]);
+  while ((match = aliasRe.exec(text)) !== null) {
+    areas.push(match[1]);
   }
-  return specifiers;
+
+  // 2. Relative specifiers — resolve to a top-level `src/` area and, when it
+  //    differs from the file's own area, feed that area into the same checks.
+  const relRe = /(?:from\s+"|import\(\s*"|import\s+")(\.\.?\/[^"]*)"/g;
+  while ((match = relRe.exec(text)) !== null) {
+    const targetRel = path.relative(SRC, path.resolve(fileDir, match[1]));
+    if (targetRel.startsWith("..")) continue; // escapes src/ — ignore
+    const targetArea = targetRel.split(path.sep)[0];
+    if (targetArea !== selfArea) areas.push(targetArea);
+  }
+
+  return areas;
 };
 
 describe("module boundaries", () => {
@@ -90,6 +117,21 @@ describe("module boundaries", () => {
       }
     }
     expect(offenders, `content/ must not import publishing/:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("src/sync/index.ts does not re-export aggregate-kinds (guards the sync↔domains cycle)", () => {
+    // `sync/aggregate-kinds.ts` imports @/brand/recipe + @/brief/recipe +
+    // @/recipe/sandbox, while 20+ files in those areas import @/sync. The
+    // runtime cycle is avoided ONLY because the sync barrel deliberately does
+    // not surface aggregate-kinds — its two consumers (commands/sync.ts,
+    // mcp/tools/recipe-sync.ts) deep-import it. A careless barrel re-export
+    // would create a real cycle instantly; this pins the omission.
+    const barrel = readFileSync(path.join(SRC, "sync/index.ts"), "utf8");
+    expect(
+      /aggregate-kinds/.test(barrel),
+      "sync/index.ts must not reference ./aggregate-kinds — deep-import it from " +
+        "commands/ or mcp/ instead, or the sync↔brand/brief/recipe cycle returns."
+    ).toBe(false);
   });
 
   it("DOMAIN_AREAS stays in sync with src/", () => {

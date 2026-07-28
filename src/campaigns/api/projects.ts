@@ -160,10 +160,9 @@ export const deleteProject = (
  * view, so it MUST run (while the brief is still linked) before `deleteProject`,
  * or the delete 403s ("Failed to detach link from brief") on the lingering link.
  *
- * VERIFIED 2026-06-29 against `org_Sqg9NOB4DhDdpb1x` (Summer Energy Programs
- * 2026): a 200 on this route dropped the brief from `project.briefs[]`, and the
- * campaign then deleted cleanly — all with the campaign token alone (no
- * brief-scoped credential involved).
+ * Verified against a sandbox campaign: a 200 on this route dropped the brief
+ * from `project.briefs[]`, and the campaign then deleted cleanly — all with
+ * the campaign token alone (no brief-scoped credential involved).
  */
 export const unlinkBriefFromProject = (
   options: CampaignApiClientOptions,

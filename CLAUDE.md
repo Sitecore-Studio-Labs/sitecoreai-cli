@@ -22,15 +22,23 @@ CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers and module boundaries
 
-`src/` is organized into 20 **domain areas** plus three cross-cutting
+`src/` is organized into 21 **domain areas** plus three cross-cutting
 layers. The domain areas:
 
 ```
-deploy   serialization  recipe   brand    brief    campaigns
+deploy   serialization  setup    recipe   brand    brief    campaigns
 sites    publishing     content  hygiene  webhooks workflow
 agents   policy         mcp      scripting sync     auth      authoring
-doctor
+doctor   telemetry
 ```
+
+`setup/` is the environment-setup orchestration area: it owns the env
+lifecycle (init/onboard, credential minting, org/CM client provisioning,
+tenant bootstrap) and is the one area that _composes_ `deploy`, `recipe`,
+and `brand` for that flow. It was extracted from `serialization/tasks/env/`
+so that `serialization/` no longer imports `@/deploy`, `@/recipe`, or
+`@/brand` — those downward-odd edges now live in `setup/` as ordinary
+peer-area imports (`setup → deploy/recipe/brand` is allowed).
 
 Each domain area is a directory under `src/` that owns one product
 surface (its API client, task runners, and — where it has one — an
@@ -38,16 +46,21 @@ surface (its API client, task runners, and — where it has one — an
 seams — `auth/` re-exports OAuth client-credentials primitives that
 were de facto shared across publishing/brand/brief/etc., and
 `authoring/` re-exports the Sitecore Authoring GraphQL transport +
-site discovery used cross-domain. Implementation still lives in
-`serialization/api/` and `recipe/api/` respectively; new cross-area
-callers should import via `@/auth` and `@/authoring`. The
-cross-cutting layers:
+site discovery used cross-domain. The `auth/` implementation now lives
+in `auth/` itself (`client-credentials`/`factory`/`types`), with
+`serialization/api/auth.ts` a thin forwarder; the `authoring/`
+implementation lives in `serialization/api/` (GraphQL transport) and
+`recipe/api/` (authoring-client, site-discovery), re-exported here.
+New cross-area callers import via `@/auth` and `@/authoring`, and a
+dependency-cruiser rule (`auth-authoring-seam`) enforces that no other
+area reaches those implementations directly. The cross-cutting layers:
 
 ```
 src/cli.ts        ← entrypoint; src/program.ts builds the Commander tree
 src/commands/     ← Commander command definitions, thin parsers
 src/config/       ← sitecoreai.cli.json + module schemas, config resolution
-src/shared/       ← logger, errors, telemetry, spinner, HTTP/GraphQL transport
+src/telemetry/    ← opt-out usage telemetry (reads config, sends events)
+src/shared/       ← logger, errors, spinner, HTTP/GraphQL transport
 ```
 
 **Import rules:**
@@ -55,7 +68,9 @@ src/shared/       ← logger, errors, telemetry, spinner, HTTP/GraphQL transport
 - `commands/` may import any domain area, `config/`, and `shared/`.
 - A domain area may import **peer domain areas**, `config/`, and
   `shared/` — but never `commands/`.
-- `config/` may import `shared/` only.
+- `config/` may import `shared/` (and the `serialization/` schema types it
+  validates against — the one sanctioned `config → serialization` edge, in
+  `config/modules.ts`).
 - **`src/shared/` is a leaf.** It must not import any domain area or
   `commands/`. Type-only imports of `@/config` declarations are
   allowed (`config/types` is itself a leaf). The former `shared↔policy`

@@ -65,7 +65,7 @@ export const SITECORE_TEMPLATES = {
    * SXA partial-design semantics: their layout XML is composed into
    * page designs via the `PartialDesigns` field.
    *
-   * Verified against sandbox tenant (`xmc-lizsitecore088b-...`) on
+   * Verified against sandbox tenant (`xmc-sandbox-...`) on
    * 2026-04-30 via Authoring API introspection — the template lives at
    * `/sitecore/templates/Foundation/JSS Experience Accelerator/Presentation/Partial Design`.
    */
@@ -111,7 +111,7 @@ export const SITECORE_TEMPLATES = {
    * FOLDER template; SXA's editor UI looks for this template when
    * walking the rendering tree.
    *
-   * Verified against sandbox tenant `xmc-lizsitecore7e03-...` on
+   * Verified against sandbox tenant `xmc-sandbox-...` on
    * 2026-05-02 via Authoring API introspection — every section folder
    * under `/sitecore/layout/Renderings/Project/<site>/` conforms to
    * this template.
@@ -234,7 +234,7 @@ export const PLACEHOLDER_TEMPLATE_ID = "d2a6884c-04d5-4089-a64e-d27ca9d68d4c";
  * Folder`), giving authors the right right-click → Insert UX without
  * scai having to stamp `__Masters` explicitly.
  *
- * Verified against sandbox tenant (`xmc-lizsitecore088b-…`) on
+ * Verified against sandbox tenant (`xmc-sandbox-…`) on
  * 2026-05-15 via Authoring API introspection — the `Placeholder
  * Settings` root and its `Partial Design` child both conform to it, and
  * the template's SV carries
@@ -276,7 +276,7 @@ export const PLACEHOLDER_FIELDS = {
  *   wires the publishing/release grouping that SXA editors expect.
  *
  * Verified by introspecting `AccordionBlock` (and other components)
- * in tenant `xmc-lizsitecore7e03-...` on 2026-05-02. Content-template
+ * in tenant `xmc-sandbox-...` on 2026-05-02. Content-template
  * (datasource-only) recipes deliberately exclude these — they're
  * datasource items, not full SXA components.
  */
@@ -299,7 +299,7 @@ export const STANDARD_TEMPLATE_ID = "1930bbeb-7805-471a-a3be-4858ac7cf696";
  * parameters dialog with its fields.
  *
  * Verified by introspecting the working `LinkList` params template in
- * tenant `xmc-lizsitecore7e03-...` on 2026-05-03 — its `__Base templates`
+ * tenant `xmc-sandbox-...` on 2026-05-03 — its `__Base templates`
  * field carried exactly these three GUIDs:
  *
  *   - `4247AAD4-EBDE-4994-998F-E067A51B1FE4` — `BaseRenderingParameters`
@@ -369,7 +369,7 @@ export const IDYNAMIC_PLACEHOLDER_TEMPLATE_ID = "5c74e985-e055-43ff-b28c-db6c6a6
  * This is exactly the base set the OOTB per-site `Page` template
  * carries. Captured 2026-05-15 by walking the `__Base template` chain of
  * `/sitecore/templates/Project/demo-registry/Page` on the sandbox tenant
- * (`xmc-lizsitecore088b-…`) via Authoring API introspection — see
+ * (`xmc-sandbox-…`) via Authoring API introspection — see
  * `scripts/_recon-page-template.cjs`. All five are SXA Foundation
  * templates, so the GUIDs are stable across tenants (same identity model
  * as `SXA_COMPONENT_BASE_TEMPLATES`).
@@ -437,7 +437,7 @@ export const SYSTEM_FIELDS = {
    * `__Masters` — the field that backs the CMS "Insert Options" UI.
    * Set on the standard-values item to a pipe-separated list of allowed
    * child template GUIDs. GUID verified against sandbox tenant
-   * (`xmc-lizsitecore088b-...`) on 2026-04-30 via Authoring API
+   * (`xmc-sandbox-...`) on 2026-04-30 via Authoring API
    * `templateField.templateFieldId` introspection.
    */
   INSERT_OPTIONS: "1172f251-dad4-4efb-a329-0c63500e4f1e",
@@ -679,7 +679,7 @@ export const SITE_FIELDS = {
  * SXA-specific fields on partial-design and page-design items, plus the
  * Page Designs root's templates-to-designs mapping field.
  *
- * Verified against sandbox tenant (`xmc-lizsitecore088b-...`) on
+ * Verified against sandbox tenant (`xmc-sandbox-...`) on
  * 2026-04-30 via Authoring API introspection — both prior documented
  * values were wrong:
  *   PARTIAL_DESIGNS:  was 1f57aae2-da42-49d7-bfaa-b4c4d8398eb4

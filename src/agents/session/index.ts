@@ -27,7 +27,7 @@ export {
 
 /**
  * A current Chrome User-Agent, used when a stored credential predates
- * `userAgent` capture. Sitecore Cloud's edge WAF 406s non-browser callers.
+ * `userAgent` capture, so requests match the browser client.
  */
 const FALLBACK_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -40,7 +40,7 @@ const platformBrand = (): string => {
 };
 
 /**
- * Browser-fingerprint headers paired with the captured `User-Agent`.
+ * Browser client headers paired with the captured `User-Agent`.
  * Part of the temporary cookie strategy — a future bearer session sends
  * none of this.
  */

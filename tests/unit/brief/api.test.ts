@@ -83,12 +83,12 @@ describe("brief API — URL composition", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await listBriefTasks(baseOptions, {
-      briefId: "ae247ac1-a448-4451-829e-7b9733deaa1a",
+      briefId: "00000000-0000-4000-8000-000000000001",
       metadataToLoad: ["assignees"],
     });
 
     const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain("BriefId=ae247ac1-a448-4451-829e-7b9733deaa1a");
+    expect(url).toContain("BriefId=00000000-0000-4000-8000-000000000001");
     expect(url).toContain("MetadataToLoad=assignees");
   });
 

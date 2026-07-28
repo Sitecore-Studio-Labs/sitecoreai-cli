@@ -69,3 +69,25 @@ export const mapWithConcurrency = async <T, R>(
   }
   return results;
 };
+
+/**
+ * Sleep for `ms`, optionally abortable via `signal` so a Ctrl-C during a
+ * backoff wait exits promptly (rejects with "aborted"). Without a signal it
+ * is a plain timeout. Canonical home — do not re-declare per module.
+ */
+export const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });

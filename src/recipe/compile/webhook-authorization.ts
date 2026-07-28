@@ -1,5 +1,5 @@
 import { v5 as uuidv5 } from "@/shared/uuid";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { webhookAuthorizationId } from "../items/guids";
 import {
   type CreateItemOp,

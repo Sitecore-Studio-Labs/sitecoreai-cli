@@ -2,21 +2,12 @@ import { createScaiError } from "@/shared/errors";
 import { clearBrandToken } from "@/shared/keychain";
 import { runSitecoreRest } from "@/shared/rest";
 import { acquireBrandToken } from "./auth";
-import { BRAND_API_HOST } from "./types";
-import type { BrandCredential } from "@/config/types";
+import { BRAND_API_HOST, type BrandApiClientOptions } from "./types";
 
-export interface BrandApiClientOptions {
-  /**
-   * Sitecore organization ID. Required because AI APIs keys are
-   * one-org-per-credential — the orgId selects which credential to
-   * use, and shows up in Brand Management URLs (`/organizations/{orgId}/…`).
-   */
-  orgId: string;
-  /** Credential record from `brand[orgId]` in the root config. */
-  credential: BrandCredential;
-  /** Override the API host. Defaults to edge-platform.sitecorecloud.io. */
-  host?: string;
-}
+// `BrandApiClientOptions` now lives in `./types` (a leaf) so `../credential`
+// can import it without forming a cycle; re-exported here so existing
+// importers (`@/brand`, etc.) keep resolving it from `./api/client`.
+export type { BrandApiClientOptions } from "./types";
 
 export interface BrandApiRequest {
   /** Base path under the API host (e.g. `/stream/ai-skills-api`). */

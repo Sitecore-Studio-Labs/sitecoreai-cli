@@ -23,22 +23,17 @@
  */
 import {
   createBrief,
-  createBriefComment,
-  createBriefTask,
-  deleteBriefTask,
   getBrief,
   linkBriefToProject,
-  listBriefTasks,
-  listBriefTypes,
   listBriefs,
   updateBrief,
-  type Brief,
-  type BriefApiClientOptions,
-  type BriefStatus,
-  type BriefTask,
-  type BriefType,
   type CreateBriefInput,
-} from "@/brief";
+} from "../api/briefs";
+import { createBriefComment } from "../api/comments";
+import { createBriefTask, deleteBriefTask, listBriefTasks } from "../api/tasks";
+import { listBriefTypes } from "../api/brief-types";
+import type { Brief, BriefStatus, BriefTask, BriefType } from "../api/schema";
+import type { BriefApiClientOptions } from "../api/types";
 import { createScaiError, toMergeConflicts } from "@/shared/errors";
 import { drainPages } from "@/shared/paginate";
 import { resolveMissingCurrentPlan } from "@/sync";

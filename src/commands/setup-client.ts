@@ -1,9 +1,9 @@
 import { Command, Option } from "commander";
 import { addConfigOption, addEnvironmentOption, addVerbosityOptions } from "./shared";
-import { runSetupEnv } from "../serialization/tasks/env/setup-env";
-import { runSetupOrgClient } from "../serialization/tasks/env/setup-org-client";
-import { runSetupClients } from "../serialization/tasks/env/setup-clients";
-import { runBrandLogin } from "../brand/tasks/login";
+import { runSetupEnv } from "@/setup/setup-env";
+import { runSetupOrgClient } from "@/setup/setup-org-client";
+import { runSetupClients } from "@/setup/setup-clients";
+import { runBrandLogin } from "@/brand/tasks/login";
 
 /**
  * `scai setup client register-brand` — register a Sitecore AI APIs key

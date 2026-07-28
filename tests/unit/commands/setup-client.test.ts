@@ -17,13 +17,13 @@ const taskMocks = vi.hoisted(() => ({
   runBrandLogin: vi.fn(),
 }));
 
-vi.mock("../../../src/serialization/tasks/env/setup-env", () => ({
+vi.mock("../../../src/setup/setup-env", () => ({
   runSetupEnv: taskMocks.runSetupEnv,
 }));
-vi.mock("../../../src/serialization/tasks/env/setup-org-client", () => ({
+vi.mock("../../../src/setup/setup-org-client", () => ({
   runSetupOrgClient: taskMocks.runSetupOrgClient,
 }));
-vi.mock("../../../src/serialization/tasks/env/setup-clients", () => ({
+vi.mock("../../../src/setup/setup-clients", () => ({
   runSetupClients: taskMocks.runSetupClients,
 }));
 vi.mock("../../../src/brand/tasks/login", () => ({

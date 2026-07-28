@@ -12,6 +12,7 @@
  * sibling primitives. These types stay close to what consumers see.
  */
 import type { components as BrandReviewComponents } from "./schema.brand-review";
+import type { BrandCredential } from "@/config/types";
 
 /** Hostname for the Brand APIs. Same edge host as the Publishing API. */
 export const BRAND_API_HOST = "https://edge-platform.sitecorecloud.io";
@@ -21,6 +22,26 @@ export const BRAND_MANAGEMENT_BASE_PATH = "/stream/ai-brands-api";
 
 /** Base path for the Brand Review API. */
 export const BRAND_REVIEW_BASE_PATH = "/stream/ai-skills-api";
+
+/**
+ * Options identifying which org + credential a Brand API call runs
+ * against. Lives here (a leaf) rather than in `./api/client` so that
+ * `../credential.ts` can import the type without creating the
+ * `api/auth → credential → api/client → api/auth` cycle. `./api/client`
+ * re-exports it for backward compatibility.
+ */
+export interface BrandApiClientOptions {
+  /**
+   * Sitecore organization ID. Required because AI APIs keys are
+   * one-org-per-credential — the orgId selects which credential to
+   * use, and shows up in Brand Management URLs (`/organizations/{orgId}/…`).
+   */
+  orgId: string;
+  /** Credential record from `brand[orgId]` in the root config. */
+  credential: BrandCredential;
+  /** Override the API host. Defaults to edge-platform.sitecorecloud.io. */
+  host?: string;
+}
 
 /**
  * Predefined brand kit section names. The Sitecore docs reference

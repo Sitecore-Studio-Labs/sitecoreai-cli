@@ -12,12 +12,12 @@ import {
   addWhatIfOption,
 } from "../shared";
 import { createPackageCommand } from "./package";
-import { runDiff } from "../../serialization/tasks/diff";
-import { runExplain, runInfo } from "../../serialization/tasks/info";
-import { runPull } from "../../serialization/tasks/pull";
-import { runPush } from "../../serialization/tasks/push";
-import { runValidate } from "../../serialization/tasks/validate";
-import { runWatch } from "../../serialization/tasks/watch";
+import { runDiff } from "@/serialization/tasks/diff";
+import { runExplain, runInfo } from "@/serialization/tasks/info";
+import { runPull } from "@/serialization/tasks/pull";
+import { runPush } from "@/serialization/tasks/push";
+import { runValidate } from "@/serialization/tasks/validate";
+import { runWatch } from "@/serialization/tasks/watch";
 
 const createInfoCommand = (): Command => {
   const command = new Command("info").description("Shows serialization configuration information");

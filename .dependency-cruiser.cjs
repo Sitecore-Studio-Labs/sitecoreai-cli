@@ -13,11 +13,10 @@
 //   shared/    LEAF — only @/shared and (type-only) @/config
 //   content/   must not import publishing/ (one-way: publishing → content)
 //
-// NOTE: CLAUDE.md says "config/ may import shared/ only", but config/modules.ts
-// imports ItemPath + schema types from serialization/ at runtime (serialization
-// defines the schemas config validates against). That edge is intentional in
-// the code, so it is NOT forbidden here — the prose is the thing that's out of
-// date. Flag for a doc fix rather than a code change.
+// NOTE: config/modules.ts imports ItemPath + schema types from serialization/
+// at runtime (serialization defines the schemas config validates against).
+// That edge is intentional and documented in CLAUDE.md as the one sanctioned
+// config→serialization dependency.
 module.exports = {
   forbidden: [
     {
@@ -30,6 +29,39 @@ module.exports = {
       severity: "error",
       from: { path: "^src/shared/" },
       to: { path: "^src/", pathNot: "^src/(shared|config)/" },
+    },
+    {
+      // shared/ may reference @/config only for TYPES (erased at compile time).
+      // A runtime import of a config value from shared/ is the leaf breach that
+      // shared/telemetry.ts had (readRootConfigurationFile) before telemetry
+      // moved to its own area. The targeted vitest test can't see this — it
+      // only matches `@/`-alias imports, and the breach was a relative import.
+      name: "shared-config-type-only",
+      comment:
+        "src/shared/ may import @/config only as `import type`. A runtime " +
+        "(value) import of config from shared/ breaks the leaf invariant.",
+      severity: "error",
+      from: { path: "^src/shared/" },
+      to: { path: "^src/config/", dependencyTypesNot: ["type-only"] },
+    },
+    {
+      // The @/auth and @/authoring seams are the ONLY sanctioned cross-area
+      // paths to the OAuth client-credentials + Authoring GraphQL primitives.
+      // Their implementations still physically live under serialization/api
+      // and recipe/api; importing those directly from another area re-opens
+      // the de-facto-shared coupling the seams exist to hide. auth/index.ts
+      // advertises "a boundary rule keeps it that way" — this is that rule.
+      name: "auth-authoring-seam",
+      comment:
+        "Import OAuth via @/auth and Authoring GraphQL/site-discovery via " +
+        "@/authoring — not serialization/api/auth or recipe/api/{graphql," +
+        "site-discovery,authoring-client} directly. serialization, recipe, and " +
+        "authoring themselves are exempt (they own the implementations).",
+      severity: "error",
+      from: { path: "^src/", pathNot: "^src/(serialization|recipe|authoring)/" },
+      to: {
+        path: "^src/serialization/api/auth|^src/recipe/api/(graphql|site-discovery|authoring-client)",
+      },
     },
     {
       // commands/ is the top layer; nothing below it may import upward.
@@ -62,17 +94,19 @@ module.exports = {
       // cross-import, but a *circular* edge among them is a smell the targeted
       // test could never see. Type-only edges are erased at compile time and
       // don't form a real runtime cycle, so they're exempt.
-      // Surfaced as a non-blocking WARN: ~40 pre-existing barrel cycles
-      // (index.ts ↔ submodule re-exports) predate this gate, and the targeted
-      // test was explicitly never a cycle detector. Warn keeps them visible as
-      // a ratchet target without blocking CI on a refactor. Raise to "error"
-      // once the existing cycles are cleared.
+      // The old barrel cycles (a domain's index.ts re-exporting a recipe
+      // module that imported symbols back through the same barrel, plus the
+      // brand api/auth → credential → api/client triangle) have all been
+      // cleared by pointing intra-domain imports at the defining sibling
+      // module instead of the top barrel. Cycles are now forbidden.
       name: "no-circular",
       comment:
         "No circular dependencies. Break the cycle by relocating the shared " +
         "module into shared/ (or a lower peer), as was done for shared↔policy " +
-        "and content↔publishing.",
-      severity: "warn",
+        "and content↔publishing, or — for an intra-domain barrel cycle — by " +
+        "importing the defining sibling module directly instead of the " +
+        "domain's index.ts barrel.",
+      severity: "error",
       from: {},
       to: { circular: true, dependencyTypesNot: ["type-only"] },
     },

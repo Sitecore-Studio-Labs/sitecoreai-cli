@@ -6,18 +6,12 @@ import {
   OperationIrSchema,
 } from "../ir/operations";
 import { defaultPolicyForRecipe } from "../runtime/policy";
-import { createScaiError } from "../../shared/errors";
+import { createScaiError } from "@/shared/errors";
 import { SYSTEM_FIELDS } from "../ir/sitecore-templates";
 import { type EnumerationRecipe, EnumerationRecipeSchema } from "../schema/recipe";
-import {
-  ensureEnumerationGroupingFolders,
-  ensureEnumerationTemplates,
-  joinPath,
-  sharedField,
-  siteOf,
-  versionedField,
-  type CompileContext,
-} from "./shared";
+import { joinPath, sharedField, siteOf, versionedField, type CompileContext } from "./shared";
+import { ensureEnumerationGroupingFolders } from "./folders";
+import { ensureEnumerationTemplates } from "./enumerations";
 
 /**
  * Compile an `EnumerationRecipe` to an Operation IR.

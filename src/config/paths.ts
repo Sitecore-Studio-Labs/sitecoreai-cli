@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import { createScaiError } from "../shared/errors";
+import { createScaiError } from "@/shared/errors";
 
 export const resolveRootConfigurationPath = (currentPath: string): string => {
   const stat = fs.existsSync(currentPath) ? fs.statSync(currentPath) : null;

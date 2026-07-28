@@ -72,16 +72,18 @@ import {
 import { type ComponentSectionRecipe, type Recipe, resolveAllowedHandles } from "../schema/recipe";
 import {
   datasourceTemplateHandles,
-  ensureContentModelsGroupFolder,
-  ensureEnumerationGroupingFolders,
-  ensureEnumerationTemplates,
-  ensurePageTemplatesGroupFolder,
   joinPath,
   sharedField,
   siteOf,
   versionedField,
   type CompileContext,
 } from "./shared";
+import {
+  ensureContentModelsGroupFolder,
+  ensureEnumerationGroupingFolders,
+  ensurePageTemplatesGroupFolder,
+} from "./folders";
+import { ensureEnumerationTemplates } from "./enumerations";
 
 /** Stable handle for the per-section `Available Renderings` aggregate. */
 export const AVAILABLE_RENDERINGS_AGGREGATE_HANDLE = "__available-renderings__";

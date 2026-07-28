@@ -7,7 +7,7 @@
  * presence reporting — across both JSON and text output modes.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { RootConfigurationFile } from "../../../../../src/config/types";
+import type { RootConfigurationFile } from "../../../src/config/types";
 
 const mocks = vi.hoisted(() => ({
   readRootConfigurationFile: vi.fn(),
@@ -34,13 +34,13 @@ const {
   logger,
 } = mocks;
 
-vi.mock("../../../../../src/config/root-config", () => ({
+vi.mock("../../../src/config/root-config", () => ({
   readRootConfigurationFile: mocks.readRootConfigurationFile,
   readRootConfiguration: mocks.readRootConfiguration,
   writeRootConfigurationFile: vi.fn(),
 }));
 
-vi.mock("../../../../../src/shared/keychain", () => ({
+vi.mock("../../../src/shared/keychain", () => ({
   getCmTokens: mocks.getCmTokens,
   getDeployToken: mocks.getDeployToken,
   getCmClientSecret: mocks.getCmClientSecret,
@@ -51,7 +51,7 @@ vi.mock("../../../../../src/shared/keychain", () => ({
   setCmTokens: vi.fn(),
 }));
 
-vi.mock("../../../../../src/serialization/tasks/shared", () => ({
+vi.mock("../../../src/serialization/tasks/shared", () => ({
   applyIfDefined: vi.fn(),
   getEnvironmentType: vi.fn(),
   resolveProjectIdValue: vi.fn(),
@@ -60,7 +60,7 @@ vi.mock("../../../../../src/serialization/tasks/shared", () => ({
   toLogger: () => mocks.logger,
 }));
 
-import { runStatus } from "../../../../../src/serialization/tasks/env/status";
+import { runStatus } from "../../../src/setup/status";
 
 const installConfig = (file: RootConfigurationFile, environments: Record<string, unknown> = {}) => {
   readRootConfigurationFile.mockReturnValue(file);

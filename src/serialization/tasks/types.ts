@@ -1,8 +1,8 @@
 /**
  * Option types for `scai provision serialization` task runners (and the
- * env-management tasks that share the serialization namespace —
- * `init`, `login`, `logout`, etc.). Deploy-specific option types
- * (`Deploy*Options`) live in `@/deploy/tasks/types`.
+ * environment-setup tasks in the `setup/` area — `init`, `login`,
+ * `logout`, etc. — which import these types from here). Deploy-specific
+ * option types (`Deploy*Options`) live in `@/deploy/tasks/types`.
  */
 
 export { CommonOptions } from "@/shared/cli-options";

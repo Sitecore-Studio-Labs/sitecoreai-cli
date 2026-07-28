@@ -9,7 +9,7 @@ import {
   DeployEnvironment,
 } from "@/deploy/api";
 import type { EnvironmentConfiguration } from "@/config/types";
-import type { ConnectOptions } from "../../types";
+import type { ConnectOptions } from "@/serialization/tasks/types";
 import { inputError, selectFromList, selectMatch } from "@/shared/cli-tasks";
 import {
   getEnvironmentType,

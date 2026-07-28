@@ -1,8 +1,8 @@
 import { readRootConfigurationFile, writeRootConfigurationFile } from "@/config/root-config";
 import { clearCmTokens, clearDeployToken } from "@/shared/keychain";
 import { createScaiError } from "@/shared/errors";
-import { toLogger } from "../shared";
-import type { LogoutOptions } from "../types";
+import { toLogger } from "@/serialization/tasks/shared";
+import type { LogoutOptions } from "@/serialization/tasks/types";
 
 export const runLogout = async (options: LogoutOptions): Promise<void> => {
   const logger = toLogger(options);

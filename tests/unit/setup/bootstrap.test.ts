@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isHeadAppRepo } from "../../../../../src/serialization/tasks/env/bootstrap";
+import { isHeadAppRepo } from "../../../src/setup/bootstrap";
 
 describe("isHeadAppRepo", () => {
   let dir: string;

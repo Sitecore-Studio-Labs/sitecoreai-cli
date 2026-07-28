@@ -12,16 +12,15 @@ const mocks = vi.hoisted(() => ({
   checkAccess: vi.fn(),
 }));
 
-vi.mock("../../../../../src/config/root-config", () => ({
+vi.mock("../../../src/config/root-config", () => ({
   readRootConfigurationFile: mocks.readRootConfigurationFile,
   writeRootConfigurationFile: mocks.writeRootConfigurationFile,
 }));
-vi.mock("../../../../../src/policy/access-check", () => ({
+vi.mock("../../../src/policy/access-check", () => ({
   checkAccess: mocks.checkAccess,
 }));
 
-const { runEnvironmentOnboard } =
-  await import("../../../../../src/serialization/tasks/env/onboard");
+const { runEnvironmentOnboard } = await import("../../../src/setup/onboard");
 
 const baseOpts = {
   config: "/proj",

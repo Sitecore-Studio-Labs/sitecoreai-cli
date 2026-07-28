@@ -40,11 +40,11 @@ import {
 import { inputError, toLogger } from "@/shared/cli-tasks";
 import { createScaiError, toScaiError } from "@/shared/errors";
 import { authorizeOperation } from "@/policy";
-import { requestClientCredentialsToken } from "@/serialization/api/auth";
-import type { SitecoreApiClientOptions } from "@/serialization/api/types";
+import { requestClientCredentialsToken } from "@/auth";
+import type { SitecoreApiClientOptions } from "@/auth";
 import type { CommonOptions } from "@/shared/cli-options";
 import type { Logger } from "@/shared/logger";
-import packageJson from "../../../../package.json";
+import packageJson from "../../package.json";
 
 /** Timing knobs for {@link waitForClientActivation} — overridable for tests. */
 export interface ClientActivationOptions {

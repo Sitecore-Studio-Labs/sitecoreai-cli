@@ -21,7 +21,7 @@ For one-off binaries, use `pnpm exec <bin>`.
 
 ## Module structure
 
-`src/` is 20 **domain areas** plus three cross-cutting layers. A domain
+`src/` is 21 **domain areas** plus three cross-cutting layers. A domain
 area owns one product surface — its API client, task runners, and (where
 it has one) an `index.ts` SDK barrel.
 
@@ -34,9 +34,9 @@ src/
 ├── config/            ← sitecoreai.cli.json + module schemas, config resolution
 ├── shared/            ← cross-cutting: errors, logger, spinner, HTTP/GraphQL
 │                        transport, telemetry, redaction
-└── <domain areas>/    ← deploy, serialization, recipe, brand, brief,
-                          campaigns, sites, publishing, content, hygiene,
-                          webhooks, workflow, agents, policy, mcp,
+└── <domain areas>/    ← deploy, serialization, setup, recipe, brand,
+                          brief, campaigns, sites, publishing, content,
+                          hygiene, webhooks, workflow, agents, policy, mcp,
                           scripting, sync, auth, authoring, doctor
 ```
 
@@ -100,7 +100,7 @@ Don't `console.log`. Don't write color codes outside consola/ora.
 
 ## Credentials: keychain-only
 
-- Tokens are stored via `keytar` in `src/serialization/tasks/env/deploy-token.ts`
+- Tokens are stored via `keytar` in `src/setup/deploy-token.ts`
   (and similar for OAuth tokens) under the `sitecoreai-cli` service.
 - Never write a token to `sitecoreai.cli.json` directly. The `accessToken`
   / `deployToken` fields in the example config are placeholders showing

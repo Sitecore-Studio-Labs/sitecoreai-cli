@@ -90,8 +90,8 @@ const taskMocks = vi.hoisted(() => ({
   runInit: vi.fn(),
   runDeployToken: vi.fn(),
 }));
-vi.mock("../../../src/serialization/tasks/env/init", () => ({ runInit: taskMocks.runInit }));
-vi.mock("../../../src/serialization/tasks/env/deploy-token", () => ({
+vi.mock("../../../src/setup/init", () => ({ runInit: taskMocks.runInit }));
+vi.mock("../../../src/setup/deploy-token", () => ({
   runDeployToken: taskMocks.runDeployToken,
 }));
 

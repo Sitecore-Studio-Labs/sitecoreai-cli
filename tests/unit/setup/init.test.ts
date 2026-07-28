@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RootConfigurationFile } from "../../../../../src/config/types";
+import type { RootConfigurationFile } from "../../../src/config/types";
 
 /**
  * Unit tests for `runInit` — the `scai setup init` task runner.
@@ -47,7 +47,7 @@ const {
   logger,
 } = h;
 
-vi.mock("../../../../../src/config/root-config", () => ({
+vi.mock("../../../src/config/root-config", () => ({
   readRootConfiguration: h.readRootConfiguration,
   readRootConfigurationFile: h.readRootConfigurationFile,
   writeRootConfigurationFile: h.writeRootConfigurationFile,
@@ -60,26 +60,26 @@ vi.mock("node:fs", () => ({
   },
 }));
 
-vi.mock("../../../../../src/shared/validate", () => ({ assertValidHost: h.assertValidHost }));
+vi.mock("../../../src/shared/validate", () => ({ assertValidHost: h.assertValidHost }));
 
-vi.mock("../../../../../src/shared/config-template", () => ({
+vi.mock("../../../src/shared/config-template", () => ({
   resolveTargetPath: h.resolveTargetPath,
   writeConfigTemplate: h.writeConfigTemplate,
 }));
 
-vi.mock("../../../../../src/shared/keychain", () => ({ setDeployToken: h.setDeployToken }));
+vi.mock("../../../src/shared/keychain", () => ({ setDeployToken: h.setDeployToken }));
 
-vi.mock("../../../../../src/shared/prompt", () => ({
+vi.mock("../../../src/shared/prompt", () => ({
   assertInteractive: h.assertInteractive,
   promptConfirm: h.promptConfirm,
   promptText: h.promptText,
 }));
 
-vi.mock("../../../../../src/serialization/tasks/shared", async () => {
+vi.mock("../../../src/serialization/tasks/shared", async () => {
   // Real applyIfDefined / inputError so thrown errors keep their `.code`;
   // a fake logger so output assertions are cheap.
-  const cliTasks = await vi.importActual<typeof import("../../../../../src/shared/cli-tasks")>(
-    "../../../../../src/shared/cli-tasks"
+  const cliTasks = await vi.importActual<typeof import("../../../src/shared/cli-tasks")>(
+    "../../../src/shared/cli-tasks"
   );
   return {
     applyIfDefined: cliTasks.applyIfDefined,
@@ -88,15 +88,15 @@ vi.mock("../../../../../src/serialization/tasks/shared", async () => {
   };
 });
 
-vi.mock("../../../../../src/serialization/tasks/env/init/auth", () => ({
+vi.mock("../../../src/setup/init/auth", () => ({
   resolveDeployAuth: h.resolveDeployAuth,
 }));
 
-vi.mock("../../../../../src/serialization/tasks/env/init/deploy-lookup", () => ({
+vi.mock("../../../src/setup/init/deploy-lookup", () => ({
   resolveDeployLookup: h.resolveDeployLookup,
 }));
 
-import { matchSiteCollection, runInit } from "../../../../../src/serialization/tasks/env/init";
+import { matchSiteCollection, runInit } from "../../../src/setup/init";
 
 const configFile = (config: Record<string, unknown> = {}): RootConfigurationFile =>
   ({ config: { envProfiles: {}, ...config } }) as RootConfigurationFile;
@@ -654,7 +654,7 @@ describe("runInit", () => {
     });
 
     it("recreates an invalid config file when the wizard confirms", async () => {
-      const { createScaiError } = await import("../../../../../src/shared/errors");
+      const { createScaiError } = await import("../../../src/shared/errors");
       let firstRead = true;
       readRootConfigurationFile.mockImplementation(() => {
         if (firstRead) {
@@ -676,7 +676,7 @@ describe("runInit", () => {
     });
 
     it("cancels when the wizard declines to recreate an invalid config", async () => {
-      const { createScaiError } = await import("../../../../../src/shared/errors");
+      const { createScaiError } = await import("../../../src/shared/errors");
       readRootConfigurationFile.mockImplementation(() => {
         throw createScaiError("bad config", "CONFIG_INVALID");
       });
@@ -692,7 +692,7 @@ describe("runInit", () => {
     });
 
     it("rethrows a non-CONFIG_INVALID read error rather than recreating", async () => {
-      const { createScaiError } = await import("../../../../../src/shared/errors");
+      const { createScaiError } = await import("../../../src/shared/errors");
       readRootConfigurationFile.mockImplementation(() => {
         throw createScaiError("file vanished", "CONFIG_NOT_FOUND");
       });

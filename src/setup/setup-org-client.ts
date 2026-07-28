@@ -29,7 +29,7 @@ import { inputError, toLogger } from "@/shared/cli-tasks";
 import { createScaiError, toScaiError } from "@/shared/errors";
 import { authorizeOperation } from "@/policy";
 import type { CommonOptions } from "@/shared/cli-options";
-import packageJson from "../../../../package.json";
+import packageJson from "../../package.json";
 
 export type SetupOrgClientOptions = CommonOptions & {
   environmentName?: string;

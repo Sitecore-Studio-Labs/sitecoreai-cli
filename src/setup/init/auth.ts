@@ -4,13 +4,9 @@ import { createScaiError } from "@/shared/errors";
 import { getDeployToken } from "@/shared/keychain";
 import { resolveEnvClientSecret } from "@/shared/client-credential";
 import { assertInteractive, promptConfirm, promptSecret, promptText } from "@/shared/prompt";
-import {
-  requestClientCredentialsToken,
-  requestDeviceAuthorization,
-  pollDeviceToken,
-} from "@/serialization/api/auth";
+import { requestClientCredentialsToken, requestDeviceAuthorization, pollDeviceToken } from "@/auth";
 import type { EnvironmentConfiguration } from "@/config/types";
-import type { ConnectOptions } from "../../types";
+import type { ConnectOptions } from "@/serialization/tasks/types";
 import { DEFAULT_PUBLIC_CLIENT_ID } from "../constants";
 import type { Logger } from "@/shared/logger";
 

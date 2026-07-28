@@ -5,11 +5,11 @@
  * environment at startup, had no surface to add another. Writes the
  * profile, runs the access preflight, and reports the steps that remain
  * — policy enrollment, and the human-only credential step. The MCP
- * wrapper over `runEnvironmentOnboard` (`@/serialization/tasks/env/onboard`).
+ * wrapper over `runEnvironmentOnboard` (`@/setup/onboard`).
  */
 
 import { z } from "zod";
-import { runEnvironmentOnboard } from "@/serialization/tasks/env/onboard";
+import { runEnvironmentOnboard } from "@/setup/onboard";
 import { TOOL_DESCRIPTIONS } from "../descriptions";
 import type { McpRegistry } from "../registry";
 import { allowWriteShape } from "../schemas/common";

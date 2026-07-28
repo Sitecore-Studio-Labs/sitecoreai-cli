@@ -1,5 +1,16 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.38.9
+
+### Patch Changes
+
+- 35c5edb: Internal architecture refactor (no behavior or public API changes): extracted the
+  environment-setup lifecycle out of `serialization/` into a dedicated top-level
+  `setup/` area, and split four oversized `recipe/` modules
+  (`runtime/execute.ts`, `runtime/plan.ts`, `tasks/pull.ts`, `compile/shared.ts`)
+  into cohesive submodules along strict acyclic boundaries. The public SDK export
+  surface is unchanged.
+
 ## 0.38.8
 
 ### Patch Changes

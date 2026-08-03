@@ -4,7 +4,10 @@
   "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
-  "author": "Liz Nelson <liz.nelson@sitecore.com>",
+  "author": "Sitecore Studio Labs (https://github.com/Sitecore-Studio-Labs)",
+  "contributors": [
+    "Liz Nelson <liz.nelson@sitecore.com>"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Sitecore-Studio-Labs/sitecoreai-cli.git"

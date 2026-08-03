@@ -7,8 +7,7 @@
   "description": "Developer-side Sitecore AI / XM Cloud automation as MCP tools — deploy, serialization, recipes, publishing, hygiene, brand, brief, campaign, and workflow.",
   "long_description": "scai is the developer-side counterpart to Sitecore's managed Marketer MCP. Where the marketer surface operates pages and content, scai operates deployment runs, environment lifecycle, source-control bindings, serialization sync, Recipe DSL execution, content hygiene, publishing, and brand/brief/campaign automation against Sitecore AI and XM Cloud. This bundle is a thin launcher: it runs your own installed scai build as an MCP stdio server bound to a single environment. Writes are gated — destructive operations require explicit consent and the server honors the environment policy.",
   "author": {
-    "name": "Liz Nelson",
-    "email": "liz.nelson@sitecore.com",
+    "name": "Sitecore Studio Labs",
     "url": "https://github.com/sitecore-studio-labs/sitecoreai-cli"
   },
   "repository": {

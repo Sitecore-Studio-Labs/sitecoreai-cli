@@ -177,8 +177,79 @@ const findPriorValue = (
 };
 
 /**
+ * Operator-facing note for an applied mutation that rollback deliberately
+ * does NOT invert.
+ *
+ * These are the warn-only cases. Each one applied a real mutation to the
+ * tenant and each leaves residue behind — but the rollback loop sees the
+ * same `null` from `inverseOf` that it sees for an action which never
+ * mutated anything, and used to report both as "no inverse needed (no
+ * forward mutation)". That reading is actively wrong here: it tells an
+ * operator nothing happened when something did, and the reasoning for
+ * *why* it wasn't undone lived only in source comments they'd never see.
+ *
+ * The residue is not recoverable by the pipeline, but it IS trivially
+ * recoverable by hand — provided the operator knows what to look for.
+ * So name the exact artifact: item + language + version count, site
+ * name, media path, language codes.
+ *
+ * Returns `null` for actions that genuinely applied nothing, so the
+ * caller keeps its original wording for those.
+ */
+const residueNoteFor = (action: PlannedAction): string | null => {
+  const mutation = action.mutation;
+  if (!mutation) return null;
+
+  if (mutation.kind === "createSite") {
+    return (
+      `LEFT IN PLACE: site '${mutation.input.siteName}'. Site rollback is deliberately ` +
+      `warn-only — the Sites API's deleteSite cascades through pages, settings, media, ` +
+      `datasources, presentation, dictionaries, components, variants, and page designs, ` +
+      `which is too destructive to run automatically on a half-failed push. ` +
+      `Delete the site explicitly if it isn't wanted; a re-push is idempotent if it is.`
+    );
+  }
+
+  if (mutation.kind === "ensureLanguages") {
+    const codes = mutation.missing.length > 0 ? mutation.missing : mutation.languages;
+    return (
+      `LEFT IN PLACE: environment language registration for [${codes.join(", ")}]` +
+      (mutation.site ? ` and site '${mutation.site.siteName}'s language list` : "") +
+      `. Deliberately warn-only — registration is additive and environment-wide, so ` +
+      `removing a language during a half-failed push could break other sites already ` +
+      `authored in it. Re-push is idempotent; no cleanup is normally needed.`
+    );
+  }
+
+  if (mutation.kind === "addItemVersion") {
+    const plural = mutation.addCount === 1 ? "version" : "versions";
+    return (
+      `LEFT IN PLACE: ${mutation.addCount} ${plural} added to item ${mutation.itemId} ` +
+      `in '${mutation.language}'. Because all AddItemVersion ops run before any ` +
+      `SetField ops, a push that fails in the field-write phase can leave these ` +
+      `versions unpopulated. There is no deleteItemVersion inverse. ` +
+      `Re-pushing repairs them — the planner skips the add once the version exists ` +
+      `and the SetField ops fill it in. Remove them by hand only if abandoning the push.`
+    );
+  }
+
+  if (mutation.kind === "mediaUpload") {
+    return (
+      `LEFT IN PLACE: media item '${mutation.itemPath}'. Deliberately warn-only — ` +
+      `the upload re-uses an existing item at the same path when one is there, so a ` +
+      `delete could remove an item this push merely re-captured rather than created. ` +
+      `An idempotent re-push converges; delete by hand only if the path was new.`
+    );
+  }
+
+  return null;
+};
+
+/**
  * Produce the inverse mutation for an applied action. Returns `null` when
- * there's nothing to undo (a skip with no mutation).
+ * there's nothing to undo (a skip with no mutation) OR when the mutation is
+ * one of the deliberately warn-only kinds — see `residueNoteFor`, which
+ * supplies the operator-facing explanation for that second group.
  *
  * For an applied `createItem`, the inverse is `deleteItem(itemId)` where
  * `itemId` is the Sitecore-assigned ID — captured by the executor on
@@ -238,9 +309,12 @@ export const inverseOf = (
     // by this push, the `createItem` inverse (deleteItem) removes the whole
     // item — versions included — so an explicit version delete is
     // redundant. When the item pre-existed, a half-failed push can leave an
-    // empty added version behind; that's benign (no field values written)
-    // and recoverable by hand. A precise inverse would need a
-    // `deleteItemVersion` mutation — deferred.
+    // unpopulated added version behind. A precise inverse would need a
+    // `deleteItemVersion` mutation, which the Authoring API is not known to
+    // expose. The residue is bounded rather than harmless: the planner
+    // skips the add once the version exists, so a re-push repairs it and
+    // repeated failures cannot stack versions. `residueNoteFor` reports
+    // the item, language, and count so an abandoned push is still cleanable.
     return null;
   }
 
@@ -416,7 +490,11 @@ export const rollback = async (
     }
 
     if (!inverse) {
-      const reason = "no inverse needed (no forward mutation)";
+      // Two very different situations collapse into a null inverse: the
+      // action never mutated anything, or it mutated and rollback
+      // deliberately declined to undo it. Only the first is "nothing
+      // happened" — the second leaves residue the operator needs named.
+      const reason = residueNoteFor(action) ?? "no inverse needed (no forward mutation)";
       options.emit?.({ kind: "rollback-skip", action, reason });
       await recordStep(action, "skip", { reason });
       continue;

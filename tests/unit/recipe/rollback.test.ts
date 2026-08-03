@@ -941,3 +941,89 @@ describe("executeIr — apply error triggers rollback + terminal failed event", 
     }
   });
 });
+
+/**
+ * Warn-only rollback kinds — `createSite`, `ensureLanguages`,
+ * `addItemVersion`, `mediaUpload` — return a null inverse, the same as an
+ * action that never mutated anything. But they are not the same: these
+ * applied a real mutation and left residue on the tenant.
+ *
+ * Rollback used to report both as "no inverse needed (no forward
+ * mutation)", which told an operator nothing happened when something did.
+ * These pin that the skip reason now names the artifact left behind, so
+ * an abandoned push is still cleanable by hand.
+ */
+describe("rollback — warn-only kinds report their residue", () => {
+  const versionAction = (itemId: string, language: string, addCount: number): PlannedAction => ({
+    index: 0,
+    operation: {
+      op: "AddItemVersion",
+      policy: "CreateAndUpdate",
+      label: "content-item:launch-story@1",
+      itemRefKey: "22222222-2222-2222-2222-222222222222",
+      language,
+      version: addCount + 1,
+    },
+    status: "create",
+    mutation: { kind: "addItemVersion", itemId, language, addCount },
+    snapshot: null,
+  });
+
+  it("still declines to invert an addItemVersion (no deleteItemVersion exists)", () => {
+    expect(inverseOf(versionAction("item-1", "en", 1), new Map())).toBeNull();
+  });
+
+  it("names the item, language, and version count left behind", async () => {
+    const client = new MockAuthoringClient();
+    const events: RollbackEvent[] = [];
+    const result = await rollback([versionAction("item-42", "fr-CA", 2)], client, new Map(), {
+      emit: (e) => events.push(e),
+    });
+
+    // Nothing was undone — this is a skip, not a rolled-back step.
+    expect(result.rolledBack).toBe(0);
+    expect(result.errors).toHaveLength(0);
+
+    const skip = events.find((e) => e.kind === "rollback-skip");
+    expect(skip).toBeDefined();
+    const reason = (skip as { reason: string }).reason;
+    expect(reason).toContain("item-42");
+    expect(reason).toContain("fr-CA");
+    expect(reason).toContain("2 versions");
+    // The misleading old wording must not be what an operator sees here.
+    expect(reason).not.toContain("no forward mutation");
+    // And it should point at the repair path rather than just the gap.
+    expect(reason).toMatch(/re-push/i);
+  });
+
+  it("uses the singular when a single version was added", async () => {
+    const client = new MockAuthoringClient();
+    const events: RollbackEvent[] = [];
+    await rollback([versionAction("item-7", "en", 1)], client, new Map(), {
+      emit: (e) => events.push(e),
+    });
+    const skip = events.find((e) => e.kind === "rollback-skip") as { reason: string };
+    expect(skip.reason).toContain("1 version ");
+  });
+
+  it("keeps the original wording for an action that genuinely mutated nothing", async () => {
+    const client = new MockAuthoringClient();
+    const events: RollbackEvent[] = [];
+    const noop: PlannedAction = {
+      index: 0,
+      operation: {
+        op: "AddItemVersion",
+        policy: "CreateAndUpdate",
+        label: "content-item:skipped@1",
+        itemRefKey: "33333333-3333-3333-3333-333333333333",
+        language: "en",
+        version: 1,
+      },
+      status: "skip",
+      snapshot: null,
+    };
+    await rollback([noop], client, new Map(), { emit: (e) => events.push(e) });
+    const skip = events.find((e) => e.kind === "rollback-skip") as { reason: string };
+    expect(skip.reason).toBe("no inverse needed (no forward mutation)");
+  });
+});

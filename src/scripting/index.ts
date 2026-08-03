@@ -12,9 +12,10 @@
  * surgery, composite cleanup flows).
  *
  * UNSTABLE entry: this ships under `./unstable/scripting` and carries
- * no SemVer stability promise. `connect()` currently wires only the
- * `hygiene` area; its return shape will grow and the helper pattern is
- * still settling. It graduates to a stable entry in a later release.
+ * no SemVer stability promise. `connect()` currently wires the `hygiene`
+ * and `authoring` areas; its return shape will grow and the helper
+ * pattern is still settling. It graduates to a stable entry in a later
+ * release.
  *
  * See `docs/scripting.md` for examples.
  */
@@ -22,3 +23,5 @@
 export { connect, type ScaiClient, type ConnectOptions } from "./connect";
 
 export * as multilist from "./helpers/multilist";
+
+export * as subtree from "./helpers/subtree";

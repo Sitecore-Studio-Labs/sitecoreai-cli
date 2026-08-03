@@ -14,7 +14,8 @@ import * as recipeUnstable from "../../../src/recipe/unstable";
  */
 describe("public recipe API surface", () => {
   const REQUIRED_EXPORTS = [
-    // Recipe author surface (composition kinds live on ./recipe/unstable)
+    // Recipe author surface (Site/SiteTemplate live on ./recipe/unstable;
+    // the four graduated kinds are pinned separately below)
     "ComponentPlacementSchema",
     "ComponentTemplateRecipeSchema",
     "ContentFieldValueSchema",
@@ -35,7 +36,7 @@ describe("public recipe API surface", () => {
     "SitecoreFieldTypeSchema",
     "defaultSitecoreFieldType",
     "sitecoreFieldTypeLabel",
-    // Compiler (composition-kind compilers live on ./recipe/unstable)
+    // Compiler (only the Site/SiteTemplate compilers live on ./recipe/unstable)
     "compileComponentTemplateRecipe",
     "compileContentTemplateRecipe",
     "compileRecipe",
@@ -145,27 +146,56 @@ describe("public recipe API surface", () => {
 });
 
 /**
- * The recipe composition kinds are deliberately NOT on the stable `./recipe`
- * entry — they ship on `./recipe/unstable` without a 0.1.0 stability promise
- * (see `.changeset/recipes-graduation.md`). This pins that split: the
- * composition symbols must be reachable from `./recipe/unstable` and absent
- * from `./recipe`.
+ * The composition kinds are split across the two entries.
+ *
+ * Four graduated to stable `./recipe` — `ContentItem`, `PageDesign`,
+ * `PartialDesign`, `Dictionary`. They stay re-exported from
+ * `./recipe/unstable` through a deprecation window so the ~116 first-party
+ * imports migrate lazily instead of in one commit, so they must resolve
+ * from BOTH entries.
+ *
+ * Two stayed unstable — `SiteRecipe`, `SiteTemplateRecipe`. They must be
+ * reachable from `./recipe/unstable` and absent from `./recipe`. They were
+ * held back because every op the graduated kinds emit (`CreateItem`,
+ * `SetField`, `AddItemVersion`) has a rollback inverse, whereas
+ * `CreateSiteFromTemplate` and `MediaUpload` are deliberately warn-only.
  */
-describe("unstable recipe composition surface", () => {
-  const COMPOSITION_EXPORTS = [
+describe("graduated composition kinds", () => {
+  const GRADUATED_EXPORTS = [
     "ContentItemRecipeSchema",
     "DictionaryPhraseSchema",
     "DictionaryRecipeSchema",
     "PageDesignRecipeSchema",
     "PartialDesignRecipeSchema",
-    "SiteGroupingSchema",
-    "SiteRecipeSchema",
-    "SiteTemplateRecipeSchema",
-    "SiteTemplateTaxonomyEntrySchema",
     "compileContentItemRecipe",
     "compileDictionaryRecipe",
     "compilePageDesignRecipe",
     "compilePartialDesignRecipe",
+  ] as const;
+
+  it.each(GRADUATED_EXPORTS)("./recipe exports %s", (name) => {
+    expect((recipe as Record<string, unknown>)[name]).toBeDefined();
+  });
+
+  // Deprecation window: drop this block (and the re-exports in
+  // src/recipe/unstable.ts) in the next major.
+  it.each(GRADUATED_EXPORTS)("./recipe/unstable still re-exports %s", (name) => {
+    expect((recipeUnstable as Record<string, unknown>)[name]).toBeDefined();
+  });
+
+  it.each(GRADUATED_EXPORTS)("both entries resolve %s to the same binding", (name) => {
+    expect((recipe as Record<string, unknown>)[name]).toBe(
+      (recipeUnstable as Record<string, unknown>)[name]
+    );
+  });
+});
+
+describe("unstable recipe composition surface", () => {
+  const COMPOSITION_EXPORTS = [
+    "SiteGroupingSchema",
+    "SiteRecipeSchema",
+    "SiteTemplateRecipeSchema",
+    "SiteTemplateTaxonomyEntrySchema",
     "compileSiteRecipe",
     "compileSiteTemplateRecipe",
   ] as const;
@@ -197,7 +227,7 @@ describe("schema-only recipe surface (./recipe/schema)", () => {
     "ComponentSectionRecipeSchema",
     "VariantRecipeSchema",
     "RecipeSchema",
-    // unstable composition kinds (also reachable here — schema/recipe owns them)
+    // composition kinds, graduated and unstable alike (schema/recipe owns them)
     "ContentItemRecipeSchema",
     "PageDesignRecipeSchema",
     "PartialDesignRecipeSchema",

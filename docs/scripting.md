@@ -38,6 +38,10 @@ const scai = scripting.connect({ envName: "sandbox" });
 // scai.hygiene is the same HygieneApiClient exported from scai/hygiene —
 // `connect()` just wires env + auth so you don't repeat that block.
 const fields = await scai.hygiene.getItemFields({ itemId: "..." });
+
+// scai.authoring is the typed AuthoringApiClient — item reads plus
+// createItem / updateItem / deleteItem / moveItem.
+const item = await scai.authoring.getItem({ path: "/sitecore/content/Site" });
 ```
 
 ## Multilist GUID surgery
@@ -70,6 +74,39 @@ if (result.changed && !result.applied) {
 to surface a diff to a human, write a report, or batch a confirmation
 step before flipping the flag.
 
+## Relocating items
+
+Moving an item with the Authoring `moveItem` mutation preserves its
+`itemId`, its name, and every inbound reference. Delete + recreate — the
+only option before `moveItem` was wired up — assigns a fresh `itemId` and
+breaks every link pointing at the old one.
+
+`scai content move` is the CLI surface over the same mutation. Reach for
+the helper when the CLI shape doesn't fit: moving many items in one pass,
+computing the destination from a query, or composing a move with other
+surgery in one script.
+
+```ts
+import { scripting } from "@sitecoreai-labs/sitecoreai-cli/unstable";
+
+const scai = scripting.connect();
+
+const result = await scripting.subtree.move(scai, {
+  path: "/sitecore/content/MySite/OldHome", // or itemId
+  toPath: "/sitecore/content/MySite/Archive", // or toItemId
+  // allowWrite defaults to false — dry-run by default
+});
+
+if (result.changed && !result.applied) {
+  console.log(`Would move ${result.from} -> under ${result.toParent.path}`);
+}
+```
+
+Both ends resolve before anything is written, so a mistyped path fails
+with a typed `INPUT_INVALID` naming the side that didn't resolve rather
+than a generic GraphQL error. `changed: false` means the item already
+sits under that parent — no wire call is made even with `allowWrite: true`.
+
 ## Safe-by-default
 
 Every mutator in `scai/scripting/helpers/*` takes `allowWrite: boolean`
@@ -80,11 +117,10 @@ enforces `ensureAllowWrite` per the env config — a script that flips
 
 ## What's not (yet) here
 
-- `connect()` currently wires `hygiene` only. Deploy / serialization /
+- `connect()` wires `hygiene` and `authoring`. Deploy / serialization /
   recipe area clients will join as scripts need them.
-- A `moveItem` helper is blocked on the underlying GraphQL mutation
-  not yet existing in the SDK — see [`docs/roadmap.md`](./roadmap.md)
-  § "Content-tree mutations".
+- `subtree` has only `move`. Bulk/recursive relocation (move a whole
+  branch by query) is the obvious next helper.
 - A reverse-dependency scan helper (parametric "find items referencing
   X under subtree Y") is the next obvious helper; landing once a few
   scripts have shaken out the right shape.

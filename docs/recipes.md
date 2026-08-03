@@ -41,7 +41,7 @@ Other defenses already in place:
 
 ## Recipe kinds
 
-**Five recipe kinds are stable** — they carry the SemVer stability
+**Nine recipe kinds are stable** — they carry the SemVer stability
 promise and ship as named exports from
 `@sitecoreai-labs/sitecoreai-cli/recipe`:
 
@@ -52,26 +52,86 @@ promise and ship as named exports from
 | `ComponentSectionRecipe`         | Reusable field section shared between components                                           |
 | `DesignParametersTemplateRecipe` | Reusable rendering-parameters template                                                     |
 | `EnumerationRecipe`              | Droplink-backed reusable enum (e.g. ColorScheme)                                           |
+| `ContentItemRecipe`              | Shared content items (graduated 2026-08)                                                   |
+| `PartialDesignRecipe`            | Presentation partial design (graduated 2026-08)                                            |
+| `PageDesignRecipe`               | Presentation page design (graduated 2026-08)                                               |
+| `DictionaryRecipe`               | Locale-aware phrase library (graduated 2026-08)                                            |
 
 Every other kind is **present in the source and usable, but not part of
 the stability promise** — its schema, type, or compiler may change shape
 between minor releases:
 
-| Kind                                                                        | Purpose                                                                   |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `WorkflowRecipe`                                                            | Sitecore workflow + states + commands + submit/validation webhook actions |
-| `WebhookAuthorizationRecipe`                                                | Reusable webhook Authorization item (ApiKey / Basic / OAuth2)             |
-| `PageTemplateRecipe`, `PageRecipe`, `PlaceholderRecipe`                     | Page-level and placeholder templates (see below)                          |
-| `VariantRecipe`                                                             | Standalone SXA Headless rendering variant                                 |
-| `PartialDesignRecipe`, `PageDesignRecipe`                                   | Presentation designs                                                      |
-| `SiteTemplateRecipe`, `SiteRecipe`, `ContentItemRecipe`, `DictionaryRecipe` | Site structure + shared content items                                     |
+| Kind                                                    | Purpose                                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `WorkflowRecipe`                                        | Sitecore workflow + states + commands + submit/validation webhook actions |
+| `WebhookAuthorizationRecipe`                            | Reusable webhook Authorization item (ApiKey / Basic / OAuth2)             |
+| `PageTemplateRecipe`, `PageRecipe`, `PlaceholderRecipe` | Page-level and placeholder templates (see below)                          |
+| `VariantRecipe`                                         | Standalone SXA Headless rendering variant                                 |
+| `SiteTemplateRecipe`, `SiteRecipe`                      | Site structure                                                            |
 
-The composition kinds (`ContentItem`, `PageDesign`, `PartialDesign`,
-`SiteRecipe`, `SiteTemplate`, `Dictionary`) live on the separate
+Only `SiteRecipe` and `SiteTemplateRecipe` still live on the separate
 `@sitecoreai-labs/sitecoreai-cli/recipe/unstable` entry. `WorkflowRecipe`
 and `WebhookAuthorizationRecipe` are reachable only through the
 `compileRecipe` / `compileRecipeSet` union dispatch, not as individual
 named exports.
+
+### The 2026-08 graduation
+
+`ContentItemRecipe`, `PartialDesignRecipe`, `PageDesignRecipe`, and
+`DictionaryRecipe` moved to the stable entry. They are still re-exported
+from `./recipe/unstable` through a **deprecation window** — existing
+imports keep working and can migrate lazily — and the re-exports drop in
+the next major. New code should import from `./recipe`.
+
+What justified it, beyond heavy first-party use:
+
+- **Idempotent re-push.** Every item id these kinds produce is a `uuidv5`
+  derivation over stable inputs (`contentItemId`, `pageDesignId`,
+  `partialDesignId`, `dictionaryPhraseId`, `dictionaryFolderId`, …). No
+  kind reaches for `randomUUID` on the compile path, so re-pushing the
+  same recipe converges on the same items.
+- **Rollback parity.** Rollback is driven by the operation IR, not by
+  kind, so parity is a question of which ops a kind emits. These four emit
+  only `CreateItem`, `SetField`, and `AddItemVersion`. `CreateItem`
+  inverts to `deleteItem` and `SetField` inverts to a field restore from
+  the plan-time snapshot — the same inverses the original five stable
+  kinds rely on.
+
+`SiteRecipe` and `SiteTemplateRecipe` were held back on exactly this
+test. `SiteRecipe` emits `CreateSiteFromTemplate` and `SiteTemplateRecipe`
+emits `MediaUpload`; both are deliberately **warn-only** on rollback
+(site deletion cascades destructively through pages, media, and
+presentation; media upload cannot yet distinguish an item it created from
+one it re-used). A half-failed push of either leaves residue the pipeline
+will not unwind, which is not a guarantee worth promising.
+
+**One narrow gap on the graduated kinds:** `AddItemVersion` is warn-only
+on rollback, affecting `ContentItemRecipe` and `DictionaryRecipe`. It is
+narrower than "warn-only" suggests, because the _planner_ closes it
+rather than the rollback path:
+
+- When the item was created by the same push, it doesn't arise at all —
+  the `CreateItem` inverse deletes the whole item, versions included.
+- When the item pre-existed, a half-failed push can leave an empty extra
+  version behind. No field values are written to it.
+- **The next push repairs it.** `planAddItemVersion` (`runtime/build-action.ts`)
+  reads the target language's current max version and emits `skip` when
+  `currentMax >= op.version`, otherwise adds exactly the shortfall
+  (`addCount: op.version - currentMax`). So a re-push does not stack a
+  second version on top of the leftover — it skips the add and the
+  `SetField` ops populate the version that's already there. State
+  converges on exactly the declared shape, and repeated failed pushes
+  cannot accumulate versions.
+
+What remains is only the _abandoned_ case: a push fails and is never
+retried, leaving one empty version. A precise inverse would need a
+version-delete mutation. `addItemVersion` has no documented delete
+counterpart in Sitecore's authoring-operations reference — though that
+page is examples-only and doesn't document `addItemVersion` either, so
+absence there isn't proof. Confirming it needs schema introspection
+against a live tenant. Given the planner already converges the retried
+case, the remaining value is small; this is a deliberate non-goal rather
+than a known bug awaiting a fix.
 
 `PageTemplateRecipe` is the page-level peer of `ComponentTemplateRecipe`
 — a Sitecore template that inherits the SXA Headless page base set so

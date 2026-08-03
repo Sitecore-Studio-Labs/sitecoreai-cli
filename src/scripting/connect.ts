@@ -1,5 +1,6 @@
 import { resolveEnvironment } from "@/policy/environment";
 import { createHygieneApiClient, type HygieneApiClient } from "@/hygiene/api/client";
+import { createAuthoringClient, type AuthoringApiClient } from "@/authoring";
 
 /**
  * Unified client for ad-hoc TypeScript scripting against a configured
@@ -9,13 +10,21 @@ import { createHygieneApiClient, type HygieneApiClient } from "@/hygiene/api/cli
  *
  * Stability contract: the shape of `ScaiClient` and the `connect`
  * signature are part of the public surface. Internal area clients
- * (currently just `hygiene`) are exposed by reference — their own
- * stability contract lives in `scai/hygiene`. Adding a new area client
- * here is a public-API decision.
+ * (`hygiene`, `authoring`) are exposed by reference — their own
+ * stability contract lives in `scai/hygiene` and `scai/recipe`
+ * respectively. Adding a new area client here is a public-API decision.
  */
 export interface ScaiClient {
   envName: string;
   hygiene: HygieneApiClient;
+  /**
+   * Typed Authoring API client — item reads, `createItem` /
+   * `updateItem` / `deleteItem` / `moveItem`. Exposed so scripting
+   * helpers can do content-tree surgery (the `subtree` helpers) without
+   * re-implementing auth and transport, and so script authors can reach
+   * Authoring operations that have no `hygiene` equivalent.
+   */
+  authoring: AuthoringApiClient;
 }
 
 export interface ConnectOptions {
@@ -34,5 +43,6 @@ export const connect = (options: ConnectOptions = {}): ScaiClient => {
     environment: resolved.environment,
     request: resolved.timeoutMs ? { timeoutMs: resolved.timeoutMs } : undefined,
   });
-  return { envName: resolved.envName, hygiene };
+  const authoring = createAuthoringClient({ environment: resolved.environment });
+  return { envName: resolved.envName, hygiene, authoring };
 };

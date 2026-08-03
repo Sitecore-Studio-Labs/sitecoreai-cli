@@ -385,7 +385,9 @@ the major version.
   mapping against the dotnet CLI and a record of what was deliberately
   not ported.
 
-For agent / CI usage, see [AGENTS.md](./AGENTS.md).
+For agent / CI usage, see [AGENTS.md](./AGENTS.md). For working **on**
+scai with an AI coding agent, see
+[docs/agent-harness.md](./docs/agent-harness.md).
 
 ## Troubleshooting
 

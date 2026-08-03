@@ -1,7 +1,7 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
   "version": "0.39.0",
-  "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
+  "description": "SitecoreAI developer toolkit \u2014 a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
   "author": "Sitecore Studio Labs (https://github.com/Sitecore-Studio-Labs)",
@@ -23,62 +23,92 @@
   "exports": {
     "./recipe": {
       "types": "./dist/recipe/index.d.ts",
+      "import": "./dist/esm/recipe/index.js",
+      "require": "./dist/recipe/index.js",
       "default": "./dist/recipe/index.js"
     },
     "./recipe/unstable": {
       "types": "./dist/recipe/unstable.d.ts",
+      "import": "./dist/esm/recipe/unstable.js",
+      "require": "./dist/recipe/unstable.js",
       "default": "./dist/recipe/unstable.js"
     },
     "./recipe/schema": {
       "types": "./dist/recipe/schema.d.ts",
+      "import": "./dist/esm/recipe/schema.js",
+      "require": "./dist/recipe/schema.js",
       "default": "./dist/recipe/schema.js"
     },
     "./deploy": {
       "types": "./dist/deploy/index.d.ts",
+      "import": "./dist/esm/deploy/index.js",
+      "require": "./dist/deploy/index.js",
       "default": "./dist/deploy/index.js"
     },
     "./sites": {
       "types": "./dist/sites/index.d.ts",
+      "import": "./dist/esm/sites/index.js",
+      "require": "./dist/sites/index.js",
       "default": "./dist/sites/index.js"
     },
     "./serialization": {
       "types": "./dist/serialization/index.d.ts",
+      "import": "./dist/esm/serialization/index.js",
+      "require": "./dist/serialization/index.js",
       "default": "./dist/serialization/index.js"
     },
     "./sync": {
       "types": "./dist/sync/index.d.ts",
+      "import": "./dist/esm/sync/index.js",
+      "require": "./dist/sync/index.js",
       "default": "./dist/sync/index.js"
     },
     "./hygiene": {
       "types": "./dist/hygiene/index.d.ts",
+      "import": "./dist/esm/hygiene/index.js",
+      "require": "./dist/hygiene/index.js",
       "default": "./dist/hygiene/index.js"
     },
     "./errors": {
       "types": "./dist/shared/errors.d.ts",
+      "import": "./dist/esm/shared/errors.js",
+      "require": "./dist/shared/errors.js",
       "default": "./dist/shared/errors.js"
     },
     "./envelope": {
       "types": "./dist/shared/envelope.d.ts",
+      "import": "./dist/esm/shared/envelope.js",
+      "require": "./dist/shared/envelope.js",
       "default": "./dist/shared/envelope.js"
     },
     "./unstable": {
       "types": "./dist/unstable.d.ts",
+      "import": "./dist/esm/unstable.js",
+      "require": "./dist/unstable.js",
       "default": "./dist/unstable.js"
     },
     "./unstable/brief/schema": {
       "types": "./dist/brief/recipe/schema-only.d.ts",
+      "import": "./dist/esm/brief/recipe/schema-only.js",
+      "require": "./dist/brief/recipe/schema-only.js",
       "default": "./dist/brief/recipe/schema-only.js"
     },
     "./unstable/brand/schema": {
       "types": "./dist/brand/recipe/schema-only.d.ts",
+      "import": "./dist/esm/brand/recipe/schema-only.js",
+      "require": "./dist/brand/recipe/schema-only.js",
       "default": "./dist/brand/recipe/schema-only.js"
     },
     "./unstable/campaigns/schema": {
       "types": "./dist/campaigns/recipe/schema-only.d.ts",
+      "import": "./dist/esm/campaigns/recipe/schema-only.js",
+      "require": "./dist/campaigns/recipe/schema-only.js",
       "default": "./dist/campaigns/recipe/schema-only.js"
     },
     "./unstable/agents/schema": {
       "types": "./dist/agents/recipe/schema-only.d.ts",
+      "import": "./dist/esm/agents/recipe/schema-only.js",
+      "require": "./dist/agents/recipe/schema-only.js",
       "default": "./dist/agents/recipe/schema-only.js"
     },
     "./package.json": "./package.json"
@@ -100,7 +130,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && node scripts/build-esm.mjs",
     "changeset": "changeset",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx -r tsconfig-paths/register src/cli.ts",
@@ -115,10 +145,10 @@
     "mcpb:pack": "npx -y @anthropic-ai/mcpb@2 validate mcpb/manifest.json && npx -y @anthropic-ai/mcpb@2 pack mcpb scai.mcpb",
     "prepack": "npm run build",
     "prepare": "husky",
-    "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && changeset publish",
+    "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && node scripts/build-esm.mjs && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
     "brand:codegen": "openapi-typescript src/brand/api/openapi.brand-management.yaml --output src/brand/api/schema.brand-management.d.ts && openapi-typescript src/brand/api/openapi.brand-review.yaml --output src/brand/api/schema.brand-review.d.ts && openapi-typescript src/brand/api/openapi.documents.yaml --output src/brand/api/schema.documents.d.ts && openapi-typescript src/brand/api/openapi.pipeline.yaml --output src/brand/api/schema.pipeline.d.ts",
-    "smoke": "npm run build && node --no-experimental-require-module scripts/smoke-require.cjs --sdk-strict && node scripts/smoke-require.cjs && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-mcp.cjs",
+    "smoke": "npm run build && node --no-experimental-require-module scripts/smoke-require.cjs --sdk-strict && node scripts/smoke-require.cjs && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-import.mjs && node scripts/smoke-mcp.cjs",
     "start": "node dist/cli.js",
     "pretest": "tsc --noEmit",
     "test": "vitest run",
@@ -130,7 +160,8 @@
     "security:scan": "node scripts/security-scan.cjs",
     "version": "changeset version && npm install --package-lock-only --ignore-scripts",
     "coverage:ratchet": "node scripts/check-coverage-ratchet.cjs",
-    "coverage:ratchet:raise": "RAISE_RATCHET=1 node scripts/check-coverage-ratchet.cjs"
+    "coverage:ratchet:raise": "RAISE_RATCHET=1 node scripts/check-coverage-ratchet.cjs",
+    "build:esm": "node scripts/build-esm.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,cjs,mjs}": [

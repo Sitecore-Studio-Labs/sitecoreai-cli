@@ -81,9 +81,16 @@ jobs:
           # are the three pieces npm verifies. Re-add NPM_TOKEN here only
           # if reverting to token-based auth.
           #
-          # Provenance is ON. It needs a public source repo on top of the
-          # OIDC pieces above; this repo is public, so the condition that
-          # kept it unset has cleared. Each publish signs an attestation —
+          # Provenance is ON — and npm would generate it here even without
+          # this variable, because OIDC Trusted Publishing from a public repo
+          # is sufficient on its own. (Versions published before this was
+          # ever set, e.g. 0.38.11, already carry attestations; the older
+          # comment claiming provenance was disabled was simply stale.)
+          #
+          # Setting it explicitly is still worth it: it states the intent in
+          # the workflow, and it makes `npm publish` fail loudly if those
+          # conditions ever stop holding rather than quietly shipping an
+          # unsigned version. Each publish signs an attestation —
           # repo URL, commit SHA, workflow path — into Sigstore's public
           # transparency log. That record is permanent and per-version: it
           # cannot be retracted once a version ships.

@@ -1,5 +1,39 @@
 # @sitecoreai-labs/sitecoreai-cli
 
+## 0.39.0
+
+### Minor Changes
+
+- 9b45c78: Four recipe kinds graduate to the stable `./recipe` entry: `ContentItemRecipe`, `PartialDesignRecipe`, `PageDesignRecipe`, and `DictionaryRecipe` (schemas, types, and their `compile*` functions). They are still re-exported from `./recipe/unstable` through a deprecation window, so existing imports keep working and can migrate lazily; the re-exports drop in the next major. New code should import from `./recipe`.
+
+  The graduation was gated on an audit, not on usage counts. Every item id these kinds produce is a `uuidv5` derivation over stable inputs — no `randomUUID` on any compile path — so re-pushing a recipe converges on the same items. Rollback is driven by the operation IR rather than by kind, so parity reduces to which ops a kind emits: these four emit only `CreateItem`, `SetField`, and `AddItemVersion`, and the first two have the same inverses the original stable kinds rely on. One narrow gap remains: `AddItemVersion` rollback is warn-only, so a half-failed push against a _pre-existing_ item can leave an empty extra version behind. The planner closes it rather than the rollback path — `planAddItemVersion` reads the current max version and skips when it already exists, adding only the shortfall, so a re-push repairs the leftover instead of stacking another version on top of it. Only an abandoned (never-retried) push leaves residue.
+
+  `SiteRecipe` and `SiteTemplateRecipe` stay unstable, held back by that same test rather than by how much they're used: they emit `CreateSiteFromTemplate` and `MediaUpload`, both deliberately warn-only on rollback (site deletion cascades destructively; media upload can't yet distinguish an item it created from one it re-used).
+
+  `DictionaryRecipe` also moves out of `src/recipe/schema/kinds/site.ts` into its own `kinds/dictionary.ts`, so one file no longer holds schemas on both sides of the stability boundary. This is an internal file move — the exported surface is unchanged.
+
+- 9b45c78: `scai/scripting` gains a `subtree` helper namespace, starting with `subtree.move` — relocate an item to a new parent, preserving its `itemId`, its name, and every inbound reference. This is the scripting-side counterpart to `scai content move`, for the cases the CLI shape doesn't fit: moving many items in one pass, computing the destination from a query, or composing a move with other surgery in one script.
+
+  It follows the same safe-by-default contract as the `multilist` helpers — `allowWrite` defaults to `false`, so the helper resolves both ends and reports what would happen without writing. Both ends resolve before anything is written, so a mistyped path fails with a typed `INPUT_INVALID` naming the side that didn't resolve rather than a generic GraphQL error. A move to the parent the item already has reports `changed: false` and makes no wire call.
+
+  `connect()` now also exposes an `authoring` client (the typed `AuthoringApiClient`) alongside `hygiene`, so scripts can reach Authoring operations — including `moveItem` — without re-implementing env resolution and auth.
+
+### Patch Changes
+
+- 9b45c78: npm provenance is enabled. Published versions now carry a signed attestation linking the tarball to the commit and workflow that built it — verify with `npm audit signatures`, or read the Provenance section on the npm package page.
+
+  Provenance needs a public source repo on top of the OIDC Trusted Publishing that was already wired; the repo is now public, so the one condition holding it back has cleared. `NPM_CONFIG_PROVENANCE: true` is set on both the `release` and `canary` publish steps, so a canary verifies exactly the way a stable release does.
+
+  Note for maintainers: attestations go to Sigstore's public transparency log and are permanent and per-version — appropriate for a public repo, but not retractable. And do not add `npm install -g npm@latest` to either publish job: it replaces the node-bundled npm with a copy that has no bundled `sigstore` module, and provenance generation then fails with `MODULE_NOT_FOUND`.
+
+- cd1c08f: Rollback now names the residue left behind by warn-only compensating steps instead of reporting it as "no inverse needed (no forward mutation)".
+
+  Four rollback kinds are deliberately not inverted — `createSite` (deleting a site cascades destructively), `ensureLanguages` (registration is additive and environment-wide), `addItemVersion` (no `deleteItemVersion` inverse exists), and `mediaUpload` (an upload can re-use an existing item, so a delete could remove something the push didn't create). All four returned the same null inverse as an action that never mutated anything, so a half-failed push reported them identically: nothing happened. Something did happen, and the reasoning for leaving it lived only in source comments an operator would never see.
+
+  Each now reports the specific artifact left on the tenant — site name, language codes, media path, or item id + language + version count — along with why it wasn't undone and how to resolve it. The residue was always recoverable by hand; it just wasn't discoverable. Actions that genuinely applied no mutation keep the original wording.
+
+  Most relevant to `AddItemVersion`, since all version-adds run before any field writes: a push that fails in the field-write phase can leave versions unpopulated. Re-pushing repairs them (the planner skips the add once the version exists and the `SetField` ops fill it in), so the message points at that rather than implying manual cleanup is required.
+
 ## 0.38.11
 
 ### Patch Changes

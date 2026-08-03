@@ -104,16 +104,23 @@ the territory.
 
 ## Automated hooks
 
-Three hooks in [.claude/settings.json](.claude/settings.json) run
-automatically; the harness (not Claude) executes them.
+Five hook scripts across four events in
+[.claude/settings.json](.claude/settings.json) run automatically; the
+harness (not Claude) executes them.
 
-- **SessionStart → `.claude/hooks/branch-create.sh`** — sweeps dirty tree,
-  switches to a fresh `agent/*` branch, enforces checkout lock.
-- **PreToolUse on Bash → `.claude/hooks/guard-destructive.sh`** — blocks
-  `git push`, `git reset --hard`, `git checkout .`, `git clean -f`.
-- **Stop → `.claude/hooks/auto-save.sh`** — commits session changes tagged
-  `[auto-save]` (clean) or `[auto-save-dirty]` (failed `pnpm check`).
-  Never pushes, never amends.
+- **SessionStart → `branch-create.sh`** — sweeps dirty tree, switches to a
+  fresh `agent/*` branch, claims the checkout lock.
+- **PreToolUse (Edit/Write/Bash) → `guard-checkout-owner.sh`** — blocks
+  mutations when another live session owns this checkout. Fails open.
+- **PreToolUse (Bash) → `guard-destructive.sh`** — blocks `git push`,
+  `git reset --hard`, `git checkout .`, `git clean -f`. Matters most here:
+  `main` is the publish branch, so a push could ship an npm release.
+- **Stop → `auto-save.sh`** — commits session changes tagged `[auto-save]`
+  (clean) or `[auto-save-dirty]` (failed `pnpm check`). Never pushes,
+  never amends.
+- **SessionEnd → `release-lock.sh`** — releases the checkout lock.
+
+Full reference: [docs/agent-harness.md](docs/agent-harness.md).
 
 ## Operator workflow
 

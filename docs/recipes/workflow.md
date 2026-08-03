@@ -409,7 +409,7 @@ scai content workflow advance /sitecore/content/MySite/AnArticle \
   (`WorkflowRecipeSchema`, `WebhookAuthorizationRecipeSchema`)
 - Compiler: [`src/recipe/compile/workflow.ts`](../../src/recipe/compile/workflow.ts),
   [`src/recipe/compile/webhook-authorization.ts`](../../src/recipe/compile/webhook-authorization.ts)
-- GUID derivation: [`src/recipe/guids.ts`](../../src/recipe/guids.ts)
+- GUID derivation: [`src/recipe/items/guids.ts`](../../src/recipe/items/guids.ts)
   (`workflowId`, `workflowStateId`, `workflowCommandId`, `webhookAuthorizationId`)
 - Example recipes: [`example/recipes/blog-article-approval.recipe.ts`](../../example/recipes/blog-article-approval.recipe.ts),
   [`example/recipes/ci-bearer.recipe.ts`](../../example/recipes/ci-bearer.recipe.ts)

@@ -134,7 +134,7 @@ Tenant writes (cleanup, workflow mutations, webhook create/delete, etc.)
 pass through **two** layers in series:
 
 1. **Library gate** — `ensureAllowWrite(root, envName, override?)` in
-   `src/shared/allow-write.ts`. Called from every destructive runner.
+   `src/policy/allow-write.ts`. Called from every destructive runner.
    Throws `INPUT_INVALID` unless `env.allowWrite` or the per-call
    `override` (typically `--allow-write`) is set.
 

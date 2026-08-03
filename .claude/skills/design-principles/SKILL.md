@@ -53,7 +53,8 @@ library adds more complexity than the custom code (pulling in 500KB for a
 10-line function).
 
 **Anti-pattern:** Writing a custom GraphQL client when scai already has one
-in `src/serialization/sitecore-api/`.
+in `src/serialization/api/` (re-exported for cross-area use via
+`@/authoring`).
 
 ## 3. Validate at boundaries, trust internally
 

@@ -61,11 +61,20 @@ if (sdkStrict && process.features.require_module !== false) {
 const CLI_TREE = [path.join(DIST, "program.js"), path.join(DIST, "commands") + path.sep];
 const inCliTree = (file) => CLI_TREE.some((prefix) => file === prefix || file.startsWith(prefix));
 
+// `dist/esm/` is the ESM half of the dual build. Every file in it is ESM by
+// design and `require()` of it throws ERR_REQUIRE_ESM correctly — so walking
+// it here would report the build working as ~40 failures. This guard covers
+// the CJS half only; `scripts/smoke-import.mjs` is its ESM counterpart and
+// must stay in the smoke chain for the other half to be checked at all.
+const ESM_DIR = path.join(DIST, "esm");
+
 const collect = (dir, out = []) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) collect(full, out);
-    else if (entry.isFile() && full.endsWith(".js")) out.push(full);
+    if (entry.isDirectory()) {
+      if (full === ESM_DIR) continue;
+      collect(full, out);
+    } else if (entry.isFile() && full.endsWith(".js")) out.push(full);
   }
   return out;
 };

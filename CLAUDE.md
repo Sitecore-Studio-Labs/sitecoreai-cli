@@ -22,7 +22,7 @@ CLI command: `scai` (alias: `sitecoreai-cli`).
 
 ## Layers and module boundaries
 
-`src/` is organized into 21 **domain areas** plus three cross-cutting
+`src/` is organized into 22 **domain areas** plus three cross-cutting
 layers. The domain areas:
 
 ```
@@ -59,9 +59,11 @@ area reaches those implementations directly. The cross-cutting layers:
 src/cli.ts        ← entrypoint; src/program.ts builds the Commander tree
 src/commands/     ← Commander command definitions, thin parsers
 src/config/       ← sitecoreai.cli.json + module schemas, config resolution
-src/telemetry/    ← opt-out usage telemetry (reads config, sends events)
 src/shared/       ← logger, errors, spinner, HTTP/GraphQL transport
 ```
+
+(`telemetry/` is a domain area, listed above — it reads `config/` and
+sends events like any other area, so it is not a cross-cutting layer.)
 
 **Import rules:**
 

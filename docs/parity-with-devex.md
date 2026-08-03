@@ -239,7 +239,7 @@ carries the `.t` publishing grants by default).
 **Path A — interactive operator (workstation):** run `scai setup login
 -n <env>` against the env-level client. scai's default scope set
 (`SCAI_API_SCOPES` in
-`src/serialization/tasks/env/constants.ts`) already requests the
+`src/setup/constants.ts`) already requests the
 publishing scopes alongside the deploy + CM admin scopes, so a
 successful login mints a token covering both surfaces. No
 publish-specific login command; one login, both capabilities.

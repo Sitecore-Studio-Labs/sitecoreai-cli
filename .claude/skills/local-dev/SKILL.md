@@ -90,9 +90,9 @@ For Phase 1 of the recipes initiative, target this tenant:
 - `tenantName=<your-sandbox-tenant>`
 - `organization=<your-org-id>`
 
-(See [orchestrator memory](../../../../showcase-orchestrater/) for the
-full recipes plan: `plans/registry-sitecore-recipes.md` and
-`plans/sitecore-relationships.md`.)
+(The full recipes plan lives in the demo-orchestrator repo — a separate
+checkout, not a sibling path you can rely on: `plans/registry-sitecore-recipes.md`
+and `plans/sitecore-relationships.md`.)
 
 ## Common command shapes
 

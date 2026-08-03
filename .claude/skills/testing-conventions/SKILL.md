@@ -130,8 +130,9 @@ CLI tries to start the init wizard and hangs.
 
 ## Fixture data
 
-Module configs and tenant configs for tests live as JSON files under
-`tests/unit/_fixtures/` (create if not present). Don't inline large config
+Fixture data lives in an `_fixtures/` directory beside the tests that use
+it — `tests/unit/recipe/_fixtures/` is the existing example. Put module
+configs and tenant configs there as JSON rather than inlining large config
 documents in test files.
 
 ## Where tests live

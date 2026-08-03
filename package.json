@@ -190,7 +190,7 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "fast-uri": "^3.1.4",
+    "fast-uri": "^3.1.5",
     "picomatch": "^2.3.2",
     "hono": "^4.12.27",
     "esbuild": "^0.28.1",
@@ -204,7 +204,7 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri": "^3.1.4",
+      "fast-uri": "^3.1.5",
       "picomatch": "^2.3.2",
       "hono": "^4.12.27",
       "esbuild": "^0.28.1",

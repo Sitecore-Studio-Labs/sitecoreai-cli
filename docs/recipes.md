@@ -105,14 +105,33 @@ presentation; media upload cannot yet distinguish an item it created from
 one it re-used). A half-failed push of either leaves residue the pipeline
 will not unwind, which is not a guarantee worth promising.
 
-**One documented gap on the graduated kinds:** `AddItemVersion` is also
-warn-only. When the item was created by the same push it does not matter
-— the `CreateItem` inverse deletes the whole item, versions included.
-When the item pre-existed, a half-failed push can leave an empty extra
-version behind. That is benign (no field values are written) and an
-idempotent re-push converges; a precise inverse needs a
-`deleteItemVersion` mutation the Authoring API does not expose today.
-This affects `ContentItemRecipe` and `DictionaryRecipe`.
+**One narrow gap on the graduated kinds:** `AddItemVersion` is warn-only
+on rollback, affecting `ContentItemRecipe` and `DictionaryRecipe`. It is
+narrower than "warn-only" suggests, because the _planner_ closes it
+rather than the rollback path:
+
+- When the item was created by the same push, it doesn't arise at all —
+  the `CreateItem` inverse deletes the whole item, versions included.
+- When the item pre-existed, a half-failed push can leave an empty extra
+  version behind. No field values are written to it.
+- **The next push repairs it.** `planAddItemVersion` (`runtime/build-action.ts`)
+  reads the target language's current max version and emits `skip` when
+  `currentMax >= op.version`, otherwise adds exactly the shortfall
+  (`addCount: op.version - currentMax`). So a re-push does not stack a
+  second version on top of the leftover — it skips the add and the
+  `SetField` ops populate the version that's already there. State
+  converges on exactly the declared shape, and repeated failed pushes
+  cannot accumulate versions.
+
+What remains is only the _abandoned_ case: a push fails and is never
+retried, leaving one empty version. A precise inverse would need a
+version-delete mutation. `addItemVersion` has no documented delete
+counterpart in Sitecore's authoring-operations reference — though that
+page is examples-only and doesn't document `addItemVersion` either, so
+absence there isn't proof. Confirming it needs schema introspection
+against a live tenant. Given the planner already converges the retried
+case, the remaining value is small; this is a deliberate non-goal rather
+than a known bug awaiting a fix.
 
 `PageTemplateRecipe` is the page-level peer of `ComponentTemplateRecipe`
 — a Sitecore template that inherits the SXA Headless page base set so

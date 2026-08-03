@@ -35,7 +35,7 @@ This file is informational — it does not gate releases. CI does.
 
 | Gate                     | Enforced by                                                                                                                |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| History redacts CLI args | `src/shared/redact.ts`; covered in `tests/unit/shared/redact.test.ts`                                                      |
+| History redacts CLI args | `src/shared/redact.ts`; covered in `tests/unit/shared/shared-utils.test.ts`                                                |
 | No hardcoded credentials | _Planned, not yet wired_ — a `secret-scan` CI job (gitleaks) is on the roadmap; today this is review-time discipline only. |
 | Auth/credential storage  | `src/shared/keychain.ts` (system keychain) — covered in unit tests                                                         |
 
@@ -44,7 +44,7 @@ This file is informational — it does not gate releases. CI does.
 | Gate                              | Enforced by                                                                                                                                             |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GraphQL timeout + status handling | `src/shared/graphql.ts` (shared transport) — unit + integration tests                                                                                   |
-| Telemetry retries + schema        | `src/shared/telemetry.ts`                                                                                                                               |
+| Telemetry retries + schema        | `src/telemetry/index.ts`                                                                                                                                |
 | Retry/backoff strategy            | Deploy GETs + GraphQL read queries retry on throttle/5xx; GraphQL write mutations are never retried (`maxAttempts: 1`) to avoid silent duplicate writes |
 | CliError contract                 | `src/shared/errors.ts` — every code maps to a stable exit code; covered in `tests/unit/shared/errors.test.ts`                                           |
 

@@ -81,7 +81,7 @@ treats every operation as a no-op.
 
 For Authoring GraphQL or Deploy API calls, mock the API client module
 rather than `fetch`. The clients live in
-`src/serialization/sitecore-api/` and `src/deploy/api/` — mocking those
+`src/serialization/api/` and `src/deploy/api/` — mocking those
 gives you a typed seam.
 
 ```ts
@@ -136,13 +136,13 @@ documents in test files.
 
 ## Where tests live
 
-| Source path                                | Test path                                              |
-| ------------------------------------------ | ------------------------------------------------------ |
-| `src/commands/<group>/<name>.ts`           | `tests/unit/commands/<group>/<name>.test.ts`           |
-| `src/<group>/tasks/<name>.ts`              | `tests/unit/<group>/tasks/<name>.test.ts`              |
-| `src/config/<file>.ts`                     | `tests/unit/config/<file>.test.ts`                     |
-| `src/serialization/sitecore-api/<file>.ts` | `tests/unit/serialization/sitecore-api/<file>.test.ts` |
-| Real-API end-to-end                        | `tests/integration/<scenario>.test.ts`                 |
+| Source path                       | Test path                                    |
+| --------------------------------- | -------------------------------------------- |
+| `src/commands/<group>/<name>.ts`  | `tests/unit/commands/<group>/<name>.test.ts` |
+| `src/<group>/tasks/<name>.ts`     | `tests/unit/<group>/tasks/<name>.test.ts`    |
+| `src/config/<file>.ts`            | `tests/unit/config/<file>.test.ts`           |
+| `src/serialization/api/<file>.ts` | `tests/unit/serialization/<file>.test.ts`    |
+| Real-API end-to-end               | `tests/integration/<scenario>.test.ts`       |
 
 ## Anti-patterns
 

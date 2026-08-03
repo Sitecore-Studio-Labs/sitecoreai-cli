@@ -11,9 +11,12 @@
  * Anything not exported here is internal and may move between scai
  * versions without notice.
  *
- * The recipe composition kinds (`ContentItem`, `PageDesign`, `PartialDesign`,
- * `SiteRecipe`, `SiteTemplate`) are NOT part of the 0.1.0 stability promise
- * and live on the separate `./recipe/unstable` entry (`src/recipe/unstable.ts`).
+ * Two composition kinds — `SiteRecipe` and `SiteTemplate` — are NOT part of
+ * the stability promise and live on the separate `./recipe/unstable` entry
+ * (`src/recipe/unstable.ts`). The other four composition kinds
+ * (`ContentItem`, `PageDesign`, `PartialDesign`, `Dictionary`) graduated to
+ * this entry; `./recipe/unstable` still re-exports them for a deprecation
+ * window.
  *
  * Importing this entry pulls the compiler chain (`./compile` →
  * `./sandbox/transpile` → esbuild). Consumers that want ONLY the Zod schemas
@@ -46,6 +49,13 @@ export {
   // previously re-exported (the registry consumes these directly).
   ComponentSectionRecipeSchema,
   ContentTranslationSchema,
+  // Graduated composition kinds (see the entry doc above). `SiteRecipe`
+  // and `SiteTemplateRecipe` remain on `./recipe/unstable`.
+  ContentItemRecipeSchema,
+  DictionaryPhraseSchema,
+  DictionaryRecipeSchema,
+  PageDesignRecipeSchema,
+  PartialDesignRecipeSchema,
   EnumerationRecipeSchema,
   EnumerationValueSchema,
   RecipeMetaTaxSchema,
@@ -71,6 +81,11 @@ export {
   type SitecoreFieldAugment,
   type ComponentSectionRecipe,
   type ContentTranslation,
+  type ContentItemRecipe,
+  type DictionaryPhrase,
+  type DictionaryRecipe,
+  type PageDesignRecipe,
+  type PartialDesignRecipe,
   type EnumerationRecipe,
   type EnumerationValue,
   type SitecoreFieldSource,
@@ -90,8 +105,9 @@ export {
 
 // Compiler ----------------------------------------------------------------
 // `compileRecipe` / `compileRecipeSet` dispatch across every kind including
-// the composition kinds; the kind-specific composition compilers
-// (`compilePageDesignRecipe`, …) live on `./recipe/unstable`.
+// the composition kinds. The two still-unstable composition compilers
+// (`compileSiteRecipe`, `compileSiteTemplateRecipe`) live on
+// `./recipe/unstable`.
 export {
   compileComponentTemplateRecipe,
   compileContentTemplateRecipe,
@@ -99,6 +115,10 @@ export {
   compilePageRecipe,
   compilePlaceholderRecipe,
   compileDesignParametersTemplateRecipe,
+  compileContentItemRecipe,
+  compileDictionaryRecipe,
+  compilePageDesignRecipe,
+  compilePartialDesignRecipe,
   compileRecipe,
   compileRecipeSet,
   PLACEHOLDER_SETTINGS_AGGREGATE_HANDLE,

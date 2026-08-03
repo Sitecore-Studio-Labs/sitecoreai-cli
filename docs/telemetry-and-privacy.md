@@ -49,11 +49,60 @@ Payloads are validated against the telemetry schema at
 ## Server-side handling
 
 The telemetry service uses client IPs only for rate limiting and does not
-store raw IPs (logs keep only anonymized IP prefixes). Retention and
-aggregation are determined by the telemetry service.
+store raw IPs.
 
-The default telemetry endpoint is baked into the CLI build. For development,
-override with `SITECOREAI_TELEMETRY_URL`.
+### Where the receiver lives
+
+|             |                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Repo        | **`Sitecore-Studio-Labs/sitecoreai-cli-telemetry`** (private, same org as this CLI) |
+| Package     | `sitecoreai-telemetry-endpoint` — a Hono service on Node                            |
+| Endpoint    | `POST /v1/t`                                                                        |
+| Default URL | `https://cli-telemetry.sitecoreai.dev/v1/t`                                         |
+| Hosting     | Vercel                                                                              |
+| Store       | Postgres (`POSTGRES_URL`)                                                           |
+| Operator    | Sitecore Studio Labs — the same org that publishes this CLI                         |
+| DNS zone    | `sitecoreai.dev`, the same zone as the payload schema at `schemas.sitecoreai.dev`   |
+
+That repo is the place to look when debugging a telemetry problem,
+answering a privacy question, or evaluating whether to keep telemetry at
+all. Alongside `POST /v1/t` it serves `/v1/docs` and `/v1/openapi.json`,
+plus a `/v1/admin` surface gated by Auth0 behind a `telemetry:read` scope.
+
+**How IP anonymization actually works.** The receiver anonymizes before
+anything is persisted, not after: `anonymizeIp(getClientIp(...))` runs in
+the request-logging middleware, and the anonymized value is what reaches
+both the structured log and the `telemetry_traces` row. IPv4 is truncated
+to a `/24` (last octet zeroed), IPv6 to its first four groups. When
+`TRUST_PROXY` is off the client IP resolves to `unknown` outright. The
+approximate region reported in events is derived server-side from CDN
+headers (`x-vercel-ip-country` / `x-vercel-ip-country-region`, with
+Cloudflare and generic fallbacks) — never from a client-supplied value.
+
+**Retention: there is currently no automatic purge.** Rows in
+`telemetry_events`, `telemetry_traces`, and `telemetry_errors` persist
+until someone deletes them by hand — the receiver ships no TTL, no
+retention job, and no scheduled cleanup. (The only expiry in the service
+is a 6-hour in-memory nonce window used for replay/duplicate rejection,
+which is unrelated to stored rows.) Anyone tightening the privacy posture
+should start here; it is the gap, not the anonymization.
+
+### Overriding the endpoint
+
+The default URL is **compiled into the CLI build** — see
+`DEFAULT_TELEMETRY_URL` in `src/telemetry/index.ts`. Override per-invocation
+for local development against your own receiver:
+
+```sh
+SITECOREAI_TELEMETRY_URL=http://localhost:3000/v1/t scai deploy environments list
+```
+
+Because the default is baked in at build time, **every already-published
+version of the CLI will POST to `cli-telemetry.sitecoreai.dev` for as long
+as it is installed anywhere.** Old versions cannot be repointed. That
+hostname therefore has to keep resolving regardless of any future decision
+about telemetry — retiring the service means keeping the DNS record and
+returning a cheap response, not deleting the zone.
 
 ## CLI history (local-only)
 

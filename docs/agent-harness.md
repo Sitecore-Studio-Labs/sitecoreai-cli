@@ -9,6 +9,7 @@ of the harness is invisible until it fires, and two of the hooks will actively
 block you if you don't know they exist.
 
 > **Don't confuse the two "skills" directories.**
+>
 > - `.claude/skills/` — this harness. Guidance for agents **working on** scai.
 > - `skills/` (repo root, shipped in the npm package) — consumer-facing SKILL
 >   files for agents **using** scai. Same for `AGENTS.md` vs this page.
@@ -34,14 +35,14 @@ whether relevant or not; a skill costs nothing until it triggers.
 
 ### Skills in this repo
 
-| Skill | Triggers on |
-|---|---|
-| `design-principles` | Any non-trivial implementation — research-first, prefer libraries, credentials are keychain-only |
-| `codebase-conventions` | Writing or modifying code — module structure, error contract, agent contract, quality gates |
-| `local-dev` | Running or testing scai locally (`pnpm dev -- <command>`, env vars, sandbox tenant) |
-| `testing-conventions` | Writing tests — unit/integration tiers, keychain mocking, integration gating |
-| `friction` | Capturing a friction moment (`/friction`) |
-| `review-harness` | Auditing the harness itself for staleness |
+| Skill                  | Triggers on                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `design-principles`    | Any non-trivial implementation — research-first, prefer libraries, credentials are keychain-only |
+| `codebase-conventions` | Writing or modifying code — module structure, error contract, agent contract, quality gates      |
+| `local-dev`            | Running or testing scai locally (`pnpm dev -- <command>`, env vars, sandbox tenant)              |
+| `testing-conventions`  | Writing tests — unit/integration tiers, keychain mocking, integration gating                     |
+| `friction`             | Capturing a friction moment (`/friction`)                                                        |
+| `review-harness`       | Auditing the harness itself for staleness                                                        |
 
 Six skills — the smallest set of the three repos, because scai's structure is
 regular. Every product area ships the same four surfaces (SDK subpath → CLI
@@ -74,13 +75,13 @@ Four hook events are wired in [.claude/settings.json](../.claude/settings.json),
 running five scripts in `.claude/hooks/`. The harness — not the agent — runs
 them; agents cannot skip or disable them.
 
-| Event | Script | What it does |
-|---|---|---|
-| `SessionStart` | `branch-create.sh` | Sweeps a dirty tree, creates a fresh `agent/*` branch, claims the checkout lock |
-| `PreToolUse` (Edit/Write/Bash) | `guard-checkout-owner.sh` | **Blocks** mutations when another live session owns this checkout |
-| `PreToolUse` (Bash) | `guard-destructive.sh` | **Blocks** `git push`, `git reset --hard`, `git checkout .`, `git clean -f` |
-| `Stop` | `auto-save.sh` | Commits session changes; releases the lock |
-| `SessionEnd` | `release-lock.sh` | Releases the lock if this session owns it |
+| Event                          | Script                    | What it does                                                                    |
+| ------------------------------ | ------------------------- | ------------------------------------------------------------------------------- |
+| `SessionStart`                 | `branch-create.sh`        | Sweeps a dirty tree, creates a fresh `agent/*` branch, claims the checkout lock |
+| `PreToolUse` (Edit/Write/Bash) | `guard-checkout-owner.sh` | **Blocks** mutations when another live session owns this checkout               |
+| `PreToolUse` (Bash)            | `guard-destructive.sh`    | **Blocks** `git push`, `git reset --hard`, `git checkout .`, `git clean -f`     |
+| `Stop`                         | `auto-save.sh`            | Commits session changes; releases the lock                                      |
+| `SessionEnd`                   | `release-lock.sh`         | Releases the lock if this session owns it                                       |
 
 > CLAUDE.md long described three hooks. There are five scripts across four
 > events. Where the two disagree, `.claude/settings.json` is the truth.
@@ -154,14 +155,14 @@ trusting the harness to catch it.
 
 ## Related enforcement (not hooks, but the same intent)
 
-| Gate | Enforces |
-|---|---|
-| `pnpm check` | `format:check` + `lint` + `typecheck` + `test` — what auto-save runs |
-| `pnpm depcruise:check` | Module boundaries, including the `auth-authoring-seam` rule |
-| `tests/unit/architecture/module-boundaries.test.ts` | `shared/` stays a leaf; `content/` never imports `publishing/` |
-| `pnpm docs:commands:check` | `docs/commands.md` matches the actual Commander tree |
-| `pnpm smoke` | Build + spawn-based smoke checks, including MCP and SDK exports |
-| `coverage:ratchet` | Coverage can go up, never down |
+| Gate                                                | Enforces                                                             |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
+| `pnpm check`                                        | `format:check` + `lint` + `typecheck` + `test` — what auto-save runs |
+| `pnpm depcruise:check`                              | Module boundaries, including the `auth-authoring-seam` rule          |
+| `tests/unit/architecture/module-boundaries.test.ts` | `shared/` stays a leaf; `content/` never imports `publishing/`       |
+| `pnpm docs:commands:check`                          | `docs/commands.md` matches the actual Commander tree                 |
+| `pnpm smoke`                                        | Build + spawn-based smoke checks, including MCP and SDK exports      |
+| `coverage:ratchet`                                  | Coverage can go up, never down                                       |
 
 The boundary test is **not** a full cycle detector — peer domain areas may still
 cross-import (e.g. `sync` aggregates `brand`/`brief`). The hard, enforced

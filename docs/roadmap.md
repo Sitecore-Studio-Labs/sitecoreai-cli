@@ -37,9 +37,10 @@ release have shipped; the remaining items below are still open.)
 
 - **CI preflight** — checks for publish credentials, org access, and
   release gating before a release job runs.
-- **npm provenance** — publishing via OIDC Trusted Publishing is wired;
-  provenance attestation stays off until the repo goes public. Flip it
-  on at that point (see [release.md](./release.md)).
+- ~~**npm provenance**~~ — **done 2026-08.** The repo went public, so the
+  one condition holding it back cleared. `NPM_CONFIG_PROVENANCE: true` is
+  set on both the `release` and `canary` publish steps; verify a published
+  version with `npm audit signatures` (see [release.md](./release.md)).
 - **Config-schema enforcement** for module configs loaded from packages.
 - **Config storage location** — make `sitecoreai.cli.json`'s location
   configurable (currently fixed at the project root, `--config` to
@@ -73,21 +74,27 @@ automation-client JWT auth as the Sites and Publishing APIs.
 
 ### Content-tree mutations
 
-Smaller content-side gaps surfaced by agent feedback:
+Smaller content-side gaps surfaced by agent feedback. **These have all
+shipped** — kept here as a record of what landed:
 
-- **`moveItem`.** The Authoring API exposes `moveItem`, but scai has no
-  SDK call, CLI command, or MCP tool for it. Today relocating a subtree
-  means delete + recreate, which breaks every inbound reference. Plan:
-  add `moveItem` to the Authoring client (sibling to `createItem` /
-  `updateItem` / `deleteItem`), surface as `scai content move`, and
-  extend the MCP `cleanup_tools` discriminator. Unblocks the
-  `scai/scripting` `subtree.move` helper.
-- **Multilist GUID removal → CLI.** The `removeRef` helper exists in
-  `scai/scripting`; promote it to `scai hygiene cleanup multilist
-remove-ref` (same read-mutate-write shape as `cleanup field-set`).
-- **`deleteItem` MCP coverage.** `deleteItem` is wired into `cleanup
-subtree` and rollback paths but no MCP tool calls it directly — extend
-  `cleanup_tools` with a consent-guarded `delete-item` verb.
+- ~~**`moveItem`**~~ — done. `moveItem` is on the Authoring client
+  (sibling to `createItem` / `updateItem` / `deleteItem`), surfaced as
+  `scai content move`, and wired into the MCP `cleanup_tools`
+  discriminator as the `move-item` verb. Relocating a subtree no longer
+  means delete + recreate, so inbound references survive.
+- ~~**Multilist GUID removal → CLI**~~ — done. `scai cleanup multilist remove-ref`,
+  over the same `removeRef` logic `scai/scripting` exposes.
+- ~~**`deleteItem` MCP coverage**~~ — done. `cleanup_tools` has a
+  consent-guarded `delete-item` verb.
+- ~~**`subtree.move` scripting helper**~~ — done, unblocked by the
+  `moveItem` work above. `scai/scripting` now exposes a `subtree`
+  namespace alongside `multilist`, and `connect()` wires an `authoring`
+  client so helpers can reach Authoring mutations directly.
+
+Still open in this area:
+
+- **Bulk / recursive relocation.** `subtree.move` handles one item.
+  Moving a whole branch selected by query is the next helper.
 
 ## Recipes — content-as-code expansion
 
@@ -95,20 +102,36 @@ Recipes are scai's declarative layer. The expansion goes two ways:
 deeper (graduate the composition kinds) and wider (recipe kinds for
 non-template surfaces).
 
-- **Graduate the composition kinds.** `PartialDesignRecipe`,
-  `PageDesignRecipe`, `PageTemplateRecipe`, `PageRecipe`,
-  `PlaceholderRecipe`, `SiteTemplateRecipe`, `SiteRecipe`, and
-  `ContentItemRecipe` are present in source but not part of the
-  stability promise. Stabilize them in a follow-up release with the same
-  idempotent re-push + LIFO rollback guarantees as the five stable
-  kinds. `PageTemplateRecipe` (page-level templates with SXA page base
-  inheritance) and `PlaceholderRecipe` (the hybrid placeholder model —
-  standalone + inline `ComponentTemplateRecipe.placeholders`, with
-  `Allowed Controls` whitelist emission and placement-legality
-  validation) landed 2026-05-15. `PageRecipe` (concrete page items
-  conforming to a page template, with `__Final Renderings` layout)
-  landed 2026-05-16 — `scoped` datasources and page-tree nesting are
-  the two open follow-ups.
+- **Graduate the composition kinds.** Two remain unstable:
+  **`SiteRecipe`** and **`SiteTemplateRecipe`**.
+
+  Already graduated:
+  - `PageTemplateRecipe` and `PlaceholderRecipe` — 2026-05-15.
+    `PageTemplateRecipe` is page-level templates with SXA page base
+    inheritance; `PlaceholderRecipe` is the hybrid placeholder model
+    (standalone + inline `ComponentTemplateRecipe.placeholders`, with
+    `Allowed Controls` whitelist emission and placement-legality
+    validation).
+  - `PageRecipe` — 2026-05-16. Concrete page items conforming to a page
+    template, with `__Final Renderings` layout.
+  - `ContentItemRecipe`, `PartialDesignRecipe`, `PageDesignRecipe`,
+    `DictionaryRecipe` — 2026-08. Audited for deterministic (`uuidv5`)
+    ids and rollback parity: they emit only `CreateItem` / `SetField` /
+    `AddItemVersion`, all of which the IR-driven rollback inverts.
+    `./recipe/unstable` re-exports them until the next major.
+
+  `SiteRecipe` and `SiteTemplateRecipe` stayed back on rollback, not on
+  usage: they emit `CreateSiteFromTemplate` and `MediaUpload`, both
+  deliberately warn-only (destructive cascade; no "did we create this?"
+  flag). Graduating them means giving those ops real inverses first.
+
+- **`PageRecipe` known gaps — accepted, shipped stable anyway.**
+  `scoped` datasources and page-tree nesting were open follow-ups when
+  `PageRecipe` graduated in May and remain open. This is a deliberate
+  decision, recorded here rather than left implicit: the kind's schema
+  and compiler are stable and the gaps are additive (both would extend
+  the schema, not reshape it), so shipping stable does not box in the
+  fix. Revisit if either turns out to need a breaking schema change.
 - **Ops-as-code (in flight).** `brief-type` and `campaign` recipe kinds
   — recipes that wire the Content Operations and Orchestrate APIs into
   the same compile / plan / diff / push lifecycle as Sitecore templates.

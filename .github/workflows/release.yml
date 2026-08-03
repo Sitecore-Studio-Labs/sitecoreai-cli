@@ -81,8 +81,19 @@ jobs:
           # are the three pieces npm verifies. Re-add NPM_TOKEN here only
           # if reverting to token-based auth.
           #
-          # NPM_CONFIG_PROVENANCE still unset: provenance requires a public
-          # source repo; Trusted Publishing does not.
+          # Provenance is ON. It needs a public source repo on top of the
+          # OIDC pieces above; this repo is public, so the condition that
+          # kept it unset has cleared. Each publish signs an attestation —
+          # repo URL, commit SHA, workflow path — into Sigstore's public
+          # transparency log. That record is permanent and per-version: it
+          # cannot be retracted once a version ships.
+          #
+          # Do NOT add `npm install -g npm@latest` to this job. It replaces
+          # the node-bundled npm with a copy that has no bundled `sigstore`
+          # module, and provenance generation then dies with
+          # `MODULE_NOT_FOUND Cannot find module 'sigstore'`. The warning in
+          # the Setup Node step is load-bearing now that provenance is on.
+          NPM_CONFIG_PROVENANCE: true
           HUSKY: 0
 
       # After a real publish, bring `dev` up to the released `main` so the two
@@ -167,6 +178,13 @@ jobs:
           fi
 
       - name: "Publish canary to npm (dist-tag: canary)"
+        # Provenance on for canaries too, so a tester can verify a canary
+        # build with `npm audit signatures` exactly as they would a stable
+        # one — a canary that publishes differently from the stable path is
+        # a worse rehearsal of it. Same one-way-door caveat: each canary
+        # version's attestation is permanent and public.
+        env:
+          NPM_CONFIG_PROVENANCE: true
         # In pre-mode (`changeset pre enter canary`) `changeset version`
         # was already run locally — the pending changeset got consumed
         # and `package.json` is at `0.3.0-canary.N`. Pre-mode also pins

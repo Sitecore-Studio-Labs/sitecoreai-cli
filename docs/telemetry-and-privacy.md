@@ -52,8 +52,43 @@ The telemetry service uses client IPs only for rate limiting and does not
 store raw IPs (logs keep only anonymized IP prefixes). Retention and
 aggregation are determined by the telemetry service.
 
-The default telemetry endpoint is baked into the CLI build. For development,
-override with `SITECOREAI_TELEMETRY_URL`.
+### Where the receiver lives
+
+|             |                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Repo        | **`Sitecore-Studio-Labs/sitecoreai-cli-telemetry`** (private, same org as this CLI) |
+| Endpoint    | `POST /v1/t`                                                                        |
+| Default URL | `https://cli-telemetry.sitecoreai.dev/v1/t`                                         |
+| Operator    | Sitecore Studio Labs — the same org that publishes this CLI                         |
+| DNS zone    | `sitecoreai.dev`, the same zone as the payload schema at `schemas.sitecoreai.dev`   |
+
+Retention, aggregation, and rate-limit policy are implemented in that repo
+— it is the place to look when debugging a telemetry problem, answering a
+privacy question, or evaluating whether to keep telemetry at all.
+
+> **Note for maintainers:** the hosting platform and account for
+> `cli-telemetry.sitecoreai.dev` are not recorded here because they could
+> not be confirmed from this repo alone. The previous default endpoint was
+> a Vercel preview-style hostname (`telemetry-api-ten.vercel.app`, replaced
+> because it was squattable), which suggests Vercel — confirm against the
+> receiver repo before relying on it.
+
+### Overriding the endpoint
+
+The default URL is **compiled into the CLI build** — see
+`DEFAULT_TELEMETRY_URL` in `src/telemetry/index.ts`. Override per-invocation
+for local development against your own receiver:
+
+```sh
+SITECOREAI_TELEMETRY_URL=http://localhost:3000/v1/t scai deploy environments list
+```
+
+Because the default is baked in at build time, **every already-published
+version of the CLI will POST to `cli-telemetry.sitecoreai.dev` for as long
+as it is installed anywhere.** Old versions cannot be repointed. That
+hostname therefore has to keep resolving regardless of any future decision
+about telemetry — retiring the service means keeping the DNS record and
+returning a cheap response, not deleting the zone.
 
 ## CLI history (local-only)
 

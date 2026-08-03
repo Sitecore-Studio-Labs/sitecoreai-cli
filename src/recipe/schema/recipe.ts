@@ -62,7 +62,8 @@ import {
   PartialDesignRecipeSchema,
   VariantRecipeSchema,
 } from "./kinds/design";
-import { DictionaryRecipeSchema, SiteRecipeSchema, SiteTemplateRecipeSchema } from "./kinds/site";
+import { SiteRecipeSchema, SiteTemplateRecipeSchema } from "./kinds/site";
+import { DictionaryRecipeSchema } from "./kinds/dictionary";
 import { EnumerationRecipeSchema } from "./kinds/enumeration";
 import { WebhookAuthorizationRecipeSchema, WorkflowRecipeSchema } from "./kinds/workflow";
 import { PageRecipeSchema, PageTemplateRecipeSchema } from "./kinds/page";
@@ -145,19 +146,22 @@ export {
 } from "./kinds/design";
 
 export {
-  DictionaryPhraseSchema,
-  DictionaryRecipeSchema,
   SiteGroupingSchema,
   SiteRecipeSchema,
   SiteTemplateRecipeSchema,
   SiteTemplateTaxonomyEntrySchema,
-  type DictionaryPhrase,
-  type DictionaryRecipe,
   type SiteGrouping,
   type SiteRecipe,
   type SiteTemplateRecipe,
   type SiteTemplateTaxonomyEntry,
 } from "./kinds/site";
+
+export {
+  DictionaryPhraseSchema,
+  DictionaryRecipeSchema,
+  type DictionaryPhrase,
+  type DictionaryRecipe,
+} from "./kinds/dictionary";
 
 export {
   EnumerationRecipeSchema,

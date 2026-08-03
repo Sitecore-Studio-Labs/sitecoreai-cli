@@ -22,8 +22,36 @@ pnpm changeset
   "Version Packages" PR via the Changesets action.
 - Reviewing and merging that PR publishes to npm.
 - Publish uses GitHub OIDC Trusted Publishing — no long-lived `NPM_TOKEN`.
-- npm provenance is currently disabled while the repo is private; it will
-  be re-enabled when the repo goes public.
+- npm provenance is **enabled** (`NPM_CONFIG_PROVENANCE: true` on both the
+  `release` and `canary` publish steps). Every published version carries a
+  signed attestation linking it to the commit and workflow that built it.
+
+### Provenance
+
+Provenance needs two things: OIDC Trusted Publishing (already the auth
+path) and a **public** source repo. The repo is public, so both hold.
+
+Verify a published version:
+
+```sh
+npm audit signatures
+```
+
+The npm package page also shows a **Provenance** section listing the
+source commit and the workflow that published it.
+
+Two things to know before touching this:
+
+- **Never run `npm install -g npm@latest` in the release or canary job.**
+  It replaces the node-bundled npm with a copy that has no bundled
+  `sigstore` module, and provenance generation dies with
+  `MODULE_NOT_FOUND Cannot find module 'sigstore'`. Node 24's bundled npm
+  is already ≥ 11.5.1 and supports both Trusted Publishing and provenance.
+- **Attestations are permanent and per-version.** They are written to
+  Sigstore's public transparency log — repo URL, commit SHA, workflow path
+  — and cannot be retracted once a version ships. Appropriate for a public
+  repo; just not undoable. Turning provenance off later stops _future_
+  versions from being signed, it does not unpublish past attestations.
 
 ## Canary releases (pre-release testing)
 

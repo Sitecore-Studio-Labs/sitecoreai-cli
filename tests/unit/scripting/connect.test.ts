@@ -15,13 +15,18 @@ const policyMocks = vi.hoisted(() => ({
 const apiMocks = vi.hoisted(() => ({
   createHygieneApiClient: vi.fn(),
 }));
+const authoringMocks = vi.hoisted(() => ({
+  createAuthoringClient: vi.fn(),
+}));
 
 vi.mock("../../../src/policy/environment", () => policyMocks);
 vi.mock("../../../src/hygiene/api/client", () => apiMocks);
+vi.mock("../../../src/authoring", () => authoringMocks);
 
 import { connect } from "../../../src/scripting/connect";
 
 const fakeClient = { id: "client-1" };
+const fakeAuthoring = { id: "authoring-1" };
 const baseResolved = {
   envName: "sandbox",
   environment: { host: "https://example/" },
@@ -30,6 +35,7 @@ const baseResolved = {
 beforeEach(() => {
   policyMocks.resolveEnvironment.mockReset();
   apiMocks.createHygieneApiClient.mockReset().mockReturnValue(fakeClient);
+  authoringMocks.createAuthoringClient.mockReset().mockReturnValue(fakeAuthoring);
 });
 
 afterEach(() => {
@@ -50,6 +56,12 @@ describe("connect", () => {
     });
     expect(client.envName).toBe("sandbox");
     expect(client.hygiene).toBe(fakeClient);
+    // The authoring client is built from the same resolved environment;
+    // it takes no request shim (no timeout threading on this seam).
+    expect(authoringMocks.createAuthoringClient).toHaveBeenCalledWith({
+      environment: baseResolved.environment,
+    });
+    expect(client.authoring).toBe(fakeAuthoring);
   });
 
   it("passes undefined config + env when called with no args (defaults branch)", () => {

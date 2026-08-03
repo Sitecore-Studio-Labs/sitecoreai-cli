@@ -22,19 +22,37 @@ pnpm changeset
   "Version Packages" PR via the Changesets action.
 - Reviewing and merging that PR publishes to npm.
 - Publish uses GitHub OIDC Trusted Publishing — no long-lived `NPM_TOKEN`.
-- npm provenance is **enabled** (`NPM_CONFIG_PROVENANCE: true` on both the
-  `release` and `canary` publish steps). Every published version carries a
-  signed attestation linking it to the commit and workflow that built it.
+- npm provenance is **on**. Every published version carries a signed SLSA
+  attestation linking it to the commit and workflow that built it.
 
 ### Provenance
 
 Provenance needs two things: OIDC Trusted Publishing (already the auth
-path) and a **public** source repo. The repo is public, so both hold.
+path) and a **public** source repo. Both hold.
+
+**npm generates provenance automatically when those two conditions are
+met** — it does not require `NPM_CONFIG_PROVENANCE`. That variable is set
+explicitly on the `release` and `canary` publish steps, but it is belt-and-
+braces: it makes the intent visible in the workflow and makes `npm publish`
+fail loudly if the conditions ever stop holding, rather than quietly
+shipping an unsigned version.
+
+This is worth stating because the workflow and this document previously
+claimed provenance was _disabled_. It wasn't. Versions published before
+`NPM_CONFIG_PROVENANCE` was ever set — `0.38.11`, for one — already carry
+attestations. The comment describing it as off was stale, not a setting.
 
 Verify a published version:
 
 ```sh
 npm audit signatures
+```
+
+Or query the registry directly, which is what confirmed the above:
+
+```sh
+curl -s https://registry.npmjs.org/@sitecoreai-labs/sitecoreai-cli \
+  | jq '.versions["0.39.0"].dist.attestations'
 ```
 
 The npm package page also shows a **Provenance** section listing the

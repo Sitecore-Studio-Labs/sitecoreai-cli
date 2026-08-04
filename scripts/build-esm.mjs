@@ -124,7 +124,23 @@ copyFileSync("src/recipe/sandbox/recipe-runner.cjs", resolve(sandboxOut, "recipe
 // Safe to strip per-file: the three shims are file-local `const`s, so a file
 // that never references them is unaffected by their removal. Files that DO
 // reference them keep the banner verbatim.
-const SHIM_RE = /\brequire\s*\(|__dirname|__filename/;
+//
+// Match the BARE IDENTIFIER, not the call form. 0.40.1 tested `\brequire\s*\(`
+// and shipped a broken chunk: esbuild emits its own interop helper
+//
+//   var __require = ((x) => typeof require !== "undefined" ? require : ...)
+//
+// which reads `require` as a value, never calls it as `require(`. The banner
+// was stripped, `typeof require` then evaluated to "undefined" (legal on an
+// undeclared identifier, so no ReferenceError), execution fell through to the
+// throwing Proxy branch, and the orchestrator's recipe-sync pull-mode tests
+// failed 13 ways with no obvious link to a build script. `require.resolve(…)`
+// would have slipped through the same gap.
+//
+// `\brequire\b` does not match inside `__require` (preceded by a word char) or
+// `required` (followed by one), so widening this costs no false positives on
+// the pure-Zod entries — verified by the counts printed below.
+const SHIM_RE = /\b(?:require|__dirname|__filename)\b/;
 let stripped = 0;
 for (const outPath of Object.keys(result.metafile.outputs)) {
   const source = readFileSync(outPath, "utf8");

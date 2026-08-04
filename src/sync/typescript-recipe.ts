@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 /**
  * Shared `.recipe.ts` loader.
  *
@@ -19,6 +20,21 @@
 import path from "node:path";
 import { ScaiError, createScaiError } from "@/shared/errors";
 import { isRecipeSandboxEnabled, loadRecipeInSandbox } from "@/recipe/sandbox/load";
+
+/**
+ * A real CommonJS `require`, constructed explicitly.
+ *
+ * scai's own output is ESM, but this seam is deliberately CJS: it hands a
+ * user's `.recipe.ts` to tsx's **CJS** hook (`tsx/cjs/api`), which is what
+ * gives us a synchronous load plus a `require.cache` we can evict per file so
+ * re-reading the same recipe in one process picks up edits. The ESM hook has
+ * neither — its cache is not addressable, so a second read would return stale
+ * exports.
+ *
+ * So this is not CJS left over from the CommonJS build; it is the correct tool
+ * for loading arbitrary user modules, and it stays after the ESM migration.
+ */
+const nodeRequire = createRequire(import.meta.url);
 
 /** Extensions this loader recognizes as TypeScript-source recipes. */
 const TS_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
@@ -60,9 +76,7 @@ const ensureTsxRegistered = (): void => {
   if (tsxRegistered) {
     return;
   }
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const tsxApi = require("tsx/cjs/api") as { register: () => () => void };
-  /* eslint-enable @typescript-eslint/no-require-imports */
+  const tsxApi = nodeRequire("tsx/cjs/api") as { register: () => () => void };
   tsxApi.register();
   tsxRegistered = true;
 };
@@ -85,12 +99,10 @@ const loadRecipeInProcess = async (filePath: string): Promise<unknown> => {
   const absolute = path.resolve(filePath);
   try {
     ensureTsxRegistered();
-    if (require.cache[absolute]) {
-      delete require.cache[absolute];
+    if (nodeRequire.cache[absolute]) {
+      delete nodeRequire.cache[absolute];
     }
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const mod = require(absolute) as Record<string, unknown> & { default?: unknown };
-    /* eslint-enable @typescript-eslint/no-require-imports */
+    const mod = nodeRequire(absolute) as Record<string, unknown> & { default?: unknown };
     if (mod.default !== undefined) {
       return mod.default;
     }

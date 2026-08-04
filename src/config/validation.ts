@@ -2,8 +2,8 @@ import fs from "node:fs";
 import AjvDraft4 from "ajv-draft-04";
 import addFormats from "ajv-formats";
 import type { ErrorObject } from "ajv";
-import schema from "./schema.json";
-import serializationModuleSchema from "./serialization-module.schema.json";
+import schema from "./schema.json" with { type: "json" };
+import serializationModuleSchema from "./serialization-module.schema.json" with { type: "json" };
 
 const ajv = new AjvDraft4({ allErrors: true, strict: false });
 addFormats(ajv);

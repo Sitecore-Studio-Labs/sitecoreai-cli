@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * Kind-agnostic baseline storage — the "last-applied" leg of three-way
  * merge, shared across every recipe kind that opts in (content/page
@@ -104,10 +105,6 @@ export const stableStringify = (value: unknown): string => {
  * DB-backed storage hashes the same value the kind hashes.
  */
 export const hashJsonValue = (value: unknown): string => {
-  // `createHash` is cheap; importing dynamically keeps the seam pure
-  // (no Node-only baggage on every consumer of this module).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createHash } = require("node:crypto") as typeof import("node:crypto");
   return createHash("sha256").update(stableStringify(value), "utf8").digest("hex");
 };
 

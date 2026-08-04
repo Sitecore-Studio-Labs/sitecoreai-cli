@@ -50,7 +50,12 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"));
  * automatically getting an ESM build. `./dist/x/y.js` maps back to
  * `src/x/y.ts`.
  */
-const toSource = (distPath) => distPath.replace(/^\.\/dist\//, "src/").replace(/\.js$/, ".ts");
+// `./dist/esm/x/y.js` and `./dist/x/y.js` both map back to `src/x/y.ts`.
+// The `esm/` segment must be stripped first: since the CommonJS build was
+// dropped, `exports` points at `./dist/esm/...`, and leaving that segment in
+// yields a nonexistent `src/esm/...` entry point.
+const toSource = (distPath) =>
+  distPath.replace(/^\.\/dist\/(esm\/)?/, "src/").replace(/\.js$/, ".ts");
 
 const allSubpaths = Object.entries(pkg.exports)
   .filter(([subpath]) => subpath !== "./package.json")
@@ -82,9 +87,18 @@ const BROWSER_SAFE_SUBPATHS = new Set([
 const browserEntryPoints = allSubpaths
   .filter(([subpath]) => BROWSER_SAFE_SUBPATHS.has(subpath))
   .map(([, target]) => toSource(target));
-const nodeEntryPoints = allSubpaths
+let nodeEntryPoints = allSubpaths
   .filter(([subpath]) => !BROWSER_SAFE_SUBPATHS.has(subpath))
   .map(([, target]) => toSource(target));
+
+// The CLI binary is not in `exports` — it is reached through `bin`, so it has
+// to be named explicitly or the build silently emits no `cli.js` and the
+// installed `scai` command dies with ERR_MODULE_NOT_FOUND. `program.ts` and
+// `commands/**` come along through its import graph.
+const BIN_ENTRY = "src/cli.ts";
+if (!nodeEntryPoints.includes(BIN_ENTRY)) {
+  nodeEntryPoints.push(BIN_ENTRY);
+}
 
 if (browserEntryPoints.length !== BROWSER_SAFE_SUBPATHS.size) {
   throw new Error(

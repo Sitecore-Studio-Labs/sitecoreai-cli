@@ -22,7 +22,7 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-const CLI = path.join("dist", "cli.js");
+const CLI = path.join("dist", "esm", "cli.js");
 
 const fail = (message) => {
   process.stderr.write(`smoke: ${message}\n`);

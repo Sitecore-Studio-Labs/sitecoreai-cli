@@ -31,11 +31,13 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
 const entries = Object.entries(pkg.exports)
   .filter(([subpath, target]) => subpath !== "./package.json" && typeof target === "object")
-  .map(([subpath, target]) => ({ subpath, file: target.import }))
+  .map(([subpath, target]) => ({ subpath, file: target.default }))
   .filter((entry) => Boolean(entry.file));
 
 if (entries.length === 0) {
-  console.error("[smoke-import] no `import` conditions in package.json exports — nothing to check");
+  console.error(
+    "[smoke-import] no resolvable conditions in package.json exports — nothing to check"
+  );
   process.exit(1);
 }
 

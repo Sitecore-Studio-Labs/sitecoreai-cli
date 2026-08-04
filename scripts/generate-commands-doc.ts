@@ -14,7 +14,8 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command, Option } from "commander";
 
 import { createProgram } from "../src/program";
@@ -172,7 +173,7 @@ const main = (): void => {
   }
 
   const output = lines.join("\n").trimEnd() + "\n";
-  const outputPath = resolve(__dirname, "..", "docs", "commands.md");
+  const outputPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", "docs", "commands.md");
   writeFileSync(outputPath, output);
   process.stdout.write(`Wrote ${outputPath}\n`);
 };

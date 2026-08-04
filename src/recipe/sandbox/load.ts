@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createScaiError } from "@/shared/errors";
 import { transpileRecipe } from "./transpile";
 
@@ -65,7 +66,7 @@ const cleanChildEnv = (): Record<string, string> => {
 // The child is a plain `.cjs` shipped beside this module (copied into
 // `dist/` by the build) — runnable under bare `node`, no TypeScript
 // toolchain, which is what lets the permission model lock it down.
-const childPath = path.join(__dirname, "recipe-runner.cjs");
+const childPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "recipe-runner.cjs");
 
 // Symlink-resolved paths for the `--allow-fs-read` grants: Node's
 // permission model checks the canonical path, and on macOS `os.tmpdir()`

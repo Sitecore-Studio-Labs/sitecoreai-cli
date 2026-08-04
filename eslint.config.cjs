@@ -1,3 +1,12 @@
+/*
+ * CommonJS on purpose, hence `.cjs`.
+ *
+ * The package is `"type": "module"`, so a plain `eslint.config.js` would be
+ * parsed as ESM and every `require()` below would throw
+ * `ReferenceError: require is not defined in ES module scope`. ESLint's flat
+ * config resolves `.cjs` and keeps CommonJS semantics, which is the smaller
+ * change than converting the config and its four plugin imports to ESM.
+ */
 /* eslint-disable @typescript-eslint/no-require-imports */
 const js = require("@eslint/js");
 const globals = require("globals");

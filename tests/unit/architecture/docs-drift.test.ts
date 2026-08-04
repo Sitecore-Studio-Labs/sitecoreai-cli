@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Catches drift between docs and code.
@@ -15,10 +15,16 @@ import { describe, expect, it } from "vitest";
 // instruction an agent acts on directly, so a wrong path produces confidently
 // wrong work rather than a visible error.
 //
-// Two families of check:
-//   1. PATH REFERENCES  — every backtick-quoted repo path in an enforced doc
-//      must resolve to a real file or directory.
-//   2. ALLOWLIST STALENESS — every escape hatch below has a test that fails
+// Three families of check:
+//   1. PATH REFERENCES  — every backtick-quoted repo path, and every relative
+//      markdown link, in an enforced doc must resolve to a real file or
+//      directory.
+//   2. STRUCTURAL CLAIMS — the domain-area block, both skills indexes, and the
+//      quality-gates table are checked against the code they describe, not
+//      against a string. A count stated in prose is the drift nobody notices:
+//      CLAUDE.md and `codebase-conventions` both said "21 domain areas" while
+//      `src/` had 22, and neither cross-checked the other.
+//   3. ALLOWLIST STALENESS — every escape hatch below has a test that fails
 //      when its entries stop being true. Unguarded allowlists rot; these
 //      cannot.
 
@@ -26,6 +32,13 @@ const ROOT = resolve(__dirname, "..", "..", "..");
 
 const REPO_ROOTS = ["src", "tests", "scripts", "docs", "bin", "example"];
 const PATH_RE = new RegExp(`\`((?:${REPO_ROOTS.join("|")})/[A-Za-z0-9_./*-]+)\``, "g");
+
+// Markdown links: `](target)`. Skips absolute URLs, protocol-relative URLs,
+// and bare anchors. A backticked path and a linked path drift the same way,
+// but only the first was covered — and the two live links that were broken
+// pointed into a *sibling checkout*, so they resolved on one machine and
+// nowhere else.
+const LINK_RE = /\]\(([^)\s]+)\)/g;
 
 // Docs that record a decision or observation *at a point in time*. Rewriting
 // their paths would falsify the record, so they are excluded from
@@ -56,21 +69,23 @@ const PLACEHOLDER_SEGMENTS = new Set([
 // Paths a tool or a test author creates on first use; absent from a clean
 // checkout by design.
 //
-// `tests/unit/_fixtures/` is the interesting one: `testing-conventions`
-// writes it as "(create if not present)", so the skill is establishing a
-// convention rather than claiming a directory exists. The 2026-08-03 review
-// flagged it for an author's eye and it was dismissed for exactly this
-// reason — it is not drift, and this entry is why the check agrees.
-const RUNTIME_GENERATED = new Set<string>(["tests/unit/_fixtures/"]);
+// (Empty. `tests/unit/_fixtures/` sat here on the grounds that
+// `testing-conventions` wrote it as "(create if not present)" — establishing a
+// convention rather than claiming a directory. That reading is fair, but the
+// repo already has `tests/unit/recipe/_fixtures/`: the real convention is
+// `_fixtures/` beside the area's tests, and a skill pointing somewhere else
+// would seed a second, competing location. The skill now describes what the
+// tree actually does, so the ordinary existence check owns it.)
+const RUNTIME_GENERATED = new Set<string>([]);
 
 // Stale references not yet rewritten. Entries should be removed, never added
 // — anything new is genuine drift to fix at source.
-const KNOWN_STALE = new Set<string>([
-  // docs/roadmap.md describes a staging probe for the unreleased Strategy
-  // Brands API. The script was never committed; the paragraph is a record of
-  // what was checked, not a pointer to runnable code.
-  "scripts/_smoke-strategy-brand-probe.ts",
-]);
+// (Empty. `scripts/_smoke-strategy-brand-probe.ts` sat here as "never
+// committed" — it was: `git log --diff-filter=D` puts its deletion in 3856095,
+// the security scrub that removed recon artifacts. Allowlisting a pointer to a
+// deliberately-deleted artifact preserves the pointer; docs/roadmap.md now
+// describes the probe instead of naming a path that will never come back.)
+const KNOWN_STALE = new Set<string>([]);
 
 const walkMarkdown = (dir: string): string[] => {
   if (!existsSync(dir)) return [];
@@ -133,6 +148,21 @@ const collectReferences = (files: string[]) => {
   return refs;
 };
 
+const collectLinks = (files: string[]) => {
+  const links: { doc: string; target: string; abs: string }[] = [];
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    for (const match of text.matchAll(LINK_RE)) {
+      const raw = match[1];
+      if (!raw || /^([a-z][a-z0-9+.-]*:|#|\/\/)/i.test(raw)) continue;
+      const target = raw.split("#")[0];
+      if (!target) continue;
+      links.push({ doc: relative(ROOT, file), target: raw, abs: resolve(dirname(file), target) });
+    }
+  }
+  return links;
+};
+
 describe("docs: code references resolve to real files", () => {
   const files = collectEnforcedMarkdown();
   const refs = collectReferences(files);
@@ -154,6 +184,16 @@ describe("docs: code references resolve to real files", () => {
       [...new Set(missing)].sort(),
       "either fix the doc or, for legacy entries, add to KNOWN_STALE with a reason"
     ).toEqual([]);
+  });
+
+  it("every relative markdown link resolves", () => {
+    // Cross-repo links are the recurring failure: a link into a sibling
+    // checkout resolves for whoever wrote it and 404s for everyone else. Name
+    // the other repo in prose instead of linking a path out of the tree.
+    const broken = collectLinks(files)
+      .filter((l) => !existsSync(l.abs))
+      .map((l) => `${l.doc} → ${l.target}`);
+    expect([...new Set(broken)].sort()).toEqual([]);
   });
 
   it("KNOWN_STALE entries still appear in the docs", () => {
@@ -204,5 +244,134 @@ describe("docs: code references resolve to real files", () => {
     // And the real tree is non-trivially covered, so the suite above is not
     // asserting over an empty set.
     expect(refs.length).toBeGreaterThan(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Structural claims — assert against code, not against strings.
+// ---------------------------------------------------------------------------
+
+const readDoc = (relPath: string) => readFileSync(join(ROOT, relPath), "utf8");
+
+/** Directory names directly under `src/`. */
+const srcDirs = (): string[] =>
+  readdirSync(join(ROOT, "src"), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+/** The whitespace-separated area names in CLAUDE.md's domain-area block. */
+const declaredDomainAreas = (): string[] => {
+  const block = readDoc("CLAUDE.md").match(/```\n(deploy\s+serialization[\s\S]*?)```/);
+  expect(block, "CLAUDE.md lost its domain-area block").not.toBeNull();
+  return (block?.[1] ?? "").split(/\s+/).filter(Boolean).sort();
+};
+
+/** The `src/<name>/` entries in CLAUDE.md's cross-cutting-layer block. */
+const declaredCrossCutting = (): string[] => {
+  const block = readDoc("CLAUDE.md").match(/```\n(src\/cli\.ts[\s\S]*?)```/);
+  expect(block, "CLAUDE.md lost its cross-cutting-layer block").not.toBeNull();
+  return [...(block?.[1] ?? "").matchAll(/^src\/([a-z-]+)\/\s+←/gm)].map((m) => m[1]).sort();
+};
+
+const skillDirs = (root: string): string[] =>
+  readdirSync(join(ROOT, root), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+describe("docs: structural claims match the code", () => {
+  it("CLAUDE.md's domain-area block names directories that exist", () => {
+    const areas = declaredDomainAreas();
+    expect(areas.length).toBeGreaterThanOrEqual(20);
+    expect(
+      areas.filter((a) => !existsSync(join(ROOT, "src", a))),
+      "the domain-area block names a directory that is gone"
+    ).toEqual([]);
+  });
+
+  it("CLAUDE.md's stated domain-area count matches the block", () => {
+    const stated = readDoc("CLAUDE.md").match(/organized into (\d+) \*\*domain areas\*\*/)?.[1];
+    expect(stated, "CLAUDE.md no longer states a domain-area count").toBeDefined();
+    expect(Number(stated)).toBe(declaredDomainAreas().length);
+  });
+
+  it("codebase-conventions repeats the same domain-area count", () => {
+    // The claim lives in two files. Both said 21 while `src/` had 22, and
+    // neither cross-checked the other — a duplicated fact with no guard is a
+    // fact that drifts twice.
+    const skill = readDoc(".claude/skills/codebase-conventions/SKILL.md");
+    const stated = skill.match(/`src\/` is (\d+) \*\*domain areas\*\*/)?.[1];
+    expect(stated, "codebase-conventions no longer states a domain-area count").toBeDefined();
+    expect(Number(stated)).toBe(declaredDomainAreas().length);
+  });
+
+  it("CLAUDE.md's cross-cutting block names directories that exist", () => {
+    const layers = declaredCrossCutting();
+    expect(layers).toEqual(["commands", "config", "shared"]);
+    expect(layers.filter((l) => !existsSync(join(ROOT, "src", l)))).toEqual([]);
+  });
+
+  it("every directory under `src/` is documented as an area or a layer", () => {
+    // The reverse direction: a new top-level area nobody added to CLAUDE.md is
+    // invisible to every agent that reads the map first.
+    const documented = new Set([...declaredDomainAreas(), ...declaredCrossCutting()]);
+    expect(
+      srcDirs().filter((d) => !documented.has(d)),
+      "add these to CLAUDE.md's domain-area block (and bump the stated count)"
+    ).toEqual([]);
+  });
+
+  it("CLAUDE.md's skills table matches `.claude/skills/`", () => {
+    const listed = new Set(
+      [...readDoc("CLAUDE.md").matchAll(/^\| `([a-z][a-z0-9-]*)`\s+\|/gm)].map((m) => m[1])
+    );
+    const onDisk = new Set(skillDirs(".claude/skills"));
+    expect(
+      [...onDisk].filter((s) => !listed.has(s)).sort(),
+      "skill exists but CLAUDE.md's table does not list it"
+    ).toEqual([]);
+    expect(
+      [...listed].filter((s) => !onDisk.has(s)).sort(),
+      "CLAUDE.md lists a skill with no `.claude/skills/<name>/` directory"
+    ).toEqual([]);
+    for (const skill of onDisk) {
+      expect(existsSync(join(ROOT, ".claude/skills", skill, "SKILL.md"))).toBe(true);
+    }
+  });
+
+  it("`skills/README.md` indexes every shipped skill", () => {
+    // `skills/` is excluded from the path scan above (its `src/…` references
+    // describe the consumer's project, not this repo) — but its *index* is a
+    // claim about this repo's own tree, and it ships in the tarball as the
+    // first thing a consuming agent reads. An unlisted skill is unfindable.
+    const listed = new Set(
+      [...readDoc("skills/README.md").matchAll(/^- `([a-z][a-z0-9-]*)`/gm)].map((m) => m[1])
+    );
+    const onDisk = new Set(skillDirs("skills"));
+    expect(
+      [...onDisk].filter((s) => !listed.has(s)).sort(),
+      "shipped skill missing from skills/README.md"
+    ).toEqual([]);
+    expect(
+      [...listed].filter((s) => !onDisk.has(s)).sort(),
+      "skills/README.md lists a skill directory that does not exist"
+    ).toEqual([]);
+    for (const skill of onDisk) {
+      expect(existsSync(join(ROOT, "skills", skill, "SKILL.md"))).toBe(true);
+    }
+  });
+
+  it("CLAUDE.md's quality-gates table names real package scripts", () => {
+    const scripts = (JSON.parse(readDoc("package.json")) as { scripts: Record<string, string> })
+      .scripts;
+    const claimed = [...readDoc("CLAUDE.md").matchAll(/^\| `pnpm ([a-z:]+)`\s+\|/gm)].map(
+      (m) => m[1]
+    );
+    expect(claimed.length).toBeGreaterThanOrEqual(4);
+    expect(
+      claimed.filter((s) => !(s in scripts)),
+      "the quality-gates table names a script package.json does not define"
+    ).toEqual([]);
   });
 });

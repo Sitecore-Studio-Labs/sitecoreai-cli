@@ -44,7 +44,7 @@ This file is informational — it does not gate releases. CI does.
 | Gate                              | Enforced by                                                                                                                                             |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GraphQL timeout + status handling | `src/shared/graphql.ts` (shared transport) — unit + integration tests                                                                                   |
-| Telemetry retries + schema        | `src/telemetry/index.ts`                                                                                                                                |
+| Telemetry retries + schema        | `src/telemetry/index.ts` (payload validated against `src/telemetry/telemetry.schema.json`)                                                              |
 | Retry/backoff strategy            | Deploy GETs + GraphQL read queries retry on throttle/5xx; GraphQL write mutations are never retried (`maxAttempts: 1`) to avoid silent duplicate writes |
 | CliError contract                 | `src/shared/errors.ts` — every code maps to a stable exit code; covered in `tests/unit/shared/errors.test.ts`                                           |
 
@@ -70,7 +70,7 @@ This file is informational — it does not gate releases. CI does.
 | Gate               | Enforced by                                                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Changesets         | `pnpm changeset` — required for any user-facing change                                                                                                           |
-| Publish provenance | `.github/workflows/release.yml` (currently disabled while repo private)                                                                                          |
+| Publish provenance | `.github/workflows/release.yml` — **on**; npm signs a SLSA attestation per version (see [`release.md`](./release.md#provenance))                                 |
 | Trusted publishing | OIDC via npm Trusted Publishing — no long-lived `NPM_TOKEN`                                                                                                      |
 | Branch protection  | _Planned, not yet wired_ — `main` branch-protection rules are configured in the GitHub repo settings, not in a workflow file. No `branch-protection.yml` exists. |
 

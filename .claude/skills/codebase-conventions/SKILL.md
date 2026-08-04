@@ -21,7 +21,7 @@ For one-off binaries, use `pnpm exec <bin>`.
 
 ## Module structure
 
-`src/` is 21 **domain areas** plus three cross-cutting layers. A domain
+`src/` is 22 **domain areas** plus three cross-cutting layers. A domain
 area owns one product surface — its API client, task runners, and (where
 it has one) an `index.ts` SDK barrel.
 
@@ -33,11 +33,12 @@ src/
 │   └── shared.ts      ← shared option helpers
 ├── config/            ← sitecoreai.cli.json + module schemas, config resolution
 ├── shared/            ← cross-cutting: errors, logger, spinner, HTTP/GraphQL
-│                        transport, telemetry, redaction
+│                        transport, redaction
 └── <domain areas>/    ← deploy, serialization, setup, recipe, brand,
                           brief, campaigns, sites, publishing, content,
                           hygiene, webhooks, workflow, agents, policy, mcp,
-                          scripting, sync, auth, authoring, doctor
+                          scripting, sync, auth, authoring, doctor,
+                          telemetry
 ```
 
 A typical domain area (e.g. `serialization/`) holds `tasks/` (task
@@ -218,5 +219,5 @@ Anonymous, opt-in. The CLI prompts for consent on first use.
 - **The `__Standard values` chicken-and-egg** (when implementing recipes).
   Template references SV, SV's parent is template, SV's template is the
   template's own ID. Three operations, ordered. See
-  [plans/sitecore-relationships.md](../../../plans/sitecore-relationships.md)
-  in the orchestrator repo.
+  `plans/sitecore-relationships.md` in the demo-orchestrator repo (a
+  separate checkout — not a path in this one).

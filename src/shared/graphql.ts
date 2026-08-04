@@ -519,7 +519,9 @@ export const runSitecoreGraphQL = async <T>(
       throw lastError;
     }
     throw createScaiError(
-      redactSecrets(`Sitecore ${transport.label} API request failed: ${lastError.message}`),
+      redactSecrets(
+        `Sitecore ${transport.label} API request failed: ${lastError.message}${describeCause(lastError)}`
+      ),
       "NETWORK"
     );
   }
@@ -527,6 +529,49 @@ export const runSitecoreGraphQL = async <T>(
     redactSecrets(`Sitecore ${transport.label} API request failed: ${String(lastError)}`),
     "NETWORK"
   );
+};
+
+/**
+ * Unwrap the `cause` chain onto one line.
+ *
+ * Node's `fetch` rejects with a bare `TypeError: fetch failed` whose
+ * `.message` says nothing at all — every DNS miss, refused connection,
+ * expired certificate, and proxy misconfiguration produces the identical
+ * two words. The reason lives on `.cause`, which we were dropping.
+ *
+ * That cost real diagnosis time: the orchestrator's daily deploy smoke
+ * classifies a failure as "tenant unreachable, infrastructure, not a
+ * deploy-path regression" partly by matching the string "fetch failed", and
+ * with nothing but those two words there was no way — from CI logs alone —
+ * to tell a decommissioned sandbox host from an expired certificate on a
+ * perfectly healthy one. Both read as "infra is down"; only one is.
+ *
+ * `code` is included when present (`ENOTFOUND`, `ECONNREFUSED`,
+ * `CERT_HAS_EXPIRED`, `UND_ERR_CONNECT_TIMEOUT`) because it is the part a
+ * reader can act on. `AggregateError.errors` is walked too — happy-eyeballs
+ * dual-stack failures arrive that way, one entry per address family.
+ *
+ * Depth-capped and cycle-guarded: this string ends up in user-facing error
+ * output, and the caller still passes it through `redactSecrets`.
+ */
+const describeCause = (error: Error): string => {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  const describe = (err: unknown, depth: number): void => {
+    if (depth > 3 || parts.length >= 4 || !(err instanceof Error) || seen.has(err)) {
+      return;
+    }
+    seen.add(err);
+    const code = (err as { code?: unknown }).code;
+    parts.push(code ? `${String(code)}: ${err.message}` : err.message);
+    if (err instanceof AggregateError) {
+      for (const inner of err.errors) describe(inner, depth + 1);
+      return;
+    }
+    describe((err as { cause?: unknown }).cause, depth + 1);
+  };
+  describe((error as { cause?: unknown }).cause, 0);
+  return parts.length > 0 ? ` (cause: ${parts.join(" ← ")})` : "";
 };
 
 class HttpError extends Error {

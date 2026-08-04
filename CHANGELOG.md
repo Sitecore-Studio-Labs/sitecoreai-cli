@@ -1,8 +1,8 @@
 # @sitecoreai-labs/sitecoreai-cli
 
-## 1.0.0
+## 0.41.0
 
-### Major Changes
+### Minor Changes
 
 - 91fc3c5: **Breaking: the CommonJS build is gone. `dist/` is now ESM only.**
 

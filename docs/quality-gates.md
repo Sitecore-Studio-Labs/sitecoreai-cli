@@ -70,7 +70,7 @@ This file is informational — it does not gate releases. CI does.
 | Gate               | Enforced by                                                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Changesets         | `pnpm changeset` — required for any user-facing change                                                                                                           |
-| Publish provenance | `.github/workflows/release.yml` (currently disabled while repo private)                                                                                          |
+| Publish provenance | `.github/workflows/release.yml` — **on**; npm signs a SLSA attestation per version (see [`release.md`](./release.md#provenance))                                 |
 | Trusted publishing | OIDC via npm Trusted Publishing — no long-lived `NPM_TOKEN`                                                                                                      |
 | Branch protection  | _Planned, not yet wired_ — `main` branch-protection rules are configured in the GitHub repo settings, not in a workflow file. No `branch-protection.yml` exists. |
 

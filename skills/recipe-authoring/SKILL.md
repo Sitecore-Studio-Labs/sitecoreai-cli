@@ -255,7 +255,7 @@ types: ["<item>@1"] }` — author picks existing items from anywhere.
 
 - **No `section` → invisible in Pages.** The #1 "my component doesn't show up" cause.
   Add a `component-section` and `section: { handle }` on every component-template.
-- **Glob needs a subfolder.** A glob like `recipes/**/*.recipe.ts` won't match a recipe at
+- **Glob needs a subfolder.** `src/recipes/**/*.recipe.ts` won't match a recipe at
   the glob root — put recipes under `blocks/`, `_content/`, `_sections/`, etc.
 - **`name` must equal the component-map key**, or the SDK renders the
   missing-component fallback. Variants must be exact-case React exports.

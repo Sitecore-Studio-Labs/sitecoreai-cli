@@ -126,7 +126,7 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise:check && pnpm security:scan && pnpm test",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise:check && pnpm docs:commands:check && pnpm security:scan && pnpm test",
     "security:scan": "node scripts/security-scan.cjs",
     "version": "changeset version && npm install --package-lock-only --ignore-scripts",
     "coverage:ratchet": "node scripts/check-coverage-ratchet.cjs",

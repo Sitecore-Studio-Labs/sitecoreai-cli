@@ -1,12 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    // Runtime is Node >=22.12 (see package.json engines), which is fully
-    // ES2022+. Surface those lib types (e.g. the `Error(message, { cause })`
-    // constructor) without changing the ES2020 downlevel-emit target.
     "lib": ["ES2022"],
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
@@ -18,7 +15,8 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "declaration": true,
-    "declarationMap": false
+    "declarationMap": false,
+    "emitDeclarationOnly": true
   },
   "include": ["src"]
 }

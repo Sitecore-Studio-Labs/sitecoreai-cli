@@ -7,7 +7,7 @@
  * the package's own `exports` map (self-reference) against the built
  * `dist/`. For each entry it asserts:
  *
- *   1. `require.resolve` maps the subpath key to a real file — catches a
+ *   1. The subpath key resolves to a real file via `import()` — catches a
  *      stale `exports` target or a missing `dist/<domain>/index.js`.
  *   2. The module imports without throwing.
  *   3. The module exposes at least one symbol — catches a barrel that
@@ -34,12 +34,6 @@ const subpaths = Object.keys(pkg.exports).filter((k) => k !== "./package.json");
 (async () => {
   for (const sub of subpaths) {
     const specifier = `${pkg.name}${sub.slice(1)}`;
-
-    try {
-      require.resolve(specifier);
-    } catch (err) {
-      fail(`exports map did not resolve "${specifier}": ${err && err.message}`);
-    }
 
     let mod;
     try {

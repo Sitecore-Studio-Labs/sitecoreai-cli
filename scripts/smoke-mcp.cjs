@@ -4,7 +4,7 @@
  * Post-build smoke for `scai mcp serve`. Verifies that the built CLI
  * boots a minimum-viable MCP server end-to-end:
  *
- *   1. Boots `dist/cli.js mcp serve --environment-name __test__` against
+ *   1. Boots `dist/esm/cli.js mcp serve --environment-name __test__` against
  *      a throwaway sitecoreai.cli.json in a temp directory.
  *   2. Sends a JSON-RPC `initialize` + `tools/list` + `resources/list`
  *      request on stdin.
@@ -31,7 +31,7 @@ const os = require("node:os");
 const path = require("node:path");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-const CLI = path.join("dist", "cli.js");
+const CLI = path.join("dist", "esm", "cli.js");
 const TIMEOUT_MS = 5000;
 const MIN_TOOL_COUNT = 18;
 // docs/mcp.md's resource table is the source of truth — keep this in

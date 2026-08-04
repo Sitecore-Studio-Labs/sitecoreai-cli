@@ -61,9 +61,9 @@ const failures = [];
 const checked = [];
 
 for (const subpath of BROWSER_SAFE) {
-  const entry = pkg.exports?.[subpath]?.import;
+  const entry = pkg.exports?.[subpath]?.default;
   if (!entry) {
-    failures.push(`${subpath}: no \`import\` condition in package.json exports`);
+    failures.push(`${subpath}: no resolvable condition in package.json exports`);
     continue;
   }
   const absolute = resolve(ROOT, entry);

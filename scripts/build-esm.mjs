@@ -50,7 +50,12 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"));
  * automatically getting an ESM build. `./dist/x/y.js` maps back to
  * `src/x/y.ts`.
  */
-const toSource = (distPath) => distPath.replace(/^\.\/dist\//, "src/").replace(/\.js$/, ".ts");
+// `./dist/esm/x/y.js` and `./dist/x/y.js` both map back to `src/x/y.ts`.
+// The `esm/` segment must be stripped first: since the CommonJS build was
+// dropped, `exports` points at `./dist/esm/...`, and leaving that segment in
+// yields a nonexistent `src/esm/...` entry point.
+const toSource = (distPath) =>
+  distPath.replace(/^\.\/dist\/(esm\/)?/, "src/").replace(/\.js$/, ".ts");
 
 const allSubpaths = Object.entries(pkg.exports)
   .filter(([subpath]) => subpath !== "./package.json")
@@ -82,9 +87,18 @@ const BROWSER_SAFE_SUBPATHS = new Set([
 const browserEntryPoints = allSubpaths
   .filter(([subpath]) => BROWSER_SAFE_SUBPATHS.has(subpath))
   .map(([, target]) => toSource(target));
-const nodeEntryPoints = allSubpaths
+let nodeEntryPoints = allSubpaths
   .filter(([subpath]) => !BROWSER_SAFE_SUBPATHS.has(subpath))
   .map(([, target]) => toSource(target));
+
+// The CLI binary is not in `exports` — it is reached through `bin`, so it has
+// to be named explicitly or the build silently emits no `cli.js` and the
+// installed `scai` command dies with ERR_MODULE_NOT_FOUND. `program.ts` and
+// `commands/**` come along through its import graph.
+const BIN_ENTRY = "src/cli.ts";
+if (!nodeEntryPoints.includes(BIN_ENTRY)) {
+  nodeEntryPoints.push(BIN_ENTRY);
+}
 
 if (browserEntryPoints.length !== BROWSER_SAFE_SUBPATHS.size) {
   throw new Error(
@@ -196,6 +210,40 @@ copyFileSync("src/recipe/sandbox/recipe-runner.cjs", resolve(sandboxOut, "recipe
 // the next one. Keeping the banner unconditionally on the Node pass costs a
 // few unused imports in files that never read them, which Node resolves for
 // free, and removes the whole class.
+
+// The browser pass has no banner, so `require` / `__dirname` / `__filename`
+// are genuinely undefined in its output. Assert nothing there references them.
+//
+// This closes the one failure mode `smoke-browser.mjs` cannot see. If a
+// Node-dependent module ever leaks into a browser-safe entry's graph, esbuild
+// emits its interop helper:
+//
+//   var __require = ((x) => typeof require !== "undefined" ? require : Proxy-that-throws)
+//
+// That BUNDLES cleanly — no `node:*` import, so the browser smoke passes — and
+// it IMPORTS cleanly, because `typeof` on an undeclared identifier is legal and
+// the throwing branch is never evaluated at module scope. It fails only when
+// something calls it, at runtime, in a consumer. That is precisely how 0.40.1
+// shipped: green build, green smoke, 13 broken tests in another repo.
+//
+// A static check catches it at the only moment it is cheap to catch.
+const leaked = [];
+for (const outPath of Object.keys(browserResult.metafile.outputs)) {
+  const body = readFileSync(outPath, "utf8");
+  const hits = [...body.matchAll(/\b(require|__dirname|__filename)\b/g)].map((m) => m[1]);
+  if (hits.length > 0) {
+    leaked.push(`${outPath}: references ${[...new Set(hits)].sort().join(", ")}`);
+  }
+}
+if (leaked.length > 0) {
+  throw new Error(
+    `Browser-safe ESM output references Node-only globals, which are undefined there:\n` +
+      leaked.map((line) => `  - ${line}`).join("\n") +
+      `\n\nA Node-dependent module reached a browser-safe entry. It will bundle and ` +
+      `import fine and throw when called. Either drop the offending import from that ` +
+      `entry's graph, or move the subpath out of BROWSER_SAFE_SUBPATHS above.`
+  );
+}
 
 const outputs = Object.keys(result.metafile.outputs).length;
 const browserOutputs = Object.keys(browserResult.metafile.outputs).length;

@@ -197,6 +197,40 @@ copyFileSync("src/recipe/sandbox/recipe-runner.cjs", resolve(sandboxOut, "recipe
 // few unused imports in files that never read them, which Node resolves for
 // free, and removes the whole class.
 
+// The browser pass has no banner, so `require` / `__dirname` / `__filename`
+// are genuinely undefined in its output. Assert nothing there references them.
+//
+// This closes the one failure mode `smoke-browser.mjs` cannot see. If a
+// Node-dependent module ever leaks into a browser-safe entry's graph, esbuild
+// emits its interop helper:
+//
+//   var __require = ((x) => typeof require !== "undefined" ? require : Proxy-that-throws)
+//
+// That BUNDLES cleanly — no `node:*` import, so the browser smoke passes — and
+// it IMPORTS cleanly, because `typeof` on an undeclared identifier is legal and
+// the throwing branch is never evaluated at module scope. It fails only when
+// something calls it, at runtime, in a consumer. That is precisely how 0.40.1
+// shipped: green build, green smoke, 13 broken tests in another repo.
+//
+// A static check catches it at the only moment it is cheap to catch.
+const leaked = [];
+for (const outPath of Object.keys(browserResult.metafile.outputs)) {
+  const body = readFileSync(outPath, "utf8");
+  const hits = [...body.matchAll(/\b(require|__dirname|__filename)\b/g)].map((m) => m[1]);
+  if (hits.length > 0) {
+    leaked.push(`${outPath}: references ${[...new Set(hits)].sort().join(", ")}`);
+  }
+}
+if (leaked.length > 0) {
+  throw new Error(
+    `Browser-safe ESM output references Node-only globals, which are undefined there:\n` +
+      leaked.map((line) => `  - ${line}`).join("\n") +
+      `\n\nA Node-dependent module reached a browser-safe entry. It will bundle and ` +
+      `import fine and throw when called. Either drop the offending import from that ` +
+      `entry's graph, or move the subpath out of BROWSER_SAFE_SUBPATHS above.`
+  );
+}
+
 const outputs = Object.keys(result.metafile.outputs).length;
 const browserOutputs = Object.keys(browserResult.metafile.outputs).length;
 console.log(

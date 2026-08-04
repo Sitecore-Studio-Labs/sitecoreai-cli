@@ -110,5 +110,33 @@ const sandboxOut = resolve(OUTDIR, "recipe/sandbox");
 mkdirSync(sandboxOut, { recursive: true });
 copyFileSync("src/recipe/sandbox/recipe-runner.cjs", resolve(sandboxOut, "recipe-runner.cjs"));
 
+// Strip the banner from every emitted file that does not actually use a shim.
+//
+// esbuild applies `banner` to ALL outputs — there is no per-file option — so
+// without this, all 41 emitted files import `node:module` when only 2 need it.
+// That is not merely dead weight: a browser bundler resolving the `import`
+// condition (Next.js/Turbopack does, for the schema-only entries the showcase
+// pulls into a client component) hits `node:module` in a browser chunking
+// context and fails the production build with "the chunking context does not
+// support external modules". The CJS build had no such marker, so the dual
+// build regressed browser consumers of the pure-Zod entries.
+//
+// Safe to strip per-file: the three shims are file-local `const`s, so a file
+// that never references them is unaffected by their removal. Files that DO
+// reference them keep the banner verbatim.
+const SHIM_RE = /\brequire\s*\(|__dirname|__filename/;
+let stripped = 0;
+for (const outPath of Object.keys(result.metafile.outputs)) {
+  const source = readFileSync(outPath, "utf8");
+  if (!source.startsWith(BANNER)) continue;
+  const body = source.slice(BANNER.length);
+  if (SHIM_RE.test(body)) continue;
+  writeFileSync(outPath, body.replace(/^\n/, ""));
+  stripped += 1;
+}
+
 const outputs = Object.keys(result.metafile.outputs).length;
-console.log(`[build-esm] ${entryPoints.length} entry point(s) → ${outputs} file(s) in ${OUTDIR}/`);
+console.log(
+  `[build-esm] ${entryPoints.length} entry point(s) → ${outputs} file(s) in ${OUTDIR}/ ` +
+    `(node: shim banner kept in ${outputs - stripped}, stripped from ${stripped})`
+);

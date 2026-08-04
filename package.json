@@ -1,7 +1,7 @@
 {
   "name": "@sitecoreai-labs/sitecoreai-cli",
   "version": "0.40.1",
-  "description": "SitecoreAI developer toolkit — a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
+  "description": "SitecoreAI developer toolkit \u2014 a native TypeScript CLI, SDK, and MCP server for deploy, serialization, recipes, publishing, and content operations.",
   "license": "MIT",
   "type": "commonjs",
   "author": "Sitecore Studio Labs (https://github.com/Sitecore-Studio-Labs)",
@@ -148,7 +148,7 @@
     "release": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && tsc-alias && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/recipe/sandbox',{recursive:true});fs.copyFileSync('src/recipe/sandbox/recipe-runner.cjs','dist/recipe/sandbox/recipe-runner.cjs')\" && node scripts/build-esm.mjs && changeset publish",
     "sites:codegen": "openapi-typescript src/sites/api/openapi.yaml --output src/sites/api/schema.d.ts",
     "brand:codegen": "openapi-typescript src/brand/api/openapi.brand-management.yaml --output src/brand/api/schema.brand-management.d.ts && openapi-typescript src/brand/api/openapi.brand-review.yaml --output src/brand/api/schema.brand-review.d.ts && openapi-typescript src/brand/api/openapi.documents.yaml --output src/brand/api/schema.documents.d.ts && openapi-typescript src/brand/api/openapi.pipeline.yaml --output src/brand/api/schema.pipeline.d.ts",
-    "smoke": "npm run build && node --no-experimental-require-module scripts/smoke-require.cjs --sdk-strict && node scripts/smoke-require.cjs && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-import.mjs && node scripts/smoke-mcp.cjs",
+    "smoke": "npm run build && node --no-experimental-require-module scripts/smoke-require.cjs --sdk-strict && node scripts/smoke-require.cjs && node scripts/smoke.cjs && node scripts/smoke-exports.cjs && node scripts/smoke-import.mjs && node scripts/smoke-browser.mjs && node scripts/smoke-mcp.cjs",
     "start": "node dist/cli.js",
     "pretest": "tsc --noEmit",
     "test": "vitest run",

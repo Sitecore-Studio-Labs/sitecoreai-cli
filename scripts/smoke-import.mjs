@@ -67,13 +67,34 @@ for (const { subpath, file } of entries) {
 }
 
 // 3 — cross-entry module identity.
+//
+// The browser-safe schema entries are built in their own esbuild pass (see
+// scripts/build-esm.mjs — it is the only way to keep a Node built-in out of
+// their chunk graph), so anything reachable from BOTH passes is emitted twice.
+//
+// Measured, that is these two: pure `(value) => string`-shaped helpers with no
+// identity contract. Nothing does `instanceof` on a function that maps a field
+// type to a label. Every class and error type stays inside the Node pass and is
+// still held to single-identity below.
+//
+// Do not grow this list to silence a failure. A duplicated CLASS or ERROR here
+// is a real defect — it means `instanceof ScaiError` would return false across
+// subpaths — and the fix is to move the module out of the browser pass, not to
+// add a name here.
+const IDENTITY_EXEMPT = new Set(["defaultSitecoreFieldType", "sitecoreFieldTypeLabel"]);
+
 const seen = new Map();
 let comparisons = 0;
+let exempted = 0;
 for (const [subpath, mod] of loaded) {
   for (const [name, value] of Object.entries(mod)) {
     // Only functions and classes carry identity that matters here; plain
     // values and re-exported literals can legitimately be duplicated.
     if (typeof value !== "function") continue;
+    if (IDENTITY_EXEMPT.has(name)) {
+      exempted += 1;
+      continue;
+    }
     const previous = seen.get(name);
     if (!previous) {
       seen.set(name, { subpath, value });
@@ -97,5 +118,5 @@ if (failures > 0) {
 
 console.log(
   `[smoke-import] ok — ${loaded.size} ESM entry point(s) imported, ` +
-    `${comparisons} cross-entry identity comparison(s) held`
+    `${comparisons} cross-entry identity comparison(s) held, ${exempted} exempt`
 );

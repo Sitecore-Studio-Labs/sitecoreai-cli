@@ -216,13 +216,13 @@ source/widget-config surface.
 ### Strategy "Brands API"
 
 The unreleased Sitecore Strategy Brands API. Auth coordinates and the
-endpoint surface are verified against staging
-(`scripts/_smoke-strategy-brand-probe.ts`), but the API is feature-
-flagged off (`BRANDS_API_DISABLED`) for every reachable tenant — so the
-data model is still unknown and no client can be built. **Unblock:** an
-admin enables the Brands feature on a staging tenant scai has M2M
-credentials for, then re-run the probe to capture the `brand` +
-`brand-types` shapes. Planned once unblocked: a `brand` resource client
+endpoint surface were verified against staging with a throwaway probe
+script (since removed as a recon artifact — see the security scrub in
+`CHANGELOG.md`), but the API is feature-flagged off
+(`BRANDS_API_DISABLED`) for every reachable tenant — so the data model
+is still unknown and no client can be built. **Unblock:** an admin
+enables the Brands feature on a staging tenant scai has M2M credentials
+for, then re-probe to capture the `brand` + `brand-types` shapes. Planned once unblocked: a `brand` resource client
 under `src/brand/` (a separate auth seam from the brand-kit
 surface), `scai brand brands list|get`, and MCP `brand_inspect`
 coverage.

@@ -515,6 +515,19 @@ export function validateRecipeSet(recipes: readonly Recipe[]): ValidationResult 
  * normalized to start at the alphabetically-smallest handle so re-runs
  * over the same input produce stable output regardless of iteration
  * order.
+ *
+ * SELF-edges are skipped. A template listing its own handle in
+ * `insertOptions` is the ordinary Sitecore shape for "this item type may
+ * be nested inside itself" — an accordion inside an accordion, a nav
+ * group inside a nav group — and it compiles to a single Insert Options
+ * entry on `__Standard Values` like any other. It is also not an
+ * ordering hazard: a self-edge constrains no ordering between DISTINCT
+ * recipes, which is why `topoSortGroup` in `compile/ordering.ts` already
+ * drops it explicitly (`depIdx === i`). Reporting it as a cycle made
+ * `validateRecipeSet` reject sets whose only offence was a legal nesting
+ * declaration, with no fix available except deleting the nesting.
+ *
+ * A true multi-recipe ring (`a → b → a`) is still reported.
  */
 function detectInsertOptionsCycles(
   index: ReadonlyMap<string, Recipe>,
@@ -550,6 +563,9 @@ function detectInsertOptionsCycles(
       recipe.insertOptions !== undefined
     ) {
       for (const child of recipe.insertOptions) {
+        // Self-nesting is legal and imposes no ordering constraint; see
+        // the note above and `topoSortGroup`'s matching `depIdx === i`.
+        if (child === handle) continue;
         dfs(child);
       }
     }

@@ -357,7 +357,15 @@ describe("validateRecipeSet — unresolved handles", () => {
 });
 
 describe("validateRecipeSet — cycle detection on insertOptions chains", () => {
-  it("flags a direct A→A self-loop", () => {
+  // A template listing its own handle in `insertOptions` is the ordinary
+  // Sitecore shape for "this item type may be nested inside itself" — an
+  // accordion inside an accordion, a nav group inside a nav group. It
+  // compiles to one Insert Options entry on `__Standard Values` like any
+  // other, and it constrains no ordering between DISTINCT recipes, which
+  // is why `topoSortGroup` already drops self-edges (`depIdx === i`).
+  // Reporting it rejected whole recipe sets whose only offence was a
+  // legal nesting declaration, with no fix but deleting the nesting.
+  it("does NOT flag a direct A→A self-loop", () => {
     const selfLoop: Recipe = {
       kind: "content-template",
       schemaVersion: "1",
@@ -368,8 +376,33 @@ describe("validateRecipeSet — cycle detection on insertOptions chains", () => 
       insertOptions: ["self@1"],
     };
     const result = validateRecipeSet([selfLoop]);
+    expect(result.cycles).toEqual([]);
+  });
+
+  // The self-edge exemption must not swallow a genuine ring that passes
+  // through the same recipe.
+  it("still flags an A→B→A ring when A also self-nests", () => {
+    const a: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "a@1",
+      name: "A",
+      displayName: "A",
+      fields: [],
+      insertOptions: ["a@1", "b@1"],
+    };
+    const b: Recipe = {
+      kind: "content-template",
+      schemaVersion: "1",
+      handle: "b@1",
+      name: "B",
+      displayName: "B",
+      fields: [],
+      insertOptions: ["a@1"],
+    };
+    const result = validateRecipeSet([a, b]);
     expect(result.cycles).toHaveLength(1);
-    expect(result.cycles[0].cycle).toEqual(["self@1", "self@1"]);
+    expect(result.cycles[0].cycle).toEqual(["a@1", "b@1", "a@1"]);
   });
 
   it("flags an A→B→A two-recipe cycle", () => {

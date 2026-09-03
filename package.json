@@ -160,12 +160,12 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "fast-uri": "^3.1.5",
+    "fast-uri": "^3.1.7",
     "picomatch": "^2.3.2",
     "hono": "^4.12.27",
     "esbuild": "^0.28.1",
     "vite": "^7.3.5",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.2",
     "read-yaml-file": "^2.1.0",
     "brace-expansion": ">=5.0.8",
     "postcss": "^8.5.18",
@@ -174,12 +174,12 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri": "^3.1.5",
+      "fast-uri": "^3.1.7",
       "picomatch": "^2.3.2",
       "hono": "^4.12.27",
       "esbuild": "^0.28.1",
       "vite": "^7.3.5",
-      "js-yaml": "^4.3.0",
+      "js-yaml": "^4.3.2",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": ">=5.0.8",
       "postcss": "^8.5.18",
